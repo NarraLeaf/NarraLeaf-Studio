@@ -2,30 +2,21 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, IconButton, Switch } from "@/lib/components/elements";
+import { Button, IconButton, Input, Select, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import {
-    buildAgentClientConfig,
-    type AgentClientConfigKind,
+    AGENT_PORT_MAX,
+    AGENT_PORT_MIN,
+    isUsableAgentPort,
+    type AgentPortRefusal,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
+import type { AgentClientId } from "@shared/agent/clients";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
-
-/** The copy buttons, in the order and with the names the Agent menu's copy submenu uses (`AGENT_MENU_COPY_KINDS`). */
-const CONFIG_KINDS: {
-    kind: AgentClientConfigKind;
-    labelKey: "settings.agent.copyClaudeCode" | "settings.agent.copyJson" | "settings.agent.copyOpencode" | "settings.agent.copyStdio";
-    tipKey?: "settings.agent.copyStdioHint";
-}[] = [
-    { kind: "claudeCode", labelKey: "settings.agent.copyClaudeCode" },
-    // For clients that only launch local programs: Studio's own executable as a stdio bridge.
-    { kind: "stdio", labelKey: "settings.agent.copyStdio", tipKey: "settings.agent.copyStdioHint" },
-    { kind: "opencode", labelKey: "settings.agent.copyOpencode" },
-    { kind: "json", labelKey: "settings.agent.copyJson" },
-];
+import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClientGuide";
 
 /**
  * Agent access: the MCP endpoint an author's own AI agent connects to, and the switches that decide
@@ -36,31 +27,42 @@ const CONFIG_KINDS: {
  * panel reads and writes over its own Settings-only channel and shows what main answers, never what
  * it hoped to write. The endpoint starts and stops the moment the switch moves.
  *
- * There is no port to fill in: main picks it and keeps it from one launch to the next. The address
- * row shows where the endpoint is, and says so when it had to move to another port - which is when
- * configurations copied before stop working - until a configuration or the address is copied again.
+ * The port row moves the endpoint at once, or says why it could not and shows the port it is still
+ * on. A start that finds the port in use or reserved fails, and the address row says which port and
+ * why. A profile moved off the old default port says so there too - configurations copied before
+ * name the old one - until a configuration or the address is copied again.
  *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
+ *
+ * Under the token rows, the guide first-run setup walks an author through: pick the agent
+ * application, then its configuration (token masked), where it goes, and its Agent Skill - the same
+ * component as the setup screen (`AgentClientGuide`), so what setup offered stays here. It is the
+ * one place a configuration is copied from in this panel: a row of copy buttons beside it would be a
+ * second way to do the same thing, without the guide's "where it goes".
  */
 export function AgentAccessPanel() {
     const { t, locale } = useTranslation();
     const [settings, setSettings] = useState<AgentSettingsSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [tokenVisible, setTokenVisible] = useState(false);
+    const [portDraft, setPortDraft] = useState("");
+    const [portRefused, setPortRefused] = useState<AgentPortRefusal | null>(null);
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
-    const [copied, setCopied] = useState<AgentClientConfigKind | "address" | null>(null);
+    const [copied, setCopied] = useState<"address" | "token" | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Each step of regenerating replaces the focused button, so focus is handed on explicitly: the
     // confirm step's Cancel takes it, and once the step closes the Regenerate button gets it back
     // (after a regeneration, once it is enabled again).
     const regenerateButton = useRef<HTMLButtonElement | null>(null);
     const refocusRegenerate = useRef(false);
+    const [guideClient, setGuideClient] = useState<AgentClientId>("claudeCode");
+    const clientOptions = useAgentClientOptions();
 
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
             setSettings(result.data);
+            setPortDraft(String(result.data.port));
             setError(null);
         } else {
             setError(result.error ?? "");
@@ -91,7 +93,15 @@ export function AgentAccessPanel() {
         }
     }, [adopt]);
 
-    const update = useCallback((patch: AgentSettingsPatch) => run(() => getInterface().agent.updateSettings(patch)), [run]);
+    const update = useCallback((patch: AgentSettingsPatch) => run(async () => {
+        const result = await getInterface().agent.updateSettings(patch);
+        // A refusal answers this request only. Main tells this window about every change, and the
+        // snapshot read again for that does not carry it, so it is held here until the field is edited.
+        if (patch.port !== undefined) {
+            setPortRefused(result.success ? result.data.portRefused ?? null : null);
+        }
+        return result;
+    }), [run]);
 
     const closeRegenerateConfirm = useCallback(() => {
         refocusRegenerate.current = true;
@@ -105,20 +115,31 @@ export function AgentAccessPanel() {
         }
     }, [confirmRegenerate, busy]);
 
-    const copy = useCallback(async (kind: AgentClientConfigKind | "address") => {
+    const portValue = Number(portDraft);
+    const portValid = portDraft.trim() !== "" && isUsableAgentPort(portValue);
+
+    const commitPort = useCallback(() => {
+        if (!settings || !portValid || portValue === settings.port) {
+            if (settings && !portValid) {
+                setPortDraft(String(settings.port));
+            }
+            return;
+        }
+        void update({ port: portValue });
+    }, [settings, portValid, portValue, update]);
+
+    const copy = useCallback(async (what: "address" | "token") => {
         if (!settings) {
             return;
         }
-        await copyTextToClipboard(kind === "address"
-            ? settings.url
-            : buildAgentClientConfig(kind, settings.url, settings.token, settings.stdio));
-        setCopied(kind);
+        await copyTextToClipboard(what === "address" ? settings.url : settings.token);
+        setCopied(what);
         if (copiedTimer.current) {
             clearTimeout(copiedTimer.current);
         }
         copiedTimer.current = setTimeout(() => setCopied(null), 1500);
         // What was copied names the current port: the notice that it moved has been acted on.
-        if (settings.movedToPort !== null) {
+        if (what === "address" && settings.movedToPort !== null) {
             void update({ acknowledgeMovedPort: true });
         }
     }, [settings, update]);
@@ -129,23 +150,34 @@ export function AgentAccessPanel() {
             : <p className="px-2 text-xs text-fg-subtle">{t("settings.agent.loading")}</p>;
     }
 
+    const portProblem = (refusal: AgentPortRefusal) =>
+        t(refusal.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: refusal.port });
+    const failure = settings.portUnavailable ? portProblem(settings.portUnavailable) : settings.error;
     const status = settings.running
         ? settings.movedToPort !== null
             ? t("settings.agent.portMoved", { port: settings.movedToPort })
             : t("settings.agent.running")
-        : settings.error
-            ? t("settings.agent.failed", { message: settings.error })
+        : failure
+            ? t("settings.agent.failed", { message: failure })
             : t("settings.agent.stopped");
     const statusTone = settings.running
         ? settings.movedToPort !== null ? "warning" : "muted"
-        : settings.error ? "danger" : "muted";
+        : failure ? "danger" : "muted";
+    const portDescription = settings.setByLaunch
+        ? t("settings.agent.portSetByLaunch")
+        : !portValid
+            ? t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })
+            : portRefused
+                ? portProblem(portRefused)
+                : t("settings.agent.portHint");
 
     return (
         <div className="flex flex-col gap-1">
-            <Row label={t("settings.agent.enable")} description={t("settings.agent.enableHint")}>
+            {/* A development launch decides both from its flags; the switch and the port show them and hold still. */}
+            <Row label={t("settings.agent.enable")} description={t(settings.setByLaunch ? "settings.agent.enableSetByLaunch" : "settings.agent.enableHint")}>
                 <Switch
                     checked={settings.enabled}
-                    disabled={busy}
+                    disabled={busy || settings.setByLaunch}
                     onCheckedChange={checked => void update({ enabled: checked })}
                     size="md"
                     aria-label={t("settings.agent.enable")}
@@ -171,6 +203,26 @@ export function AgentAccessPanel() {
                     aria-label={t("settings.agent.fullAccess")}
                 />
             </Row>
+            <Row label={t("settings.agent.port")} description={portDescription} descriptionTone={portValid && !portRefused ? "muted" : "danger"}>
+                <Input
+                    size="sm"
+                    inputMode="numeric"
+                    value={portDraft}
+                    variant={portValid ? "default" : "error"}
+                    disabled={busy || settings.setByLaunch}
+                    onChange={event => {
+                        setPortDraft(event.target.value.replace(/[^0-9]/g, ""));
+                        setPortRefused(null);
+                    }}
+                    onBlur={commitPort}
+                    onKeyDown={event => {
+                        if (event.key === "Enter") {
+                            commitPort();
+                        }
+                    }}
+                    aria-label={t("settings.agent.port")}
+                />
+            </Row>
             <Row label={t("settings.agent.endpoint")} description={status} descriptionTone={statusTone}>
                 <div className="flex w-full items-center justify-end gap-1">
                     <p className="min-w-0 truncate font-mono text-xs text-fg-muted" data-tip={settings.url}>
@@ -187,14 +239,20 @@ export function AgentAccessPanel() {
                     </IconButton>
                 </div>
             </Row>
+            {/* Never shown in full: it is only ever pasted, and a 43-character secret does not fit the control
+                column anyway. The last characters tell which token a client was set up with. */}
             <Row label={t("settings.agent.token")} description={t("settings.agent.tokenHint")}>
-                <div className="flex w-full items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">
-                        {tokenVisible ? settings.token : "•".repeat(24)}
-                    </p>
-                    <Button size="sm" variant="ghost" onClick={() => setTokenVisible(visible => !visible)}>
-                        {tokenVisible ? t("settings.agent.hide") : t("settings.agent.show")}
-                    </Button>
+                <div className="flex w-full items-center justify-end gap-1">
+                    <p className="min-w-0 truncate font-mono text-xs text-fg-muted">{maskAgentToken(settings.token)}</p>
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t("settings.agent.copyToken")}
+                        data-tip={copied === "token" ? t("settings.agent.copied") : t("settings.agent.copyToken")}
+                        onClick={() => void copy("token")}
+                    >
+                        {copied === "token" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    </IconButton>
                 </div>
             </Row>
             <Row label={t("settings.agent.regenerate")} description={t("settings.agent.regenerateHint")}>
@@ -221,21 +279,19 @@ export function AgentAccessPanel() {
                     </Button>
                 )}
             </Row>
-            <Row label={t("settings.agent.copyConfig")} description={t("settings.agent.copyConfigHint")} wide>
-                <div className="flex flex-wrap justify-end gap-2">
-                    {CONFIG_KINDS.map(({ kind, labelKey, tipKey }) => (
-                        <Button
-                            key={kind}
-                            size="sm"
-                            variant="secondary"
-                            data-tip={tipKey ? t(tipKey) : undefined}
-                            onClick={() => void copy(kind)}
-                        >
-                            {copied === kind ? t("settings.agent.copied") : t(labelKey)}
-                        </Button>
-                    ))}
-                </div>
+            <Row label={t("settings.agent.guide.app")} description={t("settings.agent.guide.appHint")}>
+                <Select
+                    size="sm"
+                    fullWidth
+                    options={clientOptions}
+                    value={guideClient}
+                    onChange={value => setGuideClient(value as AgentClientId)}
+                    ariaLabel={t("settings.agent.guide.app")}
+                />
             </Row>
+            <div className="px-2 pb-3 pt-1" data-agent-client-guide>
+                <AgentClientGuide client={guideClient} enabled={settings.enabled} endpointKey={settings.url} />
+            </div>
             <div className="rounded-md px-2 py-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 grow basis-64 flex-col gap-1">
@@ -317,6 +373,13 @@ export function AgentAccessPanel() {
             {busy && <Loader2 className="mx-2 h-3 w-3 animate-spin text-primary" />}
         </div>
     );
+}
+
+/** How many of the token's last characters the Settings row shows. */
+const TOKEN_VISIBLE_TAIL = 4;
+
+function maskAgentToken(token: string): string {
+    return `${"•".repeat(8)}${token.slice(-TOKEN_VISIBLE_TAIL)}`;
 }
 
 const TONE_CLASS = { muted: "text-fg-subtle", warning: "text-warning", danger: "text-danger" } as const;

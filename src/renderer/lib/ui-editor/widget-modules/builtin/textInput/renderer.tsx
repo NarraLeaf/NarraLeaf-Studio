@@ -7,7 +7,7 @@ import {
     type KeyboardEvent,
 } from "react";
 import { motion } from "motion/react";
-import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
+import { effectTextShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import {
     clampTextInputValue,
     resolveTextInputRuntimeValue,
@@ -237,7 +237,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     });
 
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
-    const textShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
+    const textShadow = effectTextShadowStoredToCss(v.effects.effectTextShadow);
     const resolvedCursor =
         interactionDisabled
             ? "not-allowed"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FORMER_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import {
     isLoopbackAddress,
     refuseOwnLoopbackService,
@@ -122,16 +122,16 @@ describe("refuseOwnLoopbackService", () => {
         expect(await refuseOwnLoopbackService("not a url", PORTS, resolver({}))).toBeNull();
     });
 
-    it("names the agent endpoint's default port and its fixed fallbacks among the defaults a packaged game refuses", () => {
+    it("names the agent endpoint's default port, and the ports it used to move to, among the defaults a packaged game refuses", () => {
         expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(AGENT_MCP_DEFAULT_PORT);
         expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(47219);
-        for (const port of AGENT_MCP_FALLBACK_PORTS) {
+        for (const port of AGENT_MCP_FORMER_FALLBACK_PORTS) {
             expect(STUDIO_DEFAULT_LOOPBACK_PORTS).toContain(port);
         }
         expect(STUDIO_DEFAULT_LOOPBACK_PORTS).not.toContain(AGENT_MCP_LEGACY_DEFAULT_PORT);
     });
 
-    it("refuses a packaged game's request to the port the endpoint moves to when the default is taken", async () => {
+    it("refuses a packaged game's request to a port the endpoint used to move to when the default was taken", async () => {
         expect(await refuseOwnLoopbackService("http://127.0.0.1:47220/mcp", STUDIO_DEFAULT_LOOPBACK_PORTS, resolver({}))).not.toBeNull();
         expect(await refuseOwnLoopbackService("http://127.0.0.1:47229/mcp", STUDIO_DEFAULT_LOOPBACK_PORTS, resolver({}))).toBeNull();
     });

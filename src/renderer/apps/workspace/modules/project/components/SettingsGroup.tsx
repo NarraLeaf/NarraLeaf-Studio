@@ -12,8 +12,7 @@ const GROUP_CLASS = "grid gap-2.5 border-t border-edge pt-3 first:border-t-0 fir
 
 /**
  * The mark a jump leaves on the part it opened: an outline drawn just outside the group, clear of
- * its heading and controls. Joined by hand rather than through `cn()`: the tailwind-merge in use
- * reads `outline` as a width, drops it beside `outline-1`, and leaves no outline style at all.
+ * its heading and controls.
  */
 const REVEALED_CLASS = "rounded-md outline outline-1 outline-offset-4 outline-primary";
 

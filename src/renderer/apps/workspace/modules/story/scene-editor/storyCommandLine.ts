@@ -5,7 +5,6 @@ import type {
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
-    StoryLayerDepth,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -52,14 +51,17 @@ import { localizedUnit } from "./commands/localizedUnits";
 import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
+    parsePositionValue,
     patchTransformProp,
     patchTransformTiming,
+    positionPropArgs,
     transformPropArgs,
     transformTimingArgs,
+    withOffsetsOf,
     type TransformPropArg,
 } from "./commands/transformVocabulary";
 import {
-    applyPlacementToTransform,
+    applyPositionToTransform,
     applyTransitionWordToTransform,
     placementWordFor,
     transitionKindFor,
@@ -546,8 +548,9 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         }
         const param = def ? findParam(def, entry.param) : null;
         source += " ";
-        if (!entry.positional) {
-            source += `${def && param ? localizedParamKey(def, param) : entry.param}=`;
+        const key = entry.positional ? null : def && param ? localizedParamKey(def, param) : entry.param;
+        if (key !== null) {
+            source += `${key}=`;
         }
         const start = source.length;
         if (entry.ornament) {
@@ -557,7 +560,10 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         // Only a NUMBER takes the unit — `/wait click` fills the same slot as `/wait 2` and must not
         // come back as `clicks`. It rides INSIDE the edit span: a click on `1s` opens the editor a
         // click on `1` would, and a span stopping short of it would leave a dead half-token beside it.
-        source += entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        const unit = entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        // A key that already names the unit is not followed by it again: ja's duration key is 秒, and
+        // the row printed 「秒=0.6秒」. The bare number reads back the same.
+        source += unit && key !== null && key.endsWith(unit) ? "" : unit;
         const control = entry.apply ? controlFor(param, entry) : null;
         if (control && entry.apply) {
             edits.push({ span: { start, end: source.length }, control, value: entry.editValue ?? entry.value, apply: entry.apply });
@@ -825,9 +831,39 @@ function retargetActionable<P extends { objectName?: string; target?: StoryActio
     };
 }
 
-/** The `at=` word a row's position spells, or nothing when it is not one of the three placements. */
-function placementOf(transform: StoryTransformRef | undefined): string | undefined {
-    return placementWordFor(transform?.to?.position) ?? undefined;
+/**
+ * A create or reveal row's placement, as the slots that would produce it: `pos=` with a word or an
+ * align pair, and whichever offsets the position carries beside it - `pos=0.5,0.5 xoffset=40`, never
+ * an offset alone (see `positionPropArgs`, which this prints through, so a placement and a
+ * `/transform` position are spelled by one table).
+ *
+ * `pos=` and `in=` write the SAME field - a transform holds one look - so when a reveal word already
+ * names the position (a slide), the word is what the row prints and the pair is left out. Pass the
+ * row's reveal context to apply that rule; a row that has no `in=` passes `null`.
+ *
+ * Each value writes back into the position it came from. An edit of `pos=` keeps the offsets
+ * (`withOffsetsOf`) - the author moved the anchor, not the pixels on top of it - and goes through the
+ * same channel replacement a typed placement does.
+ */
+function placementArgs<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(
+    payload: P,
+    reveal: "reveal" | null,
+): (Arg | null)[] {
+    const transform = payload.transform;
+    const position = transform?.to?.position;
+    if (!position || (reveal && !placementWordFor(position) && revealWord(transform, reveal) !== undefined)) {
+        return [];
+    }
+    const place = (next: string): StoryTransformRef | undefined => {
+        const parsed = parsePositionValue(next);
+        return parsed ? applyPositionToTransform(transform, withOffsetsOf(parsed, position)) : transform;
+    };
+    return positionPropArgs(position).map(entry => arg(entry.key, entry.value, {
+        ...(entry.enum ? { enum: true } : {}),
+        apply: (next: string) => patchTransformRef(payload, entry.key === "pos"
+            ? place(next)
+            : { ...(transform ?? {}), to: patchTransformProp(transform?.to, entry.key, next) }),
+    }));
 }
 
 /**
@@ -948,13 +984,17 @@ function appearanceChoice(
     return {
         choices: options.map(option => ({ value: option.id, label: option.name })),
         ...(current ? { editValue: current } : {}),
-        // A layered character keeps one tag per axis and an expression changes only the axes it names,
-        // so the pick MERGES; a preset character has one pose and it is replaced.
+        // A preset character has one pose and it is replaced. A layered row whose slot holds one tag
+        // (a `/face`, changing the axes it names) has it replaced too, whichever axis the new tag is
+        // on: merging put a second tag beside the first, and a row holding two prints no value. A row
+        // holding the whole look (an entrance, every axis resolved) changes the one axis picked.
         apply: next => {
             const axisId = options.find(option => option.id === next)?.axisId;
-            return axisId
-                ? { ...payload, tags: { ...payload.tags, [axisId]: next } }
-                : { ...payload, pose: next };
+            if (!axisId) {
+                return { ...payload, pose: next };
+            }
+            const held = payload.tags ?? {};
+            return { ...payload, tags: Object.keys(held).length <= 1 ? { [axisId]: next } : { ...held, [axisId]: next } };
         },
     };
 }
@@ -985,10 +1025,8 @@ function characterSentence(
     const duration = arg("d", seconds(payload.transform?.durationMs), {
         apply: next => patchTransform(payload, { durationMs: msOf(next) }),
     });
-    const placement = arg("pos", placementOf(payload.transform), {
-        enum: true,
-        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
-    });
+    // A character's entrance is placed the way a picture's is: a word, or a pair with its offsets.
+    const placement = placementArgs(payload, "reveal");
     // `in=` / `out=` are the TRANSFORM's preset, the one the engine animates a character's entrance
     // and exit with and the one the inspector's own 变换 → 预设 edits. The `transition` ref beside it
     // is only read on `expression` (a portrait swap), so a row that showed it here was reporting a
@@ -1016,14 +1054,14 @@ function characterSentence(
         case "enter":
             return {
                 commandId,
-                args: [positional("target", name, who), form, placement, reveal("reveal"), duration],
+                args: [positional("target", name, who), form, ...placement, reveal("reveal"), duration],
             };
         case "exit":
             return { commandId, args: [positional("target", name, who), reveal("conceal"), duration] };
         case "move":
             // `/move` is retired: a move is a position, which is a prop of the one bag, so the row
             // reads back as the row that writes one. `/transform` names its subject `target`.
-            return { commandId, args: [positional("target", name, who), placement, duration] };
+            return { commandId, args: [positional("target", name, who), ...placementArgs(payload, null), duration] };
         case "expression":
             return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration, swapHold] };
         case "setMotion":
@@ -1141,10 +1179,7 @@ function imageSentence(
     const asset = assetWord(lookups, payload.assetId);
     // `pos=` and `in=` write the SAME field — a transform holds one preset — which is why the reader
     // prints whichever one the stored preset spells and never both.
-    const placement = arg("pos", placementOf(payload.transform), {
-        enum: true,
-        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
-    });
+    const placement = placementArgs(payload, "reveal");
     const duration = arg("d", seconds(payload.transform?.durationMs), {
         apply: next => patchTransform(payload, { durationMs: msOf(next) }),
     });
@@ -1164,7 +1199,7 @@ function imageSentence(
         // The NAME here is the one later rows address, so it is not offered; the asset is.
         return {
             commandId,
-            args: [positional("image", asset ?? payload.color, swapAsset), arg("name", name), placement, reveal("reveal"), duration],
+            args: [positional("image", asset ?? payload.color, swapAsset), arg("name", name), ...placement, reveal("reveal"), duration],
         };
     }
     if (payload.operation === "setSource") {
@@ -1194,7 +1229,7 @@ function imageSentence(
     if (revealCreates(payload)) {
         return {
             commandId,
-            args: [positional("target", asset, swapAsset), arg("name", name), placement, reveal("reveal"), duration],
+            args: [positional("target", asset, swapAsset), arg("name", name), ...placement, reveal("reveal"), duration],
         };
     }
     return {
@@ -1221,10 +1256,7 @@ function textSentence(
                 commandId,
                 args: [
                     arg("name", name),
-                    arg("pos", placementOf(payload.transform), {
-                        enum: true,
-                        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
-                    }),
+                    ...placementArgs(payload, null),
                     positional("content", payload.text),
                 ],
             };
@@ -1263,45 +1295,15 @@ function layerSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const resolved = payload.operation === "create"
-        ? null
-        : resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName));
-    const name = payload.operation === "create"
-        ? payload.objectName?.trim() || undefined
-        : resolved?.name || undefined;
-    // A depth the row does not state is `follow` and prints as nothing, so a row from before depth
-    // existed reads exactly as it did.
-    const depthArg = arg("depth", payload.depth, {
-        enum: true,
-        apply: next => ({ ...payload, depth: next as StoryLayerDepth }),
-    });
-    if (payload.operation === "setDepth") {
-        // The reserved word the command line takes for the scene's own background layer.
-        return { commandId, args: [positional("name", "backgroundLayer"), depthArg] };
-    }
-    if (payload.operation === "create" || payload.operation === "setZIndex") {
-        return {
-            commandId,
-            args: [
-                positional("name", name),
-                arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) }),
-                ...(payload.operation === "create" ? [depthArg] : []),
-            ],
-        };
-    }
-    // The declaring `/layer` row, on the same terms as every other stage object: the ref's anchor
-    // first, then the name against the declaration index for a document written before anchors. A
-    // DEFAULT layer resolves to neither, and rightly — `backgroundLayer` is a reserved word for a
-    // layer the engine ships, so there is no row anywhere that made it.
-    const link = resolved?.kind === "custom"
-        ? stageObjectLink(lookups, "layer", { ...(resolved.sourceBlockId ? { sourceBlockId: resolved.sourceBlockId } : {}) }, name)
-        : {};
-    // A layer reference stores a stable `sourceBlockId` binding that follows renames; re-pointing it
-    // by name would drop that anchor, so a layer target is read here and re-bound in the inspector.
+    const resolved = resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName));
+    const name = resolved.name || undefined;
+    // No link: a layer is declared by its scene, not by a row the author could be taken to. A layer
+    // reference stores a stable `sourceBlockId` binding that follows renames; re-pointing it by name
+    // would drop that anchor, so a layer target is read here and re-bound in the inspector.
     if (payload.operation === "transform") {
-        return { commandId, args: [positional("target", name, link), ...transformArgs(payload, lookups)] };
+        return { commandId, args: [positional("target", name), ...transformArgs(payload, lookups)] };
     }
-    return { commandId, args: [positional("target", name, link)] };
+    return { commandId, args: [positional("target", name)] };
 }
 
 function videoSentence(
@@ -1658,7 +1660,25 @@ function displayableTargetWord(
     if (target.builtin) {
         return target.builtin;
     }
-    return resolveDisplayableTargetRef(lookups.scene, target).label || undefined;
+    const resolved = resolveDisplayableTargetRef(lookups.scene, target);
+    if (resolved.kind === "character") {
+        // A character walked on without a typed name keys on its id, and the declaring row's label is
+        // then the placeholder "Character" - a word the target slot does not answer to, so the line
+        // failed to read back and the row went opaque. The slot resolves a character by its cast
+        // name, so that is the spelling; a portrait the `/show` row DID name keeps that name.
+        const source = target.sourceBlockId ? lookups.scene?.blocks[target.sourceBlockId] : undefined;
+        const typed = source?.kind === "action" && source.payload.action === "character" ? source.payload.objectName?.trim() : undefined;
+        if (!typed) {
+            const characterId = displayableCharacterId(lookups, target, target.label);
+            const castName = characterId
+                ? lookups.commandContext?.characters?.find(entry => entry.id === characterId)?.name
+                : undefined;
+            if (castName) {
+                return castName;
+            }
+        }
+    }
+    return resolved.label || undefined;
 }
 
 function actionSentence(
@@ -1771,6 +1791,24 @@ function actionSentence(
             };
         case "input":
             return inputSentence(payload, lookups, commandId);
+        case "page": {
+            // The page by name, as `/quit` prints its own - blank when no page answers to the id, so
+            // the line reads as the page-less row it now is and `story/page-missing` says why.
+            const pages = lookups.commandContext?.surfaces ?? [];
+            const name = pages.find(page => page.id === payload.surfaceId)?.name ?? "";
+            return {
+                commandId,
+                args: [
+                    positional("page", name, pages.length === 0 ? {} : {
+                        choices: pages.map(page => ({ value: page.id, label: page.name })),
+                        ...(payload.surfaceId ? { editValue: payload.surfaceId } : {}),
+                        apply: next => ({ ...payload, surfaceId: next }),
+                    }),
+                    arg("into", payload.resultTarget ? variableRefShortLabel(payload.resultTarget, lookups) : undefined),
+                ],
+            };
+        }
+
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.

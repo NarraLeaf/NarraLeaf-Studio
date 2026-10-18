@@ -143,7 +143,7 @@ function SavePresetDialog(props: {
     onSave: (name: string, transform: StoryTransformRef) => void;
     onClose: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const [name, setName] = useState("");
     const normalized = normalizeTransformPresetName(name);
     const replacing = normalized ? findTransformPresetByName(props.presets, normalized) : null;
@@ -190,7 +190,7 @@ function SavePresetDialog(props: {
                         }}
                     />
                 </label>
-                <p className="mt-2 text-2xs text-fg-subtle">{channelSummary(props.transform, t)}</p>
+                <p className="mt-2 text-2xs text-fg-subtle">{channelSummary(props.transform, t, formatList)}</p>
             </ModalBody>
         </Modal>
     );
@@ -211,7 +211,7 @@ function ManagePresetsDialog(props: {
     onImport: (items: readonly TransformPresetExchangeItem[]) => number;
     onClose: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const freeze = useFreezeGuard();
     const exchange = useLibraryExchange("transform-preset");
     const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -341,7 +341,7 @@ function ManagePresetsDialog(props: {
                                 <p className="pl-1 text-2xs text-fg-subtle">
                                     {rejected === preset.id
                                         ? t("storyInspector.transformCard.nameTaken")
-                                        : channelSummary(preset.transform, t)}
+                                        : channelSummary(preset.transform, t, formatList)}
                                 </p>
                             </div>
                         ))}
@@ -352,9 +352,11 @@ function ManagePresetsDialog(props: {
     );
 }
 
-/** The channels a transform states, in the words the card calls them by. */
-function channelSummary(transform: StoryTransformRef | undefined, t: TFunc): string {
-    return statedTransformChannels(transform ?? { mode: "props" }).map(channel => channel.label(t)).join(", ");
+type ListFormatter = (items: string[], options?: Intl.ListFormatOptions) => string;
+
+/** The channels a transform states, in the words the card calls them by, listed as the interface language lists. */
+function channelSummary(transform: StoryTransformRef | undefined, t: TFunc, formatList: ListFormatter): string {
+    return formatList(statedTransformChannels(transform ?? { mode: "props" }).map(channel => channel.label(t)), { style: "narrow" });
 }
 
 /** A menu row's frozen state, keeping the caller's own tooltip when the freeze has nothing to say. */

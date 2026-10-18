@@ -22,8 +22,11 @@ import {
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
     revealCreates,
     savedVariableDefs,
+    sceneLayerStack,
+    sceneLayerZIndex,
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
@@ -332,6 +335,12 @@ export type StoryStageSnapshot = {
     savedVariables: Record<string, StoryLiteralValue>;
     /** Settled stage-camera pose accumulated within this scene, or null if neutral. */
     camera: StageSnapshotCamera | null;
+    /**
+     * When the target row is a camera transform: the camera's settled props once that row has
+     * played (everything before it, with the row's own pose over it). Null for any other target.
+     * The layer view's framing starts from this pose: it is the shot the row leaves.
+     */
+    targetCamera: Record<string, unknown> | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     diagnostics: StageSnapshotDiagnostic[];
@@ -347,6 +356,11 @@ const MIN_CAMERA_ZOOM = 0.05;
 /** A finite number or the neutral fallback - a NaN reaching a Transform prop silently kills the animation. */
 function finiteOr(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** A `/play` row: at its own row the game is showing its clip. */
+function isVideoPlayRow(block: StoryBlock): boolean {
+    return block.kind === "action" && block.payload.action === "video" && block.payload.operation === "play";
 }
 
 /**
@@ -540,6 +554,11 @@ class SnapshotWalker {
      */
     private inert = 0;
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
+    /**
+     * Clips a play the walk ran left running past its own row (it does not wait for the clip), and
+     * no row since hid or stopped: still on screen when the target is reached, for all the walk knows.
+     */
+    private readonly runningClips = new Set<StageSnapshotVideo>();
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
     private readonly assignedSaved: Record<string, StoryLiteralValue> = {};
@@ -549,6 +568,7 @@ class SnapshotWalker {
     private builtinLayerProps = { backgroundLayer: {} as Record<string, unknown>, displayableLayer: {} as Record<string, unknown> };
     /** Story-level camera pose accumulated within this scene; null until a `/camera` op sets one. */
     private camera: StageSnapshotCamera | null = null;
+    private targetCamera: Record<string, unknown> | null = null;
     private nvl = false;
     private reachedTarget = false;
 
@@ -581,6 +601,13 @@ class SnapshotWalker {
 
     run(): StoryStageSnapshot {
         this.scanCompileOrder(this.scene.rootBlockIds);
+        // The scene's own layers are up before its first row runs, visible and where its stack puts them.
+        const layers = sceneLayerStack(this.scene);
+        layers.forEach((layer, index) => {
+            if (layer.kind === "custom") {
+                this.ensure("layer", layer.name, layer.id).zIndex = sceneLayerZIndex(layers, index);
+            }
+        });
         if (this.targetBlockId === null) {
             // Scene start: nothing has executed yet.
         } else if (!this.pathBlockIds.has(this.targetBlockId)) {
@@ -590,6 +617,7 @@ class SnapshotWalker {
             if (!this.reachedTarget) {
                 this.diagnostic(this.targetBlockId, translate("story.preview.diagnostics.targetUnreachable"));
             }
+            this.reportUndrawnMedia();
         }
         this.collectDeclarations(this.scene.rootBlockIds);
         this.hideDeclarations();
@@ -614,6 +642,7 @@ class SnapshotWalker {
             sceneVariables: this.assignedScene,
             savedVariables: this.assignedSaved,
             camera: this.camera,
+            targetCamera: this.targetCamera,
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
@@ -629,8 +658,7 @@ class SnapshotWalker {
      * table they land in changes. What is dropped afterwards is being SEEN: a `/character enter` is
      * a declaration and an entrance at once, and the entrance belongs to the arm that runs.
      *
-     * Layers keep their own default, because a declared layer really is visible and hiding one
-     * would take everything a later row puts on it down with it.
+     * Layers are not in it: the scene declares its layers, and {@link run} puts them up before any row.
      */
     private collectDeclarations(blockIds: readonly string[]): void {
         for (const blockId of blockIds) {
@@ -647,9 +675,6 @@ class SnapshotWalker {
                         break;
                     case "text":
                         this.applyText(block, block.payload);
-                        break;
-                    case "layer":
-                        this.applyLayer(block, block.payload);
                         break;
                     case "character":
                         this.applyCharacter(block, block.payload);
@@ -677,9 +702,6 @@ class SnapshotWalker {
     /** Strip the "and it is seen" half off every declaration; see {@link collectDeclarations}. */
     private hideDeclarations(): void {
         for (const record of this.declared.values()) {
-            if (record.kind === "layer") {
-                continue;
-            }
             record.visible = false;
             delete record.props.opacity;
         }
@@ -824,6 +846,12 @@ class SnapshotWalker {
         if (block.id === this.targetBlockId) {
             this.reachedTarget = true;
             this.nvl = insideNvl;
+            this.targetCamera = this.cameraAfter(block);
+            // At its own row a play is the clip on screen, whatever it does when it ends: the still
+            // is the stage under it, so it is said here too (see `reportUndrawnMedia`).
+            if (!block.disabled && this.inert === 0 && isVideoPlayRow(block)) {
+                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+            }
             return;
         }
         // A disabled row is compiled out with everything under it, so a playthrough never runs it.
@@ -1090,15 +1118,14 @@ class SnapshotWalker {
                 this.applySetVariable(block, payload);
                 return;
             case "video":
-                // The preview draws no clip, which is what the diagnostic says. The record is for a
-                // launch, whose tail has to be able to address the clip this row left on the stage.
-                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+                // The preview draws no clip; the record is for a launch, whose tail has to be able to
+                // address the clip this row left on the stage. Whether the target's still is missing
+                // one is answered once the walk is done (`reportUndrawnMedia`).
                 this.applyVideo(block, payload);
                 return;
             case "vfx":
-                // The preview draws no overlay, which is what the diagnostic says. The record is for a
-                // launch, which puts the overlay back the way this path left it.
-                this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
+                // The preview draws no overlay; the record is for a launch, which puts the overlay back
+                // the way this path left it. See `reportUndrawnMedia` for when that is said.
                 this.applyVfx(block, payload);
                 return;
             case "blueprint":
@@ -1239,10 +1266,18 @@ class SnapshotWalker {
         }
         if (payload.operation === "play") {
             record.staged = videoPlayWaits(payload) && !videoPlayHidesOnEnd(payload);
+            if (videoPlayWaits(payload)) {
+                this.runningClips.delete(record);
+            } else {
+                this.runningClips.add(record);
+            }
             return;
         }
         if (payload.operation === "hide") {
             record.staged = false;
+        }
+        if (payload.operation === "hide" || payload.operation === "stop") {
+            this.runningClips.delete(record);
         }
     }
 
@@ -1363,14 +1398,7 @@ class SnapshotWalker {
     }
 
     private applyLayer(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "layer" }>): void {
-        if (payload.operation === "create") {
-            const record = this.ensure("layer", payload.objectName, block.id);
-            if (payload.zIndex !== undefined) {
-                record.zIndex = payload.zIndex;
-            }
-            return;
-        }
-        // Non-create layer ops address an existing target (built-in fallback: displayable layer).
+        // Every layer op addresses one of the scene's layers (built-in fallback: displayable layer).
         const targetProps = this.resolveLayerTargetProps(payload);
         if (payload.operation === "setZIndex") {
             if (targetProps.record) {
@@ -1405,6 +1433,29 @@ class SnapshotWalker {
      * The zoom clamp mirrors the compiler's: the pose is pre-posed straight onto the camera and never
      * passes through `compileCameraAction`.
      */
+    /**
+     * The camera's settled props once `block` has played, when it is a camera transform the walk
+     * would act on; null otherwise. Worked out on a copy, so the snapshot itself still stops before
+     * the row.
+     */
+    private cameraAfter(block: StoryBlock): Record<string, unknown> | null {
+        if (block.disabled || this.inert > 0 || block.kind !== "action") {
+            return null;
+        }
+        const payload = block.payload as StoryActionPayload;
+        if (payload.action !== "camera" || payload.operation !== "transform") {
+            return null;
+        }
+        const saved = this.camera;
+        this.camera = saved ? { ...saved, props: { ...saved.props }, effects: { ...saved.effects } } : null;
+        try {
+            this.applyCamera(block, payload);
+            return { ...(this.camera?.props ?? {}) };
+        } finally {
+            this.camera = saved;
+        }
+    }
+
     private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
             this.camera = null;
@@ -1440,11 +1491,7 @@ class SnapshotWalker {
             return { builtin: target.layer === "background" ? "backgroundLayer" : "displayableLayer" };
         }
         if (target?.kind === "custom") {
-            const source = target.sourceBlockId ? this.scene.blocks[target.sourceBlockId] : undefined;
-            const name = source?.kind === "action" && source.payload.action === "layer"
-                ? source.payload.objectName
-                : target.name;
-            const record = this.displayables.get(this.key("layer", name ?? ""));
+            const record = this.displayables.get(this.key("layer", resolveStoryLayerRef(this.scene, target).name));
             return record ? { record } : { builtin: "displayableLayer" };
         }
         const record = this.displayables.get(this.key("layer", payload.objectName));
@@ -1696,6 +1743,26 @@ class SnapshotWalker {
 
     private key(kind: "image" | "text" | "layer", objectName: string): string {
         return `${kind}:${normalizeObjectName(objectName)}`;
+    }
+
+    /**
+     * What the preview's still leaves out at the target row: a clip still on the stage there (one
+     * that held its last frame), an overlay still showing. Said once the walk is done, about the row
+     * that left it there, rather than by every media row the walk passed: a clip that played and
+     * went before the target is not missing from the still, and saying 「预览不播放视频」 under every
+     * later row of the scene named a picture nobody would see.
+     */
+    private reportUndrawnMedia(): void {
+        for (const record of this.videos.values()) {
+            if (record.staged || this.runningClips.has(record)) {
+                this.diagnostic(record.sourceBlockId, translate("story.preview.diagnostics.videoSkipped"));
+            }
+        }
+        for (const record of this.vfx.values()) {
+            if (record.staged && record.shownBy) {
+                this.diagnostic(record.shownBy, translate("story.preview.diagnostics.ambienceSkipped"));
+            }
+        }
     }
 
     private diagnostic(blockId: string | undefined, message: string): void {

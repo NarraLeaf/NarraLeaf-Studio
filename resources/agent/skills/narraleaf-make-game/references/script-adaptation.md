@@ -42,15 +42,15 @@ fill them before step 3.
 | Narration, inner monologue | a plain line |
 | Unknown speaker "???" | `???: …` as a one-off speaker, or `/rename Aoi ???` then `/rename Aoi Aoi` at the reveal |
 | `play music x fadein 2` | `/bgm bgm_x fade=2 loop` |
-| `stop music fadeout 2` | `/stop fade=2` (confirm with `story_command stop`) |
+| `stop music fadeout 2` | `/stop bgm fade=2` |
 | `play sound door` | `/sound se_door` |
-| CG shown over the scene | `/show cg_x name=cg pos=center in=fade d=0.6`, later `/hide cg` |
+| CG shown over the scene | `/show cg_x name=cg in=fade d=0.6`, later `/hide cg` (a `pos=` on the row would drop its `in=`) |
 | `with dissolve` / fade between pictures | the row's `t=` / `in=` / `out=` and `d=` |
 | `pause 1.0` | `/wait 1` |
 | `menu:` with options | `/menu Prompt` and `- Option` lines with their rows indented |
 | `$ trust += 1` | `/inc trust` (declare `trust` with `variable_upsert` first) |
 | `if trust >= 3:` / `elif` / `else` | a bare `/if` with `? trust >= 3` / `? …` / `? else` |
-| `jump chapter2` / `call` | `/jump 'Chapter 2'` (`return` for a call that comes back) |
+| `jump chapter2` / `call` | `/jump 'Chapter 2'`; a `call` is `/jump 'Chapter 2' return`, which comes back when that scene ends |
 | `return` at the end of a route | `/ending Name` |
 | `window hide` / `window show` | nothing; the dialogue box shows while there is a line |
 | `nvl` passages | `/nvl` (see `story_command nvl`) |

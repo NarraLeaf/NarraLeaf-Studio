@@ -4,6 +4,7 @@ import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
+import type { AgentClientId, AgentClientSetupInfo, AgentSkillInstallResult } from "../agent/clients";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
@@ -251,6 +252,7 @@ export enum IPCEventType {
     projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     projectWizardCreated = "projectWizard.created",
+    projectWizardListAppIds = "projectWizard.listAppIds",
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
@@ -279,6 +281,7 @@ export enum IPCEventType {
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
     projectTrustList = "projectTrust.list",
+    projectTrustForget = "projectTrust.forget",
     projectTrustPrompt = "projectTrust.prompt",
     workspaceLiveIntentTaken = "workspace.liveIntentTaken",
     workspaceJoinLive = "workspace.joinLive",
@@ -297,6 +300,8 @@ export enum IPCEventType {
     agentCopyConfig = "agent.quick.copyConfig",
     agentExportSkill = "agent.quick.exportSkill",
     agentRevealExportedSkill = "agent.quick.revealExportedSkill",
+    agentClientSetup = "agent.setup.clientSetup",
+    agentInstallSkill = "agent.setup.installSkill",
     workspaceAgentActivity = "workspace.agentActivity",
     agentReportPluginTools = "agent.reportPluginTools",
     agentRequestFolderAccess = "agent.requestFolderAccess",
@@ -2202,6 +2207,24 @@ export type IPCProjectWizardEvents = {
             recorded: boolean;
         };
     };
+    /**
+     * The app IDs the projects on this machine already use, for the wizard to keep a new one apart.
+     *
+     * Answered for the wizard window only. Always covers the projects Studio knows - the recent list
+     * and the trust ledger - and the projects folder; `folders` adds folders this window was granted
+     * to read (the one the author picked), whose projects are listed too. Names and IDs only: the
+     * wizard names the project an ID belongs to, and needs nothing about where it is.
+     */
+    [IPCEventType.projectWizardListAppIds]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            folders: string[];
+        };
+        response: {
+            projects: { appId: string; key: string; projectName: string }[];
+        };
+    };
 };
 
 export type IPCWorkspaceEvents = {
@@ -2587,6 +2610,23 @@ export type IPCWorkspaceEvents = {
             changed: boolean;
         };
     };
+    /**
+     * Delete a row from the settings list, decision and all.
+     *
+     * A project that was trusted stops being trusted, and an open workspace on it reloads as for a
+     * revoke. `"covered"` is the refusal: a waiting row inside a trusted tree stays, because without
+     * it the surrounding grant would cover the project.
+     */
+    [IPCEventType.projectTrustForget]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            result: "forgotten" | "unknown" | "covered";
+        };
+    };
     /** Everything the settings list shows: what was vouched for, and what is still waiting. */
     [IPCEventType.projectTrustList]: {
         type: IPCMessageType.request,
@@ -2778,6 +2818,26 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: { revealed: boolean };
+    };
+    /**
+     * What first-run setup needs to connect an agent: the endpoint, the stdio command and where each
+     * client's skill folder is. Settings and the launcher while first-run setup is open; never the token.
+     */
+    [IPCEventType.agentClientSetup]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: AgentClientSetupInfo;
+    };
+    /**
+     * Install the bundled skill for one agent application: copied into its skill folder, or written
+     * as a zip through a save picker for a client that takes an upload. Same windows as above.
+     */
+    [IPCEventType.agentInstallSkill]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { client: AgentClientId };
+        response: AgentSkillInstallResult;
     };
     /** One agent call main answered itself, for the workspace's Agent log. Fire-and-forget. */
     [IPCEventType.workspaceAgentActivity]: {

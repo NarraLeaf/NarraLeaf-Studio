@@ -25,7 +25,7 @@ import {
     type AssetBrowserSort,
     type AssetBrowserSortKey,
 } from "./assetBrowserModel";
-import { useBrowserDropTarget, useBrowserItemGestures } from "./useBrowserItemGestures";
+import { useBrowserDropTarget, useBrowserItemGestures, useStepReveal } from "./useBrowserItemGestures";
 
 /** One row of the table. Fixed, so the windowing needs no measuring. */
 const ROW_HEIGHT_PX = 28;
@@ -48,6 +48,8 @@ export interface BrowserDetailsProps {
     onEnterGroup: (category: AssetCategory, group: AssetGroup) => void;
     onEnterSet: (entry: ResolvedAssetSet) => void;
     onDropOnGroup: (event: React.DragEvent, kind: "move" | "files", category: AssetCategory, group: AssetGroup) => void;
+    /** The item a key just moved the selection to, scrolled into view. */
+    stepReveal?: { key: string; nonce: number } | null;
 }
 
 /**
@@ -66,6 +68,7 @@ export function BrowserDetails({
     onEnterGroup,
     onEnterSet,
     onDropOnGroup,
+    stepReveal,
 }: BrowserDetailsProps) {
     const { t } = useTranslation();
     const gestures = useBrowserItemGestures({ insideSet, onEnterGroup, onEnterSet });
@@ -78,6 +81,8 @@ export function BrowserDetails({
         estimateSize: () => ROW_HEIGHT_PX,
         overscan: 8,
     });
+
+    useStepReveal(stepReveal, items, scrollElement, index => virtualizer.scrollToIndex(index));
 
     const headers: Array<{ key: AssetBrowserSortKey | null; label: string; numeric?: boolean }> = [
         { key: "name", label: t("common.name") },
@@ -158,7 +163,7 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
     gestures: Gestures;
     onDropOnGroup: BrowserDetailsProps["onDropOnGroup"];
 }) {
-    const { t, tn } = useTranslation();
+    const { t, tn, formatList } = useTranslation();
     const {
         selectedItems,
         clipboard,
@@ -255,7 +260,7 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
     const arriving = asset ? assetTransfers[asset.id] : undefined;
     const bytes = assetBrowserItemBytes(item, measures);
     const usage = assetBrowserItemUsage(item, measures);
-    const tags = asset ? readAssetTags(asset.tags, assetSetNaming).map(entry => entry.label).join(", ") : "";
+    const tags = asset ? formatList(readAssetTags(asset.tags, assetSetNaming).map(entry => entry.label), { style: "narrow" }) : "";
 
     return (
         <div
@@ -264,7 +269,8 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
             data-asset-browser-item={item.key}
             draggable={!!dragStart}
             className={cn(
-                "absolute left-0 grid w-full items-center text-xs cursor-default",
+                // `scroll-mt-7`: a row a key moves to keeps clear of the sticky header (h-7).
+                "absolute left-0 grid w-full scroll-mt-7 items-center text-xs cursor-default",
                 dragStart && "nl-drag-source",
                 arriving !== undefined && "isolate",
                 selected ? "bg-primary/15 text-fg" : "hover:bg-fill",

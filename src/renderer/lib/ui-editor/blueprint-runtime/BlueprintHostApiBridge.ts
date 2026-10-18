@@ -100,6 +100,7 @@ import type {
     UIDisplayableMotionOverride,
     UIDisplayableMotionTarget,
     UIDisplayableMotionTransition,
+    UIVideoPlaybackReading,
     WidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
@@ -126,6 +127,7 @@ import type {
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
+import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE, type UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
@@ -350,6 +352,39 @@ export type BlueprintFrameProperties = {
     params: Record<string, unknown>;
 };
 
+/**
+ * A video widget as a graph reads it.
+ *
+ * Two halves read from two places. Where the clip is, how long it is and whether it is playing or
+ * has played to its end are read from the drawn element when asked, so they are the moment's answer,
+ * and a video with nothing drawn reads as at rest. The volume, mute, loop and speed are the widget's
+ * props as this drawing has them: what the author set, under whatever a graph has set since. The
+ * volume is the widget's own, before the player's volume settings are applied to it.
+ */
+export type BlueprintVideoProperties = UIVideoPlaybackReading & {
+    volume: number;
+    muted: boolean;
+    loop: boolean;
+    playbackRate: number;
+};
+
+/** The video props a graph may set; each is kept to the range the widget accepts (`normalizeVideoProps`). */
+export type BlueprintVideoPropertiesPatch = Partial<Pick<UIVideoWidgetProps, "volume" | "muted" | "loop" | "playbackRate">>;
+
+/**
+ * One thing a graph asks of a video widget's playback.
+ *
+ * Asked, not carried out on the spot: the widget carries it out as soon as it has a clip to carry it
+ * out on, so a Play sent from the widget's own Init, before the clip has loaded, still starts it.
+ * `stop` pauses and returns to the start. `seek` is in seconds from the start of the clip, kept
+ * inside the clip by the widget - the side that knows how long it is.
+ */
+export type BlueprintVideoCommand =
+    | { kind: "play" }
+    | { kind: "pause" }
+    | { kind: "stop" }
+    | { kind: "seek"; seconds: number };
+
 export type BlueprintGamePreferenceKey =
     | "autoForward"
     | "skip"
@@ -517,6 +552,10 @@ export type BlueprintHostApiRuntime = {
         stopDisplayableAnimation: (animationId: string) => Promise<void>;
         getFrameProperties: (elementId: string) => BlueprintFrameProperties;
         setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
+        getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+        setVideoProperties: (elementId: string, patch: BlueprintVideoPropertiesPatch) => Promise<void>;
+        /** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
+        controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -661,6 +700,15 @@ export type BlueprintHostApiRuntime = {
          */
         getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
         getNotifications: () => BlueprintGameNotification[];
+        /**
+         * Add a line to the running game's notification stream - the one the engine's own notices
+         * go into, so it is drawn by the Game UI notification slot (or the engine's own toast when
+         * the project has none) and listed by `getNotifications` until it times out.
+         *
+         * `durationSeconds` undefined means the engine's default. Throws with no game running:
+         * there is no stream to post into.
+         */
+        postNotification: (message: string, durationSeconds?: number) => void;
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
         /** True while a dialog line is on screen and its message is marked read. */
@@ -761,6 +809,14 @@ export type BlueprintHostApiRuntime = {
         /** Milliseconds from the start of the file, not from the clip's in point. */
         seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
         isPlaying: (handle: BlueprintSoundHandle) => boolean;
+        /**
+         * Set the music of the page the calling graph runs on, for as long as that page is open:
+         * Play Page Music and Stop Page Music. What the page inspector's Music setting says, changed
+         * at run time - it hands over and comes back with the page exactly as that does
+         * (`runtime/app/pageMusic.ts`). While a game holds the screen the story decides the music,
+         * and the request changes nothing; the node says so in the debug log.
+         */
+        setPageMusic: (request: BlueprintPageMusicRequest) => Promise<void>;
         /**
          * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
          * to so it obeys the same mixer everything else does.
@@ -922,6 +978,26 @@ function readMixPreferences(
     };
 }
 
+/** What Play Page Music and Stop Page Music ask of the page their graph runs on. */
+export type BlueprintPageMusicRequest =
+    | {
+        kind: "play";
+        assetId: string;
+        /** Absent or null: the Music track. */
+        audioTrackId?: string | null;
+        /** 0..1; absent is 1. */
+        volume?: number;
+        /** Absent: the track's own loop default. */
+        loop?: boolean;
+        /** How it comes in, and how it leaves when it hands over. Milliseconds. */
+        fadeMs?: number;
+    }
+    | {
+        kind: "stop";
+        /** How the music playing leaves. Absent: with its own fade. Milliseconds. */
+        fadeMs?: number;
+    };
+
 export type BlueprintSoundPlayInput = {
     assetId: string;
     /**
@@ -997,6 +1073,12 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      */
     onGetCharacter?: (characterId: string) => unknown;
     onGetNotifications?: () => BlueprintGameNotification[];
+    /**
+     * Posts into the running game's notification stream, with the duration in milliseconds
+     * (undefined for the engine's default). Absent where no game can run - an interface previewed
+     * in Studio - and `Post Notification` then says it needs a running game.
+     */
+    onPostNotification?: (message: string, durationMs?: number) => void;
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
     onIsCurrentTextRead?: () => boolean;
@@ -1058,6 +1140,13 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
     onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
     onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * Page music, set from a graph. `runtimeScopeId` names the page (or layer) the graph runs on,
+     * which is the one whose music changes. Answers false when a game holds the screen and the
+     * request changed nothing. Absent where no pages are drawn (the editor preview, a story
+     * preview), where the nodes do nothing.
+     */
+    onSetPageMusic?: (runtimeScopeId: string, request: BlueprintPageMusicRequest) => boolean;
     /**
      * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
      * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
@@ -1512,6 +1601,14 @@ function assertImageElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.image") {
         throw widgetWrongKind(el, "nl.image");
+    }
+    return el;
+}
+
+function assertVideoElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId);
+    if (el.type !== UI_VIDEO_ELEMENT_TYPE) {
+        throw widgetWrongKind(el, UI_VIDEO_ELEMENT_TYPE);
     }
     return el;
 }
@@ -2696,6 +2793,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSpeakerColor,
         onGetCharacter,
         onGetNotifications,
+        onPostNotification,
         onGetChoiceCount,
         onIsNvlMode,
         onIsCurrentTextRead,
@@ -2727,6 +2825,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSoundVolume,
         onSeekSound,
         onIsSoundPlaying,
+        onSetPageMusic,
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
@@ -4044,6 +4143,68 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getVideoProperties: (elementId: string) => {
+                const cap = "widget.getVideoProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertVideoElement(document, elementId);
+                    const props = normalizeVideoProps(withWidgetPropOverride(el, runtimePatches, elementId).props);
+                    return {
+                        ...widgetRuntimeStore.readVideoPlayback(
+                            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        ),
+                        volume: props.volume,
+                        muted: props.muted,
+                        loop: props.loop,
+                        playbackRate: props.playbackRate,
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setVideoProperties: async (elementId: string, patch: BlueprintVideoPropertiesPatch) => {
+                const cap = "widget.setVideoProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertVideoElement(document, elementId);
+                    const changed = changeWidgetProps(elementId, el, drawn => {
+                        const current = normalizeVideoProps(drawn.props);
+                        // Through the widget's own normalizer, so a graph cannot set what the inspector
+                        // could not: a volume past 1, a speed the element would refuse.
+                        const next = normalizeVideoProps({ ...current, ...patch });
+                        const changes: Record<string, unknown> = {};
+                        for (const key of ["volume", "muted", "loop", "playbackRate"] as const) {
+                            if (patch[key] !== undefined && next[key] !== current[key]) {
+                                changes[key] = next[key];
+                            }
+                        }
+                        return changes;
+                    });
+                    if (changed) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            controlVideo: async (elementId: string, command: BlueprintVideoCommand) => {
+                const cap = "widget.controlVideo";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertVideoElement(document, elementId);
+                    const key = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                    if (command.kind === "play" || command.kind === "pause") {
+                        widgetRuntimeStore.requestVideoPlayback(key, { playing: command.kind === "play" });
+                    } else if (command.kind === "stop") {
+                        widgetRuntimeStore.requestVideoPlayback(key, { playing: false, seekSeconds: 0 });
+                    } else if (command.kind === "seek") {
+                        const seconds = Number(command.seconds);
+                        widgetRuntimeStore.requestVideoPlayback(key, { seekSeconds: Number.isFinite(seconds) ? seconds : 0 });
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
         },
         state: {
             get: (scopeKind: string, key: string) => {
@@ -4654,6 +4815,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            postNotification: (message: string, durationSeconds?: number) => {
+                const cap = "game.postNotification";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onPostNotification) {
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.postNotification") }));
+                    }
+                    // The engine counts in milliseconds; a node counts in seconds, like every other
+                    // duration an author types. Undefined passes through so the engine's own default
+                    // applies, rather than a copy of it here that could drift.
+                    const durationMs = durationSeconds === undefined ? undefined : Math.round(durationSeconds * 1000);
+                    onPostNotification(String(message), durationMs);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getChoiceCount: () => {
                 const cap = "game.getChoiceCount";
                 emitHostCall(emit, cap, "call");
@@ -5000,6 +5177,34 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setPageMusic: async (request: BlueprintPageMusicRequest) => {
+                const cap = "sound.setPageMusic";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const safe: BlueprintPageMusicRequest = request.kind === "play"
+                        ? {
+                            ...request,
+                            ...(request.volume !== undefined
+                                ? { volume: Number.isFinite(request.volume) ? Math.min(1, Math.max(0, request.volume)) : 1 }
+                                : {}),
+                            ...(request.fadeMs !== undefined ? { fadeMs: Math.max(0, request.fadeMs) } : {}),
+                        }
+                        : { kind: "stop", ...(request.fadeMs !== undefined ? { fadeMs: Math.max(0, request.fadeMs) } : {}) };
+                    if (onSetPageMusic && onSetPageMusic(stateScopeId, safe) === false) {
+                        // Not an error: a menu page opened over the running game and over the title is
+                        // the same page, and its graph has to survive being opened either way.
+                        emit({
+                            type: "devtools.log",
+                            level: "warn",
+                            message: translate("blueprint.runtimeError.pageMusicInGame", {
+                                node: translate(request.kind === "play" ? "blueprint.node.playPageMusic" : "blueprint.node.stopPageMusic"),
+                            }),
+                        });
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

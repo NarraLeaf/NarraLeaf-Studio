@@ -193,7 +193,7 @@ export const vol = defineStoryCommand({
     aliases: ["volume"],
     category: "sound",
     icon: Volume2,
-    examples: ["/vol 0.5", "/vol music 0.5 fade=1"],
+    examples: ["/vol 0.5", "/vol bgm 0.5 fade=1"],
     params: {
         target: targetParam(["audio"], { skippable: true }),
         volume: { aliases: ["vol"], hint: "volume", type: { kind: "number", min: 0, max: 1 }, positional: true, core: true },
@@ -210,7 +210,7 @@ export const rate = defineStoryCommand({
     token: "rate",
     category: "sound",
     icon: Gauge,
-    examples: ["/rate music 1.25"],
+    examples: ["/rate bgm 1.25"],
     params: {
         // An overlay's rate is how fast the petals fall, which is the same knob under a different
         // subject - so it is the same verb (§7.3). Video has no rate, so it is not listed.
@@ -230,7 +230,7 @@ export const stop = defineStoryCommand({
     token: "stop",
     category: "sound",
     icon: CircleStop,
-    examples: ["/stop music", "/stop music fade=1"],
+    examples: ["/stop bgm", "/stop bgm fade=1"],
     params: {
         // `video` widens both the legal lines and the sidebar: the verb now files under 视频 as well
         // as 声音 (§4.2), which is the whole reason four video capabilities cost one new token.
@@ -246,7 +246,7 @@ export const pause = defineStoryCommand({
     aliases: ["pausesound"],
     category: "sound",
     icon: Pause,
-    examples: ["/pause clip", "/pause music fade=0.5"],
+    examples: ["/pause clip", "/pause bgm fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
         // `Sound.pause` has always taken a fade and the compiler has always passed it; the spec was
@@ -262,7 +262,7 @@ export const resume = defineStoryCommand({
     token: "resume",
     category: "sound",
     icon: CirclePlay,
-    examples: ["/resume clip", "/resume music fade=0.5"],
+    examples: ["/resume clip", "/resume bgm fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
         /** The other half of `/pause`'s fade - a duck out and back in are one gesture, two lines. */
@@ -325,7 +325,7 @@ export const mute = defineStoryCommand({
     token: "mute",
     category: "sound",
     icon: VolumeX,
-    examples: ["/mute music"],
+    examples: ["/mute bgm"],
     params: {
         target: targetParam(["audio"]),
     },
@@ -339,7 +339,7 @@ export const unmute = defineStoryCommand({
     token: "unmute",
     category: "sound",
     icon: Volume1,
-    examples: ["/unmute music"],
+    examples: ["/unmute bgm"],
     params: {
         target: targetParam(["audio"]),
     },

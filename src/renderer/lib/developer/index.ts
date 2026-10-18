@@ -1,6 +1,6 @@
 /**
- * Developer options: the `app.developerMode` preference and the one thing it currently does, which
- * is add a copy-the-identifier section to context menus.
+ * Developer options: the `app.developerMode` preference and what it turns on - a copy-the-identifier
+ * section in context menus, and each node's type id in the blueprint add-node menu.
  *
  * Import from here rather than from the files: the store and the menu section are two halves of one
  * feature, and a call site that reached for the store alone would be about to write its own row.

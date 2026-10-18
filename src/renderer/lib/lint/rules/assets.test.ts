@@ -44,6 +44,10 @@ const storyReference: AssetReference = {
 };
 
 describe("assets/unused", () => {
+    it("is a minor warning by default: a build leaves the file out and the game is unaffected", () => {
+        expect(ASSETS_LINT_RULES.find(rule => rule.id === "assets/unused")?.defaultSeverity).toBe("minor");
+    });
+
     it("reports a library asset nothing references", async () => {
         const ctx = createTestLintContext({
             assets: [asset("used"), asset("orphan")],
@@ -202,11 +206,11 @@ describe("assets/missing", () => {
 
     it("locates a character reference through the context", async () => {
         const reference: AssetReference = {
-            id: "char:c1:thumbnail",
+            id: "char:c1:pose:p1",
             assetId: "gone",
             kind: "character",
             label: "Alice",
-            field: "profile.thumbnail",
+            field: "appearance",
         };
         const ctx = createTestLintContext({
             characters: [{ id: "c1", name: "Alice", assetIds: ["gone"] }],
@@ -217,7 +221,7 @@ describe("assets/missing", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toEqual({ kind: "character", characterId: "c1", characterName: "Alice" });
-        expect(findings[0].messageParams).toEqual({ location: "Alice (profile.thumbnail)" });
+        expect(findings[0].messageParams).toEqual({ location: "Alice (appearance)" });
     });
 
     it("falls back to the project for a site with no location kind of its own", async () => {
@@ -395,6 +399,45 @@ describe("assets/unreadable", () => {
         });
 
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
+    });
+});
+
+describe("assets/sprite-animation-finite", () => {
+    function animatedProbe(plays: number, frames = 8) {
+        return async (): Promise<LintImageProbe> => ({ ok: true, width: 10, height: 10, animation: { frames, plays } });
+    }
+    const character = { id: "c1", name: "Alice", assetIds: ["blink"] };
+
+    it("reports a sprite APNG that plays a fixed number of times", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("blink")],
+            characters: [character],
+            io: { probeImage: animatedProbe(1) },
+        });
+
+        const findings = await runRule("assets/sprite-animation-finite", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsSpriteAnimationFinite.message");
+        expect(findings[0].messageParams).toEqual({ asset: "blink.png", plays: 1 });
+        expect(findings[0].target).toEqual({ kind: "asset", assetId: "blink", assetType: AssetType.Image });
+    });
+
+    it("says nothing about a sprite that loops forever, or a single-frame APNG", async () => {
+        for (const probeImage of [animatedProbe(0), animatedProbe(3, 1)]) {
+            const ctx = createTestLintContext({ assets: [asset("blink")], characters: [character], io: { probeImage } });
+            expect(await runRule("assets/sprite-animation-finite", ctx)).toEqual([]);
+        }
+    });
+
+    it("only asks about images a character uses", async () => {
+        const probeImage = vi.fn(animatedProbe(1));
+        const ctx = createTestLintContext({ assets: [asset("blink"), asset("title-art")], characters: [character], io: { probeImage } });
+
+        const findings = await runRule("assets/sprite-animation-finite", ctx);
+
+        expect(findings.map(finding => finding.location)).toEqual([{ kind: "asset", assetId: "blink", assetName: "blink.png" }]);
+        expect(probeImage).toHaveBeenCalledTimes(1);
     });
 });
 

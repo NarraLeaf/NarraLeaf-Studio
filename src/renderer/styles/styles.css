@@ -472,6 +472,20 @@ html.nl-studio {
 }
 
 /*
+ * A list whose scrollbar sits where its right padding would be.
+ *
+ * The 8px lane is reserved whether or not the list overflows, and the element
+ * carries no right padding of its own - give it a left padding of 8px and the
+ * lane is the right one. The content is then exactly as wide with a scrollbar
+ * as without, so a neighbouring section opening and making the list overflow
+ * does not narrow every card in it. The thumb is invisible at rest (see
+ * Scrollbars above), so until the list moves the lane reads as padding.
+ */
+.nl-scroll-lane {
+    scrollbar-gutter: stable;
+}
+
+/*
  * A region one version does not have, where the other one has content.
  *
  * Hatched rather than blank, because a blank region of the same height reads as
@@ -667,8 +681,22 @@ input[data-floating-item]:focus-visible {
 }
 
 /*
+ * The sidebars that float over an editor's canvas: the blueprint's layers and variables, and the
+ * interface outline. Without a wallpaper they keep their sunken paint. Under one they are part of
+ * the editor area, which is clear, like the scene flow's routes beside its map - but a clear panel
+ * over a canvas would put the nodes, wires or page under it straight behind the names in its tree,
+ * so it blurs what lies beneath. Cards inside keep their own paint, as cards do in the docks.
+ */
+.nl-has-workspace-bg .nl-editor-sidebar-surface {
+    background-color: transparent;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+
+/*
  * The window's frame under a wallpaper: the title bar, the editor tab strips, the activity rails, the
- * version panel, the status bar, and the header strips of the docks and of the panels inside editors.
+ * version panel (whose lists read on the dock plate, see `.nl-frame-body` below), the status bar, and
+ * the header strips of the docks and of the panels inside editors.
  * Each keeps its own fill for the window without a wallpaper and adds this, which repaints it as the
  * sunken fill at the frame plate's alpha (`--nl-frame-surface-alpha`, published like the other two).
  * Clear by default, so the picture reaches every edge of the window; the fallback matches, for a
@@ -696,12 +724,30 @@ input[data-floating-item]:focus-visible {
  * panel's sticky headers and its rows' hover chip. A clear plate cannot occlude, so under a
  * wallpaper they keep at least most of the sunken paint and blur what passes beneath, which keeps
  * their text legible over the rows at any plate setting without standing as solid bars when the
- * plate is clear.
+ * plate is clear. Inside `.nl-frame-body` they follow that body's plate instead (below).
  */
 .nl-has-workspace-bg .nl-frame-surface .nl-frame-sticky {
     background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-frame-surface-alpha, 0), 0.6));
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
+}
+
+/*
+ * The version panel below its header. A column of the window's frame by position, but what it holds
+ * is what the docks hold - commit messages, the change list and the history in `text-2xs` - and a
+ * clear frame plate left that text on the photograph. So under a wallpaper it takes the dock plate's
+ * alpha (`--nl-sidebar-surface-alpha`), painted in its own sunken tone: with the dock plate solid it
+ * looks exactly as it does with no wallpaper. The sticky headers and the rows' hover chip inside it
+ * follow that plate instead of the frame's, so over a solid plate they are solid again - the chip
+ * composites to the hovered row's colour, as it does without a wallpaper, instead of standing out as
+ * a blurred grey block - and over a thinned one they keep the frame rule's floor and blur.
+ */
+.nl-has-workspace-bg .nl-frame-body {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-sidebar-surface-alpha, 1));
+}
+
+.nl-has-workspace-bg .nl-frame-body .nl-frame-sticky {
+    background-color: rgb(var(--nl-surface-sunken) / max(var(--nl-sidebar-surface-alpha, 1), 0.6));
 }
 
 /*
@@ -1099,6 +1145,19 @@ input[type="radio"]:focus {
 .narraleaf-blueprint-flow .react-flow__selection,
 .narraleaf-blueprint-flow .react-flow__nodesselection-rect {
     border-radius: 0 !important;
+}
+
+/*
+ * Blueprint: a graph just opened, not yet framed (`BlueprintFlowCanvas`). Its cards, wires, dot grid
+ * and overview wait undrawn for the opening view, so it appears already in place instead of showing
+ * at the origin and jumping. Opacity rather than visibility: React Flow writes `visibility: visible`
+ * onto every measured card, which would show through a hidden ancestor. Still laid out either way,
+ * which is what lets the cards be measured for the frame.
+ */
+[data-blueprint-awaiting-frame] .react-flow__renderer,
+[data-blueprint-awaiting-frame] .react-flow__background,
+[data-blueprint-awaiting-frame] .react-flow__minimap-svg {
+    opacity: 0;
 }
 
 /*

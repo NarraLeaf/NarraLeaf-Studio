@@ -4,30 +4,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
-import {
-    AppWindow,
-    Box,
-    Braces,
-    Bug,
-    CornerUpRight,
-    Database,
-    History as HistoryIcon,
-    MousePointer2,
-    Map as MapIcon,
-    Route,
-    Settings2,
-    Sigma,
-    Type as TypeIcon,
-    Variable,
-    Zap,
-    type LucideIcon,
-} from "lucide-react";
+import { CornerUpRight } from "lucide-react";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
     BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID,
     blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterPreparedBlueprintAddNodeEntries,
+    foldBlueprintAddNodeFamilies,
     prepareBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
@@ -40,6 +24,10 @@ import {
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
+import { useDeveloperMode } from "@/lib/developer";
+import { getBlueprintCategoryVisual } from "./blueprintCategoryVisuals";
+import { blueprintNodeFamilyOf } from "@/lib/ui-editor/blueprint-nodes/blueprintNodeFamilies";
+import { usePointerHighlight, type MenuPointer } from "@/apps/workspace/modules/story/scene-editor/storyMenuPointer";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -83,50 +71,6 @@ type Props = {
     leadingEntries?: readonly PaletteEntry[];
 };
 
-type CategoryVisual = {
-    icon: LucideIcon;
-    color: string;
-};
-
-function getCategoryVisual(categoryId: string): CategoryVisual {
-    switch (categoryId) {
-        case "Events":
-            return { icon: Zap, color: "#d9b36a" };
-        case "Flow":
-            return { icon: Route, color: "#8fa9c7" };
-        case "Data":
-            return { icon: Database, color: "#96b8a0" };
-        case "Math":
-            return { icon: Sigma, color: "#b2a6c9" };
-        case "String":
-            return { icon: TypeIcon, color: "#d2a679" };
-        case "Text":
-            return { icon: TypeIcon, color: "#8fc7b5" };
-        case "Element":
-            return { icon: MousePointer2, color: "#d9b36a" };
-        case "Displayable":
-            return { icon: Box, color: "#b9c47a" };
-        case "Navigation":
-            return { icon: MapIcon, color: "#7ec7c1" };
-        case "App":
-            return { icon: AppWindow, color: "#8fb8c7" };
-        case "Backlog":
-            return { icon: HistoryIcon, color: "#c7a98f" };
-        case "Variables":
-            return { icon: Variable, color: "#8fb3d9" };
-        case "Widget":
-            return { icon: Box, color: "var(--narraleaf-accent, #40a8c4)" };
-        case "Debug":
-            return { icon: Bug, color: "#bd97a3" };
-        case BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID:
-            return { icon: Settings2, color: "#a8adb5" };
-        case BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID:
-            return { icon: Braces, color: "#96b8a0" };
-        default:
-            return { icon: Settings2, color: "#9aa3ad" };
-    }
-}
-
 /** A category chip's words: the menu's own group by its own name, a node category by the catalogue's. */
 function addNodeCategoryLabel(category: string, t: ReturnType<typeof useTranslation>["t"]): string {
     return category === BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID
@@ -148,6 +92,10 @@ export function BlueprintAddNodeMenu({
     leadingEntries,
 }: Props) {
     const { t } = useTranslation();
+    // A row's type id is what a `.bp` file and the blueprint CLI call the node: of use to whoever
+    // writes those, and noise beside every row to an author choosing a node, so only developer
+    // options show it.
+    const showTypeIds = useDeveloperMode();
     // The menu is portalled into, positioned against and keyed off the window it is drawn in.
     const hostWindow = useHostWindow();
     const [query, setQuery] = useState("");
@@ -157,6 +105,12 @@ export function BlueprintAddNodeMenu({
     const listRef = useRef<HTMLDivElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const navStateRef = useRef({ activeFlatIndex: -1, itemCount: 0 });
+    // The highlight is what Enter takes, so it follows the pointer only when the pointer moves: a
+    // wheel over the open list slides rows under a pointer that stays put, and a row lit by that
+    // would change the node Enter adds while the author was only scrolling to read. The grey hover
+    // tint follows the same rule. See `usePointerHighlight`.
+    const pointer = usePointerHighlight(key => setActiveFlatIndex(Number(key)));
+    const resetPointer = pointer.reset;
 
     // A floating layer for what the menu's own keys below do not cover: focus goes into the search
     // field when it opens, Escape closes the menu and nothing it was portalled out of, Tab out of it
@@ -177,8 +131,9 @@ export function BlueprintAddNodeMenu({
             setQuery("");
             setActiveCategoryId(openOnFields ? BLUEPRINT_ADD_NODE_FIELDS_CATEGORY_ID : BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
+            resetPointer();
         }
-    }, [open, openOnFields]);
+    }, [open, openOnFields, resetPointer]);
 
     useEffect(() => {
         setActiveFlatIndex(-1);
@@ -193,7 +148,10 @@ export function BlueprintAddNodeMenu({
         return leadingEntries?.length ? [...leadingEntries, ...listed] : listed;
     }, [nodeCatalog, paletteContext, entryFilter, leadingEntries]);
 
-    const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
+    // What the palette lists while it is browsed: a family is one row. The chips count those rows,
+    // so a chip says how many rows its category opens on.
+    const browseEntries = useMemo(() => foldBlueprintAddNodeFamilies(entries), [entries]);
+    const categories = useMemo(() => buildBlueprintAddNodeCategories(browseEntries), [browseEntries]);
     const categoryRow = useCategoryRowScroll([open, categories]);
     const categoryListRef = categoryRow.rowRef;
     const categoriesRef = useRef(categories);
@@ -232,17 +190,21 @@ export function BlueprintAddNodeMenu({
             title: displayName => resolveBlueprintNodeTitle(displayName, t),
             category: category => addNodeCategoryLabel(category, t),
             categoryAliases: blueprintCategoryFormerLabels,
+            familyTitle: type => {
+                const family = blueprintNodeFamilyOf(type);
+                return family ? t(family.title) : undefined;
+            },
         }));
     }, [entries, t]);
 
     const filteredEntries = useMemo(() => {
         if (!query.trim()) {
             return activeCategoryId === BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID
-                ? [...entries]
-                : entries.filter(entry => entry.category === activeCategoryId);
+                ? [...browseEntries]
+                : browseEntries.filter(entry => entry.category === activeCategoryId);
         }
         return filterPreparedBlueprintAddNodeEntries(foldCatalogue(), activeCategoryId, query);
-    }, [activeCategoryId, entries, foldCatalogue, query]);
+    }, [activeCategoryId, browseEntries, foldCatalogue, query]);
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
 
@@ -457,7 +419,7 @@ export function BlueprintAddNodeMenu({
                         >
                             {categories.map((category, index) => {
                                 const active = activeCategoryId === category.id;
-                                const visual = getCategoryVisual(category.id);
+                                const visual = getBlueprintCategoryVisual(category.id);
                                 const Icon = visual.icon;
                                 return (
                                     <button
@@ -503,6 +465,7 @@ export function BlueprintAddNodeMenu({
                     aria-label={t("blueprint.addNode.listLabel")}
                     className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto px-2"
                     style={{ maxHeight: listMaxHeight }}
+                    {...pointer.listProps}
                 >
                     {itemCount === 0 ? (
                         <div className="my-2 rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
@@ -526,7 +489,9 @@ export function BlueprintAddNodeMenu({
                                         itemCount={itemCount}
                                         offsetY={item.start}
                                         onPick={pickEntry}
-                                        onHover={setActiveFlatIndex}
+                                        onPointerMove={pointer.move}
+                                        hoverTint={pointer.live}
+                                        showTypeId={showTypeIds}
                                     />
                                 );
                             })}
@@ -552,33 +517,51 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     /** Where the windowed list puts this row inside its sizer. */
     offsetY: number;
     onPick: (entry: PaletteEntry) => void;
-    onHover: (flatIndex: number) => void;
+    /** The menu's pointer, told of every move over this row with the row's index as its key. */
+    onPointerMove: MenuPointer["move"];
+    /** Whether the row may wear the grey hover tint: the pointer has moved since rows last moved under it. */
+    hoverTint: boolean;
+    showTypeId: boolean;
 }) {
     const { t } = useTranslation();
-    const visual = getCategoryVisual(props.entry.category);
+    const visual = getBlueprintCategoryVisual(props.entry.category);
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
     const categoryLabel = addNodeCategoryLabel(props.entry.category, t);
+    const family = props.entry.family;
     // A preset's title is already in the author's language: it is built from a field name.
-    const nodeTitle = props.entry.preset ? props.entry.preset.title : resolveBlueprintNodeTitle(props.entry.displayName, t);
-    const subtitle = props.entry.preset
+    const nodeTitle = family
+        ? t(family.title)
+        : props.entry.preset
+        ? props.entry.preset.title
+        : resolveBlueprintNodeTitle(props.entry.displayName, t);
+    const subtitle = family
+        ? t("blueprint.family.rowSubtitle", {
+              category: magicRef ? `${categoryLabel} -> ${magicRef.label}` : categoryLabel,
+              count: family.members.length,
+          })
+        : props.entry.preset
         ? props.entry.preset.subtitle
         : magicRef
         ? `${categoryLabel} -> ${magicRef.label}`
         : categoryLabel;
-    // What the node does is the one thing the row cannot show; its type id is already on the right
-    // of the row, and the search keywords say nothing about the node.
-    const title = [
-        nodeTitle,
-        props.entry.description ? t(props.entry.description) : "",
-        magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
-    ].filter(Boolean).join("\n");
+    // What the node does is the one thing the row cannot show; the search keywords say nothing about
+    // the node, and its type id is for developer options to show. A family's row has no one node
+    // to describe, and names the ones it holds instead.
+    const title = family
+        ? [nodeTitle, family.members.map(member => resolveBlueprintNodeTitle(member.displayName, t)).join(" · ")].join("\n")
+        : [
+              nodeTitle,
+              props.entry.description ? t(props.entry.description) : "",
+              magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
+          ].filter(Boolean).join("\n");
 
     return (
         <div
             className={[
                 "group absolute left-0 top-0 flex h-[52px] w-full items-center rounded-md transition-colors",
-                props.active ? "bg-fill" : "hover:bg-fill",
+                // The highlight is the story menus' tint, so it never reads as the grey a hover leaves.
+                props.active ? "bg-primary/15" : props.hoverTint ? "hover:bg-fill" : "",
             ].join(" ")}
             style={{ transform: `translateY(${props.offsetY}px)` }}
         >
@@ -593,7 +576,7 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
                 className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                 data-tip={title}
                 onClick={() => props.onPick(props.entry)}
-                onMouseEnter={() => props.onHover(props.flatIndex)}
+                onMouseMove={event => props.onPointerMove(String(props.flatIndex), event)}
             >
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                     <Icon className="h-4 w-4" style={{ color: visual.color }} aria-hidden />
@@ -602,9 +585,11 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
                     <span className="block truncate text-sm text-fg">{nodeTitle}</span>
                     <span className="block truncate text-2xs text-fg-subtle">{subtitle}</span>
                 </span>
-                <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
-                    {props.entry.type}
-                </span>
+                {family || !props.showTypeId ? null : (
+                    <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
+                        {props.entry.type}
+                    </span>
+                )}
             </button>
         </div>
     );

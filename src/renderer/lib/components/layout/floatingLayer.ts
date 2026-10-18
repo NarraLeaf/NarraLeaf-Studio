@@ -65,6 +65,15 @@ export interface FloatingLayerOptions {
     itemSelector?: string;
     /** Close when the editor tab or panel holding the layer is put away. Default `true`. */
     dismissWhenHidden?: boolean;
+    /**
+     * Close when the wheel turns anywhere outside the layer. Default `false`.
+     *
+     * For a popover pinned to a trigger that can move without a scroll event to follow: a node on
+     * the blueprint canvas pans under the wheel by a transform, so a menu portalled out of it would
+     * stay where it opened while its trigger slid away. Turning the wheel inside the layer, or in a
+     * layer opened from it, still scrolls that layer.
+     */
+    closeOnOutsideWheel?: boolean;
 }
 
 interface Layer {
@@ -512,6 +521,14 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
         };
         doc.addEventListener("focusin", onFocusIn);
 
+        // Capture, so the wheel is heard before the canvas or panel under it acts on it.
+        const onWheel = (event: WheelEvent) => {
+            if (!latest.current.closeOnOutsideWheel) return;
+            if (isWithinLayerOrAbove(layer, event.target as Node | null)) return;
+            latest.current.onClose();
+        };
+        doc.addEventListener("wheel", onWheel, { capture: true, passive: true });
+
         let raf = 0;
         const wantsFocus = latest.current.initialFocus ?? !!panelRef;
         const moveFocusIn = () => {
@@ -559,6 +576,7 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
             doc.removeEventListener("pointerdown", onPointerDown, true);
             doc.removeEventListener("mousedown", onPointerDown, true);
             doc.removeEventListener("focusin", onFocusIn);
+            doc.removeEventListener("wheel", onWheel, { capture: true });
             const index = layers.indexOf(layer);
             if (index >= 0) layers.splice(index, 1);
             release(doc);
@@ -584,4 +602,19 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
  */
 export function openFloatingLayerCount(doc: Document): number {
     return layers.filter(layer => layer.doc === doc).length;
+}
+
+/**
+ * Whether the layer whose box is `panel` is the topmost one open in its window: a dialog with no
+ * menu, picker or popover opened above it. A dialog's backdrop asks this when a press lands on it,
+ * because a press there with a picker open above is the press that closes the picker - reading its
+ * click as "close the dialog" too threw away everything typed into it.
+ */
+export function isTopFloatingLayer(panel: HTMLElement | null): boolean {
+    if (!panel) {
+        return true;
+    }
+    const own = layers.filter(layer => layer.doc === panel.ownerDocument);
+    const top = own[own.length - 1];
+    return !top || top.panel() === panel;
 }

@@ -37,6 +37,8 @@ function character(id: string, name: string, nicknames: string[] = []): Characte
             getId: () => id,
             getName: () => name,
             getNicknames: () => nicknames,
+            // The preview paints a character's name in her colour; this one keeps the name's hue.
+            getColor: () => undefined,
         },
     } as unknown as Character;
 }
@@ -122,6 +124,17 @@ const liveSession = (storyId: string): WorkspaceFreezeReason => ({
  * would answer for the option's own attribute rather than for anything above it.
  */
 describe("StoryPasteWizardModal speaker targets under a freeze", () => {
+    it("paints each speaker in the preview in the colour its rows will wear", () => {
+        // Every name was the accent colour, so the preview said nothing about who is who.
+        renderWizard();
+        const lin = document.querySelector<HTMLElement>('[data-paste-preview-speaker="林"]')!;
+        const sanae = document.querySelector<HTMLElement>('[data-paste-preview-speaker="早苗"]')!;
+        expect(lin.className).toContain("nl-speaker");
+        expect(lin.style.color).toBe("var(--nl-speaker-name)");
+        expect(lin.style.getPropertyValue("--nl-speaker-h")).not.toBe("");
+        expect(lin.style.getPropertyValue("--nl-speaker-h")).not.toBe(sanae.style.getPropertyValue("--nl-speaker-h"));
+    });
+
     it("offers the New character target while the project is writable", () => {
         renderWizard();
 

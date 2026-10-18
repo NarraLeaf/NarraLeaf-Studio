@@ -3,6 +3,7 @@ import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
+import type { HelpTopicId } from "@/lib/help";
 
 /**
  * Supported field types for property editors
@@ -365,6 +366,13 @@ export interface SectionFieldDefinition<TData = any> extends BaseFieldDefinition
     collapsible?: boolean;
     /** Whether the section is collapsed by default */
     defaultCollapsed?: boolean;
+    /**
+     * The help topic about the whole section: `F1` anywhere inside it, and a `?` in its header.
+     *
+     * For a section whose effect cannot be read off its own fields, under the rule in
+     * `docs/help-system.md` §5. A section that explains itself through its fields' tips passes none.
+     */
+    helpTopic?: HelpTopicId;
 }
 
 /**

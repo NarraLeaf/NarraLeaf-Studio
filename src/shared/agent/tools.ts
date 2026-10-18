@@ -43,6 +43,14 @@ export type AgentToolDescriptor = {
     side: AgentToolSide;
     /** Changes the project. Refused unless the author enabled writes; refused while paused or frozen. */
     write: boolean;
+    /**
+     * Acts in the running game the way a player does - starts it, reads on, clicks, presses keys,
+     * closes it. Not a write (the project does not change, and the writes switch does not cover it),
+     * but refused while the author has paused agents: a player's press can do anything the game
+     * offers, deleting a save included, and a pause means the agent stops acting. Reads of the game
+     * - a screenshot - are not marked and go on working while paused.
+     */
+    drivesGame?: boolean;
     inputSchema: AgentJsonSchema & { type: "object" };
 };
 
@@ -121,6 +129,11 @@ function ws(
     };
 }
 
+/** A workspace tool that drives the running game; see {@link AgentToolDescriptor.drivesGame}. */
+function drivesGame(tool: AgentToolDescriptor): AgentToolDescriptor {
+    return { ...tool, drivesGame: true };
+}
+
 function main(
     name: string,
     title: string,
@@ -174,7 +187,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     main(
         "project_create",
         "Create a project",
-        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. `dir` is the PARENT directory: the project folder is created inside it, named after a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`); the result gives the full path. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
+        "Creates a new NarraLeaf project from a template and opens it in Studio. Use the `skeleton` template for a game: it ships a title page, dialogue box, save/load, settings and history that work out of the box, which you then restyle. The skeleton is laid out for 1920x1080 only and refuses another size; for another size use the `empty` template. `dir` is the PARENT directory: the project folder is created inside it, named after the project's app ID; the result gives the full path and the ID. The app ID identifies the released game on players' devices and cannot be changed once the project exists: by default it is a lower-case ASCII slug of `name` (末班车 becomes `mo-ban-che`), led by the author line Studio was set up with when there is one, and numbered (`-2`) when a project on this machine already uses it. Pass `appId` to choose it instead; one another project on this machine uses is refused. The skeleton's pages, scenes, variables and folders are named in `language`. The game carries `language` only, plus any `languages` you list (the skeleton's sample translations of other languages are not kept).",
         {
             name: { type: "string", description: "Project (and game) name." },
             dir: { type: "string", description: "Absolute PARENT directory; the project folder is created inside it. Defaults to Studio's default projects directory." },
@@ -183,6 +196,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             languages: { type: "array", items: { type: "string" }, description: "Further languages the game offers, untranslated at first. Defaults to none; project_settings_set can add or remove languages later." },
             width: { type: "integer", description: "Design width in pixels.", default: 1920 },
             height: { type: "integer", description: "Design height in pixels.", default: 1080 },
+            appId: { type: "string", description: "App ID: lower-case letters, digits and hyphens (`my-game`), or a reverse-domain ID (`com.studio.game`). Permanent. Leave out to have one suggested." },
         },
         ["name"],
         true,
@@ -197,18 +211,42 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "project_info",
         "Project overview",
-        "Name, design resolution, languages, entry page and scene, and counts of stories, scenes, surfaces, assets, characters and variables.",
+        "Name, design resolution, languages, entry page and scene, the player defaults (starting text speed, auto-forward delay, volumes, skipping), and counts of stories, scenes, surfaces, assets, characters and variables.",
     ),
     ws(
         "project_settings_set",
         "Change project settings",
-        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk. Translate with localization_list / localization_set; voice-over languages are separate (voice_settings_set).",
+        "Changes the project's name, design resolution or game languages. Changing the resolution after the interface is built does not rescale it. `languages` is the full list the game offers (the source language must be in it); a language that holds translations is dropped only when `removeLanguages` names it, and its translation file stays on disk. Translate with localization_list / localization_set; voice-over languages are separate (voice_settings_set). `playerDefaults` sets what a new player's settings start at (Studio's Project → Game page); a player's saved settings keep theirs.",
         {
             name: { type: "string" },
             width: { type: "integer" },
             height: { type: "integer" },
             languages: { type: "array", items: { type: "string" }, description: "Every language the game offers, e.g. `[\"zh-CN\", \"en\"]`. Languages not listed and holding no translations are removed; new ones are added untranslated." },
             removeLanguages: { type: "array", items: { type: "string" }, description: "Languages to drop even though they hold translations. Never the source language." },
+            playerDefaults: {
+                type: "object",
+                description: "Merged into the starting preferences; keys left out keep their value. `cps` text speed in characters per second (1-200; 200 is as near instant as the engine types), `textRevealDuration` fade per character in ms (0-500), `autoForward` (bool) and `autoForwardDelay` ms after a line (0-30000), `gameSpeed` (0.1-10), `globalVolume`/`bgmVolume`/`soundVolume`/`voiceVolume` 0-1, `skip`, `skipReadText` (only skip text already read), `skipDelay`/`skipInterval` ms, `showDialog`, `voiceEndMode` (stop / fade / none: what a voice line does when the player advances) and `voiceFadeDuration` ms, `muteOnWindowBlur`. project_info shows the current values.",
+                properties: {
+                    cps: { type: "number" },
+                    textRevealDuration: { type: "number" },
+                    gameSpeed: { type: "number" },
+                    autoForward: { type: "boolean" },
+                    autoForwardDelay: { type: "number" },
+                    showDialog: { type: "boolean" },
+                    skip: { type: "boolean" },
+                    skipReadText: { type: "boolean" },
+                    skipDelay: { type: "number" },
+                    skipInterval: { type: "number" },
+                    globalVolume: { type: "number" },
+                    bgmVolume: { type: "number" },
+                    soundVolume: { type: "number" },
+                    voiceVolume: { type: "number" },
+                    voiceEndMode: { type: "string", enum: ["stop", "fade", "none"] },
+                    voiceFadeDuration: { type: "number" },
+                    muteOnWindowBlur: { type: "boolean" },
+                },
+                additionalProperties: false,
+            },
         },
         [],
         true,
@@ -228,7 +266,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "assets_import",
         "Import files",
-        "Imports files from disk into the project. Paths must be absolute. A path outside the project and the folders the author allowed (see agent_status) makes Studio ask the author for its folder first; for a big import, call request_folder_access up front. Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). `warnings` flags a portrait-shaped image with no transparency: as a sprite it would show as a rectangle.",
+        "Imports files from disk into the project. Paths must be absolute. A path outside the project and the folders the author allowed (see agent_status) makes Studio ask the author for its folder first; for a big import, call request_folder_access up front. Each asset is named after its file name without extension unless `names` says otherwise - pick names a story line can use (e.g. `bg_classroom_day`). Files are deduplicated by content: a file byte-identical to an asset already in the project is not imported again and is listed under `duplicates` with the existing asset's name - no asset is made under the new name, so use the existing one. A path that names no file comes back under `failed` as not found. Transparency is not checked here; character_upsert warns about a pose with no transparency.",
         {
             paths: { type: "array", items: { type: "string" }, description: "Absolute file paths." },
             type: { type: "string", enum: ["image", "audio", "video", "font"], description: "Omit to infer from each extension." },
@@ -241,13 +279,23 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "asset_delete",
         "Delete an asset",
-        "Deletes an asset from the project - for clearing the skeleton's leftover demo pictures and music once nothing uses them, say. Refused while anything still refers to it (a story row, a scene's `#background`/`#music`, a character pose, a page or blueprint); the refusal lists where. One step of undo; the file goes to the project's recycle bin.",
+        "Deletes an asset from the project - for clearing the skeleton's leftover demo pictures and music once nothing uses them, say. Refused while anything still refers to it (a story row, a scene's `#background`/`#music`, a character pose, a page or blueprint), or while its id is still written in a story, page or blueprint the usage index does not count; the refusal lists where. One step of undo; the file goes to the project's recycle bin.",
         {
             asset: { type: "string", description: "Asset name or id (assets_list)." },
             type: { type: "string", enum: ["image", "audio", "video", "font", "json", "model", "other"], description: "Only needed when two assets of different types share the name." },
         },
         ["asset"],
         true,
+    ),
+    ws(
+        "asset_usage",
+        "Where an asset is used",
+        "Lists every place an asset is used, two ways: Studio's usage index (the one lint's `assets/unused` and asset_delete read), and every place its id is written in the stories, pages and blueprints. Call it before deleting an asset lint lists as unused: a use the index does not count shows up in the second list.",
+        {
+            asset: { type: "string", description: "Asset name or id (assets_list)." },
+            type: { type: "string", enum: ["image", "audio", "video", "font", "json", "model", "other"], description: "Only needed when two assets of different types share the name." },
+        },
+        ["asset"],
     ),
     ws(
         "assets_placeholder",
@@ -269,12 +317,12 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands). `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
     ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames and entrance work on a layered character too; its looks are written with character_layered_set. One step of undo.",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites when the author opens the Characters panel. One step of undo.",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -290,6 +338,19 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 },
             },
             defaultPose: { type: "string", description: "Pose name shown when a line names none." },
+            defaultAvatar: {
+                description: "Image asset (name or id) shown as the speaker's avatar wherever no pose or tag combination has its own - the backlog and off-stage lines included. null clears it.",
+                oneOf: [{ type: "string" }, { type: "null" }],
+            },
+            avatars: {
+                type: "object",
+                additionalProperties: { oneOf: [{ type: "string" }, { type: "null" }] },
+                description: "Hand-drawn avatars, merged into what is there: pose name -> image asset for a preset character; for a layered one, one tag of each avatar axis joined with `+` (any order), e.g. `{ \"smile\": \"mei_face_smile\" }` or `{ \"casual+smile\": … }`. null drops that one (Studio's own crop shows again). Restating `poses` keeps the avatars of poses whose name is unchanged.",
+            },
+            avatarAxes: {
+                description: "Layered only: the axes the avatar varies with, by name (e.g. `[\"expression\"]` = one avatar per expression whatever the outfit). null = every axis. Set it before (or in the same call as) `avatars`, since it decides what their keys mean.",
+                oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }],
+            },
             confirmSwitch: CONFIRM_SWITCH,
             entranceTransform: {
                 description:
@@ -411,7 +472,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["variable"],
         true,
     ),
-    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (Music, Sound, Voice and any custom ones) that `/bgm track=` and sound props can name."),
+    ws("audio_tracks_list", "List audio tracks", "Lists the audio tracks (the three built-in ones, named in the project's story language, and any custom ones) that `/bgm track=` and sound props can name."),
 
     // ── Story ────────────────────────────────────────────────────────────────────────────────────
     ws(
@@ -446,7 +507,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "scene_create",
         "Create a scene",
-        "Creates an empty scene in a story (and the story itself if `story` names none that exists). Returns its id; then write its rows with story_apply.",
+        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). Returns its id; then write its rows with story_apply.",
         {
             name: { type: "string" },
             story: { type: "string", description: "Story name or id; defaults to the first story." },
@@ -463,6 +524,22 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         "Renames a story - the skeleton's is called \"Skeleton\", which the author sees in Studio's story list. Nothing refers to a story by its name, so nothing else changes. One step of undo.",
         { story: { type: "string", description: "Story name or id; defaults to the first story." }, name: { type: "string" } },
         ["name"],
+        true,
+    ),
+    ws(
+        "chapter_rename",
+        "Rename a chapter",
+        "Renames a chapter of a story (story_list shows them). Chapters only group scenes; nothing refers to one by name. One step of undo.",
+        { chapter: { type: "string", description: "Chapter name or id." }, name: { type: "string" }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
+        ["chapter", "name"],
+        true,
+    ),
+    ws(
+        "chapter_delete",
+        "Delete a chapter",
+        "Deletes an empty chapter. Refused while it still holds scenes (the refusal lists them): move them with scene_create's placement or delete them with scene_delete first. One step of undo.",
+        { chapter: { type: "string", description: "Chapter name or id." }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
+        ["chapter"],
         true,
     ),
     ws("scene_set_entry", "Set the entry scene", "Makes a scene the one the game starts on when the player presses Start.", { scene: { type: "string" }, story: { type: "string" } }, ["scene"], true),
@@ -517,7 +594,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_screenshot",
         "Look at a page",
-        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on. Elements are drawn at rest; pass `element` with `state: \"hovered\"` or `\"active\"` to see a button's hover or pressed look.",
+        "Renders a page (or one element of it) as it looks in the game and returns the image. Do this after every visible change and check alignment, contrast, overlap and text overflow before moving on. Elements are drawn at rest; pass `element` with `state: \"hovered\"` or `\"active\"` to see a button's hover or pressed look. A crop to `element` takes in what the element draws past its own box (a picture hanging over a button's edge) unless the element clips it. Video elements are shown as their poster (`posterAssetId`), or a grey placeholder with a play mark where there is none - the result says which.",
         {
             surface: { type: "string", description: "Page name or id." },
             component: { type: "string", description: "Component name or id, instead of a page." },
@@ -576,8 +653,54 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         ["surface", "ops"],
         true,
     ),
-    ws("ui_templates", "Interface templates", "Lists interface templates available to apply (title screens, dialogue boxes, menus) from Studio's template store."),
-    ws("ui_template_apply", "Apply a template", "Adds a template's pages to the project.", { template: { type: "string", description: "Template id from ui_templates." } }, ["template"], true),
+    ws(
+        "ui_page_rename",
+        "Rename a page",
+        "Renames a page or Game UI (named by its name or id, as ui_surfaces lists it). Go Page nodes and frames that open it hold its id, so they follow. One step of undo.",
+        { page: { type: "string", description: "Page or Game UI name or id." }, name: { type: "string", description: "The new name; no other page may have it." } },
+        ["page", "name"],
+        true,
+    ),
+    ws(
+        "ui_page_delete",
+        "Delete a page",
+        "Deletes a page or Game UI with its elements and blueprints - a template page you do not use, say. Refused for the entry page (ui_page_set_entry another first) and while any blueprint, element or story row elsewhere still opens or names it; the refusal lists them. One step of undo.",
+        { page: { type: "string", description: "Page or Game UI name or id." } },
+        ["page"],
+        true,
+    ),
+    ws(
+        "ui_page_set_entry",
+        "Set the entry page",
+        "Makes a page the one the game opens on (the splash or title). project_info names the current one. One step of undo.",
+        { page: { type: "string", description: "Page name or id; a Game UI cannot be the entry." } },
+        ["page"],
+        true,
+    ),
+    ws(
+        "ui_install_standard_screens",
+        "Install the standard screens",
+        "Brings the skeleton template's working screens into the open project - splash, title, save, load, config, log, extra and confirm pages, the dialogue box, choice menu, quick menu and notifications, their components and every blueprint behind them - for a project made from the empty template, or one whose interface was lost. Start begins the project's own story; the files, palette entries, translation keys, input actions, save field and persistent variable the screens use come along. A Game UI slot the project already fills is left alone unless `replace` is true, which deletes the project's Game UIs in those slots and its empty pages. The splash becomes the entry page when the current entry page is empty (or with `replace`). Pages whose blueprints need a plugin this project does not run (the Gallery's Extra page) are left out, with the buttons that open them. One step of undo takes back the interface it added, with its input actions, and puts back what it replaced; the files, palette entries, translation keys, variable and save field stay, as the answer lists. Restyle the result like the skeleton.",
+        {
+            replace: { type: "boolean", default: false, description: "Delete the project's Game UIs in the slots these fill, and its empty pages, instead of skipping those Game UIs." },
+            dryRun: DRY_RUN,
+        },
+        [],
+        true,
+    ),
+    ws(
+        "ui_templates",
+        "Interface templates",
+        "Lists interface templates from Studio's online template store. They are layouts: most carry no blueprints, so their buttons do nothing, their save slots are not bound to saves and their sliders to nothing, until you wire them (blueprint_apply). For screens that already work, use ui_install_standard_screens.",
+    ),
+    ws(
+        "ui_template_apply",
+        "Apply a template",
+        "Adds a template's pages (and components) to the project as new pages; it never replaces the entry page. The answer says, per page, how many blueprints and bound props came with it - for most store templates none, so wire them before relying on them, make the title the entry with ui_page_set_entry, and delete pages you replaced with ui_page_delete.",
+        { template: { type: "string", description: "Template id from ui_templates." } },
+        ["template"],
+        true,
+    ),
     ws("brand_get", "Read the palette", "The project's brand palette and fonts. Interface props should refer to palette entries as `nlbrand:<id>` rather than raw colours, so one change restyles the game."),
     ws(
         "brand_set",
@@ -599,11 +722,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string" }, category: { type: "string" }, owner: { type: "string" }, widget: { type: "string" }, limit: { type: "integer", default: 60 } },
     ),
     ws("blueprint_node", "Blueprint node details", "Pins, inspector params, graph kinds and scope of one node type.", { type: { type: "string" } }, ["type"]),
-    ws("blueprint_list", "List blueprints", "Lists blueprints with their owner (surface/element) and event heads.", { query: { type: "string" } }),
+    ws(
+        "blueprint_list",
+        "List blueprints",
+        "Lists blueprints with their owner (surface/element) and event heads. Empty ones (no nodes) are left out unless `query` or `all` is given.",
+        { query: { type: "string" }, all: { type: "boolean", description: "Also list blueprints that hold no nodes." } },
+    ),
     ws(
         "blueprint_show",
         "Read a blueprint as text",
-        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>`, passed as `blueprint`, shows all of that element's blueprints.",
         { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
         ["blueprint"],
     ),
@@ -621,6 +749,14 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             dryRun: DRY_RUN,
         },
         ["source"],
+        true,
+    ),
+    ws(
+        "blueprint_remove",
+        "Remove a blueprint",
+        "Removes one blueprint - typically one left behind when ui_apply or ui_patch deleted the element it hung off (`ui.orphaned_blueprint`). Only a widget's, a component element's or a bound value's blueprint; refused while another blueprint or a bound prop still names it, with the reasons. One step of undo.",
+        { blueprint: { type: "string", description: "Blueprint id, or its whole name when only one blueprint has it (blueprint_list)." }, dryRun: DRY_RUN },
+        ["blueprint"],
         true,
     ),
 
@@ -756,36 +892,101 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ),
 
     // ── Verify and ship ──────────────────────────────────────────────────────────────────────────
-    ws("lint", "Check the project", "Runs every project lint rule and returns the findings, errors first. Fix every error before a build.", { severity: { type: "string", enum: ["error", "warning", "info"], default: "warning" } }),
+    ws(
+        "lint",
+        "Check the project",
+        "Runs every project lint rule and returns the findings, errors first, a page at a time. The answer opens with the totals and a count per rule over the whole report (`byRule`, before any filter), so a flood of one rule - hundreds of `assets/unused` - cannot hide the others: narrow with `rule` and page with `cursor`. Messages are in English with their rule id. Fix every error before a build.",
+        {
+            severity: { type: "string", enum: ["error", "warning", "info"], default: "warning", description: "Leave out findings below this severity." },
+            rule: { type: "string", description: "Only this rule (`story/dead-end`), or a whole category by its prefix ending in `/` (`story/`, `assets/`)." },
+            cursor: { type: "string", description: "`nextCursor` from the previous page, with the same filters. Start again without one after changing the project." },
+            limit: { type: "integer", default: 150, minimum: 1, maximum: 500 },
+        },
+    ),
     main(
         "test",
         "Run a project test",
-        "Runs a built-in test headlessly: `narraleaf-studio:route-coverage` (every scene reachable), `narraleaf-studio:reachable-endings`, `narraleaf-studio:project-diagnostics`.",
+        "Runs a built-in test headlessly: `narraleaf-studio:route-coverage` (every scene reachable), `narraleaf-studio:reachable-endings`, `narraleaf-studio:project-diagnostics` (the lint rules as one pass/fail verdict). Findings come in English where the test supplies it, each with the `rule` that produced it when it has one (project-diagnostics gives the lint rule id, as `lint` does).",
         { project: PROJECT_ARG, id: { type: "string" } },
         ["id"],
     ),
-    ws(
+    drivesGame(ws(
         "playtest_start",
         "Play the game",
-        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot.",
+        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
-    ),
-    ws(
+    )),
+    drivesGame(ws(
         "playtest_advance",
         "Advance the game",
-        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
+        "Reads on `steps` lines of a running story. One step is one line: a click on the line shown in full, then a wait until the game is at rest again - on the next line, finished typing (rows without a line, such as /show or /sound, are not steps), a menu, or out of the story. So the answer names exactly what is on screen, and a screenshot taken next shows that whole line. Stops early at a choice menu, at an ending (names it, and the page the game went to: the title or an ending page), or when a click does not move the game; says why. Rows with no line are waited through: a transition up to 10 s, a timed `/wait` for its length plus 10 s, a `/video` the story waits on for as long as the call allows (the answer says `pausedBy` when one is still running, and an ending reached after the call ran out is reported by the next call), and a click the game swallowed is repeated once before the step is called stuck. A `/wait click` row (stopped for a click, no line on screen) is clicked through and counts as one step; the answer says `waitingForClick` while it waits. With `choice`, picks that option first (counts as one step). Does nothing on the title page: start from a scene.",
         {
             steps: { type: "integer", default: 1, description: "Lines to read on, 1-50." },
             choice: { type: "integer", description: "1-based option of the menu showing, in the order shown (hidden options are not counted)." },
         },
+    )),
+    ws(
+        "playtest_screenshot",
+        "Look at the game",
+        "Screenshot of the running Dev Mode game as the player sees it: the stage with its Game UI and every page or layer open over it (the title, a backlog or settings page opened in game, a Confirm dialog). `view: \"stage\"` gives the engine's picture of the stage alone - the scene and the Game UI, without pages - which is what a save thumbnail shows, its text in a fallback typeface rather than the project's fonts (judge fonts from `screen`). Fails within about 15 s, saying why, when the game cannot be captured.",
+        {
+            maxSize: { type: "integer", default: 1280 },
+            view: { type: "string", enum: ["screen", "stage"], default: "screen", description: "`screen` (default): what the player sees. `stage`: the stage alone, without pages and layers." },
+        },
     ),
-    ws("playtest_screenshot", "Look at the game", "Screenshot of the running Dev Mode game: the stage with its Game UI, or the window when a page such as the title is showing. Fails within about 10 s, saying why, when the game cannot be captured.", { maxSize: { type: "integer", default: 1280 } }),
-    ws("playtest_stop", "Stop playing", "Closes the Dev Mode game."),
-    ws("console_read", "Read Studio's console", "Recent lines from Studio's console (build, story, blueprint, runtime channels).", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
+    drivesGame(ws(
+        "playtest_click",
+        "Click in the game",
+        "Clicks an element of the interface in the running Dev Mode game - a page, a layer such as the Confirm dialog, or the Game UI on the stage - the way a player's mouse does: pointer events at a point inside the element, landing on whatever is on top there. Use it to exercise buttons you wired: Start, a save or load slot, a settings control, a quick-menu button. `element` is an id, a path of names (`Title / Menu / Start`, the page name allowed first), a name unique on screen, or the words it shows. Ambiguous or missing names are refused with the elements on screen listed; an element drawn several times (list rows) needs `index`; one covered by something else is refused, naming what covers it; one that lets the pointer through to an element around it (text on a button, say) is clicked there, as a player's click would be, and the answer names the element that was actually pressed. Returns what was done, what changed (pages and layers that opened or closed, a story starting, the line on screen) and what is showing now. Then call playtest_screenshot to look.",
+        {
+            element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
+            surface: { type: "string", description: "The page, layer or Game UI surface it is on (name or id), to narrow the search." },
+            index: { type: "integer", description: "1-based drawing in screen order (top to bottom, then left to right), for an element drawn more than once." },
+            at: { type: "object", description: "Where in the element's box: `{ x, y }` as shares from its top-left corner, 0-1 each. Defaults to the centre. Use it for a slider's track." },
+        },
+        ["element"],
+    )),
+    drivesGame(ws(
+        "playtest_hover",
+        "Hover in the game",
+        "Rests the pointer on an element of the running game without pressing it, the way a player's mouse does: its hover look and its On Mouse Enter graph run, and the element the pointer rested on before is left. Takes the same `element`, `surface`, `index` and `at` as playtest_click and answers the same way. Call playtest_screenshot to see the hover look.",
+        {
+            element: { type: "string", description: "Id, path of names, unique name, or shown words of the element." },
+            surface: { type: "string", description: "The page, layer or Game UI surface it is on (name or id)." },
+            index: { type: "integer", description: "1-based drawing in screen order, for an element drawn more than once." },
+            at: { type: "object", description: "`{ x, y }` in the element's box, 0-1 each. Defaults to the centre." },
+        },
+        ["element"],
+    )),
+    drivesGame(ws(
+        "playtest_key",
+        "Press a key in the game",
+        "Presses and releases a key in the running game the way a player's keyboard does, so the input actions bound to it (Advance, Skip, Menu, Dismiss...) and the keyboard/gamepad focus navigation answer it: arrows move the focus between controls, Enter or Space presses the focused one, Escape goes back or closes a layer. `rightClick`, `wheelUp` and `wheelDown` are the pointer gestures that name no element, aimed at the middle of the game (right click usually opens the menu; wheel up the backlog). Answers like playtest_click.",
+        {
+            key: {
+                type: "string",
+                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, Control, Shift, Alt, Meta, a single letter or digit, or rightClick, wheelUp, wheelDown.",
+            },
+            shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
+            ctrl: { type: "boolean", description: "Hold Ctrl with the key." },
+            alt: { type: "boolean", description: "Hold Alt with the key." },
+            meta: { type: "boolean", description: "Hold Cmd (Meta) with the key." },
+            holdMs: { type: "integer", description: "Keep the key down this long, up to 8000 ms - e.g. `Control` held to skip." },
+        },
+        ["key"],
+    )),
+    ws(
+        "playtest_variables",
+        "Read the game's variables",
+        "The saved and persistent variables as the running Dev Mode game holds them now - what the story, a screen or a page has written so far (variables_list gives only declarations and defaults). Scene variables are not listed. playtest_click and playtest_key also name the variables an act changed.",
+        { query: { type: "string", description: "Only variables whose name contains this." } },
+    ),
+    drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
+    ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",
         "Build the game",
-        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory and, in `artifacts`, what was built (the `.app` bundle, installer or app folder) - the thing to open.",
+        "Builds a playable package of the project. Runs the same pipeline as Studio's Build menu. Returns the output directory and, in `artifacts`, what was built (the `.app` bundle or the app folder) - the thing to open.",
         {
             project: PROJECT_ARG,
             target: { type: "string", enum: ["current", "windows", "macos", "linux", "web"], default: "current" },

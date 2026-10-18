@@ -11,7 +11,7 @@
  * Comments in English per project convention.
  */
 
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -31,6 +31,7 @@ import { applyCompiled, findEntryTarget } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
 import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./model";
+import { describeInvalidEnumProp, findInvalidEnumProps } from "./propValues";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 
@@ -95,6 +96,46 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
     }
     if (compiled.documentEntry) {
         out.push(...checkEntryTarget(compiled, options.existing ?? null));
+    }
+    out.push(...checkSlotsTaken(compiled, options.existing ?? null));
+    return out;
+}
+
+/**
+ * A Game UI this file writes into a slot another Game UI already fills.
+ *
+ * A game draws one surface per slot - the first in document order that names it - so a second one is
+ * never shown, and nothing at run time says so beyond a console line. An error, not a warning: the
+ * file would add a surface that cannot appear, which is never what was meant. The fix is to edit the
+ * surface that holds the slot, or delete it first.
+ */
+function checkSlotsTaken(compiled: UiCompileResult, existing: UIDocument | null): BpDiagnostic[] {
+    const written = new Map(compiled.surfaces.map(surface => [surface.surface.id, surface.surface]));
+    // The document as it will be: written surfaces keep their place, new ones go on the end.
+    const after: UISurface[] = [
+        ...(existing?.surfaces ?? []).map(surface => written.get(surface.id) ?? surface),
+        ...compiled.surfaces.map(surface => surface.surface).filter(surface => !(existing?.surfaces ?? []).some(old => old.id === surface.id)),
+    ];
+    const holder = new Map<string, UISurface>();
+    const out: BpDiagnostic[] = [];
+    for (const surface of after) {
+        if (surface.kind !== "stageSurface") {
+            continue;
+        }
+        const slotId = surface.mount.slotId;
+        const first = holder.get(slotId);
+        if (!first) {
+            holder.set(slotId, surface);
+            continue;
+        }
+        if (written.has(surface.id)) {
+            out.push({
+                severity: "error",
+                code: "ui.slot_taken",
+                message: `"${surface.name}" fills slot ${slotId}, which "${first.name}" already fills; a game shows only the first, so this one would never appear.`,
+                hint: `Change "${first.name}" instead - show it, edit it, and write it back under its own id - or delete it first.`,
+            });
+        }
     }
     return out;
 }
@@ -351,6 +392,17 @@ function checkElement(
 ): BpDiagnostic[] {
     const out: BpDiagnostic[] = [];
     const where = `"${elementPath(pool, element)}"`;
+
+    // A word the prop's list does not have is drawn as the browser's default, silently - see
+    // `propValues`.
+    for (const problem of findInvalidEnumProps(element.props as Record<string, unknown> | undefined)) {
+        out.push({
+            severity: "error",
+            code: "ui.prop_value",
+            message: `${where}: ${describeInvalidEnumProp(problem)}.`,
+            hint: `Write one of the listed words, or leave ${problem.key} out for the widget's default.`,
+        });
+    }
 
     for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
         if (binding.kind !== "blueprintValue") {

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import path from "path";
-import { shell } from "electron";
+import os from "os";
+import { app as electronApp, shell } from "electron";
 import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
@@ -12,8 +13,6 @@ import type { AppEventToken } from "@shared/types/app";
 import {
     AGENT_INTERNAL_TOOL_STATE,
     AGENT_INTERNAL_TOOL_TEST,
-    AGENT_MCP_DEFAULT_PORT,
-    AGENT_MCP_FALLBACK_PORTS,
     agentRefusal,
     agentText,
     type AgentCallRequest,
@@ -35,7 +34,12 @@ import {
 import {
     agentEndpointUrl,
     buildAgentClientConfig,
+    isUsableAgentPort,
+    AGENT_PORT_MAX,
+    AGENT_PORT_MIN,
     type AgentPluginToolsSetting,
+    type AgentPortRefusal,
+    type AgentSettingsFile,
     type AgentSettingsPatch,
     type AgentSettingsSnapshot,
 } from "@shared/agent/settings";
@@ -48,7 +52,17 @@ import {
 import type { App } from "../../../app";
 import type { AppWindow } from "../window/appWindow";
 import { IPC_PAGE_GONE } from "../window/ipcHost";
-import { dialogTranslator, showOpenDialog } from "../window/fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../window/fileDialog";
+import {
+    AGENT_CLIENTS,
+    AGENT_INSTALLED_SKILLS,
+    AGENT_SKILL_ZIP_NAME,
+    findAgentClient,
+    type AgentClientId,
+    type AgentClientSetupInfo,
+    type AgentSkillInstallResult,
+} from "@shared/agent/clients";
+import { agentSkillDir, buildSkillZip, changedSkillFolders, homeRelativeDisplay, installSkillFolders } from "./agentSkillInstall";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { defaultTestEdition } from "../../utils/testEdition";
 import { resolveDefaultProjectDirectory } from "../../defaultProjectDirectory";
@@ -90,9 +104,11 @@ export class AgentManager implements AgentMainToolHost {
     private readonly store: AgentSettingsStore;
     private server: AgentMcpServer | null = null;
     private lastError: string | null = null;
+    /** The last start failed because the profile's port is in use or reserved; see `startServer`. */
+    private portUnavailable: AgentPortRefusal | null = null;
     /**
-     * The port the endpoint moved to on its last start, until the author copies a configuration
-     * (one copied before names the old port). Cleared by a start that lands where the profile was.
+     * The new default a profile on the old one was moved to, until the author copies a configuration
+     * (one copied before names the old port). Cleared by the next start.
      */
     private movedToPort: number | null = null;
     private readonly focusedAt = new WeakMap<AppWindow, number>();
@@ -125,8 +141,25 @@ export class AgentManager implements AgentMainToolHost {
         warn: message => this.app.logger.warn(`[Agent] ${message}`),
     });
 
+    /**
+     * A development launch's `--agent` and `--agent-port`, which decide whether the endpoint is served
+     * and where in place of the profile's switch and port; null outside development.
+     */
+    private readonly launch: { enabled: boolean; port: number } | null;
+
     constructor(private readonly app: App) {
         this.store = new AgentSettingsStore(app.getUserDataDir());
+        this.launch = app.getAgentLaunchAccess();
+    }
+
+    /** Whether the endpoint is to be served: the launch's flags in development, else the profile's switch. */
+    private accessOn(settings: AgentSettingsFile): boolean {
+        return this.launch ? this.launch.enabled : settings.enabled;
+    }
+
+    /** The port the endpoint is served on: `--agent-port` in development, else the profile's. */
+    private servedPort(settings: AgentSettingsFile): number {
+        return this.launch ? this.launch.port : settings.port;
     }
 
     public async initialize(): Promise<void> {
@@ -144,7 +177,7 @@ export class AgentManager implements AgentMainToolHost {
         this.app.electronApp.on("before-quit", () => {
             void this.server?.stop();
         });
-        if (settings.enabled) {
+        if (this.accessOn(settings)) {
             await this.serialize(() => this.startServer());
         }
     }
@@ -154,15 +187,20 @@ export class AgentManager implements AgentMainToolHost {
     public async snapshot(): Promise<AgentSettingsSnapshot> {
         const settings = await this.store.load();
         const livePort = this.server?.port ?? null;
+        const enabled = this.accessOn(settings);
+        const port = this.servedPort(settings);
         return {
-            enabled: settings.enabled,
+            enabled,
+            setByLaunch: this.launch !== null,
             allowWrites: settings.allowWrites,
             fullAccess: settings.fullAccess,
             token: settings.token,
             allowedImportRoots: settings.allowedImportRoots.map(root => root.path),
+            port,
             running: livePort !== null,
-            url: agentEndpointUrl(livePort ?? settings.port),
-            error: settings.enabled && livePort === null ? this.lastError : null,
+            url: agentEndpointUrl(livePort ?? port),
+            error: enabled && livePort === null ? this.lastError : null,
+            portUnavailable: enabled && livePort === null ? this.portUnavailable : null,
             movedToPort: livePort !== null ? this.movedToPort : null,
             stdio: agentStdioCommand(this.app.electronApp),
             pluginTools: await this.pluginToolSettings(settings.blockedPluginTools),
@@ -200,6 +238,10 @@ export class AgentManager implements AgentMainToolHost {
      * rest of the patch still applies when they decline.
      */
     public async updateSettings(patch: AgentSettingsPatch, confirmWith?: AppWindow): Promise<AgentSettingsSnapshot> {
+        if (patch.port !== undefined && !isUsableAgentPort(patch.port)) {
+            throw new Error(`The port must be a whole number from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX}.`);
+        }
+        this.refuseWhatTheLaunchSets(patch);
         if (patch.acknowledgeMovedPort === true) {
             this.movedToPort = null;
         }
@@ -207,7 +249,7 @@ export class AgentManager implements AgentMainToolHost {
         if (patch.fullAccess === true && !before.fullAccess && confirmWith && !(await this.confirmFullAccess(confirmWith))) {
             patch = { ...patch, fullAccess: undefined };
         }
-        const wasEnabled = before.enabled;
+        const wasEnabled = this.accessOn(before);
         const after = await this.store.update(draft => {
             if (typeof patch.enabled === "boolean") {
                 draft.enabled = patch.enabled;
@@ -240,17 +282,20 @@ export class AgentManager implements AgentMainToolHost {
         if (after.fullAccess !== before.fullAccess) {
             this.app.logger.info(`[Agent] Full access ${after.fullAccess ? "allowed" : "withdrawn"}`);
         }
-        if (after.enabled && (!wasEnabled || !this.server)) {
+        const port = patch.port;
+        const portRefused = port !== undefined ? await this.serialize(() => this.changePort(port)) : null;
+        const nowEnabled = this.accessOn(after);
+        if (nowEnabled && (!wasEnabled || !this.server)) {
             await this.serialize(async () => {
                 await this.stopServer();
                 await this.startServer();
             });
-        } else if (!after.enabled && wasEnabled) {
+        } else if (!nowEnabled && wasEnabled) {
             await this.serialize(() => this.stopServer());
         }
         const snapshot = await this.snapshot();
         this.broadcastQuickState(snapshot);
-        return snapshot;
+        return portRefused ? { ...snapshot, portRefused } : snapshot;
     }
 
     public async regenerateToken(): Promise<AgentSettingsSnapshot> {
@@ -443,9 +488,11 @@ export class AgentManager implements AgentMainToolHost {
      * withdrawing access is always safe.
      *
      * The Settings window's switches go through `updateSettings` directly, unconfirmed: that window
-     * is Studio's own and runs no plugin code, so its switch is already the author's answer.
+     * is Studio's own and runs no plugin code, so its switch is already the author's answer. So do
+     * first-run setup's, for the same reason (`AgentQuickToggleHandler`).
      */
     public async quickToggle(window: AppWindow, patch: AgentQuickTogglePatch): Promise<AgentSettingsSnapshot> {
+        this.refuseWhatTheLaunchSets(patch);
         const current = await this.store.load();
         const next: AgentSettingsPatch = {};
         if (typeof patch.enabled === "boolean") {
@@ -555,6 +602,81 @@ export class AgentManager implements AgentMainToolHost {
         return { canceled: false, path: target };
     }
 
+    /**
+     * What first-run setup shows to connect an agent: the endpoint, the stdio command, and for each
+     * client that reads a skill folder, that folder and whether the skill is already in it. No token.
+     */
+    public async clientSetup(): Promise<AgentClientSetupInfo> {
+        const snapshot = await this.snapshot();
+        const home = os.homedir();
+        const skillTargets: AgentClientSetupInfo["skillTargets"] = {};
+        for (const client of AGENT_CLIENTS) {
+            const dir = agentSkillDir(home, client);
+            if (!dir) {
+                continue;
+            }
+            skillTargets[client.id] = {
+                displayPath: homeRelativeDisplay(home, dir),
+                installed: unpatchedFs.existsSync(path.join(dir, AGENT_INSTALLED_SKILLS[0], "SKILL.md")),
+            };
+        }
+        return { url: snapshot.url, stdio: snapshot.stdio, skillTargets };
+    }
+
+    /**
+     * Install the bundled skill for one agent application. A client that reads a skill folder gets
+     * the skill folders copied into it - files of the same name replaced, the author's other skills
+     * left alone, so running it again updates the skill. Where a skill folder already holds a
+     * `SKILL.md` that is not Studio's (the author edited it, or another version of Studio wrote it),
+     * replacing it is asked first, as the skill export asks before writing into a folder that holds
+     * something; and a skill folder or file that is a link stops the copy. A client that takes an
+     * upload gets the main skill as a zip, saved where the author picks. A client whose guide comes
+     * from the MCP server has nothing to install.
+     */
+    public async installSkill(window: AppWindow, clientId: AgentClientId): Promise<AgentSkillInstallResult> {
+        const client = findAgentClient(clientId);
+        if (!client) {
+            throw new Error(`Unknown agent application: ${String(clientId)}`);
+        }
+        const source = this.app.resolveResource(path.join("agent", "skills"));
+        if (client.skill === "folder") {
+            const target = agentSkillDir(os.homedir(), client);
+            if (!target) {
+                throw new Error(`${client.id} has no skill folder`);
+            }
+            const changed = await changedSkillFolders(fs, source, target);
+            if (changed.length > 0) {
+                window.refuseUnattendedPrompt("Agent skill install asked whether to replace a changed SKILL.md");
+                const folders = changed.map(name => path.join(target, name));
+                const replace = await this.askInStudioWindow(window, { kind: "skillOverwrite", folders }, true);
+                if (!replace) {
+                    return { canceled: true };
+                }
+            }
+            const copied = await installSkillFolders(fs, source, target);
+            this.exportedSkillDirs.set(window, path.join(target, AGENT_INSTALLED_SKILLS[0]));
+            this.app.logger.info(`[Agent] Installed the agent skill for ${client.id} into ${target} (${copied} files)`);
+            return { canceled: false, path: target };
+        }
+        if (client.skill === "upload") {
+            const { t } = dialogTranslator(window);
+            const picked = await showSaveDialog(window, {
+                title: t("workspace.agent.confirm.exportSkill.title"),
+                defaultPath: path.join(electronApp.getPath("desktop"), AGENT_SKILL_ZIP_NAME),
+                filters: [{ name: "Zip", extensions: ["zip"] }],
+            });
+            if (picked.canceled || !picked.filePath) {
+                return { canceled: true };
+            }
+            const zip = await buildSkillZip(fs, path.join(source, AGENT_INSTALLED_SKILLS[0]), AGENT_INSTALLED_SKILLS[0]);
+            await fs.writeFile(picked.filePath, zip);
+            this.exportedSkillDirs.set(window, picked.filePath);
+            this.app.logger.info(`[Agent] Wrote the agent skill as ${picked.filePath} (${zip.length} bytes)`);
+            return { canceled: false, path: picked.filePath };
+        }
+        throw new Error(`${client.id} reads the guide from the MCP server; there is nothing to install`);
+    }
+
     /** Show what the last export from this window wrote. False when it exported nothing yet. */
     public revealExportedSkill(window: AppWindow): boolean {
         const target = this.exportedSkillDirs.get(window);
@@ -585,49 +707,110 @@ export class AgentManager implements AgentMainToolHost {
 
     // ── Server lifecycle ─────────────────────────────────────────────────────────────────────────
 
-    private serialize(run: () => Promise<void>): Promise<void> {
+    private serialize<T>(run: () => Promise<T>): Promise<T> {
         const next = this.lifecycle.then(run, run);
-        this.lifecycle = next.catch(() => undefined);
+        this.lifecycle = next.then(() => undefined, () => undefined);
         return next;
     }
 
     /**
-     * Serve on the profile's port; when it cannot be bound (in use, or reserved by the system), on
-     * the first of a fixed run of fallbacks that can, and failing those on any free port. Whichever
-     * binds is written back as the profile's port, so the next launch tries it first and an HTTP
-     * client configured with it keeps reaching the endpoint. When that is not the port the profile
-     * had, configurations copied before name the wrong one, and Settings and the Agent menu say so
-     * until a configuration is copied again.
+     * Serve on the profile's port, and only there. When it cannot be bound - in use, or reserved by
+     * the system - the endpoint does not start, and Settings and the Agent menu say which port and
+     * why, so the author can pick another in Settings. Moving to another port on its own would leave
+     * every configuration copied before naming a port nothing listens on.
      */
     private async startServer(): Promise<void> {
         if (this.server) {
             return;
         }
-        const asked = this.store.current.port;
+        const port = this.servedPort(this.store.current);
         // A profile just moved off the old default had clients configured with that one.
-        const known = this.store.takeLegacyPort() ?? asked;
+        const legacyPort = this.store.takeLegacyPort();
         const server = new AgentMcpServer({
-            port: asked,
-            fallbackPorts: [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS],
+            port,
             token: () => this.store.current.token,
             host: this.serverHost(),
         });
         try {
-            const port = await server.start();
-            this.server = server;
-            this.lastError = null;
-            this.movedToPort = port === known ? null : port;
-            const url = agentEndpointUrl(port);
+            await server.start();
+        } catch (error) {
+            this.portUnavailable = agentPortRefusal(port, error);
+            this.lastError = this.portUnavailable ? null : describe(error);
+            this.app.logger.warn(`[Agent] MCP endpoint could not start on port ${port}: ${describe(error)}`);
+            return;
+        }
+        this.server = server;
+        this.lastError = null;
+        this.portUnavailable = null;
+        this.movedToPort = legacyPort !== null ? port : null;
+        const url = agentEndpointUrl(port);
+        await this.store.update(draft => {
+            draft.url = url;
+        });
+        this.app.logger.info(legacyPort !== null
+            ? `[Agent] MCP endpoint listening on ${url}, moved from the old default port ${legacyPort}`
+            : `[Agent] MCP endpoint listening on ${url}`);
+    }
+
+    /**
+     * Move the endpoint to the port the author set in Settings. When it cannot be bound the endpoint
+     * stays where it was and the answer says why. While access is off the port is only stored, and
+     * the next start begins there.
+     */
+    private async changePort(port: number): Promise<AgentPortRefusal | null> {
+        // A second request for the same port (Enter, then the field losing focus) waited its turn
+        // behind the first, which already moved there.
+        if (port === this.store.current.port) {
+            return null;
+        }
+        if (!this.store.current.enabled) {
             await this.store.update(draft => {
                 draft.port = port;
-                draft.url = url;
             });
-            this.app.logger.info(port === known
-                ? `[Agent] MCP endpoint listening on ${url}`
-                : `[Agent] MCP endpoint listening on ${url}, moved from port ${known}`);
+            return null;
+        }
+        const server = new AgentMcpServer({
+            port,
+            token: () => this.store.current.token,
+            host: this.serverHost(),
+        });
+        try {
+            await server.start();
         } catch (error) {
-            this.lastError = describe(error);
-            this.app.logger.warn(`[Agent] MCP endpoint could not start: ${this.lastError}`);
+            const refusal = agentPortRefusal(port, error);
+            if (!refusal) {
+                throw error;
+            }
+            this.app.logger.warn(`[Agent] Port ${port} cannot be used (${describe(error)}); the endpoint stays where it was`);
+            return refusal;
+        }
+        const previous = this.server;
+        this.server = server;
+        this.lastError = null;
+        this.portUnavailable = null;
+        // The port field shows where it went, and the author is the one who moved it.
+        this.movedToPort = null;
+        await previous?.stop();
+        const url = agentEndpointUrl(port);
+        await this.store.update(draft => {
+            draft.port = port;
+            draft.url = url;
+        });
+        this.app.logger.info(`[Agent] MCP endpoint moved to ${url}`);
+        return null;
+    }
+
+    /**
+     * In development, `--agent` and `--agent-port` decide whether the endpoint is served and where,
+     * for the whole run; a request to change either is refused with that reason rather than stored
+     * where it would not count. The Settings panel and the Agent menu hold those controls still.
+     */
+    private refuseWhatTheLaunchSets(patch: { enabled?: boolean; port?: number }): void {
+        if (!this.launch) {
+            return;
+        }
+        if (typeof patch.enabled === "boolean" || patch.port !== undefined) {
+            throw new Error("In development, agent access and its port are set by --agent and --agent-port when Studio starts.");
         }
     }
 
@@ -1248,6 +1431,8 @@ export class AgentManager implements AgentMainToolHost {
             written = await writeAgentProject(input, {
                 templatesDir: this.app.resolveResource(PROJECT_TEMPLATES_DIR),
                 installedPlugins: () => this.app.pluginManager.listPlugins(),
+                localAppIds: () => this.app.listLocalAppIds([this.defaultProjectsDir(), input.parentDir]),
+                defaultAuthor: String(this.app.globalState.get("project.defaultAuthor") ?? ""),
             });
         } catch (error) {
             return agentRefusal("internal", `The project could not be written: ${describe(error)}`);
@@ -1420,10 +1605,19 @@ function headlessTestResult(
         return agentRefusal("unavailable", finished);
     }
     if (finished.test) {
-        const { title, status, summary, findings } = finished.test;
+        const { title, status, summary } = finished.test;
+        // An agent reads English (the tool descriptions are), so a finding's English rendering wins
+        // over the one in the Studio UI language when the test supplied it; the rule id travels as
+        // `rule`, the name the `lint` tool uses for the same thing.
+        const findings = finished.test.findings.map(({ englishMessage, id, ...finding }) => ({
+            severity: finding.severity,
+            ...(id ? { rule: id } : {}),
+            message: englishMessage || finding.message,
+            ...(finding.location ? { location: finding.location } : {}),
+        }));
         const lines = [
             `${title} (${finished.test.testId}): ${status}${summary ? ` - ${summary}` : ""}`,
-            ...findings.slice(0, 50).map(finding => `- [${finding.severity}] ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
+            ...findings.slice(0, 50).map(finding => `- [${finding.severity}]${finding.rule ? ` ${finding.rule}:` : ""} ${finding.message}${finding.location ? ` (${finding.location})` : ""}`),
         ];
         return agentText(lines.join("\n"), { ...finished.test, findings: findings.slice(0, 200) });
     }
@@ -1472,4 +1666,13 @@ function sleep(ms: number): Promise<void> {
 
 function describe(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/** Why a port could not be bound, when the port is the reason: in use, or reserved by the system. */
+function agentPortRefusal(port: number, error: unknown): AgentPortRefusal | null {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === "EADDRINUSE") {
+        return { port, reason: "inUse" };
+    }
+    return code === "EACCES" ? { port, reason: "reserved" } : null;
 }

@@ -5,8 +5,8 @@
 page is a condensed reference. **The catalogue tools are the truth**: `ui_widget {type}` lists a
 widget's props with defaults, what it may contain, its parts, events and notes; `ui_usage {type}`
 prints how the shipped skeleton really uses it, in pasteable `.ui` text. Ask them before writing a
-widget or a prop for the first time - a prop name that does not exist is silently kept and does
-nothing.
+widget or a prop for the first time - `ui_patch` refuses a prop the widget does not know, and
+`ui_apply` keeps it with only a note, where it does nothing.
 
 ## Pages, Game UIs and components
 
@@ -16,11 +16,33 @@ nothing.
   dialogue box), `choice` (the menu), `onStage` (the quick menu), `notification`, `nvl`.
 - A **component** is a reusable element tree placed on pages with params (the skeleton's `Save slot`,
   `Volume slider`, `Title button`, `Back button`).
-- The title page has the fixed id `narraleaf-studio:main-surface`. It cannot be deleted and no other
-  page can take that id; restyle it in place.
+- The skeleton's title page has the fixed id `narraleaf-studio:main-surface`; restyle it in place.
+  Which page the game opens on is the entry page (`project_info` names it; `ui_page_set_entry`
+  moves it). `ui_page_rename` renames a page or Game UI and `ui_page_delete` deletes one that nothing
+  opens any more - the entry page never.
 
 `ui_surfaces {query}` lists them all with element paths and ids and the blueprints hanging off each
 element.
+
+### Creating and renaming pages with `ui_apply`
+
+A `surface` block in `ui_apply` is matched to a page by its `id=`, or by its name when it has no
+`id=`:
+
+- **A new page**: a block whose `id=` (or, without one, whose name) matches no page creates it. Give
+  it an `id=` you choose, so blueprints (`Go Page surfaceId=…`) can point at it before and after
+  renames: `surface Gallery id=gallery-page kind=appSurface size=1920x1080` and a root
+  `Root: nl.root @0,0 1920x1080` with the page's elements under it. A new Game UI also needs its
+  slot: `surface "Mini menu" id=mini-menu kind=stageSurface slot=onStage`. Without `id=` the id is
+  derived from the name.
+- **A rename**: a block with an existing page's `id=` and a different name renames that page (and
+  replaces its tree with the block's, like any apply). `ui_page_rename` does the same without
+  rewriting the tree, and is the safer choice when only the name changes.
+- A block **without** `id=` whose name is new always creates a page, even if you meant an existing
+  one: to rename, use the id.
+
+Then `ui_page_set_entry` makes it the entry page if it should be (or `document <name> entry=<page>`
+in the same file), and `ui_page_delete` removes a page nothing opens any more.
 
 ## Reading a dump
 
@@ -30,7 +52,6 @@ surface Title id=narraleaf-studio:main-surface kind=appSurface size=1920x1080
     Root: nl.root id=8b611438-… @0,0 1920x1080
         Title: nl.container id=b674b641-… @0,0 1920x1080  # blueprint: Title
             "Key art": nl.image id=a4d2552e-… @0,0 1920x1080
-                fitMode = cover
                 fillOpacity = 0.3
                 imageFill = {"mode":"cover","assetId":"5322b0e3-…"}
             "Game title": nl.text id=c6d9dc8d-… @140,150 1000x120
@@ -77,15 +98,18 @@ backgroundColor=#222` on a button whose appearance row still says `nlbrand:butto
 nothing on screen.
 
 - Best: change the palette entry the row points at (`brand_set`), which is what the rows are for.
-- Otherwise: write the whole `appearance` object back with the row changed (read it from `ui_show`,
-  edit, `set` it), and change the flat prop to the same value.
+- Otherwise: write the whole `appearance` object back with the row changed (read it with
+  `ui_show {compact:false}`, edit, `set` it), and change the flat prop to the same value. The short
+  form prints a group that only repeats its prop as a bare key, which `ui_apply` rebuilds and
+  `ui_patch` does not.
 - Hover and pressed looks are rows with conditions:
   `{"conditions":{"hovered":true},"value":…}` and `{"conditions":{"active":true},"value":…}`; also
   `focused`, `disabled`, `selected` (a list's selected row). The last matching row wins, and a group's
   `transition` (`{"type":"tween","durationMs":160,"easing":"easeOut"}`) animates the change. The
   title's Start button is the model: its `effectTextShadow` and `transformOffsetX` rows move and glow
   on hover.
-- A button's text colour cannot be switched by a variant; express "selected" with fill and border.
+- A button's label is appearance material too: `color`, `fontSize` and `effectTextShadow` rows can
+  change it per variant or state, as the fill and border do.
 
 ## `ui_patch` - the everyday tool
 
@@ -96,7 +120,7 @@ One call edits one page (or component) and is one undo step:
   "surface": "Title",
   "baseRevision": 14,
   "ops": [
-    {"op": "set", "element": "c6d9dc8d-9524-4102-985e-5612b971a776", "props": {"text": "Winter Echo", "fontSize": 96}},
+    {"op": "set", "element": "c6d9dc8d-9524-4102-985e-5612b971a776", "props": {"text": "Night Train", "fontSize": 96}},
     {"op": "set", "element": "a4d2552e-a1db-4226-b224-e88d072f57b0", "props": {"imageFill.assetId": "<key art asset id>", "fillOpacity": 1}},
     {"op": "layout", "element": "1e01e9cf-1ef0-44bf-9cbf-c04422dce551", "x": 1460, "y": 640, "width": 320, "height": 60}
   ]
@@ -129,6 +153,11 @@ would lose their element). Pages the document does not mention are untouched. Us
 your own, or a page you are deliberately rebuilding - always starting from `ui_show` so ids survive
 (an element keeps its id when it stays at the same place in the tree).
 
+An element the page does not have yet starts from its widget's defaults, as one added in the editor
+does, so a new image needs only its picture (`imageFill = {"mode":"cover","assetId":"<id>"}`). An
+element that exists is written exactly as its lines say (or, under `+defaults`, as its defaults plus
+its lines).
+
 Other block kinds you may meet:
 
 - `param <id> <name> [type=text|string|number|boolean|list|json] [= default]` under a page: values the
@@ -157,7 +186,6 @@ different rows.
 |---|---|
 | `ui.unknown_widget_type` | No such widget (`ui_widgets`). Plugin widgets need their plugin loaded in the project. |
 | `ui.not_a_part` / children errors | A child under a widget that takes none, or that is not one of a part-owning widget's parts (sliders, switches). Do not delete or re-parent parts. |
-| stage widget on a page | `nl.dialog.sentence`, `nl.choice.list` etc. only on their Game UI slot. |
 | `ui.binding_owner_mismatch` | A prop bound to a blueprint some other element owns. |
 | `ui.frame_target_missing` / `ui.frame_loop` | A Page widget (`nl.frame`) naming a missing page, or a page that leads back to itself. |
 | `ui.words_two_sources` | Words and a translation key on one element. |
@@ -165,10 +193,22 @@ different rows.
 | `stale_revision` | The author edited the page since your `ui_show`. Read again. |
 
 Notes, not refusals: `ui.unknown_prop` (kept, probably does nothing - check the spelling with
-`ui_widget`), `ui.orphaned_blueprint`, `ui.binding_blueprint_missing`.
+`ui_widget`; `ui_patch` refuses it instead), `ui.palette_scope` (a stage widget - `nl.dialog.sentence`,
+`nl.choice.list` etc. - on a page or in another Game UI slot: written, but it works only in its own
+slot; `ui_patch` does not check it), `ui.orphaned_blueprint` (a deleted element's blueprint stays
+behind: remove it with `blueprint_remove`), `ui.binding_blueprint_missing`.
 
 ## After every visible change
 
 `ui_screenshot {surface}` (or `{component}`, or `{surface, element}` to crop) renders the page as the
-game draws it. Game UIs render with sample text. Look before moving on - see `ui-design` for the
-checklist.
+game draws it, every element at rest; add `state` (`hovered`, `active`, `focused`, `selected`,
+`disabled`) to a crop to see that element in that state - the way to check hover and pressed looks.
+Game UIs render with sample text. A crop to an element takes in what it draws past its
+own box (a picture hanging over a button's edge) unless the element clips its contents. A video
+element is drawn as its poster (`posterAssetId`), or as a grey placeholder with a play mark when it
+has none - a still never plays; check motion in a playtest. Look before moving on - see `ui-design`
+for the checklist.
+
+A list's scrollbar parts (`scrollbar.trackStyle` / `thumbStyle`) take an image like any fill
+(`fillType: "image"`, `imageFill`); left unset, `fillOpacity` is 1 for an image and the faint default
+tint only for a colour fill.

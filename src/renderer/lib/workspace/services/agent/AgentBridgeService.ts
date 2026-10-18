@@ -221,6 +221,9 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
 
         const refused = gateAgentCall({
             write,
+            // Studio's own playtest tools only: the flag is the tool table's, which a plugin's tool
+            // and an internal call do not have.
+            drivesGame: !internal && !plugin && descriptor?.drivesGame === true,
             policy: request.policy,
             paused: follow.getState().paused,
             freeze: getProjectWriteFreeze(),

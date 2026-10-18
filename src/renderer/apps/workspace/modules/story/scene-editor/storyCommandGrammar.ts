@@ -257,6 +257,13 @@ export type StoryCommandParamType =
            * Optional on input in every locale — the bare number is still the canonical spelling.
            */
           unit?: string;
+          /**
+           * What the number MEANS, when its type alone does not say - the unit it is counted in and
+           * which way a positive value goes (`xoffset=` is design pixels, + is right). In English, for
+           * the command catalogue an agent reads, exactly as the text branch's `format` is; the editor
+           * does not print it.
+           */
+          format?: string;
       }
     | { kind: "boolean" }
     | { kind: "color" }
@@ -278,8 +285,12 @@ export type StoryCommandParamType =
     /**
      * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
      * single-token *name the author invents* for a stage object (`/layer overlay`).
+     *
+     * `format`, when a text slot is not free at all but has a shape of its own that no candidate
+     * list can show (`pos=0.3,0.5`), says what that shape is - in English, for the command catalogue
+     * an agent reads; the editor does not print it.
      */
-    | { kind: "text" }
+    | { kind: "text"; format?: string }
     /**
      * A computed value: the `gold + 1` in `/set gold gold + 1`, the `score > 90` in `/if score > 90`.
      *
@@ -327,6 +338,13 @@ export type StoryCommandParam = {
      * consumed. `/vol 0.5` fills the volume, `/vol piano 0.5` fills both.
      */
     skippable?: boolean;
+    /**
+     * What the slot does, in one English sentence, for the readers that cannot see the editor: the
+     * story CLI's `commands <token>` and the agent's `story_command`. Only for a slot whose type does
+     * not say it - `into=` is "a variable", and what goes into it is the part an agent has to know.
+     * Never shown in the editor, which has the inspector and the manual for this.
+     */
+    about?: string;
 };
 
 export type StoryCommandDef = {

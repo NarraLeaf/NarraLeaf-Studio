@@ -21,11 +21,12 @@ export const onboarding = {
         identity: "署名",
         team: "チーム",
         story: "ストーリーエディター",
+        agent: "エージェント連携",
         done: "完了",
     },
     welcome: {
         title: "ようこそ",
-        expectation: "インターフェースとストーリーエディターの設定 6 項目。選んだ時点で反映され、あとから設定でも変更できる",
+        expectation: "インターフェース、ストーリーエディター、エージェント連携の設定 7 項目。選んだ時点で反映され、あとから設定でも変更できる",
         haveSettings: "ほかのインストールの設定",
     },
     language: {
@@ -59,6 +60,11 @@ export const onboarding = {
         title: "ストーリーエディター",
         expectation: "シーンエディターの表示と入力の方式",
     },
+    agent: {
+        title: "エージェント連携",
+        expectation: "AI エージェントが MCP で Studio に接続し、開いているプロジェクトを編集する。エージェントは必須ではない",
+        toggleFailed: "エージェント連携を変更できない：{error}",
+    },
     import: {
         action: "設定ファイルを読み込む…",
         leaves: "適用するとセットアップを終了して Studio が開く",
@@ -67,6 +73,8 @@ export const onboarding = {
         title: "セットアップ完了",
         expectation: "ここで設定した項目はすべて設定にある。F1 でカーソル位置のヘルプが開く",
         docs: "ドキュメントを開く",
+        bilibili: "bilibili でフォロー",
+        youtube: "YouTube でフォロー",
     },
     skipConfirm: {
         title: "セットアップをスキップしますか？",

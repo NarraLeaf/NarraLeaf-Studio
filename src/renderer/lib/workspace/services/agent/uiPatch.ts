@@ -25,12 +25,15 @@
  */
 
 import { isLinkedUIComponentElement, type UIDocument, type UIElement, type UILayout } from "@shared/types/ui-editor/document";
+import { isAppearanceModel, type AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import type { HistoryLabel } from "../history/historyModel";
 import type { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { refuse } from "./agentCall";
 import { widgetKnownPropKeys } from "@/lib/ui-cli/catalog";
+import { deepEqual, expandAppearanceGroups } from "@/lib/ui-cli/dsl/compact";
 import { nearest } from "@/lib/ui-cli/text";
+import { describeInvalidEnumProp, findInvalidEnumProps } from "@/lib/ui-cli/propValues";
 import { buildUiPropsPatch, resolveUiElementRef, uiElementPath, type UIElementPool } from "./uiElementRefs";
 
 export type UIPatchOpKind = "add" | "set" | "layout" | "move" | "rename" | "delete" | "instantiate";
@@ -344,6 +347,87 @@ export function routeUiPropsPatch(element: UIElement, patch: Readonly<Record<str
 }
 
 /**
+ * A props patch with the element's appearance brought along, so that what is written is what the page
+ * draws.
+ *
+ * A text, button, container or image made in Studio carries an appearance model and is painted from
+ * its default variant's rows, with the flat props only the baseline under them. A write of `fontSize`
+ * or `color` alone therefore changed what ui_show printed and nothing on screen - a text added by
+ * `add` kept the 16 px and the colour its rows were made with. The inspector, and a blueprint setting
+ * the same properties, keep the two in step; this does the same for an agent's write. Each prop
+ * written whose name a group of the default variant has - and each changed `effects` entry, which the
+ * `effect*` group of its name draws - sets that group's unconditional row to the new value. Rows under
+ * a condition (hovered, pressed) are the author's and are left as they are.
+ *
+ * An `appearance` written whole is taken as written, its bare keys rebuilt from the props they stand
+ * for as ui_apply rebuilds them, since that is the shape ui_show prints.
+ */
+function withAppearanceInStep(element: UIElement, written: Record<string, unknown>, index: number): Record<string, unknown> {
+    const current = (element.props ?? {}) as Record<string, unknown>;
+    if ("appearance" in written) {
+        if (!isPlainObject(written.appearance)) {
+            return written;
+        }
+        const props: Record<string, unknown> = { ...current, ...written, appearance: JSON.parse(JSON.stringify(written.appearance)) };
+        const unresolved = expandAppearanceGroups(element.type, props);
+        if (unresolved.length > 0) {
+            throw refuse(
+                "invalid_args",
+                `ops[${index}] (set): appearance names ${unresolved.map(key => `"${key}"`).join(", ")} as a bare key, but ${element.type} has no such prop for it to repeat.`,
+                "Write that group out with its rows ({\"key\": ..., \"rows\": [{\"conditions\": null, \"value\": ...}]}), or leave it out.",
+            );
+        }
+        return { ...written, appearance: props.appearance };
+    }
+    const appearance = current.appearance;
+    if (!isAppearanceModel(appearance) || appearance.variants.length === 0) {
+        return written;
+    }
+    const values = new Map<string, unknown>();
+    for (const [key, value] of Object.entries(written)) {
+        if (key === "effects" && isPlainObject(value)) {
+            const before = isPlainObject(current.effects) ? current.effects : {};
+            for (const [effect, effectValue] of Object.entries(value)) {
+                if (!deepEqual(before[effect], effectValue)) {
+                    values.set(effect, effectValue);
+                }
+            }
+            continue;
+        }
+        values.set(key, value);
+    }
+    const next = withDefaultRows(appearance, values);
+    return next === appearance ? written : { ...written, appearance: next };
+}
+
+/** `model` with the default variant's unconditional row of each group in `values` set to its value; `model` itself when none changes. */
+function withDefaultRows(model: AppearanceModel, values: ReadonlyMap<string, unknown>): AppearanceModel {
+    const defaultId = model.variants.some(variant => variant.id === model.defaultVariantId) ? model.defaultVariantId : model.variants[0]?.id;
+    let changed = false;
+    const variants = model.variants.map(variant => {
+        if (variant.id !== defaultId) {
+            return variant;
+        }
+        const propertyGroups = variant.propertyGroups.map(group => {
+            if (!isPlainObject(group) || typeof group.key !== "string" || !values.has(group.key) || !Array.isArray(group.rows)) {
+                return group;
+            }
+            const at = group.rows.findIndex(row => row.conditions === null || row.conditions === undefined);
+            const value = values.get(group.key);
+            if (at < 0 || deepEqual(group.rows[at].value, value)) {
+                return group;
+            }
+            changed = true;
+            const rows = group.rows.slice();
+            rows[at] = { ...rows[at], value: value === undefined ? null : JSON.parse(JSON.stringify(value)) };
+            return { ...group, rows };
+        });
+        return { ...variant, propertyGroups };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+/**
  * Write a `set` (or an `add`'s props) to `element`, refusing what would land nowhere: a prop the
  * widget does not know, a bag a placed component does not take, a record the editor manages itself.
  * Whether the write changed anything at all is checked by the caller, which sees the element after.
@@ -391,15 +475,26 @@ function writeRoutedProps(
             );
         }
     }
+    // A word outside the prop's list would be stored and then drawn as the browser's default with
+    // nothing said - see `@/lib/ui-cli/propValues`.
+    const [badValue] = findInvalidEnumProps(routed.props);
+    if (badValue) {
+        throw refuse(
+            "invalid_args",
+            `ops[${index}] (set): ${element.name ?? element.id}: ${describeInvalidEnumProp(badValue)}.`,
+            "Write one of the listed words; ui_widget shows the widget's default.",
+        );
+    }
     if ("componentLink" in routed.extra) {
         throw new Error("`extra.componentLink` is how a placed component names its definition; place one with the instantiate op instead");
     }
 
     if (Object.keys(routed.props).length > 0) {
+        const props = withAppearanceInStep(element, routed.props, index);
         if (componentId) {
-            service.updateComponentElementProps(componentId, element.id, routed.props);
+            service.updateComponentElementProps(componentId, element.id, props);
         } else {
-            service.updateElementProps(element.id, routed.props);
+            service.updateElementProps(element.id, props);
         }
     }
     if (Object.keys(routed.layout).length > 0) {

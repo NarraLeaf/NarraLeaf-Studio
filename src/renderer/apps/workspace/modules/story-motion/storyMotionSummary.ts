@@ -18,7 +18,7 @@ export function storyMotionTimelineSummary(
     const labels = tracks
         .slice(0, 3)
         .map(track => t(`motion.propertyLabel.${track.property}`))
-        .join(", ");
+        .join(t("motion.inspector.listSeparator"));
     return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }
 

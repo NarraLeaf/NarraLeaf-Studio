@@ -310,7 +310,7 @@ export const widgets = {
         loop: "ループ",
         muted: "消音",
         autoplay: "自動再生",
-        autoplayHint: "ゲームで効く。エディタのキャンバスは止まったまま。プレビューはドッカーバーから行う",
+        autoplayHint: "ゲーム内でのみ有効。エディタのキャンバスは停止したまま。プレビューはツールバーから行う",
         volume: "音量",
         volumeHint: "0 から 1 まで。実行時はブループリントの音量ピンが優先される",
         audioTrack: "オーディオトラック",
@@ -328,6 +328,7 @@ export const widgets = {
         previewPlay: "プレビューを再生",
         previewPause: "プレビューを一時停止",
         previewRestart: "先頭のコマに戻す",
+        playRefused: "動画「{name}」の再生が始まらなかった。音声のある動画はプレイヤーがクリックかキー入力をした後にだけ再生でき、消音の動画はすぐに再生できる",
     },
     /**
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は

@@ -21,25 +21,32 @@ import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./Puppe
 // to change without this file having an opinion.
 vi.mock("@/lib/i18n", async importOriginal => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    useTranslation: () => ({ t: (key: string) => key, locale: "en" }),
+    useTranslation: () => ({ t: (key: string) => key, locale: "en", formatList: (items: string[]) => items.join(", ") }),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({ app: { openExternal: () => undefined } }),
 }));
 
+const install = vi.hoisted(() => ({
+    /** The workspace the dialog sees; null keeps every install short of the picker. */
+    context: null as unknown,
+    pickSdkArchive: async (): Promise<string | null> => null,
+    installPuppetRuntimeFromSdk: async (): Promise<{ backend: string; entryPath: string }> => ({ backend: "", entryPath: "" }),
+}));
+
 vi.mock("@/apps/workspace/context", () => ({
-    useWorkspace: () => ({ context: null }),
+    useWorkspace: () => ({ context: install.context }),
 }));
 
 // Stubbed so the dialog can be rendered without the privileged facade or an engine `Game` behind it.
-// Nothing here is reached: no test gets as far as picking a file.
+// Only the build test below gets as far as picking a file, and it swaps these two in.
 vi.mock("@/lib/workspace/services/puppet/installPuppetRuntime", () => ({
     installPrebuiltPuppetRuntime: async () => ({ backend: "", registered: [] }),
-    installPuppetRuntimeFromSdk: async () => ({ backend: "", entryPath: "" }),
+    installPuppetRuntimeFromSdk: () => install.installPuppetRuntimeFromSdk(),
     pickPrebuiltRuntimeDirectory: async () => null,
     pickPrebuiltRuntimeFile: async () => null,
-    pickSdkArchive: async () => null,
+    pickSdkArchive: () => install.pickSdkArchive(),
 }));
 
 /** What both hosts pass while nothing is being installed. */
@@ -118,5 +125,33 @@ describe("the puppet runtime installer's first step", () => {
 
         expect(licenseShown()).toBe(true);
         expect(pickerShown()).toBe(false);
+    });
+});
+
+describe("the installer while it builds", () => {
+    afterEach(() => {
+        install.context = null;
+        install.pickSdkArchive = async () => null;
+        install.installPuppetRuntimeFromSdk = async () => ({ backend: "", entryPath: "" });
+    });
+
+    it("draws its cancel button disabled, not only disables it", async () => {
+        install.context = { project: {} };
+        install.pickSdkArchive = async () => "CubismSdkForWeb.zip";
+        // A build that has not returned: the dialog stays on its working step.
+        install.installPuppetRuntimeFromSdk = () => new Promise(() => undefined);
+
+        const view = render(<Host open={null} />);
+        view.rerender(<Host open={LIVE2D} />);
+        fireEvent.click(screen.getByRole("checkbox"));
+        fireEvent.click(screen.getByRole("button", { name: "common.continue" }));
+        fireEvent.click(screen.getByRole("button", { name: "characters.editor.runtime.sdkPick" }));
+
+        await screen.findByText("characters.editor.runtime.building");
+        const cancel = screen.getByRole("button", { name: "common.cancel" }) as HTMLButtonElement;
+        expect(cancel.disabled).toBe(true);
+        // The look `dialogFooterButtonClass` gives a disabled button, rather than the pressable one.
+        expect(cancel.className).toContain("cursor-not-allowed");
+        expect(cancel.className).not.toContain("hover:bg-fill");
     });
 });

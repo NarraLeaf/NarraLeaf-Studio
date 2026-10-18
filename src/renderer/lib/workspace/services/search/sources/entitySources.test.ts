@@ -92,6 +92,19 @@ describe("extractAssetEntries", () => {
         }], readTag);
         expect(entry?.detail).toBe("title, Language: 日本語");
     });
+
+    it("lists the tags the way the interface language writes a list", () => {
+        const assets = [{ id: "a5", type: "image", name: "narra", tags: ["角色", "立绘"] }];
+        try {
+            i18nStore.setLocale("zh");
+            expect(extractAssetEntries(assets)[0]?.detail).toBe("角色、立绘");
+            i18nStore.setLocale("ja");
+            expect(extractAssetEntries(assets)[0]?.detail).toBe("角色、立绘");
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(extractAssetEntries(assets)[0]?.detail).toBe("角色, 立绘");
+    });
 });
 
 describe("extractAssetSetEntries", () => {

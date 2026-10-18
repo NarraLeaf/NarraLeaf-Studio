@@ -127,6 +127,10 @@ export const help = {
                 + "- Interface text is searched in the project's source language. Selecting it opens the page or "
                 + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
+                + "- Undo in the Search panel takes back its last replace in every scene that replace changed. A scene "
+                + "edited after the replace keeps it, and a notice names the scene. Undo in a scene takes back the "
+                + "replace in that scene alone.\n"
+                + "- In the search and replace boxes, Undo applies to that box's own text.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
         },
@@ -175,7 +179,10 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
+                + "- F2, or Edit as text in a row's menu, opens a command row as its command line with the caret at the end. "
+                + "Enter commits the line as a newly typed one; Escape leaves the row unchanged.\n"
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- On an empty row, a ・, ／ or ＃ confirmed from an input method becomes / or #. Escape straight after restores the character.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
                 + "- A click on a line the live preview is still typing shows the whole line first. With Skip typing "
@@ -183,6 +190,15 @@ export const help = {
                 + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
                 + "of the scene editor used last.\n"
                 + "- Edits to the Game UI appear in the live preview as they are made.\n"
+                + "- Layers, at the top of the live preview, shows the scene's layers. The list on the left runs front to back, "
+                + "and layers at the same distance form one level. Distance is measured from the base layer, which holds everything not placed on another layer and is at 1: "
+                + "larger values are farther away and move less with the camera, and at ∞ a layer stays still. Click a level's "
+                + "value to type a distance. Drag a row onto another level to join it, or between two levels to make a new one; "
+                + "drag the name on a layer to change its distance, and close to another level it joins that level. The small view "
+                + "in the corner shows the camera moving. The Layers button in the scene's title bar opens the same view, and /layer name adds a layer "
+                + "to the scene.\n"
+                + "- The small view in the corner of Layers grows while the pointer is on it: the camera follows the pointer, scrolling zooms, "
+                + "and it settles back when the pointer leaves. With a camera row that sets the camera's position selected, it starts from that row's shot.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
@@ -260,8 +276,8 @@ export const help = {
                 + "- Each name found maps to one of four answers: an existing character, New character, Name only, "
                 + "or Not a speaker. A Name only row carries the name and no character. A Not a speaker line "
                 + "becomes narration exactly as pasted.\n"
-                + "- The answer chosen for a name is remembered by the project and used again the next time that "
-                + "name is pasted.\n"
+                + "- An answer changed for a name is remembered by the project and used again the next time that "
+                + "name is pasted. A name left as recognised is recognised again.\n"
                 + "- Confirming adds the rows below the current line as one undo step.",
         },
         sceneSnapshot: {
@@ -412,7 +428,7 @@ export const help = {
                 "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
-                + "- The portrait beside dialogue is generated from an appearance.\n"
+                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.\n"
                 + "- A character can speak without being on stage.",
         },
         appearances: {
@@ -424,11 +440,13 @@ export const help = {
                 + "- Preset sprites: one finished image per pose.\n"
                 + "- Layered sprite: layers switched by tags on axes, so a costume and an expression change "
                 + "independently.\n"
-                + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
+                + "- Drawn by a runtime: a model drawn by Live2D Cubism, Spine or a custom runtime installed in this project. Story rows set its state with Motion, Appearance, Skin and Parameter; a motion loops until another row changes it and cannot be set to play once.\n"
                 + "\n"
-                + "The dialog avatar is generated from the drawn result, and can follow one axis so it changes "
-                + "with the character. Where no differential gives one, dialogue shows the Default dialog avatar "
-                + "from the character's properties.",
+                + "For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; "
+                + "an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar "
+                + "from the character's properties.\n"
+                + "\n"
+                + "A character drawn by a runtime has no generated avatar. Dialogue shows its Default dialog avatar, or none when it is not set.",
         },
         puppetRuntimes: {
             title: "Model runtimes",
@@ -489,16 +507,18 @@ export const help = {
         voice: {
             title: "Voice-over",
             body:
-                "A voice language holds one clip per spoken line. The panel lists the voice languages with how "
+                "A voice language holds one clip per line of narration and dialogue. The panel lists the voice languages with how "
                 + "much of the story each covers, and opening one shows its voice table.\n"
                 + "\n"
                 + "- Studio imports existing clips. It does not record.\n"
                 + "- Import audio takes several files at once, and links each file whose name follows the "
                 + "Recording filename pattern to its line.\n"
                 + "- Export recording script writes the lines to record as a spreadsheet file for the person "
-                + "recording them.\n"
+                + "recording them. It lists each line's file name, speaker, scene, text, status and note; the last "
+                + "column, Line ID, is what Import recording script uses to bring notes and statuses back to "
+                + "their lines, and is not to be edited.\n"
                 + "- A line whose text changed after its clip was assigned is marked Outdated, and Export pickup "
-                + "script writes only those lines.\n"
+                + "script writes only those lines. When the pickups are imported, their files can replace the old takes' files.\n"
                 + "- Choice options become lines to record only while Voice choice options is on.",
         },
         localization: {
@@ -628,6 +648,95 @@ export const help = {
                 + "\n"
                 + "A widget that reacts to being clicked uses its own Mouse Click head instead. An action is "
                 + "what the interface does with an input nothing on it wanted.",
+        },
+        focusNavigation: {
+            title: "Focus navigation",
+            body:
+                "Focus navigation moves the focus between the controls on screen for a player using a keyboard "
+                + "or a gamepad. One control holds the focus at a time, and Confirm presses it.\n"
+                + "\n"
+                + "Under Focus navigation in the Input Actions panel, each operation has a slot filled by one of the "
+                + "project's actions, and the action's bindings perform the operation. A project whose actions fill "
+                + "no slot has no focus navigation. Add actions for empty slots creates an action for each empty "
+                + "slot, with keyboard and gamepad bindings.\n"
+                + "\n"
+                + "- Move up, Move down, Move left and Move right go to the nearest control in that direction on "
+                + "screen. A focused slider takes the directions along its track and changes its value.\n"
+                + "- Next control and Previous control step through the controls one at a time, and continue from "
+                + "the opposite end after the last one. A list counts as one control.\n"
+                + "- Confirm presses the focused control. During the story, with nothing focused, it advances the "
+                + "dialogue.\n"
+                + "- Back closes the modal layer on top when the layer is dismissible, and otherwise returns to the "
+                + "previous page.\n"
+                + "- Quick menu, during the story, moves the focus onto the buttons of the game UI on the stage. "
+                + "Quick menu or Back moves it off them.\n"
+                + "\n"
+                + "The focus moves within the modal layer or the page on top, and during the story within the choice "
+                + "menu. A press does not move the focus when that interface answers it, through an action in its "
+                + "Input section or through a head for the key or button in its blueprint or the App logic "
+                + "blueprint.\n"
+                + "\n"
+                + "Moving the pointer onto a control takes the focus off any other control, and the next direction "
+                + "starts from the control under the pointer.\n"
+                + "\n"
+                + "A control whose appearance has a Focused state is drawn in that state while it holds the focus. "
+                + "A control without one shows a default focus ring, which appears only while the player uses a "
+                + "keyboard or a gamepad. A widget's Focus and Blur heads run when the focus arrives on it and when "
+                + "it leaves.",
+        },
+        pageMusic: {
+            title: "Page music",
+            body:
+                "The Music section of a page's properties decides what music plays while the page is on screen.\n"
+                + "\n"
+                + "- With no music chosen, the row reads Keep current music, and the page changes nothing. "
+                + "Whatever was playing when the page opened goes on playing.\n"
+                + "- With music chosen, the page plays it. If the same music is already playing on the same track, it "
+                + "carries on without a break. Otherwise the music playing fades out over its own fade and the new "
+                + "music fades in over the page's.\n"
+                + "- No music, beside Choose page music, plays nothing while the page is on screen. Clear goes back "
+                + "to keeping the current music.\n"
+                + "\n"
+                + "Going back to a page underneath brings that page's music back. A page opened with Replace Page "
+                + "that keeps the current music goes on playing the music of the page it replaced.\n"
+                + "\n"
+                + "The Play Page Music and Stop Page Music blueprint nodes change a page's music while it is open, "
+                + "for example to the track pressed in a music room.\n"
+                + "\n"
+                + "While a game is running, the story decides the music. The page's music fades out when a game "
+                + "starts or a save is loaded, and pages opened during the game play no page music of their own.",
+        },
+        focusNavigationSettings: {
+            title: "Navigation settings",
+            body:
+                "The Navigation sections in the properties panel set where the focus starts on an interface and "
+                + "where each direction takes it. With nothing set, every control can take the focus, and each "
+                + "direction goes to the nearest control on screen.\n"
+                + "\n"
+                + "Pages, and the Choice game UI, have three settings.\n"
+                + "\n"
+                + "- Starting focus names the element the focus starts on. Automatic starts on an element set as "
+                + "Use as starting focus, and otherwise on the first control from the top left.\n"
+                + "- Focus on open decides whether a control takes the focus as the interface opens. Keyboard or "
+                + "gamepad, the default, does so when the player last used one of them, and Always does so every "
+                + "time. Otherwise the focus appears at the first direction pressed.\n"
+                + "- Loop at edges continues a move past the edge of the interface from the opposite side.\n"
+                + "\n"
+                + "Returning to a page puts the focus back on the control it was on when the player left.\n"
+                + "\n"
+                + "Each element on an interface has its own settings.\n"
+                + "\n"
+                + "- With Focusable on Automatic, the default, an element can take the focus when it is a control. "
+                + "Always lets any element take it, and Confirm on the element acts as a click. Never takes the "
+                + "element and everything inside it out of navigation.\n"
+                + "- Use as starting focus starts the focus on the element, unless the interface's Starting focus "
+                + "names another.\n"
+                + "- Navigation group, on an element that holds others, keeps the focus inside while a control "
+                + "inside lies in the pressed direction. With Loop at edges, a move past the edge of the group "
+                + "continues from its opposite side. With Remember last focus, a focus entering the group again "
+                + "lands on the control it last left the group from.\n"
+                + "- Up, Down, Left and Right name where each direction goes when the focus leaves the element. By "
+                + "layout goes to the nearest control in that direction.",
         },
         uiSurfaces: {
             title: "Game screens",
@@ -780,6 +889,7 @@ export const help = {
                 + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
                 + "\n"
                 + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Each rule reports at the level set in Project ▸ Project ▸ Project check. A minor warning is listed in the panel, is not counted in the status bar, and never stops a build.\n"
                 + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },

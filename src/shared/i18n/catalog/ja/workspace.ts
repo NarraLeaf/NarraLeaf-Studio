@@ -10,7 +10,7 @@ export const workspace = {
             languagesTitle: "言語",
             languagesHint: "ゲーム自身の言語。原文の言語はストーリーを書いている言語で、ほかはそれを元に翻訳する",
             addLanguage: "言語を追加",
-            codePlaceholder: "コード（en、ja、zh-CN…）",
+            codePlaceholder: "コード（例：ja）",
             namePlaceholder: "表示名",
             invalidCode: "言語コードに使えるのは英数字とハイフンだけ",
             sourceBadge: "原文",
@@ -161,7 +161,7 @@ export const workspace = {
             languagesTitle: "ボイスの言語",
             languagesHint: "ボイスを収録する言語。テキストの言語とは独立している",
             addLanguage: "ボイスの言語を追加",
-            codePlaceholder: "コード（ja、en、zh-CN…）",
+            codePlaceholder: "コード（例：ja）",
             namePlaceholder: "表示名",
             invalidCode: "言語コードに使えるのは英数字とハイフンだけ",
             more: "その他",
@@ -182,6 +182,14 @@ export const workspace = {
                 other: "テイク {count} 件",
             },
             importFailed: "音声ファイルを読み込めなかった",
+            // 読み込むファイルの名前が、すでにテイクのある行に対応するときに尋ねる（追加収録）
+            replaceTakesTitle: "既存のテイクを差し替える",
+            replaceTakesMessage: {
+                other: "{count} 件のファイルが、すでにテイクのある行に対応している",
+            },
+            replaceTakesDetail: "差し替えると、新しいファイルが対応するテイクに書き込まれる。新しい音声として読み込むと、元のテイクはどの行にも結びつかないままアセットライブラリに残る",
+            replaceTakesImport: "新しい音声として読み込む",
+            replaceTakesReplace: "テイクを差し替える",
             importScript: "収録台本を読み込む…",
             importScriptCounts: "{applied}を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
             scriptRowCount: {
@@ -220,14 +228,15 @@ export const workspace = {
             assign: "音声を割り当てる",
             replace: "音声を差し替える",
             remove: "ボイスを外す",
-            play: "再生",
-            stop: "停止",
+            play: "テイクを再生",
+            showInStory: "ストーリーで表示",
+            stop: "テイクを停止",
             approve: "承認",
             reject: "差し戻す",
             clipMissing: "クリップが見つからない",
             outdatedHint: "このテイクを読み込んだ後に行が変わっている。クリップを読み込み直すと最新として扱う",
-            noStories: "先にストーリーを作る。その台詞がここにボイス対象として並ぶ",
-            emptyStory: "このストーリーにはまだ台詞がない",
+            noStories: "先にストーリーを作る。その地の文と台詞がここにボイス対象として並ぶ",
+            emptyStory: "このストーリーにはまだボイスを付ける行がない",
             emptyFilter: "この絞り込みに一致するものがない",
             auditionAllClear: "試聴するものはもうない",
             auditionPendingCount: "残り {count} 件",
@@ -250,6 +259,18 @@ export const workspace = {
                 },
                 removeDetail: "音声ファイルはアセットライブラリに残る。行を有効に戻すか復元した場合は音声を割り当て直す",
                 unknown: "読み込めないストーリーがあるため、対応する行のない録音は表示しない",
+            },
+        },
+        // 収録台本の列名。最後の列は行の ID で、読み込み時にこれで行と対応づける
+        script: {
+            column: {
+                filename: "ファイル名",
+                character: "話者",
+                scene: "シーン",
+                line: "テキスト",
+                status: "状態",
+                note: "メモ",
+                unitId: "行 ID",
             },
         },
     },
@@ -391,6 +412,8 @@ export const workspace = {
             replaceText: "テキストの置換",
             agentEdit: "エージェントの編集",
             agentPluginEdit: "エージェント: {tool}",
+            importPsd: "PSD の読み込み",
+            importAudio: "音声の読み込み",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -453,6 +476,13 @@ export const workspace = {
                 existsDetail: "同じ名前のファイルは置き換え、ほかのファイルはそのまま残す",
                 replace: "置き換える",
             },
+            installSkill: {
+                title: "Agent Skill をインストール",
+                changedOne: "このフォルダーの SKILL.md は Studio のものと異なる",
+                changedMany: "次のフォルダーの SKILL.md は Studio のものと異なる",
+                changedDetail: "同じ名前のファイルは現在の Studio の Agent Skill で置き換え、ほかのスキルはそのまま残す",
+                replace: "置き換える",
+            },
             folderAccess: {
                 title: "エージェントにフォルダーの読み取りを許可する？",
                 messageOne: "{client} が次のフォルダーの読み取りを求めている",
@@ -473,6 +503,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "プラグイン {plugin} のツール",
+            target: {
+                standardScreens: "標準画面",
+            },
             filter: {
                 all: "すべて",
                 writes: "変更のみ",
@@ -557,6 +590,10 @@ export const workspace = {
             ui_patch: "要素を編集",
             ui_templates: "インターフェーステンプレート",
             ui_template_apply: "テンプレートを適用",
+            ui_page_rename: "ページ名を変更",
+            ui_page_delete: "ページを削除",
+            ui_page_set_entry: "開始ページを設定",
+            ui_install_standard_screens: "標準画面を導入",
             brand_get: "配色を読む",
             brand_set: "配色を変更",
             blueprint_nodes: "ブループリントノード一覧",
@@ -564,6 +601,7 @@ export const workspace = {
             blueprint_list: "ブループリント一覧",
             blueprint_show: "ブループリントをテキストで読む",
             blueprint_apply: "ブループリントを書き込む",
+            blueprint_remove: "ブループリントを削除",
             localization_status: "翻訳の進捗",
             localization_list: "翻訳するテキストを一覧",
             localization_set: "翻訳を書き込む",
@@ -577,7 +615,14 @@ export const workspace = {
             playtest_start: "ゲームをプレイ",
             playtest_advance: "プレイを進める",
             playtest_screenshot: "プレイ画面のスクリーンショット",
+            asset_usage: "アセットの使用箇所",
+            chapter_rename: "チャプターの名前を変更",
+            chapter_delete: "チャプターを削除",
+            playtest_click: "プレイ中にクリック",
+            playtest_hover: "プレイ中にポインターを重ねる",
+            playtest_key: "プレイ中にキーを押す",
             playtest_stop: "プレイを終了",
+            playtest_variables: "ゲームの変数を読む",
             console_read: "コンソールを読む",
             build: "ゲームをビルド",
         },
@@ -789,11 +834,6 @@ export const workspace = {
         noActiveEditor: "エディタが開いていない",
         closePanel: "パネルを閉じる",
         closeTab: "{name} を閉じる",
-        newTab: "新しいタブ",
-        // タブ列の「+」で開く、ブラウザ風の空のタブ。
-        newTabPage: {
-            title: "新しいタブ",
-        },
         tabMenu: {
             keepOpen: "タブとして残す",
             close: "閉じる",
@@ -913,6 +953,8 @@ export const workspace = {
                 asset: "アセット",
                 blueprint: "ブループリント",
             },
+            // 種類・名前・場所がすべて同じ行に、プロジェクト内の順序で振る番号。
+            ordinal: "{n} 番目",
         },
         // 下端のステータスの帯。意味のあるときだけ出る。
         statusBar: {
@@ -1534,6 +1576,7 @@ export const workspace = {
                 localization: "翻訳表",
                 voice: "音声表",
                 lint: "問題",
+                search: "検索",
                 other: "その他",
             },
             // 自分の i18n キーを持たなかったカタログの項目の名前。
@@ -1593,6 +1636,11 @@ export const workspace = {
                     copy: "ノードをコピー",
                     cut: "ノードを切り取り",
                     paste: "ノードを貼り付け",
+                },
+                // 検索パネル：置換を、それが変えたすべてのシーンで元に戻す・やり直す。
+                search: {
+                    undo: "置換を元に戻す",
+                    redo: "置換をやり直す",
                 },
                 storyMotion: {
                     undo: "元に戻す",
@@ -1737,6 +1785,9 @@ export const workspace = {
                     clearMarker: "マーカーを消去",
                     videoZoom: "画面をズーム",
                     videoActualSize: "ウィンドウに合わせる表示と実寸を切り替え",
+                    moveSelection: "選択を移動",
+                    extendSelection: "選択を広げる",
+                    moveThroughGroupTree: "グループツリー内を移動",
                 },
             },
         },
@@ -1764,6 +1815,22 @@ export const workspace = {
             // 計画がプロジェクトに合わなくなった。書き換えるはずだったものが、その後に削除されたか
             // 変わっている。置換は全部通すか何もしないかなので、残りを書かずに断る。
             replaceStale: "プロジェクトが変わった。検索し直す",
+            // パネルで Ctrl+Z を押すと、最新の手順がまだその置換であるシーンで置換を元に戻す。置換の後に
+            // 編集したシーンは置換後のテキストのまま残り、下の 2 つがそのシーンを示す（シーン名は通知の詳細行）。
+            // 「すべて置換」の後の通知。詳細行は、その置換を元に戻すキーを示す。
+            replacedInScene: {
+                other: "{scene} で {count} 箇所を置換した",
+            },
+            replacedInScenes: {
+                other: "{scenes} 個のシーンで {count} 箇所を置換した",
+            },
+            replacedUndoHint: "検索パネルで {key} を押すと、すべてのシーンで元に戻る",
+            undoSkipped: {
+                other: "置換の後に編集された {count} 個のシーンでは、置換を元に戻していない",
+            },
+            redoSkipped: {
+                other: "元に戻した後に編集された {count} 個のシーンでは、置換をやり直していない",
+            },
             // 実体の群を先に出す。この欄はまず「X というものを開く」に答え、
             // 次に「X と書かれた行を探す」に答える。
             groups: {

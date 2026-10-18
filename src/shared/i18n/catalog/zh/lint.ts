@@ -81,6 +81,21 @@ export const lint = {
                 + "- 「项目 ▸ 设置」中的压缩可以缩小构建中的副本，但本检查仍按项目中的文件计算\n"
                 + "- 在「项目 ▸ 项目 ▸ 项目检查」中提高上限，或将本规则设为「关闭」",
         },
+        assetsSpriteAnimationFinite: {
+            title: "播放后停止的立绘动画",
+            description: "角色立绘使用了只播放固定次数的动态 PNG",
+            message: "{asset} 为动态 PNG，播放 {plays} 次后停在末帧",
+            help:
+                "角色外观中使用的图片为动态 PNG（APNG），且声明了固定的播放次数。"
+                + "无限循环的动画（如眨眼、呼吸）不会被报告\n"
+                + "\n"
+                + "舞台按浏览器播放图片的方式播放立绘动画，与剧情进度无关：立绘首次绘制时开始播放；"
+                + "立绘隐藏后再次显示时可能停在末帧而不重新播放\n"
+                + "\n"
+                + "- 循环效果：将 APNG 导出为无限循环，然后在资产面板中右键该资产，选择「替换文件…」\n"
+                + "- 一次性反应：改用静态图片作为角色的差分，或使用 Live2D、Spine 模型\n"
+                + "- 如果需要画面停在末帧，可在「项目 ▸ 项目 ▸ 项目检查」中将本规则设为「关闭」",
+        },
         assetsGroupIncomplete: {
             title: "未完成的资产集",
             description: "声明的变体中存在未恰好对应一个文件的变体",
@@ -274,8 +289,8 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "无子节点",
-            description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
-            message: "该行没有子节点，执行到此处即越过场景末尾",
+            description: "场景中部分路径离开场景，另有路径执行到场景末尾",
+            message: "播放到该行后越过场景末尾",
             help:
                 "该场景的最后一行不会离开场景，播放可能越过场景末尾。离开场景的行包括：不带「返回」的 /jump、"
                 + "/goto、/ending、/quit，以及所运行蓝图中含有「开始游戏」或「退出游戏」"
@@ -358,6 +373,19 @@ export const lint = {
                 + "- 应先播放的行，移到结局之前\n"
                 + "- 故事只在部分情况下结束时，把结局放进 /if 的分支中\n"
                 + "- 否则删除这些行",
+        },
+        storyPageMissing: {
+            title: "没有页面的打开页面行",
+            description: "未指定页面，或指定的页面已不在项目中的 /page 行",
+            message: "该行未指定页面，不会打开任何页面，剧情会直接继续",
+            deleted: "该行指定的页面已不在项目中，不会打开任何页面，剧情会直接继续",
+            help:
+                "/page 行（打开页面）未指定页面，或指向本项目中已不存在的页面\n"
+                + "\n"
+                + "该行不会打开任何页面，剧情也不会等待，因此结果变量不会被写入，读取它的 /if 总会走同一个分支\n"
+                + "\n"
+                + "- 在该行上选择一个页面\n"
+                + "- 页面已确定不再需要时，删除该行",
         },
         storyQuitPageMissing: {
             title: "没有页面的退出行",
@@ -450,14 +478,16 @@ export const lint = {
             // 一贯说法（`story.enterExit.enter`、`story.empty.emptyExampleShow`、动效的 `entrance`），
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "本场景中没有任何行让 {object} 登场，该行没有可操作的对象",
+            messageLayer: "本场景的图层中没有 {object}，该行没有可操作的对象",
             help:
                 "该行操作的舞台对象，在本场景中没有任何行创建。只计算同一场景中的行，舞台对象不会从其他场景延续过来；"
                 + "名称须完全一致\n"
                 + "\n"
                 + "游戏中该行没有可操作的对象，不起作用\n"
                 + "\n"
-                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/layer、/vfx、"
+                + "- 在本场景中、该行之前添加创建它的行：/image、/text、/vfx、"
                 + "/play 或 /sound；角色用 /show 让其登场\n"
+                + "- 图层在实时预览的「图层」视图中添加到场景的图层\n"
                 + "- 该行本应操作已有的对象时，在检查器中改选该对象\n"
                 + "- 名称拼写有误时改正",
         },
@@ -548,6 +578,17 @@ export const lint = {
                 + "\n"
                 + "- 该行用于确定背景时（例如场景有多个入口），去掉它的转场，直接切换不占用时间\n"
                 + "- 否则删除该行，或改选其他图片",
+        },
+        storyTagNameShared: {
+            title: "多个轴上的同名标签",
+            description: "分层立绘角色的两个轴上有同名标签",
+            message: "「{first}」与「{second}」两个轴上都有名为「{tag}」的标签",
+            help:
+                "分层立绘角色有两个轴含有同名标签，例如「服装」与「发型」下都有「蓝」。比较名称时不区分大小写\n"
+                + "\n"
+                + "/char 等以文本输入的行只按标签名指定外观，该名称只能指向靠前的轴上的标签；另一个标签只能在该行的「属性」中选择\n"
+                + "\n"
+                + "- 在角色编辑器中重命名其中一个标签",
         },
         blueprintReferenceMissing: {
             title: "目标缺失",
@@ -686,7 +727,8 @@ export const lint = {
             message: "没有任何位置会打开该页面",
             help:
                 "没有任何位置打开该页面：它不是入口页面，没有蓝图节点选定它（例如「前往页面」「叠加页面」「退出游戏」），"
-                + "也没有页面控件显示它。游戏 UI 不在检查范围内\n"
+                + "没有页面控件显示它，没有 /quit 或 /ending 行指定它，项目与各构建变体也未将它设为剧本结束后显示的页面。"
+                + "游戏 UI 不在检查范围内\n"
                 + "\n"
                 + "玩家无法打开该页面\n"
                 + "\n"
@@ -1017,7 +1059,7 @@ export const lint = {
             messageUnnamed: "此处一个未声明的变量取值始终在 {bound} 之内，该条件不会成立",
             help:
                 "在该行处，变量所有可能的取值都无法使条件成立。只检查数字变量与写明的数字之间的比较，"
-                + "例如 affection >= 50。问题中给出的范围由变量的默认值，"
+                + "例如 affection >= 50。持久变量的值从上一局延续，不做检查。问题中给出的范围由变量的默认值，"
                 + "以及到达该行之前故事可能做出的全部改动得出\n"
                 + "\n"
                 + "游戏中该条件始终不成立：/if 分支永远不会执行，/until 永远不会因它结束循环，"
@@ -1160,7 +1202,7 @@ export const lint = {
         voiceMissing: {
             title: "缺少语音",
             description: "配音语言中没有该行的录音",
-            message: "缺少 {locale} 录音",
+            message: "缺少 {language} 录音",
             help:
                 "某一需要配音的行，在项目的某种配音语言中没有录音。检查旁白与对白行；开启「为选项配音」时也检查选项。"
                 + "提示语、空白行与已禁用的行不检查\n"
@@ -1176,7 +1218,7 @@ export const lint = {
         voiceStale: {
             title: "语音过期",
             description: "对白在录音之后发生过修改",
-            message: "{locale} 录音比对白旧",
+            message: "{language} 录音早于该行的修改",
             help:
                 "某段录音关联之后，对应行的文本有改动。比较的是该语言配音演员所读的文本：项目有该语言的译文时为译文，"
                 + "否则为源语言原文\n"
@@ -1192,7 +1234,7 @@ export const lint = {
             description: "对应的对白已不存在",
             message: "{recordings}没有对应的行",
             recordingCount: {
-                other: "{count} 条 {locale} 录音",
+                other: "{count} 条 {language} 录音",
             },
             help:
                 "某种配音语言中留有一些录音，它们关联的行已不在任何故事中：所在行已被删除、剪切后粘贴到别处或已禁用，"
@@ -1300,6 +1342,7 @@ export const lint = {
     severity: {
         error: "错误",
         warning: "警告",
+        minor: "次要警告",
         info: "提示",
         off: "关闭",
     },
@@ -1307,7 +1350,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        counts: "{errors}，{warnings}，{infos}",
+        counts: "{errors}，{warnings}，{minorWarnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -1340,7 +1383,7 @@ export const lint = {
         jumpFailed: "该位置已无法打开",
     },
     statusBar: {
-        counts: "问题：{errors}，{warnings}，{infos}",
+        counts: "问题：{errors}，{warnings}，{minorWarnings}，{infos}",
     },
     command: {
         runProject: "检查项目",

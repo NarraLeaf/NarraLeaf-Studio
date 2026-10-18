@@ -92,7 +92,27 @@ describe("replaceSpelling", () => {
 
         act(() => field.ref.current!.replaceSpelling(0, 3, ""));
         act(() => field.ref.current!.replaceSpelling(3, 0, "the"));
+        // A suggestion always replaces a word; an empty range is `insertText`'s, not this one's.
+        act(() => field.ref.current!.replaceSpelling(0, 0, "the"));
 
         expect(field.onChange).not.toHaveBeenCalled();
+    });
+});
+
+describe("insertText", () => {
+    it("puts text on an empty line, as an edit the row hears about", () => {
+        const field = renderField([]);
+
+        act(() => field.ref.current!.insertText(0, "・"));
+
+        expect(field.lastValue()).toBe("・");
+    });
+
+    it("writes at the unit it is given and leaves the rest of the line alone", () => {
+        const field = renderField([{ text: "cat sat" }]);
+
+        act(() => field.ref.current!.insertText(4, "has "));
+
+        expect(field.lastValue()).toBe("cat has sat");
     });
 });

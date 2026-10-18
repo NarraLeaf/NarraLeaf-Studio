@@ -6,7 +6,7 @@ import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../ui/freezeGuard";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import type { HistoryLabel } from "@/lib/workspace/services/history/historyModel";
-import { resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
+import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
@@ -97,6 +97,8 @@ export function WorkspaceHistoryMenu() {
         // own last operation, and the room's log is not a stack of labelled snapshots.
         const undoStep = session ? null : name(history.peekUndo(scopeId));
         const redoStep = session ? null : name(history.peekRedo(scopeId));
+        // The Search panel's replaces have keys of their own; print the ones that would fire there.
+        const inSearch = isSearchPanelFocus(focus);
 
         registerActionGroup({
             id: groupId,
@@ -117,7 +119,7 @@ export function WorkspaceHistoryMenu() {
                     icon: <Undo2 className="w-4 h-4" />,
                     // Printed, not registered: the row says Ctrl+Z because that is what the author
                     // would press, while the key itself stays with whichever editor has focus.
-                    shortcutId: "workspace.undo",
+                    shortcutId: inSearch ? "search.undo" : "workspace.undo",
                     // No `shortcut`, deliberately. The registry turns an action's shortcut into a
                     // real keybinding guarded by that action's `when` - and `when` also decides
                     // whether the item is *shown*, so there is no value that both keeps Undo in the
@@ -146,7 +148,7 @@ export function WorkspaceHistoryMenu() {
                         ? t("workspace.history.menu.redoNamed", { step: redoStep })
                         : t("menu.edit.redo"),
                     icon: <Redo2 className="w-4 h-4" />,
-                    shortcutId: "workspace.redo",
+                    shortcutId: inSearch ? "search.redo" : "workspace.redo",
                     menuRole: "redo",
                     onClick: session
                         ? () => {

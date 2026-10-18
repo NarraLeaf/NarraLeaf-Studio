@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 41 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 42 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -820,6 +820,21 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: {},
             output: [],
         },
+        /**
+         * Add a line to the running game's notification stream, the same one the engine's own
+         * notices go into, so the Game UI notification slot draws it and `getNotifications` lists it
+         * until it times out. `durationSeconds` absent means the engine's default. Refused with no
+         * game running: there is no stream to post into, and a line dropped silently would read as
+         * a node that does nothing.
+         */
+        postNotification: {
+            capabilityId: "game.postNotification",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
+            input: { message: "", durationSeconds: 0 },
+            output: null,
+        },
         getChoiceCount: {
             capabilityId: "game.getChoiceCount",
             purity: "pure",
@@ -1066,6 +1081,10 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
      *
      * Needed far beyond the gallery - before this family, an authored title
      * screen could not play a button click.
+     *
+     * `setPageMusic` is the exception: a page's music outlives the engine's
+     * sessions, so the host plays it on a graph of its own and multiplies the
+     * player's mixer in, as it does for a video's sound.
      */
     sound: {
         play: {
@@ -1126,6 +1145,18 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: { handle: null },
             output: false,
+        },
+        /**
+         * The music of the page the calling graph runs on (Play / Stop Page Music). No handle: the
+         * page's music hands over and comes back with the page, as its inspector setting does.
+         */
+        setPageMusic: {
+            capabilityId: "sound.setPageMusic",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { request: null },
+            output: null,
         },
         /**
          * For host-owned media elements (the `nl.video` widget's `<video>`), which sit outside the

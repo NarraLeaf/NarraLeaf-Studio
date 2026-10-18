@@ -30,6 +30,7 @@ import {
     normalizeCrashConfiguration,
     normalizeDialogueConfiguration,
     normalizeLanguageChangeConfiguration,
+    lintingConfigurationForWrite,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
@@ -461,10 +462,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      */
     public async updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const linting: LintingConfiguration = {
-                ...normalizeLintingConfiguration(config.app?.linting),
-                ...patch,
-            };
+            // Through `lintingConfigurationForWrite`, not a plain merge over the normalized config:
+            // that would drop every stored level this Studio does not know on the way back to disk.
+            const linting: LintingConfiguration = lintingConfigurationForWrite(config.app?.linting, patch);
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),

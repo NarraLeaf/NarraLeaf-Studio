@@ -21,6 +21,7 @@ import {
     createDefaultStoryPreviewFloatRect,
     migrateEditorBodyStoryPreviewFloatRect,
     readRectInArea,
+    readStoryPreviewFloatAnchor,
     type StoryPreviewFloatBounds,
 } from "./storyPreviewFloatGeometry";
 import { trackStoryPreviewFloatOwner } from "./storyPreviewFloatTracking";
@@ -131,7 +132,7 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
     let rect: StoryScenePreviewFloatRect | null = null;
     if (layout && floating) {
         if (!layout.float) {
-            rect = createDefaultStoryPreviewFloatRect(bounds, readRectInArea(targetHandle?.editorBody() ?? null, hub?.getArea() ?? null));
+            rect = createDefaultStoryPreviewFloatRect(bounds, readStoryPreviewFloatAnchor(targetHandle?.editorBody() ?? null, hub?.getArea() ?? null));
         } else {
             rect = layout.floatFrame === "editorBody"
                 ? migrateEditorBodyStoryPreviewFloatRect(layout.float, editorBodyOffsetNow())

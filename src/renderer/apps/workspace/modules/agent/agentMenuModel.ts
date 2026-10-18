@@ -1,5 +1,6 @@
 import type { Translator, TranslationKey } from "@shared/i18n";
 import type { AgentCopyConfigKind, AgentQuickState } from "@shared/agent/workspaceAccess";
+import { AGENT_COPY_CONFIGS, type AgentCopyConfigEntry } from "@shared/agent/clients";
 import { Separator, type ActionDefinition, type ActionMenuItem } from "../../registry/types";
 
 /**
@@ -8,8 +9,9 @@ import { Separator, type ActionDefinition, type ActionMenuItem } from "../../reg
  * setting of the same name in Settings ▸ Agent access), the log, and the three things that
  * belong to agent access as a whole (the endpoint, write access, connection configuration and the
  * skill), then the way to the full settings. While access is off, only the status line, the switch
- * that turns it on and the way to settings. When the endpoint had to move to another port, a second
- * read-only line under the status says so until a configuration is copied again.
+ * that turns it on and the way to settings. A second read-only line under the status says when the
+ * endpoint could not start because its port is in use or reserved, or - until a configuration is
+ * copied again - that a profile was moved off the old default port.
  *
  * Separate from the component so the status line and the shape can be tested without a workspace.
  * The rows carry ids and `group` but never `shortcut`: a shortcut on a registered action becomes a
@@ -31,6 +33,7 @@ export const AGENT_MENU_MNEMONIC = "A";
 export const AGENT_MENU_ACTIONS = {
     status: "narraleaf-studio:agent-status",
     portMoved: "narraleaf-studio:agent-port-moved",
+    portUnavailable: "narraleaf-studio:agent-port-unavailable",
     pause: "narraleaf-studio:agent-pause",
     follow: "narraleaf-studio:agent-follow",
     log: "narraleaf-studio:agent-log",
@@ -80,15 +83,11 @@ export function agentMenuStatusLine(t: Translator["t"], clientName: string | nul
 
 /**
  * The configurations the copy submenu offers, in its order, with the row label each takes: product
- * names, the same in every language. The stdio bridge is named for the client it is for. The order
- * and the names are the ones the Settings panel's copy buttons use.
+ * names, the same in every language. The stdio bridge is named for the client it is for. One list
+ * with the Settings panel's copy buttons and the application list in setup and Settings, in
+ * `@shared/agent/clients`.
  */
-export const AGENT_MENU_COPY_KINDS: readonly { kind: AgentCopyConfigKind; label: string }[] = [
-    { kind: "claudeCode", label: "Claude Code" },
-    { kind: "stdio", label: "Claude Desktop" },
-    { kind: "opencode", label: "opencode" },
-    { kind: "json", label: "JSON" },
-];
+export const AGENT_MENU_COPY_KINDS: readonly AgentCopyConfigEntry[] = AGENT_COPY_CONFIGS;
 
 export function agentCopyKindLabel(kind: AgentCopyConfigKind): string {
     return AGENT_MENU_COPY_KINDS.find(item => item.kind === kind)?.label ?? kind;
@@ -135,12 +134,26 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
             onClick: () => undefined,
         })]
         : [];
+    // The endpoint is on but did not start: its port is taken or reserved, and Settings is where
+    // another one is set.
+    const unavailable = quick?.running === false ? quick.portUnavailable : null;
+    const portUnavailable = unavailable
+        ? [action({
+            id: AGENT_MENU_ACTIONS.portUnavailable,
+            label: t("settings.agent.failed", {
+                message: t(unavailable.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: unavailable.port }),
+            }),
+            disabled: true,
+            onClick: () => undefined,
+        })]
+        : [];
     const enable = action({
         id: AGENT_MENU_ACTIONS.enable,
         labelKey: "workspace.agent.appMenu.enable",
         label: t("workspace.agent.appMenu.enable"),
         checked: quick?.enabled ?? false,
-        disabled: quick === null,
+        // A development launch decides it with `--agent`.
+        disabled: quick === null || quick.setByLaunch,
         onClick: run.toggleEnabled,
     });
     const settings = action({
@@ -157,6 +170,7 @@ export function buildAgentMenuItems(input: AgentMenuModelInput): ActionMenuItem[
     }
     return [
         status,
+        ...portUnavailable,
         ...portMoved,
         Separator,
         action({

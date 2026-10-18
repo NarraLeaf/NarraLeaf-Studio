@@ -22,6 +22,18 @@ const DEFAULT_STATE: ProjectTrustState = {
     "project.trust.version": 0,
 };
 
+export type ProjectTrustManagerOptions = {
+    /**
+     * Asked about a project the ledger does not trust, and only then; `true` lets it run anyway.
+     *
+     * For the experimental `trust-all-projects` condition, which needs a test instance to open any
+     * project without anyone answering the trust question. It never writes the ledger, so the
+     * condition leaves no decision behind: a run without it meets the same projects exactly as
+     * waiting as they would have been.
+     */
+    trustUnvouched?: (projectPath: string) => boolean;
+};
+
 /** A row as the first version of the ledger wrote it, before it said who vouched or when it was met. */
 type LegacyProjectTrustRecord = Partial<ProjectTrustRecord> & { importedAt?: string };
 
@@ -78,8 +90,10 @@ function selfAndAncestors(key: string): string[] {
  */
 export class ProjectTrustManager {
     private readonly state: PersistentState<ProjectTrustState>;
+    private readonly trustUnvouched: (projectPath: string) => boolean;
 
-    constructor(userDataDir: string) {
+    constructor(userDataDir: string, options: ProjectTrustManagerOptions = {}) {
+        this.trustUnvouched = options.trustUnvouched ?? (() => false);
         const dbPath = path.join(userDataDir, UserDataNamespace.Authorization, "project-trust.config");
         const config: PersistentStateConfig<ProjectTrustState> = {
             dbPath,
@@ -163,10 +177,14 @@ export class ProjectTrustManager {
      * Whether this project may cause effects.
      *
      * The question every gate asks. A path that normalizes to nothing is not a project anybody
-     * vouched for, and answers no like any other absence.
+     * vouched for, and answers no like any other absence - with or without `trustUnvouched`, which
+     * is only consulted once the ledger has said no about a real path.
      */
     public isTrusted(projectPath: string): boolean {
-        return isProjectTrusted(this.getRecord(projectPath));
+        if (isProjectTrusted(this.getRecord(projectPath))) {
+            return true;
+        }
+        return normalizeProjectPath(projectPath) !== "" && this.trustUnvouched(projectPath);
     }
 
     /**
@@ -292,6 +310,35 @@ export class ProjectTrustManager {
     }
 
     /**
+     * The author deletes a row from the settings list.
+     *
+     * The row goes, decision and all: a project trusted before is no longer trusted, and the next
+     * time it is opened Studio meets it as if for the first time and asks again. That is the safe
+     * side, so it needs no confirmation beyond the author pressing the button.
+     *
+     * The one row this refuses to drop is a waiting row inside a trusted tree. A package or a clone
+     * that landed in a project the author trusts was given a row of its own precisely so the
+     * surrounding trust would not cover it; without that row the ancestor's grant would, and a
+     * button that says "delete" would have trusted somebody else's code. `"covered"` says so, and
+     * the row stays.
+     */
+    public forgetRecord(projectPath: string): "forgotten" | "unknown" | "covered" {
+        const key = normalizeProjectPath(projectPath);
+        // A copy, so a refusal leaves the row the state holds untouched.
+        const table = { ...this.table() };
+        const own = key ? table[key] : undefined;
+        if (!own) {
+            return "unknown";
+        }
+        delete table[key];
+        if (!isProjectTrusted(own) && isProjectTrusted(this.governing(table, key))) {
+            return "covered";
+        }
+        this.write(table);
+        return "forgotten";
+    }
+
+    /**
      * Every project the author vouched for, newest grant first - the settings list.
      *
      * Studio's own vouches are not in it. The page is a list of the author's decisions, and a
@@ -301,6 +348,15 @@ export class ProjectTrustManager {
         return Object.values(this.table())
             .filter(record => record.trustedAt !== null && record.vouchedBy === "author")
             .sort((a, b) => (b.trustedAt ?? "").localeCompare(a.trustedAt ?? ""));
+    }
+
+    /**
+     * Every project the ledger has met, trusted or not, as its path was spelled - which is every
+     * project this Studio has opened, created or been handed. For telling a new project's app ID
+     * apart from theirs; it says nothing about trust.
+     */
+    public listKnownPaths(): string[] {
+        return Object.values(this.table()).map(record => record.displayPath || record.path);
     }
 
     /** Every project still waiting for a decision, newest first. */

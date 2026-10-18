@@ -6,6 +6,7 @@ import type {
     StoryDisplayableTargetRef,
     StoryScene,
 } from "./document";
+import { findSceneLayer } from "./sceneLayers";
 
 /** Author-facing label + transform kind for each built-in stage singleton. */
 export const DISPLAYABLE_BUILTIN_META: Record<StoryDisplayableBuiltin, { label: string; kind: StoryDisplayableTargetKind; hint: string }> = {
@@ -66,8 +67,10 @@ export function authoredCharacterStageName(payload: Extract<StoryActionPayload, 
 
 /**
  * The identity of the displayable a creator action block introduces, or null when the block does not
- * declare one. Character / image / text / layer actions are the only ways a displayable comes into
- * existence, so these are the only sources of a stable identity.
+ * declare one. Character / image / text actions are the only rows a displayable comes into existence
+ * on, so these are the only rows that are a source of a stable identity. A layer is not one of them:
+ * the scene declares its layers (`StoryScene.layers`), and {@link resolveDisplayableTargetRef} looks
+ * a layer reference up there.
  *
  * `name` is the *stage key*: the exact name the compiler registers the object under. Resolution must
  * use it, or the lookup misses and the action silently does nothing.
@@ -90,13 +93,6 @@ export function displayableSourceIdentity(
     }
     if (payload.action === "text") {
         return { kind: "text", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Text" };
-    }
-    if (payload.action === "layer") {
-        // Only a `create` op introduces a layer; other ops (transform / z-index / show / hide)
-        // reference an existing one via `target`, so they are not a source of stage identity.
-        return payload.operation === "create"
-            ? { kind: "layer", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Layer" }
-            : null;
     }
     return null;
 }
@@ -125,7 +121,7 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
             return payload.operation === "enter";
         // A `show` that names an asset brings the element into existence on the row that reveals it,
         // so it declares exactly as a `create` row does (see {@link revealCreates}). Only `image`
-        // carries that form: a text has no asset to name, a layer is never revealed, and an ambience
+        // carries that form: a text has no asset to name, and an ambience
         // overlay settles how it composites on the row that declares it (blend, fit, opacity, z) -
         // settings a reveal has nowhere to put.
         case "image":
@@ -136,9 +132,9 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
         case "video":
             return payload.operation === "play";
         case "text":
-        case "layer":
         case "vfx":
             return payload.operation === "create";
+        // A layer is declared by its scene, never by a row (`StoryScene.layers`).
         // `setBgm` is left out on purpose: it points the reserved music channel at a clip, and that
         // channel is referenced as a built-in rather than bound to the row - see
         // `actionableSourceIdentity`.
@@ -224,7 +220,7 @@ export function videoLeaveFadeMs(payload: VideoActionPayload): number | null {
  * The identity of the displayable a block **declares**, or null when the block only addresses one
  * that already exists. The strict half of {@link displayableSourceIdentity}: same naming rules, but
  * only a row that brings the object into existence answers - `character` enter, `image` create,
- * `text` create, `layer` create.
+ * `text` create.
  *
  * The two cannot be merged, and neither is wrong:
  *  - {@link displayableSourceIdentity} answers "does this row put this name on stage", which is what
@@ -235,9 +231,6 @@ export function videoLeaveFadeMs(payload: VideoActionPayload): number | null {
  *    to. Anchoring a reference to whichever row happened to mention the name first is stable only
  *    while every row spells the name identically; the moment a rename edits the defining row alone,
  *    a reference anchored to a `show` row keeps reporting the old name with nothing to show for it.
- *
- * `layer` reads the same either way - {@link displayableSourceIdentity} already gates it on `create`,
- * because a layer is the one kind the engine will not conjure from a mention.
  */
 export function displayableCreatorIdentity(
     block: StoryBlock,
@@ -253,9 +246,10 @@ export function displayableCreatorIdentity(
 
 /**
  * Resolve a displayable target to the stage key + kind that should be used *right now*. When the
- * target carries a stable `sourceBlockId` that still resolves to a creator block, that block's
- * current identity wins, so the reference follows renames. Otherwise the stored `name`/`kind` is
- * returned - for legacy documents authored before stable ids, or a source block that was deleted.
+ * target carries a stable `sourceBlockId` that still resolves to a creator block - or, for a layer,
+ * to one of the scene's layers - its current identity wins, so the reference follows renames.
+ * Otherwise the stored `name`/`kind` is returned - for legacy documents authored before stable ids,
+ * or a declaration that was deleted.
  *
  * Look objects up by `name` and render `label`; they differ whenever the stage key is not something
  * an author typed (see `displayableSourceIdentity`).
@@ -273,6 +267,10 @@ export function resolveDisplayableTargetRef(
         const identity = source ? displayableSourceIdentity(source) : null;
         if (identity) {
             return { name: identity.name, kind: identity.kind, label: identity.label };
+        }
+        const layer = findSceneLayer(scene, target.sourceBlockId);
+        if (layer) {
+            return { name: normalizeStageObjectName(layer.name), kind: "layer", label: layer.name || "Layer" };
         }
     }
     // Legacy / dangling ref: the stored fields are all we have. `label` first, because `name` is the

@@ -115,16 +115,30 @@ character's axes, tags, defaults and layers; `story_targets` lists the looks und
 ## In a scene
 
 ```
-/show Mei pos=left in=fade            every axis at its default
-/show Mei casual pos=right            casual outfit, default expression
+/show Mei casual pos=right
 Mei: Did you wait long?
-/char Mei smile                       expression changes, outfit stays casual
+/char Mei smile
 Mei: Good. Let's go.
-/char Mei school t=dissolve d=0.4     outfit changes, still smiling
+/char Mei school t=dissolve d=0.4
 ```
+
+`/show Mei casual` brings her on in the casual outfit with the default expression (`/show Mei` alone
+takes every axis at its default). `/char Mei smile` changes the expression and the outfit stays
+casual; `/char Mei school` changes the outfit and she is still smiling.
 
 One tag per `/char` row: to change two axes at once, write two rows. A `/show` names at most one tag
 too; every axis it does not name takes its default.
+
+## Avatars
+
+The face beside a line in the dialogue box and the backlog. Studio cuts one per combination of the
+character's **avatar axes** from the composited sprite when the author opens the Characters panel;
+by default every axis counts, so two axes of four tags make sixteen avatars. Usually only the
+expression should: `character_upsert {id, avatarAxes: ["expression"]}`. To supply drawn
+faces instead, `avatars` maps one tag per avatar axis (joined with `+` when there are several) to an
+image: `{ "avatars": { "smile": "mei_face_smile", "angry": "mei_face_angry" } }`. `defaultAvatar` is
+what shows where no combination has one. `characters_list` reports `avatarAxes`, the drawn `avatars`
+and how many crops Studio has cut (`bakedAvatars`).
 
 ## Live2D, Spine and custom runtimes
 

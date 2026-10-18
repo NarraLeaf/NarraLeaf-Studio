@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { compileUiFile } from "./compile";
 import { parseUiFile } from "./parse";
+import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 
 function compile(text: string) {
     return compileUiFile(parseUiFile(text));
@@ -184,6 +185,40 @@ describe("compiling a .ui file", () => {
         );
         expect(Object.keys(second.surfaces[0].elements)).toContain("fixed-id");
         expect(second.surfaces[0].dropped).toEqual([]);
+    });
+
+    it("refuses an element indented under a line that holds none, rather than dropping it", () => {
+        // `Label` sits one level too deep, under the `width =` line instead of beside it. It used to
+        // vanish with its binding while the apply reported no problems.
+        const text = `${MINIMAL}        Row: nl.container @0,0 100x40\n            layout.width = 100\n                Label: nl.text @0,0 100x40\n`;
+        expect(() => parseUiFile(text)).toThrow(/line 5: this line is indented under line 4/);
+        expect(() => parseUiFile('struct demo.row\n    field caption: string\n        field shot: image\n')).toThrow(/line 3/);
+        expect(() => parseUiFile(`surface "S" id=s kind=appSurface size=800x600\n    param title "Title" = ""\n        Root: nl.root @0,0 800x600\n`)).toThrow(/line 3/);
+    });
+
+    it("still reads an element indented under the element it belongs to", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 100x40\n            layout.width = 100\n            Label: nl.text id=label @0,0 100x40\n`);
+        expect(Object.keys(result.surfaces[0].elements)).toEqual(expect.arrayContaining(["row", "label"]));
+    });
+
+    it("reads a hex colour written without quotes, and still strips a real comment", () => {
+        const result = compile(`${MINIMAL}        Panel: nl.container id=panel @0,0 10x10\n            props.appearance.backgroundColor = #1a2b3c # the panel\n`);
+        const props = result.surfaces[0].elements.panel.props as Record<string, any>;
+        expect(props.appearance.backgroundColor).toBe("#1a2b3c");
+        // Not a colour, so still a comment - and the assignment it leaves has no value.
+        expect(() => parseUiFile(`${MINIMAL}        Panel: nl.container @0,0 10x10\n            props.label = #notacolour\n`)).toThrow(/has no value/);
+    });
+
+    it("accepts `type=` on a struct field", () => {
+        const result = compile("struct demo.row\n    field id type=string\n    field count: type=number\n");
+        expect(result.structs["demo.row"].fields.map(field => field.type)).toEqual(["string", "number"]);
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it("writes an element's navigation and prints it back", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 10x10\n            navigation.focusable = always\n`);
+        expect(result.surfaces[0].elements.row.navigation).toEqual({ focusable: "always" });
+        expect(result.surfaces[0].elements.row.props?.navigation).toBeUndefined();
     });
 
     it("reads a struct block", () => {
@@ -407,5 +442,98 @@ describe("a page's parameters", () => {
         expect(result.diagnostics).toEqual([]);
         expect(result.surfaces[0].elements.msg?.valueBindings).toEqual({ text: { kind: "pageParam", paramId: "message" } });
         expect(codes(page("string"))).toContain("ui.param_not_text");
+    });
+});
+
+describe("a new element's widget defaults", () => {
+    const existingWith = (elements: Record<string, unknown>) => ({
+        schemaVersion: 12,
+        id: "d",
+        name: "d",
+        surfaces: [{ id: "s", name: "S", host: "app", kind: "appSurface", designSize: { width: 800, height: 600 }, rootElementId: "root" }],
+        elements: { root: { id: "root", type: "nl.root", parentId: null, childrenIds: Object.keys(elements), layout: { x: 0, y: 0, width: 800, height: 600 } }, ...elements },
+    }) as never;
+    const PAGE = 'surface "S" id=s kind=appSurface size=800x600\n    Root: nl.root id=root @0,0 800x600\n';
+    const shot = (flag: string) => `${PAGE}        Shot: nl.image id=shot @0,0 10x10${flag}\n            imageFill = {"mode":"cover","assetId":"art-1"}\n`;
+
+    function drawn(element: { props?: Record<string, unknown> }) {
+        return resolveImageRectangleLike(
+            element as never,
+            (element.props as { appearance?: never } | undefined)?.appearance,
+            { signals: {} } as never,
+        );
+    }
+
+    it("fills a new element from its widget's defaults, so an image given only its picture draws it", () => {
+        const result = compileUiFile(parseUiFile(shot("")), { existing: existingWith({}) });
+        const element = result.surfaces[0].elements.shot;
+        expect(element.props?.fillType).toBe("image");
+        expect(element.props?.fillVisible).toBe(true);
+        expect(drawn(element)).toMatchObject({ fillType: "image", imageFill: { mode: "cover", assetId: "art-1" } });
+    });
+
+    it("lets a line change a default prop under `+defaults` without the default appearance row hiding it", () => {
+        const result = compileUiFile(parseUiFile(shot(" +defaults")));
+        expect(drawn(result.surfaces[0].elements.shot)).toMatchObject({ fillType: "image", imageFill: { mode: "cover", assetId: "art-1" } });
+    });
+
+    /**
+     * A new element starts from its widget's defaults, but never from its default words: those depend
+     * on the Studio's language. The search that was meant to leave them out never matched (the
+     * sentinel's U+0000 is escaped in JSON), so a new text took the sentinel as its words. Beside a
+     * key, a project apply refused it as two sources of words; without the project's keys it went in.
+     */
+    describe("and its words", () => {
+        const KEYS = { sourceLocale: "en", keys: new Map([["menu.start", "Start"]]) };
+        const keyedText = `${PAGE}        Caption: nl.text id=caption @0,0 200x40\n            localizationKey = menu.start\n`;
+        const keyedButton = `${PAGE}        Go: nl.button id=go @0,0 200x40\n            localizationKey = menu.start\n`;
+        const holdsSentinel = (value: unknown) => JSON.stringify(value).includes("\\u0000");
+
+        it("takes a new keyed text's words from its key, against the project's keys", () => {
+            const result = compileUiFile(parseUiFile(keyedText), { existing: existingWith({}), textKeys: KEYS });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const caption = result.surfaces[0].elements.caption;
+            expect(caption.props?.localizationKey).toBe("menu.start");
+            expect(caption.props).not.toHaveProperty("text");
+            expect(holdsSentinel(caption)).toBe(false);
+            // Still a new element: the widget's other defaults are there.
+            expect(caption.props?.fontSize).toBeDefined();
+        });
+
+        it("writes no words into a new keyed text without the project's keys either", () => {
+            const result = compileUiFile(parseUiFile(keyedText), { existing: existingWith({}) });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const caption = result.surfaces[0].elements.caption;
+            expect(caption.props).not.toHaveProperty("text");
+            expect(holdsSentinel(caption)).toBe(false);
+        });
+
+        it("does the same for a new keyed button's label", () => {
+            const result = compileUiFile(parseUiFile(keyedButton), { existing: existingWith({}), textKeys: KEYS });
+            expect(result.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+            const go = result.surfaces[0].elements.go;
+            expect(go.props).not.toHaveProperty("label");
+            expect(holdsSentinel(go)).toBe(false);
+        });
+
+        it("writes no sentinel into a new text given neither words nor a key, or under `+defaults`", () => {
+            const bare = `${PAGE}        Caption: nl.text id=caption @0,0 200x40\n            fontSize = 20\n`;
+            expect(holdsSentinel(compileUiFile(parseUiFile(bare), { existing: existingWith({}) }).surfaces[0].elements.caption)).toBe(false);
+            const short = `${PAGE}        Caption: nl.text id=caption @0,0 200x40 +defaults\n            fontSize = 20\n`;
+            expect(holdsSentinel(compileUiFile(parseUiFile(short)).surfaces[0].elements.caption)).toBe(false);
+        });
+
+        it("reads a `without` line naming a default made of words without a warning", () => {
+            const short = `${PAGE}        Go: nl.button id=go @0,0 200x40 +defaults\n            without label\n            localizationKey = menu.start\n`;
+            const result = compileUiFile(parseUiFile(short), { textKeys: KEYS });
+            expect(result.diagnostics.map(item => item.code)).not.toContain("ui.without_unknown");
+            expect(result.surfaces[0].elements.go.props).not.toHaveProperty("label");
+        });
+    });
+
+    it("writes an element the document already has exactly as its lines say", () => {
+        const existing = existingWith({ shot: { id: "shot", type: "nl.image", parentId: "root", childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 }, props: {} } });
+        const result = compileUiFile(parseUiFile(shot("")), { existing });
+        expect(result.surfaces[0].elements.shot.props).toEqual({ imageFill: { mode: "cover", assetId: "art-1" } });
     });
 });

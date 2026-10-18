@@ -55,12 +55,39 @@ export type AgentErrorCode =
      * itself, a file-system root).
      */
     | "path_not_allowed"
-    /** The project is not trusted, so its code may not run (play-test, build). */
+    /**
+     * The project is not trusted: an agent may read it but not change it (every write, imports
+     * included), is given no folders outside it, and may not run its code (play-test, build).
+     */
     | "untrusted"
     /** The call is valid but the operation is not possible in this state. */
     | "unavailable"
     /** Something broke that is not the agent's fault. */
     | "internal";
+
+/**
+ * Every {@link AgentErrorCode}, for what has to list them all - the troubleshooting chapter of the
+ * guide is held to this. A record rather than an array, so a code added to the type does not compile
+ * until it is added here.
+ */
+const AGENT_ERROR_CODE_SET: Record<AgentErrorCode, true> = {
+    invalid_args: true,
+    unknown_tool: true,
+    no_workspace: true,
+    writes_disabled: true,
+    paused: true,
+    frozen: true,
+    live_session: true,
+    stale_revision: true,
+    check_failed: true,
+    not_found: true,
+    path_not_allowed: true,
+    untrusted: true,
+    unavailable: true,
+    internal: true,
+};
+
+export const AGENT_ERROR_CODES = Object.keys(AGENT_ERROR_CODE_SET) as AgentErrorCode[];
 
 export type AgentError = {
     code: AgentErrorCode;
@@ -73,7 +100,10 @@ export type AgentCallResult =
     | {
           ok: true;
           content: AgentContent[];
-          /** The same answer as data, for clients that read MCP's `structuredContent`. */
+          /**
+           * Facts from the answer as data, for Studio itself (main reads the pause and follow state
+           * from it, and the tests read it). Not sent to MCP clients: see `toToolResult`.
+           */
           structured?: Record<string, unknown>;
       }
     | { ok: false; error: AgentError };
@@ -242,17 +272,18 @@ export const AGENT_MCP_SERVER_NAME = "narraleaf-studio";
 export const AGENT_MCP_PATH = "/mcp";
 
 /**
- * The port a profile's endpoint starts on. Below Windows' dynamic range (49152-65535), where
- * Hyper-V, WSL and Docker reserve blocks of ports and a bind fails with `EACCES`.
+ * The port a profile's endpoint is on until the author sets another in Settings. Below Windows'
+ * dynamic range (49152-65535), where Hyper-V, WSL and Docker reserve blocks of ports and a bind
+ * fails with `EACCES`.
  */
 export const AGENT_MCP_DEFAULT_PORT = 47219;
 
 /**
- * Tried in this order when the profile's port cannot be bound (in use, or reserved by the system),
- * before falling back to any free port the system hands out. Fixed and below the dynamic range, so
- * the port a crowded machine moves to is the same from one launch to the next.
+ * The ports Studio 1.5 to 1.6.1 moved an endpoint to on its own when the default was taken. Nothing
+ * moves there any more - a port that cannot be bound is an error now - but a profile moved then
+ * still names one, so a packaged game keeps refusing them (`STUDIO_DEFAULT_LOOPBACK_PORTS`).
  */
-export const AGENT_MCP_FALLBACK_PORTS: readonly number[] = Array.from({ length: 9 }, (_, index) => AGENT_MCP_DEFAULT_PORT + index + 1);
+export const AGENT_MCP_FORMER_FALLBACK_PORTS: readonly number[] = Array.from({ length: 9 }, (_, index) => AGENT_MCP_DEFAULT_PORT + index + 1);
 
 /** The default before {@link AGENT_MCP_DEFAULT_PORT}. A profile that still names it is moved once; see `normalizeAgentSettings`. */
 export const AGENT_MCP_LEGACY_DEFAULT_PORT = 54080;

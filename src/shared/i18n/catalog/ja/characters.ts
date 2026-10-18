@@ -109,6 +109,7 @@ export const characters = {
             // ランタイム式のキャラクターが最初に置かれる案内つきの状態。ランタイムとモデルが
             // 両方そろうまで、その下の状態の項目は意味を持てないので出さない。
             setupTitle: "用意するものが 2 つある",
+            setupTitleOne: "未準備：{item}",
             stepRuntime: "描画ランタイム",
             stepModel: "モデル",
             runtimeInstalled: "インストール済み",
@@ -270,6 +271,7 @@ export const characters = {
         thumbnail: "サムネイル",
         preview: "プレビュー",
         defaultAvatar: "既定のダイアログのアバター",
+        defaultAvatarRuntimeHint: "ランタイムで描くキャラクターにはアバターが作られない。ダイアログにはこのアバターを表示する",
         // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
         // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
         voiceTrack: "ボイスのトラック",
@@ -312,7 +314,8 @@ export const characters = {
         variant: "バリアント：{name}",
         loading: "プレビューを読み込んでいる…",
         failed: "プレビューに失敗",
-        placeholder: "プレビューするには画像のあるバリアントを選ぶ",
+        emptyLayered: "画像のあるレイヤーを追加するか PSD を読み込むとプレビューを表示する",
+        emptyPreset: "このポーズに画像を設定するとプレビューを表示する",
         noSize: "大きさ不明",
         noMetadata: "メタデータなし",
         zoomOut: "縮小",

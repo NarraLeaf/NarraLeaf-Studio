@@ -9,7 +9,8 @@ import type {
     StoryDocument,
     StorySceneId,
 } from "@shared/types/story";
-import { DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/types/story";
+import { authoredCharacterStageName, DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/types/story";
+import type { Character } from "@/lib/workspace/services/character/Character";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useFloatingLayer } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
@@ -62,6 +63,8 @@ export function DisplayableTargetField(props: {
     blockId: string;
     target: StoryDisplayableTargetRef;
     onChange: (target: StoryDisplayableTargetRef) => void;
+    /** The cast, for naming a character walked on without a stage name of her own. */
+    characters?: readonly Character[];
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -95,7 +98,28 @@ export function DisplayableTargetField(props: {
     // Built-ins (scene background / built-in layers) always resolve to their label + kind.
     const scene = props.document.scenes[props.sceneId];
     const resolved = resolveDisplayableTargetRef(scene, target);
-    const name = selected?.label ?? resolved.label;
+    /**
+     * What a target is called here. A character walked on without a stage name of her own is
+     * labelled with the placeholder "Character", which read 「Character 角色」 in a Chinese inspector
+     * whose header already named her: she is named by her cast name, as the row's line and the
+     * inspector's header name her.
+     */
+    const labelOf = (ref: { label: string; sourceBlockId?: string }): string => {
+        const source = ref.sourceBlockId ? scene?.blocks[ref.sourceBlockId] : undefined;
+        if (source?.kind === "action" && source.payload.action === "character" && source.payload.characterId
+            && !authoredCharacterStageName(source.payload)) {
+            const characterId = source.payload.characterId;
+            const cast = props.characters?.find(character => character.profile.getId() === characterId)?.profile.getName();
+            if (cast?.trim()) {
+                return cast;
+            }
+        }
+        return ref.label;
+    };
+    // A built-in is named in the interface's language; the stored label is the English one.
+    const name = target.builtin
+        ? t(`story.stage.reserved.${target.builtin}`)
+        : selected ? labelOf(selected) : labelOf({ label: resolved.label, sourceBlockId: target.sourceBlockId });
     const unresolved = !target.builtin && name.trim().length > 0 && !selected;
 
     const placement = useAutoMenuPlacement(rootRef, open, 320);
@@ -126,8 +150,10 @@ export function DisplayableTargetField(props: {
             return options;
         }
         return options.filter(option =>
-            option.label.toLowerCase().includes(normalized) || option.kind.includes(normalized));
-    }, [options, query]);
+            labelOf(option).toLowerCase().includes(normalized) || option.kind.includes(normalized));
+        // `labelOf` reads the scene and the cast, both of which are in the list.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [options, query, scene, props.characters]);
 
     const filteredBuiltins = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -136,9 +162,11 @@ export function DisplayableTargetField(props: {
         }
         return BUILTIN_ORDER.filter(builtin => {
             const meta = DISPLAYABLE_BUILTIN_META[builtin];
-            return meta.label.toLowerCase().includes(normalized) || meta.kind.includes(normalized);
+            return t(`story.stage.reserved.${builtin}`).toLowerCase().includes(normalized)
+                || builtin.toLowerCase().includes(normalized)
+                || meta.kind.includes(normalized);
         });
-    }, [query]);
+    }, [query, t]);
 
     const choose = (option: SceneDisplayableRef) => {
         // All three, always. `name` is the stage key the lookup needs and `label` the only half safe
@@ -221,7 +249,7 @@ export function DisplayableTargetField(props: {
                         {filtered.map(option => (
                             <DisplayableOptionRow
                                 key={option.sourceBlockId}
-                                option={option}
+                                option={{ ...option, label: labelOf(option) }}
                                 active={selected?.sourceBlockId === option.sourceBlockId}
                                 onChoose={() => choose(option)}
                             />
@@ -241,6 +269,7 @@ function BuiltinTargetRow(props: {
     active: boolean;
     onChoose: () => void;
 }) {
+    const { t } = useTranslation();
     const meta = DISPLAYABLE_BUILTIN_META[props.builtin];
     const Icon = KIND_ICON[meta.kind];
     return (
@@ -258,8 +287,8 @@ function BuiltinTargetRow(props: {
                 <Icon className="h-3.5 w-3.5 text-fg-muted" />
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg">{meta.label}</span>
-                <span className="block truncate text-2xs text-fg-subtle">{meta.hint}</span>
+                <span className="block truncate text-sm text-fg">{t(`story.stage.reserved.${props.builtin}`)}</span>
+                <span className="block truncate text-2xs text-fg-subtle">{t(`story.stage.reservedHint.${props.builtin}`)}</span>
             </span>
             {props.active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
         </button>

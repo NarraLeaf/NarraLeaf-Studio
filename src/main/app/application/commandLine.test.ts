@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AGENT_MCP_DEFAULT_PORT } from "@shared/agent/protocol";
 import { DEFAULT_CDP_PORT, DEFAULT_DEV_RELOAD_PORT, isMainDevMode, parseMainCommandLine } from "./commandLine";
 
 const DEFAULT_DEV_RELOAD = {
@@ -51,6 +52,8 @@ const NO_CHECK = {
     error: null,
 } as const;
 
+const NO_AGENT = { enabled: false, port: AGENT_MCP_DEFAULT_PORT, error: null } as const;
+
 describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
@@ -68,6 +71,7 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            agent: NO_AGENT,
             experimental: NO_EXPERIMENTAL,
             openPaths: [],
         });
@@ -89,6 +93,7 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            agent: NO_AGENT,
             experimental: NO_EXPERIMENTAL,
             openPaths: [],
         });
@@ -118,6 +123,34 @@ describe("parseMainCommandLine", () => {
             port: DEFAULT_CDP_PORT,
             portSource: "default",
             error: "Invalid --cdp-port value: abc",
+        });
+    });
+
+    describe("agent access flags", () => {
+        const agent = (...flags: string[]) => parseMainCommandLine(["electron", "dist/main/index.js", "--dev", ...flags]).agent;
+
+        it("leave it off with neither flag", () => {
+            expect(agent()).toEqual(NO_AGENT);
+        });
+
+        it("turn it on with --agent, on the default port", () => {
+            expect(agent("--agent")).toEqual({ enabled: true, port: AGENT_MCP_DEFAULT_PORT, error: null });
+        });
+
+        it("turn it on with --agent-port alone, in either form", () => {
+            expect(agent("--agent-port=47300")).toEqual({ enabled: true, port: 47300, error: null });
+            expect(agent("--agent-port", "47301")).toEqual({ enabled: true, port: 47301, error: null });
+        });
+
+        it("do not take the value after --agent-port as a path to open", () => {
+            expect(parseMainCommandLine(["electron", "dist/main/index.js", "--agent-port", "47300"]).openPaths).toEqual([]);
+        });
+
+        it("report a port outside the usable range and leave the next flag alone", () => {
+            const options = parseMainCommandLine(["electron", "dist/main/index.js", "--agent-port", "--dev"]);
+            expect(options.dev).toBe(true);
+            expect(options.agent).toEqual({ enabled: false, port: AGENT_MCP_DEFAULT_PORT, error: "Invalid --agent-port value: --dev (a port from 1024 to 65535)" });
+            expect(agent("--agent", "--agent-port=80").error).toBe("Invalid --agent-port value: 80 (a port from 1024 to 65535)");
         });
     });
 

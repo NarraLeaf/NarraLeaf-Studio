@@ -50,6 +50,7 @@ export const onboarding = {
         identity: "Author",
         team: "Team",
         story: "Story editor",
+        agent: "Agent access",
         done: "Done",
     },
     /**
@@ -61,7 +62,7 @@ export const onboarding = {
      */
     welcome: {
         title: "Welcome",
-        expectation: "Six interface and story-editor settings. Each one takes effect immediately and remains available in Settings.",
+        expectation: "Seven settings for the interface, the story editor and agent access. Each one takes effect immediately and remains available in Settings.",
         /** Above the import row, naming what the row is for rather than asking after the reader. */
         haveSettings: "Settings from another installation",
     },
@@ -109,6 +110,15 @@ export const onboarding = {
         expectation: "How the scene editor is read and typed in.",
     },
     /**
+     * Connecting the author's own AI agent. The screen's switches take the Settings rows' labels and
+     * its guide to one application is the one Settings shows (`settings.agent.guide`).
+     */
+    agent: {
+        title: "Agent access",
+        expectation: "An AI agent connects to Studio over MCP and edits the open project. An agent is optional.",
+        toggleFailed: "Agent access could not be changed: {error}",
+    },
+    /**
      * The way past every question at once, on the first screen. See `WelcomeStep` for why it is
      * offered there and not at the end.
      */
@@ -123,6 +133,9 @@ export const onboarding = {
         expectation: "Every setting asked for here is in Settings. F1 opens help for whatever is under the cursor.",
         /** The one button under it, which opens the manual on narraleaf.com in a browser. */
         docs: "Open the documentation",
+        /** The two follow links beside it. */
+        bilibili: "Follow us on Bilibili",
+        youtube: "Follow us on YouTube",
     },
     /**
      * The dialog behind Skip.

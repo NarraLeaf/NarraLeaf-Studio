@@ -80,8 +80,38 @@ function LintRow({
     );
 }
 
+/**
+ * The column a rule's level select sits in, as wide as the longest level name in the reader's
+ * language makes the select, and the same width on every row.
+ *
+ * A fixed width cannot be right in three languages at once: "Minor warning" is twice as wide as
+ * "Warning", while the Chinese names are all within a character of each other, so a width sized for
+ * English took that room from every rule title in Chinese and left the titles ellipsed for nothing.
+ *
+ * The names are laid in the select's own grid cell, invisible and with no height, in the trigger's
+ * type and with its horizontal chrome - border, `px-2`, the `gap-2` and the 16px chevron - so the cell
+ * is exactly as wide as the trigger showing the longest of them.
+ */
+function RuleLevelColumn({ labels, children }: { labels: readonly string[]; children: React.ReactNode }) {
+    return (
+        <div className="grid shrink-0">
+            {labels.map(label => (
+                <span
+                    key={label}
+                    aria-hidden
+                    className="invisible col-start-1 row-start-1 flex h-0 items-center gap-2 overflow-hidden whitespace-nowrap border-x px-2 text-xs font-medium"
+                >
+                    <span>{label}</span>
+                    <span className="w-4 shrink-0" />
+                </span>
+            ))}
+            <div className="col-start-1 row-start-1 min-w-0">{children}</div>
+        </div>
+    );
+}
+
 /** Worst first; `off` last, because it is the absence of a severity rather than a lighter one. */
-const SEVERITY_CHOICES: readonly LintRuleSeverity[] = ["error", "warning", "info", "off"];
+const SEVERITY_CHOICES: readonly LintRuleSeverity[] = ["error", "warning", "minor", "info", "off"];
 
 type FailBuildOn = LintingConfiguration["failBuildOn"];
 
@@ -112,11 +142,12 @@ const NUMBER_OPTION_MAX = Number.MAX_SAFE_INTEGER;
  *
  * The rule and threshold selects keep `shrink-0` so the severity column stays one width down the
  * whole list - ragged control widths are what would make a flat list look untidy, and their labels
- * are single words ("Warning", "Errors") with nothing to ellipse anyway. The row's title gives
- * instead, by truncating. The option select also gives: it sits inset under its rule, so it has the
- * least room and the longest labels, and an option value is the one label here that reads half-shown.
+ * are short ("Warning", "Errors") with nothing to ellipse. The rule select's width is not stated
+ * here at all: {@link RuleLevelColumn} takes it from the longest level name in the reader's
+ * language. The row's title gives instead, by truncating. The option select also gives: it sits
+ * inset under its rule, so it has the least room and the longest labels, and an option value is the
+ * one label here that reads half-shown.
  */
-const RULE_SELECT_CLASS = "w-24 shrink-0";
 // w-36, not w-40: at w-40 the threshold row's own title ("Stop the build on") missed fitting by two
 // pixels and ellipsed, which is a poor look for one of only two settings at the top of the page.
 const THRESHOLD_SELECT_CLASS = "w-36 shrink-0";
@@ -154,6 +185,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         })),
         [t],
     );
+    const severityLabels = useMemo(() => severityOptions.map(option => option.label ?? ""), [severityOptions]);
 
     const failBuildOnOptions: SelectOption[] = useMemo(
         () => FAIL_BUILD_ON_CHOICES.map(choice => ({
@@ -250,17 +282,18 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                     hint={text(`lint.rule.${rule.slug}.description`, rule.id)}
                     tooltip={frozen["data-tip"]}
                 >
-                    <Select
-                        options={severityOptions}
-                        value={severity}
-                        disabled={frozen.disabled}
-                        onChange={next => setRuleSeverity(rule, next as LintRuleSeverity)}
-                        size="sm"
-                        portalMenu
-                        className={RULE_SELECT_CLASS}
-                        fullWidth
-                        ariaLabel={title}
-                    />
+                    <RuleLevelColumn labels={severityLabels}>
+                        <Select
+                            options={severityOptions}
+                            value={severity}
+                            disabled={frozen.disabled}
+                            onChange={next => setRuleSeverity(rule, next as LintRuleSeverity)}
+                            size="sm"
+                            portalMenu
+                            fullWidth
+                            ariaLabel={title}
+                        />
+                    </RuleLevelColumn>
                 </LintRow>
                 {optionSpecs.length > 0 ? (
                     // Indented under the rule it belongs to: an option row on its own would read as a
@@ -294,6 +327,9 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
             </LintRow>
             <LintRow
                 title={t("lint.settings.failBuildOn")}
+                // No hint here, though "Warnings and errors" does not say that minor warnings never stop
+                // a build: the title only just fits beside the select, and a hint icon pushed it into
+                // an ellipsis in English and Japanese. The page's own `?` opens the topic that says it.
                 // Disabled rather than hidden while the check is off, the same bargain the auto-save
                 // interval makes with its own switch: the threshold is still what this project would
                 // fail on, and a row that vanishes reads as a missing setting.

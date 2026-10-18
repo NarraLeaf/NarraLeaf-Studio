@@ -8,6 +8,9 @@
 import { createElement, type ReactElement } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
+import { anchorComponentId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { UIGraphService } from "../../ui-editor/UIGraphService";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { readUIComponentEditorSurfaceComponentId } from "@shared/types/ui-editor/componentInstanceKey";
 import { parseBrandLink } from "@shared/brand/brandLink";
@@ -34,8 +37,9 @@ import {
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL, assetsService, listAssets, resolveAsset, resolveComponent, resolveSurface, resolveSurfaceOrComponent } from "../agentLookups";
 import { applyUiPatch, readUiPatchOps, type UIPatchTarget } from "../uiPatch";
+import { countNodes } from "@/lib/blueprint-cli/core";
 import { listUiSubtree, resolveUiElementRef, uiElementPath, type UIElementPool } from "../uiElementRefs";
-import { designRectFromClientRects, planScreenshot, type ScreenshotRect } from "../screenshotGeometry";
+import { designRectFromClientRects, drawnBounds, planScreenshot, type ClientBox, type DrawnBox, type ScreenshotRect } from "../screenshotGeometry";
 import { blobToDataUrl, rasterizeElement } from "../domRaster";
 import { OffscreenCapture, waitForOffscreenPage } from "../offscreenCapture";
 import { AssetLoadTrackerContext } from "@/lib/ui-editor/runtime/assetLoadTracker";
@@ -124,6 +128,9 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
     follow.describeCall(request.callId, name);
     assertUiRevision(ctx, target, baseRevision);
 
+    // Blueprints that hold nodes, before the patch: deleting an element takes its blueprints with it,
+    // and an agent that is not told so goes looking for them afterwards.
+    const blueprintsBefore = dryRun ? null : wiredBlueprints(ctx);
     const outcome = applyUiPatch(uidoc, target, ops, AGENT_HISTORY_LABEL, { dryRun });
     if (dryRun) {
         return answerJson(
@@ -136,14 +143,35 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
         : { kind: "component", componentId: target.componentId, name, elementIds: outcome.touched });
 
     const createdContainer = outcome.created.some(item => item.type === "nl.container" || item.type === "nl.image");
+    const blueprintsAfter = wiredBlueprints(ctx);
+    const deletedBlueprints = [...(blueprintsBefore ?? new Map()).entries()]
+        .filter(([id]) => !blueprintsAfter.has(id))
+        .map(([id, blueprintName]) => ({ id, name: blueprintName }));
     return answerJson(
-        { revision: uiContentRevision(ctx, target), created: outcome.created, deleted: outcome.deleted },
+        {
+            revision: uiContentRevision(ctx, target),
+            created: outcome.created,
+            deleted: outcome.deleted,
+            ...(deletedBlueprints.length > 0 ? { deletedBlueprints } : {}),
+        },
         `Applied ${ops.length} operation(s) to "${name}" as one undo step.`
+            + (deletedBlueprints.length > 0
+                ? ` The deleted elements took ${deletedBlueprints.length} blueprint(s) with them: ${deletedBlueprints.map(item => `"${item.name}"`).join(", ")}.`
+                : "")
+
             + (createdContainer
                 ? " New containers and images start with a white fill: set `appearance` props (copy them from a transparent element via ui_show) or the fill will cover what is behind it."
                 : ""),
     );
 };
+
+/** Id to name of every blueprint that holds at least one node. */
+function wiredBlueprints(ctx: WorkspaceContext): Map<string, string> {
+    const document = ctx.services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+    return new Map(Object.values(document.blueprints ?? {})
+        .filter(blueprint => countNodes(blueprint) > 0)
+        .map(blueprint => [blueprint.id, blueprint.name]));
+}
 
 // ── ui_screenshot ────────────────────────────────────────────────────────────────────────────────
 
@@ -153,6 +181,42 @@ function componentDesignSize(component: UIComponentDefinition): { width: number;
         width: Math.max(1, Math.round(component.previewMeta?.width ?? root?.layout.width ?? 160)),
         height: Math.max(1, Math.round(component.previewMeta?.height ?? root?.layout.height ?? 88)),
     };
+}
+
+/**
+ * A screenshot is a still, so a video is drawn as its poster (or a placeholder box with a play mark
+ * where it has none): said every time one is on the page, so a missing animation is not mistaken
+ * for a broken video.
+ */
+function describeVideoStills(videos: readonly { label: string; shownAs: "poster" | "placeholder" | "frame" }[]): string {
+    if (videos.length === 0) {
+        return "";
+    }
+    const placeholders = videos.filter(video => video.shownAs === "placeholder").map(video => video.label);
+    return "Video elements are shown as their poster, not playing"
+        + (placeholders.length > 0 ? `; a grey placeholder with a play mark stands in where there is no readable poster (${listForSummary(placeholders)}) - set posterAssetId to see a still.` : ".");
+}
+
+/** The drawn element nodes carry their id under one of these: editable drawings and preview drawings. */
+const ELEMENT_ID_SELECTOR = "[data-ui-element-id], [data-ui-preview-element-id]";
+
+function clientBox(node: Element): ClientBox {
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
+
+function clipsContents(node: Element): boolean {
+    const style = getComputedStyle(node);
+    return style.overflowX !== "visible" || style.overflowY !== "visible" || (style.clipPath !== "" && style.clipPath !== "none");
+}
+
+/** The element's drawn subtree, for {@link drawnBounds}: what it draws, not just its own box. */
+function measureDrawn(node: Element): DrawnBox {
+    return { box: clientBox(node), clips: clipsContents(node), children: [...node.children].map(measureDrawn) };
+}
+
+function boxAsRect(box: ClientBox): { left: number; top: number; width: number; height: number } {
+    return { left: box.left, top: box.top, width: box.right - box.left, height: box.bottom - box.top };
 }
 
 /** An element's box from its layout alone, walking up the parents: the fallback when it was not drawn with an id. */
@@ -290,8 +354,8 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
     // The nearest element of this page's own pool: an element inside a placed component carries the
     // definition's id, which the page does not have, so the walk goes on up to the placement.
     const describe = (node: Element): string | null => {
-        for (let at = node.closest("[data-ui-element-id]"); at; at = at.parentElement?.closest("[data-ui-element-id]") ?? null) {
-            const element = pool[at.getAttribute("data-ui-element-id") ?? ""];
+        for (let at = node.closest(ELEMENT_ID_SELECTOR); at; at = at.parentElement?.closest(ELEMENT_ID_SELECTOR) ?? null) {
+            const element = pool[at.getAttribute("data-ui-element-id") ?? at.getAttribute("data-ui-preview-element-id") ?? ""];
             if (element) {
                 return uiElementPath(pool, element);
             }
@@ -313,9 +377,10 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
         }
         let crop: ScreenshotRect | null = null;
         if (targetElement) {
-            const node = page.querySelector<HTMLElement>(`[data-ui-element-id="${CSS.escape(targetElement.id)}"]`);
+            const id = CSS.escape(targetElement.id);
+            const node = page.querySelector<HTMLElement>(`[data-ui-element-id="${id}"], [data-ui-preview-element-id="${id}"]`);
             crop = node
-                ? designRectFromClientRects(page.getBoundingClientRect(), node.getBoundingClientRect(), design)
+                ? designRectFromClientRects(page.getBoundingClientRect(), boxAsRect(drawnBounds(measureDrawn(node))), design)
                 : layoutRect(pool, targetElement);
         }
         const plan = planScreenshot(design, crop, maxSize);
@@ -333,6 +398,7 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
                 ? `Photographed after ${Math.round(readiness.elapsedMs / 1000)}s with these still arriving, so they may be absent or half-drawn: ${listForSummary(readiness.outstanding)}.`
                 : "",
             notDrawn.length > 0 ? `Not drawn: ${listForSummary(notDrawn)}.` : "",
+            describeVideoStills(raster.videos),
         ].filter(Boolean).join(" ");
         return {
             ok: true,
@@ -348,6 +414,7 @@ export const uiScreenshot: AgentToolHandler = async (args, tool) => {
                 height: plan.height,
                 source: plan.source,
                 ...(notDrawn.length > 0 ? { notDrawn } : {}),
+                ...(raster.videos.length > 0 ? { videos: raster.videos } : {}),
                 ...(readiness.outstanding.length > 0 ? { stillArriving: readiness.outstanding } : {}),
             },
         };
@@ -379,13 +446,68 @@ export const uiTemplates: AgentToolHandler = async () => {
             theme: template.theme ?? null,
             placement: template.surface,
         })),
-    });
+    }, "Store templates are layouts. A description says what a screen looks like, not what is wired: most carry no blueprints, so "
+        + "their buttons, save slots, logs and sliders do nothing until you wire them. ui_template_apply reports what each page brought. "
+        + "For a title, save/load, settings and log that already work, use ui_install_standard_screens.");
 };
+
+/** How much behaviour a page or a component definition carries: graphs with nodes, and bound props. */
+export type WiringCount = { blueprints: number; boundProps: number };
+
+/**
+ * What each surface and component holds in logic: blueprints that have at least one node, and
+ * props bound to something (a value blueprint, a list field, a page or component param).
+ *
+ * The honest half of a template's answer: a store description says what a screen looks like, and
+ * only this says whether pressing anything on it does something.
+ */
+export function countWiring(
+    document: UIDocument,
+    blueprints: BlueprintDocument,
+    surfaceIds: readonly string[],
+    componentIds: readonly string[],
+): { surfaces: Record<string, WiringCount>; components: Record<string, WiringCount> } {
+    const hasNodes = (blueprint: BlueprintDocument["blueprints"][string]) =>
+        [blueprint.graphs.events, blueprint.graphs.functions, blueprint.graphs.macros]
+            .some(pool => Object.values(pool ?? {}).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0));
+    const bound = (elements: Iterable<UIElement>) => {
+        let count = 0;
+        for (const element of elements) {
+            count += Object.keys(element.valueBindings ?? {}).length;
+        }
+        return count;
+    };
+    const wired = Object.values(blueprints.blueprints ?? {}).filter(hasNodes);
+    const surfaces: Record<string, WiringCount> = {};
+    for (const surfaceId of surfaceIds) {
+        const surface = document.surfaces.find(item => item.id === surfaceId);
+        if (!surface) {
+            continue;
+        }
+        surfaces[surfaceId] = {
+            blueprints: wired.filter(blueprint => anchorSurfaceId(blueprint.owner) === surfaceId).length,
+            boundProps: bound(listUiSubtree(document.elements, surface.rootElementId)),
+        };
+    }
+    const components: Record<string, WiringCount> = {};
+    for (const componentId of componentIds) {
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        if (!component) {
+            continue;
+        }
+        components[componentId] = {
+            blueprints: wired.filter(blueprint => anchorComponentId(blueprint.owner) === componentId).length,
+            boundProps: bound(Object.values(component.elements ?? {})),
+        };
+    }
+    return { surfaces, components };
+}
 
 export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, follow }) => {
     // Named by the page it adds once it has, never by the template's id: the interface shows no ids.
     const templateId = readString(args, "template");
-    const result = await applyUITemplate(templateId, uiDocumentService(ctx));
+    const uidoc = uiDocumentService(ctx);
+    const result = await applyUITemplate(templateId, uidoc);
     if (!result.ok) {
         throw refuse("unavailable", `The template could not be applied: ${result.error}.`);
     }
@@ -394,12 +516,49 @@ export const uiTemplateApply: AgentToolHandler = async (args, { ctx, request, fo
         follow.describeCall(request.callId, first.name);
         follow.noteWrite({ kind: "surface", surfaceId: first.id, name: first.name });
     }
+    const document = uidoc.getDocument();
+    const wiring = countWiring(
+        document,
+        ctx.services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument,
+        result.surfaces.map(surface => surface.id),
+        result.components.map(component => component.id),
+    );
+    const unwired = result.surfaces.filter(surface => {
+        const count = wiring.surfaces[surface.id];
+        return !count || (count.blueprints === 0 && count.boundProps === 0);
+    });
+    const allUnwired = result.surfaces.length > 0
+        && unwired.length === result.surfaces.length
+        && result.components.every(component => (wiring.components[component.id]?.blueprints ?? 0) === 0 && (wiring.components[component.id]?.boundProps ?? 0) === 0);
+    const lines = [
+        `Added ${result.surfaces.length} page(s) and ${result.components.length} component(s) from the template, as new pages; the entry page did not change.`,
+        allUnwired
+            ? "None of it is wired: it carries no blueprints and no bound props, so its buttons do nothing, its slots and lists show no saves or history, and its sliders change nothing. Wire what you keep (blueprint_apply; ui_usage and blueprint_show on a working project show how), or use ui_install_standard_screens for screens that already work."
+            : unwired.length > 0
+                ? `Not wired (no blueprints, no bound props): ${unwired.map(surface => `"${surface.name}"`).join(", ")}. Their controls do nothing until you wire them (blueprint_apply).`
+                : "Each page carries some logic; read it with blueprint_show before relying on it.",
+        result.skippedSlots.length > 0
+            ? `Skipped, because the project already fills these Game UI slots: ${result.skippedSlots.join(", ")}.`
+            : "",
+        "To make one of these pages the game's first, use ui_page_set_entry; delete pages you no longer need with ui_page_delete.",
+    ].filter(Boolean);
     return answerJson({
-        surfaces: result.surfaces.map(surface => ({ id: surface.id, name: surface.name, kind: surface.kind })),
-        components: result.components.map(component => ({ id: component.id, name: component.name })),
+        surfaces: result.surfaces.map(surface => ({
+            id: surface.id,
+            name: surface.name,
+            kind: surface.kind,
+            blueprints: wiring.surfaces[surface.id]?.blueprints ?? 0,
+            boundProps: wiring.surfaces[surface.id]?.boundProps ?? 0,
+        })),
+        components: result.components.map(component => ({
+            id: component.id,
+            name: component.name,
+            blueprints: wiring.components[component.id]?.blueprints ?? 0,
+            boundProps: wiring.components[component.id]?.boundProps ?? 0,
+        })),
         skippedSlots: result.skippedSlots,
         assetsSkipped: result.assetsSkipped,
-    }, `Added ${result.surfaces.length} page(s) and ${result.components.length} component(s) from the template.`);
+    }, lines.join("\n"));
 };
 
 // ── Brand ────────────────────────────────────────────────────────────────────────────────────────

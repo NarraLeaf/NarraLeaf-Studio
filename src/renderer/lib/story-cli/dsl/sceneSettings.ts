@@ -58,6 +58,8 @@ export type SceneSettingDirective = { value: string; line: number };
 export type SceneSettingsAst = {
     background?: SceneSettingDirective;
     music?: SceneSettingDirective;
+    /** The `#layer` lines, nearest layer first; see `sceneLayers.ts`. */
+    layers?: SceneSettingDirective[];
 };
 
 /** The lookups a setting resolves against: a slice of the command context. */

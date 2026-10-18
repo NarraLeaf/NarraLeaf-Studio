@@ -164,24 +164,7 @@ export class SpriteCompositor {
         // Sample in *canvas* space, not per layer: a small accessory centred on a tall body covers a
         // few cells, and stretching each layer to fill the grid would say it covers all of them.
         const canvas = stackExtent(present);
-        const drawn = bitmaps.map(bitmap => (bitmap ? sampleAlpha(bitmap, canvas, grid) : null));
-        const covered = new Array(grid * grid).fill(false);
-        const result = new Array(layers.length).fill(false);
-        // Walk top-down accumulating opaque coverage, so each layer is asked about what is already
-        // above it rather than about the whole stack.
-        for (let index = layers.length - 1; index >= 0; index--) {
-            const sample = drawn[index];
-            if (!sample) {
-                continue;
-            }
-            result[index] = sample.visible.every((visible, cell) => !visible || covered[cell]);
-            for (let cell = 0; cell < covered.length; cell++) {
-                if (sample.opaque[cell]) {
-                    covered[cell] = true;
-                }
-            }
-        }
-        return result;
+        return occludedLayers(bitmaps.map(bitmap => (bitmap ? sampleAlpha(bitmap, canvas, grid) : null)));
     }
 
     /** Drop every composite of one character — its stack or one of its assets changed. */
@@ -214,6 +197,38 @@ export class SpriteCompositor {
             this.cache.delete(oldest.value);
         }
     }
+}
+
+/** One layer's cells on the sampling grid: where it paints, and where it is solid. */
+export type LayerAlphaSample = { visible: readonly boolean[]; opaque: readonly boolean[] };
+
+/**
+ * Which layers are completely hidden by the ones above them, from their samples (bottom to top;
+ * `null` for a layer that draws nothing under the current tags).
+ *
+ * Walked top-down accumulating opaque coverage, so each layer is asked about what is already above
+ * it rather than about the whole stack. A layer that paints no cell at all is not reported: a small
+ * thin mark - a closed mouth - averages away to nothing at the grid's resolution, and "every cell it
+ * paints is covered" was then true of no cells, so the warning said the mouth was hidden when it was
+ * simply too small to see on the grid.
+ */
+export function occludedLayers(samples: readonly (LayerAlphaSample | null)[]): boolean[] {
+    const cells = samples.find(Boolean)?.visible.length ?? 0;
+    const covered = new Array(cells).fill(false);
+    const result = new Array(samples.length).fill(false);
+    for (let index = samples.length - 1; index >= 0; index--) {
+        const sample = samples[index];
+        if (!sample) {
+            continue;
+        }
+        result[index] = sample.visible.some(Boolean) && sample.visible.every((visible, cell) => !visible || covered[cell]);
+        for (let cell = 0; cell < covered.length; cell++) {
+            if (sample.opaque[cell]) {
+                covered[cell] = true;
+            }
+        }
+    }
+    return result;
 }
 
 /**

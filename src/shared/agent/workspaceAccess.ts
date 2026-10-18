@@ -1,5 +1,6 @@
 import type { AgentErrorCode } from "./protocol";
-import type { AgentClientConfigKind, AgentSettingsSnapshot } from "./settings";
+import type { AgentClientConfigKind, AgentPortRefusal, AgentSettingsSnapshot } from "./settings";
+import { AGENT_COPY_CONFIGS } from "./clients";
 
 /**
  * The narrow hold a workspace window has on agent access: what its Agent menu shows and the few
@@ -7,15 +8,16 @@ import type { AgentClientConfigKind, AgentSettingsSnapshot } from "./settings";
  *
  * Everything in `./settings.ts` that the Settings window sees - the token above all, and the address
  * that pairs with it - stays there. A workspace shows project content and runs plugin code, so it is
- * given four booleans, the number of a port the endpoint moved to, and a set of actions whose results
- * carry no secret: copying a client configuration is done by main, straight onto the system
- * clipboard, and the answer is only that it happened. The port is no secret - any program on the
- * machine can list the ports being listened on - and without the token it opens nothing.
+ * given four booleans, the number of a port the endpoint moved to or could not start on (and why),
+ * and a set of actions whose results carry no secret: copying a client configuration is done by
+ * main, straight onto the system clipboard, and the answer is only that it happened. The port is no
+ * secret - any program on the machine can list the ports being listened on - and without the token
+ * it opens nothing.
  *
  * Comments in English per project convention.
  */
 
-/** What the Agent menu shows of agent access. Never more than these five fields. */
+/** What the Agent menu shows of agent access. Never more than these seven fields. */
 export type AgentQuickState = {
     /** The author switched the endpoint on. */
     enabled: boolean;
@@ -26,10 +28,14 @@ export type AgentQuickState = {
     /** The endpoint is listening right now (it can be enabled and have failed to start). */
     running: boolean;
     /**
-     * The port the endpoint moved to when it last started, until a configuration is copied again:
+     * The new default a profile on the old one was moved to, until a configuration is copied again:
      * HTTP clients set up before still name the old one. Null when there is nothing to tell.
      */
     movedToPort: number | null;
+    /** The endpoint is enabled but did not start, because its port is in use or reserved. */
+    portUnavailable: AgentPortRefusal | null;
+    /** A development launch decides {@link enabled} (`--agent`); the menu cannot switch it. */
+    setByLaunch: boolean;
 };
 
 /** The switches the Agent menu may flip. Anything absent is left as it is. */
@@ -43,7 +49,7 @@ export type AgentQuickTogglePatch = {
 /** The client configurations the Agent menu can copy; the same kinds the Settings panel offers. */
 export type AgentCopyConfigKind = AgentClientConfigKind;
 
-export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = ["claudeCode", "opencode", "json", "stdio"];
+export const AGENT_COPY_CONFIG_KINDS: readonly AgentCopyConfigKind[] = AGENT_COPY_CONFIGS.map(entry => entry.kind);
 
 /** The folder an exported skill is written into, inside the directory the author picked. */
 export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";
@@ -55,14 +61,19 @@ export const AGENT_SKILL_EXPORT_FOLDER = "NarraLeaf-Skills";
  * snapshot later is withheld from the workspace until someone decides otherwise.
  */
 export function toAgentQuickState(
-    snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "fullAccess" | "running" | "movedToPort">,
+    snapshot: Pick<AgentSettingsSnapshot, "enabled" | "allowWrites" | "fullAccess" | "running" | "movedToPort" | "portUnavailable" | "setByLaunch">,
 ): AgentQuickState {
+    const unavailable = snapshot.portUnavailable;
     return {
         enabled: snapshot.enabled === true,
         allowWrites: snapshot.allowWrites === true,
         fullAccess: snapshot.fullAccess === true,
         running: snapshot.running === true,
         movedToPort: Number.isInteger(snapshot.movedToPort) ? snapshot.movedToPort : null,
+        portUnavailable: unavailable && Number.isInteger(unavailable.port)
+            ? { port: unavailable.port, reason: unavailable.reason === "inUse" ? "inUse" : "reserved" }
+            : null,
+        setByLaunch: snapshot.setByLaunch === true,
     };
 }
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -14,7 +14,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, toDisplayedCommandLine } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
 import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
-import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
+import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineLookups, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
@@ -407,11 +407,23 @@ export function useStoryCommandLine(
     // Read for its subscription only — see the note above.
     useCommandTranslation();
     const motionName = useStoryMotionNames();
-    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = useStoryCommandLineContext();
+    const context = useStoryCommandLineContext();
     // Deliberately not memoized: this is string building, and every input that could invalidate a memo
     // (an asset rename, a character rename) lives outside the story document, so a dependency array
     // would be a promise this cannot keep. The parse it feeds IS memoized, on the string it produces.
-    return projectStoryCommandLine(block, {
+    return projectStoryCommandLine(block, rowLineLookups(context, motionName, characters, scene, scenes));
+}
+
+/** The lookups a row's line is projected with - one table, so a row and its reader cannot disagree. */
+function rowLineLookups(
+    context: StoryCommandLineContextValue,
+    motionName: ReturnType<typeof useStoryMotionNames>,
+    characters: Character[],
+    scene: StoryScene | undefined,
+    scenes: Record<StorySceneId, StoryScene> | undefined,
+): StoryCommandLineLookups {
+    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = context;
+    return {
         character: characterRowLookup(characters),
         scene,
         scenes,
@@ -422,7 +434,36 @@ export function useStoryCommandLine(
         appearanceOptions,
         commandContext,
         projectVariableName,
+    };
+}
+
+/**
+ * Hand a component above {@link StoryCommandLineProvider} a way to read any row's line as the row
+ * prints it, trigger included (`@外观 Narra 微笑`) - or null when no command line owns the row.
+ *
+ * For "edit as text" (F2, the row menu), which runs in the editor tab: the tab builds the provider, so
+ * it cannot read the provider's lookups itself, and the line has to be the very one the row shows or
+ * the author would be handed text that differs from what they were looking at. Renders nothing.
+ */
+export function StoryCommandLineReader({ readerRef, characters, scene, scenes }: {
+    readerRef: MutableRefObject<((block: StoryBlock) => string | null) | null>;
+    characters: Character[];
+    scene: StoryScene | undefined;
+    scenes: Record<StorySceneId, StoryScene> | undefined;
+}) {
+    useCommandTranslation();
+    const motionName = useStoryMotionNames();
+    const context = useStoryCommandLineContext();
+    useLayoutEffect(() => {
+        readerRef.current = block => {
+            const projection = projectStoryCommandLine(block, rowLineLookups(context, motionName, characters, scene, scenes));
+            return projection ? displayed(projection.source, context.trigger) : null;
+        };
     });
+    useLayoutEffect(() => () => {
+        readerRef.current = null;
+    }, [readerRef]);
+    return null;
 }
 
 /**

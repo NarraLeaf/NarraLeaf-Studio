@@ -44,7 +44,7 @@ export function Progress({
     variant = "default",
     size = "md",
     className = "",
-    animated = true,
+    animated = false,
 }: ProgressProps) {
     const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
 

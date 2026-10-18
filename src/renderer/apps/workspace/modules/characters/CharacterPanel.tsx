@@ -730,7 +730,8 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                                                     <button
                                                         onClick={(event) => handleMenuOpen(event, { type: "group", group })}
                                                         className="p-1 rounded-md hover:bg-fill"
-                                                        title={t("characters.panel.groupActions")}
+                                                        data-tip={t("characters.panel.groupActions")}
+                                                        aria-label={t("characters.panel.groupActions")}
                                                     >
                                                         <MoreVertical className="w-3 h-3" />
                                                     </button>

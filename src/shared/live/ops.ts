@@ -29,6 +29,7 @@ import type {
     StoryScene,
     StorySceneBgm,
     StorySceneId,
+    StorySceneLayer,
     StorySceneSnapshot,
 } from "@shared/types/story";
 
@@ -267,6 +268,17 @@ export type LiveStoryOp =
      * of a race loses a click. See {@link CLAIMED_OPS}.
      */
     | { op: "set-scene-snapshots"; sceneId: StorySceneId; snapshots: readonly StorySceneSnapshot[] }
+    /**
+     * The scene's layer stack, as it now stands.
+     *
+     * One verb for every gesture the stack takes - add a layer, rename one, remove one, move one,
+     * change how far away one is - for `set-scene-snapshots`' reason: `StoryService` reaches them
+     * through one mutator over the whole stack, and the stack is one ordered list whose order and
+     * shares are one answer (`normalizeSceneLayerStack`), which a per-layer verb would split.
+     *
+     * Not claimed: the loser of a race loses a drag. See {@link CLAIMED_OPS}.
+     */
+    | { op: "set-scene-layers"; sceneId: StorySceneId; layers: readonly StorySceneLayer[] }
     /**
      * Add a chapter, in front of the sibling named or last when that is null.
      *
@@ -1356,6 +1368,7 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "update-scene":
         case "move-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
         case "create-chapter":
         case "rename-chapter":
         case "delete-chapter":
@@ -1698,6 +1711,7 @@ export function opBlockId(op: LiveStoryOp): StoryBlockId | null {
         case "update-scene":
         case "move-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
         case "create-chapter":
         case "rename-chapter":
         case "delete-chapter":
@@ -1745,6 +1759,7 @@ export function opBlockIds(op: LiveStoryOp): readonly StoryBlockId[] {
         case "update-scene":
         case "move-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
         case "create-chapter":
         case "rename-chapter":
         case "delete-chapter":
@@ -1786,6 +1801,7 @@ export function opSceneId(op: LiveStoryOp): StorySceneId | null {
         case "update-scene":
         case "move-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
             return op.sceneId;
         case "rename-story":
         case "reorder-chapters":
@@ -1978,6 +1994,7 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "update-scene":
         case "move-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
         case "create-chapter":
         case "rename-chapter":
         case "delete-chapter":
@@ -2243,6 +2260,7 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
             return { of: "scene", storyId, sceneId: op.scene.id };
         case "update-scene":
         case "set-scene-snapshots":
+        case "set-scene-layers":
             return { of: "scene", storyId, sceneId: op.sceneId };
         // Names a scene it does not change: the pointer moved, the scene did not, and a digest of it
         // would be a fingerprint of something this operation cannot have altered.

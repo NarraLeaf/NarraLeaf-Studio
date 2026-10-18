@@ -1,6 +1,6 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
-import { formatBlueprintKeyboardBinding } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_GAMEPAD_BUTTONS, formatBlueprintGamepadButton } from "@shared/types/blueprint/gamepad";
+import { getKeyboardBindingLabel } from "@/lib/ui-editor/keyboardBindingLabel";
 import {
     inputBindingDevices,
     type UIInputBinding,
@@ -15,8 +15,9 @@ export type TranslateFn = (key: TranslationKey, params?: InterpolationParams) =>
  * Both halves of the input model show the same chips - the library panel where an action's bindings
  * are set, and the interface's own Input section - so the words come from one place.
  *
- * A key is shown through `formatBlueprintKeyboardBinding` rather than raw, so an author who bound
- * "esc" reads "Escape" here and on the `On Key Down` head that answers the same key.
+ * A key is shown through `getKeyboardBindingLabel` rather than raw, so an author who bound "esc"
+ * reads "Esc" here and on the `On Key Down` head that answers the same key, and an arrow is named
+ * in the author's language rather than in the English the binding is stored in.
  *
  * Comments in English per project convention.
  */
@@ -24,14 +25,36 @@ export function getInputPointerGestureLabel(gesture: UIInputPointerGesture, t: T
     return t(`uiEditor.inputActions.gesture.${gesture}`);
 }
 
+/**
+ * The pad's directions, which carry no word on the pad, named in the author's language. Every other
+ * button is named by what is printed on it (A, LB, Start), the same in every language, as a key is.
+ */
+const GAMEPAD_DIRECTION_NAMES: ReadonlyMap<string, TranslationKey> = new Map<string, TranslationKey>([
+    ["D-pad Up", "common.keys.dpadUp"],
+    ["D-pad Down", "common.keys.dpadDown"],
+    ["D-pad Left", "common.keys.dpadLeft"],
+    ["D-pad Right", "common.keys.dpadRight"],
+    ["Left Stick Up", "common.keys.leftStickUp"],
+    ["Left Stick Down", "common.keys.leftStickDown"],
+    ["Left Stick Left", "common.keys.leftStickLeft"],
+    ["Left Stick Right", "common.keys.leftStickRight"],
+]);
+
+/** A gamepad button as the author reads it. Display only: the binding keeps its stored name. */
+export function getGamepadButtonLabel(button: string, t: TranslateFn): string {
+    const name = formatBlueprintGamepadButton(button) || button;
+    const translated = GAMEPAD_DIRECTION_NAMES.get(name);
+    return translated ? t(translated) : name;
+}
+
 export function getInputBindingLabel(binding: UIInputBinding, t: TranslateFn): string {
     if (binding.kind === "pointer") {
         return getInputPointerGestureLabel(binding.gesture, t);
     }
     if (binding.kind === "gamepad") {
-        return formatBlueprintGamepadButton(binding.button) || binding.button;
+        return getGamepadButtonLabel(binding.button, t);
     }
-    return formatBlueprintKeyboardBinding(binding.key) || binding.key;
+    return getKeyboardBindingLabel(binding.key, t) || binding.key;
 }
 
 /**
@@ -173,5 +196,8 @@ export function getInputBindingRoutingDevices(binding: UIInputBinding): Readonly
     return inputBindingDevices(binding) as ReadonlySet<string>;
 }
 
-/** The 17 standard buttons and the left stick's four directions the add-menu lists. Hardware names, not localised. */
+/**
+ * The 17 standard buttons and the left stick's four directions the add-menu lists, in their stored
+ * names; the menu shows each through {@link getGamepadButtonLabel}.
+ */
 export const GAMEPAD_BINDING_BUTTONS = BLUEPRINT_GAMEPAD_BUTTONS;

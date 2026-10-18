@@ -208,6 +208,69 @@ describe("AssetBrowserView", () => {
         expect(onNavigate).toHaveBeenCalledWith({ category: AssetCategory.Media });
     });
 
+    it("moves the selection to the next item with an arrow key, as a click on it would", () => {
+        const handleItemSelect = vi.fn();
+        const handleAssetClick = vi.fn();
+        render(<Harness
+            location={IN_MUSIC}
+            context={{ handleItemSelect, handleAssetClick, selectedItems: new Set(["group:g-themes"]), focusedItemId: "group:g-themes" }}
+        />);
+
+        fireEvent.keyDown(document.querySelector("[data-asset-browser-contents]") as HTMLElement, { key: "ArrowRight" });
+
+        expect(handleItemSelect).toHaveBeenCalledWith("a-title", false, { ctrlKey: false, metaKey: false, shiftKey: false });
+        expect(handleAssetClick).toHaveBeenCalledWith(FILES[0], false);
+    });
+
+    it("widens the selection with Shift and an arrow key", () => {
+        const handleItemSelect = vi.fn();
+        const handleGroupFocus = vi.fn();
+        render(<Harness
+            location={IN_MUSIC}
+            context={{ handleItemSelect, handleGroupFocus, selectedItems: new Set(["asset:a-title"]), focusedItemId: "asset:a-title" }}
+        />);
+
+        fireEvent.keyDown(document.querySelector("[data-asset-browser-contents]") as HTMLElement, { key: "ArrowLeft", shiftKey: true });
+
+        expect(handleItemSelect).toHaveBeenCalledWith(THEMES.id, true, { ctrlKey: false, metaKey: false, shiftKey: true });
+        expect(handleGroupFocus).toHaveBeenCalledWith(THEMES.id);
+    });
+
+    it("starts from the first item when nothing is selected, and leaves Alt+Up to going up", () => {
+        const handleItemSelect = vi.fn();
+        const onNavigate = vi.fn();
+        render(<Harness location={IN_MUSIC} onNavigate={onNavigate} context={{ handleItemSelect }} />);
+        const contents = document.querySelector("[data-asset-browser-contents]") as HTMLElement;
+
+        fireEvent.keyDown(contents, { key: "ArrowDown" });
+        expect(handleItemSelect).toHaveBeenCalledWith(THEMES.id, true, expect.anything());
+
+        handleItemSelect.mockClear();
+        fireEvent.keyDown(contents, { key: "ArrowUp", altKey: true });
+        expect(handleItemSelect).not.toHaveBeenCalled();
+        expect(onNavigate).toHaveBeenCalledWith({ category: AssetCategory.Media });
+    });
+
+    it("walks the tree with the arrow keys", () => {
+        const onNavigate = vi.fn();
+        const setExpandedGroups = vi.fn();
+        render(<Harness location={IN_MUSIC} onNavigate={onNavigate} context={{ setExpandedGroups }} />);
+        const tree = document.querySelector("[role=tree]") as HTMLElement;
+
+        // Music has a folder inside, closed: right opens it without going anywhere.
+        fireEvent.keyDown(tree, { key: "ArrowRight" });
+        expect(setExpandedGroups).toHaveBeenCalledTimes(1);
+        expect(onNavigate).not.toHaveBeenCalled();
+
+        // Left on a closed folder goes up to what it sits in, the category.
+        fireEvent.keyDown(tree, { key: "ArrowLeft" });
+        expect(onNavigate).toHaveBeenLastCalledWith({ category: AssetCategory.Media });
+
+        // Up goes to the row above, which is the category as well.
+        fireEvent.keyDown(tree, { key: "ArrowUp" });
+        expect(onNavigate).toHaveBeenLastCalledWith({ category: AssetCategory.Media });
+    });
+
     it("goes to a place from the tree", () => {
         const onNavigate = vi.fn();
         render(<Harness location={{ category: AssetCategory.Media }} onNavigate={onNavigate} />);

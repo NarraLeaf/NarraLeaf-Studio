@@ -1,7 +1,8 @@
 import http from "http";
 import type { AddressInfo } from "net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchWithoutTimeouts } from "./agentStdioMain";
+import { PassThrough } from "stream";
+import { agentLaunchArgs, fetchWithoutTimeouts, openStandardInput } from "./agentStdioMain";
 
 /**
  * The stdio bridge's own request for the client's messages, against a real local server: it has
@@ -32,6 +33,17 @@ function readBody(req: http.IncomingMessage): Promise<string> {
         req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     });
 }
+
+describe("agentLaunchArgs", () => {
+    it("tells a development Studio to serve agents on the port the profile names, and a packaged one nothing", () => {
+        expect(agentLaunchArgs(false, { enabled: false, port: 47311 })).toEqual(["--agent-port=47311"]);
+        // No usable port: serve on the default one.
+        expect(agentLaunchArgs(false, { port: "47311" })).toEqual(["--agent"]);
+        expect(agentLaunchArgs(false, null)).toEqual(["--agent"]);
+        // Packaged, the profile's own switch and port decide.
+        expect(agentLaunchArgs(true, { port: 47311 })).toEqual([]);
+    });
+});
 
 describe("fetchWithoutTimeouts", () => {
     it("posts the message and waits for headers that come only when the tool has finished, without Node's fetch", async () => {
@@ -117,5 +129,33 @@ describe("fetchWithoutTimeouts", () => {
         const pending = fetchWithoutTimeouts(url, { method: "POST", body: "{}", signal: controller.signal });
         setTimeout(() => controller.abort(new Error("stopped")), 20);
         await expect(pending).rejects.toThrow("stopped");
+    });
+});
+
+describe("openStandardInput", () => {
+    it("never reads process.stdin on Windows, where Electron's main process has replaced it with an ended stream", () => {
+        const pipe = new PassThrough();
+        const file = vi.fn(() => new PassThrough());
+        expect(openStandardInput("win32", { pipe: () => pipe, file })).toBe(pipe);
+        expect(file).not.toHaveBeenCalled();
+    });
+
+    it("reads input redirected from a file as a file, since a socket refuses that descriptor", () => {
+        const file = new PassThrough();
+        const opened = openStandardInput("win32", {
+            pipe: () => {
+                throw Object.assign(new TypeError("Unsupported fd type: FILE"), { code: "ERR_INVALID_FD_TYPE" });
+            },
+            file: () => file,
+        });
+        expect(opened).toBe(file);
+    });
+
+    it("keeps process.stdin elsewhere", () => {
+        const open = { pipe: vi.fn(() => new PassThrough()), file: vi.fn(() => new PassThrough()) };
+        expect(openStandardInput("darwin", open)).toBe(process.stdin);
+        expect(openStandardInput("linux", open)).toBe(process.stdin);
+        expect(open.pipe).not.toHaveBeenCalled();
+        expect(open.file).not.toHaveBeenCalled();
     });
 });

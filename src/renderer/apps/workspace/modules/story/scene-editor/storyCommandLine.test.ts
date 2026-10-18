@@ -7,6 +7,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import { getCommandSpec } from "./commands/registry";
 import { projectStoryCommandLine, type StoryCommandLineLookups } from "./storyCommandLine";
 import { storyCommandLineParts } from "./StoryCommandLineView";
+import { rewritesRowInPlace } from "./storySceneBlockUtils";
 
 /**
  * The row reads back as the line that made it.
@@ -678,10 +679,6 @@ describe("projectStoryCommandLine", () => {
             "/font title color=#ffcc00",
             "/video intro name=cutscene muted",
             "/play clip",
-            "/layer overlay z=10",
-            // A depth on the create row, and the background layer's own depth row under its reserved word.
-            "/layer hills z=-1 depth=far",
-            "/layer backgroundLayer depth=mid",
             "/vfx intro name=petals opacity=0.5",
             // A weather seed: the word IS the source, so the line has to print it.
             "/vfx snow",
@@ -744,6 +741,22 @@ describe("projectStoryCommandLine", () => {
         }
     });
 
+    /**
+     * Edit as text (F2): the row opens as its line, and committing it unchanged must hand back the row
+     * it came from - the same payload, built into a block the row can take in place, so the row keeps
+     * its id and its disabled flag. A line edited into a container takes the row's place instead.
+     */
+    it("a row opened as its line commits back into the same row", () => {
+        for (const source of ["/char Alice smile t=fade d=0.4", "/bg forest_day t=fade d=0.5", "/vfx intro name=petals"]) {
+            const row = build(source);
+            const line = projectStoryCommandLine(row, LOOKUPS);
+            const again = build(line!.source);
+            expect(rewritesRowInPlace(row, again), source).toBe(true);
+            expect(comparable(again), source).toEqual(comparable(row));
+        }
+        expect(rewritesRowInPlace(build("/char Alice smile"), build("/parallel"))).toBe(false);
+    });
+
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
         for (const source of [
@@ -751,8 +764,6 @@ describe("projectStoryCommandLine", () => {
             "/bg forest_day t=fade d=0.5",
             "/transform camera pan=left",
             "/bgm theme vol=0.6 loop",
-            "/layer hills depth=far",
-            "/layer backgroundLayer depth=farthest",
             "/local hp 100 desc='生命值 上限'",
             "/local inv \"[1, 2]\" type=json",
         ]) {
@@ -760,6 +771,20 @@ describe("projectStoryCommandLine", () => {
             const line = projectStoryCommandLine(first, LOOKUPS);
             expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
+    });
+
+    it("does not repeat a unit its key already names — ja printed 「秒=0.6秒」", () => {
+        i18nStore.setLocale("ja");
+        const row = build("/hide Alice out=fade d=0.6");
+        const line = projectStoryCommandLine(row, LOOKUPS)!.source;
+        expect(line).toContain("秒=0.6");
+        expect(line).not.toContain("秒=0.6秒");
+        expect(comparable(build(line))).toEqual(comparable(row));
+        // zh and en keep the unit: their keys do not name it.
+        i18nStore.setLocale("zh");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("=0.6秒");
+        i18nStore.setLocale("en");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("d=0.6s");
     });
 });
 
@@ -772,6 +797,42 @@ describe("projectStoryCommandLine", () => {
  * compiler had already moved on. Its own describe because it needs a scene with declarations in it,
  * which the fixture above deliberately does not have.
  */
+describe("projectStoryCommandLine — a layered character's look", () => {
+    /**
+     * A `/char` row changes the axes it names and nothing else, and its value is one tag. Picking a
+     * tag of ANOTHER axis on that value merged it in beside the first, so the row went from
+     * 「@外观 美绪 笑」 to holding two tags - and a row with two prints no value at all: 「@外观 美绪」.
+     */
+    const options = [
+        { id: "smile", name: "笑", axisId: "face" },
+        { id: "calm", name: "平静", axisId: "face" },
+        { id: "navy", name: "蓝卫衣", axisId: "outfit" },
+    ];
+    const lookups: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        character: id => (id === "c3" ? { id: "c3", name: "Mio" } : LOOKUPS.character(id)),
+        appearanceName: (characterId, refId) => (characterId === "c3" ? options.find(option => option.id === refId)?.name ?? null : null),
+        appearanceOptions: characterId => (characterId === "c3" ? options : []),
+    };
+    const row = (tags: Record<string, string>) => ({
+        id: "r", parentId: null, childrenIds: [], kind: "action",
+        payload: { action: "character", operation: "expression", characterId: "c3", tags },
+    }) as unknown as StoryBlock;
+
+    it("replaces the one tag it holds, whichever axis the new one is on", () => {
+        const block = row({ face: "smile" });
+        const line = projectStoryCommandLine(block, lookups)!;
+        expect(line.source).toBe("/char Mio 笑");
+        const look = line.edits.find(entry => entry.value === "smile")!;
+        const picked = look.apply("navy") as Extract<StoryBlock, { kind: "action" }>["payload"];
+        expect(picked).toMatchObject({ action: "character" });
+        expect((picked as { tags?: unknown }).tags).toEqual({ outfit: "navy" });
+        expect(projectStoryCommandLine({ ...block, payload: picked } as StoryBlock, lookups)!.source).toBe("/char Mio 蓝卫衣");
+        // The same axis is a replacement too, as it always was.
+        expect(look.apply("calm")).toMatchObject({ tags: { face: "calm" } });
+    });
+});
+
 describe("projectStoryCommandLine — after a rename", () => {
     const DECLARED_SCENE = {
         id: "s1",
@@ -919,7 +980,9 @@ describe("projectStoryCommandLine — what a word points at", () => {
     const LINK_SCENE = {
         id: "s1",
         name: "Chapter 2",
-        rootBlockIds: ["d_char", "d_img", "d_text", "d_layer", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        rootBlockIds: ["d_char", "d_img", "d_text", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        // The layer is the scene's own, under the id the references below are bound to.
+        layers: [{ kind: "custom", id: "d_layer", name: "overlay" }, { kind: "displayable" }, { kind: "background" }],
         blocks: {
             d_char: {
                 id: "d_char", parentId: null, childrenIds: [], kind: "action",
@@ -932,10 +995,6 @@ describe("projectStoryCommandLine — what a word points at", () => {
             d_text: {
                 id: "d_text", parentId: null, childrenIds: [], kind: "action",
                 payload: { action: "text", operation: "create", objectName: "title", text: { value: "Chapter One", textId: "t1" } },
-            },
-            d_layer: {
-                id: "d_layer", parentId: null, childrenIds: [], kind: "action",
-                payload: { action: "layer", operation: "create", objectName: "overlay", zIndex: 10 },
             },
             d_video: {
                 id: "d_video", parentId: null, childrenIds: [], kind: "action",
@@ -1037,11 +1096,12 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(typed("/seek clip 12")).toContainEqual({ text: "clip", ref: { kind: "block", blockId: "d_video" } });
         expect(typed("/stop keys")).toContainEqual({ text: "keys", ref: { kind: "block", blockId: "d_snd" } });
         expect(typed("/hide petals")).toContainEqual({ text: "petals", ref: { kind: "block", blockId: "d_vfx" } });
-        // The layer, through both of its rows: the `layer` action the inspector writes, and the
-        // `displayable` one a `/transform` line builds.
+        // The layer is declared by the scene, not by a row, so through neither of its rows - the
+        // `layer` action the inspector writes, or the `displayable` one a `/transform` line builds -
+        // is there a row to take the reader to.
         expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
-            .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
-        expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+            .toEqual([]);
+        expect(typed("/transform overlay opacity=0.4")).not.toContainEqual(expect.objectContaining({ text: "overlay" }));
     });
 
     it("leaves an overlay another scene started unlinked, like any other object of another scene", () => {
@@ -1091,7 +1151,6 @@ describe("projectStoryCommandLine — what a word points at", () => {
         // The name a create row DEFINES is the row the reader is already looking at. Its asset is a
         // reference and does link; its own name does not.
         expect(typed("/image night name=sky")).toEqual([{ text: "night", ref: { kind: "asset", assetId: "i2" } }]);
-        expect(typed("/layer sky z=4")).toEqual([]);
         expect(typed("/label chorus")).toEqual([]);
     });
 
@@ -1142,5 +1201,96 @@ describe("projectStoryCommandLine — what a word points at", () => {
         const line = projectStoryCommandLine(build("/show Alice pos=left", LINK_CONTEXT), LINK_LOOKUPS)!;
         expect(storyCommandLineParts(line.source, line.edits)).toEqual(storyCommandLineParts(line.source, line.edits, false, []));
         expect(storyCommandLineParts(line.source, line.edits).some(part => part.link)).toBe(false);
+    });
+});
+
+/**
+ * `xoffset=` / `yoffset=`: the pixel halves of the engine's align position, which the line could not
+ * spell before - a row carrying one printed nothing for its position, so the story file wrote it as an
+ * opaque `»` line. Two rules are held here: an offset is only ever written with both shares of
+ * `pos=` beside it, and the line the row prints builds the same row again.
+ */
+describe("pixel offsets beside a position", () => {
+    function issueCodes(source: string): string[] {
+        const line = parseCommandLine(source);
+        if (line.kind !== "command") {
+            throw new Error(`not a command: ${source}`);
+        }
+        return [...line.issues, ...resolveCommandLine(line, CONTEXT).issues].map(issue => issue.code);
+    }
+
+    it("prints the pair beside every offset, and the line rebuilds the row", () => {
+        const lines: [typed: string, printed: string][] = [
+            ["/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4", "/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12 d=0.4s"],
+            // A word with pixels on top is no longer the word's position, so the shares are spelled out.
+            ["/transform hero pos=left xoffset=40", "/transform hero pos=0.25,0.5 xoffset=40"],
+            ["/transform Alice pos=0.3,0.2 yoffset=24", "/transform Alice pos=0.3,0.2 yoffset=24"],
+            ["/show Alice pos=0.25,0.5 xoffset=-40", "/show Alice pos=0.25,0.5 xoffset=-40 d=0.3s"],
+            ["/show Alice smile pos=right yoffset=16 d=0.4", "/show Alice smile pos=0.75,0.5 yoffset=16 d=0.4s"],
+            ["/show night name=sky pos=0.5,0.5 yoffset=20", "/show night name=sky pos=0.5,0.5 yoffset=20 d=0.25s"],
+            ["/image night name=sky pos=0.5,0.6 xoffset=12", "/image night name=sky pos=0.5,0.6 xoffset=12"],
+            ["/text name=title pos=0.5,0.8 yoffset=-8 Chapter One", "/text name=title pos=0.5,0.8 yoffset=-8 Chapter One"],
+            // The camera is one more subject of the same bag.
+            ["/transform camera pan=0.5,0.5 xoffset=30", "/transform camera pos=0.5,0.5 xoffset=30 d=0.6s"],
+        ];
+        for (const [typed, printed] of lines) {
+            const first = build(typed);
+            expect(project(typed), typed).toBe(printed);
+            expect(comparable(build(printed)), printed).toEqual(comparable(first));
+            // And once more, from the printed line: print → parse → print is a fixed point.
+            expect(project(printed), printed).toBe(printed);
+        }
+    });
+
+    it("stores the offsets as design pixels on the position the shares name", () => {
+        const transform = (build("/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12").payload as { transform?: { to?: unknown } }).transform;
+        expect(transform?.to).toEqual({ position: { xalign: 0.5, yalign: 0.5, xoffset: 40, yoffset: -12 } });
+        const enter = (build("/show Alice pos=left xoffset=-40").payload as { transform?: { to?: { position?: unknown } } }).transform;
+        expect(enter?.to?.position).toEqual({ xalign: 0.25, yalign: 0.5, xoffset: -40 });
+    });
+
+    it("refuses an offset with no pos= to shift", () => {
+        expect(issueCodes("/transform hero xoffset=40")).toEqual(["offsetWithoutPosition"]);
+        expect(issueCodes("/transform hero yoffset=10 zoom=1.2")).toEqual(["offsetWithoutPosition"]);
+        expect(issueCodes("/show Alice xoffset=40 yoffset=10")).toEqual(["offsetWithoutPosition", "offsetWithoutPosition"]);
+        expect(issueCodes("/image night name=sky yoffset=10")).toEqual(["offsetWithoutPosition"]);
+        // The pair beside it is still held to the stage's reach.
+        expect(issueCodes("/show Alice pos=100,200 xoffset=4")).toEqual(["positionOutOfRange"]);
+        // And a stopped loop states no destination, offsets included.
+        expect(issueCodes("/transform hero stopLoop pos=0.5,0.5 xoffset=4")).toContain("conflictingParams");
+    });
+
+    it("prints no position for an offset beside a half-stated pair, rather than one that drops it", () => {
+        // The inspector writes a single share when a portrait is dragged along one axis. The line has
+        // no spelling for "keep the other share", so the position stays the inspector's - and the story
+        // file's echo check writes such a row as `»` with its payload, losing nothing.
+        const block = build("/transform hero zoom=1.2");
+        const payload = block.payload as { transform?: { to?: Record<string, unknown> } };
+        const row = { ...block, payload: { ...payload, transform: { ...payload.transform, to: { ...payload.transform?.to, position: { xalign: 0.4, xoffset: 40 } } } } } as StoryBlock;
+        expect(projectStoryCommandLine(row, LOOKUPS)?.source).toBe("/transform hero zoom=1.2");
+    });
+
+    it("edits an offset in place, and keeps the offsets when only the anchor moves", () => {
+        const edited = (source: string, current: string, next: string): string => {
+            const block = build(source);
+            const line = projectStoryCommandLine(block, LOOKUPS)!;
+            const edit = line.edits.find(entry => entry.value === current);
+            if (!edit) {
+                throw new Error(`${source} has no editable value "${current}" (has ${line.edits.map(e => e.value).join(", ")})`);
+            }
+            return projectStoryCommandLine({ ...block, payload: edit.apply(next) } as StoryBlock, LOOKUPS)!.source;
+        };
+        expect(edited("/transform hero pos=0.5,0.5 xoffset=40", "40", "-8")).toBe("/transform hero pos=0.5,0.5 xoffset=-8");
+        expect(edited("/transform hero pos=0.5,0.5 xoffset=40", "0.5,0.5", "right")).toBe("/transform hero pos=0.75,0.5 xoffset=40");
+        expect(edited("/show Alice pos=0.25,0.5 yoffset=16", "16", "24")).toBe("/show Alice pos=0.25,0.5 yoffset=24 d=0.3s");
+        expect(edited("/show Alice pos=0.25,0.5 yoffset=16", "0.25,0.5", "0.4,0.5")).toBe("/show Alice pos=0.4,0.5 yoffset=16 d=0.3s");
+    });
+
+    it("takes the offsets in the command language too", () => {
+        i18nStore.setLocale("zh");
+        expect(build("/transform hero pos=0.5,0.5 横向偏移像素=40 纵向偏移像素=-12").payload)
+            .toEqual(build("/transform hero pos=0.5,0.5 xoffset=40 yoffset=-12").payload);
+        expect(build(project("/show Alice pos=0.25,0.5 xoffset=-40")).payload)
+            .toEqual(build("/show Alice pos=0.25,0.5 xoffset=-40").payload);
     });
 });

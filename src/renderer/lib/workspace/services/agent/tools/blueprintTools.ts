@@ -33,14 +33,19 @@ import {
     formatBlueprintDiagnostics,
     listNodeCategories,
 } from "@/lib/agent-core";
-import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { readTypedBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "@/lib/blueprint-cli/remove";
 import { fnv1aHex } from "@shared/utils/contentHash";
 import { ownerRefToIndexKey } from "../../ui-editor/blueprint/ownerKeys";
 import { Services, type WorkspaceContext } from "../../services";
 import type { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import type { LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import type { UIGraphService } from "../../ui-editor/UIGraphService";
+import type { UIEditorHistoryService } from "../../ui-editor/UIEditorHistoryService";
+import type { UIService } from "../../core/UIService";
+import { isBlueprintEntryTabShowing } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import {
     answer,
     readOptionalBoolean,
@@ -51,8 +56,9 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
+import { AGENT_HISTORY_LABEL } from "../agentLookups";
 import { readSource } from "./storyTextTools";
-import { blueprintInputOf, capText, checkFailed, cloneJson, liveBlueprintDocument, revisionComment } from "./textFormat";
+import { blueprintInputOf, capText, checkFailed, cloneJson, liveBlueprintDocument, revisionComment, uiDocumentService } from "./textFormat";
 
 // ── Catalogue ────────────────────────────────────────────────────────────────────────────────────
 
@@ -103,8 +109,10 @@ export const blueprintList: AgentToolHandler = async (args, { ctx }) => {
     const query = readOptionalString(args, "query");
     // Most owners hold an empty blueprint (a widget gets one when its graph is first opened), so an
     // unfiltered list leaves them out; a query lists every match, empty or not.
-    const result = blueprintListCommand(liveBlueprintDocument(ctx), { search: query, withGraphs: !query });
-    const text = commandText(result).replace(" (--with-graphs).", query ? "." : "; pass `query` to list the empty ones too.");
+    const all = args.all === true;
+    const result = blueprintListCommand(liveBlueprintDocument(ctx), { search: query, withGraphs: !query && !all });
+    const text = commandText(result).replace(" (--with-graphs).", query || all ? "." : "; pass `all: true` (or a `query`) to list the empty ones too.");
+
     return answer(capText(text, "Pass `query` to narrow it."));
 };
 
@@ -276,5 +284,128 @@ export const blueprintApply: AgentToolHandler = async (args, { ctx, request, fol
         added,
         replaced,
         blueprints: written,
+    });
+};
+
+// ── blueprint_remove ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The interface editor a removable blueprint belongs to, by the surface id its undo stack is named
+ * by: the page of a widget's or a value binding's blueprint, the definition of a component element's.
+ * Null for any other owner, which `planBlueprintRemoval` refuses before this is asked.
+ */
+function owningEditorSurfaceId(owner: BlueprintOwnerRef): string | null {
+    switch (owner.kind) {
+        case "widgetMain":
+        case "widgetValue":
+            return owner.surfaceId;
+        case "componentWidgetMain":
+            return buildUIComponentEditorSurfaceId(owner.componentId);
+        default:
+            return null;
+    }
+}
+
+/**
+ * Close every editor tab showing a blueprint just removed - what `UIDocumentService` does when the
+ * author's clearing a value binding removes one. Left open, the tab says only that the blueprint
+ * cannot be found, and while it is the active editor Ctrl+Z goes to the blueprint's own stack
+ * instead of the page's, where the step that brings it back is.
+ */
+function closeTabsShowingBlueprint(ctx: WorkspaceContext, blueprintId: string): void {
+    let ui: UIService;
+    try {
+        ui = ctx.services.get<UIService>(Services.UI);
+    } catch {
+        // No editor layout behind this workspace (a background one): there are no tabs to close.
+        return;
+    }
+    for (const tab of ui.editor.getAll()) {
+        if (isBlueprintEntryTabShowing(tab, blueprintId)) {
+            ui.editor.close(tab.id);
+        }
+    }
+}
+
+/** Every interface element in the project, pages and component definitions alike, by id. */
+function allInterfaceElements(ctx: WorkspaceContext): Record<string, RemovalElement> {
+    const document = uiDocumentService(ctx).getDocument();
+    const out: Record<string, RemovalElement> = { ...document.elements };
+    for (const component of document.components ?? []) {
+        Object.assign(out, component.elements);
+    }
+    return out;
+}
+
+/**
+ * Take one blueprint out of the project: the agent's `blueprint remove`.
+ *
+ * The same plan the command line follows (`blueprint-cli/remove.ts`) - only a widget's, a component
+ * element's or a value binding's blueprint, and only while nothing names it - written through the
+ * live graph document and recorded the way Studio records the removal of such a blueprint when the
+ * author clears a value binding or deletes the widget: one step on the stack of the editor it belongs
+ * to (its page's, or its component definition's), whose snapshot carries that editor's blueprints,
+ * and every tab still showing it closed ({@link closeTabsShowingBlueprint}).
+ *
+ * Not the blueprint's own stack, and not the project's. With its tabs closed, nothing reaches the
+ * blueprint's own stack until undo on the page brings the blueprint back, and its earlier steps are
+ * then its own again. Recorded anywhere else, a tab left open on it pressed Ctrl+Z into that stack
+ * and put back a snapshot from before the removal, beside a removal step still waiting elsewhere.
+ */
+export const blueprintRemove: AgentToolHandler = async (args, { ctx, request, follow }) => {
+    const wanted = readString(args, "blueprint");
+    const dryRun = readOptionalBoolean(args, "dryRun") ?? false;
+    const live = liveBlueprintDocument(ctx);
+    // One blueprint exactly, by id or by whole name: a part of a name is the right answer to "show
+    // it" and the wrong one to "delete it".
+    const matched = Object.values(live.blueprints).filter(item => item.id === wanted || item.name === wanted);
+    if (matched.length === 0) {
+        throw refuse("not_found", `No blueprint has the id or the whole name "${wanted}".`, "Call blueprint_list for the blueprints and their owners.");
+    }
+    if (matched.length > 1) {
+        throw refuse(
+            "invalid_args",
+            `${matched.length} blueprints are called "${wanted}": ${matched.map(item => `${item.id} (${ownerRefToIndexKey(item.owner)})`).join(", ")}.`,
+            "Name one by its id.",
+        );
+    }
+    const blueprint = matched[0];
+    follow.describeCall(request.callId, blueprint.name);
+    const plan = planBlueprintRemoval(live, blueprint, allInterfaceElements(ctx));
+    if (plan.refusals.length > 0) {
+        throw refuse(
+            "unavailable",
+            `"${blueprint.name}" cannot be removed:\n${plan.refusals.map(reason => `  ${reason.replace("Empty it with `apply` instead.", "Empty it with blueprint_apply instead.").replace("with `ui apply` first", "with ui_apply or ui_patch first")}`).join("\n")}`,
+            "Nothing was written.",
+        );
+    }
+    const owner = ownerRefToIndexKey(blueprint.owner);
+    const editorSurfaceId = owningEditorSurfaceId(blueprint.owner);
+    if (!editorSurfaceId) {
+        throw refuse("unavailable", `"${blueprint.name}" belongs to no page or component, so it cannot be removed.`, "Nothing was written.");
+    }
+    if (dryRun) {
+        return answer(`Would remove "${blueprint.name}" (${owner}) (dry run: nothing written).`, {
+            dryRun: true,
+            written: false,
+            blueprint: { id: blueprint.id, name: blueprint.name, owner },
+        });
+    }
+    const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
+    const uiHistory = ctx.services.get<UIEditorHistoryService>(Services.UIEditorHistory);
+    const before = uiHistory.captureSnapshot(editorSurfaceId);
+    graph.applyGraphMutation(document => {
+        const target = document.blueprintDocument.blueprints[blueprint.id];
+        if (target) {
+            removeBlueprint(document.blueprintDocument, target, plan);
+        }
+    });
+    uiHistory.record({ surfaceId: editorSurfaceId, before, after: uiHistory.captureSnapshot(editorSurfaceId), label: AGENT_HISTORY_LABEL });
+    closeTabsShowingBlueprint(ctx, blueprint.id);
+    const where = blueprint.owner.kind === "componentWidgetMain" ? "its component's editor" : "its page's editor";
+    return answer(`Removed "${blueprint.name}" (${owner}). One step of undo in ${where}.`, {
+        dryRun: false,
+        written: true,
+        blueprint: { id: blueprint.id, name: blueprint.name, owner },
     });
 };

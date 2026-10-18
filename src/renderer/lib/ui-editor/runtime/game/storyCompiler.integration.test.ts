@@ -189,6 +189,28 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
     });
 
+    it("marks the action of a /wait click row, and only that one, as waiting for a click", async () => {
+        // An agent's play-test reads this off the play head: the screen shows nothing that says the
+        // story is stopped for a click.
+        const blocks: Record<string, StoryBlock> = {
+            a: narrationBlock("a", "text-a", "Before."),
+            click: { id: "click", kind: "action", parentId: null, childrenIds: [], payload: { action: "wait", mode: "click" } },
+            pause: { id: "pause", kind: "action", parentId: null, childrenIds: [], payload: { action: "wait", mode: "duration", durationMs: 100 } },
+            b: narrationBlock("b", "text-b", "After."),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["a", "click", "pause", "b"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const waiting = compiled.actionIdBindings.filter(binding => binding.waitsForClick).map(binding => binding.blockId);
+        expect(waiting.length).toBeGreaterThan(0);
+        expect(new Set(waiting)).toEqual(new Set(["click"]));
+        // A timed wait says how long, so a driver waits it out rather than calling the game stuck.
+        const paused = compiled.actionIdBindings.filter(binding => binding.pause);
+        expect(paused.map(binding => [binding.blockId, binding.pause])).toEqual([["pause", { kind: "timed", ms: 100 }]]);
+    });
+
     it("compiles a disabled row out — no output, no diagnostic (schema v7)", async () => {
         const blocks: Record<string, StoryBlock> = {
             a: narrationBlock("a", "text-a", "Kept."),
@@ -594,15 +616,6 @@ describe("compileStudioStoryToNlr", () => {
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
-            // A custom layer is the one displayable the engine will not conjure from a mention, so the
-            // transform row below needs the row that declares it.
-            layerCreate: {
-                id: "layerCreate",
-                kind: "action",
-                parentId: null,
-                childrenIds: [],
-                payload: { action: "layer", operation: "create", objectName: "foreground" },
-            },
             layer: {
                 id: "layer",
                 kind: "action",
@@ -617,8 +630,11 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
 
+        // A custom layer is the scene's: the transform row below addresses the layer the scene declares.
+        const document = baseDocument(blocks, ["textCreate", "text", "layer"]);
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "foreground-layer", name: "foreground" }, { kind: "displayable" }, { kind: "background" }];
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["textCreate", "text", "layerCreate", "layer"]),
+            document,
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -637,19 +653,12 @@ describe("compileStudioStoryToNlr", () => {
 
     it("resolves image/text layer refs to custom and built-in NLR layers", async () => {
         const blocks: Record<string, StoryBlock> = {
-            layer: {
-                id: "layer",
-                kind: "action",
-                parentId: null,
-                childrenIds: [],
-                payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 3 },
-            },
             img: {
                 id: "img",
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                // Custom layer bound by the create block's stable id.
+                // One of the scene's own layers, bound by its id.
                 payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero", layer: { kind: "custom", sourceBlockId: "layer" } },
             },
             caption: {
@@ -662,13 +671,15 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
 
+        const document = baseDocument(blocks, ["img", "caption"]);
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "layer", name: "Foreground" }, { kind: "displayable" }, { kind: "background" }];
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["layer", "img", "caption"]),
+            document,
             sceneId: "scene-1",
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
-        // Compiling touches Scene.backgroundLayer (built-in getter) + getLayer (custom) with no throw.
+        // Compiling touches Scene.backgroundLayer (built-in getter) + the scene's own layer with no throw.
         expect(compiled.diagnostics).toEqual([]);
     });
 
@@ -3402,6 +3413,43 @@ describe("dialog avatars", () => {
         expect(compiled.avatarAssetIdByUrl.get("nlr://asset-avatar-default")).toBe("asset-avatar-default");
     });
 
+    // With no profile avatar, the dialogue box stayed empty for a speaker off stage while the backlog
+    // and `Get Character` showed her default look's avatar for the same line. Both now answer alike.
+    it("gives an off-stage speaker with no profile avatar her default look's avatar", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }, { id: "pose-smile", name: "Smile", assetId: "asset-smile" }],
+                defaultPoseId: "pose-neutral",
+                avatars: {
+                    "pose-neutral": { overrideAssetId: "asset-avatar-neutral" },
+                    "pose-smile": { overrideAssetId: "asset-avatar-smile" },
+                },
+            },
+        };
+        const neverShown = await compileStudioStoryToNlr({
+            document: baseDocument(sayBlock("char-alice"), ["say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(resolveAvatar(neverShown, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+
+        const staged = await compileStudioStoryToNlr({
+            document: baseDocument({ ...enterBlock("char-alice"), ...sayBlock("char-alice") }, ["enter", "say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        // On stage the live look decides; off it, the default look.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-smile" })).toBe("nlr://asset-avatar-smile");
+        expect(resolveAvatar(staged, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+        // A src the appearance does not know is still not guessed at.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-stranger" })).toBeNull();
+    });
+
     // The other half of the same fix, and the one that must not regress: a character that IS staged
     // keeps the resolver reading the engine's live `Image`. A flat url would freeze the avatar at
     // compile time and break undo / load / skip, which is exactly what Studio must not mirror.
@@ -3780,6 +3828,41 @@ describe("puppet characters", () => {
             size: { width: 900, height: 1200 },
             options: { scale: 0.5 },
         });
+    });
+
+    /**
+     * The scene mounts the box and starts the model loading at its top; nothing waited for the load
+     * to end, so an entrance near the top faded an empty box in and the model popped in after it.
+     */
+    it("waits for the model before the entrance, and keeps the entrance's action id", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+        const bindings = compiled.actionIdBindings.filter(binding => binding.blockId === "row");
+        const wait = bindings.find(binding => (binding.action as unknown as { type: string }).type === "service:action");
+        expect(wait).toBeDefined();
+        // The entrance's own actions keep the ids they had before the wait existed: the wait is last.
+        expect(bindings.indexOf(wait!)).toBe(bindings.length - 1);
+        expect(bindings[0].staticId.endsWith(":0")).toBe(true);
+        expect((bindings[0].action as unknown as { type: string }).type).not.toBe("service:action");
+
+        const puppet = compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll") as unknown as { _setStatus(status: string): void };
+        puppet._setStatus("loading");
+        const fakeGameState = {
+            game: { getLiveGame: () => ({ getStorable: () => ({ getNamespace: () => ({}) }) }) },
+            logger: { warn: () => undefined },
+            events: { on: () => ({ cancel: () => undefined }) },
+        };
+        const awaitable = (wait!.action as unknown as { executeAction(...args: unknown[]): { isSettled(): boolean } })
+            .executeAction(fakeGameState, {});
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(awaitable.isSettled()).toBe(false);
+        puppet._setStatus("ready");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(awaitable.isSettled()).toBe(true);
     });
 
     it("resolves an entry override against the bundle the asset resolved to", async () => {
@@ -5183,7 +5266,7 @@ describe("stage object references", () => {
         expect(compiled.diagnostics).toEqual([
             { level: "error", blockId: "show", message: "Image “poster” is not on stage; an earlier row has to create it." },
             { level: "error", blockId: "vol", message: "Sound “piano” is not playing; an earlier sound row has to start it." },
-            { level: "error", blockId: "fade", message: "Layer “foreground” is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "fade", message: "This scene has no layer “foreground”." },
         ]);
         // The rows compiled to nothing at all: no statements, and no blank objects left on stage.
         expect(compiledRows(compiled)).toEqual([]);

@@ -8,6 +8,7 @@ import {
     jpegHasIccProfile,
     planAssetImageTranscode,
     pngHasIccProfile,
+    pngAnimation,
     pngIsAnimated,
     assetImageWorthKeeping,
 } from "./assetImageOptimization";
@@ -77,6 +78,20 @@ function candidate(bytes: Uint8Array, overrides: { manifestKey?: string; assetTy
         bytes,
     };
 }
+
+describe("pngAnimation", () => {
+    it("reads the frame count and the loop count the acTL chunk declares", () => {
+        expect(pngAnimation(png([chunk("acTL", [...be32(12), ...be32(0)])]))).toEqual({ frames: 12, plays: 0 });
+        expect(pngAnimation(png([chunk("acTL", [...be32(6), ...be32(1)])]))).toEqual({ frames: 6, plays: 1 });
+    });
+
+    it("says null for a still PNG, an acTL after the image data, and a truncated declaration", () => {
+        expect(pngAnimation(png())).toBeNull();
+        expect(pngAnimation(Uint8Array.from([...png(), ...chunk("acTL", [...be32(4), ...be32(0)])]))).toBeNull();
+        expect(pngAnimation(png([chunk("acTL", [...be32(4)])]))).toBeNull();
+        expect(pngAnimation(webp())).toBeNull();
+    });
+});
 
 describe("pngIsAnimated", () => {
     it("finds the acTL chunk an APNG declares its frames in", () => {

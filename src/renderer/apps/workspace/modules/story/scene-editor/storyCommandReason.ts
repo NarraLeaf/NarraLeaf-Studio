@@ -1,9 +1,11 @@
 import type { TranslationKey } from "@shared/i18n";
+import { i18nStore } from "@/lib/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
-import { paramHintKey } from "./storyCommandGrammar";
+import { paramHintKey, paramTypes } from "./storyCommandGrammar";
 import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
-import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import { ownerCharacterId, resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import { puppetChannelNames, type StoryCommandValue } from "./storyCommandValues";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 
 /**
@@ -34,33 +36,74 @@ export type StoryCommandReason = {
      * with everywhere else.
      */
     valueTypeParams?: readonly string[];
+    /**
+     * Params that are a word of the sentence rather than something off the line - the kind of asset
+     * a name was looked up in - each with the catalog entry it reads as. The caller writes them in
+     * the interface language, like the sentence; `params` keeps the raw id as the fallback.
+     */
+    wordParams?: Readonly<Record<string, TranslationKey>>;
 };
 
 /**
  * A reason's params as the sentence reads them: each value type param written the way the variables
- * panel and a blueprint pin write that type. Every other param is passed through.
+ * panel and a blueprint pin write that type, and each word param in the interface language. Every
+ * other param is passed through.
  */
 export function storyCommandReasonParams(
     reason: StoryCommandReason,
     t: (key: TranslationKey, params?: Record<string, string | number>) => string,
 ): Record<string, string | number> {
-    if (!reason.valueTypeParams?.length) {
+    if (!reason.valueTypeParams?.length && !reason.wordParams) {
         return reason.params;
     }
     const params = { ...reason.params };
-    for (const name of reason.valueTypeParams) {
+    for (const name of reason.valueTypeParams ?? []) {
         const value = params[name];
         if (typeof value === "string") {
             params[name] = formatBlueprintValueTypeLabel(value, t);
         }
+    }
+    for (const [name, key] of Object.entries(reason.wordParams ?? {})) {
+        params[name] = t(key);
     }
     return params;
 }
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
-/** The first problem with this line, or null when it is fine (or is not a command at all). */
-export function getCommandLineReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
+/**
+ * The resolution issues that only say "no such name": the ones a value still being typed raises on
+ * every keystroke until it is spelled out (`N` on its way to `Narra`, `room` on its way to
+ * `room-warm`).
+ */
+const NAME_LOOKUP_CODES: ReadonlySet<StoryCommandResolutionIssue["code"]> = new Set<StoryCommandResolutionIssue["code"]>([
+    "unknownAsset",
+    "unknownCharacter",
+    "unknownScene",
+    "unknownAudioTrack",
+    "unknownLabel",
+    "unknownAppTag",
+    "unknownSurface",
+    "unknownInputAction",
+    "unknownVariable",
+    "unknownForm",
+    "unknownTarget",
+]);
+
+/** The parser issues a word at the end of the line raises while it is still being typed. */
+const TYPED_WORD_CODES: ReadonlySet<StoryCommandIssue["code"]> = new Set<StoryCommandIssue["code"]>(["badValue", "extraPositional"]);
+
+/**
+ * The first problem with this line, or null when it is fine (or is not a command at all).
+ *
+ * `typing` is the line being typed in the slot, as opposed to a line that has been committed (a
+ * draft row's reason): a name the author is still typing is not reported yet - see below.
+ */
+export function getCommandLineReason(
+    source: string,
+    context: StoryCommandContext,
+    options: { typing?: boolean } = {},
+): StoryCommandReason | null {
     if (!source.startsWith("/")) {
         return null;
     }
@@ -74,12 +117,32 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
         const unknown = line.issues.find(issue => issue.code === "unknownCommand");
         return unknown && looksComplete(source) ? parserReason(line, unknown) : null;
     }
-    const parserIssue = line.issues[0];
+    // A word at the end of the line is still being typed: `t=淡` on its way to 淡入 while the menu
+    // already lights it, or `转` on its way to `转场=`. The same signal as for a name below - a space
+    // after it is the decision - so it is not reported yet, and whatever else the line says still is.
+    const stillTyped = (issue: (typeof line.issues)[number]) =>
+        Boolean(options.typing) && TYPED_WORD_CODES.has(issue.code) && issue.span.end >= source.length;
+    const parserIssue = line.issues.find(issue => !stillTyped(issue));
     if (parserIssue) {
         return parserReason(line, parserIssue);
     }
-    const resolutionIssue = resolveCommandLine(line, context).issues[0];
-    return resolutionIssue ? resolutionReason(resolutionIssue, line.token ?? "") : null;
+    const resolution = resolveCommandLine(line, context);
+    const resolutionIssue = resolution.issues[0];
+    if (!resolutionIssue) {
+        // Said once the slot is reached - after the space that ends the character's name - and on a
+        // committed line: before that, the name may still be on its way to another character's.
+        return !options.typing || /\s$/.test(source)
+            ? emptyPuppetChannelReason(line, context, resolution.args)
+            : null;
+    }
+    // The same rule for a name as for the command word above, and the same signal: the value at the
+    // end of the line with nothing after it is still being typed (`/show N` toward `/show Narra`,
+    // while the candidates already list her), and a space after it is the decision. A name followed
+    // by more of the line, or a committed line, is reported.
+    if (options.typing && NAME_LOOKUP_CODES.has(resolutionIssue.code) && resolutionIssue.span.end >= source.length) {
+        return null;
+    }
+    return resolutionReason(resolutionIssue, line.token ?? "");
 }
 
 /**
@@ -109,6 +172,40 @@ export function getCommandLineDraftReason(source: string, context: StoryCommandC
         params: { token: line.token ?? "", slot: hint },
         paramHintKey: `story.paramHint.${hint}` as TranslationKey,
     };
+}
+
+/**
+ * The line still needs a name its character's model was asked for and has none of - `/char` on a
+ * Live2D model that defines no expressions. The slot offers nothing and nothing typed would be
+ * one of the model's names, so the line says why instead of only that the slot is empty.
+ *
+ * Only for a model that answered: a model nobody could ask (no runtime here, still loading) has no
+ * list either, and saying it has no expressions would be a guess.
+ */
+function emptyPuppetChannelReason(
+    line: Extract<StoryCommandLine, { kind: "command" }>,
+    context: StoryCommandContext,
+    resolved: Readonly<Record<string, StoryCommandValue>>,
+): StoryCommandReason | null {
+    const missing = missingCoreParams(line)[0];
+    if (!missing) {
+        return null;
+    }
+    for (const type of paramTypes(missing)) {
+        if (type.kind !== "puppetName" || type.channel !== "expression") {
+            continue;
+        }
+        const characterId = ownerCharacterId(resolved[type.dependsOn]);
+        if (!characterId || !context.puppetCharacterIds.includes(characterId) || !context.puppetByCharacterId[characterId]) {
+            continue;
+        }
+        if (puppetChannelNames(context, characterId, type.channel).length > 0) {
+            continue;
+        }
+        const name = context.characters.find(entry => entry.id === characterId)?.name ?? "";
+        return { key: reasonKey("puppetNoExpressions"), params: { value: name } };
+    }
+    return null;
 }
 
 /**
@@ -191,9 +288,13 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownAsset":
             // A slot that would have taken a set says so, or the author reads "no image named X" and
             // goes looking in the library for a row that was never going to be there.
+            //
+            // The kind is a word of the sentence, so it is written in the sentence's language: the raw
+            // id read "没有名为「room」的 image 资产" to a Chinese author.
             return {
                 key: reasonKey(issue.allowSets ? "unknownAssetOrSet" : issue.code),
                 params: { value: issue.value, assetType: issue.assetType },
+                wordParams: { assetType: `storyExpr.assetType.${issue.assetType}` as TranslationKey },
             };
         case "unknownCharacter":
         case "unknownScene":
@@ -205,6 +306,8 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownVariable":
         case "duplicateVariable":
         case "reservedVariableName":
+        case "duplicateLayer":
+        case "reservedLayerName":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
         case "unknownForm":
             return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };
@@ -226,11 +329,15 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
                 params: { token, value: issue.value, kind: issue.kind },
             };
         case "unsupportedOption":
-            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
+            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: i18nStore.getTranslator().formatList([...issue.allowed], { style: "narrow" }) } };
         case "conflictingParams":
             return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
         case "repeatTimesAndUntil":
             return { key: reasonKey(issue.code), params: {} };
+        case "positionOutOfRange":
+            return { key: reasonKey(issue.code), params: { value: issue.value } };
+        case "offsetWithoutPosition":
+            return { key: reasonKey(issue.code), params: { key: issue.key } };
         case "expressionError":
             // Report the *inner* issue directly rather than wrapping it: "no variable named gold" is
             // the whole message, and a generic "invalid expression: …" prefix adds nothing.

@@ -1,4 +1,5 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { i18nStore } from "@/lib/i18n";
 import { REMOTE_ASSET_FETCH_TIMEOUT_MS, REMOTE_ASSET_MAX_BYTES } from "@shared/constants/remoteAsset";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
@@ -27,6 +28,27 @@ type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 export function describeImportFailure(name: string, reason: string | null, t: Translate): string {
     const headline = t("workspace.shell.import.failed", { name: basename(name) });
     return reason ? t("workspace.shell.import.withReason", { headline, reason }) : headline;
+}
+
+/**
+ * "Could not replace “x.png”.", then why: what an operation says when it stopped before writing over
+ * an asset whose current file could not be kept for undo. `name` is the asset's.
+ */
+export function describeReplaceNotKept(name: string, refusal: AssetImportRefusal, t: Translate): string {
+    return withAssetReason(t("assets.replace.notKept", { name }), refusal, t);
+}
+
+/**
+ * "Could not restore “x.png”.", then why: an undo or redo that left an asset as it was, because the
+ * file it would have written over could not be kept for the step back.
+ */
+export function describeRestoreNotKept(name: string, refusal: AssetImportRefusal, t: Translate): string {
+    return withAssetReason(t("assets.history.restoreFailed", { name }), refusal, t);
+}
+
+function withAssetReason(headline: string, refusal: AssetImportRefusal, t: Translate): string {
+    const reason = describeAssetImportRefusal(refusal, t);
+    return reason ? t("assets.reference.withReason", { headline, reason }) : headline;
 }
 
 /** How many failed files a summary spells out before it says how many more there were. */
@@ -186,6 +208,17 @@ export function describeAssetImportRefusal(refusal: AssetImportRefusal | undefin
                 default:
                     return t("workspace.shell.import.reason.copyFailed");
             }
+        case "notKept":
+            // The copy goes into the project folder like any other write, so the disk's two reasons
+            // read as they do for a copy; anything else is said about the copy itself.
+            switch (refusal.fsCode) {
+                case FsRejectErrorCode.PERMISSION_DENIED:
+                    return t("workspace.shell.import.reason.projectReadOnly");
+                case FsRejectErrorCode.NO_SPACE:
+                    return t("workspace.shell.save.reason.diskFull");
+                default:
+                    return t("assets.replace.reason.notKept");
+            }
         case "notAFolder":
             return t("workspace.shell.import.reason.notAFolder");
         case "emptyFolder":
@@ -255,7 +288,7 @@ function describeRemoteUnplayable(cause: RemoteUnplayableCause, t: Translate): s
     switch (cause.kind) {
         case "codecs":
             return t("workspace.shell.import.remote.unplayableCodecs", {
-                codecs: cause.codecs.map(codec => codec.toUpperCase()).join(", "),
+                codecs: i18nStore.getTranslator().formatList(cause.codecs.map(codec => codec.toUpperCase()), { style: "narrow" }),
             });
         case "container":
             return cause.container

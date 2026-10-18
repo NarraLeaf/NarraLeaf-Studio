@@ -52,6 +52,19 @@ describe("which page may be left", () => {
         }), "create")).toBe(true);
     });
 
+    it("takes a reverse-domain app id, which a build uses as the package id as it is", () => {
+        // `deriveGameAppId` passes a dotted id through verbatim and files anything else under
+        // NarraLeaf's own namespace, so refusing dots here left a studio no way to ship its own id.
+        for (const appId of ["com.studio.game", "jp.circle.my-game", "game.v2", "my-game"]) {
+            expect(ValidationService.validateAppId(appId), appId).toBe(true);
+        }
+        // A dot only between two non-empty parts: never leading, trailing or doubled - a trailing
+        // dot would also be dropped from the folder name on Windows - and no part ends in a hyphen.
+        for (const appId of ["com.", ".game", "com..game", "com.-game", "com.game-", "Com.Studio", "com.my game"]) {
+            expect(ValidationService.validateAppId(appId), appId).toBe(false);
+        }
+    });
+
     it("refuses an app id the project could not be identified by", () => {
         expect(ValidationService.isStepValid("project", data({
             name: "Game",
@@ -160,5 +173,38 @@ describe("the identifier suggested from a project name", () => {
         expect(ValidationService.generateAppId("放課後のアリス", "zh")).toBe("");
         // Half a spelling is worse than none.
         expect(ValidationService.generateAppId("星の詩 Prologue", "ja")).toBe("");
+    });
+});
+
+/**
+ * The ID the field offers before the author types one: permanent once the project exists, so it is
+ * made unlikely to be another game's - another author's by the author line in front, another
+ * project's on this machine by a number on the end.
+ */
+describe("the app ID the wizard suggests", () => {
+    const none = () => false;
+
+    it("is the name's slug when there is no author line and nothing uses it", () => {
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "", locale: "en", isTaken: none })).toBe("my-game");
+    });
+
+    it("leads with the author line, read by the name's rule", () => {
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "Leaf Studio", locale: "en", isTaken: none }))
+            .toBe("leaf-studio-my-game");
+        expect(ValidationService.suggestAppId({ name: "我的游戏", author: "叶子", locale: "zh", isTaken: none }))
+            .toBe("ye-zi-wo-de-you-xi");
+        // A Han author line is not guessed at outside Chinese, and the name then stands alone.
+        expect(ValidationService.suggestAppId({ name: "My Game", author: "葉っぱ工房", locale: "ja", isTaken: none }))
+            .toBe("my-game");
+    });
+
+    it("steps around an ID another project on this machine uses", () => {
+        const taken = new Set(["wo-de-you-xi", "wo-de-you-xi-2"]);
+        expect(ValidationService.suggestAppId({ name: "我的游戏", author: "", locale: "zh", isTaken: id => taken.has(id) }))
+            .toBe("wo-de-you-xi-3");
+    });
+
+    it("suggests nothing for a name it cannot spell, author line or not", () => {
+        expect(ValidationService.suggestAppId({ name: "放課後", author: "Leaf", locale: "ja", isTaken: () => true })).toBe("");
     });
 });

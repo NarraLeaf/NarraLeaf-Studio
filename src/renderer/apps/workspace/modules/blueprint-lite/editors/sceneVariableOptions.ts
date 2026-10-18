@@ -16,6 +16,20 @@ import { sceneVariableDefs } from "@shared/types/story/declarations";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 import { scenesNamingBlueprint } from "@/lib/story/sceneBlueprintRefs";
 
+/**
+ * The scene variables a story blueprint can reach, with their declared types: those of the scenes
+ * whose rows run it - the same variables {@link buildSceneVariableOptions} offers. What types the
+ * `Value` pin of a Get / Set Scene Var card.
+ */
+export function sceneVariablesRunningBlueprint(
+    stories: readonly { id: StoryId; document: StoryDocument | undefined }[],
+    blueprintId: string,
+): { id: string; valueType: string }[] {
+    return scenesNamingBlueprint(stories, blueprintId).flatMap(({ scene }) =>
+        Object.values(sceneVariableDefs(scene)).map(variable => ({ id: variable.id, valueType: variable.valueType })),
+    );
+}
+
 export function buildSceneVariableOptions(
     stories: readonly { id: StoryId; document: StoryDocument | undefined }[],
     blueprintId: string,

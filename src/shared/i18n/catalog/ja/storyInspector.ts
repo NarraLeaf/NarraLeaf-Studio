@@ -397,7 +397,6 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "重ね順を決める",
-        setDepth: "奥行きを決める",
     },
 
     videoOperation: {
@@ -450,6 +449,9 @@ export const storyInspector = {
         targetScene: "行き先のシーン",
         returnable: "行き先のシーンのあとで戻る",
     },
+    setVariable: {
+        missingScene: "シーンが見つからない",
+    },
 
     note: {
         label: "メモ",
@@ -458,6 +460,10 @@ export const storyInspector = {
     blueprint: {
         storyActionTitle: "ストーリーアクション",
         name: "ブループリント名",
+    },
+
+    plugin: {
+        missingOption: "{value}（見つからない）",
     },
 
     audio: {
@@ -489,10 +495,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "レイヤーの名前",
         zIndex: "重ね順",
-        depth: "奥行き",
-        setDepthHint: "シーン全体の背景レイヤーの奥行きを決める",
+        zIndexRowHint: "レイヤーの最初の重ね順はシーンのレイヤーで決まる",
     },
 
     video: {
@@ -626,6 +630,8 @@ export const storyInspector = {
         quitPage: "終了後に表示するページ",
         quitPageUnset: "未設定",
         quitHint: "このプレイはこの行で終了し、ページが表示される。エンディングは記録しない。",
+        pagePage: "ページ",
+        pageHint: "ページはストーリーの上に開き、ページが「このレイヤーを閉じる」で自分を閉じるまでストーリーは待つ。閉じたときの結果は変数の型に変換して結果の変数に書き込まれ、結果がなければ変数は元の値のまま",
         branch: "枝",
         elseHint: "前の枝がどれも当てはまらないとき、それ以外の枝が動く",
     },

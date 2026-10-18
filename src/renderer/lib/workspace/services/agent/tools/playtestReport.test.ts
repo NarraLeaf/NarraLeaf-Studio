@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DevModeAgentErrorCode, type DevModeAgentGameState } from "@shared/types/devMode";
-import { describeAdvance, describeGameState, launchIsUp, playtestHint } from "./playtestReport";
+import { describeAdvance, describeGameState, describeInputResult, describeIssues, launchIsUp, playtestHint } from "./playtestReport";
 
 const inStory: DevModeAgentGameState = {
     ready: true,
@@ -60,5 +60,67 @@ describe("describeAdvance", () => {
     it("gives the reason when it stopped short", () => {
         expect(describeAdvance({ advanced: 1, error: "A choice menu is showing." })).toBe("Read on 1 line(s), then stopped: A choice menu is showing.");
         expect(describeAdvance({ advanced: 2 })).toBe("Read on 2 line(s).");
+    });
+});
+
+describe("describeInputResult", () => {
+    const onTitle: DevModeAgentGameState = { ready: true, inGame: false, entries: 0, line: null, choices: null, page: "Title" };
+
+    it("says what was done, what changed, what is showing, and to look", () => {
+        const text = describeInputResult({
+            did: "Clicked Title: Root / Menu / Load (id load).",
+            changed: ['now showing "Load"'],
+            surfaces: ["Title", "Load"],
+            state: onTitle,
+        });
+        expect(text).toBe(
+            'Clicked Title: Root / Menu / Load (id load). Then: now showing "Load". On screen: "Title", "Load". '
+            + 'No story is running: the "Title" page is showing. Call playtest_screenshot to see it.',
+        );
+    });
+
+    it("says so when nothing visible changed, rather than claiming the press did nothing", () => {
+        const text = describeInputResult({ did: "Pressed Escape.", changed: [], surfaces: ["Title"], state: onTitle });
+        expect(text).toContain("Nothing visible changed");
+        expect(text).toContain("such as a setting");
+    });
+});
+
+describe("describeIssues", () => {
+    it("counts the run's errors and warnings and says where each happened, newest first", () => {
+        const text = describeIssues([
+            { level: "warning", message: "Nothing is wired to Value.", surface: "Config" },
+            { level: "error", message: "The picture is missing.", story: "Main", scene: "Opening", row: 12 },
+        ]);
+        expect(text).toBe(
+            "Dev Mode reports 1 error(s) and 1 warning(s) in this run, newest first:\n"
+            + '- warning at page "Config": Nothing is wired to Value.\n'
+            + "- error at Main / Opening:12: The picture is missing.",
+        );
+    });
+
+    it("says nothing when the run reported nothing, and spells out only the first few", () => {
+        expect(describeIssues(undefined)).toBe("");
+        expect(describeIssues([])).toBe("");
+        const many = Array.from({ length: 20 }, (_, index) => ({ level: "warning" as const, message: `w${index}` }));
+        const text = describeIssues(many);
+        expect(text).toContain("0 error(s) and 20 warning(s)");
+        expect(text).toContain("...and 12 more");
+    });
+});
+
+describe("launchIsUp past lines", () => {
+    const base: DevModeAgentGameState = { ready: true, inGame: true, entries: 1, line: null, choices: null, page: null };
+
+    it("is up on a scene that opens on a timed wait or a video, and on one that already ended", () => {
+        const launch = { story: true, entriesBefore: 0, sawOutOfStory: false };
+        expect(launchIsUp({ ...base, pausedBy: { kind: "video" } }, launch)).toBe(true);
+        expect(launchIsUp({ ...base, pausedBy: { kind: "timed", ms: 3000 } }, launch)).toBe(true);
+        expect(launchIsUp({ ...base, inGame: false, page: "Title" }, launch)).toBe(true);
+        expect(launchIsUp(base, launch)).toBe(false);
+    });
+
+    it("is not up on a window remounted to its title page, which counts from zero again", () => {
+        expect(launchIsUp({ ...base, inGame: false, entries: 0, page: "Title" }, { story: true, entriesBefore: 2, sawOutOfStory: false })).toBe(false);
     });
 });

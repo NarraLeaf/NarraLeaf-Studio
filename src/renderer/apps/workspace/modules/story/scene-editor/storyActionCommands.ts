@@ -65,9 +65,6 @@ export type ActionCommandId =
     | "textShow"
     | "textHide"
     | "textFont"
-    | "layerCreate"
-    | "layerDepth"
-    | "layerZIndex"
     | "videoHide"
     | "videoPlay"
     | "nvl"
@@ -88,7 +85,10 @@ export type PaletteActionCommand = {
     detail: string;
     icon: typeof Settings2;
     nlrCapability?: string;
-    /** Slash spellings that jump straight to this command, e.g. "//" → Note. */
+    /**
+     * Spellings that jump straight to this command: a spec's slash tokens (e.g. "//" → Note), or a
+     * plugin story action's `keywords`.
+     */
     aliases?: string[];
 };
 
@@ -103,6 +103,7 @@ export function pluginActionToPaletteCommand(registration: {
     id: string;
     label: string;
     detail?: string;
+    keywords?: readonly string[];
 }): PaletteActionCommand {
     return {
         id: registration.id,
@@ -110,6 +111,8 @@ export function pluginActionToPaletteCommand(registration: {
         label: registration.label,
         detail: registration.detail ?? translate("story.pluginActionFallbackDetail"),
         icon: Puzzle,
+        // The action's own words, matched as a built-in's tokens are: whole, in any interface language.
+        ...(registration.keywords?.length ? { aliases: [...registration.keywords] } : {}),
     };
 }
 
@@ -231,13 +234,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "text", operation: "hide", objectName: "text", transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "textFont":
             return { ...base, kind: "action", payload: { action: "text", operation: "setFontSize", objectName: "text", fontSize: 32 } };
-        case "layerCreate":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "create", objectName: "layer", zIndex: 1 } };
-        case "layerDepth":
-            // The scene's built-in background layer - the only layer whose depth is not on a `create` row.
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setDepth", objectName: "", target: { kind: "default", layer: "background" }, depth: "mid" } };
-        case "layerZIndex":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "", target: { kind: "default", layer: "displayable" }, zIndex: 1 } };
         case "videoHide":
             return { ...base, kind: "action", payload: { action: "video", operation: "hide", objectName: "video" } };
         case "videoPlay":

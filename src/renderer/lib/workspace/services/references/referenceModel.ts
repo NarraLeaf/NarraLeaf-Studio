@@ -6,6 +6,7 @@ import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
 import { isAppearanceModel, type AppearanceVariant } from "@shared/types/ui-editor/appearance";
+import { readUIPageMusic } from "@shared/types/ui-editor/pageMusic";
 import { blueprintImageAssetId } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_EDITOR_FONT_ID_PREFIX } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { DEV_MODE_SAVE_PREVIEW_ASSET_ID_PREFIX } from "@shared/types/devModeSave";
@@ -465,11 +466,27 @@ export function listBlockAssetSites(block: StoryBlock): StoryBlockAssetSite[] {
         case "video":
             sites.push({ field: "video.assetId", assetId: payload.assetId });
             break;
-        case "displayable":
-            sites.push({ field: "displayable.maskAssetId", assetId: payload.transform?.to?.maskAssetId ?? undefined });
+        case "vfx":
+            // An overlay plays a video asset - the same pipeline `/video` uses - and a scene full of
+            // `/vfx fire name=…` rows was reporting its clips as unused, which the guide reads as
+            // "safe to delete".
+            sites.push({ field: "vfx.assetId", assetId: payload.assetId });
             break;
         default:
             break;
+    }
+    // Every transform a row carries can name a mask picture - a `/transform`, and equally the pose a
+    // `/show`, `/image`, `/text`, `/layer` or character row brings an object on with - and so can the
+    // `from=` bag it starts from. Collected after the switch for every payload that has one, so a new
+    // transform-carrying action cannot forget it. `displayable` keeps its historical field name.
+    if ("transform" in payload && payload.transform) {
+        const prefix = payload.action === "displayable" ? "displayable" : `${payload.action}.transform`;
+        const to = payload.transform.to?.maskAssetId;
+        const from = payload.transform.from?.maskAssetId;
+        sites.push({ field: payload.action === "displayable" ? "displayable.maskAssetId" : `${prefix}.maskAssetId`, assetId: to ?? undefined });
+        if (from) {
+            sites.push({ field: `${prefix}.from.maskAssetId`, assetId: from });
+        }
     }
     return sites;
 }
@@ -1189,6 +1206,22 @@ export function extractUIDocumentAssetReferences(
             target: { kind: "uiSurface", surfaceId: surface.id },
         });
     }
+    // A page's music is held by the page in the same way, and is the one audio asset the interface
+    // document names outside its elements.
+    for (const surface of document.surfaces ?? []) {
+        const assetId = readUIPageMusic(surface)?.assetId;
+        if (!isLibraryAssetId(assetId)) {
+            continue;
+        }
+        references.push({
+            id: `ui:surface:${surface.id}:music`,
+            assetId: assetId.trim(),
+            kind: "uiElement",
+            label: surface.name,
+            field: "music",
+            target: { kind: "uiSurface", surfaceId: surface.id },
+        });
+    }
 
     const surfaceOfElement = indexElementSurfaces(document);
     for (const element of Object.values(document.elements)) {
@@ -1249,7 +1282,6 @@ export function extractVoiceAssetReferences(document: VoiceDocument): AssetRefer
 export interface ReferenceScannableCharacter {
     id: string;
     name: string;
-    thumbnailAssetId?: string | null;
     /**
      * Every image the appearance uses, with a slot key that stays stable across renames and a
      * human-readable detail. Flattened by the caller because the two appearance kinds address their
@@ -1259,7 +1291,13 @@ export interface ReferenceScannableCharacter {
     appearanceAssets: ReadonlyArray<{ slot: string; detail: string; assetId: string | null | undefined }>;
 }
 
-/** Character slice: profile thumbnail plus every image the appearance uses. */
+/**
+ * Character slice: every image the appearance uses.
+ *
+ * The profile thumbnail is not one of them. It is a crop Studio writes to the editor's own files,
+ * not an asset in the library, so it has no library entry to find and nothing an asset rename or
+ * delete could break.
+ */
 export function extractCharacterAssetReferences(
     characters: readonly ReferenceScannableCharacter[],
 ): AssetReference[] {
@@ -1268,16 +1306,6 @@ export function extractCharacterAssetReferences(
     for (const character of characters) {
         // The character's own editor, which is where every one of these pictures is chosen.
         const target: SearchJumpTarget = { kind: "character", characterId: character.id };
-        if (isLibraryAssetId(character.thumbnailAssetId)) {
-            references.push({
-                id: `char:${character.id}:thumbnail`,
-                assetId: character.thumbnailAssetId.trim(),
-                kind: "character",
-                label: character.name,
-                field: "profile.thumbnail",
-                target,
-            });
-        }
         for (const entry of character.appearanceAssets) {
             if (!isLibraryAssetId(entry.assetId)) {
                 continue;

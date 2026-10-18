@@ -94,7 +94,7 @@ export const settings = {
         },
         developerMode: {
             label: "Developer options",
-            description: "Right-click menus gain a section for copying the ID of the item clicked.",
+            description: "Right-click menus gain a section for copying the ID of the item clicked, and the blueprint add-node menu shows each node's type ID.",
         },
         screenEffectThreads: {
             label: "Threads for screen effects",
@@ -273,6 +273,16 @@ export const settings = {
         useSystemProxy: {
             label: "Use system proxy settings",
             description: "Studio downloads connect through the proxy set in the operating system.",
+        },
+        storeSource: {
+            label: "Store download source",
+            description: "Where the plugin store, the template store and spelling dictionaries are downloaded from. Automatic connects to GitHub and GitCode at once and uses the first to respond.",
+            options: {
+                auto: "Automatic",
+                gitcode: "GitCode (mainland China)",
+                custom: "Custom",
+            },
+            customOnly: "Used when the store download source is Custom.",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
@@ -516,6 +526,13 @@ export const settings = {
         allowWritesHint: "When off, agents can read projects but every change they try is refused.",
         fullAccess: "Allow agents full access",
         fullAccessHint: "Agents may change projects and read any folder without asking, except Studio's own folders, the home folder as a whole and drive roots.",
+        enableSetByLaunch: "Set by --agent when Studio starts in development.",
+        port: "Endpoint port",
+        portSetByLaunch: "Set by --agent-port when Studio starts in development.",
+        portHint: "Takes effect at once. Copy the connection configuration again for clients set up before.",
+        portInvalid: "Enter a port from {min} to {max}.",
+        portInUse: "Port {port} is in use by another program.",
+        portReserved: "Port {port} is reserved by the system.",
         endpoint: "Endpoint address",
         running: "Listening.",
         portMoved: "The endpoint moved to port {port}. Copy the connection configuration again for clients set up before.",
@@ -524,18 +541,10 @@ export const settings = {
         failed: "Could not start: {message}",
         token: "Access token",
         tokenHint: "Every request must carry it. It is part of the copied configuration.",
-        show: "Show",
-        hide: "Hide",
+        copyToken: "Copy token",
         regenerate: "Regenerate access token",
         regenerateHint: "Clients set up with the current token stop being let in.",
         regenerateAction: "Regenerate",
-        copyConfig: "Copy connection configuration",
-        copyConfigHint: "Ready to paste into the agent's settings, with the endpoint and token filled in.",
-        copyClaudeCode: "Claude Code",
-        copyJson: "JSON",
-        copyOpencode: "opencode",
-        copyStdio: "Claude Desktop",
-        copyStdioHint: "For Claude Desktop and other clients that can only start a local program. The client runs Studio as a bridge; the configuration holds no token.",
         copied: "Copied",
         importRoots: "Folders agents may import from",
         importRootsHint: "Agents can always import files from inside the project. When an agent needs another folder, Studio asks you and adds it here.",
@@ -547,15 +556,52 @@ export const settings = {
         pluginToolsEmpty: "No enabled plugin offers agent tools.",
         pluginToolsCount: "{tools} tools, {writes} of which can change the project",
         pluginToolsAllow: "Allow the agent tools of {plugin}",
+        /**
+         * Connecting one agent application (`AgentClientGuide`), in Settings and in first-run setup's
+         * agent access screen: which application it is, the configuration that points it at Studio,
+         * and how it gets the Agent Skill. Product names are not translated and live in
+         * `@shared/agent/clients`.
+         */
+        guide: {
+            app: "Agent application",
+            appHint: "The connection configuration and Agent Skill below are for this application.",
+            /** The catch-all row, for any other MCP client. */
+            other: "Other",
+            connection: "Connection configuration",
+            /** Under the connection while the endpoint is off; names the switch above by its label. */
+            offHint: "Available once \"Allow agents to connect\" is on.",
+            runCommand: "Run in a terminal.",
+            mergeInto: "Merge into {file}.",
+            // Claude's own menu names, as Claude shows them.
+            claudeDesktop: "Merge into claude_desktop_config.json (Settings ▸ Developer ▸ Edit Config in Claude), then restart Claude.",
+            otherClient: "Streamable HTTP. Enter this address and header in the client's MCP settings.",
+            skill: "Agent Skill",
+            skillFolder: "Installs into {path}. Other skills there are kept.",
+            skillInstall: "Install Agent Skill",
+            skillReinstall: "Reinstall",
+            skillInstalled: "Installed in {path}.",
+            skillUpload: "Saves a zip file to upload in Claude under Settings ▸ Capabilities ▸ Skills.",
+            skillSave: "Save zip file…",
+            skillSaved: "Saved to {path}.",
+            skillServed: "Other applications read the same guide from Studio's MCP server.",
+            skillExport: "Export Agent Skill…",
+            skillExported: "Exported to {path}.",
+            copyFailed: "The connection configuration could not be copied: {error}",
+            installFailed: "The Agent Skill could not be installed: {error}",
+            saveFailed: "The Agent Skill could not be saved: {error}",
+            exportFailed: "The Agent Skill could not be exported: {error}",
+        },
     },
     data: {
         projectTrust: {
             loading: "Reading…",
-            empty: "Every project opened so far was created by Studio.",
+            empty: "No projects.",
             waiting: "Waiting for a decision",
             granted: "Trusted",
             trust: "Trust",
-            remove: "Remove",
+            revoke: "Revoke",
+            delete: "Remove from list",
+            deleteCovered: "Inside a trusted project and cannot be removed",
             reloadNote: "A project that is open reloads when its trust changes.",
             origin: {
                 package: "From a package",
@@ -617,6 +663,10 @@ export const settings = {
                 psdImports: {
                     label: "PSD import working files",
                     description: "Layer images written while importing a PSD.",
+                },
+                payloadReaders: {
+                    label: "Protected build readers",
+                    description: "Readers copied from builds with asset protection to export a patch or DLC. Copied again the next time one is exported.",
                 },
                 logs: {
                     label: "Logs",

@@ -83,6 +83,7 @@
 | `<userData>/` 下 Chromium 自己的 `Cache` / `Code Cache` / `GPUCache` … | 界面缓存 | ✅ `browser` |
 | `%LOCALAPPDATA%/electron-builder/Cache`（mac/linux 另有位置） | electron-builder 的**宿主默认**目录。Studio 不再往这里写，但这之前的每个 Studio 都写过 | ✅ 也算进 `electronBuilder` |
 | `os.tmpdir()/narraleaf-psd/` | PSD 导入时写出的图层 | ✅ `psdImports` |
+| `os.tmpdir()/narraleaf-payload-readers/` | 导出补丁或 DLC 时从受保护构建复制出的原生读取器，键 `<字节 sha256 前 32 位>`；闲置一小时后由下一次复制扫掉，本进程已加载的那份在 Windows 上清不掉 | ✅ `payloadReaders` |
 
 **`plugin-icons/` 的位置是历史遗留**：它在 `userData` 根下，不在缓存根下。
 它先于这条约定存在。搬它是安全的（纯缓存，删掉只是重下一次），但那是一次

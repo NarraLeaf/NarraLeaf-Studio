@@ -169,6 +169,32 @@ describe("the play head over a real run", () => {
         expect(playHead.actionId()).toBeNull();
         expect(playHead.blockId()).toBeUndefined();
     });
+
+    it("counts every move, so two stops that look alike - or one row stood on twice - are two places", () => {
+        const playHead = createPlayHead(() => [
+            { staticId: "wait-1", blockId: "w1" },
+            { staticId: "show-2", blockId: "s2" },
+            { staticId: "wait-2", blockId: "w2" },
+        ]);
+        playHead.observe("wait-1");
+        const atFirst = playHead.moves();
+        // The engine reporting the action it already reported is not a move.
+        playHead.observe("wait-1");
+        expect(playHead.moves()).toBe(atFirst);
+
+        playHead.observe("show-2");
+        playHead.observe("wait-2");
+        expect(playHead.moves()).toBe(atFirst + 2);
+
+        // A loop back onto the first wait is a new place, not the old one.
+        playHead.observe("wait-1");
+        expect(playHead.moves()).toBe(atFirst + 3);
+
+        // And the count never goes back, not even when the session is replaced.
+        playHead.reset();
+        playHead.observe("wait-1");
+        expect(playHead.moves()).toBe(atFirst + 4);
+    });
 });
 
 describe("the play head against a table that moves", () => {

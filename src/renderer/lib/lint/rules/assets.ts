@@ -197,7 +197,9 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
     {
         id: "assets/unused",
         category: "assets",
-        defaultSeverity: "warning",
+        // A minor warning: a build leaves out what nothing uses, so the game is the same either way;
+        // the file only takes up room in the project.
+        defaultSeverity: "minor",
         slug: "assetsUnused",
         /**
          * Library rows absent from the reference index.
@@ -418,6 +420,49 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
                     messageParams: { asset: assetLabel(asset), size: formatBytes(size), limit: formatBytes(limit) },
                     location: { kind: "asset", assetId: asset.id, assetName: assetLabel(asset) },
                     target: { kind: "asset", assetId: asset.id, assetType: asset.type },
+                });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A character sprite that is an APNG set to play a fixed number of times.
+         *
+         * The stage draws a sprite with an `<img>`, so the browser runs the animation, not the story.
+         * Measured in Chromium: an image starts from its first frame when it is first painted (a
+         * preloaded or hidden copy does not advance), an element removed and added again starts
+         * over, but the same element hidden and shown again - by opacity, visibility or display -
+         * stays on its last frame. An animation that loops forever (a blink, breathing) reads the
+         * same either way; one that plays a fixed number of times plays on some appearances and
+         * not on others, depending on whether the stage kept the element.
+         *
+         * Only images a character's appearance names are asked about. The same file used as a
+         * background or a UI fill is a different question this rule does not answer.
+         */
+        id: "assets/sprite-animation-finite",
+        category: "assets",
+        defaultSeverity: "warning",
+        slug: "assetsSpriteAnimationFinite",
+        async run(ctx) {
+            const sprites = new Set(ctx.characters.flatMap(character => character.assetIds));
+            const findings: LintFinding[] = [];
+            for (const asset of ctx.assets) {
+                if (asset.type !== AssetType.Image || !sprites.has(asset.id)) {
+                    continue;
+                }
+                const probe = await ctx.io.probeImage(asset.id);
+                const animation = probe.ok ? probe.animation : null;
+                if (!animation || animation.frames < 2 || animation.plays === 0) {
+                    continue;
+                }
+                findings.push({
+                    ...assetFinding(
+                        "assets/sprite-animation-finite",
+                        "lint.rule.assetsSpriteAnimationFinite.message",
+                        asset,
+                    ),
+                    messageParams: { asset: assetLabel(asset), plays: animation.plays },
                 });
             }
             return findings;

@@ -109,6 +109,8 @@ export const characters = {
             // The guided state a puppet character starts in. Until a runtime and a model are both
             // there, the state fields below them cannot mean anything, so they are not shown.
             setupTitle: "Two things to set up",
+            // Once one of the two is in place, the heading names the one that is left.
+            setupTitleOne: "Left to set up: {item}",
             stepRuntime: "Drawing runtime",
             stepModel: "Model",
             runtimeInstalled: "Installed",
@@ -277,6 +279,7 @@ export const characters = {
         thumbnail: "Thumbnail",
         preview: "Preview",
         defaultAvatar: "Default dialog avatar",
+        defaultAvatarRuntimeHint: "A character drawn by a runtime has no generated avatar. Dialogue shows this one.",
         // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
         // offered - the engine refuses a voice clip anywhere else.
         voiceTrack: "Voice track",
@@ -320,7 +323,9 @@ export const characters = {
         variant: "Variant: {name}",
         loading: "Loading preview…",
         failed: "Preview failed",
-        placeholder: "Select a variant with an image to preview",
+        // What the preview says while it draws nothing, per kind of character.
+        emptyLayered: "Add a layer with an image, or import a PSD, to preview",
+        emptyPreset: "Set an image for this pose to preview",
         noSize: "No size",
         noMetadata: "No metadata",
         zoomOut: "Zoom Out",

@@ -1,4 +1,5 @@
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
+import { listStoryEndings } from "@shared/types/story";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM,
@@ -58,7 +59,7 @@ import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSi
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
-import { listQuitRows } from "./story";
+import { listPageRows, listQuitRows } from "./story";
 
 /**
  * `ui` - pages and widgets that do not do what the canvas suggests they do.
@@ -532,6 +533,37 @@ function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: R
 }
 
 /**
+ * Pages a story's end lands on - entered by the run running out, never by anything in the interface.
+ *
+ * Three things name one: the project's own ending page, a variant's own (a demo that ends on its
+ * thank-you page, which the full game never shows), and an `/ending` row that picks its page. Each is
+ * a page a player reaches in the build that names it. A variant's counts whichever build is being
+ * checked, because every variant is built from this one interface document - a page only the demo
+ * lands on is still a page the project's players reach.
+ */
+function collectEndingSurfaceTargets(ctx: LintContext): Set<string> {
+    const pages = new Set<string>();
+    const take = (surfaceId: string | undefined): void => {
+        const trimmed = surfaceId?.trim();
+        if (trimmed) {
+            pages.add(trimmed);
+        }
+    };
+    take(ctx.projectEndingSurfaceId);
+    for (const tag of ctx.appTags) {
+        take(tag.endingSurfaceId);
+    }
+    for (const story of ctx.stories) {
+        for (const ending of listStoryEndings(story.document)) {
+            if (ending.page?.kind === "surface") {
+                take(ending.page.surfaceId);
+            }
+        }
+    }
+    return pages;
+}
+
+/**
  * A page a player can never get to.
  *
  * **"Nothing does `Go Page` to it" is not the test.** The start page is entered by name and nothing
@@ -541,9 +573,10 @@ function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: R
  * them would spend its first run warning about the title screen - which is how the reader learns to
  * skip this rule's findings.
  *
- * Two ways in are not in the interface at all: a story's `/quit` row ends the playthrough on the
- * page it names, and a component placed once per destination names the page in its own params. Both
- * are read, and a page either of them names is reached.
+ * Three ways in are not in the interface at all: a story's `/quit` row ends the playthrough on the
+ * page it names, a story's end lands on an ending page ({@link collectEndingSurfaceTargets}), and a
+ * component placed once per destination names the page in its own params. All three are read, and a
+ * page any of them names is reached.
  *
  * Stage surfaces are not candidates at all rather than being excluded one by one: they are mounted
  * by their `mount` slot, so "who navigates here" is not a question about them.
@@ -567,10 +600,14 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
     for (const named of collectComponentParamSurfaceTargets(document, surfaceIds)) {
         entered.add(named);
     }
-    for (const quit of listQuitRows(ctx)) {
-        if (quit.surfaceId) {
-            entered.add(quit.surfaceId);
+    for (const row of [...listQuitRows(ctx), ...listPageRows(ctx)]) {
+        if (row.surfaceId) {
+            entered.add(row.surfaceId);
         }
+    }
+
+    for (const ending of collectEndingSurfaceTargets(ctx)) {
+        entered.add(ending);
     }
     const entrySurfaceId = resolveEntrySurfaceId(document);
     return pages
@@ -1494,9 +1531,9 @@ export const UI_LINT_RULES: readonly LintRule[] = [
     {
         id: "ui/page-unreachable",
         category: "ui",
-        // A warning rather than an error: a page nothing opens yet is what a page under construction
-        // looks like, and an error would refuse the build of a project the author is halfway through.
-        defaultSeverity: "warning",
+        // A minor warning: a page nothing opens yet is what a page under construction looks like, and
+        // the player never meets it, so nothing in the game is wrong because of it.
+        defaultSeverity: "minor",
         slug: "uiPageUnreachable",
         run: ctx => runPageUnreachable(ctx),
     },

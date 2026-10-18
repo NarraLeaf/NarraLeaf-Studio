@@ -6,6 +6,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { VcsAvailability } from "@shared/types/vcs";
 import { versionControlOptions } from "../constants";
 import { ProjectData, DirectoryValidationResult, ValidationErrors, VersionControlChoice } from "../types";
+import { ValidationService } from "../services/validationService";
 
 interface ProjectStepProps {
     projectData: ProjectData;
@@ -13,6 +14,8 @@ interface ProjectStepProps {
     updateProjectName: (name: string) => void;
     updateAppId: (appId: string) => void;
     validationErrors: ValidationErrors;
+    /** The name of the project on this machine that already uses the ID in the field, or null. */
+    appIdTakenBy?: string | null;
     directoryValidation: DirectoryValidationResult | null;
     isValidatingDirectory: boolean;
     onLocationChange: (value: string) => void;
@@ -50,6 +53,7 @@ export function ProjectStep({
     updateProjectName,
     updateAppId,
     validationErrors,
+    appIdTakenBy = null,
     directoryValidation,
     isValidatingDirectory,
     onLocationChange,
@@ -90,7 +94,7 @@ export function ProjectStep({
         updateAppId(value);
         if (value.trim() === "") {
             setAppIdError(t("wizard.project.appIdRequired"));
-        } else if (!/^[a-z0-9-]+$/.test(value)) {
+        } else if (!ValidationService.validateAppId(value)) {
             setAppIdError(t("wizard.project.appIdInvalid"));
         } else {
             setAppIdError("");
@@ -112,14 +116,14 @@ export function ProjectStep({
                 <InputGroup
                     label={t("wizard.fields.appId")}
                     required
-                    error={appIdError}
+                    error={appIdError || (appIdTakenBy !== null ? t("wizard.project.appIdInUse", { name: appIdTakenBy }) : "")}
                     helper={t("wizard.project.appIdHelper")}
                 >
                     <Input
                         placeholder={t("wizard.project.appIdPlaceholder")}
                         value={projectData.appId}
                         onChange={event => handleAppIdChange(event.target.value)}
-                        variant={appIdError ? "error" : "default"}
+                        variant={appIdError || appIdTakenBy !== null ? "error" : "default"}
                         pattern="[a-z0-9-]*"
                     />
                 </InputGroup>

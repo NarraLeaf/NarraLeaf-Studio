@@ -43,6 +43,8 @@ const HEADER_LAYOUT_KEYS = new Set(["x", "y", "width", "height"]);
 type WidgetDefaults = {
     props: Readonly<Record<string, unknown>>;
     layout: Readonly<Record<string, unknown>>;
+    /** Props whose default is built from words, and so is not among {@link props}. */
+    wordProps: ReadonlySet<string>;
 };
 
 const SENTINEL = "\u0000nl-words\u0000";
@@ -67,12 +69,14 @@ export function stableWidgetDefaults(type: string): WidgetDefaults | null {
     let defaults: WidgetDefaults | null = null;
     try {
         const element = module.createDefaultElement(SENTINEL_WORDS);
+        const props = element.props as Record<string, unknown> | undefined;
         defaults = {
-            props: stableEntries(element.props as Record<string, unknown> | undefined),
+            props: stableEntries(props),
             layout: Object.fromEntries(
                 Object.entries(stableEntries(element.layout as Record<string, unknown> | undefined))
                     .filter(([key]) => !HEADER_LAYOUT_KEYS.has(key)),
             ),
+            wordProps: new Set(Object.entries(props ?? {}).filter(([, value]) => holdsWords(value)).map(([key]) => key)),
         };
     } catch {
         defaults = null;
@@ -84,12 +88,33 @@ export function stableWidgetDefaults(type: string): WidgetDefaults | null {
 function stableEntries(record: Record<string, unknown> | undefined): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(record ?? {})) {
-        if (value === undefined || JSON.stringify(value)?.includes(SENTINEL)) {
+        if (value === undefined || holdsWords(value)) {
             continue;
         }
         out[key] = value;
     }
     return out;
+}
+
+/**
+ * Whether a default was built from the sentinel words, anywhere inside it.
+ *
+ * A walk rather than a search of the value's JSON: `JSON.stringify` writes U+0000 as the six
+ * characters `\u0000`, so the sentinel never appears in the serialized text. That search let a new
+ * text's words through as `"\u0000nl-words\u0000widgets.defaults.text.text"`, which a new keyed
+ * element then carried beside its key.
+ */
+function holdsWords(value: unknown): boolean {
+    if (typeof value === "string") {
+        return value.includes(SENTINEL);
+    }
+    if (Array.isArray(value)) {
+        return value.some(holdsWords);
+    }
+    if (isRecord(value)) {
+        return Object.values(value).some(holdsWords);
+    }
+    return false;
 }
 
 export type CompactElementPlan = {
@@ -230,6 +255,19 @@ export function compactBase(type: string, without: readonly string[]): {
     const defaults = stableWidgetDefaults(type);
     const props = clone({ ...(defaults?.props ?? {}) });
     const layout = clone({ ...(defaults?.layout ?? {}) });
+    // The default appearance restates every default prop as a base row, and the renderer reads the
+    // row over the prop. Kept verbatim, a line that changes the prop (`imageFill.assetId = …`) would
+    // leave the row holding the default, and the element would draw as though the line were not
+    // there. So its rows that only repeat a default start as bare keys, which
+    // `expandAppearanceGroups` rebuilds from the element's props once its lines are applied - the
+    // row follows the prop, as it does in the inspector. An element whose text states its own
+    // `appearance` replaces this one whole.
+    if (defaults && isRecord(props[APPEARANCE_PROP])) {
+        const shortened = compactAppearance(props[APPEARANCE_PROP], defaults.props as Record<string, unknown>, defaults);
+        if (shortened !== undefined) {
+            props[APPEARANCE_PROP] = shortened;
+        }
+    }
     const unknownWithout: string[] = [];
     for (const key of without) {
         const layoutKey = key.startsWith("layout.") ? key.slice("layout.".length) : null;
@@ -237,6 +275,9 @@ export function compactBase(type: string, without: readonly string[]): {
             delete layout[layoutKey];
         } else if (layoutKey === null && key in props) {
             delete props[key];
+        } else if (layoutKey === null && defaults?.wordProps.has(key)) {
+            // A default made of words is never filled in, so there is nothing to leave out. Text
+            // printed before that held, which names one here, still applies as it says.
         } else {
             unknownWithout.push(key);
         }

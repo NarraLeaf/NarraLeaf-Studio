@@ -16,7 +16,7 @@ import { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentRefusal, type AgentToolContext, type AgentToolHandler } from "./agentCall";
 import { storyApply, storyShow } from "./tools/storyTextTools";
-import { sceneCreate } from "./tools/storyTools";
+import { chapterDelete, chapterRename, sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
 import { blueprintApply, blueprintShow, commitBlueprints, ownerQueryOf } from "./tools/blueprintTools";
 import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
@@ -149,7 +149,7 @@ function createHarness() {
     };
     const steps = (scopeId: string) => history.describe().find(stack => stack.scopeId === scopeId)?.undo ?? 0;
     const run = (handler: AgentToolHandler, args: Record<string, unknown>) => handler(args, tool);
-    return { story, uidoc, history, local, context, graphDocument, storyId: entry.id, sceneId, writes, steps, run };
+    return { story, uidoc, history, local, context, graphDocument, follow, storyId: entry.id, sceneId, writes, steps, run };
 }
 
 function textOf(result: AgentCallResult): string {
@@ -263,6 +263,115 @@ describe("story_apply", () => {
         expect(byName.code).toBe("not_found");
         expect(byName.hint).toContain("scene_create");
     });
+});
+
+describe("scene_create in a story it creates, and the chapter tools", () => {
+    it("puts the scene where it was asked, with no default chapter or scene beside it", async () => {
+        const { story, run } = createHarness();
+        const result = await run(sceneCreate, { name: "Arrival", story: "Side", chapter: "Prologue" });
+        expect(textOf(result)).toContain('Created story "Side" with scene "Arrival" in chapter "Prologue"');
+        const created = story.listStories().find(entry => entry.name === "Side")!;
+        const document = story.getStoryDocument(created.id);
+        expect(document.chapters.map(chapter => chapter.name)).toEqual(["Prologue"]);
+        expect(document.chapters[0].sceneIds.map(id => document.scenes[id].name)).toEqual(["Arrival"]);
+        expect(Object.keys(document.scenes)).toHaveLength(1);
+        expect(document.entrySceneId).toBe(document.chapters[0].sceneIds[0]);
+    }, 60_000);
+
+    it("makes the names it gave one step of undo, which leaves the story it made as it was made", async () => {
+        const { story, history, steps, run } = createHarness();
+        const fresh = story.getStoryDocument(story.createStory("Fresh").id);
+        const madeWith = { chapter: fresh.chapters[0].name, scene: fresh.scenes[fresh.chapters[0].sceneIds[0]].name };
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Arrival", story: "Side", chapter: "Prologue" });
+        expect(textOf(result)).toContain(`one step of undo in Studio gives back the names the new story made them with ("${madeWith.chapter}" and "${madeWith.scene}")`);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+        const storyId = story.listStories().find(entry => entry.name === "Side")!.id;
+        const names = () => {
+            const document = story.getStoryDocument(storyId);
+            return { chapter: document.chapters[0].name, scene: document.scenes[document.chapters[0].sceneIds[0]].name };
+        };
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual(madeWith);
+        expect(story.listStories().some(entry => entry.id === storyId)).toBe(true);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual({ chapter: "Prologue", scene: "Arrival" });
+    }, 60_000);
+
+    it("adds a scene to a story that exists as before, creating the chapter it names", async () => {
+        const { story, storyId, run } = createHarness();
+        await run(sceneCreate, { name: "Later", story: "Tale", chapter: "Two" });
+        const document = story.getStoryDocument(storyId);
+        expect(document.chapters.map(chapter => chapter.name)).toEqual(["Chapter 1", "Two"]);
+    }, 60_000);
+
+    it("renames a chapter as one undo step", async () => {
+        const { story, storyId, history, run } = createHarness();
+        await run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        expect(story.getStoryDocument(storyId).chapters[0].name).toBe("Act One");
+        history.undo(projectHistoryScope());
+        expect(story.getStoryDocument(storyId).chapters[0].name).toBe("Chapter 1");
+    }, 60_000);
+
+    it("deletes an empty chapter as one undo step, and refuses one that still holds scenes", async () => {
+        const { story, storyId, history, run } = createHarness();
+        const busy = await refusal(run(chapterDelete, { chapter: "Chapter 1" }));
+        expect(busy.code).toBe("unavailable");
+        expect(busy.message).toContain('"Opening"');
+
+        const empty = story.createChapter(storyId, "Spare");
+        await run(chapterDelete, { chapter: "Spare" });
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.id)).not.toContain(empty.id);
+        history.undo(projectHistoryScope());
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.name)).toContain("Spare");
+
+        const missing = await refusal(run(chapterDelete, { chapter: "Nowhere" }));
+        expect(missing.code).toBe("not_found");
+        expect(missing.hint).toContain('"Chapter 1"');
+    }, 60_000);
+
+    it("takes a chapter's rename or deletion back without taking back rows written since", async () => {
+        const { story, storyId, sceneId, history, run } = createHarness();
+        const rows = () => Object.keys(story.getStoryDocument(storyId).scenes[sceneId].blocks).sort();
+        const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
+        await run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        story.insertBlock(storyId, sceneId, note("b", "written after the rename"), { parentId: null });
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Chapter 1"]);
+        expect(rows()).toEqual(["a", "b"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One"]);
+        expect(rows()).toEqual(["a", "b"]);
+
+        story.createChapter(storyId, "Spare");
+        await run(chapterDelete, { chapter: "Spare" });
+        story.insertBlock(storyId, sceneId, note("c", "written after the deletion"), { parentId: null });
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One", "Spare"]);
+        expect(rows()).toEqual(["a", "b", "c"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(chapters()).toEqual(["Act One"]);
+        expect(rows()).toEqual(["a", "b", "c"]);
+    }, 60_000);
+
+    it("renames or deletes nothing when the author pauses while the story loads", async () => {
+        const { story, storyId, follow, steps, run } = createHarness();
+        story.createChapter(storyId, "Spare");
+        // The bridge let each call in; the handler then awaits the story, and the author pauses.
+        const renaming = run(chapterRename, { chapter: "Chapter 1", name: "Act One" });
+        follow.setPaused(true);
+        expect((await refusal(renaming)).code).toBe("paused");
+        follow.setPaused(false);
+        const deleting = run(chapterDelete, { chapter: "Spare" });
+        follow.setPaused(true);
+        const refused = await refusal(deleting);
+        expect(refused.code).toBe("paused");
+        expect(refused.message).toContain("Nothing was deleted.");
+        expect(story.getStoryDocument(storyId).chapters.map(chapter => chapter.name)).toEqual(["Chapter 1", "Spare"]);
+        expect(steps(projectHistoryScope())).toBe(0);
+    }, 60_000);
 });
 
 describe("scene_create", () => {

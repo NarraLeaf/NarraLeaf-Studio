@@ -19,6 +19,8 @@ import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
 import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
+import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
@@ -228,6 +230,14 @@ export type NodeDetail = {
     requiresListItemContext: boolean;
     role?: string;
     scope?: unknown;
+    /**
+     * The owner kinds whose graphs may hold the node, asked of the palette the editor uses - so the
+     * answer includes what the scope cannot say, such as the host API a story call does not have.
+     * Empty for a node kept only for old graphs.
+     */
+    owners: string[];
+    /** Set when the node reaches the full host API, which is what keeps it out of a story call. */
+    requiresHostApi: boolean;
     pins: {
         id: string;
         kind: "input" | "output";
@@ -299,6 +309,33 @@ export type NodeDetail = {
     structs?: { id: string; fields: { key: string; type: string }[] }[];
 };
 
+/**
+ * The owner kinds a graph may hold the node in, asked the way the graph validator asks it - so the
+ * answer includes what the scope cannot say, such as the host API a story call does not have.
+ *
+ * Widget owners are asked once per built-in widget type: a node scoped to `nl.text` belongs on a
+ * text element's blueprint, and an owner asked with no element type at all answers no for it.
+ * The validator rather than the palette, because the palette also hides a node that targets an
+ * element until the graph holds a reference to one - a question about one graph, not about owners.
+ */
+function allowedOwnerKinds(def: Parameters<typeof isBlueprintNodeAllowedInGraphContext>[0] & { graphKinds: BlueprintGraphKind[] }): string[] {
+    const widgetTypes = Object.keys(BUILTIN_WIDGET_LOGIC_APIS);
+    const widgetOwners = new Set(["widgetMain", "widgetValue", "componentWidgetMain"]);
+    return (Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][]).filter(kind => {
+        const elementTypes: (string | undefined)[] = widgetOwners.has(kind) ? [undefined, ...widgetTypes] : [undefined];
+        return def.graphKinds.some(graphKind => elementTypes.some(widgetElementType => {
+            const owner = syntheticOwner(kind);
+            const context = buildBlueprintGraphContext({
+                graphKind,
+                owner,
+                widgetElementType,
+                isComponentDefinitionGraph: kind === "componentWidgetMain",
+            });
+            return isBlueprintNodeAllowedInGraphContext(def, context);
+        }));
+    });
+}
+
 export function describeNode(type: string, params?: Record<string, unknown>): NodeDetail | null {
     const def = blueprintNodeRegistry.get(type);
     if (!def) {
@@ -322,6 +359,8 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         requiresListItemContext: def.requiresListItemContext === true,
         role: def.role,
         scope: def.scope,
+        owners: allowedOwnerKinds(def),
+        requiresHostApi: def.requiresHostApi === true,
         pins: entry.pins.map(pin => ({
             id: pin.id,
             kind: pin.kind,
@@ -484,6 +523,14 @@ export function formatNodeDetail(detail: NodeDetail): string {
     if (detail.scope) {
         lines.push(`  scope      ${JSON.stringify(detail.scope)}`);
     }
+    if (!detail.hideInPalette) {
+        const owners = detail.owners.length > 0 ? detail.owners.join(", ") : "none";
+        const story = detail.requiresHostApi && !detail.owners.includes("storyAction")
+            ? " (not in storyAction: it needs the full host API, which a story row does not have)"
+            : "";
+        lines.push(`  owners     ${owners}${story}`);
+    }
+
     if (detail.keywords.length > 0) {
         lines.push(`  keywords   ${detail.keywords.join(", ")}`);
     }

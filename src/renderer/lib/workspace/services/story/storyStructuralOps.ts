@@ -1,9 +1,12 @@
 import {
     declaredStageObject,
+    isDefaultSceneLayerStack,
     isStoryDeclarationBlock,
     listSceneBlocksInDocumentOrder,
     listScenesInDocumentOrder,
     listSceneLabels,
+    rebindSceneLayerIds,
+    sceneLayersForMovedRows,
     stageObjectReference,
     type StageObjectDeclaration,
     listSceneIdsInDocumentOrder,
@@ -76,6 +79,12 @@ export function moveBlocksToScene(
     if (placement.parentId && !target.blocks[placement.parentId]) {
         return 0;
     }
+    // The layers the rows name come with them (see `sceneLayersForMovedRows`), read before the rows leave.
+    const carried = sceneLayersForMovedRows(
+        source,
+        target,
+        roots.flatMap(rootId => subtreeIds(source, rootId).map(id => source.blocks[id]).filter(Boolean)),
+    );
     let moved = 0;
     for (const rootId of roots) {
         const subtree = subtreeIds(source, rootId);
@@ -87,14 +96,20 @@ export function moveBlocksToScene(
                 continue;
             }
             delete source.blocks[id];
-            target.blocks[id] = block;
+            target.blocks[id] = rebindSceneLayerIds(block, carried.rebind);
             moved += 1;
         }
-        root.parentId = placement.parentId;
+        // The row as the target holds it: carrying a layer along may have given it a new object.
+        target.blocks[rootId].parentId = placement.parentId;
         const siblings = placement.parentId
             ? target.blocks[placement.parentId].childrenIds
             : target.rootBlockIds;
         insertBefore(siblings, rootId, placement.beforeBlockId ?? null);
+    }
+    if (isDefaultSceneLayerStack(carried.layers)) {
+        delete target.layers;
+    } else {
+        target.layers = carried.layers;
     }
     return moved;
 }

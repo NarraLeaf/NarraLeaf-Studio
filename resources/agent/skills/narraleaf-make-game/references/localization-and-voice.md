@@ -68,8 +68,11 @@ signs off your `machine` lines in the translation table's Review mode.
   source - translate that and send it again. A unit whose translation the author typed or reviewed
   since is skipped and returned under `translationChangedSinceRead` with what it holds now - leave it,
   or send yours again with that entry's `rev` only if it should replace the author's words.
-- **Unknown ids refuse the whole call** and nothing is written; list again (an edited row may have a
-  new id).
+- **Unknown ids refuse the whole call** and nothing is written; list again. A line edited with its
+  anchor kept keeps its id; one rewritten without it (`story-format`, "Anchors") is a new row with a
+  new id, and the old row's translations and voice takes are left orphaned
+  (`localization/orphan`, `voice/orphan`). Translate and voice a scene once its text is final, and
+  edit it afterwards from `story_show` with the anchors kept.
 - `target: ""` clears a translation. `note` leaves a translator's note in the table.
 - `dryRun: true` checks the batch (ids, warnings) without writing.
 
@@ -114,10 +117,12 @@ takes; the text of a line in a voice language is its translation in that languag
 ### The file-name rule
 
 The default rule is `{scene}_{index}_{character}`: the scene name, the line's position among the
-voiced lines of its scene (`001`, `002`, ...), and the speaker. Narration and choice options have
-labels of their own. `voice_list {language}` gives every line's exact name as `expect` - hand that
-list to the author or the booth when files still need naming. Matching ignores case, spaces,
-punctuation, extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
+voiced lines of its scene (`001`, `002`, ...), and the speaker. Narration and choice options are
+named with Studio's word for them in the project's source language (narration is `旁白` in a
+Chinese project, `Narration` in an English one, `地の文` in a Japanese one), and a take named with
+another language's word matches as well. `voice_list {language}` gives every line's exact name as
+`expect` - hand that list to the author or the booth when files still need naming. Matching ignores
+case, spaces, punctuation, audio extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
 `voice/ja/Opening-001-Aoi.mp3` all match `Opening_001_Aoi`. It matches against an asset's **name in
 the library**, so a misnamed take can be fixed by renaming the asset.
 
@@ -143,7 +148,8 @@ the library**, so a misnamed take can be fixed by renaming the asset.
 - New takes are `linked`. `voice_link {links:[{unitId, status:"approved"}]}` signs a take off -
   only when the author says they listened to it.
 - A take goes `stale` when its line's text changes after linking (or its translation, for a dubbed
-  language). Report stale takes to the author; the line may need a pickup recording.
+  language). Report stale takes to the author; the line may need a pickup recording. A line rewritten
+  without its anchor is not stale but a new line: its take stays on the old id, orphaned.
 - The game plays a line's take as the line is shown, on the character's voice track. A Gallery
   voice tab (`plugin:narraleaf.gallery`) unlocks voice lines by itself.
 - `lint` reports `voice/missing`, `voice/stale` and `voice/orphan` (a take whose line is gone).

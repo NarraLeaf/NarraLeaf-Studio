@@ -6,6 +6,7 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryConditionRef,
+    StoryDisplayableTargetRef,
     StoryDocument,
     StoryExpr,
     StoryInterpolationRef,
@@ -17,6 +18,7 @@ import type {
 } from "@shared/types/story";
 import {
     actionableSubjectWord,
+    authoredCharacterStageName,
     describeDeclaration,
     displayableSubjectWord,
     layerActionTargetRef,
@@ -34,8 +36,8 @@ import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
-import { storyVerbCommandId, storyVerbLabelKey } from "./storyVerbVocabulary";
-import { storyLayerDepthLabel, storyLayerLabel } from "./storyLayerLabel";
+import { storyVerbLabelKey } from "./storyVerbVocabulary";
+import { storyLayerLabel } from "./storyLayerLabel";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
 // and the rich-run model (the one description of what an inline chip reads as). Both are data /
 // pure functions — nothing in this module renders, mounts or touches a workspace service.
@@ -434,7 +436,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input"
+    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input" | "page"
     | "label" | "goto" | "break" | "cut" | "ending" | "quit" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
@@ -498,6 +500,8 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
                 ? badge("rumble", "story.badge.rumble", "scene")
                 : badge("input", "story.badge.input", "flow");
         }
+        // Flow, beside the waits: what the row decides is when the story goes on.
+        if (block.payload.action === "page") return badge("page", "story.badge.page", "flow");
         // Defensive rather than reachable: the arms above are exhaustive over the union, and a
         // document from a newer schema can still carry an action this build has no badge for.
         return badge("effect", "story.badge.effect", "scene");
@@ -806,6 +810,37 @@ function verbWord(payload: StoryActionPayload, whenUnowned: string): string {
 }
 
 /**
+ * What a `/transform`-family row's subject is called.
+ *
+ * Two of the reference's labels are not words for an author: a built-in's stored label is the English
+ * one ("Scene background"), and a character walked on without a typed stage name is labelled with the
+ * placeholder "Character", so the inspector header read 「变换 Character」. A built-in is named in the
+ * interface's language, and such a character by her cast name - the name the row's own line prints.
+ */
+function displayableTargetLabel(lookups: StoryRowLookups, target: StoryDisplayableTargetRef): string {
+    if (target.builtin) {
+        return translate(`story.stage.reserved.${target.builtin}` as TranslationKey);
+    }
+    const source = target.sourceBlockId ? lookups.scene?.blocks[target.sourceBlockId] : undefined;
+    if (source?.kind === "action" && source.payload.action === "character" && !authoredCharacterStageName(source.payload) && source.payload.characterId) {
+        return storyCharacterName(lookups, source.payload.characterId);
+    }
+    return resolveDisplayableTargetRef(lookups.scene, target).label || translate("story.describe.targetFallback");
+}
+
+/**
+ * The operation word of a stage-object row, for a template that names the kind itself
+ * (`{operation} 氛围特效 {name}`).
+ *
+ * A `create` row's command is called after its kind - `/vfx`, `/image`, `/text` - so its verb word is
+ * that same noun, and the subject read 「氛围特效 氛围特效 樱花」 / "Text text title". Such a row says
+ * what the inspector's 操作 field says it does instead.
+ */
+function stageObjectOperationWord(payload: StoryActionPayload & { operation: string }): string {
+    return payload.operation === "create" ? translate("common.create") : verbWord(payload, payload.operation);
+}
+
+/**
  * A player's-hands row in words. The action a wait names IS the row, as a page is a quit's: three
  * rows reading only "Wait for input" would leave the author opening each one to find which gesture.
  */
@@ -907,26 +942,18 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         // The stage-object rows all read their subject off the reference rather than off their own
         // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference
         // (a `create` row, an older document) falls back to.
-        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
-        if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "image") return translate("story.describe.image", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${displayableTargetLabel(lookups, payload.target)}`;
+        if (payload.action === "text") return translate("story.describe.text", { operation: stageObjectOperationWord(payload), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
-            const layerName = payload.operation === "create"
-                ? (payload.objectName || translate("story.describe.unnamed"))
-                : storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
-            const operation = verbWord(payload, payload.operation);
-            // `/layer`'s own rows (create, `z=`, `depth=`) already say "layer" in their verb.
-            const described = storyVerbCommandId(payload) === "layer"
-                ? `${operation} ${layerName}`
-                : translate("story.describe.layer", { operation, name: layerName });
-            // The rows that state a depth say it; a layer that moves with the camera, as every layer
-            // used to, reads as it always has.
-            return (payload.operation === "create" || payload.operation === "setDepth") && payload.depth
-                ? `${described} · ${translate("story.layerPanel.depth")} ${storyLayerDepthLabel(payload.depth)}`
-                : described;
+            const layerName = storyLayerLabel(resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)));
+            if (payload.operation === "setZIndex") {
+                return translate("story.describe.layerZIndex", { name: layerName, z: String(payload.zIndex ?? 0) });
+            }
+            return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: stageObjectOperationWord(payload), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") {
             // The blueprint IS the row, as the name is a label's: ten rows reading only "Blueprint"
@@ -940,6 +967,14 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ?? translate("story.describe.pluginAction");
         }
         if (payload.action === "input") return describeInput(payload, lookups);
+        // The page IS the row, as it is a quit's: "Open page" alone would leave an author opening every
+        // such row to find which one is the phone.
+        if (payload.action === "page") {
+            const page = payload.surfaceId
+                ? lookups.surfaceName?.(payload.surfaceId) ?? payload.surfaceId
+                : "";
+            return page ? translate("story.describe.page", { page }) : translate("story.describe.pageUnset");
+        }
         return translate("story.badge.effect");
     }
     if (block.kind === "control") {

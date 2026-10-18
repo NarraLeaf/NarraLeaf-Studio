@@ -652,6 +652,16 @@ declare module "@narraleaf/script" {
     	/** Length in code points, so an emoji counts once - this is what \`maxLength\` is measured in. */
     	length: number;
     };
+    type UIVideoPlaybackReading = {
+    	/** Seconds from the start of the clip. */
+    	currentTime: number;
+    	/** Length of the clip in seconds; 0 until it is known. */
+    	duration: number;
+    	/** Neither paused nor at its end. */
+    	playing: boolean;
+    	/** Played to its end and still there. Never true for a looping clip. */
+    	ended: boolean;
+    };
     type UIDisplayableMotionFromCurrentValue = {
     	from: "current";
     	to: number;
@@ -786,6 +796,43 @@ declare module "@narraleaf/script" {
     	/** Optional variant + conditional row visuals; when absent, flat props are the sole source. */
     	appearance?: AppearanceModel | null;
     };
+    type UIVideoObjectFit = "contain" | "cover" | "fill" | "none";
+    type UIVideoPreload = "none" | "metadata" | "auto";
+    type UIVideoWidgetProps = {
+    	/**
+    	 * Named \`assetId\` on purpose, not \`videoAssetId\`. \`surfaceAssetWarmup.ts\` keys its preload
+    	 * walk on that literal property name, so the shipped game preloads this asset with no per-widget
+    	 * code. \`referenceModel.ts\` now matches the same two literal names (it previously only knew
+    	 * \`imageFill\`, \`fontAssetId\`, and \`nl.image\`'s legacy bare id).
+    	 */
+    	assetId: string | null;
+    	/** Optional still shown before playback starts; also what the paused editor canvas prefers. */
+    	posterAssetId: string | null;
+    	objectFit: UIVideoObjectFit;
+    	loop: boolean;
+    	muted: boolean;
+    	/** Runtime only. The editor canvas never autoplays - see \`videoPreviewPlayback.ts\`. */
+    	autoplay: boolean;
+    	/**
+    	 * 0-1, as authored. Not what the \`<video>\` element ends up at: the widget multiplies this by
+    	 * the track's gain and by the player's channel and master volumes, which is the only reason
+    	 * muting the game now silences a video. See \`videoMixer.ts\`.
+    	 */
+    	volume: number;
+    	/**
+    	 * The project audio track this clip's sound lands on.
+    	 *
+    	 * \`null\` resolves to the built-in SFX track, which is what an unqualified video sound has always
+    	 * effectively been. A video that *is* the scene (an OP movie) usually wants the Music track, so
+    	 * that lowering BGM lowers it - which was not expressible before, because the element bypassed
+    	 * the mixer entirely and answered to no slider at all.
+    	 */
+    	audioTrackId: string | null;
+    	playbackRate: number;
+    	/** Browser-native control strip. Off by default: most titles skin their own. */
+    	controls: boolean;
+    	preload: UIVideoPreload;
+    };
     type BlueprintPointerMoveOptions = {
     	durationSeconds?: number;
     	easing?: BlueprintPointerMoveEasing;
@@ -886,6 +933,23 @@ declare module "@narraleaf/script" {
     type BlueprintFrameProperties = {
     	targetSurfaceId: string | null;
     	params: Record<string, unknown>;
+    };
+    type BlueprintVideoProperties = UIVideoPlaybackReading & {
+    	volume: number;
+    	muted: boolean;
+    	loop: boolean;
+    	playbackRate: number;
+    };
+    type BlueprintVideoPropertiesPatch = Partial<Pick<UIVideoWidgetProps, "volume" | "muted" | "loop" | "playbackRate">>;
+    type BlueprintVideoCommand = {
+    	kind: "play";
+    } | {
+    	kind: "pause";
+    } | {
+    	kind: "stop";
+    } | {
+    	kind: "seek";
+    	seconds: number;
     };
     type BlueprintGamePreferenceKey = "autoForward" | "skip"
     /**
@@ -1030,6 +1094,10 @@ declare module "@narraleaf/script" {
     		stopDisplayableAnimation: (animationId: string) => Promise<void>;
     		getFrameProperties: (elementId: string) => BlueprintFrameProperties;
     		setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
+    		getVideoProperties: (elementId: string) => BlueprintVideoProperties;
+    		setVideoProperties: (elementId: string, patch: BlueprintVideoPropertiesPatch) => Promise<void>;
+    		/** Play, pause, stop or seek a video widget. Settles once asked, not once playback has started. */
+    		controlVideo: (elementId: string, command: BlueprintVideoCommand) => Promise<void>;
     	};
     	state: {
     		get: (scope: string, key: string) => unknown;
@@ -1175,6 +1243,15 @@ declare module "@narraleaf/script" {
     		 */
     		getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
     		getNotifications: () => BlueprintGameNotification[];
+    		/**
+    		 * Add a line to the running game's notification stream - the one the engine's own notices
+    		 * go into, so it is drawn by the Game UI notification slot (or the engine's own toast when
+    		 * the project has none) and listed by \`getNotifications\` until it times out.
+    		 *
+    		 * \`durationSeconds\` undefined means the engine's default. Throws with no game running:
+    		 * there is no stream to post into.
+    		 */
+    		postNotification: (message: string, durationSeconds?: number) => void;
     		getChoiceCount: () => number;
     		isNvlMode: () => boolean;
     		/** True while a dialog line is on screen and its message is marked read. */
@@ -1278,6 +1355,14 @@ declare module "@narraleaf/script" {
     		/** Milliseconds from the start of the file, not from the clip's in point. */
     		seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
     		isPlaying: (handle: BlueprintSoundHandle) => boolean;
+    		/**
+    		 * Set the music of the page the calling graph runs on, for as long as that page is open:
+    		 * Play Page Music and Stop Page Music. What the page inspector's Music setting says, changed
+    		 * at run time - it hands over and comes back with the page exactly as that does
+    		 * (\`runtime/app/pageMusic.ts\`). While a game holds the screen the story decides the music,
+    		 * and the request changes nothing; the node says so in the debug log.
+    		 */
+    		setPageMusic: (request: BlueprintPageMusicRequest) => Promise<void>;
     		/**
     		 * The volume a **host-owned** media element (the \`nl.video\` widget's \`<video>\`) must be set
     		 * to so it obeys the same mixer everything else does.
@@ -1403,6 +1488,22 @@ declare module "@narraleaf/script" {
     	devtools: {
     		log: (level: string, message: string) => void;
     	};
+    };
+    type BlueprintPageMusicRequest = {
+    	kind: "play";
+    	assetId: string;
+    	/** Absent or null: the Music track. */
+    	audioTrackId?: string | null;
+    	/** 0..1; absent is 1. */
+    	volume?: number;
+    	/** Absent: the track's own loop default. */
+    	loop?: boolean;
+    	/** How it comes in, and how it leaves when it hands over. Milliseconds. */
+    	fadeMs?: number;
+    } | {
+    	kind: "stop";
+    	/** How the music playing leaves. Absent: with its own fade. Milliseconds. */
+    	fadeMs?: number;
     };
     type BlueprintSoundPlayInput = {
     	assetId: string;
@@ -1553,6 +1654,13 @@ declare module "@narraleaf/script" {
     	};
     	/** Dispatch a widget private event slot (for example \`init\` or \`mouseClick\`) on the owner-local blueprint. */
     	dispatchElementBlueprintEvent: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<void>;
+    	/**
+    	 * Run the \`flush\` events queued so far now, instead of on the next frame; resolves when they
+    	 * have run. For a beat whose flush has to land in the frame that shows it - see
+    	 * \`StageSlotSurfaceRuntime.flushSlotElements\`. Optional because a host that queues nothing has
+    	 * nothing to run.
+    	 */
+    	drainPendingFlushes?: () => Promise<void>;
     	/**
     	 * Whether a press on this element is handled by the element itself: its own blueprint has a
     	 * Mouse Click head, or an On Element Click head names it.
@@ -1766,6 +1874,12 @@ declare module "@narraleaf/script" {
     	readonly windowFocusChanged: {
     		readonly isFocused: "boolean";
     	};
+    	readonly savedVariableChanged: {
+    		readonly value: "unknown";
+    	};
+    	readonly persistentVariableChanged: {
+    		readonly value: "unknown";
+    	};
     	readonly keyDown: {
     		readonly key: "string";
     		readonly altKey: "boolean";
@@ -1927,6 +2041,7 @@ declare module "@narraleaf/script" {
     		readonly value: "string";
     		readonly previousValue: "string";
     	};
+    	readonly videoEnded: {};
     	readonly pageEvent: {
     		readonly event: "string";
     		readonly data: "unknown";
@@ -1968,6 +2083,8 @@ declare module "@narraleaf/script" {
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"windowCloseRequested",
     		"action"
     	];
@@ -1985,6 +2102,8 @@ declare module "@narraleaf/script" {
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"windowCloseRequested",
     		"action",
     		"broadcast",
@@ -2008,6 +2127,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2036,6 +2157,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2064,6 +2187,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2092,6 +2217,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2105,7 +2232,8 @@ declare module "@narraleaf/script" {
     		"mouseWheel",
     		"rightClick",
     		"focus",
-    		"blur"
+    		"blur",
+    		"videoEnded"
     	];
     	readonly "nl.puppet": readonly [
     		"init",
@@ -2119,6 +2247,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2146,6 +2276,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2174,6 +2306,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2194,6 +2328,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2213,6 +2349,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2243,6 +2381,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2265,6 +2405,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2282,6 +2424,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2310,6 +2454,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2332,6 +2478,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2354,6 +2502,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2376,6 +2526,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2407,6 +2559,8 @@ declare module "@narraleaf/script" {
     	"gamepadButtonUp",
     	"fullscreenChanged",
     	"windowFocusChanged",
+    	"savedVariableChanged",
+    	"persistentVariableChanged",
     	"broadcast",
     	"elementClick",
     	"elementFlush"

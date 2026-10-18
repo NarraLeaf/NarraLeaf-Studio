@@ -44,7 +44,9 @@ import { UpdateManager } from "./application/managers/updateManager";
 import { AgentManager } from "./application/managers/agent/agentManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
+import { emptyUndoTrash } from "./application/utils/undoTrash";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+import { STORE_SOURCE_KEY } from "@shared/constants/storeSource";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
@@ -53,6 +55,7 @@ import { DeferredWindowShow, createDeferredWindowShow } from "./application/defe
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
 import { shouldCheckpointOnClose } from "./application/closeCheckpoint";
+import { listLocalAppIds, type LocalAppId } from "./application/managers/localAppIds";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -264,12 +267,16 @@ export class App extends BaseApp {
             userDataDir: this.getUserDataDir(),
             logger: this.logger,
             onTakenOver: (projectPath, holder) => this.handleProjectTakenOver(projectPath, holder),
+            // No window of the project is left, so neither is any undo step that could reach the
+            // bytes its trash holds.
+            onRelease: projectPath => emptyUndoTrash(projectPath, this.logger),
         });
         // Everything is read through a function rather than captured: this constructor runs before
         // Electron is ready, and `getCacheRootDir` has no answer until it is.
         this.spellcheckManager = new SpellcheckManager({
             cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+            readStoreSource: () => this.globalState.get(STORE_SOURCE_KEY),
         });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
@@ -477,6 +484,10 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {
             onboarding,
         });
+        if (onboarding) {
+            // This window, and only it, is setup until the marker is written (`isFirstRunSetupWindow`).
+            this.firstRunSetupGate.open(window);
+        }
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
         if (unattended) {
@@ -2005,6 +2016,21 @@ export class App extends BaseApp {
      * Shared by the launcher's launch IPC ({@link WorkspaceLaunchHandler}) and the native "Open
      * Recent" menu, so both grant identical access before a workspace touches the files.
      */
+    /**
+     * The app IDs of the projects this Studio knows on this machine - the recent list, every project
+     * the trust ledger has met, and whatever projects sit directly in `folders` - for a new project's
+     * ID to be kept apart from. See `listLocalAppIds`.
+     */
+    public listLocalAppIds(folders: readonly string[]): Promise<LocalAppId[]> {
+        return listLocalAppIds({
+            projectPaths: [
+                ...this.globalState.recentlyOpened.list().map(project => project.path),
+                ...this.projectTrustManager.listKnownPaths(),
+            ],
+            folders,
+        });
+    }
+
     public authorizeRecentProjectAccess(opener: AppWindow, projectPath: string): void {
         const recentProject = this.globalState.recentlyOpened.list().find(project =>
             normalizeProjectPath(project.path) === normalizeProjectPath(projectPath),
@@ -2752,5 +2778,7 @@ function agentAccessPromptHeight(props: WindowProps[WindowAppType.AgentAccessPro
             return 240;
         case "exportOverwrite":
             return 284 + lines(props.path, 4) * 16;
+        case "skillOverwrite":
+            return 284 + Math.max(1, props.folders.slice(0, 5).reduce((sum, folder) => sum + lines(folder, 3), 0)) * 16;
     }
 }

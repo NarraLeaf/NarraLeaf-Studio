@@ -24,8 +24,9 @@
  *   mean inventing an edge id that highlights nothing on the canvas.
  * - **Two root-level choices in one scene are read as independent forks.** A fall-through arm of the
  *   first continues to the scene's unguarded exits without being made to answer the second, so such
- *   a route under-states its decisions. Modelling it properly means walking scene-internal control
- *   flow, which is a different machine from the one the graph hands over.
+ *   a route under-states its decisions. Only when the scene has no unguarded exit at all does the
+ *   arm follow the rows after it into the next menu (`readArmFollowOn`): that is the case where not
+ *   walking would turn a route that carries on into one that stops.
  * - **Rows are not put in order against each other inside a scene.** A jump written after an
  *   `/ending` never runs, and an ending written after an unconditional jump never runs either, but
  *   both are listed — the same way two unconditional jumps in one scene are both listed today.
@@ -35,7 +36,7 @@
 
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { isStoryEndingBlock, listSceneBlocksInDocumentOrder, listStoryEndings } from "@shared/types/story";
-import type { SceneFlowBranchEdgeModel, SceneFlowGraph } from "./sceneFlowModel";
+import type { SceneFlowBranchEdgeModel, SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
 
 /**
  * How many routes are enumerated before the walk gives up.
@@ -307,6 +308,176 @@ function resolveGuardingArmId(
     return null;
 }
 
+/** Somewhere a fall-through arm's rows lead, as {@link readArmFollowOn} finds it. */
+type SceneFlowFollowOnStep =
+    | { kind: "edge"; edgeId: string; target: StorySceneId }
+    | { kind: "ending"; endingId: StoryBlockId }
+    | { kind: "quit"; blockId: StoryBlockId };
+
+/**
+ * What a run that read the rows after one point reaches: the steps it can take, and whether a path
+ * with no option picked on the way falls off the end of the scene.
+ */
+type SceneFlowFollowOn = { steps: SceneFlowFollowOnStep[]; runsOut: boolean };
+
+/**
+ * Where a fall-through arm actually goes, read row by row: the rows left in the arm, then the rows
+ * after its fork, then up through every enclosing arm or container until something leaves or the
+ * scene ends.
+ *
+ * Asked only for a scene with no unguarded exit, ending or quit - the case where the graph's
+ * "continue to the scene's unguarded exits" answer is empty and would otherwise call the arm a stop.
+ * That answer is wrong whenever another menu follows the arm: a `choice` is exhaustive, so a run
+ * that reaches one takes one of its options, and those options' jumps and endings are where this
+ * arm leads.
+ *
+ * **A run-out is credited to the arm it happens in.** Reaching a menu whose option falls through and
+ * then runs out is that option's defect, reported on that option's row; the arm that merely led to
+ * the menu is not reported again for it. Only a path that falls off the scene with no option taken
+ * on the way - past a condition with no `else`, or past nothing at all - counts against this arm.
+ *
+ * Which blocks are arms and which fork each belongs to comes from the graph, not a second reading
+ * of the rows, so this cannot disagree with the map about what a fork is.
+ */
+function readArmFollowOn(
+    scene: StoryScene,
+    arm: SceneFlowBranchNodeModel,
+    sceneArms: readonly SceneFlowBranchNodeModel[],
+    ownSteps: (branch: SceneFlowBranchNodeModel) => SceneFlowFollowOnStep[] | null,
+    edgeIdFor: (target: StorySceneId) => string | undefined,
+): SceneFlowFollowOn {
+    const armByBlockId = new Map(sceneArms.map(branch => [branch.blockId, branch]));
+    const armsByForkId = new Map<string, SceneFlowBranchNodeModel[]>();
+    for (const branch of sceneArms) {
+        pushInto(armsByForkId, branch.forkId, branch);
+    }
+    // Rows only move forward or outward, so a well-formed scene cannot loop; a corrupted parent or
+    // child cycle must still not hang the editor. `active` is the recursion stack - a key met again
+    // while still on it is a cycle and reads as nothing - and the memo keeps a fork several arms
+    // fall out of from being read once per arm.
+    const active = new Set<string>();
+    const memo = new Map<string, SceneFlowFollowOn>();
+    const NOTHING: SceneFlowFollowOn = { steps: [], runsOut: false };
+    const guarded = (key: string, read: () => SceneFlowFollowOn): SceneFlowFollowOn => {
+        const cached = memo.get(key);
+        if (cached) {
+            return cached;
+        }
+        if (active.has(key)) {
+            return NOTHING;
+        }
+        active.add(key);
+        const result = read();
+        active.delete(key);
+        memo.set(key, result);
+        return result;
+    };
+
+    const listOf = (parentId: StoryBlockId | null): readonly StoryBlockId[] =>
+        parentId ? scene.blocks[parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+
+    /** Reads `ids` from `from` on. `runsOut` means the list ended with no option taken. */
+    const readList = (ids: readonly StoryBlockId[], from: number): SceneFlowFollowOn => {
+        const steps: SceneFlowFollowOnStep[] = [];
+        for (let index = from; index < ids.length; index += 1) {
+            const block = scene.blocks[ids[index]];
+            if (!block || block.disabled) {
+                continue;
+            }
+            const asArm = armByBlockId.get(block.id);
+            if (asArm && asArm.forkId !== block.id) {
+                // An `elseIf` / `else` - read with the `if` that opened its group.
+                continue;
+            }
+            const forkArms = armsByForkId.get(block.id);
+            if (forkArms) {
+                for (const branch of forkArms) {
+                    // The option's own run-out is its own finding; only where it leads is carried.
+                    steps.push(...readArm(branch).steps);
+                }
+                const exhaustive = forkArms[0].forkKind === "choice"
+                    || forkArms.some(branch => branch.kind === "conditionElse");
+                if (exhaustive) {
+                    // Nothing gets past a menu without picking an option, and every option's way
+                    // onward - including falling through to the rows below - is in its own reading.
+                    return { steps, runsOut: false };
+                }
+                // An `if` with no `else` is skipped whole when the condition is false.
+                continue;
+            }
+            if (block.kind === "jump") {
+                const target = block.payload.targetSceneId;
+                if (block.payload.returnable === true && target && target !== scene.id) {
+                    // A call comes back and the rows below it run.
+                    continue;
+                }
+                const edgeId = target && target !== scene.id ? edgeIdFor(target) : undefined;
+                if (target && edgeId) {
+                    steps.push({ kind: "edge", edgeId, target });
+                }
+                // A dangling jump is a compile error and a self-jump is a loop: neither is a place
+                // the run falls off, and neither is somewhere this walk can follow.
+                return { steps, runsOut: false };
+            }
+            if (isStoryEndingBlock(block)) {
+                steps.push({ kind: "ending", endingId: block.id });
+                return { steps, runsOut: false };
+            }
+            if (block.kind === "control" && block.payload.control === "quit") {
+                steps.push({ kind: "quit", blockId: block.id });
+                return { steps, runsOut: false };
+            }
+            if (block.childrenIds.length > 0) {
+                const inner = guarded(`inside:${block.id}`, () => readList(block.childrenIds, 0));
+                steps.push(...inner.steps);
+                if (!inner.runsOut) {
+                    return { steps, runsOut: false };
+                }
+            }
+        }
+        return { steps, runsOut: true };
+    };
+
+    /** Reads on from just after `blockId`, climbing out of every list that ends on the way. */
+    const readAfter = (blockId: StoryBlockId): SceneFlowFollowOn => guarded(`after:${blockId}`, () => {
+        const parentId = scene.blocks[blockId]?.parentId ?? null;
+        const list = listOf(parentId);
+        const rest = readList(list, list.indexOf(blockId) + 1);
+        if (!rest.runsOut || !parentId) {
+            return rest;
+        }
+        const parentArm = armByBlockId.get(parentId);
+        const outer = parentArm ? readPastFork(parentArm) : readAfter(parentId);
+        return { steps: [...rest.steps, ...outer.steps], runsOut: outer.runsOut };
+    });
+
+    /** An arm whose rows ran out continues after its whole fork: past the menu, or past the last `else`. */
+    const readPastFork = (branch: SceneFlowBranchNodeModel): SceneFlowFollowOn => {
+        if (branch.forkKind === "choice") {
+            return readAfter(branch.forkId);
+        }
+        const groupIds = (armsByForkId.get(branch.forkId) ?? [branch]).map(item => item.blockId);
+        const list = listOf(scene.blocks[branch.blockId]?.parentId ?? null);
+        const last = groupIds.reduce((latest, id) => Math.max(latest, list.indexOf(id)), -1);
+        return readAfter(last >= 0 ? list[last] : branch.blockId);
+    };
+
+    const readArm = (branch: SceneFlowBranchNodeModel): SceneFlowFollowOn => guarded(`arm:${branch.id}`, () => {
+        const own = ownSteps(branch);
+        if (own) {
+            return { steps: own, runsOut: false };
+        }
+        const inside = readList(scene.blocks[branch.blockId]?.childrenIds ?? [], 0);
+        if (!inside.runsOut) {
+            return inside;
+        }
+        const after = readPastFork(branch);
+        return { steps: [...inside.steps, ...after.steps], runsOut: after.runsOut };
+    });
+
+    return readArm(arm);
+}
+
 /**
  * Every way out of every scene — and every way each one stops — in a fixed order, so the
  * enumeration, and therefore which routes survive the cap, is the same on every rebuild.
@@ -441,6 +612,43 @@ export function collectSceneFlowContinuations(
         pushInto(branchEdgesByBranchId, edge.sourceBranchId, edge);
     }
 
+    // What `readArmFollowOn` needs, for the arms the graph alone would call a stop.
+    const armsBySceneId = new Map<StorySceneId, SceneFlowBranchNodeModel[]>();
+    for (const branch of graph.branches) {
+        pushInto(armsBySceneId, branch.sceneId, branch);
+    }
+    const edgeIdByPair = new Map(graph.edges.map(edge => [`${edge.source}->${edge.target}`, edge.id]));
+    const ownFollowOnSteps = (branch: SceneFlowBranchNodeModel): SceneFlowFollowOnStep[] | null => {
+        const endings = endingsByBranchId.get(branch.id) ?? [];
+        const quits = quitsByBranchId.get(branch.id) ?? [];
+        if (endings.length > 0 || quits.length > 0) {
+            return [
+                ...endings.map(endingId => ({ kind: "ending" as const, endingId })),
+                ...quits.map(blockId => ({ kind: "quit" as const, blockId })),
+            ];
+        }
+        if (branch.fallsThrough) {
+            return null;
+        }
+        // Empty for an arm whose only jump is dangling: it does not fall through, and it goes nowhere.
+        return (branchEdgesByBranchId.get(branch.id) ?? [])
+            .filter(edge => !edge.jumps.every(jump => jump.returnable))
+            .map(edge => ({ kind: "edge" as const, edgeId: edge.id, target: edge.target }));
+    };
+    const readFollowOn = (branch: SceneFlowBranchNodeModel): SceneFlowFollowOn => {
+        const scene = document.scenes[branch.sceneId];
+        if (!scene) {
+            return { steps: [], runsOut: true };
+        }
+        return readArmFollowOn(
+            scene,
+            branch,
+            armsBySceneId.get(branch.sceneId) ?? [],
+            ownFollowOnSteps,
+            target => edgeIdByPair.get(`${branch.sceneId}->${target}`),
+        );
+    };
+
     const continuations = new Map<StorySceneId, SceneFlowContinuation[]>();
     const listFor = (sceneId: StorySceneId): SceneFlowContinuation[] => {
         const existing = continuations.get(sceneId);
@@ -474,7 +682,22 @@ export function collectSceneFlowContinuations(
             const onwardEndings = plainEndingsBySceneId.get(branch.sceneId) ?? [];
             const onwardQuits = plainQuitsBySceneId.get(branch.sceneId) ?? [];
             if (onward.length === 0 && onwardEndings.length === 0 && onwardQuits.length === 0) {
-                list.push({ kind: "stop", branchId: branch.id });
+                // Nothing unguarded is left, but a menu written after the arm (or inside it) still
+                // carries the run on: read the rows to find it before calling the arm a stop.
+                const followOn = readFollowOn(branch);
+                const seenSteps = new Set<string>();
+                for (const step of followOn.steps) {
+                    const key = step.kind === "edge" ? `edge:${step.edgeId}`
+                        : step.kind === "ending" ? `ending:${step.endingId}` : `quit:${step.blockId}`;
+                    if (seenSteps.has(key)) {
+                        continue;
+                    }
+                    seenSteps.add(key);
+                    list.push({ ...step, branchId: branch.id });
+                }
+                if (followOn.runsOut || seenSteps.size === 0) {
+                    list.push({ kind: "stop", branchId: branch.id });
+                }
                 continue;
             }
             for (const exit of onward) {

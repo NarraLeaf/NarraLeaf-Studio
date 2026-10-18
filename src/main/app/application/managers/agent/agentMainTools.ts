@@ -279,6 +279,7 @@ async function projectCreate(host: AgentMainToolHost, args: Record<string, unkno
         languages: Array.isArray(args.languages) ? args.languages.filter((code): code is string => typeof code === "string") : [],
         width: typeof args.width === "number" ? args.width : 1920,
         height: typeof args.height === "number" ? args.height : 1080,
+        ...(typeof args.appId === "string" && args.appId.trim() ? { appId: args.appId } : {}),
     });
 }
 

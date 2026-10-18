@@ -73,6 +73,9 @@ export const HELP_TOPIC_IDS = [
     "inputActionBindings",
     "inputActionAnswering",
     "inputActionsInBlueprints",
+    "focusNavigation",
+    "focusNavigationSettings",
+    "pageMusic",
     "uiComponents",
     "blueprints",
     "scripts",
@@ -177,7 +180,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "search",
         section: "start",
-        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find"],
+        shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find", "search.undo", "search.redo"],
         related: ["storyScene"],
     },
     {
@@ -198,6 +201,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         shortcuts: [
             "story.edit-active",
+            "story.edit-line",
             "story.edit.enter",
             "story.insert-blank-after-selection",
             "story.row.range-select",
@@ -366,29 +370,47 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "uiSurfaces",
         section: "interface",
         shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap", "ui-editor.snap-to-grid"],
-        related: ["uiComponents", "blueprints", "inputActions"],
+        related: ["uiComponents", "blueprints", "inputActions", "focusNavigation"],
     },
     // Four topics rather than one card. The feature has four separate things an author has to know
     // and no way to show a heading inside a topic, so each is its own and they carry each other.
     {
         id: "inputActions",
         section: "interface",
-        related: ["inputActionBindings", "inputActionAnswering", "inputActionsInBlueprints"],
+        related: ["inputActionBindings", "inputActionAnswering", "inputActionsInBlueprints", "focusNavigation"],
     },
     {
         id: "inputActionBindings",
         section: "interface",
-        related: ["inputActions", "inputActionAnswering"],
+        related: ["inputActions", "inputActionAnswering", "focusNavigation"],
     },
     {
         id: "inputActionAnswering",
         section: "interface",
-        related: ["inputActions", "inputActionBindings", "uiSurfaces"],
+        related: ["inputActions", "inputActionBindings", "uiSurfaces", "focusNavigation"],
     },
     {
         id: "inputActionsInBlueprints",
         section: "interface",
         related: ["inputActions", "blueprints", "uiBindings"],
+    },
+    // Two topics, split where the author meets them: the slots and what the player sees, behind the
+    // `?` on the Input Actions panel's Focus navigation block; and the Navigation sections of the
+    // properties panel, behind the `?` on both of them, for a page and for an element alike.
+    {
+        id: "focusNavigation",
+        section: "interface",
+        related: ["focusNavigationSettings", "inputActions", "inputActionBindings", "inputActionAnswering", "uiSurfaces"],
+    },
+    {
+        id: "focusNavigationSettings",
+        section: "interface",
+        related: ["focusNavigation", "uiSurfaces"],
+    },
+    {
+        id: "pageMusic",
+        section: "interface",
+        related: ["uiSurfaces", "blueprints"],
     },
     {
         id: "uiComponents",

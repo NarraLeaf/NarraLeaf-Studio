@@ -6,7 +6,7 @@ export const workspace = {
             languagesTitle: "语言",
             languagesHint: "游戏本体的语言；源语言是故事的编写语言，其余语言以它为基准翻译",
             addLanguage: "添加语言",
-            codePlaceholder: "代码（en、ja、zh-CN…）",
+            codePlaceholder: "代码，如 ja",
             namePlaceholder: "显示名称",
             invalidCode: "语言代码只能包含字母、数字和连字符",
             sourceBadge: "源语言",
@@ -157,7 +157,7 @@ export const workspace = {
             languagesTitle: "配音语言",
             languagesHint: "已有配音的语言，与文本语言相互独立",
             addLanguage: "添加配音语言",
-            codePlaceholder: "代码（ja、en、zh-CN…）",
+            codePlaceholder: "代码，如 ja",
             namePlaceholder: "显示名称",
             invalidCode: "语言代码只能包含字母、数字和连字符",
             more: "更多",
@@ -178,6 +178,14 @@ export const workspace = {
                 other: "{count} 条",
             },
             importFailed: "无法导入音频文件",
+            // 导入的文件按名称对应到已有录音的行时询问：补录交回的文件
+            replaceTakesTitle: "替换已有录音",
+            replaceTakesMessage: {
+                other: "{count} 个文件对应的行已有录音",
+            },
+            replaceTakesDetail: "替换时，新文件写入对应的原录音；导入为新音频时，原录音留在资产库中，不再关联到行",
+            replaceTakesImport: "导入为新音频",
+            replaceTakesReplace: "替换录音",
             importScript: "导入录音脚本…",
             importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
             scriptRowCount: {
@@ -200,7 +208,7 @@ export const workspace = {
             groupByScene: "按场景",
             groupByCharacter: "按角色",
             modeAssign: "指派",
-            modeAudition: "试听",
+            modeAudition: "审听",
             filterAll: "全部",
             filterMissing: "缺失",
             filterOutdated: "待更新",
@@ -217,16 +225,17 @@ export const workspace = {
             assign: "指派音频",
             replace: "替换音频",
             remove: "移除配音",
-            play: "播放",
-            stop: "停止",
+            play: "播放录音",
+            showInStory: "在故事中显示",
+            stop: "停止播放",
             approve: "通过",
             reject: "退回",
             clipMissing: "音频缺失",
-            outdatedHint: "导入该配音之后对白有改动；重新导入音频即可标记为最新",
-            noStories: "创建故事后，故事中的对白将显示在此处以供配音",
-            emptyStory: "该故事没有可配音的对白",
+            outdatedHint: "导入该录音之后该行有改动；重新导入音频即可标记为最新",
+            noStories: "创建故事后，故事中的旁白与对白将显示在此处以供配音",
+            emptyStory: "该故事没有需要配音的行",
             emptyFilter: "没有符合当前筛选条件的内容",
-            auditionAllClear: "没有待试听的内容",
+            auditionAllClear: "没有待审听的内容",
             auditionPendingCount: "{count} 项待处理",
             statusMissing: "缺失",
             statusVoiced: "已配音",
@@ -247,6 +256,18 @@ export const workspace = {
                 },
                 removeDetail: "音频文件仍保留在资产库中；这些行再次启用或恢复后需重新指派音频",
                 unknown: "有故事无法读取，暂不列出孤立的语音",
+            },
+        },
+        // 录音脚本的列名；最后一列是行的 ID，导入时按它对应到行
+        script: {
+            column: {
+                filename: "文件名",
+                character: "说话人",
+                scene: "场景",
+                line: "文本",
+                status: "状态",
+                note: "备注",
+                unitId: "行 ID",
             },
         },
     },
@@ -380,6 +401,8 @@ export const workspace = {
             replaceText: "文本替换",
             agentEdit: "Agent 编辑",
             agentPluginEdit: "Agent：{tool}",
+            importPsd: "PSD 导入",
+            importAudio: "音频导入",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -444,6 +467,13 @@ export const workspace = {
                 existsDetail: "同名文件将被替换，文件夹中的其他文件保留",
                 replace: "替换",
             },
+            installSkill: {
+                title: "安装 Agent Skill",
+                changedOne: "该文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedMany: "以下文件夹中的 SKILL.md 与 Studio 自带的不同",
+                changedDetail: "同名文件将被替换为当前版本 Studio 的 Agent Skill，其他 Skill 保留",
+                replace: "替换",
+            },
             folderAccess: {
                 title: "允许 Agent 读取文件夹？",
                 messageOne: "{client} 请求读取以下文件夹",
@@ -464,6 +494,9 @@ export const workspace = {
         },
         log: {
             pluginTool: "插件 {plugin} 提供的工具",
+            target: {
+                standardScreens: "标准界面",
+            },
             filter: {
                 all: "全部",
                 writes: "仅修改",
@@ -548,6 +581,10 @@ export const workspace = {
             ui_patch: "编辑元素",
             ui_templates: "界面模板",
             ui_template_apply: "应用模板",
+            ui_page_rename: "重命名页面",
+            ui_page_delete: "删除页面",
+            ui_page_set_entry: "设置入口页面",
+            ui_install_standard_screens: "安装标准界面",
             brand_get: "读取配色",
             brand_set: "修改配色",
             blueprint_nodes: "蓝图节点目录",
@@ -555,6 +592,7 @@ export const workspace = {
             blueprint_list: "列出蓝图",
             blueprint_show: "读取蓝图文本",
             blueprint_apply: "写入蓝图",
+            blueprint_remove: "移除蓝图",
             localization_status: "翻译进度",
             localization_list: "列出待翻译文本",
             localization_set: "写入翻译",
@@ -568,7 +606,14 @@ export const workspace = {
             playtest_start: "试玩游戏",
             playtest_advance: "推进试玩",
             playtest_screenshot: "试玩截图",
+            asset_usage: "查看资产引用",
+            chapter_rename: "重命名章节",
+            chapter_delete: "删除章节",
+            playtest_click: "在试玩中点击",
+            playtest_hover: "在试玩中悬停",
+            playtest_key: "在试玩中按键",
             playtest_stop: "停止试玩",
+            playtest_variables: "读取游戏变量",
             console_read: "读取控制台",
             build: "构建游戏",
         },
@@ -768,11 +813,6 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
-        newTab: "新建标签页",
-        // 标签条"+"打开的浏览器式空白标签页。
-        newTabPage: {
-            title: "新标签页",
-        },
         tabMenu: {
             keepOpen: "保留标签页",
             close: "关闭",
@@ -889,6 +929,8 @@ export const workspace = {
                 asset: "资产",
                 blueprint: "蓝图",
             },
+            // 种类、名称与位置都相同的行，按项目中的顺序编号。
+            ordinal: "第 {n} 项",
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
@@ -1484,6 +1526,7 @@ export const workspace = {
                 localization: "翻译表",
                 voice: "配音表",
                 lint: "问题",
+                search: "搜索",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -1543,6 +1586,11 @@ export const workspace = {
                     copy: "复制节点",
                     cut: "剪切节点",
                     paste: "粘贴节点",
+                },
+                // 搜索面板：撤销或重做一次替换，涉及它改过的每个场景。
+                search: {
+                    undo: "撤销替换",
+                    redo: "重做替换",
                 },
                 storyMotion: {
                     undo: "撤销",
@@ -1687,6 +1735,9 @@ export const workspace = {
                     clearMarker: "清除标记",
                     videoZoom: "缩放画面",
                     videoActualSize: "在适应窗口与实际像素之间切换",
+                    moveSelection: "移动选择",
+                    extendSelection: "扩展选择",
+                    moveThroughGroupTree: "在分组树中移动",
                 },
             },
         },
@@ -1712,6 +1763,22 @@ export const workspace = {
             replaceRow: "替换这一行",
             // 计划里要改的东西已经被删掉或改过了。替换要么整体生效，要么什么都不做，所以这里直接拒绝。
             replaceStale: "项目内容刚发生变更，请重新搜索",
+            // 在面板中按 Ctrl+Z 时，最新一步仍是该次替换的场景撤销替换；替换后有改动的场景保留替换后的文本，
+            // 由下面两条说明是哪些场景（场景名列在通知的详情行）。
+            // 「全部替换」完成后的通知；详情行给出撤销该次替换的按键。
+            replacedInScene: {
+                other: "已在 {scene} 中替换 {count} 处",
+            },
+            replacedInScenes: {
+                other: "已在 {scenes} 个场景中替换 {count} 处",
+            },
+            replacedUndoHint: "在搜索面板中按 {key} 可在所有场景中撤销",
+            undoSkipped: {
+                other: "{count} 个场景在替换后有改动，其中的替换未撤销",
+            },
+            redoSkipped: {
+                other: "{count} 个场景在撤销后有改动，其中的替换未重做",
+            },
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
                 scene: "场景",

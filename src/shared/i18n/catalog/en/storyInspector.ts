@@ -416,7 +416,6 @@ export const storyInspector = {
 
     layerOperation: {
         setZIndex: "Set z-index",
-        setDepth: "Set depth",
     },
 
     videoOperation: {
@@ -470,6 +469,11 @@ export const storyInspector = {
         returnable: "Return after the target scene",
     },
 
+    setVariable: {
+        // A /set value that names a scene which is no longer in the story.
+        missingScene: "Missing scene",
+    },
+
     note: {
         label: "Note",
     },
@@ -477,6 +481,11 @@ export const storyInspector = {
     blueprint: {
         storyActionTitle: "Story Action",
         name: "Blueprint name",
+    },
+
+    plugin: {
+        // A pick on a plugin row whose stored value the plugin no longer lists: the row still holds it.
+        missingOption: "{value} (missing)",
     },
 
     audio: {
@@ -508,10 +517,8 @@ export const storyInspector = {
     },
 
     layer: {
-        layerName: "Layer name",
         zIndex: "Z-index",
-        depth: "Depth",
-        setDepthHint: "Sets the depth of the background layer for the whole scene",
+        zIndexRowHint: "A layer's starting order is set by the scene's layers.",
     },
 
     video: {
@@ -646,6 +653,8 @@ export const storyInspector = {
         quitPage: "Page shown afterwards",
         quitPageUnset: "Not set",
         quitHint: "This playthrough ends at this line and the page takes the screen. No ending is recorded.",
+        pagePage: "Page",
+        pageHint: "The page opens over the story, and the story waits until the page closes itself with Close This Layer. What it closes with is written into the result variable, converted to the variable's type; a page closed with nothing leaves the variable as it was.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },

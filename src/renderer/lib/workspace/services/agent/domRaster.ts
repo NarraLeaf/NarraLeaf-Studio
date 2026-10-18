@@ -53,7 +53,16 @@ export type RasterizeResult = {
     png: string;
     /** Resources that could not be carried into the picture, for the caller to mention. */
     missing: string[];
+    /**
+     * How each video was drawn: a still picture never moves, so a video is shown as its poster, or as
+     * a labelled placeholder when it has none (or the poster would not read), or - only for a video
+     * that is actually playing - as its current frame. Labels as `describe` gives them.
+     */
+    videos: { label: string; shownAs: VideoStill }[];
 };
+
+/** What a video element became in the picture. */
+export type VideoStill = "poster" | "placeholder" | "frame";
 
 /** Wait for every image under `node` to finish (or fail), and for the document's fonts, within `timeoutMs`. */
 export async function waitForPageResources(node: HTMLElement, timeoutMs: number): Promise<void> {
@@ -74,7 +83,8 @@ export async function rasterizeElement(options: RasterizeOptions): Promise<Raste
     const inliner = new ResourceInliner();
     const pseudoRules: string[] = [];
     const families = new Set<string>();
-    const clone = cloneWithStyles(node, { inliner, pseudoRules, families, nextPseudo: { value: 0 }, describe: options.describe });
+    const videos: RasterizeResult["videos"] = [];
+    const clone = cloneWithStyles(node, { inliner, videos, pseudoRules, families, nextPseudo: { value: 0 }, describe: options.describe });
     if (!(clone instanceof HTMLElement)) {
         throw new Error("The page could not be copied.");
     }
@@ -121,7 +131,7 @@ export async function rasterizeElement(options: RasterizeOptions): Promise<Raste
         plan.width,
         plan.height,
     );
-    return { png: stripDataUrl(canvas.toDataURL("image/png")), missing: [...new Set(inliner.missing)] };
+    return { png: stripDataUrl(canvas.toDataURL("image/png")), missing: [...new Set(inliner.missing)], videos };
 }
 
 /**
@@ -176,6 +186,7 @@ export function stripDataUrl(dataUrl: string): string {
 
 type CloneContext = {
     inliner: ResourceInliner;
+    videos: { label: string; shownAs: VideoStill }[];
     pseudoRules: string[];
     families: Set<string>;
     nextPseudo: { value: number };
@@ -250,36 +261,77 @@ function replacementFor(element: Element, context: CloneContext): Element | null
         return image;
     }
     if (element instanceof HTMLVideoElement) {
-        const image = document.createElement("img");
-        // HAVE_CURRENT_DATA: below it there is no frame, and drawing one would paint a black box.
-        if (element.readyState >= 2) {
-            try {
-                const canvas = document.createElement("canvas");
-                canvas.width = element.videoWidth || element.clientWidth || 1;
-                canvas.height = element.videoHeight || element.clientHeight || 1;
-                canvas.getContext("2d")?.drawImage(element, 0, 0, canvas.width, canvas.height);
-                image.setAttribute("src", canvas.toDataURL("image/png"));
-                return image;
-            } catch {
-                // Fall through to the poster.
-            }
-        }
-        const poster = element.getAttribute("poster");
-        if (poster) {
-            context.inliner.inline(poster, resourceLabel(element, "the video poster", context), dataUrl => {
-                if (dataUrl) {
-                    image.setAttribute("src", dataUrl);
-                }
-            });
-        } else if (element.currentSrc || element.getAttribute("src")) {
-            context.inliner.missing.push(resourceLabel(element, "the video frame", context));
-        }
-        return image;
+        return videoStill(element, context);
     }
     if (element instanceof HTMLIFrameElement) {
         return document.createElement("div");
     }
     return null;
+}
+
+/**
+ * A still for one video, chosen the same way every time.
+ *
+ * A paused video that has never played shows its poster in the browser, so that is what is drawn,
+ * whatever the decoder happened to have buffered: drawing a decoded frame whenever one was ready made
+ * the same page come out with the poster one time and a frame (or a black box) the next. Only a
+ * video that is playing is drawn as its current frame. Without a poster - or with one that will not
+ * read - a placeholder takes the video's box, so the picture says "a video is here" instead of
+ * showing nothing.
+ */
+function videoStill(element: HTMLVideoElement, context: CloneContext): HTMLImageElement {
+    const image = document.createElement("img");
+    const label = context.describe?.(element) ?? "a video";
+    const poster = element.getAttribute("poster");
+    const playing = !element.paused && !element.ended;
+    // HAVE_CURRENT_DATA: below it there is no frame, and drawing one would paint a black box.
+    if (playing && element.readyState >= 2) {
+        try {
+            const canvas = document.createElement("canvas");
+            canvas.width = element.videoWidth || element.clientWidth || 1;
+            canvas.height = element.videoHeight || element.clientHeight || 1;
+            canvas.getContext("2d")?.drawImage(element, 0, 0, canvas.width, canvas.height);
+            image.setAttribute("src", canvas.toDataURL("image/png"));
+            context.videos.push({ label, shownAs: "frame" });
+            return image;
+        } catch {
+            // Fall through to the poster.
+        }
+    }
+    const entry = { label, shownAs: (poster ? "poster" : "placeholder") as VideoStill };
+    context.videos.push(entry);
+    const placeholder = () => image.setAttribute("src", videoPlaceholderDataUrl(element.clientWidth, element.clientHeight));
+    if (!poster) {
+        placeholder();
+        return image;
+    }
+    context.inliner.inline(poster, resourceLabel(element, "the video poster", context), dataUrl => {
+        if (dataUrl) {
+            image.setAttribute("src", dataUrl);
+        } else {
+            entry.shownAs = "placeholder";
+            placeholder();
+        }
+    });
+    return image;
+}
+
+/**
+ * A neutral box with a play mark, sized to the video's own box so `object-fit` leaves it whole.
+ * Exported for the tests; nothing else should need it.
+ */
+export function videoPlaceholderDataUrl(width: number, height: number): string {
+    const w = Math.max(16, Math.round(width) || 320);
+    const h = Math.max(16, Math.round(height) || 180);
+    const size = Math.max(8, Math.min(w, h) * 0.22);
+    const cx = w / 2;
+    const cy = h / 2;
+    const triangle = `${cx - size * 0.4},${cy - size * 0.5} ${cx - size * 0.4},${cy + size * 0.5} ${cx + size * 0.5},${cy}`;
+    const svg = `<svg xmlns="${SVG_NS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+        + `<rect width="${w}" height="${h}" fill="#2b2f36"/>`
+        + `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" fill="none" stroke="#5c6470" stroke-width="2" stroke-dasharray="8 6"/>`
+        + `<polygon points="${triangle}" fill="#9aa3ad"/></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 function copyComputedStyle(source: Element, clone: Element, context: CloneContext): void {

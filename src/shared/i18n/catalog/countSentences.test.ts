@@ -16,17 +16,30 @@ type Build = (translator: Translator, counts: readonly number[]) => string;
 const SENTENCES: { name: string; build: Build; en: [number[], string][]; zh: [number[], string]; ja: [number[], string] }[] = [
     {
         name: "lint report header",
-        build: ({ t, tn }, [errors, warnings, infos]) => t("lint.report.counts", {
+        build: ({ t, tn }, [errors, warnings, minorWarnings, infos]) => t("lint.report.counts", {
             errors: tn("common.count.errors", errors),
             warnings: tn("common.count.warnings", warnings),
+            minorWarnings: tn("common.count.minorWarnings", minorWarnings),
             infos: tn("common.count.infos", infos),
         }),
         en: [
-            [[1, 1, 1], "1 error, 1 warning, 1 info"],
-            [[2, 0, 3], "2 errors, 0 warnings, 3 info"],
+            [[1, 1, 1, 1], "1 error, 1 warning, 1 minor warning, 1 info"],
+            [[2, 0, 80, 3], "2 errors, 0 warnings, 80 minor warnings, 3 info"],
         ],
-        zh: [[1, 2, 3], "1 个错误，2 个警告，3 个提示"],
-        ja: [[1, 2, 3], "エラー 1 件、警告 2 件、情報 3 件"],
+        zh: [[1, 2, 80, 3], "1 个错误，2 个警告，80 个次要警告，3 个提示"],
+        ja: [[1, 2, 80, 3], "エラー 1 件、警告 2 件、軽微な警告 80 件、情報 3 件"],
+    },
+    {
+        name: "lint status bar hover",
+        build: ({ t, tn }, [errors, warnings, minorWarnings, infos]) => t("lint.statusBar.counts", {
+            errors: tn("common.count.errors", errors),
+            warnings: tn("common.count.warnings", warnings),
+            minorWarnings: tn("common.count.minorWarnings", minorWarnings),
+            infos: tn("common.count.infos", infos),
+        }),
+        en: [[[0, 2, 1, 0], "Problems: 0 errors, 2 warnings, 1 minor warning, 0 info"]],
+        zh: [[0, 2, 80, 0], "问题：0 个错误，2 个警告，80 个次要警告，0 个提示"],
+        ja: [[0, 2, 80, 0], "問題：エラー 0 件、警告 2 件、軽微な警告 80 件、情報 0 件"],
     },
     {
         name: "lint console close",
@@ -169,7 +182,7 @@ const SENTENCES: { name: string; build: Build; en: [number[], string][]; zh: [nu
             [[1, 2], "1 layer · ~2 MB"],
             [[12, 40], "12 layers · ~40 MB"],
         ],
-        zh: [[12, 40], "12 层 · 约 40 MB"],
+        zh: [[12, 40], "12 个图层 · 约 40 MB"],
         ja: [[12, 40], "12 レイヤー · 約 40 MB"],
     },
 ];
@@ -244,7 +257,7 @@ describe("strings with one count", () => {
         { key: "assets.magicTag.moreFiles", one: "… and 1 more file", many: [3, "… and 3 more files"],
             zh: "…还有 3 个文件", ja: "…ほか 3 ファイル" },
         { key: "characters.editor.psd.axis", one: "axis, 1 tag", many: [3, "axis, 3 tags"],
-            zh: "轴，3 个差分", ja: "軸、タグ 3 個" },
+            zh: "差分轴，3 个标签", ja: "軸、タグ 3 個" },
         { key: "uiEditor.componentLibrary.refs", one: "1 ref", many: [3, "3 refs"], zh: "3 处引用", ja: "参照 3" },
         { key: "dashboard.builds.logOmitted",
             one: "The first 1 line was dropped to keep the record small.",

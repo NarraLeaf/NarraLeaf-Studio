@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_FORMER_FALLBACK_PORTS, AGENT_MCP_LEGACY_DEFAULT_PORT } from "@shared/agent/protocol";
 import { AGENT_SETTINGS_FILE_NAME, AGENT_SETTINGS_SCHEMA_VERSION, buildAgentClientConfig } from "@shared/agent/settings";
 import { AgentSettingsStore, mintAgentToken } from "./agentSettingsStore";
 
@@ -134,10 +134,10 @@ describe("AgentSettingsStore", () => {
 });
 
 describe("the endpoint's ports", () => {
-    it("start below Windows' dynamic range, where reserved blocks answer EACCES, and stay there", () => {
+    it("sit below Windows' dynamic range, where reserved blocks answer EACCES", () => {
         expect(AGENT_MCP_DEFAULT_PORT).toBe(47219);
-        expect(AGENT_MCP_FALLBACK_PORTS).toEqual([47220, 47221, 47222, 47223, 47224, 47225, 47226, 47227, 47228]);
-        for (const port of [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FALLBACK_PORTS]) {
+        expect(AGENT_MCP_FORMER_FALLBACK_PORTS).toEqual([47220, 47221, 47222, 47223, 47224, 47225, 47226, 47227, 47228]);
+        for (const port of [AGENT_MCP_DEFAULT_PORT, ...AGENT_MCP_FORMER_FALLBACK_PORTS]) {
             expect(port).toBeLessThan(49152);
         }
     });
@@ -165,6 +165,18 @@ describe("buildAgentClientConfig", () => {
         expect(JSON.parse(text)).toEqual({ mcpServers: { narraleaf: stdio } });
         expect(text).not.toContain(token);
         expect(() => buildAgentClientConfig("stdio", url, token)).toThrow();
+    });
+
+    it("gives Codex a TOML table", () => {
+        expect(buildAgentClientConfig("codex", url, token)).toBe(
+            `[mcp_servers.narraleaf]\nurl = "${url}"\nhttp_headers = { "Authorization" = "Bearer abc" }`,
+        );
+    });
+
+    it("gives Gemini CLI its httpUrl key", () => {
+        expect(JSON.parse(buildAgentClientConfig("gemini", url, token))).toEqual({
+            mcpServers: { narraleaf: { httpUrl: url, headers: { Authorization: "Bearer abc" } } },
+        });
     });
 
     it("gives opencode its remote block", () => {

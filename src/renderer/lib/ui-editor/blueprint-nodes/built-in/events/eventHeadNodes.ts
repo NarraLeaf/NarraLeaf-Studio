@@ -24,6 +24,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -56,6 +58,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
@@ -320,11 +323,13 @@ function widgetEventHead(input: {
     listRowTypes?: BlueprintNodeDef["listRowTypes"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
+    description?: BlueprintNodeDef["description"];
 }): BlueprintNodeDef {
     return {
         type: input.type,
         ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
+        ...(input.description ? { description: input.description } : {}),
         category: "Events",
         keywords: input.keywords,
         graphKinds: ["event"],
@@ -793,6 +798,13 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN],
     }),
     widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_VIDEO_ENDED,
+        displayName: "Playback Ended",
+        description: "blueprint.nodeDescription.playbackEnded",
+        keywords: ["video", "movie", "clip", "ended", "end", "finished", "complete", "done", "playback"],
+        pins: [THEN_PIN],
+    }),
+    widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
         assetNames: "assembled",
         displayName: "Value Changed",
@@ -867,6 +879,42 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
     }),
+    {
+        /**
+         * A saved variable of the playthrough changed - the story set it, or another screen did.
+         * Ambient like the window heads, so a widget showing story state can place one too.
+         */
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+        // The value is whatever was written, from wherever: not followed back to its writer, so a name
+        // out of it used as an asset is refused where it is used (see `BlueprintAssetNameFlow`).
+        assetNames: "assembled",
+        displayName: "On Saved Var Changed",
+        category: "Events",
+        keywords: ["variable", "saved", "changed", "story", "flag", "watch", "set", "value"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" }],
+        inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
+        execute: eventHeadExecute,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
+        // The value is whatever was written, from wherever: not followed back to its writer, so a name
+        // out of it used as an asset is refused where it is used (see `BlueprintAssetNameFlow`).
+        assetNames: "assembled",
+        displayName: "On Persistent Changed",
+        category: "Events",
+        keywords: ["variable", "persistent", "global", "changed", "watch", "set", "value"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" }],
+        inspectorParams: [{ key: "persistentVariableId", label: "Persistent", kind: "persistentVariableRef" }],
+        execute: eventHeadExecute,
+    },
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
         displayName: "On Fullscreen Changed",

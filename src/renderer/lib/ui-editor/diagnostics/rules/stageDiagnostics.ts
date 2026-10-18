@@ -1,6 +1,6 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { isUIStageSlotId, UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { UISurfaceDiagnostic } from "../types";
 
@@ -12,7 +12,10 @@ export function collectStageDiagnostics(surface: UISurface): UISurfaceDiagnostic
     if (!isUIStageSlotId(surface.mount.slotId)) {
         // Built per call, not once at module load: the list is read in whatever locale the author is
         // in when the diagnostic surfaces.
-        const validSlotList = UI_STAGE_SLOT_IDS.map(slotId => getStageSlotLabel(slotId, translate)).join(", ");
+        const validSlotList = i18nStore.getTranslator().formatList(
+            UI_STAGE_SLOT_IDS.map(slotId => getStageSlotLabel(slotId, translate)),
+            { style: "narrow" },
+        );
         out.push({
             id: `game-ui:slot-invalid:${surface.id}`,
             severity: "error",

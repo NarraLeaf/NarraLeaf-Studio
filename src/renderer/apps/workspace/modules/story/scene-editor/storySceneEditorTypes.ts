@@ -98,6 +98,12 @@ export type InsertSlot = {
      */
     replaceBlockId?: StoryBlockId;
     /**
+     * The row under `replaceBlockId` is a committed command row opened as its line ("edit as text",
+     * see `storyRowLineEdit`), not a draft. The commit then keeps that row's block when the line still
+     * builds the same kind of row (`rewritesRowInPlace`), so it stays the row it was.
+     */
+    rewritesRow?: true;
+    /**
      * The slot only offers what can be done to ONE character — set when the action trigger was typed
      * into the empty dialogue row a speaker's Enter had just opened (see `startCharacterActionSlot`).
      *
@@ -149,7 +155,12 @@ export type EditorMode =
      * character typed into one field. The name says "initial" so a read that wants the live line is a
      * compile error rather than a silently stale string.
      */
-    | { kind: "insert"; slot: InsertSlot; initialValue: string; chooserDismissed?: boolean; confirmation?: string }
+    /**
+     * `inputMethodLine` is set when the slot opened on what an input method typed for the trigger
+     * (`・` read as `/`, see `foldInputMethodTrigger`): the line as typed, which the slot's first
+     * Escape gives back. `initialValue` is then the line it was read as.
+     */
+    | { kind: "insert"; slot: InsertSlot; initialValue: string; chooserDismissed?: boolean; confirmation?: string; inputMethodLine?: string }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {

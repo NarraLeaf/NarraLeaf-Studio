@@ -151,6 +151,21 @@ describe("variable_upsert", () => {
         expect(fakes.transactions).toBe(1);
     });
 
+    it("warns about the rows a retype leaves writing the old type", async () => {
+        // The registry updates its own record in place - as the real one does - which is what once
+        // made the handler compare the new type with itself and say nothing.
+        const { run } = harness({
+            variables: [HONEST],
+            sceneBlocks: {
+                s1: { id: "s1", kind: "action", childrenIds: [], payload: { action: "setVariable", target: { scope: "saved", variableId: "v-honest" }, value: true } },
+            },
+        });
+        const out = await run(variableUpsert, { id: "v-honest", valueType: "number", defaultValue: 0 });
+        expect(out.warnings).toHaveLength(1);
+        expect(out.warnings[0]).toMatch(/1 story row\(s\) still use "真心" as a boolean/);
+        expect(out.warnings[0]).toContain("sets it to true");
+    });
+
     it("needs valueType only to create, and refuses a name another variable holds", async () => {
         const { refusal, run } = harness({ variables: [HONEST, { ...HONEST, id: "v-place", storageKey: "v-place", name: "地点" }] });
         expect((await refusal(variableUpsert, { name: "new_one" })).message).toMatch(/valueType.*required to create/);
@@ -248,5 +263,98 @@ describe("character_upsert undo", () => {
         fakes.history.undo(projectHistoryScope());
         await fakes.history.settled();
         expect(cast.getCharacter(out.character.id)).toBeUndefined();
+    });
+});
+
+describe("character_upsert avatars", () => {
+    it("sets a default avatar and per-pose avatars in one step of undo, and lists them", async () => {
+        const { cast, fakes, run } = harness();
+        const out = await run(characterUpsert, {
+            name: "Mei",
+            poses: [{ name: "normal", asset: "lin_normal" }, { name: "smile", asset: "lin_smile" }],
+            defaultAvatar: "lin_normal",
+            avatars: { smile: "lin_smile" },
+        });
+        expect(out.character).toMatchObject({ defaultAvatar: "lin_normal", avatars: { smile: "lin_smile" }, bakedAvatars: 0 });
+        const live = cast.getCharacter(out.character.id)!;
+        expect(live.profile.getDefaultAvatarAssetId()).toBe("sprite");
+        const smileId = live.profile.appearance.getPoses().find(pose => pose.name === "smile")!.id;
+        expect(live.profile.appearance.getAvatar(smileId)).toEqual({ overrideAssetId: "cutout" });
+        expect(fakes.history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo).toBe(1);
+
+        const listed = await run(charactersList, {});
+        expect(listed.characters[0]).toMatchObject({ defaultAvatar: "lin_normal", avatars: { smile: "lin_smile" } });
+    });
+
+    it("keeps a pose's avatar when the pose list is restated, drops removed poses' entries, and clears on null", async () => {
+        const { cast, run } = harness();
+        const made = await run(characterUpsert, {
+            name: "Aki",
+            poses: [{ name: "normal", asset: "lin_normal" }, { name: "smile", asset: "lin_smile" }],
+            avatars: { smile: "lin_smile", normal: "lin_normal" },
+        });
+        const restated = await run(characterUpsert, { id: made.character.id, poses: [{ name: "smile", asset: "lin_smile" }] });
+        expect(restated.character.avatars).toEqual({ smile: "lin_smile" });
+        const appearance = cast.getCharacter(made.character.id)!.profile.appearance;
+        expect(Object.keys(appearance.getAvatars())).toEqual([appearance.getPoses()[0].id]);
+
+        const cleared = await run(characterUpsert, { id: made.character.id, avatars: { smile: null }, defaultAvatar: null });
+        expect(cleared.character).toMatchObject({ avatars: {}, defaultAvatar: null });
+    });
+
+    it("writes an override in the shape the character editor writes, dropping the bake, and clears it to nothing", async () => {
+        const { cast, run } = harness();
+        const made = await run(characterUpsert, {
+            name: "Mei",
+            poses: [{ name: "normal", asset: "lin_normal" }, { name: "smile", asset: "lin_smile" }],
+        });
+        const appearance = () => cast.getCharacter(made.character.id)!.profile.appearance;
+        const [normalId, smileId] = appearance().getPoses().map(pose => pose.id);
+        // Studio baked both differentials and the author framed one of them.
+        appearance().setAvatar(normalId, { baked: "fp-normal", portrait: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } });
+        appearance().setAvatar(smileId, { baked: "fp-smile" });
+
+        await run(characterUpsert, { id: made.character.id, avatars: { normal: "lin_smile" } });
+        expect(appearance().getAvatar(normalId)).toEqual({ overrideAssetId: "cutout" });
+
+        // Cleared, the entry goes, so Studio bakes the differential afresh.
+        await run(characterUpsert, { id: made.character.id, avatars: { normal: null } });
+        expect(appearance().getAvatar(normalId)).toBeNull();
+        // There was no override to drop on the other one: its bake is left alone.
+        await run(characterUpsert, { id: made.character.id, avatars: { smile: null } });
+        expect(appearance().getAvatar(smileId)).toEqual({ baked: "fp-smile" });
+    });
+
+    it("refuses an unknown pose or asset before writing anything", async () => {
+        const { cast, refusal, run } = harness();
+        const made = await run(characterUpsert, { name: "Mei", poses: [{ name: "normal", asset: "lin_normal" }] });
+        const before = cast.getCharacter(made.character.id)!.toJSON();
+        expect((await refusal(characterUpsert, { id: made.character.id, avatars: { angry: "lin_smile" } })).message).toMatch(/no pose "angry"/);
+        expect((await refusal(characterUpsert, { id: made.character.id, defaultAvatar: "nope", nameColor: "#fff" })).code).toBe("not_found");
+        expect((await refusal(characterUpsert, { id: made.character.id, avatars: { normal: 3 } })).code).toBe("invalid_args");
+        expect(cast.getCharacter(made.character.id)!.toJSON()).toEqual(before);
+    });
+
+    it("keys a layered character's avatars by tag names over its avatar axes", async () => {
+        const { cast, run, refusal } = harness({ characters: [fakeCharacter("mei", "Mei")] });
+        const appearance = cast.getCharacter("mei")!.profile.appearance;
+        appearance.setKind("layered");
+        const outfit = appearance.createAxis("outfit")!;
+        const school = appearance.createTag(outfit.id, "school")!;
+        appearance.createTag(outfit.id, "casual");
+        const expression = appearance.createAxis("expression")!;
+        appearance.createTag(expression.id, "normal");
+        const smile = appearance.createTag(expression.id, "smile")!;
+
+        const both = await run(characterUpsert, { id: "mei", avatars: { "smile+school": "lin_smile" } });
+        expect(both.character.avatars).toEqual({ "school+smile": "lin_smile" });
+        expect(cast.getCharacter("mei")!.profile.appearance.getAvatar([school.id, smile.id].sort().join("+"))).toEqual({ overrideAssetId: "cutout" });
+        expect((await refusal(characterUpsert, { id: "mei", avatars: { smile: "lin_smile" } })).message).toMatch(/missing: outfit/);
+
+        const narrowed = await run(characterUpsert, { id: "mei", avatarAxes: ["expression"], avatars: { smile: "lin_smile" } });
+        expect(narrowed.character.avatarAxes).toEqual(["expression"]);
+        expect(narrowed.character.avatars).toMatchObject({ smile: "lin_smile" });
+        expect((await refusal(characterUpsert, { id: "mei", avatars: { school: "lin_smile" } })).message).toMatch(/does not vary with/);
+        expect((await refusal(characterUpsert, { id: "mei", avatarAxes: ["pose"] })).message).toMatch(/no axis "pose"/);
     });
 });

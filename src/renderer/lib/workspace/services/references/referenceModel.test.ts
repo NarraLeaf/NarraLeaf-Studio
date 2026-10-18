@@ -393,6 +393,26 @@ describe("extractUIDocumentAssetReferences", () => {
         });
     });
 
+    it("finds a page's music, and not a Game UI's", () => {
+        const document = {
+            ...doc([]),
+            surfaces: [
+                { id: "s1", name: "Title", kind: "appSurface", settings: { music: { assetId: "theme-1", volume: 0.8 } } },
+                { id: "s2", name: "Dialogue", kind: "stageSurface", settings: { music: { assetId: "theme-2" } } },
+            ],
+        } as unknown as UIDocument;
+
+        const references = uiReferences(document);
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({
+            assetId: "theme-1",
+            label: "Title",
+            field: "music",
+            target: { kind: "uiSurface", surfaceId: "s1" },
+        });
+    });
+
     it("reads a widget's bare assetId and posterAssetId", () => {
         // Before `nl.video` this walk knew `imageFill` and `fontAssetId` and nothing else. A widget
         // naming its prop `assetId` was preloaded by the shipped game
@@ -525,20 +545,20 @@ describe("extractVoiceAssetReferences", () => {
 });
 
 describe("extractCharacterAssetReferences", () => {
-    it("covers the profile thumbnail and every appearance image", () => {
+    it("covers every appearance image", () => {
         const references = extractCharacterAssetReferences([
             {
                 id: "c1",
                 name: "Inko",
-                thumbnailAssetId: "thumb-1",
                 appearanceAssets: [
                     { slot: "pose:p1", detail: "Happy", assetId: "happy-1" },
                     { slot: "pose:p2", detail: "Sad", assetId: null },
+                    { slot: "pose:p3", detail: "Calm", assetId: "calm-1" },
                 ],
             },
         ]);
 
-        expect(references.map(reference => reference.assetId).sort()).toEqual(["happy-1", "thumb-1"]);
+        expect(references.map(reference => reference.assetId).sort()).toEqual(["calm-1", "happy-1"]);
         expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("Happy");
         // Every picture is chosen in the character's own editor.
         expect(references.map(reference => reference.target))
@@ -966,5 +986,41 @@ describe("assetNameGapTarget", () => {
     it("selects the widget in its component definition, which had no place before", () => {
         expect(assetNameGapTarget(rowBinding({ surfaceId: null, componentId: "card" })))
             .toEqual({ kind: "uiComponent", componentId: "card", elementId: "row-art" });
+    });
+});
+
+describe("every story row that names an asset is a use of it", () => {
+    // `assets/unused` is exactly as good as this list, and the guide tells an agent to delete what it
+    // reports. A row kind missing from it turns a live asset into a deletion candidate - 164 `/vfx`
+    // rows once left their 27 clips listed as unused. One row per kind that can name an asset, and
+    // each must be counted.
+    const mask = (id: string) => ({ to: { maskAssetId: id } });
+    const rows: Record<string, StoryBlock> = {
+        background: actionBlock("background", { action: "setBackground", assetId: "a-background", transition: { kind: "rule", ruleAssetId: "a-rule" } }),
+        character: actionBlock("character", { action: "character", operation: "enter", assetId: "a-character", transform: mask("a-character-mask") }),
+        audio: actionBlock("audio", { action: "audio", assetId: "a-audio" }),
+        image: actionBlock("image", { action: "image", operation: "create", assetId: "a-image", transform: mask("a-image-mask") }),
+        displayable: actionBlock("displayable", { action: "displayable", operation: "transform", transform: { ...mask("a-transform-mask"), from: { maskAssetId: "a-from-mask" } } }),
+        text: actionBlock("text", { action: "text", operation: "create", text: "Aki", transform: mask("a-text-mask") }),
+        layer: actionBlock("layer", { action: "layer", operation: "transform", transform: mask("a-layer-mask") }),
+        video: actionBlock("video", { action: "video", operation: "play", assetId: "a-video" }),
+        vfx: actionBlock("vfx", { action: "vfx", operation: "create", assetId: "a-vfx" }),
+        camera: actionBlock("camera", { action: "camera", operation: "transform", transform: mask("a-camera-mask") }),
+        dialogue: { id: "dialogue", kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", characterId: "c", voiceAssetId: "a-voice", text: { textId: "t", value: "Hi", role: "dialogue" } } } as unknown as StoryBlock,
+        jump: { id: "jump", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-1", transition: { kind: "rule", ruleAssetId: "a-jump-rule" } } } as unknown as StoryBlock,
+    };
+
+    it("counts each kind", () => {
+        const used = new Set(extractStoryAssetReferences(storyDoc(rows, "a-scene-background"), "Main").map(reference => reference.assetId));
+        expect([...used].sort()).toEqual([
+            "a-audio", "a-background", "a-camera-mask", "a-character", "a-character-mask", "a-from-mask", "a-image",
+            "a-image-mask", "a-jump-rule", "a-layer-mask", "a-rule", "a-scene-background", "a-text-mask",
+            "a-transform-mask", "a-vfx", "a-video", "a-voice",
+        ]);
+    });
+
+    it("names the field a /vfx row uses its clip through", () => {
+        const references = extractStoryAssetReferences(storyDoc({ vfx: rows.vfx }), "Main");
+        expect(references).toEqual([expect.objectContaining({ assetId: "a-vfx", field: "vfx.assetId" })]);
     });
 });

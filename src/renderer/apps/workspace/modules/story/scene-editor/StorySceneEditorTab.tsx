@@ -14,7 +14,8 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryLayerDepth, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import { sceneLayerUses } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -36,6 +37,7 @@ import { launchStoryRowInDevMode } from "./storyRowLaunch";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
+import { useRowFilterChange } from "./useRowFilterChange";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
@@ -68,12 +70,12 @@ import type { TranslationKey } from "@shared/i18n";
 import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
-import { StoryLayerPanel } from "./layers/StoryLayerPanel";
-import { layerDepthEdit, type StoryLayerPanelEntry } from "./layers/storyLayerPanelModel";
+import type { StoryPreviewLayersApi } from "./preview/StoryLayerStackView";
+import { previewCameraRowPayload, type StoryPreviewCameraApi } from "./preview/storyPreviewCameraModel";
 import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
-import { StoryCommandLineProvider } from "./StoryCommandLineView";
+import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommandLineView";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
@@ -108,6 +110,7 @@ import {
     STORY_PREVIEW_PANE_MAX_FRACTION,
     STORY_PREVIEW_PANE_MIN_WIDTH,
     type StoryScenePreviewPaneMode,
+    type StoryScenePreviewView,
 } from "./preview/storyScenePreviewSessionStore";
 import {
     dragStoryPreviewDockWidth,
@@ -117,7 +120,7 @@ import {
 } from "./preview/storyPreviewDockLayout";
 import { useStoryPreviewDockStacked } from "./preview/useStoryPreviewDockStacked";
 import { getStoryPreviewHub, useStoryPreviewLayout } from "./preview/storyPreviewHub";
-import { createDefaultStoryPreviewFloatRect, readRectInArea } from "./preview/storyPreviewFloatGeometry";
+import { createDefaultStoryPreviewFloatRect, readStoryPreviewFloatAnchor } from "./preview/storyPreviewFloatGeometry";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
@@ -128,6 +131,7 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 const STORY_ROW_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
     "insert-below": "story.insert-blank-after-selection",
     duplicate: "story.duplicate",
+    "edit-as-text": "story.edit-line",
     delete: "story.delete",
 };
 
@@ -203,6 +207,12 @@ function describeScrollContext(
 
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
+
+/**
+ * How many frames a returning tab waits for its open slot's row to be windowed back in before it
+ * stops trying to put the caret back. The list measures within a frame or two of being shown.
+ */
+const SLOT_REFOCUS_MAX_FRAMES = 20;
 
 /** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
 const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
@@ -559,6 +569,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // The find bar's opener lives with the rest of the find state, further down; the binding table is
     // built before it exists, so it reaches the current one through a ref.
     const openFindRef = useRef<() => void>(() => {});
+    /** Reads a row's line as the row prints it; published by the {@link StoryCommandLineReader} below. */
+    const rowLineReaderRef = useRef<((block: StoryBlock) => string | null) | null>(null);
+    const rowLineOf = useCallback((blockId: StoryBlockId): string | null => {
+        const block = editor.scene?.blocks[blockId];
+        return block ? rowLineReaderRef.current?.(block) ?? null : null;
+    }, [editor.scene]);
+    /** F2 and the row menu's 以文本形式编辑: the row opened as text, caret at the end. */
+    const editRowAsText = useCallback((blockId: StoryBlockId | null) => {
+        if (blockId) {
+            editor.editRowAsText(blockId, rowLineOf(blockId));
+        }
+    }, [editor.editRowAsText, rowLineOf]);
 
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {
@@ -607,6 +629,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             key: "enter",
             description: t("story.keybindings.editRow"),
             handler: editor.enterEditOrInspectorForActive,
+        },
+        {
+            id: "edit-line",
+            key: "f2",
+            description: t("story.keybindings.editRowAsText"),
+            handler: () => editRowAsText(editor.activeBlockId),
         },
         {
             // The inspector's own Escape only fires with focus inside it; opened via Enter, focus stays
@@ -721,6 +749,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.pageRowSelection("up"),
         },
     ], [
+        editRowAsText,
+        editor.activeBlockId,
         editor.closeInspector,
         editor.deleteSelection,
         editor.duplicateSelection,
@@ -848,6 +878,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // otherwise leave the panel's callbacks closed over the pre-change scene — the next panel edit would
     // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits.
     const editorRef = useRef(editor);
+    /** The layer view's opener, for the inspector bridge published before it is defined. */
+    const showLayerViewRef = useRef<() => void>(() => undefined);
     editorRef.current = editor;
 
     // Whole-scene writes that arrive from elsewhere (a script import, run from the story panel or the
@@ -1093,21 +1125,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * that used to surround the active row may all be gone, so it is placed for reading rather than
      * nudged to whichever edge it is nearest.
      *
-     * Deliberately keyed on the filter alone. `visibleRows` changes identity on every keystroke, and
-     * listing it would turn this into "yank the scroll on every edit"; the effect body reads it from
-     * the closure of the render the filter change produced, which is the one set of values it wants.
+     * Keyed on the filter alone - not on the tab being shown, which would move the page on every
+     * return to the tab (see `useRowFilterChange`) - and not on `visibleRows`, which changes identity
+     * on every keystroke and would turn this into "yank the scroll on every edit". The body reads both
+     * from the render the filter change produced, which is the one set of values it wants.
      */
-    useEffect(() => {
-        if (!active) {
-            return;
-        }
+    useRowFilterChange(active, editor.rowFilter, () => {
         if (editor.activeBlockId && rowIndexOf(editor.activeBlockId) >= 0) {
             editor.revealRow({ kind: "row", blockId: editor.activeBlockId }, "jump");
             return;
         }
         editor.scrollContainerRef.current?.scrollTo({ top: 0 });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, editor.rowFilter]);
+    });
 
     /**
      * The right rail follows the selected row.
@@ -1196,7 +1225,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     }
                 },
                 generateTextId: () => editorRef.current.uuidService?.generate() ?? crypto.randomUUID(),
-                onCreateLayer: nextBeforeBlockId => editorRef.current.createLayerBeforeBlock(nextBeforeBlockId),
+                onCreateLayer: () => editorRef.current.createSceneLayer(),
+                onManageLayers: () => showLayerViewRef.current(),
                 onUpdateScene: patch => editorRef.current.updateSceneMetadata(patch),
             });
         }
@@ -1453,6 +1483,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     target.focus();
                 }
             });
+        } else if (target && target.closest("[data-story-insert-slot]") && editorRef.current.editorMode.kind === "insert") {
+            // The open slot's field, unmounted with its row while the tab was hidden (the windowed
+            // list renders nothing at 0 px) and mounted again as a new element once the list has
+            // measured. The caret goes back into that one, at the end of the line it still holds,
+            // so the author carries on typing where they left off.
+            let frames = 0;
+            const refocusSlot = () => {
+                if (lastFocusedRef.current !== target || editorRef.current.editorMode.kind !== "insert") {
+                    return;
+                }
+                const field = editorRef.current.insertInputRef.current;
+                if (field && field.isConnected) {
+                    field.focus();
+                    field.setSelectionRange(field.value.length, field.value.length);
+                    return;
+                }
+                if (frames++ < SLOT_REFOCUS_MAX_FRAMES) {
+                    window.requestAnimationFrame(refocusSlot);
+                }
+            };
+            window.requestAnimationFrame(refocusSlot);
         }
     }, [active, scrollContainerRef]);
 
@@ -1547,6 +1598,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
     const previewMode: StoryScenePreviewPaneMode = previewPane?.mode ?? "dock";
     const previewSkipTyping = previewPane?.skipTyping === true;
+    const layerViewShown = previewOpen && previewPane?.mode !== "float" && previewPane?.view === "layers";
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
@@ -1630,7 +1682,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             previewHub.patchLayout({
                 open: true,
                 mode,
-                float: createDefaultStoryPreviewFloatRect(bounds, readRectInArea(editorBodyRef.current, area)),
+                float: createDefaultStoryPreviewFloatRect(bounds, readStoryPreviewFloatAnchor(editorBodyRef.current, area)),
             });
             return;
         }
@@ -1796,51 +1848,57 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, []);
     /**
-     * The scene's layer panel, opened under its header button on the same terms as the filter: it
-     * stays put while the author works in it and a second press on the button closes it.
+     * The scene's layers are the live preview's layer view: the header button and every "manage
+     * layers" entry go there, opening the preview - docked, since the view belongs to the scene's own
+     * editor - when it was closed or floating. The button takes the view back to the shot when it is
+     * already showing.
      */
-    const layersButtonRef = useRef<HTMLButtonElement | null>(null);
-    const [layerPanelAnchor, setLayerPanelAnchor] = useState<{ left: number; right: number; bottom: number } | null>(null);
-    const toggleLayerPanel = useCallback(() => {
-        setLayerPanelAnchor(current => {
-            if (current) {
-                return null;
-            }
-            const rect = layersButtonRef.current?.getBoundingClientRect();
-            return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
-        });
-    }, []);
-    const layerCharacterName = useCallback(
-        (characterId: string) => editor.characters.find(character => character.profile.getId() === characterId)?.profile.getName(),
-        [editor.characters],
-    );
-    const setLayerDepth = useCallback((entry: StoryLayerPanelEntry, depth: StoryLayerDepth) => {
-        const scene = editor.scene;
-        if (!scene || freeze.frozen) {
+    const showLayerView = useCallback(() => {
+        if (!previewHub) {
             return;
         }
-        const edit = layerDepthEdit(scene, entry, depth);
-        if (!edit) {
+        previewHub.noteFocused(tabId);
+        previewHub.patchLayout({ open: true, mode: "dock", view: "layers" });
+    }, [previewHub, tabId]);
+    showLayerViewRef.current = showLayerView;
+    const toggleLayerView = useCallback(() => {
+        const layout = previewHub?.getLayout();
+        if (layout?.open && layout.mode === "dock" && layout.view === "layers") {
+            previewHub?.patchLayout({ view: "stage" });
             return;
         }
-        if (edit.kind === "update") {
-            editor.updateBlockPayloadFor(edit.blockId, edit.payload);
-            return;
+        showLayerView();
+    }, [previewHub, showLayerView]);
+    const setPreviewView = useCallback((view: StoryScenePreviewView) => {
+        previewHub?.patchLayout({ view });
+    }, [previewHub]);
+    // `/layer` writes no row: what it did is in the scene's layers, so that is where the answer is shown.
+    const sceneLayersCommitted = editor.sceneLayersCommitted;
+    useEffect(() => {
+        if (sceneLayersCommitted > 0) {
+            showLayerView();
         }
-        // The background layer had no depth row yet. The new one goes at the top of the scene, where
-        // a reader meets it first. The selection stays put: the author is tuning depth against the
-        // shot the preview shows, and selecting the new row would move the preview to the scene's start.
-        const block = createBlockForCommand("layerDepth", () => editor.uuidService?.generate() ?? crypto.randomUUID());
-        if (block.kind !== "action" || block.payload.action !== "layer") {
-            return;
+    }, [sceneLayersCommitted, showLayerView]);
+    // Built every render on purpose: the scene is edited in place, so nothing about the object says
+    // that its layers changed.
+    const layersApi: StoryPreviewLayersApi | undefined = editor.scene
+        ? {
+            scene: editor.scene,
+            readOnlyReason: freeze.frozen ? freeze.reason : null,
+            setSceneLayers: layers => editorRef.current.setSceneLayers(layers),
+            createSceneLayer: () => editorRef.current.createSceneLayer(),
+            layerUses: layerId => sceneLayerUses(editorRef.current.scene, layerId).length,
         }
-        editor.insertBlock(
-            { ...block, payload: { ...block.payload, depth: edit.depth } },
-            null,
-            false,
-            { target: { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null }, keepSelection: true },
-        );
-    }, [editor, freeze.frozen]);
+        : undefined;
+    // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
+    // view's moving preview rests on that shot.
+    const framedCameraBlockId = editor.activeBlockId;
+    const framedCameraPayload = framedCameraBlockId && editor.scene && !freeze.frozen && framedCameraBlockId === preview.targetBlockId
+        ? previewCameraRowPayload(editor.scene.blocks[framedCameraBlockId])
+        : null;
+    const previewCamera: StoryPreviewCameraApi | null = framedCameraBlockId && framedCameraPayload
+        ? { blockId: framedCameraBlockId, payload: framedCameraPayload }
+        : null;
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -2278,6 +2336,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
+        // Only on a row a command line owns: a text row, a blank line and a draft row are text already,
+        // and a container header has no line that could carry its children.
+        ...(rowLineOf(menuTarget) !== null ? [{
+            id: "edit-as-text",
+            label: t("story.rowMenu.editAsText"),
+            ...freeze.menuRow(),
+            onClick: () => editRowAsText(menuTarget),
+        }] : []),
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
@@ -2302,6 +2368,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {/* Following a name to the thing it names is READING, so it sits outside the row-action
             surface above and keeps working while the workspace is frozen — that is the state in which
             looking a reference up is all there is left to do. */}
+        <StoryCommandLineReader readerRef={rowLineReaderRef} characters={editor.characters} scene={scene} scenes={document.scenes} />
         <StoryRefNavigationProvider document={document} sceneId={scene.id}>
         {/* Which document the rows below write, for the handful of their controls that ask. They
             ask one at a time on purpose: the rows also hold a control that creates a character,
@@ -2410,19 +2477,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the
                         line you are writing are on screen together. */}
-                    {/* The scene's layers: which is in front of which, how far from the camera each
-                        sits, and what stands on each. A layer is otherwise only a row, and the order
-                        and depth of the scene's layers were something the author had to keep in mind. */}
+                    {/* The scene's layers: the live preview's layer view, the shot taken apart into them. */}
                     <button
-                        ref={layersButtonRef}
                         type="button"
-                        onClick={toggleLayerPanel}
-                        data-tip={t("story.layerPanel.open")}
-                        aria-label={t("story.layerPanel.open")}
-                        aria-haspopup="dialog"
-                        aria-expanded={layerPanelAnchor !== null}
-                        className={["rounded-md p-1.5 transition-colors", layerPanelAnchor ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
-                        data-story-layer-panel-button=""
+                        onClick={toggleLayerView}
+                        data-tip={t("story.sceneLayers.open")}
+                        aria-label={t("story.sceneLayers.open")}
+                        aria-pressed={layerViewShown}
+                        className={["rounded-md p-1.5 transition-colors", layerViewShown ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        data-story-layer-view-button=""
                     >
                         <Layers className="h-4 w-4" />
                     </button>
@@ -2545,6 +2608,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2570,6 +2634,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2612,6 +2677,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
+                                        draftRef={editor.insertDraftRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
@@ -2639,6 +2705,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         characters={editor.characters}
                         commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}
+                        draftRef={editor.insertDraftRef}
                         onValueChange={editor.handleInsertValueChange}
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                         onDismissChooser={editor.dismissInsertChooser}
@@ -2763,18 +2830,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onClose={() => setFilterMenuAnchor(null)}
                 />
             ) : null}
-            {layerPanelAnchor && editor.scene ? (
-                <StoryLayerPanel
-                    anchor={layerPanelAnchor}
-                    anchorEl={layersButtonRef.current}
-                    scene={editor.scene}
-                    characterName={layerCharacterName}
-                    readOnly={freeze.frozen}
-                    onSetDepth={setLayerDepth}
-                    onRevealRow={blockId => editor.selectRow(blockId, undefined, "jump")}
-                    onClose={() => setLayerPanelAnchor(null)}
-                />
-            ) : null}
             </div>
             {/* Mounted only while it is on: a Monaco instance and the print behind it are not things
                 a scene tab should be carrying around for an author who never asked for the script. */}
@@ -2825,6 +2880,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             skipTyping={previewSkipTyping}
                             onToggleSkipTyping={togglePreviewSkipTyping}
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
+                            layers={layersApi}
+                            camera={previewCamera}
+                            view={previewPane?.view}
+                            onSetView={setPreviewView}
                         />
                     </div>
                 </>

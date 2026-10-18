@@ -58,8 +58,7 @@ import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
-import type { PuppetDescription } from "narraleaf-react";
-import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
+import type { DescribedPuppet, PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
 import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
@@ -165,6 +164,7 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneUpdate,
     StoryTransformRef,
     StoryVariableValueType,
@@ -172,6 +172,7 @@ import type {
 import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
+    BlueprintInspectorParamDef,
     BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
@@ -1058,6 +1059,10 @@ interface IBlueprintNodeCatalogService extends IService {
     ensureBuiltinsRegistered(): void;
     register(def: BlueprintNodeDef, options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
     registerMany(defs: BlueprintNodeDef[], options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
+    /** Goes up with every registration; see {@link onCatalogChanged}. */
+    getCatalogRevision(): number;
+    /** Called after node types are registered - a plugin's arrive after the editors have drawn. */
+    onCatalogChanged(handler: () => void): () => void;
     registerDynamicSelectOptionsSource(
         sourceId: string,
         provider: () => BlueprintInspectorParamSelectOption[],
@@ -1188,6 +1193,18 @@ type StoryPluginActionCreateInput = {
     initialText?: string;
 };
 
+/**
+ * One field the scene inspector shows on a row of a plugin story action, editing `params[key]`.
+ *
+ * The descriptor a plugin node's `inspectorParams` already takes, narrowed to the kinds a row's params
+ * can hold: a pick (static `options`, or a `dynamicOptionsSource` registered through
+ * `app.services.blueprintNodes`), a string, or a number. A plugin that offers the same choice on a
+ * node and on a row passes both the same object, so both list the same options.
+ */
+type StoryPluginActionParamDef = Pick<BlueprintInspectorParamDef, "key" | "label" | "options" | "dynamicOptionsSource" | "emptyOptionLabel"> & {
+    kind: "select" | "string" | "number";
+};
+
 type StoryPluginActionRegistration = {
     id: string;
     label: string;
@@ -1200,6 +1217,22 @@ type StoryPluginActionRegistration = {
      * editor, so an action whose params change what the row does says what they are here.
      */
     describe?: (params: Record<string, unknown>) => string | null | undefined;
+    /**
+     * Words a typed command finds this action by in every interface language, as a built-in command
+     * answers to its own word: with `keywords: ["unlock"]`, `/unlock ACH_WIN` commits this action with
+     * "ACH_WIN" as its initial text. Without them a typed command has to start the label or the id.
+     * Single words; a built-in command's word stays the built-in's.
+     */
+    keywords?: readonly string[];
+    /**
+     * The fields the scene inspector shows when one of this action's `{action:"plugin"}` rows is
+     * selected, each editing one key of the row's `params`. Without them a row keeps whatever
+     * `createBlock` wrote, and changing it means inserting the row again.
+     *
+     * A field of a kind this Studio does not know is left out of the inspector, so a plugin written
+     * for a later Studio still registers here.
+     */
+    params?: readonly StoryPluginActionParamDef[];
 };
 
 interface IStoryService extends IService {
@@ -1249,6 +1282,8 @@ interface IStoryService extends IService {
     createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
     renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
     updateScene(storyId: StoryId, sceneId: StorySceneId, patch: StorySceneUpdate): boolean;
+    /** The scene's layer stack, front to back - see `StoryScene.layers`. */
+    setSceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean;
     deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
     moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
     setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;
@@ -1357,9 +1392,9 @@ interface IPuppetDescriptionService extends IService {
     describe(request: PuppetDescriptionRequest, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
-    peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    peek(request: PuppetDescriptionRequest): DescribedPuppet | null;
     /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
-    peekCharacter(characterId: string): PuppetDescription | null;
+    peekCharacter(characterId: string): DescribedPuppet | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
 }
@@ -1746,4 +1781,4 @@ export {
 };
 
 export type { ActiveSnapGuides, SmartSnapDetailSettings };
-export type { StoryPluginActionCreateInput, StoryPluginActionRegistration };
+export type { StoryPluginActionCreateInput, StoryPluginActionParamDef, StoryPluginActionRegistration };

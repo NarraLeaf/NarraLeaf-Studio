@@ -19,6 +19,7 @@ import { Select } from "@/lib/components/elements/Select";
 import { listProjectPuppetRuntimes } from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
 import {
     puppetChoiceOptions,
+    puppetNameOption,
     type PuppetDescriptionRequest,
     type PuppetDescriptionUnavailableReason,
 } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
@@ -243,6 +244,8 @@ function ChoiceRow(props: {
     label: string;
     placeholder: string;
     available: readonly string[];
+    /** What to call each name in the list, where Studio has more to say than the name (a motion's file). */
+    labels?: Readonly<Record<string, string>>;
     value: string | null;
     onChange: (value: string | null) => void;
 }) {
@@ -264,7 +267,7 @@ function ChoiceRow(props: {
                         // The empty option is the engine's `null`, which is a real state - the model
                         // rests with nothing applied - and not the absence of a choice.
                         { value: "", label: props.placeholder },
-                        ...options.map(name => ({ value: name, label: name })),
+                        ...options.map(name => puppetNameOption(name, props.labels)),
                     ]}
                     value={props.value ?? ""}
                     size="sm"
@@ -324,6 +327,7 @@ function PuppetStateField(props: CustomFieldProps<UIInspectorData>) {
                 label={t("widgets.puppet.motion")}
                 placeholder={t("widgets.puppet.stateNone")}
                 available={description?.motions ?? []}
+                labels={description?.motionLabels}
                 value={current.motion}
                 onChange={value => patchPuppet(props.data, { motion: value })}
             />

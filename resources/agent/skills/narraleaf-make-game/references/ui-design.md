@@ -19,6 +19,40 @@ a time, checking each pass with your own eyes (`ui_screenshot`).
 
 The skeleton already has these shapes. Keep them; change the look.
 
+## A project with no interface yet
+
+A project made from the empty template has one blank page: no title, no dialogue box, no save, load,
+settings or log. Store templates (`ui_templates`) do not fix that - they are layouts, and the answer
+of `ui_template_apply` says how much logic each page brought, usually none. Get the working screens
+first, then restyle them like the skeleton's:
+
+1. `ui_install_standard_screens {dryRun: true}` - it lists the pages, Game UIs and components that
+   would arrive, any Game UI slot the project already fills (skipped unless `replace: true`) and any
+   page left out because the project lacks a plugin its logic needs (the Extra page without the
+   Gallery), with the buttons that only opened it. It refuses outright when the project already has
+   working screens (a page that starts the story and loads saves): restyle those instead.
+2. The same call without `dryRun`. One step of undo takes back the interface it added and its input
+   actions; the files, palette entries, translation keys, variable and save field it brought stay (the
+   answer lists them). The splash becomes the entry page in place
+   of the blank one (when the entry page is not blank it stays, and the answer says so - move it with
+   `ui_page_set_entry`), and Start begins the project's default story at the scene that is its entry
+   at install time. That scene is written into the Start Game node by id, so a later
+   `scene_set_entry` does not move Start - set the node's `sceneId` (`blueprint-format`, "The title
+   screen's Start button").
+3. Check what arrived:
+   - [ ] `project_info` names the splash (or the title) as the entry page; `ui_surfaces` lists Title,
+     Save, Load, Config, Log, Confirm and the Dialogue, Choice, Quick menu and Notifications Game UIs,
+     and no leftover blank page;
+   - [ ] the title's Start blueprint (`ui_show` the title, find the button whose `localizationKey`
+     is `menu.start`, then `blueprint_show` the name in the `# blueprint:` note on its line) starts
+     the scene you mean (`story_list` shows ids);
+   - [ ] `lint` reports nothing dangling: no page nothing reaches, no missing asset, no node naming
+     something gone;
+   - [ ] `ui_screenshot` of the title and the dialogue box looks like the skeleton's.
+4. If the author picked a store look instead, apply it as well, wire or replace what it lacks, make
+   its title the entry (`ui_page_set_entry`) and remove the pages it replaced (`ui_page_delete`,
+   once nothing opens them).
+
 ## Palette first
 
 `brand_get` shows the palette. The ids that matter:
@@ -89,7 +123,8 @@ Per page, in order, each pass one `ui_patch` (or a few) and one `ui_screenshot`:
 2. **Style** - fills, borders, radii, type sizes and weights, images (the title's key art, background
    images, the logo).
 3. **Interaction** - hover and pressed looks (appearance rows with `hovered` / `active`), a transition
-   of 120-200 ms on them, click and hover sounds, a selected look for the current rail entry.
+   of 120-200 ms on them, click and hover sounds, a selected look for the current rail entry. Check
+   each look with `ui_screenshot {surface, element, state:"hovered"}` (or `"active"`, `"selected"`).
 
 Then the self-critique, written in the chat, and fixes before the next page:
 
@@ -118,7 +153,8 @@ about 7:1; `#6E7681` on `#15171D` about 4:1 (too low for small text).
 Element, page and blueprint names in the skeleton are in the project's language (the title's
 `Key art` image is named in Chinese in a Chinese project), so find elements with `ui_show` by type and
 position rather than by the English names below; page ids such as `narraleaf-studio:main-surface`
-are the same in every language.
+are the same in every language. Screens brought in by `ui_install_standard_screens` keep their names
+but get ids of their own, so find those pages by name (`ui_surfaces`).
 
 - **Title** (`narraleaf-studio:main-surface`): set the key art (`Key art` image's `imageFill.assetId`,
   `fillOpacity` 1 when the art is made for it, lower to dim a busy picture), the game title text, and
@@ -135,6 +171,9 @@ are the same in every language.
   room for the longest option; at most 4-5 options visible.
 - **Quick menu** (slot `onStage`): small, quiet, just above the band's top-right; Auto and Skip have a
   lit look while active (already wired with variants - restyle the variants, do not remove them).
+- **Notifications** (slot `notification`): the short messages the game raises over the stage, top
+  right in the skeleton; a list whose `Toast` row is the template - restyle the row and keep its
+  `message` field binding.
 - **Save / Load**: the rail, the screen title, the 6-slot grid. Slots are a component (`Save slot`):
   restyle the component once and every slot follows.
 - **Config**: rail, category rail, one pane at a time. Sliders and toggles are wired; restyle their
@@ -145,11 +184,166 @@ are the same in every language.
 - **Extra**: CG, recollection, music, voice tabs over the Gallery plugin. It shows what the gallery
   catalog holds: fill it with the gallery tools (`agent_guide {chapter:"plugin:narraleaf.gallery"}`),
   then restyle it.
-- **Confirm**: the yes/no dialog every risky action uses; make it match the rest.
+- **Confirm**: the yes/no dialog every risky action uses; make it match the rest. Restyle it freely,
+  but keep its two page params, its `Buttons` list bound to the `buttons` prop and the list's row
+  click graph: that is the contract Show Confirm talks through (`blueprint-format`, "The Confirm
+  page"). A second confirm page of your own must keep the same contract.
+
+## The dialogue box
+
+Two behaviours players expect of the dialogue box are not settings; each is a small blueprint. Both
+follow the pattern the skeleton's own nametag uses: the blueprint sits on an element that **stays on
+screen** - the box's container (the skeleton's `Dialogue band`) - and shows, hides or fades an
+element through an Element node. `Init` runs when the box appears and `On Flush` each time it shows a
+new line or the line finishes typing, so the state is re-read at every change. Both layers can live in
+one block on the container (`blueprint_show` it first if it already has one: a block replaces every
+layer of its owner). Find the ids in any language with `ui_surfaces {query:"nl.dialog.sentence"}` -
+it lists the Game UI with `slot=dialog`, and the Sentence's path names the container it sits in -
+then `ui_show` that page.
+
+**A click-to-continue mark shown only once the line is complete.** Add the mark (an `nl.image`, say,
+with an explicit `id`) inside the container, then:
+
+```
+blueprint "Dialogue band" owner=widgetMain surface=<Dialogue page id> element=<container id>
+
+event "Show the continue mark once the line is complete"
+    appear: blueprint.event.head.init
+    appearDone: blueprint.game.isDialogWaiting
+    appearMark: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <mark id>
+    appearShow: blueprint.element.displayable.setProperty property=visible
+    line: blueprint.event.head.flush
+    lineDone: blueprint.game.isDialogWaiting
+    lineMark: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <mark id>
+    lineShow: blueprint.element.displayable.setProperty property=visible
+
+    appear.then -> appearShow.in
+    appearDone.isWaiting -> appearShow.value
+    appearMark.element -> appearShow.element
+    line.then -> lineShow.in
+    lineDone.isWaiting -> lineShow.value
+    lineMark.element -> lineShow.element
+```
+
+`Is Dialog Waiting` is true once the line has finished typing and the game waits for the click.
+
+**The empty box stepping aside while a menu shows.** During a choice menu with no question the box
+has no line. In the skeleton the container is the box: `Dialogue band` paints the panel itself and
+holds only the top rule, the nametag, the sentence and the avatar - there is no separate picture to
+hide. So a second layer in the same block fades the container itself whenever there is no line. Use
+Opacity, not Visible: the container carries the graph that brings it back, so it stays on screen,
+only transparent.
+
+```
+event "Step aside while there is no line"
+    boxInit: blueprint.event.head.init
+    boxLine: blueprint.event.head.flush
+    lineText: blueprint.game.getDialogText
+    noLine: blueprint.string.isBlank
+    check: if
+    hideRef: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <container id>
+    hide: blueprint.element.displayable.setProperty property=opacity value=0
+    showRef: blueprint.element.ref
+        surfaceId = <Dialogue page id>
+        elementId = <container id>
+    show: blueprint.element.displayable.setProperty property=opacity value=1
+
+    boxInit.then -> check.in
+    boxLine.then -> check.in
+    lineText.text -> noLine.value
+    noLine.result -> check.condition
+    check.true -> hide.in
+    hideRef.element -> hide.element
+    check.false -> show.in
+    showRef.element -> show.element
+```
+
+A box of your own whose panel is a picture inside the container can hide that picture with Visible
+instead, the way the first layer shows the mark. Do not put this on the Choice page: a blueprint
+reaches only the elements of its own page (`blueprint-format`).
+
+## A phone chat (a page the story opens)
+
+A text conversation in the middle of a scene - the phone buzzes, the player reads, picks a reply,
+and the story goes on knowing what they said. Four pieces; check each node with `blueprint_node`.
+
+**1. The page** (`ui_apply`, `kind=appSurface`, `backgroundColor = transparent` so the scene shows
+round the phone, a dimming `nl.container` over the whole screen, the phone body on top):
+
+- A struct for one message: `struct chatMsg` with `field id: string`, `field text: string`,
+  `field them: boolean`, `field me: boolean`. A `struct` block stands at the top level of the file,
+  beside the `surface` (not inside it); `param` lines go inside the `surface`, before its root.
+- A page param holding the opening messages as its default:
+  `param messages messages type=list struct=chatMsg = [{"id":"o1","text":"在吗？","them":true,"me":false}]`.
+  `/page` passes no parameters, so the default is what the page opens with; a different opening per
+  scene is a different page, or an `init` blueprint that reads a saved variable.
+- The history: an `nl.list` with `itemsBinding = {"kind":"pageProp","key":"messages"}`,
+  `itemStructId = chatMsg`, `itemKeyFieldId = id`. Its row template is one `nl.container` with
+  `extra.listSlot = itemTemplate` holding **two** bubbles, left and right, each with
+  `bind layout.visible = field them` / `field me` and a text inside with `bind text = field text`.
+  A row cannot take its colour or side from a field any other way: the two-bubble switch is the
+  pattern. Bubbles are a fixed size; size them for the longest line.
+- The replies: a second `nl.list` (struct `chatReply`: `id`, `text`, the answer `reply`, a `score`,
+  a `tag`, a `round`), its rows containers with `navigation.focusable = always` so a pad or the
+  keyboard can pick one - and give that container a look for `{"conditions":{"focused":true}}`
+  (an appearance row, as hover looks are written; `ui-format`), or the player cannot see which reply
+  the focus is on.
+- A "put the phone down" `nl.button`, `layout.visible = false` until the last round.
+
+**2. The replies' blueprint** (on the reply list, `widgetMain`). The list nodes come twice: the
+`blueprint.list.*` ones act on the list whose blueprint they are in, the `blueprint.element.list.*`
+ones on the list an `Element` node points at - use those for the history.
+
+- `blueprint.event.head.init` -> `blueprint.list.setItems` with round one's replies (a blueprint
+  var of type array).
+- `blueprint.event.head.itemClick` -> `blueprint.data.memo` the item -> read its fields with
+  `blueprint.data.jsonGet` (Get JSON Field, `path = text`) -> `blueprint.data.jsonMakeObject` a
+  `chatMsg` (`them=false`, `me=true`) -> `blueprint.element.list.appendItem` on the history ->
+  `blueprint.element.list.scrollToBottom` -> `blueprint.flow.delay` 0.8 -> the answer as a
+  `chatMsg` with `them=true` -> append -> scroll.
+- Record what was chosen with `blueprint.saved.set`. A field read out of the item is JSON: put
+  `blueprint.data.toFloat` before adding a score, `To String` before a `Concat`. Branch on `round`:
+  the next round's replies, or hide the list and show the button.
+
+**3. Closing**: the button's `Mouse Click` -> `Close This Layer` with a `result` (say `true`).
+
+**4. The story**:
+
+```
+The phone buzzes on the desk.
+/page 手机 into=看完聊天
+/if 好感 >= 3
+  I keep smiling at the screen.
+```
+
+The story waits on the `/page` row until the page closes; `into=` gets the result (Back - Esc -
+closes it with none, and the variable keeps its default, which is how "put it down without
+answering" reads). The saved variables the replies set are there for every `/if` after it.
+
+A page opened over the story covers what is under it: a quick-menu element (an affection meter,
+say) sitting where the phone is drawn is hidden while it is open.
+
+**Check it**: `playtest_click` a reply row by `index`; the answer names the words the history
+gained and the variables that changed. `playtest_variables` shows them all.
+`ui_screenshot` the page with its `items` sample to judge the bubbles before playing.
 
 ## Templates instead
 
 `ui_templates` lists ready-made interface sets from Studio's template store and `ui_template_apply`
-adds one's pages to the project. Use it only when the author picks one; then restyle it with the
-same passes, and make sure the entry page and the title (`narraleaf-studio:main-surface`) are the
-ones you expect (`ui_surfaces`, `project_info`).
+adds one's pages to the project as new pages. They are visual layouts: a description says what a
+screen looks like, not that it works, and the answer of `ui_template_apply` counts each page's
+blueprints and bound props - for the store's themes, none. Their Start does nothing, their save
+slots are not bound to saves, their log to the history or their sliders to volumes until you wire
+them (`blueprint-format`; `ui_usage` and `blueprint_show` on the standard screens show how). Use them
+only when the author picks one. Then:
+
+- make its title the entry page with `ui_page_set_entry` - an applied page never is one;
+- wire every control the game uses, or keep the standard screen for it and borrow only the look;
+- delete the pages it replaced with `ui_page_delete` once nothing opens them, and check with
+  `ui_surfaces` and `project_info` that the entry page is the one you expect.

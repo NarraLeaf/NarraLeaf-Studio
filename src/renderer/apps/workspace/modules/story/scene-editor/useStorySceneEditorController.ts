@@ -14,7 +14,17 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { characterStageName, listSceneIdsInDocumentOrder } from "@shared/types/story";
+import {
+    addSceneLayer,
+    characterStageName,
+    listSceneIdsInDocumentOrder,
+    normalizeSceneLayerStack,
+    sameSceneLayerStack,
+    sceneLayerNameProblem,
+    sceneLayerStack,
+    type StorySceneLayer,
+    type StorySceneLayerId,
+} from "@shared/types/story";
 import { i18nStore, translate, translateN } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
@@ -43,10 +53,10 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, dialogueSpeakerOf, pluginActionToPaletteCommand, type ActionCommandId } from "./storyActionCommands";
-import { findPluginActionsByCommandWord } from "./storyCommandSearch";
+import { commandNamedByWord, findPluginActionsByCommandWord } from "./storyCommandSearch";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
-import { buildStoryCommandContext } from "./storyCommandContext";
+import { buildStoryCommandContext, listPuppetCharacterIds } from "./storyCommandContext";
 import { useContentStable, useDocumentStableForRows } from "./storyRowIdentity";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -56,7 +66,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -74,6 +84,9 @@ import {
     getInsertionTargetAfter,
     getTextSegment,
     hasInspector,
+    rewritesRowInPlace,
+    storyRowActivation,
+    storyRowLineEdit,
     isTextEditableBlock,
     selectRange,
     updateTextPayload,
@@ -109,7 +122,7 @@ import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { useProjectInputActions } from "@/lib/story/useProjectInputActions";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
-import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, foldInputMethodTrigger, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { expandCommandAbbreviation } from "./storyCommandSpelling";
 import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
 import { projectStoryCommandLine } from "./storyCommandLine";
@@ -442,8 +455,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * made a keystroke a state change on the whole editor — every row re-rendered to show one character
      * landing in one field, so typing cost time proportional to the length of the scene.
      *
-     * The draft is seeded wherever a slot opens and read wherever a line commits; nothing else touches
-     * it, and it is meaningless outside `kind: "insert"`.
+     * The draft is seeded wherever a slot opens and read wherever a line commits, and by the slot itself
+     * when it mounts again for the same open slot (its row windowed out by a hidden tab or a scroll), so
+     * the field shows what Enter would commit. It is meaningless outside `kind: "insert"`.
      */
     const insertDraftRef = useRef("");
     /**
@@ -466,6 +480,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * Kept in step with `editorMode` below, so it can never describe a row that is no longer open.
      */
     const textDraftRef = useRef<{ blockId: StoryBlockId; value: string; rich?: StoryRichRun[] } | null>(null);
+    /**
+     * The open row's words as they stood when the running input-method composition began, or null
+     * while none is running. A trigger key under a Japanese input method is a conversion ("/" composes
+     * "・"), and `startCharacterActionSlot` judges it once confirmed, against the line before it.
+     */
+    const rowCompositionBaseRef = useRef<{ blockId: StoryBlockId; value: string } | null>(null);
+    /**
+     * The row whose author backed out of the slot an input method's "・" opened - they meant the
+     * character. Until that row closes, a "・" typed on it stays text.
+     */
+    const inputMethodTriggerDeclinedRef = useRef<StoryBlockId | null>(null);
     /**
      * The pending "move the open row's words into the document" timers, and the settle they run.
      *
@@ -573,6 +598,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         textDraftRef.current = editorMode.kind === "text"
             ? { blockId: editorMode.blockId, value: editorMode.value, rich: editorMode.rich }
             : null;
+        rowCompositionBaseRef.current = null;
+        // Outlives the slot it was declined in, because that slot hands the author straight back to
+        // this same row; it ends with the row.
+        if (editorMode.kind !== "text" || editorMode.blockId !== inputMethodTriggerDeclinedRef.current) {
+            inputMethodTriggerDeclinedRef.current = null;
+        }
         // A settle armed for the row that just closed would run against a draft that is no longer
         // its own, and the undo receipt belongs to one edit session rather than to the editor.
         cancelTextSettle();
@@ -769,6 +800,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * The puppet characters, and whichever of their models have already described themselves.
      *
+     * Live2D and Spine characters included: all three runtime-drawn kinds are puppets here, which is
+     * why this goes through `listPuppetCharacterIds` rather than comparing the kind to `"puppet"`.
+     *
      * Every puppet character in the project, not only the ones this scene mentions: the command line
      * offers a list the moment the author names a character, which is before any row exists to scan
      * for. The cost is bounded - the service dedupes concurrent lookups, remembers the answer for the
@@ -776,7 +810,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * or its runtime rather than once per scene opened.
      */
     const puppetCharacters = useMemo(
-        () => characters.filter(character => character.profile.appearance.getKind() === "puppet").map(character => character.profile.getId()),
+        () => listPuppetCharacterIds(characters),
         [characters],
     );
 
@@ -798,6 +832,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (description) {
                 vocabularies[characterId] = {
                     motions: description.motions,
+                    ...(description.motionLabels ? { motionLabels: description.motionLabels } : {}),
                     expressions: description.expressions,
                     skins: description.skins,
                     params: description.params,
@@ -1038,8 +1073,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      *
      * Declared up here, above the gesture that needs it: the mouseup handler is registered in an
      * effect further down, and an effect's dependency list is read during render.
+     *
+     * `rewritesRow` marks a committed command row opened as its line (see `InsertSlot.rewritesRow`).
      */
-    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number) => {
+    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number, rewritesRow?: boolean) => {
         if (!scene) {
             return;
         }
@@ -1054,6 +1091,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 focusToken: Date.now(),
                 target: { parentId: block.parentId, beforeBlockId: block.id },
                 replaceBlockId: block.id,
+                ...(rewritesRow ? { rewritesRow: true as const } : {}),
             },
             initialValue: insertDraftRef.current,
             // Reopening a draft row lands with its completion menu open: the author is here
@@ -1599,25 +1637,61 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
     }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
 
-    // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
-    // return its id, without stealing focus from the currently-open inspector. Used by the Layer
-    // picker's "Create new layer" action so an image/text can bind to a fresh layer inline.
-    const createLayerBeforeBlock = useCallback((beforeBlockId: StoryBlockId): StoryBlockId | null => {
-        if (!storyService || !storyId || !sceneId || !scene || !uuidService) {
-            return null;
-        }
-        const target = scene.blocks[beforeBlockId];
-        if (!target) {
-            return null;
-        }
-        const block = createBlockForCommand("layerCreate", () => uuidService.generate());
-        if (block.kind === "action" && block.payload.action === "layer") {
-            block.payload.objectName = nextLayerName(scene);
+    /**
+     * Write a re-committed row's rebuilt payload into the row's own block (see `rewritesRowInPlace`):
+     * one undo step, the row keeping its id, its place and its disabled flag. Otherwise ends as
+     * {@link insertBlock} does.
+     */
+    const rewriteRowInPlace = useCallback((block: StoryBlock, openInspector: boolean) => {
+        if (!storyService || !storyId || !sceneId || !scene?.blocks[block.id]) {
+            return;
         }
         recordHistory();
-        storyService.insertBlock(storyId, sceneId, block, { parentId: target.parentId, beforeBlockId });
-        return block.id;
-    }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
+        storyService.updateBlock(storyId, sceneId, block.id, block.payload);
+        revealRowInFilter(block);
+        setActiveBlockId(block.id);
+        setSelectedBlockIds(new Set([block.id]));
+        setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
+    }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
+
+    /**
+     * How many times a command has changed the scene's layers - `/layer` writes no row, so the tab
+     * shows the scene's layers when this moves, as the answer to the line the author just committed.
+     */
+    const [sceneLayersCommitted, setSceneLayersCommitted] = useState(0);
+
+    /**
+     * Put the scene's layer stack as `layers` states it, as one undo step. The one write path for the
+     * stack: the preview's layer view, the layer picker's "new layer" and `/layer` all commit here.
+     */
+    const setSceneLayers = useCallback((layers: readonly StorySceneLayer[]): boolean => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return false;
+        }
+        if (sameSceneLayerStack(normalizeSceneLayerStack(layers), sceneLayerStack(scene))) {
+            return false;
+        }
+        recordHistory();
+        return storyService.setSceneLayers(storyId, sceneId, layers);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
+
+    /**
+     * Add a layer of the scene's own and return its id - just behind the characters unless `at` says
+     * where in the stack, and under the next free default name unless `name` gives one. Null when it
+     * could not be added, a taken name included.
+     */
+    const createSceneLayer = useCallback((options?: { name?: string; at?: number }): StorySceneLayerId | null => {
+        if (!scene || !uuidService) {
+            return null;
+        }
+        const stack = sceneLayerStack(scene);
+        const name = options?.name?.trim() || nextSceneLayerName(stack);
+        if (sceneLayerNameProblem(stack, name) !== null) {
+            return null;
+        }
+        const id = uuidService.generate();
+        return setSceneLayers(addSceneLayer(stack, { id, name }, options?.at)) ? id : null;
+    }, [scene, setSceneLayers, uuidService]);
 
     // `confirmation` is the just-declared line's ghost receipt: the slot that opens after a
     // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
@@ -1690,11 +1764,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // trigger. Reading `editorMode.value` instead would answer with the row's text at the moment
         // it opened, and a cleared line would never offer the actions again.
         const draft = readTextDraft(blockId);
-        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || draft.value !== "" || !scene) {
+        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || !scene) {
             return false;
         }
-        if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
+        // Mid-conversion, the field holds the input method's candidate rather than the author's words,
+        // so nothing is decided yet; "before this keystroke" then means before the conversion began.
+        if (textInputRef.current?.isComposing()) {
+            if (rowCompositionBaseRef.current?.blockId !== blockId) {
+                rowCompositionBaseRef.current = { blockId, value: draft.value };
+            }
             return false;
+        }
+        const base = rowCompositionBaseRef.current?.blockId === blockId ? rowCompositionBaseRef.current.value : draft.value;
+        rowCompositionBaseRef.current = null;
+        if (base !== "") {
+            return false;
+        }
+        // The trigger as the author typed it, or what an input method typed for it (`・`, or `・表示`
+        // in one conversion) read as one - unless they already backed out of that once on this row.
+        let line = value;
+        let inputMethodLine: string | undefined;
+        if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
+            const folded = inputMethodTriggerDeclinedRef.current === blockId
+                ? null
+                : foldInputMethodTrigger(value, {
+                    command: word => commandNamedByWord(word, commandAbbreviations) !== null,
+                    speaker: () => false,
+                });
+            // A speaker's line has no "#" of its own: "＃" there is text.
+            if (folded === null || !folded.startsWith(ACTION_TRIGGER)) {
+                return false;
+            }
+            line = folded;
+            inputMethodLine = value;
         }
         const block = scene.blocks[blockId];
         if (!block) {
@@ -1709,7 +1811,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         slotDiscardedRef.current = false;
         // The trigger the author actually pressed, kept as typed - the slot shows their "@" and only
         // the parse and the commit fold it onto "/", exactly as a slot opened any other way does.
-        insertDraftRef.current = value;
+        insertDraftRef.current = line;
         setEditorMode({
             kind: "insert",
             slot: {
@@ -1719,7 +1821,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 replaceBlockId: blockId,
                 characterScope: { characterId: character.profile.getId(), name: character.profile.getName() },
             },
-            initialValue: value,
+            initialValue: line,
+            ...(inputMethodLine === undefined ? {} : { inputMethodLine }),
         });
         setActiveBlockId(blockId);
         window.requestAnimationFrame(() => {
@@ -1733,10 +1836,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // already in it, and Chromium drops the caret at offset 0 of a field it is focusing for
             // the first time — which puts the next keystroke BEFORE the "@" and stops the line
             // being a command at all.
-            input.setSelectionRange(value.length, value.length);
+            input.setSelectionRange(line.length, line.length);
         });
         return true;
-    }, [characters, editorMode, readTextDraft, scene, slashAtAlias]);
+    }, [characters, commandAbbreviations, editorMode, readTextDraft, scene, slashAtAlias]);
 
     /**
      * Give the line back to the dialogue row a character-scoped slot is standing in for.
@@ -2119,58 +2222,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitTextEdit, editorMode, focusRoot, openRowForEditing, rowIndexById, startInsertAfter, visibleRows]);
 
     /**
-     * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
-     * it; a card-less one (see {@link hasInspector}) runs its own operation instead. A condition branch
-     * - where Enter into a placeholder card would be a dead end - adds a line inside its body, the
-     * common next step when building an if/else; the condition container, which only manages branches,
-     * folds. (Collapse is inlined rather than calling `toggleCollapsed`, which is declared later.)
-     */
-    const activateBlockForInspectorOrOp = useCallback((blockId: StoryBlockId) => {
-        const block = scene?.blocks[blockId];
-        if (!block) {
-            return;
-        }
-        // An invalid row is the author's own text, kept verbatim because it did not resolve. Its only
-        // sensible edit is to that text, so it re-opens the line editor seeded with the source rather
-        // than a property inspector — a card of fields for a row that has no fields yet is a dead end,
-        // and it was the first thing anyone hit after mistyping a command.
-        if (block.kind === "invalid") {
-            // Frozen: nothing to fall back to (an invalid row HAS no inspector), so the row stays put
-            // rather than opening a line editor whose text would be discarded on thaw.
-            if (!frozen) {
-                startLineEdit(block);
-            }
-            return;
-        }
-        if (block.kind === "empty") {
-            // The whole content of a blank line is the line the author has not written yet, so opening
-            // it means opening the editor for that line - in place, and empty. Committing replaces the
-            // blank row; Escape leaves it exactly where it was. Same slot the Backspace demote opens,
-            // reached by Enter or a double-click instead.
-            if (!frozen) {
-                startLineEdit(block, "");
-            }
-            return;
-        }
-        if (hasInspector(block)) {
-            setEditorMode({ kind: "inspector", blockId });
-            return;
-        }
-        if (block.kind === "control" && block.payload.control === "condition") {
-            setCollapsedBlockIds(previous => {
-                const next = new Set(previous);
-                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
-                return next;
-            });
-            return;
-        }
-        // Any other card-less container (a condition branch, incl. else) adds a line in its body.
-        if (canAcceptChildren(block) && !frozen) {
-            startInsertInside(blockId);
-        }
-    }, [frozen, scene, startInsertInside]);
-
-    /**
      * Bring the property editor onto the screen. Visibility only — no focus moves, so the caret and the
      * keyboard stay in the scene exactly where the gesture left them, and the author sees the row's
      * fields without losing the row.
@@ -2184,6 +2235,42 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const revealInspectorPanel = useCallback(() => {
         uiService?.panels.show(PROPERTIES_PANEL_ID);
     }, [uiService]);
+
+    /**
+     * A selected non-text row was activated (Enter, the row menu's 打开检查器, a double-click). What
+     * that does is {@link storyRowActivation}'s to say. (Collapse is inlined rather than calling
+     * `toggleCollapsed`, which is declared later.)
+     */
+    const activateBlockForInspectorOrOp = useCallback((blockId: StoryBlockId) => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        const activation = storyRowActivation(block, frozen);
+        switch (activation.kind) {
+            case "editLine":
+                startLineEdit(block, activation.seed);
+                return;
+            case "inspector":
+                setEditorMode({ kind: "inspector", blockId });
+                if (activation.revealsPanel) {
+                    revealInspectorPanel();
+                }
+                return;
+            case "toggleFold":
+                setCollapsedBlockIds(previous => {
+                    const next = new Set(previous);
+                    next.has(blockId) ? next.delete(blockId) : next.add(blockId);
+                    return next;
+                });
+                return;
+            case "insertInside":
+                startInsertInside(blockId);
+                return;
+            case "nothing":
+                return;
+        }
+    }, [frozen, revealInspectorPanel, scene, startInsertInside, startLineEdit]);
 
     /** Escape's inspector rung: close the property editor, keeping the row selected. */
     const closeInspector = useCallback(() => {
@@ -2216,6 +2303,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         activateBlockForInspectorOrOp(activeBlockId);
     }, [activeBlockId, activateBlockForInspectorOrOp, frozen, scene, startInsertAfter]);
+
+    /**
+     * Open a row as text, caret at the end: F2 and the row menu's 以文本形式编辑 / Edit as text. `line` is
+     * the row's own command line as it prints, which only the rows' line context can spell (see
+     * `StoryCommandLineReader`); what each kind of row does is {@link storyRowLineEdit}'s to say.
+     * Returns whether anything opened.
+     */
+    const editRowAsText = useCallback((blockId: StoryBlockId, line: string | null): boolean => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return false;
+        }
+        const edit = storyRowLineEdit(block, line, frozen);
+        if (edit.kind === "nothing") {
+            return false;
+        }
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(new Set([blockId]));
+        selectionAnchorRef.current = blockId;
+        if (edit.kind === "text") {
+            const segment = getTextSegment(block);
+            setEditorMode({ kind: "text", blockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+            return true;
+        }
+        startLineEdit(block, edit.seed, Number.MAX_SAFE_INTEGER, edit.rewritesRow);
+        return true;
+    }, [frozen, scene, startLineEdit]);
 
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
         if (editorMode.kind !== "insert" || slotDiscardedRef.current) {
@@ -2309,20 +2423,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /** Escape, last press: an uncommitted slot never existed, so leaving it must not create anything. */
-    const discardInsertSlot = useCallback(() => {
+    const discardInsertSlot = useCallback((lineBack?: string) => {
         // Set before anything else: `focusRoot` blurs the slot synchronously, and the blur handler's job
         // is to commit prose. The `setEditorMode` below has not flushed by then, so that commit would
         // still see the slot and land the very line this is discarding. A ref is what the blur can read
         // in the same tick; state cannot.
         slotDiscardedRef.current = true;
+        const rowId = editorMode.kind === "insert" ? editorMode.slot.replaceBlockId : undefined;
         // A character-scoped slot opened on top of a line the author was already writing, so its
         // Escape hands that line back rather than closing on an empty dialogue row nobody asked for.
         if (returnFromCharacterActionSlot()) {
+            // The "・" an input method typed there goes back on the line as the text it was meant to be,
+            // once the row's field is open again - and the row keeps taking it as text.
+            if (lineBack && rowId) {
+                inputMethodTriggerDeclinedRef.current = rowId;
+                window.requestAnimationFrame(() => textInputRef.current?.insertText(0, lineBack));
+            }
             return;
         }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [focusRoot, returnFromCharacterActionSlot]);
+    }, [editorMode, focusRoot, returnFromCharacterActionSlot]);
 
     // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
@@ -2508,6 +2629,25 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!spec) {
             return false;
         }
+        // A command that changes the scene writes no row (`/layer`): the scene takes the change, and
+        // the line it was typed on closes behind it - a draft row it was typed over included.
+        if (spec.editScene) {
+            if (!scene || !uuidService) {
+                return false;
+            }
+            const edit = spec.editScene(args, { generateId: () => uuidService.generate(), context: commandContext, scene });
+            if (!edit || !setSceneLayers(edit.layers)) {
+                return false;
+            }
+            const replacedId = editorMode.slot.replaceBlockId;
+            if (replacedId && storyService && storyId && sceneId && scene.blocks[replacedId]) {
+                storyService.deleteBlock(storyId, sceneId, replacedId);
+            }
+            setSceneLayersCommitted(count => count + 1);
+            setEditorMode({ kind: "idle" });
+            focusRoot();
+            return true;
+        }
         // v6: a declaration builds a ROW like everything else - the row is the variable, so Enter's
         // visible result is the line itself, and the ordinary insert path (undo included) covers it.
         if (!spec.build || !uuidService) {
@@ -2526,10 +2666,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return { parentId: replacing.parentId, beforeBlockId: index === -1 ? null : siblings[index + 1] ?? null };
             })()
             : null;
-        const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
+        const built = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
+        // A committed row opened as its line stays that row when the line still builds one of its
+        // kind: the new payload goes into the row's own block, as an edit in the inspector would.
+        const rewritten = editorMode.slot.rewritesRow && replacing && rewritesRowInPlace(replacing, built) ? replacing : null;
+        const block = rewritten ? { ...built, id: rewritten.id, parentId: rewritten.parentId } : built;
         const openInspector = opensInspectorAfterCommit(spec, block);
-        insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
-        scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+        if (rewritten) {
+            rewriteRowInPlace(block, openInspector);
+        } else {
+            insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+            scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+        }
         if (openInspector) {
             return true;
         }
@@ -2577,7 +2725,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
             : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, rewriteRowInPlace, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -2718,6 +2866,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const createActionFromSidebar = useCallback((commandId: string) => {
         const spec = getCommandSpec(commandId);
+        // `/layer` from the sidebar: a layer under the next free name, placed where the scene shows it.
+        if (spec?.editScene) {
+            if (commandId === "layer" && createSceneLayer()) {
+                setSceneLayersCommitted(count => count + 1);
+            }
+            return;
+        }
         if (!spec?.build || !uuidService) {
             const block = createPluginActionBlock(commandId);
             if (block) {
@@ -2735,7 +2890,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!openInspector && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [activeBlockId, commandContext, createPluginActionBlock, insertBlock, scaffoldContainer, uuidService]);
+    }, [activeBlockId, commandContext, createPluginActionBlock, createSceneLayer, insertBlock, scaffoldContainer, uuidService]);
 
     /**
      * Point a dialogue row at a speaker: a real character, a bare name, or nobody.
@@ -2809,19 +2964,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const created = characterService.createCharacter(trimmed);
         const characterId = created.profile.getId();
-        if (document) {
-            // Every other line already speaking as this name comes along; leaving them behind would
-            // fork one speaker into two that merely look alike.
-            //
-            // This reaches the live blocks - the document held here is a shallow copy - so it is the
-            // one edit in the editor that does not go through StoryService, and so it carries no
-            // document revision, no dirty flag and no undo step of its own.
-            promoteTempSpeaker(document, trimmed, characterId);
+        // Every other line already speaking as this name comes along; leaving them behind would fork
+        // one speaker into two that merely look alike. All of them, this row included, are one write
+        // through the story service: one revision, one save, and one undo step for this scene's rows.
+        // A line in another scene is rebound by the same write and keeps its character on undo here,
+        // as the character itself does.
+        const edits = document ? promoteTempSpeakerEdits(document, trimmed, characterId) : [];
+        const { characterId: _id, speakerName: _name, ...rest } = block.payload;
+        const own = { blockId: block.id, payload: { ...rest, characterId } as StoryBlock["payload"] };
+        if (storyService && storyId && sceneId) {
+            recordHistory();
+            storyService.updateBlocks(storyId, [
+                ...edits.filter(entry => entry.blockId !== block.id),
+                { sceneId, ...own },
+            ]);
         }
-        setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, frozenBeyondThisStory, setDialogueSpeaker, storyId, storyService, uiService]);
+    }, [characterService, document, frozenBeyondThisStory, recordHistory, sceneId, storyId, storyService, uiService]);
 
     /**
      * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
@@ -3741,7 +3901,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // How many rows the page would hold with the filter off. The one thing that tells an empty
         // editor apart from an entirely filtered-out one, which read identically before.
         unfilteredRowCount: unfilteredRows.length,
-        rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
+        rootRef, scrollContainerRef, insertInputRef, insertDraftRef, textInputRef, uuidService,
         // The viewport channel. `revealRow` is for the tab's own reasons to move the page (a filter
         // that redrew it, a find result); everything driven by the cursor declares its intent at the
         // gesture and arrives here on its own. See `storyRowReveal`.
@@ -3763,10 +3923,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
-        activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
+        editRowAsText, activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
-        createLayerBeforeBlock, slashAtAlias,
+        setSceneLayers, createSceneLayer, sceneLayersCommitted, slashAtAlias,
     };
 }
 
@@ -3853,17 +4013,12 @@ function nextSceneName(document: StoryDocument, baseName: string): string {
     return candidate;
 }
 
-/** Pick a unique default name ("Layer 1", "Layer 2", …) for a freshly-created layer in a scene. */
-function nextLayerName(scene: StoryScene): string {
-    const existing = new Set<string>();
-    for (const block of Object.values(scene.blocks)) {
-        if (block.kind === "action" && block.payload.action === "layer" && block.payload.operation === "create") {
-            existing.add(block.payload.objectName.trim().toLowerCase());
+/** The first default name ("Layer 1", "Layer 2", …) no layer of the stack has yet. */
+function nextSceneLayerName(stack: readonly StorySceneLayer[]): string {
+    for (let index = 1; ; index += 1) {
+        const candidate = translate("story.sceneLayers.defaultName", { index: String(index) });
+        if (sceneLayerNameProblem(stack, candidate) === null) {
+            return candidate;
         }
     }
-    let index = 1;
-    while (existing.has(`layer ${index}`)) {
-        index += 1;
-    }
-    return `Layer ${index}`;
 }

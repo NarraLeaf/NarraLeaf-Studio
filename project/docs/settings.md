@@ -150,19 +150,28 @@ Studio 自己的下载分两类，不要混：
   `.zip`、商店图标、插件构建依赖，这些地址是从目录文件里来的，任何 source 设置都够不着——
   这就是为什么只配 `plugins.registryUrl` 会得到「商店能浏览、装不上」。
 
+三个商店（插件、界面模板、拼写词典）另有一个**商店下载源** `network.storeSource`：自动／GitHub／
+GitCode／自定义，见 `src/shared/constants/storeSource.ts`。三个注册表仓库在 GitCode 上有整仓镜像
+（各仓的 `mirror-gitcode.yml` 同步），目录文件两边是同一份，GitCode 一侧的地址由
+`src/shared/utils/storeMirror.ts` 的固定规则从目录里的 GitHub 地址映射出来。自动＝两边同时取目录、
+先到的有效者胜，之后包／图标／模板文件／词典都从这一边取，失败换另一边（`managers/storeSource.ts`）。
+两个 registry URL 只在「自定义」下被读。这个键**故意不进** `GLOBAL_STATE_DEFAULTS`：开机迁移
+（`storeSourceMigration`）靠「没存过」认出老 profile——选过旧「中国镜像」的删掉那个地址、读作自动；
+自填过 registry 地址的写成 `custom`。
+
 解析器在 `src/shared/utils/downloadSource.ts`（纯函数，构建 worker 也要用），主进程侧的入口是
 `managers/downloadRewrites.ts`。改写只允许 https，命中会往日志写一行 `原地址 -> 新地址`。
 
-四个 source 键在设置面里是 `SettingValueType.Source`：一份具名的来源清单，最后一行是自填地址的
+五个 source 键在设置面里是 `SettingValueType.Source`：一份具名的来源清单，最后一行是自填地址的
 输入框。存的仍旧是同一个键上的普通字符串，「空 = 官方源」这条约定没变（见 `resolveDownloadSource`），
-所以这四个键的下游一律不受影响。
+所以这些键的下游一律不受影响。
 
-具名的镜像只在 Studio 说得出为什么能用时才列：`plugins.registryUrl` 的社区镜像，以及三个构建镜像
+具名的镜像只在 Studio 说得出为什么能用时才列：三个构建镜像
 （`src/shared/constants/buildMirrors.ts`：npmmirror 的 Electron 和 electron-builder-binaries、
 ziglang.org 社区镜像列表里按 `<mirror><version>/<archive>` 布局提供文件的那一个）。构建工具和 Zig
 的下载都对着源码里写死的摘要校验，镜像只能决定下不下得到；Electron 的校验文件来自同一个镜像，
-所以只列 npmmirror。`uiTemplates.registryUrl` 没有具名镜像：模板文件跟着索引所在目录走，目前没有
-哪个镜像提供整个仓库。默认值一律仍是官方源。
+所以只列 npmmirror。两个 registry URL 不列具名镜像：商店的镜像是 GitCode，由商店下载源选，
+不用填地址。默认值一律仍是官方源。
 
 `build.electronBuilderBinariesMirror` 要同时到达两处：Studio 自己的下载（winCodeSign 预取、
 AppImage 工具包）直接读配置；electron-builder 自己下载 7-Zip、NSIS 时只认环境变量，所以构建
@@ -173,16 +182,10 @@ worker 在打包循环外用 `withBinariesMirrorEnv` 把设置写成那四个 `*
 指向「设置 › 网络」；证书校验失败再加一行，说明多半是本机的代理、加速器或杀毒软件在拦截 HTTPS。
 判定在 `managers/build/downloadFailureHint.ts`。
 
-**具名镜像只给 `plugins.registryUrl`。** 另外三个只提供「官方源／不使用镜像」加自填，各有各的理由：
-
-- 两个构建镜像没有 Studio 能担保的对应物，而**按名字列出来就等于背书**。
-- `uiTemplates.registryUrl` 更进一步：模板的文档、图形和它声明的每个资产都按索引所在目录
-  （`uiTemplateRegistryClient` 的 `registryBaseDir`）解析，也就是说它们会**跟着这个键走**。
-  社区镜像 gh-mirror.mewbaka.cn **只放行 `index.json`，其余一律 403**（实测，它自己的报错里就这么写），
-  指过去会得到「列得出模板、没有预览、装一个炸一个」——正是重写表当初要消灭的那个状态。
-  哪天有一台驮得动整个仓库的镜像，再具名不迟。
-
-插件那边则够用：索引之外插件只需要 `.zip`，而它在索引里是一条 github.com 的绝对地址，归重写表管。
+`plugins.registryUrl` 以前具名列过社区镜像 gh-mirror.mewbaka.cn，它**只放行 `index.json`，其余一律 403**
+（实测，它自己的报错里就这么写）：插件能逛不能装（包在 github.com），模板更糟——模板的文档、图形和资产
+按索引所在目录（`registryBaseDir`）解析，会**跟着这个键走**，指过去就是「列得出模板、没有预览、装一个炸一个」。
+GitCode 整仓镜像取代了它。
 
 ## 缓存
 

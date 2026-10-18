@@ -34,6 +34,11 @@ export type AssetImportRefusal =
     | { kind: "undecodable" }
     /** Copying into the project failed. `fsCode` says why, when the disk said. */
     | { kind: "copyFailed"; fsCode?: FsRejectErrorCode }
+    /**
+     * The asset's current file could not be copied aside for undo, so nothing was written over it.
+     * `fsCode` says why, when the disk said. See `AssetLibraryChange`.
+     */
+    | { kind: "notKept"; fsCode?: FsRejectErrorCode }
     /** A model is imported as a folder, and this is not one. */
     | { kind: "notAFolder" }
     /** A model folder with no files in it. */

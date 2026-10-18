@@ -126,6 +126,23 @@ export function listQuitRows(ctx: LintContext): QuitRow[] {
     return rows;
 }
 
+/**
+ * Every live `/page` row in the project, with the page it opens - the same reading `listQuitRows`
+ * gives, for `story/page-missing` and for `ui/page-unreachable` (a page a story row opens is a page a
+ * player reaches).
+ */
+export function listPageRows(ctx: LintContext): QuitRow[] {
+    const rows: QuitRow[] = [];
+    for (const cursor of eachScene(ctx)) {
+        for (const block of liveBlocks(cursor.scene)) {
+            if (block.kind === "action" && block.payload.action === "page") {
+                rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
+            }
+        }
+    }
+    return rows;
+}
+
 /** Direct children that are still live. The parent is assumed live, so no ancestor walk is needed. */
 function liveChildren(scene: StoryScene, block: StoryBlock): StoryBlock[] {
     const children: StoryBlock[] = [];
@@ -296,8 +313,12 @@ function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): st
  * remedies on `reportMissingStageObject`, so a preview and a build give one answer.
  */
 function stageObjectMessageKey(reference: StageObjectReference): TranslationKey {
-    return reference.subject === "character"
-        ? "lint.rule.storyStageObjectMissing.messageCharacter"
+    if (reference.subject === "character") {
+        return "lint.rule.storyStageObjectMissing.messageCharacter";
+    }
+    // A layer is not created by a row either: the scene has it or does not.
+    return reference.subject === "layer"
+        ? "lint.rule.storyStageObjectMissing.messageLayer"
         : "lint.rule.storyStageObjectMissing.message";
 }
 
@@ -1107,7 +1128,43 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
+         * A `/page` row that names no page, or a page the project no longer has.
+         *
+         * Nothing opens and the story does not wait, so the variable the page was to answer into is
+         * never written and the `/if` after it always takes the same branch - the round trip the row
+         * exists for is silently gone. An error for the reason a quit row's missing page is one: the
+         * scene does not play as written, and nothing on the player's screen says why.
+         */
+        id: "story/page-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyPageMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            // Quiet when the interface document could not be read, as `quit-page-missing` is.
+            const surfaces = ctx.uiDocument
+                ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
+                : null;
+            for (const { entry, scene, block, surfaceId } of listPageRows(ctx)) {
+                if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "story/page-missing",
+                    messageKey: surfaceId
+                        ? "lint.rule.storyPageMissing.deleted"
+                        : "lint.rule.storyPageMissing.message",
+                    location: storyLocation(entry, scene, block.id),
+                    target: blockTarget(entry, scene, block.id),
+                });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
          * A `/waitinput`, `/hold` or `/mash` row waiting for an input action the project no longer
+
          * declares.
          *
          * No input can ever perform it, so the row waits until its time limit and fails, or - with no
@@ -1594,6 +1651,60 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A layered character with one tag name on two axes - `蓝` under Outfit and under Hair.
+         *
+         * A typed story row names a look by its tag alone (`@外观 美绪 蓝`), and a name two axes share
+         * resolves to the first axis that has it: the other tag is out of reach of the line, and a
+         * row that stores it prints a line that reads back as the first. Nothing is broken in the
+         * game - every row plays the tag it stores - so `warning`, not `error`: the cost is a look the
+         * author cannot type, not a picture that differs from the script (see the severity criterion
+         * every rule here is held to).
+         *
+         * One finding per shared name, naming the first two axes that hold it, in the axes' order.
+         * Compared as the editor compares tag names within one axis - trimmed, case folded - so the
+         * same two spellings that are "the same tag" there are the same here.
+         */
+        id: "story/tag-name-shared",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyTagNameShared",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const character of ctx.characters) {
+                const firstAxis = new Map<string, string>();
+                const reported = new Set<string>();
+                for (const axis of character.axes ?? []) {
+                    const own = new Set<string>();
+                    for (const tag of axis.tags) {
+                        const key = tag.trim().toLowerCase();
+                        if (!key || own.has(key)) {
+                            continue;
+                        }
+                        own.add(key);
+                        const holder = firstAxis.get(key);
+                        if (holder === undefined) {
+                            firstAxis.set(key, axis.name);
+                            continue;
+                        }
+                        if (reported.has(key)) {
+                            continue;
+                        }
+                        reported.add(key);
+                        findings.push({
+                            ruleId: "story/tag-name-shared",
+                            messageKey: "lint.rule.storyTagNameShared.message",
+                            messageParams: { tag: tag.trim(), first: holder, second: axis.name },
+                            location: { kind: "character", characterId: character.id, characterName: character.name },
+                            target: { kind: "character", characterId: character.id },
+                        });
+                    }
                 }
             }
             return findings;

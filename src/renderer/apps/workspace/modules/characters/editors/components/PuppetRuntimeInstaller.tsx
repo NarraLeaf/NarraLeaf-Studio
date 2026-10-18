@@ -68,7 +68,7 @@ export function PuppetRuntimeInstaller(props: {
     onInstalled: (backend: string) => void;
 }) {
     // `locale` decides which translation of the guide the links open; see puppetRuntimeDocsUrl.
-    const { t, locale } = useTranslation();
+    const { t, locale, formatList } = useTranslation();
     const { context } = useWorkspace();
     const runtime: KnownPuppetRuntime | null = props.target.kind === "known"
         ? knownPuppetRuntimeFor(props.target.id)
@@ -154,7 +154,7 @@ export function PuppetRuntimeInstaller(props: {
             const installed = await installPrebuiltPuppetRuntime(context.project, name, { kind, path } as never);
             return {
                 backend: installed.backend,
-                summary: installed.registered.join(", "),
+                summary: formatList(installed.registered, { style: "narrow" }),
                 // Said out loud rather than silently corrected: the name the author's characters must use
                 // is the one the module registers, and it just changed under them.
                 note: installed.renamedFrom
@@ -286,14 +286,14 @@ export function PuppetRuntimeInstaller(props: {
                         </p>
                         <div className="flex gap-2">
                             <button
-                                className={dialogFooterButtonClass({ variant: "primary" })}
+                                className={dialogFooterButtonClass({ variant: "primary", disabled: !runtime && !customName.trim() })}
                                 disabled={!runtime && !customName.trim()}
                                 onClick={() => void installPrebuilt(pickPrebuiltRuntimeDirectory, "directory")}
                             >
                                 {t("characters.editor.runtime.prebuiltPickFolder")}
                             </button>
                             <button
-                                className={dialogFooterButtonClass({ variant: "secondary" })}
+                                className={dialogFooterButtonClass({ variant: "secondary", disabled: !runtime && !customName.trim() })}
                                 disabled={!runtime && !customName.trim()}
                                 onClick={() => void installPrebuilt(pickPrebuiltRuntimeFile, "file")}
                             >
@@ -329,8 +329,10 @@ export function PuppetRuntimeInstaller(props: {
                             {t("common.continue")}
                         </button>
                     )}
+                    {/* Drawn disabled as well as being disabled: nothing can be cancelled while the
+                        runtime builds, and a button drawn as pressable says otherwise. */}
                     <button
-                        className={dialogFooterButtonClass({ variant: "secondary" })}
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: phase.step === "working" })}
                         disabled={phase.step === "working"}
                         onClick={close}
                     >

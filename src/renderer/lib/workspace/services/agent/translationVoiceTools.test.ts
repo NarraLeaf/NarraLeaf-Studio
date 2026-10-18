@@ -402,9 +402,16 @@ describe("voice tools", () => {
 });
 
 describe("planAutoLink", () => {
-    const voiced = (unitId: string, expectedName: string, matchKey: string): AgentVoiceLine => ({
+    const voiced = (unitId: string, expectedName: string, matchKey: string, aliasKeys: string[] = []): AgentVoiceLine => ({
         unitId, storyId: "s", sceneId: "sc", sceneName: "S", indexInScene: 1, speaker: "A", role: "dialogue",
-        text: unitId, where: unitId, expectedName, matchKey,
+        text: unitId, where: unitId, expectedName, matchKey, matchKeys: [matchKey, ...aliasKeys],
+    });
+
+    it("links a narration take named with another language's word", () => {
+        const lines = [voiced("n", "S_001_旁白", "s001旁白", ["s001narration", "s001地の文"])];
+        const plan = planAutoLink(lines, () => true, [{ id: "x", name: "S_001_Narration.wav" }], {}, false);
+        expect(plan.matched.map(item => item.asset.id)).toEqual(["x"]);
+        expect(plan.unmatchedAssets).toEqual([]);
     });
 
     it("treats a name two lines share as ambiguous even when only one is in scope", () => {

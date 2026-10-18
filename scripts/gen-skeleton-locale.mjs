@@ -13,6 +13,9 @@
 //     language (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
 //   - everything else - the sample words a canvas shows, confirm dialogs, element and blueprint
 //     names - comes from that variant's table beside this script.
+// The one exception is the names of the three seeded audio tracks, which are Studio's own words for
+// them (`src/shared/project/newProjectAudioTracks.ts`): an empty project made in the same language
+// starts with the same three names.
 //
 // The English text becomes `editor/localization/en.json`, so a project made in Chinese ships an
 // English translation exactly as one made in English ships a Chinese one, and the other languages'
@@ -112,6 +115,26 @@ const textSources = await import(
     `data:text/javascript;base64,${Buffer.from(
         createRequire(import.meta.url)("esbuild").buildSync({
             entryPoints: [TEXT_SOURCES_PATH],
+            bundle: true,
+            write: false,
+            format: "esm",
+            platform: "neutral",
+            alias: { "@shared": resolve(HERE, "../src/shared") },
+            logLevel: "silent",
+        }).outputFiles[0].text,
+    ).toString("base64")}`
+);
+
+/**
+ * The names a project's three seeded audio tracks start with in each language - the words an empty
+ * project created in that language gets, bundled from the one place that decides them rather than
+ * copied into the tables, so the skeleton cannot name its tracks differently from an empty project.
+ */
+const NEW_PROJECT_AUDIO_TRACKS_PATH = resolve(HERE, "../src/shared/project/newProjectAudioTracks.ts");
+const { newProjectAudioTracks } = await import(
+    `data:text/javascript;base64,${Buffer.from(
+        createRequire(import.meta.url)("esbuild").buildSync({
+            entryPoints: [NEW_PROJECT_AUDIO_TRACKS_PATH],
             bundle: true,
             write: false,
             format: "esm",
@@ -758,6 +781,18 @@ function buildVariant(locale) {
         }
         emit(groupsPath, groups.value, groups.trailingNewline);
     }
+
+    // --- The mixer: the three seeded tracks are named in the project's language, with the words an
+    // empty project written in it starts with. A seeded track the English content has renamed, and a
+    // track of the template's own, is named through the table like any other authored name.
+    const tracksPath = "editor/audio-tracks.json";
+    const tracks = readJson(join(contentDir, tracksPath));
+    const factoryNames = new Map(newProjectAudioTracks(ENGLISH_SOURCE_LOCALE).map(track => [track.id, track.name]));
+    const seededNames = new Map(newProjectAudioTracks(locale).map(track => [track.id, track.name]));
+    for (const track of tracks.value.tracks ?? []) {
+        track.name = factoryNames.get(track.id) === track.name ? seededNames.get(track.id) : say(track.name);
+    }
+    emit(tracksPath, tracks.value, tracks.trailingNewline);
 
     // --- Named keys: their source text is the language the project is written in.
     const keysPath = "editor/localization/keys.json";

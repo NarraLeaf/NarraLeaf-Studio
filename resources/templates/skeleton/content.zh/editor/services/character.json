@@ -14,13 +14,7 @@
             {
               "assetId": "926860bf-6a08-4837-856f-4bf8f157f2ba",
               "id": "p1oh",
-              "name": "默认",
-              "portrait": {
-                "h": 0.35,
-                "w": 0.38,
-                "x": 0.455,
-                "y": 0.01
-              }
+              "name": "默认"
             }
           ]
         },
@@ -37,6 +31,12 @@
         "id": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
         "name": "Narra",
         "nicknames": [],
+        "portrait": {
+          "h": 0.35,
+          "w": 0.38,
+          "x": 0.455,
+          "y": 0.01
+        },
         "tags": [],
         "thumbnail": null
       }

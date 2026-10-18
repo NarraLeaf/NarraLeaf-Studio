@@ -734,16 +734,12 @@
             "opacity": 1
           },
           "props": {
-            "fitMode": "cover",
-            "flipX": false,
-            "flipY": false,
             "backgroundColor": "nlbrand:pageBackground",
             "fillVisible": true,
             "fillOpacity": 1,
             "borderRadius": 0,
             "borderWidth": 0,
-            "borderStyle": "none",
-            "clipContent": true
+            "borderStyle": "none"
           }
         },
         "889d58ef-100b-4b3c-9d59-3825cf3b50d0": {
@@ -1319,7 +1315,7 @@
           "layout": {
             "x": 16,
             "y": 300,
-            "width": 110,
+            "width": 200,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -1505,9 +1501,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 132,
+            "x": 222,
             "y": 300,
-            "width": 204,
+            "width": 136,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -2255,9 +2251,9 @@
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
-            "x": 340,
+            "x": 364,
             "y": 300,
-            "width": 100,
+            "width": 76,
             "height": 24,
             "visible": true,
             "opacity": 1
@@ -5979,6 +5975,7 @@
         "0185d569-9ab3-460a-9f35-107e559c105c",
         "465a62e7-7bbc-475d-8002-929ada7ee70b",
         "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7",
+        "209f9970-6eeb-4e70-8f74-d940ed351171",
         "352f20e9-3f47-41f2-85f0-3f5d95799d96"
       ],
       "layout": {
@@ -9934,6 +9931,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -9947,6 +9950,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -9967,6 +9976,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10005,6 +10020,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10054,6 +10075,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -10160,6 +10187,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -10173,6 +10206,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -10193,6 +10232,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -10231,6 +10276,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -10280,6 +10331,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17021,6 +17078,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17034,6 +17097,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17054,6 +17123,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17092,6 +17167,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17141,6 +17222,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -17247,6 +17334,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -17260,6 +17353,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -17280,6 +17379,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -17318,6 +17423,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -17367,6 +17478,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18408,6 +18525,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18421,6 +18544,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18441,6 +18570,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18479,6 +18614,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18528,6 +18669,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -18634,6 +18781,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -18647,6 +18800,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -18667,6 +18826,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -18705,6 +18870,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -18754,6 +18925,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -19557,7 +19734,7 @@
     "e86d48d1-4c15-4bd4-8251-5cd2b9125319": {
       "id": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "type": "nl.container",
-      "name": "全体音量行",
+      "name": "全体の音量行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "dcb8cbdb-9393-4132-a936-3685c7edba15",
@@ -19933,7 +20110,7 @@
     "dcb8cbdb-9393-4132-a936-3685c7edba15": {
       "id": "dcb8cbdb-9393-4132-a936-3685c7edba15",
       "type": "nl.text",
-      "name": "全体音量ラベル",
+      "name": "全体の音量ラベル",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -20121,7 +20298,7 @@
     "c91eb37e-b2db-4211-b6ff-a112f6f6a339": {
       "id": "c91eb37e-b2db-4211-b6ff-a112f6f6a339",
       "type": "nl.slider",
-      "name": "全体音量スライダー",
+      "name": "全体の音量スライダー",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [
         "a6e05bcd-cd1f-4c28-b428-8e328be841fd",
@@ -20896,7 +21073,7 @@
     "7277d1ea-17fb-43d4-b9d1-30272854913f": {
       "id": "7277d1ea-17fb-43d4-b9d1-30272854913f",
       "type": "nl.text",
-      "name": "全体音量数値",
+      "name": "全体の音量数値",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21084,7 +21261,7 @@
     "2757d920-3e3e-4399-9804-9e12dd3946e7": {
       "id": "2757d920-3e3e-4399-9804-9e12dd3946e7",
       "type": "nl.container",
-      "name": "全体音量区切り線",
+      "name": "全体の音量区切り線",
       "parentId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
       "childrenIds": [],
       "layout": {
@@ -21455,7 +21632,7 @@
     "b15fa747-fe45-4bf2-8562-c343ac387293": {
       "id": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "type": "nl.container",
-      "name": "BGM行",
+      "name": "音楽行",
       "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
       "childrenIds": [
         "903a5c25-5f2c-4bab-96eb-19a1df827f88",
@@ -21830,7 +22007,7 @@
     "903a5c25-5f2c-4bab-96eb-19a1df827f88": {
       "id": "903a5c25-5f2c-4bab-96eb-19a1df827f88",
       "type": "nl.text",
-      "name": "BGMラベル",
+      "name": "音楽ラベル",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -22018,7 +22195,7 @@
     "f07c5a12-03c2-4aba-92fa-ba23da92f04a": {
       "id": "f07c5a12-03c2-4aba-92fa-ba23da92f04a",
       "type": "nl.container",
-      "name": "BGM区切り線",
+      "name": "音楽区切り線",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -29336,16 +29513,12 @@
         "opacity": 1
       },
       "props": {
-        "fitMode": "cover",
-        "flipX": false,
-        "flipY": false,
         "backgroundColor": "transparent",
         "fillVisible": true,
         "fillOpacity": 0.3,
         "borderRadius": 0,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "fillType": "image",
         "imageFill": {
           "mode": "cover",
@@ -29975,6 +30148,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -29993,6 +30181,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30079,6 +30273,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30097,6 +30306,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30183,6 +30398,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30201,6 +30431,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30287,6 +30523,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30305,6 +30556,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30391,6 +30648,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -30409,6 +30681,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -30605,6 +30883,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -34865,6 +35149,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -34988,6 +35278,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -35115,6 +35411,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35200,6 +35502,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -35289,6 +35597,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -35374,6 +35688,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:raisedFill"
                     }
@@ -42830,6 +43150,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:raisedFill"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:raisedFill"
                     }
                   ],
                   "transition": {
@@ -44629,6 +44955,21 @@
                           "color": "nlbrand:primary"
                         }
                       }
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 18,
+                          "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
                     }
                   ],
                   "transition": {
@@ -44647,6 +44988,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": -8
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": -8
                     }
@@ -45288,6 +45635,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45301,6 +45654,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45321,6 +45680,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45359,6 +45724,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45408,6 +45779,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -45514,6 +45891,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -45527,6 +45910,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -45547,6 +45936,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -45585,6 +45980,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -45634,6 +46035,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46151,6 +46558,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46164,6 +46577,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46184,6 +46603,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46222,6 +46647,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46271,6 +46702,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46371,6 +46808,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46384,6 +46827,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46404,6 +46853,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46442,6 +46897,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46491,6 +46952,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46591,6 +47058,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46604,6 +47077,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46624,6 +47103,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46662,6 +47147,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46711,6 +47202,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -46811,6 +47308,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -46824,6 +47327,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -46844,6 +47353,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -46882,6 +47397,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -46931,6 +47452,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.28
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.28
                     }
@@ -47092,13 +47619,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }
@@ -47266,13 +47791,11 @@
         "visible": true
       },
       "props": {
-        "fitMode": "cover",
         "backgroundColor": "nlbrand:pageBackground",
         "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true,
         "imageFill": {
           "mode": "cover"
         }
@@ -48179,6 +48702,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -48192,6 +48721,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -48212,6 +48747,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -48250,6 +48791,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -48316,6 +48863,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -48329,6 +48882,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -48349,6 +48908,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -48387,6 +48952,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:hoverBorder"
                     }
@@ -48565,7 +49136,7 @@
     "config-bgm-volume": {
       "id": "config-bgm-volume",
       "type": "nl.container",
-      "name": "BGMスライダー",
+      "name": "音楽スライダー",
       "parentId": "b15fa747-fe45-4bf2-8562-c343ac387293",
       "childrenIds": [],
       "layout": {
@@ -49996,6 +50567,12 @@
                         "hovered": true
                       },
                       "value": true
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": true
                     }
                   ]
                 },
@@ -50009,6 +50586,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": "nlbrand:primary"
                     }
@@ -50029,6 +50612,12 @@
                     {
                       "conditions": {
                         "hovered": true
+                      },
+                      "value": 0.08
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
                       },
                       "value": 0.08
                     }
@@ -50069,6 +50658,12 @@
                         "hovered": true
                       },
                       "value": "nlbrand:hoverBorder"
+                    },
+                    {
+                      "conditions": {
+                        "focused": true
+                      },
+                      "value": "nlbrand:hoverBorder"
                     }
                   ],
                   "transition": {
@@ -50093,6 +50688,200 @@
           "kind": "listItemField",
           "fieldId": "hasVoice"
         }
+      }
+    },
+    "209f9970-6eeb-4e70-8f74-d940ed351171": {
+      "id": "209f9970-6eeb-4e70-8f74-d940ed351171",
+      "type": "nl.text",
+      "name": "ボイス再生ヒント",
+      "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
+      "childrenIds": [],
+      "layout": {
+        "x": 1040,
+        "y": 4,
+        "width": 350,
+        "height": 28,
+        "opacity": 1,
+        "visible": false
+      },
+      "props": {
+        "fontSize": 18,
+        "color": "nlbrand:text.muted",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "right",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.4,
+        "fontAssetId": null,
+        "textWrapMode": "nowrap",
+        "textAutoFit": false,
+        "textAutoFitMinFontSize": 12,
+        "writingMode": "horizontal-tb",
+        "textOrientation": "mixed",
+        "tateChuYoko": true,
+        "tateChuYokoMaxLength": 2,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 18
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.muted"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.4
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "log.replayVoice"
       }
     }
   },
@@ -50307,7 +51096,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-10T07:54:00.838Z"
+    "updatedAt": "2026-10-15T20:09:10.724Z"
   },
   "structs": {},
   "entrySurfaceId": "5107c0a1-0000-4000-8000-000000000500"

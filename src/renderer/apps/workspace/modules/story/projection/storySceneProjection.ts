@@ -338,9 +338,7 @@ function formatAction(
         return `/text ${payload.operation} ${payload.objectName}${payload.text ? ` ${payload.text}` : ""}`.trimEnd();
     }
     if (payload.action === "layer") {
-        const name = payload.operation === "create"
-            ? payload.objectName
-            : resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
+        const name = resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
         return `/layer ${payload.operation} ${name}`.trimEnd();
     }
     if (payload.action === "video") {
@@ -380,8 +378,13 @@ function formatAction(
                 return `/mash${payload.actionId ? ` ${payload.actionId}` : ""} ${payload.count}`;
         }
     }
+    if (payload.action === "page") {
+        // By id, as an input row names its action: this projection has no project to look names up in.
+        return `/page${payload.surfaceId ? ` ${payload.surfaceId}` : ""}`;
+    }
     if (payload.action === "plugin") {
         // The action id, not the plugin's label: this projection is the exported script, which has to
+
         // round-trip through `#data` and be readable by whoever installs the plugin next - and the id
         // is the only half of the pair the document actually holds.
         return `/${payload.actionId}`;

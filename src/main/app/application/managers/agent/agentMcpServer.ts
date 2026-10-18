@@ -77,18 +77,16 @@ export type AgentCallContext = {
 };
 
 export type AgentMcpServerOptions = {
-    /** The port asked for. 0 asks the system for any free one. */
-    port: number;
     /**
-     * Tried in order when the port asked for cannot be bound - in use (`EADDRINUSE`) or reserved by
-     * the system (`EACCES`, as Windows answers for a port inside a range Hyper-V or WSL excluded).
+     * The port to serve on, and the only one tried: when it cannot be bound, `start` fails with the
+     * system's error - `EADDRINUSE` when another program holds it, `EACCES` when the system reserved
+     * it (as Windows answers inside a range Hyper-V, WSL or Docker excluded). 0 asks the system for
+     * any free one.
      */
-    fallbackPorts?: readonly number[];
+    port: number;
     /** Read on every request, so a regenerated token takes effect at once. */
     token: () => string;
     host: AgentMcpHost;
-    /** When none of those ports can be bound, take any free one instead of failing. Defaults to true. */
-    fallBackToFreePort?: boolean;
 };
 
 export const AGENT_MCP_BODY_LIMIT = 4 * 1024 * 1024;
@@ -170,37 +168,12 @@ export class AgentMcpServer {
         // Slow or idle connections are not held open forever: a request is a few kilobytes.
         server.requestTimeout = 5 * 60 * 1000;
         server.headersTimeout = 30 * 1000;
-        this.boundPort = await this.bind(server);
+        this.boundPort = await listen(server, this.options.port);
         // An error after listening (a socket fault) must not become an unhandled 'error' event,
         // which would take the main process down with it.
         server.on("error", error => this.options.host.log("warn", `[Agent] Server error: ${describe(error)}`));
         this.server = server;
         return this.boundPort;
-    }
-
-    /**
-     * The port asked for, then each fallback, then - unless told not to - any free port. Only a port
-     * that is unavailable moves on to the next; any other failure is the answer.
-     */
-    private async bind(server: http.Server): Promise<number> {
-        const candidates = [...new Set([this.options.port, ...(this.options.fallbackPorts ?? [])])];
-        let unavailable: unknown = null;
-        for (const candidate of candidates) {
-            try {
-                return await listen(server, candidate);
-            } catch (error) {
-                if (!isPortUnavailable(error)) {
-                    throw error;
-                }
-                unavailable = error;
-                this.options.host.log("warn", `[Agent] Port ${candidate} cannot be used (${(error as NodeJS.ErrnoException).code})`);
-            }
-        }
-        if (this.options.fallBackToFreePort === false) {
-            throw unavailable;
-        }
-        this.options.host.log("warn", "[Agent] Serving on a free port the system picked instead");
-        return listen(server, 0);
     }
 
     public async stop(): Promise<void> {
@@ -438,10 +411,6 @@ export class AgentMcpServer {
     }
 
     private initialize(params: Record<string, unknown>): { result: unknown; session: string } {
-        const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
-        const protocolVersion = (AGENT_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(asked)
-            ? asked
-            : AGENT_MCP_PROTOCOL_VERSIONS[0];
         const clientInfo = params.clientInfo && typeof params.clientInfo === "object"
             ? params.clientInfo as Record<string, unknown>
             : {};
@@ -451,20 +420,9 @@ export class AgentMcpServer {
         while (this.sessions.size > MAX_SESSIONS) {
             this.sessions.delete(this.sessions.keys().next().value as string);
         }
-        this.options.host.log("info", `[Agent] ${clientName ?? "A client"} connected (protocol ${protocolVersion})`);
-        return {
-            session,
-            result: {
-                protocolVersion,
-                capabilities: {
-                    tools: { listChanged: true },
-                    resources: { listChanged: false, subscribe: false },
-                    prompts: { listChanged: false },
-                },
-                serverInfo: { name: AGENT_MCP_SERVER_NAME, title: "NarraLeaf Studio", version: this.options.host.version() },
-                instructions: AGENT_MCP_INSTRUCTIONS,
-            },
-        };
+        const result = agentInitializeResult(params, this.options.host.version());
+        this.options.host.log("info", `[Agent] ${clientName ?? "A client"} connected (protocol ${result.protocolVersion})`);
+        return { session, result };
     }
 
     private async call(method: string, params: Record<string, unknown>, sessionHeader: string | null): Promise<unknown> {
@@ -479,12 +437,7 @@ export class AgentMcpServer {
                 const plugins = (await this.options.host.listPluginGuides?.().catch(() => [])) ?? [];
                 return {
                     resources: [
-                        ...AGENT_GUIDE_CHAPTERS.map(chapter => ({
-                            uri: `${GUIDE_URI_PREFIX}${chapter}`,
-                            name: chapter,
-                            title: GUIDE_TITLES[chapter],
-                            mimeType: "text/markdown",
-                        })),
+                        ...agentGuideResources(),
                         ...plugins.map(guide => ({
                             uri: `${AGENT_PLUGIN_GUIDE_URI_PREFIX}${guide.pluginId}`,
                             name: `plugin:${guide.pluginId}`,
@@ -523,18 +476,7 @@ export class AgentMcpServer {
                 };
             }
             case "prompts/list":
-                return {
-                    prompts: [{
-                        name: MAKE_GAME_PROMPT,
-                        title: "Make a game",
-                        description: "Make a complete visual novel in NarraLeaf Studio, from a brief to a playable build.",
-                        arguments: [{
-                            name: "brief",
-                            description: "What the game is: title, story or script, art style, language, number of endings.",
-                            required: false,
-                        }],
-                    }],
-                };
+                return { prompts: AGENT_MCP_PROMPTS };
             case "prompts/get": {
                 if (params.name !== MAKE_GAME_PROMPT) {
                     throw new RpcError(-32602, `Unknown prompt: ${String(params.name)}`);
@@ -597,6 +539,50 @@ export class AgentMcpServer {
     }
 }
 
+/**
+ * The answer to `initialize`: the protocol version both sides speak (the client's, when Studio speaks
+ * it), what the server offers and who it is. Also given by the stdio bridge while Studio is not yet
+ * running, so it must say only what holds before a project is open.
+ */
+export function agentInitializeResult(params: Record<string, unknown>, version: string) {
+    const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
+    const protocolVersion = (AGENT_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(asked)
+        ? asked
+        : AGENT_MCP_PROTOCOL_VERSIONS[0];
+    return {
+        protocolVersion,
+        capabilities: {
+            tools: { listChanged: true },
+            resources: { listChanged: false, subscribe: false },
+            prompts: { listChanged: false },
+        },
+        serverInfo: { name: AGENT_MCP_SERVER_NAME, title: "NarraLeaf Studio", version },
+        instructions: AGENT_MCP_INSTRUCTIONS,
+    };
+}
+
+/** The guide's chapters as `resources/list` names them; a plugin's own chapter is added by the endpoint. */
+export function agentGuideResources() {
+    return AGENT_GUIDE_CHAPTERS.map(chapter => ({
+        uri: `${GUIDE_URI_PREFIX}${chapter}`,
+        name: chapter,
+        title: GUIDE_TITLES[chapter],
+        mimeType: "text/markdown",
+    }));
+}
+
+/** What `prompts/list` offers. */
+export const AGENT_MCP_PROMPTS = [{
+    name: MAKE_GAME_PROMPT,
+    title: "Make a game",
+    description: "Make a complete visual novel in NarraLeaf Studio, from a brief to a playable build.",
+    arguments: [{
+        name: "brief",
+        description: "What the game is: title, story or script, art style, language, number of endings.",
+        required: false,
+    }],
+}];
+
 /** A tool as `tools/list` describes it. */
 export function describeTool(tool: AgentToolDescriptor) {
     return {
@@ -613,19 +599,22 @@ export function describeTool(tool: AgentToolDescriptor) {
     };
 }
 
-/** An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error. */
+/**
+ * An answer as MCP's `tools/call` result: a refusal is a result the model reads, not a transport error.
+ *
+ * Only `content` is sent, never `structuredContent`. A client that finds `structuredContent` may show
+ * the model that alone - Claude Code does - and the tools' data is often a summary of what the text
+ * says rather than all of it: `story_show`'s data is the revision without the scene, `agent_guide`'s
+ * the chapter's name without the chapter. Such a client read every scene, page and guide chapter as
+ * empty. The text always carries the whole answer, so every client gets that.
+ */
 export function toToolResult(result: AgentCallResult) {
     if (result.ok) {
-        return {
-            content: result.content,
-            ...(result.structured ? { structuredContent: result.structured } : {}),
-            isError: false,
-        };
+        return { content: result.content, isError: false };
     }
     const { code, message, hint } = result.error;
     return {
         content: [{ type: "text", text: `${code}: ${message}${hint ? `\nHint: ${hint}` : ""}` }],
-        structuredContent: { error: result.error },
         isError: true,
     };
 }
@@ -717,12 +706,6 @@ function readBody(req: http.IncomingMessage, limit: number): Promise<Buffer | "t
             }
         });
     });
-}
-
-/** In use by another program, or reserved by the system: worth trying another port for. */
-function isPortUnavailable(error: unknown): boolean {
-    const code = (error as NodeJS.ErrnoException | null)?.code;
-    return code === "EADDRINUSE" || code === "EACCES";
 }
 
 function listen(server: http.Server, port: number): Promise<number> {

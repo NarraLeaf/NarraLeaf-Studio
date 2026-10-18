@@ -24,6 +24,7 @@ import {
     soundStageObjectName,
 } from "./actionableTarget";
 import { layerActionTargetRef, resolveStoryLayerRef } from "./layerRef";
+import { findSceneLayer, sceneLayerStack, storyLayerRefIs } from "./sceneLayers";
 import { listSceneBlocksInDocumentOrder } from "./order";
 import { resolveStoryGroupRunMode, storyGroupKindOfMode } from "./groupRun";
 
@@ -107,8 +108,9 @@ export type StageObjectReference = {
  * The object a row DECLARES, or null when it only addresses one.
  *
  * The union of the two identity rules, which stay where they are because each is also read on its
- * own: `displayableCreatorIdentity` for images / texts / layers / character portraits,
- * `actionableSourceIdentity` for clips, ambience overlays and sound handles.
+ * own: `displayableCreatorIdentity` for images / texts / character portraits,
+ * `actionableSourceIdentity` for clips, ambience overlays and sound handles. A layer is declared by
+ * its scene, not by a row - see {@link sceneStageObjectNames}.
  */
 export function declaredStageObject(block: StoryBlock): StageObjectDeclaration | null {
     if (block.kind !== "action") {
@@ -224,8 +226,7 @@ export function stageObjectReference(
     }
     if (payload.action === "layer") {
         // The two built-in layers are in every scene, and a row naming no target at all means the
-        // scene's default - so only a custom layer can be missing. It is also the one displayable
-        // kind the engine will not conjure from a mention.
+        // scene's default - so only one of the scene's own layers can be missing.
         const resolved = resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName));
         if (resolved.kind === "default") {
             return null;
@@ -307,9 +308,8 @@ function liveSceneBlocks(scene: StoryScene | null | undefined): StoryBlock[] {
  *  - **A character `enter` registers its portrait under two keys.** The portrait is an `Image` in the
  *    engine's image table, so a later `/show alice` resolving as an image finds it - which is what
  *    makes {@link IMAGE_KINDS} answer for both.
- *  - **Naming a layer on an image or text row creates it.** Placement resolves through the same
- *    get-or-create the `/layer create` row uses, because a row may sit above the row that declares
- *    its layer and dropping it on the default layer instead would silently restack the scene.
+ *  - **The scene's own layers are on stage from its first row.** They are declared by the scene
+ *    (`StoryScene.layers`), not by a row, and the compiler builds them all as the scene starts.
  *
  * It used to be wider still: `exit`, `move` and `expression` counted as putting a character on stage,
  * because the compiler built the portrait through get-or-create on those rows too. The compiler no
@@ -330,6 +330,11 @@ export function sceneStageObjectNames(
         names.set(kind, bucket);
     };
 
+    for (const layer of sceneLayerStack(scene)) {
+        if (layer.kind === "custom") {
+            add("layer", normalizeStageObjectName(layer.name));
+        }
+    }
     for (const block of liveSceneBlocks(scene)) {
         const declaration = declaredStageObject(block);
         if (declaration) {
@@ -345,12 +350,6 @@ export function sceneStageObjectNames(
             // resolving as an image finds it. Registering both is what makes `IMAGE_KINDS` true.
             add("image", normalizeStageObjectName(characterStageObjectName(payload)));
         }
-        if (payload.action === "image" || payload.action === "text") {
-            const placed = resolveStoryLayerRef(scene, payload.layer);
-            if (placed.kind === "custom") {
-                add("layer", normalizeStageObjectName(placed.name));
-            }
-        }
         if (payload.action === "audio" && payload.operation === "setBgm") {
             add("audio", BGM_STAGE_OBJECT_NAME);
         }
@@ -359,7 +358,8 @@ export function sceneStageObjectNames(
 }
 
 /**
- * Every row of this scene that addresses a stage object no row in the scene declares.
+ * Every row of this scene that addresses a stage object no row in the scene declares - or that puts a
+ * picture or text on a layer the scene does not have.
  *
  * The dangling half of the reference model, stated over a whole scene. See the module note for why
  * this is quieter than the compiler and must be.
@@ -369,15 +369,62 @@ export function danglingStageObjectRefs(scene: StoryScene | null | undefined): S
     const dangling: StageObjectReference[] = [];
     for (const block of liveSceneBlocks(scene)) {
         const reference = stageObjectReference(scene, block);
-        if (!reference || reference.reservedMusicChannel) {
-            continue;
+        if (reference && !reference.reservedMusicChannel && !reference.kinds.some(kind => declared.get(kind)?.has(reference.name))) {
+            dangling.push(reference);
         }
-        if (reference.kinds.some(kind => declared.get(kind)?.has(reference.name))) {
-            continue;
+        const placement = layerPlacementReference(scene, block);
+        if (placement) {
+            dangling.push(placement);
         }
-        dangling.push(reference);
     }
     return dangling;
+}
+
+/**
+ * Every row of the scene that uses one of its own layers - puts a picture or text on it, or acts on
+ * it - disabled rows included, since enabling one brings the use back. A layer still in use is one
+ * whose removal would leave those rows pointing at nothing.
+ */
+export function sceneLayerUses(scene: StoryScene | null | undefined, layerId: string): StoryBlockId[] {
+    const layer = findSceneLayer(scene, layerId);
+    if (!layer) {
+        return [];
+    }
+    const key = normalizeStageObjectName(layer.name);
+    const uses: StoryBlockId[] = [];
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        if (block.kind !== "action") {
+            continue;
+        }
+        const payload = block.payload;
+        const used = (payload.action === "image" || payload.action === "text")
+            ? payload.layer !== undefined && storyLayerRefIs(scene, payload.layer, layer)
+            : payload.action === "layer"
+                ? storyLayerRefIs(scene, layerActionTargetRef(payload.target, payload.objectName), layer)
+                : payload.action === "displayable" && !payload.target.builtin
+                    && resolveDisplayableTargetRef(scene, payload.target).kind === "layer"
+                    && normalizeStageObjectName(resolveDisplayableTargetRef(scene, payload.target).name) === key;
+        if (used) {
+            uses.push(block.id);
+        }
+    }
+    return uses;
+}
+
+/**
+ * The layer a picture or text row puts its object on, when the scene has no such layer. The compiler
+ * puts the object on the characters' layer instead, which restacks the scene without a word.
+ */
+function layerPlacementReference(scene: StoryScene | null | undefined, block: StoryBlock): StageObjectReference | null {
+    if (block.kind !== "action" || (block.payload.action !== "image" && block.payload.action !== "text")) {
+        return null;
+    }
+    const placed = resolveStoryLayerRef(scene, block.payload.layer);
+    if (placed.kind !== "custom" || placed.resolved) {
+        return null;
+    }
+    const name = normalizeStageObjectName(placed.name);
+    return { blockId: block.id, kinds: ["layer"], subject: "layer", name, label: placed.name || name, reservedMusicChannel: false };
 }
 
 /**
@@ -393,7 +440,7 @@ export function danglingStageObjectRefs(scene: StoryScene | null | undefined): S
  * it already reports itself.
  */
 const REDECLARABLE_KINDS: ReadonlySet<StageObjectKind> =
-    new Set<StageObjectKind>(["image", "text", "layer", "video", "vfx"]);
+    new Set<StageObjectKind>(["image", "text", "video", "vfx"]);
 
 /**
  * The kinds whose declaration puts nothing on screen, so that some later row has to.

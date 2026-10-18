@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import http from "http";
+import net from "net";
 import os from "os";
 import path from "path";
 import { Readable } from "stream";
@@ -52,6 +53,21 @@ export function studioLaunchCommand(electronApp: ElectronApp): AgentStdioCommand
         return { command: process.env.APPIMAGE || process.execPath, args: [] };
     }
     return { command: process.execPath, args: [path.join(electronApp.getAppPath(), "index.js"), "--dev"] };
+}
+
+/**
+ * What a Studio started by the bridge needs on its command line to serve agents. A packaged one
+ * follows the profile's switch and port and needs nothing. A development one serves only when its
+ * command line says so - `--agent` and `--agent-port` decide there, whatever the profile remembers -
+ * so it is told to, on the port this profile names: the address it then writes back is the one the
+ * bridge reads. `settings` is the profile's `agent-mcp.json`, parsed, or null.
+ */
+export function agentLaunchArgs(isPackaged: boolean, settings: unknown): string[] {
+    if (isPackaged) {
+        return [];
+    }
+    const port = settings && typeof settings === "object" ? (settings as { port?: unknown }).port : undefined;
+    return typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65535 ? [`--agent-port=${port}`] : ["--agent"];
 }
 
 /** The command a stdio-only MCP client runs: the launch above, as the bridge. */
@@ -136,6 +152,34 @@ export function fetchWithoutTimeouts(url: string, init: RequestInit = {}): Promi
 }
 
 /**
+ * Standard input, as a stream that reads what the client writes.
+ *
+ * Not `process.stdin` on Windows: there Electron's main process replaces it with a stream that has
+ * already ended, on the assumption that nothing pipes into a GUI program. A bridge reading it saw
+ * the end at once and exited before the client had sent `initialize`, and the client reported only
+ * that the connection closed. The client's pipe is still descriptor 0, and is opened here the way
+ * Node opens it for `process.stdin` anywhere else: as a socket when it is a pipe, and as a file
+ * stream for anything else (input redirected from a file).
+ */
+export function openStandardInput(
+    platform: NodeJS.Platform = process.platform,
+    open: { pipe(): NodeJS.ReadableStream; file(): NodeJS.ReadableStream } = {
+        pipe: () => new net.Socket({ fd: 0, readable: true, writable: false }),
+        file: () => fs.createReadStream("", { fd: 0 }),
+    },
+): NodeJS.ReadableStream {
+    if (platform !== "win32") {
+        return process.stdin;
+    }
+    try {
+        return open.pipe();
+    } catch {
+        // Not a pipe: `net.Socket` refuses any other kind of descriptor.
+        return open.file();
+    }
+}
+
+/**
  * Run this process as the bridge, and exit when the client closes standard input. Synchronous up to
  * the point the bridge starts reading, because the GPU and Dock calls must come before `ready`.
  */
@@ -174,10 +218,17 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
     // line - an ordinary launch takes no profile flag - so with one, the bridge only connects.
     const launch = overridden ? null : studioLaunchCommand(electronApp);
     let lastLaunchAt = 0;
+    const readSettingsNow = (): unknown => {
+        try {
+            return JSON.parse(fs.readFileSync(path.join(profileDir, AGENT_SETTINGS_FILE_NAME), "utf8"));
+        } catch {
+            return null;
+        }
+    };
     const launchStudio = launch
         ? (extraArgs: string[] = []) => {
             lastLaunchAt = Date.now();
-            const child = spawn(launch.command, [...launch.args, ...extraArgs], {
+            const child = spawn(launch.command, [...launch.args, ...agentLaunchArgs(electronApp.isPackaged, readSettingsNow()), ...extraArgs], {
                 detached: true,
                 stdio: "ignore",
                 cwd: os.homedir(),
@@ -217,7 +268,7 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
     };
 
     void runAgentStdioBridge({
-        input: process.stdin,
+        input: openStandardInput(),
         writeLine: line => {
             process.stdout.write(`${line}\n`);
         },
@@ -234,6 +285,8 @@ export function startAgentStdioBridge(electronApp: ElectronApp, argv: readonly s
         launchStudio: launchStudio ? () => launchStudio() : null,
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => Date.now(),
+        version: () => electronApp.getVersion(),
+        accessFollowsLaunch: !electronApp.isPackaged,
     }).then(
         () => exitAfterFlush(0),
         error => {

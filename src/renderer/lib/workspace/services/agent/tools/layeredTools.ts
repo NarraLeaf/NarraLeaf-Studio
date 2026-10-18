@@ -49,6 +49,7 @@ import { CharacterAppearance } from "../../character/CharacterAppearance";
 import { collectCharacterDiagnostics, type CharacterDiagnostic } from "../../character/characterDiagnostics";
 import { enumerateCombinations } from "../../character/characterCombinations";
 import { nameBakeTargets } from "../../character/psdImportBuilder";
+import { fileUnderCharacterFolder } from "../../character/psdImportFolder";
 import { drawStack } from "../../character/spriteCompositor";
 import type { LayeredAppearance, StoredCharacter } from "../../character/types";
 import {
@@ -86,11 +87,9 @@ import {
     describeCharacter,
     findCharacter,
     readEntrance,
-    readImageFacts,
-    stageSize,
     type EntranceInput,
-    type ImageFacts,
 } from "./castTools";
+import { readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { loadAllStories } from "./textFormat";
 
 type PixelSize = { width: number; height: number };
@@ -552,9 +551,20 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
             assetIds.set(joinPath(layer.path), status.data.id);
         }
     });
+    // Filed as the import wizard files them: in the image folder named after the character. A name
+    // that is a generated id is no folder name, and the layers then stay where they landed.
+    const folderName = authoredNameOrNull(name);
+    const filed = folderName
+        ? await fileUnderCharacterFolder(
+            assetsService(ctx),
+            imported.data.flatMap(status => (status.success && status.data ? [status.data] : [])),
+            folderName,
+        )
+        : null;
     const { spec, renamed, tagPaths, layerPaths } = specFromPsdPlan(plan, path => assetIds.get(joinPath(path)) ?? null);
     const notes = [
-        `Imported ${assetIds.size} layer image(s) from "${document.fileName}".`,
+        `Imported ${assetIds.size} layer image(s) from "${document.fileName}"${filed?.success && filed.data ? ` into the image folder "${folderName}"` : ""}.`,
+        ...(filed && !filed.success ? [`Could not file them under the image folder "${folderName}": ${filed.error ?? "unknown error"}.`] : []),
         ...(renamed.length > 0 ? [`Renamed to keep names unique: ${renamed.join("; ")}.`] : []),
         ...(dropped.length > 0 ? [`Left out: ${dropped.join(", ")}.`] : []),
     ];

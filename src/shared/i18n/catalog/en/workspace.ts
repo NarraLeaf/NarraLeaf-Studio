@@ -9,7 +9,7 @@ export const workspace = {
             languagesTitle: "Languages",
             languagesHint: "Languages of the game itself. The source language is the one the story is written in; the rest are translated against it.",
             addLanguage: "Add language",
-            codePlaceholder: "Code (en, ja, zh-CN…)",
+            codePlaceholder: "Code, e.g. ja",
             namePlaceholder: "Display name",
             invalidCode: "Language codes may only contain letters, digits, and hyphens.",
             sourceBadge: "Source",
@@ -178,7 +178,7 @@ export const workspace = {
             languagesTitle: "Voice languages",
             languagesHint: "Languages with voice-over. Independent of the text languages.",
             addLanguage: "Add voice language",
-            codePlaceholder: "Code (ja, en, zh-CN…)",
+            codePlaceholder: "Code, e.g. ja",
             namePlaceholder: "Display name",
             invalidCode: "Language codes may only contain letters, digits, and hyphens.",
             more: "More",
@@ -201,6 +201,15 @@ export const workspace = {
                 other: "{count} takes",
             },
             importFailed: "Could not import the audio files",
+            // Asked when an imported file is named for a line that already has a take: a pickup.
+            replaceTakesTitle: "Replace existing takes",
+            replaceTakesMessage: {
+                one: "{count} file is named for a line that already has a take.",
+                other: "{count} files are named for lines that already have a take.",
+            },
+            replaceTakesDetail: "Replacing writes each new file into the take it matches. Importing as new audio leaves the old takes in the asset library, linked to no line.",
+            replaceTakesImport: "Import as new audio",
+            replaceTakesReplace: "Replace takes",
             importScript: "Import recording script…",
             // `{applied}` is a whole count with its noun, from `scriptRowCount`.
             importScriptCounts: "Applied {applied} ({unchanged} unchanged, {unknown} not voiced)",
@@ -245,8 +254,9 @@ export const workspace = {
             assign: "Assign audio",
             replace: "Replace audio",
             remove: "Remove voice",
-            play: "Play",
-            stop: "Stop",
+            play: "Play take",
+            showInStory: "Show in story",
+            stop: "Stop take",
             approve: "Approve",
             reject: "Return",
             clipMissing: "Clip missing",
@@ -277,6 +287,18 @@ export const workspace = {
                 },
                 removeDetail: "The audio files stay in the asset library. A line that is enabled or restored later needs its audio assigned again.",
                 unknown: "A story cannot be read, so orphan voice is not listed.",
+            },
+        },
+        // The recording script's column headers. The last is the line's id, which the import reads.
+        script: {
+            column: {
+                filename: "File name",
+                character: "Speaker",
+                scene: "Scene",
+                line: "Line",
+                status: "Status",
+                note: "Note",
+                unitId: "Line ID",
             },
         },
     },
@@ -423,6 +445,8 @@ export const workspace = {
             replaceText: "text replacement",
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
+            importPsd: "PSD import",
+            importAudio: "audio import",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
@@ -489,6 +513,14 @@ export const workspace = {
                 existsDetail: "Files with the same name are replaced. Other files in the folder are kept.",
                 replace: "Replace",
             },
+            // Asked when installing the Agent Skill would replace a SKILL.md that is not Studio's.
+            installSkill: {
+                title: "Install Agent Skill",
+                changedOne: "This folder holds a SKILL.md that differs from Studio's",
+                changedMany: "These folders hold a SKILL.md that differs from Studio's",
+                changedDetail: "Files with the same name are replaced with this version of Studio's Agent Skill. Other skills are kept.",
+                replace: "Replace",
+            },
             // Asked when an agent needs files outside the project and the allowed folders.
             folderAccess: {
                 title: "Allow agents to read folders?",
@@ -511,6 +543,10 @@ export const workspace = {
         // The Agent log panel (`AgentLogPanel`).
         log: {
             pluginTool: "A tool of the plugin {plugin}",
+            // What the log's target column names a call by when its subject has no name of its own.
+            target: {
+                standardScreens: "Standard screens",
+            },
             filter: {
                 all: "All calls",
                 writes: "Changes only",
@@ -597,6 +633,10 @@ export const workspace = {
             ui_patch: "Edit elements",
             ui_templates: "Interface templates",
             ui_template_apply: "Apply a template",
+            ui_page_rename: "Rename a page",
+            ui_page_delete: "Delete a page",
+            ui_page_set_entry: "Set the entry page",
+            ui_install_standard_screens: "Install the standard screens",
             brand_get: "Read the palette",
             brand_set: "Change the palette",
             blueprint_nodes: "Blueprint node catalog",
@@ -604,6 +644,7 @@ export const workspace = {
             blueprint_list: "List blueprints",
             blueprint_show: "Read a blueprint as text",
             blueprint_apply: "Write blueprints",
+            blueprint_remove: "Remove a blueprint",
             localization_status: "Translation progress",
             localization_list: "List text to translate",
             localization_set: "Write translations",
@@ -617,7 +658,14 @@ export const workspace = {
             playtest_start: "Play the game",
             playtest_advance: "Advance the game",
             playtest_screenshot: "Look at the game",
+            asset_usage: "Where an asset is used",
+            chapter_rename: "Rename a chapter",
+            chapter_delete: "Delete a chapter",
+            playtest_click: "Click in the game",
+            playtest_hover: "Hover in the game",
+            playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
+            playtest_variables: "Read the game's variables",
             console_read: "Read Studio's console",
             build: "Build the game",
         },
@@ -870,11 +918,6 @@ export const workspace = {
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
-        newTab: "New tab",
-        // Browser-style blank tab opened by the tab strip's "+".
-        newTabPage: {
-            title: "New Tab",
-        },
         tabMenu: {
             // Turns a preview tab - the italic one a group holds at most one of - into an ordinary tab.
             keepOpen: "Keep open",
@@ -1005,6 +1048,9 @@ export const workspace = {
                 asset: "Asset",
                 blueprint: "Blueprint",
             },
+            // Ends the detail of rows that read alike in every other way (same kind, name and place),
+            // counted in the order the project lists them.
+            ordinal: "Item {n}",
         },
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
@@ -1791,6 +1837,7 @@ export const workspace = {
                 localization: "Translation Table",
                 voice: "Voice Table",
                 lint: "Problems",
+                search: "Search",
                 other: "Other",
             },
             // Labels for catalog entries that had no i18n key of their own.
@@ -1850,6 +1897,11 @@ export const workspace = {
                     copy: "Copy Nodes",
                     cut: "Cut Nodes",
                     paste: "Paste Nodes",
+                },
+                // The Search panel: its replaces, each taken back across every scene it touched.
+                search: {
+                    undo: "Undo Replace",
+                    redo: "Redo Replace",
                 },
                 storyMotion: {
                     undo: "Undo",
@@ -1996,6 +2048,9 @@ export const workspace = {
                     clearMarker: "Clear a Marker",
                     videoZoom: "Zoom the Picture",
                     videoActualSize: "Switch Between Fit and Actual Pixels",
+                    moveSelection: "Move the Selection",
+                    extendSelection: "Extend the Selection",
+                    moveThroughGroupTree: "Move Through the Group Tree",
                 },
             },
         },
@@ -2028,6 +2083,27 @@ export const workspace = {
             // deleted or changed since. A replace applies completely or not at all, so this refuses
             // rather than writing what is left.
             replaceStale: "The project changed. Search again.",
+            // Ctrl+Z in the panel takes a replace back in every scene whose newest step is still
+            // that replace. A scene edited after it keeps the replaced text, and these say which;
+            // the notice's detail line lists the scene names.
+            // Raised by Replace all. The detail line names the key that takes the replace back.
+            replacedInScene: {
+                one: "Replaced {count} occurrence in {scene}",
+                other: "Replaced {count} occurrences in {scene}",
+            },
+            replacedInScenes: {
+                one: "Replaced {count} occurrence in {scenes} scenes",
+                other: "Replaced {count} occurrences in {scenes} scenes",
+            },
+            replacedUndoHint: "{key} in the Search panel undoes it in every scene.",
+            undoSkipped: {
+                one: "Replace not undone in {count} scene edited after it",
+                other: "Replace not undone in {count} scenes edited after it",
+            },
+            redoSkipped: {
+                one: "Replace not redone in {count} scene edited after the undo",
+                other: "Replace not redone in {count} scenes edited after the undo",
+            },
             // Entity groups come first: the box answers "open the thing called X" before
             // "find the line that says X".
             groups: {

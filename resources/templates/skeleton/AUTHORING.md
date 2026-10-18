@@ -86,6 +86,10 @@ and the `content.<locale>/` overlays only).
   own **Mouse Click**: a press on it is that control's, and the list's Item Click answers presses
   anywhere else on the row. A control only some rows have is shown by binding its visibility to a
   boolean field of the row (the replay button reads `hasVoice`).
+- A control that shows only a symbol is named in the game's words: a hidden text beside it, keyed
+  like every other word on the page, shown on its **Mouse Enter** and **Focus** and hidden on
+  **Mouse Leave** and **Blur** (the Log's replay button and `Replay voice hint`). Set Element
+  Property on an element of the same row writes that row's copy.
 - Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
   question. Each text's wire then runs forwards into its own input, and none crosses another.
   Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather
@@ -105,14 +109,15 @@ and the `content.<locale>/` overlays only).
 
 - Where several elements carry the same graph and differ only by a value a node input can take,
   they become instances of one component with a param, and the graph lives once, on the component
-  definition (`Get Component Param` reads the instance's value). The Config page's BGM, Sound
-  effects and Voice rows are instances of `Volume slider` with an `Audio track` param.
+  definition (`Get Component Param` reads the instance's value). The Config page's Music, SFX
+  and Voice rows are instances of `Volume slider` with an `Audio track` param.
 - Keep the copies, identical in shape, when the difference cannot go through a param, and say why
   in the note:
   - which node runs (the three toggle pairs each change their setting with a different node; the
-    master volume is set with Set Global Volume, not a track);
+    master volume is set with Set Global Volume, not a track; the Extra page's Music rows make the
+    row the page's music with Play Page Music, and its Voice rows play a sound with Play Sound);
   - a setting that is a field on the node with no pin, because a param reaches only a pin (the
-    Gallery nodes' Type, which is why the four Extra lists stay copies; Play Sound's track);
+    Gallery nodes' Type, which is why the four Extra lists stay copies);
   - a label or any other prop: a component instance draws its definition's props, so instances
     cannot differ in text on the canvas. That is why the volume component holds the slider and its
     number but not the row's label.

@@ -25,7 +25,6 @@ import type { StoryLiteralValue, StoryTransformProps } from "@shared/types/story
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import { AssetType } from "../../assets/assetTypes";
-import type { Asset, AssetSource } from "../../assets/types";
 import { Services, type WorkspaceContext } from "../../services";
 import type { CharacterService } from "../../core/CharacterService";
 import { Character } from "../../character/Character";
@@ -34,7 +33,6 @@ import type { TranslationKey } from "@shared/i18n";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
 import type { AudioTrackService } from "../../audio/AudioTrackService";
 import type { AssetsService } from "../../core/AssetsService";
-import type { ProjectService } from "../../core/ProjectService";
 import { VARIABLE_PANEL_HISTORY_SCOPE_ID, type LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import {
     answerJson,
@@ -47,39 +45,13 @@ import {
 import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
-import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../imageAlpha";
-import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
+import { opaqueImageWarning } from "../imageAlpha";
+import { drawnBoxAtCenter, standingEntrance, type PixelSize } from "../spriteStage";
+import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
+import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
-
-/** The project's design resolution: the stage every sprite position is a share of. */
-export function stageSize(ctx: WorkspaceContext): PixelSize {
-    return stageSizeOf(ctx.services.get<ProjectService>(Services.Project).getProjectConfig().metadata?.resolution);
-}
-
-export type ImageFacts = { name: string; size: PixelSize | null; header: ImageAlphaFacts };
-
-/**
- * An image asset's pixel size and whether it can be transparent, from its bytes. Null when the asset
- * is gone or will not read - a pose that cannot be measured is reported without a box, never refused.
- */
-export async function readImageFacts(ctx: WorkspaceContext, assetId: string): Promise<ImageFacts | null> {
-    const assets = assetsService(ctx);
-    const asset = assets.getAssets()[AssetType.Image]?.[assetId] as Asset<AssetType, AssetSource> | undefined;
-    if (!asset) {
-        return null;
-    }
-    const fetched = await assets.fetch(asset).catch(() => null);
-    const data = fetched && fetched.success ? (fetched.data as { data?: unknown; metadata?: { width?: number; height?: number } } | undefined) : undefined;
-    if (!data || !(data.data instanceof Uint8Array)) {
-        return null;
-    }
-    const facts = readImageAlpha(data.data);
-    const width = data.metadata?.width || facts.width;
-    const height = data.metadata?.height || facts.height;
-    return { name: asset.name, size: width && height ? { width, height } : null, header: facts };
-}
 
 /**
  * One character as the cast tools report it.
@@ -128,6 +100,7 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         nameColor: profile.getColor() ?? null,
         kind,
         ...looks,
+        ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
         entranceTransform: entranceTransform ?? null,
         // The default look's own pixels (a layered character's canvas), and the box it lands in on a
         // `pos=center` row - the numbers an agent needs to judge size and baseline without a
@@ -135,23 +108,6 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         spriteSize: sprite,
         drawnAtCenter: sprite ? drawnBoxAtCenter(sprite, entranceTransform, stage) : null,
     };
-}
-
-/**
- * The default look's pixel size: a preset's default pose, a layered character's canvas (every layer
- * is drawn at it), a puppet's stage box when one is set. Null when it cannot be known.
- */
-export async function defaultSpriteSize(ctx: WorkspaceContext, character: Character): Promise<PixelSize | null> {
-    const appearance = character.profile.appearance;
-    const stored = appearance.toJSON();
-    if (stored.kind === "layered") {
-        return stored.canvas ? { ...stored.canvas } : null;
-    }
-    if (isPuppetAppearance(stored)) {
-        return stored.size ? { ...stored.size } : null;
-    }
-    const assetId = appearance.resolvePoseAssetId(undefined);
-    return assetId ? (await readImageFacts(ctx, assetId))?.size ?? null : null;
 }
 
 /** A character by id or exact name; `null` when there is none, a refusal when the name is ambiguous. */
@@ -358,6 +314,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const defaultPose = readOptionalString(args, "defaultPose");
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
+    const avatarArgs = readAvatarArgs(args);
     if (!id && !name) {
         throw refuse("invalid_args", "Give the character's `id` (to update one) or `name`.");
     }
@@ -369,6 +326,19 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     if (defaultPose && poses && !poses.some(pose => pose.name === defaultPose)) {
         throw refuse("invalid_args", `\`defaultPose\` "${defaultPose}" is not one of the poses given.`);
     }
+    // Avatar pictures likewise, so a misspelt asset leaves the character untouched.
+    const avatarRequest: AvatarRequest = {
+        ...(avatarArgs.avatarAxes !== undefined ? { avatarAxes: avatarArgs.avatarAxes } : {}),
+        ...(avatarArgs.defaultAvatar !== undefined
+            ? { defaultAvatar: avatarArgs.defaultAvatar === null ? null : resolveAsset(ctx, avatarArgs.defaultAvatar, AssetType.Image).id }
+            : {}),
+        ...(avatarArgs.avatars
+            ? {
+                avatars: Object.fromEntries(Object.entries(avatarArgs.avatars).map(([key, ref]) =>
+                    [key, ref === null ? null : resolveAsset(ctx, ref, AssetType.Image).id])),
+            }
+            : {}),
+    };
 
     const cast = ctx.services.get<CharacterService>(Services.Character);
     let character: Character | null = id ? cast.getCharacter(id) ?? null : null;
@@ -434,6 +404,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
         appearance.setKind("preset");
     }
     if (poses) {
+        const avatarsByPose = presetAvatarsByPoseName(appearance);
         for (const pose of [...appearance.getPoses()]) {
             appearance.removePose(pose.id);
         }
@@ -443,6 +414,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
                 appearance.setPoseAsset(made.id, pose.assetId);
             }
         }
+        carryPresetAvatars(appearance, avatarsByPose);
     }
     if (defaultPose) {
         const pose = appearance.getPoses().find(item => item.name === defaultPose);
@@ -450,6 +422,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
             throw refuse("not_found", `"${profile.getName()}" has no pose "${defaultPose}".`);
         }
         appearance.setDefaultPoseId(pose.id);
+    }
+    if (asksForAvatars(avatarArgs)) {
+        applyAvatarRequest(appearance, assetId => profile.setDefaultAvatarAssetId(assetId), profile.getName(), avatarRequest);
     }
 
     const stage = stageSize(ctx);
@@ -631,7 +606,10 @@ export const variableUpsert: AgentToolHandler = async (args, { ctx, request, fol
         return answerJson({ created: true, variable: describeVariable(stored) }, `Created ${scope} variable "${stored.name}". One step of undo in Studio.`);
     }
 
-    const target = entry;
+    // A copy, not the registry's own record: the registry mutates that record in place, so after the
+    // update below it already holds the new type and name, and every "did the type change" question
+    // asked of it answers no. That is how a retype went by without the warning this tool promises.
+    const target = { ...entry };
     if (scopeArg && target.scope !== scopeArg) {
         throw refuse("unavailable", `"${target.name}" is a ${target.scope} variable.`, "A variable cannot move between saved and persistent; create a new one and delete this one (variable_delete).");
     }

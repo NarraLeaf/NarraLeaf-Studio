@@ -235,6 +235,11 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.time.formatLocalized", "blueprint.time.formatRelative", "blueprint.time.isSameDay",
     "blueprint.time.make", "blueprint.time.now", "blueprint.time.parse", "blueprint.time.parts",
     "blueprint.time.startOfDay", "blueprint.time.toIsoString", "blueprint.time.zoneOffset",
+    "blueprint.video.getDuration", "blueprint.video.getTime", "blueprint.video.isEnded",
+    "blueprint.video.isPlaying", "blueprint.element.video.getDuration", "blueprint.element.video.getTime",
+    "blueprint.element.video.isEnded", "blueprint.element.video.isPlaying",
+    "blueprint.video.getVolume", "blueprint.video.isMuted", "blueprint.element.video.getVolume",
+    "blueprint.element.video.isMuted",
 ];
 
 /**
@@ -293,7 +298,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.clearEndingState", "blueprint.game.clearEndings",
     "blueprint.game.hideDialog", "blueprint.game.history.get", "blueprint.game.history.getFuture",
     "blueprint.game.history.redoNext", "blueprint.game.history.restore",
-    "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.save.delete",
+    "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.postNotification",
+    "blueprint.game.save.delete",
     "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
     "blueprint.game.save.getLine", "blueprint.game.save.getPlaytime",
     "blueprint.game.save.getStory",
@@ -326,8 +332,9 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.persistent.get", "blueprint.persistent.set", "blueprint.saved.get", "blueprint.saved.set",
     "blueprint.scene.get", "blueprint.scene.set", "blueprint.slider.setEnabled",
     "blueprint.slider.setRange", "blueprint.slider.setValue", "blueprint.slider.setVisible",
-    "blueprint.sound.isPlaying", "blueprint.sound.pause", "blueprint.sound.play", "blueprint.sound.resume",
-    "blueprint.sound.seek", "blueprint.sound.setVolume", "blueprint.sound.stop",
+    "blueprint.sound.isPlaying", "blueprint.sound.pause", "blueprint.sound.play", "blueprint.sound.playPageMusic",
+    "blueprint.sound.resume", "blueprint.sound.seek", "blueprint.sound.setVolume", "blueprint.sound.stop",
+    "blueprint.sound.stopPageMusic",
     "blueprint.switch.setChecked", "blueprint.switch.setEnabled", "blueprint.switch.setVisible",
     "blueprint.switch.toggle", "blueprint.switch.turnOff", "blueprint.switch.turnOn",
     "blueprint.text.appendText", "blueprint.text.clearText", "blueprint.text.setAllProperties",
@@ -338,6 +345,12 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.textInput.clear", "blueprint.textInput.setValue", "blueprint.voice.getAvailableLanguages",
     "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.playChoice",
     "blueprint.voice.setLanguage",
+    "blueprint.video.pause", "blueprint.video.play", "blueprint.video.seek", "blueprint.video.stop",
+    "blueprint.element.video.pause", "blueprint.element.video.play", "blueprint.element.video.seek",
+    "blueprint.element.video.stop",
+    "blueprint.video.setLoop", "blueprint.video.setMuted", "blueprint.video.setPlaybackRate",
+    "blueprint.video.setVolume", "blueprint.element.video.setLoop", "blueprint.element.video.setMuted",
+    "blueprint.element.video.setPlaybackRate", "blueprint.element.video.setVolume",
 ];
 
 /**
@@ -352,6 +365,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.elementClick", "blueprint.event.head.elementFlush", "blueprint.event.head.flush",
     "blueprint.event.head.focus", "blueprint.event.head.fullscreenChanged",
     "blueprint.event.head.windowFocusChanged",
+    "blueprint.event.head.savedVariableChanged", "blueprint.event.head.persistentVariableChanged",
     "blueprint.event.head.gameReady", "blueprint.event.head.gamepadButtonDown", "blueprint.event.head.gamepadButtonUp", "blueprint.event.head.anyGamepadButtonDown", "blueprint.event.head.anyGamepadButtonUp", "blueprint.event.head.init", "blueprint.event.head.itemClick",
     "blueprint.event.head.itemHover", "blueprint.event.head.itemRender", "blueprint.event.head.keyDown",
     "blueprint.event.head.keyUp", "blueprint.event.head.listItemRefresh", "blueprint.event.head.mouseClick",
@@ -368,6 +382,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.switchChanged", "blueprint.event.head.switchTurnedOff",
     "blueprint.event.head.switchTurnedOn", "blueprint.event.head.textInputSubmit",
     "blueprint.event.head.textInputValueChanged", "blueprint.event.head.unmount",
+    "blueprint.event.head.videoEnded",
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 

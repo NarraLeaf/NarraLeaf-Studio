@@ -104,6 +104,25 @@ export const lint = {
                 + "measures the file in the project.\n"
                 + "- Raise the limit, or set this rule to Off, under Project ▸ Project ▸ Project check.",
         },
+        assetsSpriteAnimationFinite: {
+            title: "Sprite animation that stops",
+            description: "A character sprite that is an animated PNG set to play a fixed number of times",
+            message: "{asset} is an animated PNG that plays {plays} × and then holds its last frame",
+            help:
+                "An image used in a character's appearance that is an animated PNG (APNG) declaring a fixed "
+                + "number of plays. Animations that loop forever, such as blinking or breathing, are not reported.\n"
+                + "\n"
+                + "The stage plays a sprite's animation the way a browser plays an image, not in step with the "
+                + "story. It starts when the sprite is first drawn. When the sprite is hidden and shown again, it "
+                + "can stay on the last frame instead of playing again.\n"
+                + "\n"
+                + "- For a looping effect, export the APNG with infinite loops, then right-click the asset in the "
+                + "Assets panel and choose Replace File….\n"
+                + "- For a one-off reaction, use separate still images as a tag of the character, or a "
+                + "Live2D or Spine model.\n"
+                + "- Set this rule to Off under Project ▸ Project ▸ Project check if the last frame is what "
+                + "should stay on screen.",
+        },
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
@@ -426,6 +445,20 @@ export const lint = {
                 + "- If the story should end only in some cases, put the ending inside an /if branch.\n"
                 + "- Otherwise delete the rows.",
         },
+        storyPageMissing: {
+            title: "Open page with no page",
+            description: "A /page row that names no page, or one the project no longer has",
+            message: "This row names no page, so nothing opens and the story goes straight on",
+            deleted: "The page this row names is no longer in the project, so nothing opens and the story goes straight on",
+            help:
+                "A /page row (Open page) that names no page, or names a page this project no longer has.\n"
+                + "\n"
+                + "The row opens nothing and the story does not wait, so its variable is never written and "
+                + "an /if that reads it always takes the same branch.\n"
+                + "\n"
+                + "- Pick a page on the row\n"
+                + "- Delete the row if the page is gone for good",
+        },
         storyQuitPageMissing: {
             title: "Quit with no page",
             description: "A /quit row that names no page, or one the project no longer has",
@@ -520,6 +553,7 @@ export const lint = {
             message: "No row in this scene creates {object}, so this row has nothing to act on",
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "No row in this scene brings {object} on stage, so this row has nothing to act on",
+            messageLayer: "This scene has no layer {object}, so this row has nothing to act on",
             help:
                 "The row acts on a stage object that no row in this scene creates. Only rows in the same "
                 + "scene count, since stage objects do not carry over from another scene, and names must match "
@@ -527,8 +561,9 @@ export const lint = {
                 + "\n"
                 + "In the game the row has nothing to act on and does nothing.\n"
                 + "\n"
-                + "- Add the row that creates it in this scene, above this one: /image, /text, /layer, /vfx, "
+                + "- Add the row that creates it in this scene, above this one: /image, /text, /vfx, "
                 + "/play or /sound, or /show for a character.\n"
+                + "- For a layer, add it to the scene's layers in the live preview's Layers view.\n"
                 + "- If the row should act on an object that exists, choose that object in the row's inspector.\n"
                 + "- Correct the name if it is misspelled.",
         },
@@ -628,6 +663,19 @@ export const lint = {
                 + "- If the row is there to fix the background, for a scene entered from several places, remove "
                 + "its transition. A cut takes no time.\n"
                 + "- Otherwise delete the row, or choose a different image.",
+        },
+        storyTagNameShared: {
+            title: "Tag name on two axes",
+            description: "A character with layered sprites using one tag name on two axes",
+            message: "The tag \"{tag}\" is on both \"{first}\" and \"{second}\"",
+            help:
+                "A character with layered sprites has a tag of the same name on two of its axes, such as Blue under "
+                + "Outfit and under Hair. Names are compared ignoring case.\n"
+                + "\n"
+                + "A typed row such as /char names a look by its tag alone, so the name reaches only the tag on the "
+                + "earlier axis. The other tag can be chosen only in the row's Properties.\n"
+                + "\n"
+                + "- Rename one of the two tags in the character editor.",
         },
         blueprintReferenceMissing: {
             title: "Missing target",
@@ -794,7 +842,9 @@ export const lint = {
             message: "Nothing opens this page",
             help:
                 "A page nothing opens: it is not the entry page, no blueprint node picks it (Go Page, Show "
-                + "Layer and Quit Game are examples), and no Page widget shows it. Game UI is not checked.\n"
+                + "Layer and Quit Game are examples), no Page widget shows it, no /quit or /ending row names it, "
+                + "and neither the project nor a build variant shows it when the story ends. Game UI is not "
+                + "checked.\n"
                 + "\n"
                 + "No player can open the page.\n"
                 + "\n"
@@ -1177,7 +1227,8 @@ export const lint = {
             messageUnnamed: "A variable with no declaration is always within {bound} here, so this condition cannot hold",
             help:
                 "No value the variable can have at this row makes the condition true. Only comparisons of a "
-                + "number variable with a written number are checked, such as affection >= 50. The range in the "
+                + "number variable with a written number are checked, such as affection >= 50. Persistent variables "
+                + "carry their value over from the previous run and are not checked. The range in the "
                 + "finding counts the variable's default and every change the story can make before this row.\n"
                 + "\n"
                 + "In the game the condition is always false: an /if branch never runs, an /until never ends "
@@ -1350,7 +1401,7 @@ export const lint = {
         voiceMissing: {
             title: "Missing voice",
             description: "A line with no recording in a voiced language",
-            message: "No {locale} recording",
+            message: "No {language} recording",
             help:
                 "A spoken line has no recording in one of the project's voice languages. Narration and "
                 + "dialogue rows are checked, and choice options too while Voice choice options is on. Prompts, "
@@ -1368,7 +1419,7 @@ export const lint = {
         voiceStale: {
             title: "Stale voice",
             description: "The line changed after it was recorded",
-            message: "{locale} recording is older than the line",
+            message: "{language} recording predates a change to the line",
             help:
                 "A recording was linked to a line whose text has changed since. The text compared is what "
                 + "that language's actor reads: the translation into that language if the project has one, "
@@ -1388,8 +1439,8 @@ export const lint = {
             description: "A recording whose line no longer exists",
             message: "{recordings} with no line",
             recordingCount: {
-                one: "{count} {locale} recording",
-                other: "{count} {locale} recordings",
+                one: "{count} {language} recording",
+                other: "{count} {language} recordings",
             },
             help:
                 "A voice language holds recordings linked to lines that are no longer in any story: lines "
@@ -1539,6 +1590,8 @@ export const lint = {
     severity: {
         error: "Error",
         warning: "Warning",
+        // A problem the project never stops a build on and never counts with the warnings.
+        minor: "Minor warning",
         info: "Info",
         off: "Off",
     },
@@ -1548,7 +1601,7 @@ export const lint = {
         running: "Checking…",
         // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
         // reads in the singular.
-        counts: "{errors}, {warnings}, {infos}",
+        counts: "{errors}, {warnings}, {minorWarnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -1586,7 +1639,7 @@ export const lint = {
     },
     // The status bar cell's hover and spoken label. The cell itself shows the two numbers.
     statusBar: {
-        counts: "Problems: {errors}, {warnings}, {infos}",
+        counts: "Problems: {errors}, {warnings}, {minorWarnings}, {infos}",
     },
     command: {
         runProject: "Check project",

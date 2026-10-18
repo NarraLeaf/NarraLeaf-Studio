@@ -1,5 +1,6 @@
 import type {
     StoryActionableTargetRef,
+    StoryAlignPositionValue,
     StoryActionPayload,
     StoryBlock,
     StoryDisplayableTargetRef,
@@ -7,9 +8,13 @@ import type {
     StoryTransitionRef,
 } from "@shared/types/story";
 import { ACTIONABLE_BUILTIN_META, BGM_STAGE_OBJECT_NAME, characterStageName, DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n";
+import { translateCommand } from "@/lib/i18n";
+import type { StoryCommandParamType } from "../storyCommandGrammar";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandTargetValue, StoryCommandValue } from "../storyCommandValues";
+import { localizedEnumValue } from "./localizedEnums";
 import { asDurationMs, asEnum, asTarget } from "./spec";
-import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
+import { applyPositionToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
 /**
  * Shared "modifier args → payload fragment" writers.
@@ -55,18 +60,23 @@ export function withTransitionRef(
     };
 }
 
-/** Fold `at=` / `d=` into a transform - the three placements, for character and create commands. */
+/**
+ * Fold a placement and `d=` into a transform, for character and create commands.
+ *
+ * The placement is the whole position the line states - a word, or an align pair with its offsets -
+ * as `positionFromArgs` reads it off `pos=` / `xoffset=` / `yoffset=`. The caller reads it rather than
+ * this helper, so the three slots are parsed in one place for every command that takes them.
+ */
 export function withPlacementTransform(
     current: StoryTransformRef | undefined,
-    at: StoryCommandValue | undefined,
+    position: StoryAlignPositionValue | null | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
-    const placement = asEnum(at);
     const durationMs = asDurationMs(d);
-    if (placement === undefined && durationMs === undefined) {
+    if (!position && durationMs === undefined) {
         return current;
     }
-    const placed = placement === undefined ? current : applyPlacementToTransform(current, placement);
+    const placed = position ? applyPositionToTransform(current, position) : current;
     if (durationMs === undefined) {
         return placed;
     }
@@ -123,22 +133,47 @@ export function clipLeaveDurationMs(
  * `/text` lines become `text` and `text2` rather than colliding. Skipped when the author named it -
  * their choice wins.
  */
-export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetParam: string | null, base: string) {
+export function deriveObjectName(
+    stageKind: StoryCommandStageObjectKind,
+    assetParam: string | null,
+    base: string,
+    /** The word list `assetParam` can name a source from (`/vfx snow`), when it has one. */
+    words?: Extract<StoryCommandParamType, { kind: "enum" }>,
+) {
     return (args: Readonly<Record<string, StoryCommandValue | undefined>>, context: StoryCommandContext): Record<string, StoryCommandValue> => {
         if (args.name) {
             return {};
         }
         const source = assetParam ? args[assetParam] : undefined;
+        const fallback = defaultObjectName(base);
         // A slot may name something other than an asset - `/vfx snow` names a generated source by a
         // word - and the row should still be called after what the author typed rather than after the
         // command. The word IS the name in that case; there is no file to strip an extension from.
+        // It is the word as the command language writes it: a zh author who typed 樱花 addresses the
+        // overlay as 樱花, and naming it `sakura` refused their very next `/show 樱花`.
         const stem = source?.kind === "asset"
-            ? assetBaseName(context, stageKind, source.assetId) ?? base
+            ? assetBaseName(context, stageKind, source.assetId) ?? fallback
             : source?.kind === "enum"
-                ? source.value
-                : base;
+                ? enumWord(words, source.value)
+                : fallback;
         return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
+}
+
+/** `value` as the command language writes it, among `words`; the value itself when there is no list. */
+function enumWord(words: Extract<StoryCommandParamType, { kind: "enum" }> | undefined, value: string): string {
+    const option = words?.options.find(candidate => candidate.value === value);
+    return words && option ? localizedEnumValue(words, option) : value;
+}
+
+/**
+ * The name an unnamed object takes when nothing on the line names it, in the command language where a
+ * word for it exists (`text` is 文本 in zh); `base` otherwise. One token, since a target slot reads one.
+ */
+function defaultObjectName(base: string): string {
+    const key = `story.stage.defaultName.${base}` as TranslationKey;
+    const word = translateCommand(key).trim();
+    return word && word !== key && !/\s/.test(word) ? word : base;
 }
 
 /**

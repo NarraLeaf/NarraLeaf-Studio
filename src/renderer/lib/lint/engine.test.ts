@@ -57,7 +57,23 @@ describe("runLintRules", () => {
 
         expect(report.entries).toHaveLength(1);
         expect(report.entries[0].severity).toBe("error");
-        expect(report.counts).toEqual({ error: 1, warning: 0, info: 0 });
+        expect(report.counts).toEqual({ error: 1, warning: 0, minor: 0, info: 0 });
+    });
+
+    it("files a rule set to minor under its own count, never under the warnings, and sorts it after them", async () => {
+        const rules = [
+            makeRule("localization/missing", {}, [finding("localization/missing"), finding("localization/missing")]),
+            makeRule("text/empty", {}, [finding("text/empty")]),
+            makeRule("story/empty-scene", { defaultSeverity: "info" }, [finding("story/empty-scene")]),
+        ];
+        const ctx = createTestLintContext({
+            config: { runOnBuild: true, failBuildOn: "warning", severities: { "localization/missing": "minor" }, options: {} },
+        });
+
+        const report = await runLintRules(ctx, { rules });
+
+        expect(report.counts).toEqual({ error: 0, warning: 1, minor: 2, info: 1 });
+        expect(report.entries.map(entry => entry.severity)).toEqual(["warning", "minor", "minor", "info"]);
     });
 
     it("reports a throwing rule and keeps sweeping", async () => {

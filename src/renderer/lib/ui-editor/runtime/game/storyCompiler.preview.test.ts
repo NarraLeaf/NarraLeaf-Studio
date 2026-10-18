@@ -276,6 +276,20 @@ describe("compileStagePreviewToNlr", () => {
         ]));
     });
 
+    it("says an overlay row is not previewed, rather than that its overlay is not on stage", async () => {
+        // 「@显示 樱花」 in the live preview: the preview registers no overlays, so the row's lookup
+        // missed and reported 樱花 as not on stage - an error the scene does not have.
+        const document = baseDocument({
+            sakura: block("sakura", "action", { action: "vfx", operation: "create", objectName: "樱花", seed: { seed: "sakura" } }),
+            show: block("show", "action", { action: "vfx", operation: "show", objectName: "樱花", target: { name: "樱花", label: "樱花", sourceBlockId: "sakura" } }),
+        }, ["sakura", "show"]);
+        const compiled = await compilePreview(document, "show");
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.blockId === "show")).toEqual([
+            { level: "warning", blockId: "show", message: "Ambience effects are not previewed." },
+        ]);
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+    });
+
     describe("continuous playback", () => {
         it("compiles the rest of the scene, not just the start row", async () => {
             const document = baseDocument({

@@ -45,6 +45,8 @@ import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
+    resolveDefaultCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -82,6 +84,7 @@ import type {
     StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import {
     BGM_STAGE_OBJECT_NAME,
@@ -100,9 +103,10 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     revealCreates,
-    sceneLayerDepths,
+    sceneLayerFollow,
+    sceneLayerStack,
+    sceneLayerZIndex,
     sceneVariableDefs,
-    storyLayerDepthParallax,
     soundStageObjectName,
     storyPersistentDefs,
     storyTransitionKindOf,
@@ -138,6 +142,7 @@ import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import { isStoryInputWaitPayload, resolveStoryRumble, type StoryInputActionPayload } from "@shared/types/story";
 import type { StoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
+import { coerceStoryPageResult, type StoryPageHost } from "./storyPageRow";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -200,6 +205,7 @@ import {
 } from "./storyCompilePass";
 import { getStoryPluginAction } from "./storyPluginActions";
 import { createStoryAwaitedAction } from "./storyAwaitedAction";
+import { waitForPuppetModel } from "./puppetEntranceWait";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -654,6 +660,18 @@ export type NlrActionIdBinding = {
      * re-pointed a row at a different file.
      */
     audioAssetId?: string;
+    /**
+     * Set on the action of a `/wait click` row: the story is stopped until the player clicks, with
+     * no line on screen. A driver that reads on line by line (an agent's play-test) needs to know
+     * that a click is what the game is waiting for, since nothing else on screen says so.
+     */
+    waitsForClick?: true;
+    /**
+     * Set on the actions of a row the story holds on by itself for a while, with no line on screen:
+     * a timed `/wait` (`ms` long) or a `/video` play the story waits out. Read by the same driver as
+     * {@link waitsForClick}, which otherwise sees nothing but "no line yet" and calls the game stuck.
+     */
+    pause?: { kind: "timed"; ms: number } | { kind: "video" };
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
@@ -958,6 +976,8 @@ type SceneCompileContext = {
     onQuitToPage?: (surfaceId: string) => void;
     /** The player's hands, for the `input` rows; see {@link CompileInput.storyInput}. */
     storyInput?: StoryInputHost;
+    /** The layer stack, for the `/page` rows; see {@link CompileInput.storyPages}. */
+    storyPages?: StoryPageHost;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -1223,6 +1243,15 @@ type CompileInput = {
      * preview that never settles.
      */
     storyInput?: StoryInputHost;
+    /**
+     * What a `/page` row asks of the running game: open a page over the stage and wait for it to
+     * close.
+     *
+     * Absent for the same callers `storyInput` is absent for, and their `/page` rows compile to
+     * nothing: a build sweep has no screen to draw a page on, and a scene preview that stopped on a
+     * page would be a preview that never settles.
+     */
+    storyPages?: StoryPageHost;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1434,6 +1463,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
             storyInput: input.storyInput,
+            storyPages: input.storyPages,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1479,6 +1509,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         // never make it, so `ctx.pluginInjections` stays unset there and their snapshots stay free of
         // anything a plugin injected.
         runStoryCompilePasses(ctx);
+        buildSceneLayers(ctx);
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
@@ -1689,6 +1720,7 @@ async function buildLaunchEntryScene(params: {
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
         storyInput: input.storyInput,
+        storyPages: input.storyPages,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1730,12 +1762,8 @@ async function buildLaunchEntryScene(params: {
     // name that IS on stage is always built from its own record.
     const preposed = [...snapshot.displayables, ...snapshot.declarations];
 
-    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of preposed) {
-        if (record.kind === "layer") {
-            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
-        }
-    }
+    // The scene's layers first so images/texts can bind to them, pre-posed as the target row left them.
+    buildSceneLayers(ctx, preposed);
     const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
     for (const record of preposed) {
         if (record.kind === "layer") {
@@ -2057,12 +2085,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         nextActionIndex,
     };
 
-    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of snapshot.displayables) {
-        if (record.kind === "layer") {
-            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
-        }
-    }
+    // The scene's layers first so images/texts can bind to them, pre-posed as the row left them.
+    buildSceneLayers(ctx, snapshot.displayables);
     const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
     for (const record of snapshot.displayables) {
         if (record.kind === "layer") {
@@ -3172,6 +3196,13 @@ async function compilePreviewTargetOwnStatements(
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
         }
+        if (block.payload.action === "vfx") {
+            // The preview draws no overlay (the walk that poses its stage says the same), so it has
+            // none registered: compiling the row looked the overlay up, found nothing, and reported
+            // 「樱花」 as not on stage - a fault in the author's scene that is not there.
+            diagnostic(ctx, "warning", block.id, say("story.preview.diagnostics.ambienceSkipped"));
+            return [];
+        }
         return compileStoryAction(ctx, block);
     }
     if (block.kind === "control") {
@@ -3701,7 +3732,16 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         const chain = payload.mode === "click"
             ? Control.waitForClick()
             : Control.sleep(Math.max(0, payload.durationMs ?? 0));
-        return [recordStatement(ctx, chain, block)];
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, chain, block);
+        for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+            if (payload.mode === "click") {
+                binding.waitsForClick = true;
+            } else {
+                binding.pause = { kind: "timed", ms: Math.max(0, payload.durationMs ?? 0) };
+            }
+        }
+        return [recorded];
     }
 
     if (payload.action === "image") {
@@ -3746,8 +3786,87 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileInputAction(ctx, block, payload);
     }
 
+    if (payload.action === "page") {
+        return compilePageAction(ctx, block, payload);
+    }
+
     return [];
 }
+
+/**
+ * A `/page` row: open a page over the stage, hold the story until it closes, and write what it closed
+ * with into the row's variable.
+ *
+ * An awaited action, so the story waits on the row exactly as it waits on a `/waitinput`: a skip
+ * stops at it, and a save taken while the page is open replays the row on load - which opens the page
+ * afresh, since layers are not part of a save. Rolling back past the row (or a load, which aborts it
+ * the same way) takes the page down itself: the page is opened with no owning scope, so nothing else
+ * would, and a page left standing over a story that has moved on is the orphan the layer stack exists
+ * to prevent. The answer is written only when the row was not abandoned.
+ *
+ * With no host, or no page, the row compiles to nothing - as `/quit` does; a page that is missing is
+ * `story/page-missing`'s to report, in the editor rather than on the player's screen.
+ */
+function compilePageAction(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "action" }>,
+    payload: Extract<StoryActionPayload, { action: "page" }>,
+): NlrStatement[] {
+    const host = ctx.storyPages;
+    const surfaceId = payload.surfaceId.trim();
+    if (!host || !surfaceId) {
+        return [];
+    }
+    // Resolved now, so a deleted variable is the diagnostic every other write reports. The page still
+    // opens: it is the row's point, and the write is what "skipped" means in that diagnostic.
+    const target = payload.resultTarget;
+    const slot = target ? resolveVariableSlot(ctx, target, block.id) : null;
+    const valueType = target ? variableValueType(ctx, target) : null;
+    const persistence = ctx.persistence;
+    return [recordStatement(ctx, createStoryAwaitedAction({
+        run: async (scriptCtx, signal) => {
+            const handle = host.open(surfaceId);
+            if (!handle) {
+                return;
+            }
+            const onAbort = () => host.close(handle);
+            signal.addEventListener("abort", onAbort, { once: true });
+            let result: unknown;
+            try {
+                result = await host.wait(handle);
+            } finally {
+                signal.removeEventListener("abort", onAbort);
+            }
+            if (signal.aborted || !slot || !valueType) {
+                return;
+            }
+            const value = coerceStoryPageResult(result, valueType);
+            if (value === undefined) {
+                return;
+            }
+            if (slot.kind === "host") {
+                void persistence?.set(slot.key, value);
+                return;
+            }
+            scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, value as any);
+        },
+    }), block)];
+}
+
+/** The declared type of the variable a row writes, or `null` when no declaration answers to it. */
+function variableValueType(ctx: SceneCompileContext, ref: StoryVariableRef): StoryVariableValueType | null {
+    if (ref.scope === "scene") {
+        return ctx.sceneVariables[ref.variableId]?.valueType ?? null;
+    }
+    if (ref.scope === "saved") {
+        return ctx.savedVariables[ref.variableId]?.valueType ?? null;
+    }
+    // The persistent arm is keyed by storage key, the table by entry id (see `VariableRegistryEntry`).
+    return Object.values(ctx.persistentVariables).find(entry => entry.storageKey === ref.variableId)?.valueType
+        ?? ctx.persistentVariables[ref.variableId]?.valueType
+        ?? null;
+}
+
 
 /**
  * An `input` row: the player's hands rather than the stage.
@@ -4195,7 +4314,20 @@ async function compileCharacterPuppetAction(
             ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
             : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
-    return chain ? [recordStatement(ctx, chain, block)] : [];
+    if (!chain) {
+        return [];
+    }
+    if (payload.operation !== "enter") {
+        return [recordStatement(ctx, chain, block)];
+    }
+    // The model has been loading since the scene put the box on stage; the entrance waits for it to
+    // be drawn, or the box fades in empty and the character appears after the fade is over. See
+    // `puppetEntranceWait.ts`.
+    // Recorded after the entrance although it runs before it, so the entrance keeps the action id it
+    // has always had: a save that names it still finds it.
+    const shown = recordStatement(ctx, chain, block);
+    const awaitModel = createStoryAwaitedAction({ run: (_scriptCtx, signal) => waitForPuppetModel(puppet, signal) });
+    return [recordStatement(ctx, awaitModel, block), shown];
 }
 
 /**
@@ -4847,28 +4979,15 @@ async function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): Promise<NlrStatement[]> {
-    if (payload.operation === "setDepth") {
-        // Not a step in time: the scene was built with its background layer at this distance (see
-        // `sceneBackgroundLayerConfig`), so there is nothing for the row to do when the story gets to
-        // it. Only the background layer takes one - a custom layer's depth is on its own `create`
-        // row, and the displayable layer is where the characters stand, which is what the camera is
-        // aimed at by definition.
-        if (payload.target?.kind !== "default" || payload.target.layer !== "background") {
-            diagnostic(ctx, "warning", block.id, say("story.compile.layer.depthBackgroundOnly"));
-        }
-        return [];
-    }
-    // `create` names a new custom layer; every other op resolves an existing layer - a built-in
-    // (background / displayable) or a custom one - via the target ref (falling back to the default
-    // displayable layer), so a transform can now target the background instead of only named layers.
-    const layer = declaresStageObject(payload)
-        ? getLayer(ctx, payload.objectName, payload.zIndex)
-        : findStageLayer(ctx, block.id, payload);
+    // Every op resolves one of the scene's layers - a built-in (background / displayable) or one of
+    // its own - via the target ref, falling back to the default displayable layer. The scene built
+    // them all when it was made (`buildSceneLayers`); no row declares one.
+    const layer = findStageLayer(ctx, block.id, payload);
     if (!layer) {
         return [];
     }
     const statements: NlrStatement[] = [];
-    if (payload.operation === "setZIndex" || (payload.operation === "create" && payload.zIndex !== undefined)) {
+    if (payload.operation === "setZIndex") {
         statements.push(recordStatement(ctx, layer.setZIndex(payload.zIndex ?? 0), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "transform") {
@@ -4920,7 +5039,19 @@ function compileVideoPlay(
     payload: Extract<StoryActionPayload, { action: "video" }>,
     video: Video,
 ): NlrStatement {
-    const record = (statement: NlrStatement): NlrStatement => recordStatement(ctx, statement, block);
+    const waits = videoPlayWaits(payload);
+    const record = (statement: NlrStatement): NlrStatement => {
+        const firstBinding = ctx.actionIdBindings.length;
+        const recorded = recordStatement(ctx, statement, block);
+        if (waits) {
+            // Every action of a play the story waits on - the race against a click included - is
+            // the story holding on the clip, which is what a driver needs to hear.
+            for (const binding of ctx.actionIdBindings.slice(firstBinding)) {
+                binding.pause = { kind: "video" };
+            }
+        }
+        return recorded;
+    };
     const steps: NlrStatement[] = [record(video.show())];
     if (videoPlayWaits(payload)) {
         steps.push(skippableVideoPlay(record, video));
@@ -5702,44 +5833,61 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
 }
 
 /**
- * Get-or-create, on the same terms as {@link getImage}: `/layer create` rows, snapshot replay, and
- * PLACEMENT - an image or text can name the layer it sits on before the row declaring that layer has
- * compiled, and dropping it on the default layer instead would silently restack the scene. A `/layer`
- * row that addresses an existing layer goes through {@link findStageLayer}.
+ * Build every layer of the scene's own, as the scene starts - which is when the engine puts a scene's
+ * layers up, whatever the story does afterwards.
+ *
+ * Each is built at the place its stack gives it (`sceneLayerZIndex`: the engine orders layers by
+ * z-index and nothing else) and following the share of the camera's movement its stack gives it, the
+ * engine's `parallax`. A layer that follows the camera exactly gets none, so a scene without depth
+ * builds exactly as every scene always did.
+ *
+ * `records` is a launch's or a still's stage at its row: a layer it holds is built where the rows
+ * before that row left it - its pose, and the z-index a `setZIndex` row may have moved it to.
+ *
+ * Registered under the name the stage knows the layer by, and with the id that name always had, so a
+ * save that holds a layer finds it again.
  */
-function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, initialProps?: Record<string, unknown>): Layer {
-    const name = normalizeObjectName(objectName);
-    const existing = ctx.layers.get(name);
-    if (existing) {
-        return existing;
-    }
-    // A layer's distance from the camera is stated once for the whole scene (its `create` row), and
-    // every path that builds the layer - the row itself, a picture placed on it first, a launch's
-    // replay - builds it here, so they all build it at the same distance.
-    // Read fresh each time, never cached on the scene: the story service edits a scene in place, so a
-    // cache keyed on it would keep the first compile's depths and the preview would ignore every edit.
-    const parallax = storyLayerDepthParallax(sceneLayerDepths(ctx.scene).custom.get(name));
-    const layer = new Layer(name, { zIndex, ...(parallax !== 1 ? { parallax } : {}), ...(initialProps ?? {}) } as any);
-    setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
-    ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
-    ctx.layers.set(name, layer);
-    return layer;
+function buildSceneLayers(ctx: SceneCompileContext, records?: readonly StageSnapshotDisplayable[]): void {
+    const stack = sceneLayerStack(ctx.scene);
+    stack.forEach((entry, index) => {
+        if (entry.kind !== "custom") {
+            return;
+        }
+        const name = normalizeObjectName(entry.name);
+        if (ctx.layers.has(name)) {
+            // Two layers the stage knows by one name are one layer to every row that names it.
+            return;
+        }
+        const record = records?.find(candidate => candidate.kind === "layer" && candidate.objectName === name);
+        const parallax = sceneLayerFollow(entry);
+        const layer = new Layer(name, {
+            zIndex: record?.zIndex ?? sceneLayerZIndex(stack, index),
+            ...(parallax !== 1 ? { parallax } : {}),
+            ...(record ? snapshotPoseProps(record) : {}),
+        } as any);
+        setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
+        ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
+        ctx.layers.set(name, layer);
+    });
 }
 
 /**
- * The scene config that puts the scene's own background layer at the distance its `setDepth` row
- * names. Empty when the scene names none, so a scene without depth builds exactly as it always did.
+ * The scene config that puts the scene's own background layer at the share of the camera's movement
+ * its stack gives it. Empty when that is all of it, so a scene without depth builds exactly as it
+ * always did.
  */
 function sceneBackgroundLayerConfig(scene: StoryScene): { backgroundLayerParallax?: number } {
-    const parallax = storyLayerDepthParallax(sceneLayerDepths(scene).background);
+    const background = sceneLayerStack(scene).find(layer => layer.kind === "background");
+    const parallax = background ? sceneLayerFollow(background) : 1;
     return parallax !== 1 ? { backgroundLayerParallax: parallax } : {};
 }
 
 /**
  * Resolve an image/text `layer` reference to a concrete NLR {@link Layer}, or `undefined` to leave
  * the displayable on the scene's default layer. Built-in refs map to NLR's `Scene.backgroundLayer`
- * / `Scene.displayableLayer`; a custom ref resolves through its stable creator block (so it follows
- * renames) to the same name-keyed layer the `layer` create block registers.
+ * / `Scene.displayableLayer`; a custom ref resolves through the scene's layers (by id, so it follows
+ * renames) to the layer {@link buildSceneLayers} built for it. One the scene no longer has leaves the
+ * displayable on the default layer - lint names the row.
  */
 function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undefined): Layer | undefined {
     if (!ref) {
@@ -5748,15 +5896,10 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     if (ref.kind === "default") {
         return ref.layer === "background" ? ctx.nlrScene.backgroundLayer : ctx.nlrScene.displayableLayer;
     }
-    const name = resolveStoryLayerRef(ctx.scene, ref).name.trim();
-    if (!name) {
-        return undefined;
-    }
-    const sourceBlock = ref.sourceBlockId ? ctx.scene.blocks[ref.sourceBlockId] : undefined;
-    const zIndex = sourceBlock?.kind === "action" && sourceBlock.payload.action === "layer"
-        ? sourceBlock.payload.zIndex ?? 0
-        : 0;
-    return getLayer(ctx, name, zIndex);
+    const resolved = resolveStoryLayerRef(ctx.scene, ref);
+    return resolved.kind === "custom" && resolved.resolved
+        ? ctx.layers.get(normalizeObjectName(resolved.name))
+        : undefined;
 }
 
 /** The url each clip was built from - the engine keeps its own copy out of reach. */
@@ -7380,6 +7523,13 @@ type CompiledCharacterAvatars = {
     poseByUrl: Map<string, string>;
     /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
     fallback: string | null;
+    /**
+     * Shown while the character speaks with no portrait on stage: the profile's default avatar, or
+     * when it has none, her default look's - the picture the backlog and `Get Character` show for the
+     * same line ({@link resolveDefaultCharacterAvatarAssetId}). The box used to fall to the profile
+     * field alone, and stay empty for every character who only ever had baked avatars.
+     */
+    offStage: string | null;
 };
 
 async function compileCharacterAvatars(
@@ -7451,7 +7601,14 @@ async function compileCharacterAvatars(
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
     }
-    return { byKey, poseByUrl, fallback };
+    const defaultLookAssetId = fallback ? null : resolveDefaultCharacterAvatarAssetId(summary);
+    const defaultLook = defaultLookAssetId
+        ? await resolveAsset(ctx, defaultLookAssetId, "image", blockId, { owner: avatarOwner })
+        : null;
+    if (defaultLook && defaultLookAssetId) {
+        ctx.avatarAssetIdByUrl.set(defaultLook, defaultLookAssetId);
+    }
+    return { byKey, poseByUrl, fallback, offStage: fallback ?? defaultLook };
 }
 
 /**
@@ -7466,6 +7623,10 @@ function resolveCompiledAvatar(
     avatars: CompiledCharacterAvatars,
     context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
 ): string | null {
+    // No portrait on stage: the engine reports neither a src nor tags.
+    if (!context.currentSrc && !(context.tags?.length)) {
+        return avatars.offStage;
+    }
     const key = summary.appearance.kind === "layered"
         ? characterAvatarKeyFromTags(summary.appearance, context.tags)
         : context.currentSrc
@@ -7553,7 +7714,9 @@ async function bindOffstageDefaultAvatars(params: {
         // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
         // resolves to no summary either. Both fall out here.
         const summary = params.characterSummaries.get(key);
-        const assetId = summary?.defaultAvatarAssetId?.trim();
+        // The profile's avatar, or her default look's when it has none: the picture the backlog and
+        // `Get Character` show for the same line.
+        const assetId = resolveOffStageCharacterAvatarAssetId(summary) || undefined;
         if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }

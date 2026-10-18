@@ -46,7 +46,7 @@ import {
     TeamTransferHandler,
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
-import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
+import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler, ProjectWizardListAppIdsHandler } from "./handlers/projectWizardAction";
 import { ProjectWizardCreatedHandler } from "./handlers/projectWizardCreatedAction";
 import {
     ProjectWizardSelectPackageHandler,
@@ -67,6 +67,7 @@ import {
     ProjectTrustGrantHandler,
     ProjectTrustRevokeHandler,
     ProjectTrustListHandler,
+    ProjectTrustForgetHandler,
     ProjectTrustPromptHandler,
 } from "./handlers/projectTrustAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineRunHandler, WorkspaceSetRecoveryModeHandler, WorkspaceAcquireSessionLockHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
@@ -205,6 +206,8 @@ import {
 import {
     AgentCopyConfigHandler,
     AgentExportSkillHandler,
+    AgentClientSetupHandler,
+    AgentInstallSkillHandler,
     AgentQuickStateHandler,
     AgentReportPluginToolsHandler,
     AgentQuickToggleHandler,
@@ -287,6 +290,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectWizardSelectDirectoryHandler(),
         new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
+        new ProjectWizardListAppIdsHandler(),
         new ProjectWizardCreatedHandler(),
 
         // Workspace handlers
@@ -317,6 +321,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTrustGrantHandler(),
         new ProjectTrustRevokeHandler(),
         new ProjectTrustListHandler(),
+        new ProjectTrustForgetHandler(),
         new ProjectTrustPromptHandler(),
         new AgentSettingsGetHandler(),
         new AgentSettingsUpdateHandler(),
@@ -327,6 +332,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AgentQuickToggleHandler(),
         new AgentCopyConfigHandler(),
         new AgentExportSkillHandler(),
+        new AgentClientSetupHandler(),
+        new AgentInstallSkillHandler(),
         new AgentRevealExportedSkillHandler(),
         new AgentRequestFolderAccessHandler(),
         new WorkspaceLiveIntentTakenHandler(),

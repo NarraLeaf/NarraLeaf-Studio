@@ -15,6 +15,9 @@ import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FN_RETURN,
@@ -53,6 +56,8 @@ import {
     type BlueprintVariableTypeOption,
 } from "./graphVariableTypeInference";
 import { isBlueprintFanOutOutputPin } from "./graphEditing";
+import { listBlueprintElementRefSites } from "./elementRefSites";
+import { buildUIComponentSurfaceId, isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     analyzeBlueprintStructTypes,
     applyBlueprintStructTypes,
@@ -123,6 +128,11 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     persistentVariables?: readonly VariableRegistryEntry[];
     /** M-VAR: saved variable definitions - the `saved` scope of the same project-level registry. */
     savedVariables?: readonly VariableRegistryEntry[];
+    /**
+     * The scene variables a story blueprint can reach - those of the scenes whose rows run it - which
+     * type Get / Set Scene Var.
+     */
+    sceneVariables?: readonly { id: string; valueType?: string }[];
     /**
      * The project's asset-name gaps (`findAssetNameGaps`), for the ones in this blueprint to be
      * reported against their nodes.
@@ -570,6 +580,8 @@ export function validateBlueprintGraphIr(
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
         /** The project's saved variables, which type Get / Set Saved Var. */
         savedVariables?: readonly { id: string; valueType?: string }[];
+        /** The scene variables the graph can reach, which type Get / Set Scene Var. */
+        sceneVariables?: readonly { id: string; valueType?: string }[];
         widgetElement?: UIElement | null;
         widgetElementType?: string;
         /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
@@ -592,6 +604,7 @@ export function validateBlueprintGraphIr(
             owner: ctx.blueprintOwner,
             isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
             savedVariables: ctx.savedVariables,
+            sceneVariables: ctx.sceneVariables,
         }),
     );
     ir = applyBlueprintStructTypes(ir, structTypes);
@@ -940,12 +953,90 @@ export function validateBlueprintGraphIr(
     }
 
     validateBlueprintFnRules(ir, ctx, out);
+    validateLoopBodies(ir, ctx, out);
 
     if (ctx.graphKind === "event" && isStoryConditionOwner(ctx.blueprintOwner)) {
         validateStoryConditionReturnType(ir, ctx, out);
     }
 
     return out;
+}
+
+/** Loop nodes whose `loop` output starts a pass that has to come back to their `in` for the next one. */
+const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
+]);
+
+/**
+ * A loop whose body never leads back to it runs one pass and stops.
+ *
+ * A loop here is not a block with a body the runtime returns from: `Loop` is an exec output like any
+ * other, and the next pass happens when the flow arrives at the loop's `In` again. So the body has to
+ * be wired back to it - the end of the body, through whatever it awaits - and a body that ends on a
+ * node with nothing after it is a pass that ends the run: no second index, no `Completed`. That is
+ * sometimes meant (a walk that stops at the first match leaves the loop on that branch only), so it is
+ * said only when *no* path out of `Loop` comes back, which is never what an author meant.
+ */
+function validateLoopBodies(
+    ir: BlueprintGraphIr,
+    ctx: { graphKind: "event" | "function"; graphId: string },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const nodes = ir.nodes ?? {};
+    const edges = ir.edges ?? [];
+    const execOutputs = new Map<string, ReadonlySet<string>>();
+    const execOutputsOf = (nodeId: string): ReadonlySet<string> => {
+        let ports = execOutputs.get(nodeId);
+        if (!ports) {
+            const node = nodes[nodeId];
+            ports = new Set(node
+                ? resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params).pins
+                    .filter(pin => pin.kind === "output" && pin.semantic === "exec")
+                    .map(pin => pin.id)
+                : []);
+            execOutputs.set(nodeId, ports);
+        }
+        return ports;
+    };
+    for (const [loopId, loop] of Object.entries(nodes)) {
+        if (!LOOP_NODE_TYPES.has(loop.type)) {
+            continue;
+        }
+        const starts = edges.filter(edge => edge.from.nodeId === loopId && edge.from.port === "loop").map(edge => edge.to.nodeId);
+        if (starts.length === 0) {
+            continue;
+        }
+        const seen = new Set<string>();
+        const queue = [...starts];
+        let returns = false;
+        while (queue.length > 0 && !returns) {
+            const nodeId = queue.shift()!;
+            if (nodeId === loopId) {
+                returns = true;
+                break;
+            }
+            if (seen.has(nodeId)) {
+                continue;
+            }
+            seen.add(nodeId);
+            const ports = execOutputsOf(nodeId);
+            for (const edge of edges) {
+                if (edge.from.nodeId === nodeId && ports.has(edge.from.port)) {
+                    queue.push(edge.to.nodeId);
+                }
+            }
+        }
+        if (!returns) {
+            out.push({
+                severity: "warning",
+                code: "node.loop_body_not_closed",
+                message: translate("blueprint.diagnostics.node.loopBodyNotClosed", { node: diagnosticNodeTitle(loop) }),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: loopId },
+            });
+        }
+    }
 }
 
 /**
@@ -1092,6 +1183,7 @@ export function validateBlueprintDocumentGraphs(
                 variableValueTypes,
                 persistentVariableValueTypes,
                 savedVariables: options?.savedVariables,
+                sceneVariables: options?.sceneVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,
@@ -1114,6 +1206,7 @@ export function validateBlueprintDocumentGraphs(
                 variableValueTypes,
                 persistentVariableValueTypes,
                 savedVariables: options?.savedVariables,
+                sceneVariables: options?.sceneVariables,
                 widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
                 uiDocument: options?.uiDocument,
@@ -1125,6 +1218,72 @@ export function validateBlueprintDocumentGraphs(
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
     out.push(...assetNameGapDiagnostics(options?.assetNameGaps ?? [], blueprintId));
+    out.push(...elementScopeDiagnostics(bp, options?.uiDocument ?? null));
+    return out;
+}
+
+/**
+ * Where a blueprint runs, as the runtime's scope check (`isUIElementRefInScope`) sees it: the page
+ * of a page or widget blueprint, a component definition's own tree. Null for an owner that runs on
+ * no page (global, story, variables), which the runtime does not restrict either.
+ */
+function elementScopeOwner(owner: BlueprintOwnerRef): { surfaceId: string; componentId?: string } | null {
+    switch (owner.kind) {
+        case "surfaceMain":
+        case "widgetMain":
+        case "widgetValue":
+            return { surfaceId: owner.surfaceId };
+        case "componentWidgetMain":
+            return { surfaceId: buildUIComponentSurfaceId(owner.componentId), componentId: owner.componentId };
+        default:
+            return null;
+    }
+}
+
+/**
+ * An Element node (or an element event head) naming a widget on another page.
+ *
+ * Nothing stopped this being written: the picker only offers the page's own widgets, but a graph
+ * written as text - or pasted from another page - can name any id. At run time every node that acts
+ * on such a reference is refused ("only elements of its own page or component") and every read
+ * comes back empty, so a Choice page blueprint that hides the Dialogue page's textbox silently does
+ * nothing. Said here, as an error, at the node, so the checker refuses it with the reason.
+ */
+function elementScopeDiagnostics(
+    bp: BlueprintDocument["blueprints"][string],
+    uiDocument: ValidateBlueprintDocumentGraphsOptions["uiDocument"],
+): BlueprintGraphEditorDiagnostic[] {
+    const owner = elementScopeOwner(bp.owner);
+    if (!owner) {
+        return [];
+    }
+    const out: BlueprintGraphEditorDiagnostic[] = [];
+    const graphs: { graphKind: "event" | "function"; graphId: string; graph: BlueprintGraphIr }[] = [
+        ...Object.entries(bp.graphs.events ?? {}).filter(([, entry]) => !entry.script).map(([graphId, entry]) => ({ graphKind: "event" as const, graphId, graph: ensureIr(entry.graph) })),
+        ...Object.entries(bp.graphs.functions ?? {}).map(([graphId, entry]) => ({ graphKind: "function" as const, graphId, graph: ensureIr(entry.graph) })),
+    ];
+    for (const { graphKind, graphId, graph } of graphs) {
+        for (const site of listBlueprintElementRefSites(graph)) {
+            if (isUIElementRefInScope(site.ref.surfaceId, owner)) {
+                continue;
+            }
+            // The element's own name, never its id: the panel is the author's, and an id is nothing they
+            // can act on. An agent finds the node by the line it wrote, which names the id itself.
+            const name = uiDocument?.elements?.[site.ref.elementId]?.name?.trim();
+            const elementLabel = name
+                ? translate("blueprint.diagnostics.node.elementNamed", { name })
+                : translate("blueprint.diagnostics.node.elementUnnamed");
+            out.push({
+                severity: "error",
+                code: "element.other_surface",
+                message: translate("blueprint.diagnostics.node.elementOtherSurface", {
+                    node: diagnosticNodeTitle(graph.nodes?.[site.nodeId]),
+                    element: elementLabel,
+                }),
+                target: { kind: "node", graphKind, graphId, nodeId: site.nodeId },
+            });
+        }
+    }
     return out;
 }
 

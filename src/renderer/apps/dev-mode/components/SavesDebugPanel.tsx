@@ -491,7 +491,7 @@ function LoadResultBlock(props: { result: SaveLoadResult }): ReactNode {
 
 function SaveContents(props: { decoded: DecodedSave | null; hasRunningStory: boolean }): ReactNode {
     const { decoded, hasRunningStory } = props;
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     if (!decoded) {
         return <p className="text-2xs text-fg-subtle">{t("devMode.saves.unreadable")}</p>;
     }
@@ -522,13 +522,13 @@ function SaveContents(props: { decoded: DecodedSave | null; hasRunningStory: boo
                     {decoded.visited.scenes.length > 0 ? (
                         <p className="break-all text-fg-muted">
                             <span className="text-fg-subtle">{t("devMode.saves.visitedScenes")} · </span>
-                            {decoded.visited.scenes.map(ref => ref.name ?? shortId(ref.id)).join(", ")}
+                            {formatList(decoded.visited.scenes.map(ref => ref.name ?? shortId(ref.id)), { style: "narrow" })}
                         </p>
                     ) : null}
                     {decoded.visited.options.length > 0 ? (
                         <p className="break-all text-fg-muted">
                             <span className="text-fg-subtle">{t("devMode.saves.visitedOptions")} · </span>
-                            {decoded.visited.options.map(ref => ref.name ?? shortId(ref.id)).join(", ")}
+                            {formatList(decoded.visited.options.map(ref => ref.name ?? shortId(ref.id)), { style: "narrow" })}
                         </p>
                     ) : null}
                 </div>

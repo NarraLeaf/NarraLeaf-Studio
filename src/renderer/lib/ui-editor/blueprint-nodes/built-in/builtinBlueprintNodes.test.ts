@@ -255,7 +255,9 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC,
     BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+    BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC,
     BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
@@ -331,6 +333,7 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setVolume: async () => undefined,
     seek: async () => undefined,
     isPlaying: () => false,
+    setPageMusic: async () => undefined,
     resolveElementVolume: input => input.volume ?? 1,
     subscribeMixerChanges: () => () => undefined,
     getTrackVolume: () => 1,
@@ -490,6 +493,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
                     getNotifications: () => [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
@@ -684,6 +688,7 @@ function createPageNavigationHostAdapter(
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
                     getNotifications: () => [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
@@ -887,6 +892,7 @@ function createGameSaveHostAdapter(options: {
                     getCharacter: (characterId: string) =>
                         findBlueprintCharacterInfo(options.characters ?? [], characterId),
                     getNotifications: () => options.notifications ?? [],
+                    postNotification: () => undefined,
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
                     isCurrentTextRead: () => options.textRead ?? false,
@@ -8023,6 +8029,7 @@ describe("sound node transport", () => {
             setVolume: async (handle, volume, fadeMs) => void log.ops.push({ op: "setVolume", handle, volume, fadeMs }),
             seek: async (handle, timeMs) => void log.ops.push({ op: "seek", handle, timeMs }),
             isPlaying: () => true,
+            setPageMusic: async request => void log.ops.push({ op: "setPageMusic", request }),
             resolveElementVolume: input => input.volume ?? 1,
             subscribeMixerChanges: () => () => undefined,
             getTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
@@ -8078,6 +8085,60 @@ describe("sound node transport", () => {
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
             { op: "seek", handle, timeMs: 30000 },
         ]);
+    });
+
+    it("sets the page's music from Play Page Music and silences it from Stop Page Music", async () => {
+        const log = { play: [] as unknown[], ops: [] as unknown[] };
+        await executeGraph({
+            graph: {
+                id: "music-room",
+                entries: { main: { start: { nodeId: "play", port: "in" } } },
+                nodes: {
+                    play: {
+                        id: "play",
+                        type: BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC,
+                        params: { soundAssetId: "asset-theme", volume: 0.5, fade: 1.2 },
+                    },
+                    quiet: { id: "quiet", type: BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC, params: {} },
+                    quieter: { id: "quieter", type: BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC, params: { fade: 2 } },
+                },
+                edges: [
+                    { from: { nodeId: "play", port: "next" }, to: { nodeId: "quiet", port: "in" } },
+                    { from: { nodeId: "quiet", port: "next" }, to: { nodeId: "quieter", port: "in" } },
+                ],
+            },
+            entry: { start: { nodeId: "play", port: "in" } },
+            hostAdapter: soundHostAdapter(log),
+            blueprintLocals: {},
+        });
+
+        // No track picked is the Music track, decided by the host as the page inspector's is; an
+        // unconnected Fade on Stop leaves the music to go with its own fade.
+        expect(log.play).toEqual([]);
+        expect(log.ops).toEqual([
+            {
+                op: "setPageMusic",
+                request: { kind: "play", assetId: "asset-theme", audioTrackId: null, volume: 0.5, loop: undefined, fadeMs: 1200 },
+            },
+            { op: "setPageMusic", request: { kind: "stop", fadeMs: undefined } },
+            { op: "setPageMusic", request: { kind: "stop", fadeMs: 2000 } },
+        ]);
+    });
+
+    it("refuses Play Page Music with no clip, as Play Sound does", async () => {
+        const log = { play: [] as unknown[], ops: [] as unknown[] };
+        await expect(executeGraph({
+            graph: {
+                id: "music-room",
+                entries: { main: { start: { nodeId: "play", port: "in" } } },
+                nodes: { play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC, params: {} } },
+                edges: [],
+            },
+            entry: { start: { nodeId: "play", port: "in" } },
+            hostAdapter: soundHostAdapter(log),
+            blueprintLocals: {},
+        })).rejects.toThrow();
+        expect(log.ops).toEqual([]);
     });
 
     /**

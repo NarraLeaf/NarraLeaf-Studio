@@ -229,6 +229,8 @@ const STORY_PREVIEW_ABSENT: readonly string[] = [
     "onSetSoundVolume",
     "onSeekSound",
     "onIsSoundPlaying",
+    // No pages are drawn, so no page has music for a graph to set.
+    "onSetPageMusic",
     "onGetTrackVolume",
     "onSetTrackVolume",
     "audioTracks",

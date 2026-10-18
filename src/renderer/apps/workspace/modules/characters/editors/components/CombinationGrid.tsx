@@ -19,7 +19,7 @@ function Cell(props: {
     onName: () => void;
     onAvatar: (anchor: HTMLElement) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     // Picking a cell only moves the preview onto that look, so the tile stays clickable while frozen -
     // browsing the grid is what a past version is opened for. Naming the look stores a snapshot on the
     // appearance and giving it an avatar opens a picker that writes one, so both are off.
@@ -43,7 +43,8 @@ function Cell(props: {
                 {combination.missing.length > 0 && (
                     <AlertTriangle
                         className="h-3 w-3 shrink-0 text-warning"
-                        aria-label={t("characters.editor.combinations.missing", { list: combination.missing.join(", ") })}
+                        aria-label={t("characters.editor.combinations.missing", { list: formatList(combination.missing, { style: "narrow" }) })}
+                        data-tip={t("characters.editor.combinations.missing", { list: formatList(combination.missing, { style: "narrow" }) })}
                     />
                 )}
                 <button
@@ -114,7 +115,7 @@ export function CombinationGrid(props: {
             <div className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 overflow-y-auto p-3">
                 {combinations.length === 0 ? (
                     <div className="col-span-full grid place-items-center p-6 text-sm text-fg-subtle">
-                        {t("characters.preview.placeholder")}
+                        {t("characters.preview.emptyLayered")}
                     </div>
                 ) : combinations.map(combination => (
                     <Cell

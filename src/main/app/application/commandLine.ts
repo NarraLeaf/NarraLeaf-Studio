@@ -1,3 +1,5 @@
+import { AGENT_MCP_DEFAULT_PORT } from "@shared/agent/protocol";
+import { AGENT_PORT_MAX, AGENT_PORT_MIN, isUsableAgentPort } from "@shared/agent/settings";
 import {
     EXPERIMENTAL_CONDITION_FLAG_PREFIX,
     EXPERIMENTAL_CONDITION_IDS,
@@ -25,6 +27,18 @@ export interface CdpCommandLineOptions {
 export interface DevReloadCommandLineOptions {
     port: number;
     portSource: "default" | "argument";
+    error: string | null;
+}
+
+/**
+ * Agent access for a development launch: `--agent` serves the endpoint, on `--agent-port` when it
+ * is given (which implies `--agent`) and on the default port otherwise. Development only - see
+ * `BaseApp.getAgentLaunchAccess`, which is where the profile's own switch stops counting.
+ */
+export interface AgentCommandLineOptions {
+    enabled: boolean;
+    port: number;
+    /** A malformed `--agent-port`; the endpoint then stays off rather than starting somewhere else. */
     error: string | null;
 }
 
@@ -289,6 +303,7 @@ export interface MainCommandLineOptions {
     check: CheckCommandLineOptions;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
+    agent: AgentCommandLineOptions;
     /**
      * Development launch that unlocks test conditions which are not part of the product.
      *
@@ -699,6 +714,7 @@ const VALUE_TAKING_FLAGS = new Set<string>([
     "--project",
     "--cdp-port",
     "--dev-reload-port",
+    "--agent-port",
     ...Object.keys(BUILD_VALUE_FLAGS),
     ...Object.keys(BUILD_LIST_FLAGS),
     ...Object.keys(CHECK_VALUE_FLAGS),
@@ -740,6 +756,9 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     let devReloadPort = DEFAULT_DEV_RELOAD_PORT;
     let devReloadPortSource: DevReloadCommandLineOptions["portSource"] = "default";
     let devReloadError: string | null = null;
+    let agentEnabled = false;
+    let agentPort = AGENT_MCP_DEFAULT_PORT;
+    let agentError: string | null = null;
     let projectSelector: string | null = null;
     let projectError: string | null = null;
     const experimentalConditions = new Set<ExperimentalConditionId>();
@@ -990,6 +1009,28 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             continue;
         }
 
+        if (arg === "--agent") {
+            agentEnabled = true;
+            continue;
+        }
+
+        if (arg === "--agent-port" || arg.startsWith("--agent-port=")) {
+            const separated = arg === "--agent-port";
+            const value = separated ? argv[i + 1] : arg.slice("--agent-port=".length);
+            const port = Number(value);
+            if (value === undefined || value === "" || !isUsableAgentPort(port)) {
+                agentError = `Invalid --agent-port value: ${value ?? ""} (a port from ${AGENT_PORT_MIN} to ${AGENT_PORT_MAX})`;
+                continue;
+            }
+            if (separated) {
+                i += 1;
+            }
+            agentEnabled = true;
+            agentPort = port;
+            agentError = null;
+            continue;
+        }
+
         if (arg.startsWith("--cdp=")) {
             const value = arg.slice("--cdp=".length);
             cdpEnabled = value !== "false" && value !== "0";
@@ -1120,6 +1161,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             port: devReloadPort,
             portSource: devReloadPortSource,
             error: devReloadError,
+        },
+        agent: {
+            enabled: agentEnabled,
+            port: agentPort,
+            error: agentError,
         },
         experimental: {
             requested: argv.includes(EXPERIMENTAL_FLAG),

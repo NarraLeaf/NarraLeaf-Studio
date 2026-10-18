@@ -593,6 +593,7 @@ app.services.agent.registerTools([{
 - `write: false` 的工具运行期间，`storage.writeJson` 会抛错——宿主对只读工具的约束仅此而已：它不受作者的写入开关把关，你的 `app` 能做的事它的 handler 都能做。只要工具会以任何方式修改项目，就必须声明为 `write: true`。
 - `write: true` 的工具运行期间，所有 `storage.writeJson` 被记录为**一步撤销**（「Agent：<标题>」）。撤销/重做会把各命名空间写回，然后调用你用 `workspace.registerReloader` 注册的重载函数——不注册的话，撤销改了文件却没改你内存里的数据。
 - 返回值上限：文本 60 000 字符（超出截断）、`data` 60 000 字符 JSON（超出丢弃）、最多一张 PNG/JPEG。
+- **Agent 读到的只有 `text`（和图片）**：`data` 不会发给客户端——有的客户端（Claude Code）见到结构化数据就只给模型看它、不看文本，所以宿主只发文本。模型需要的一切都写进 `text`。
 - 工具随插件卸载而撤销；工具列表变化时，已连接的客户端会收到 `notifications/tools/list_changed`（打开了通知流的客户端），其余客户端下次 `tools/list` 时看到。
 
 内建的 Gallery（`src/builtin-plugins/gallery/agentTools.ts` 与 `agent/guide.md`）是完整的参考实现。

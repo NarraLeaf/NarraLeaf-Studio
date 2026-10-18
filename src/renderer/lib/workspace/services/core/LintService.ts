@@ -428,6 +428,7 @@ export class LintService extends Service<LintService> implements ILintService {
             // `listTags()`, which synthesizes the release variant, so the list is never empty and
             // `AppTag == "main"` resolves in a project that has authored no variants at all.
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
+            projectEndingSurfaceId: safely(() => services.get<AppTagService>(Services.AppTags).getProjectEndingSurfaceId(), ""),
             dlcs: services.get<DlcService>(Services.Dlc).list(),
             // The union across the project and its variants: which of them opens which address is
             // decided when a build is compiled, and a graph belongs to all of them.
@@ -600,7 +601,6 @@ export class LintService extends Service<LintService> implements ILintService {
                         ids.add(value.trim());
                     }
                 };
-                add(character.profile.getThumbnail());
                 if (appearance.getKind() === "preset") {
                     for (const pose of appearance.getPoses()) {
                         add(pose.assetId);
@@ -617,6 +617,9 @@ export class LintService extends Service<LintService> implements ILintService {
                     id: character.profile.getId(),
                     name: character.profile.getName(),
                     assetIds: [...ids],
+                    ...(appearance.getKind() === "layered"
+                        ? { axes: appearance.getAxes().map(axis => ({ name: axis.name, tags: axis.tags.map(tag => tag.name) })) }
+                        : {}),
                 };
             });
         } catch (error) {
@@ -707,7 +710,8 @@ export class LintService extends Service<LintService> implements ILintService {
                 console.warn(`[LintService] voice document ${locale} failed to load`, error);
             }
         }
-        return { voicedLocales, documents, voiceChoices: config.voiceChoices };
+        const voicedLocaleNames = new Map(config.voicedLocales.map(locale => [locale.code, locale.displayName]));
+        return { voicedLocales, voicedLocaleNames, documents, voiceChoices: config.voiceChoices };
     }
 
     /**
@@ -907,6 +911,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     ok: true,
                     width: result.data.metadata.width,
                     height: result.data.metadata.height,
+                    animation: result.data.metadata.animation ?? null,
                 };
             })),
         };
@@ -937,9 +942,8 @@ function mergeContextFindings(report: LintReport, contextFindings: readonly Lint
         ...report,
         entries: [...contextFindings, ...report.entries],
         counts: {
+            ...report.counts,
             error: report.counts.error + contextFindings.length,
-            warning: report.counts.warning,
-            info: report.counts.info,
         },
     };
 }

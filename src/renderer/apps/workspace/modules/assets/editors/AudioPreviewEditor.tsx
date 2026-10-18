@@ -1049,35 +1049,46 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             </div>
 
             {/* One status bar. Values only - the selection and the region read as ranges, the
-                rest as facts. */}
-            <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
-                {hasSelection && selection && (
-                    <span className="text-fg-muted">
-                        {formatTime(selection.start / clip.sampleRate)} – {formatTime(selection.end / clip.sampleRate)}
-                        {" ("}
-                        {formatTime(selectionSeconds)}
-                        {")"}
-                    </span>
-                )}
-                {hasMarkers && (
-                    <span className="flex items-center gap-1 text-primary">
-                        <BetweenVerticalStart className="h-3 w-3" />
-                        {loopPoints.inMs === null ? "--:--" : formatTime(loopPoints.inMs / 1000)}
-                        {" – "}
-                        {loopPoints.outMs === null ? "--:--" : formatTime(loopPoints.outMs / 1000)}
-                        {loopPoints.loopStartMs !== null && (
-                            <>
-                                <IterationCw className="h-3 w-3" />
-                                {formatTime(loopPoints.loopStartMs / 1000)}
-                            </>
-                        )}
-                    </span>
-                )}
-                <span className="flex-1" />
-                <span>{clip.sampleRate} Hz</span>
-                <span>{t("assets.audio.editor.channels", { count: clip.channels.length })}</span>
-                {metadata && <span>{(metadata.size / 1024).toFixed(1)} KB</span>}
-                <span className="max-w-[16rem] truncate">{asset?.name}</span>
+                rest as facts.
+
+                Each value is one unit: it never breaks across lines and is never squeezed. In a
+                narrow editor group the values that do not fit drop out whole, from the right - the
+                name first, then the size, the channels and the sample rate, the region, the
+                selection last - by wrapping onto a second line this one-line-high strip does not
+                show. The empty first item is what lets the first value wrap away too: a flex line
+                keeps its first item however wide it is. Values are spaced by their own left margin
+                rather than a gap, which would also space them from that empty item. */}
+            <div className="flex shrink-0 border-t border-edge py-1 pr-3 text-2xs tabular-nums text-fg-subtle">
+                <div className="flex h-4 min-w-0 flex-1 flex-wrap content-start items-center overflow-hidden whitespace-nowrap">
+                    <span aria-hidden className="h-4 w-0" />
+                    {hasSelection && selection && (
+                        <span className="ml-3 text-fg-muted">
+                            {formatTime(selection.start / clip.sampleRate)} – {formatTime(selection.end / clip.sampleRate)}
+                            {" ("}
+                            {formatTime(selectionSeconds)}
+                            {")"}
+                        </span>
+                    )}
+                    {hasMarkers && (
+                        <span className="ml-3 flex items-center gap-1 text-primary">
+                            <BetweenVerticalStart className="h-3 w-3" />
+                            {loopPoints.inMs === null ? "--:--" : formatTime(loopPoints.inMs / 1000)}
+                            {" – "}
+                            {loopPoints.outMs === null ? "--:--" : formatTime(loopPoints.outMs / 1000)}
+                            {loopPoints.loopStartMs !== null && (
+                                <>
+                                    <IterationCw className="h-3 w-3" />
+                                    {formatTime(loopPoints.loopStartMs / 1000)}
+                                </>
+                            )}
+                        </span>
+                    )}
+                    <span aria-hidden className="ml-3 flex-1" />
+                    <span className="ml-3">{clip.sampleRate} Hz</span>
+                    <span className="ml-3">{t("assets.audio.editor.channels", { count: clip.channels.length })}</span>
+                    {metadata && <span className="ml-3">{(metadata.size / 1024).toFixed(1)} KB</span>}
+                    <span className="ml-3 max-w-[16rem] truncate">{asset?.name}</span>
+                </div>
             </div>
         </div>
     );

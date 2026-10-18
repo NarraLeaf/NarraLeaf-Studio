@@ -7,7 +7,8 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
-import { i18nStore } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -86,6 +87,20 @@ function buildIn(source: string, context: StoryCommandContext): StoryBlock {
         throw new Error(`no build on ${line.def.commandId}`);
     }
     return spec.build(args, { generateId, context });
+}
+
+/** Parse, resolve and commit a scene-changing line against an empty scene; the change it makes. */
+function editSceneWith(source: string): unknown {
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        throw new Error(`not a command: ${source}`);
+    }
+    expect(line.issues).toEqual([]);
+    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    expect(issues).toEqual([]);
+    const spec = getCommandSpec(line.def.commandId);
+    const scene = { id: "s", name: "Scene", runtimeName: "scene", rootBlockIds: [], blocks: {} };
+    return spec?.editScene?.(args, { generateId, context: CONTEXT, scene }) ?? null;
 }
 
 /** Resolution issues for a line - for asserting what must NOT commit. */
@@ -1045,7 +1060,26 @@ describe("logic and effects", () => {
         // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
         // and no other Displayable has one.
         expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        // Shares of the stage, not pixels: a pair far off it is refused, one just off it is a slide-in start.
+        expect(issuesOf("/transform hero pos=100,200")).toEqual(["positionOutOfRange"]);
+        expect(issuesOf("/transform hero pos=-0.3,0.5")).toEqual([]);
+        expect(issuesOf("/transform hero pos=50%,20%")).toEqual(["unsupportedOption"]);
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
+    });
+
+    it("takes back a far-out pair a row of the scene already stores, in pos= and in from=", () => {
+        const stored: StoryCommandContext = { ...CONTEXT, storedFarPositions: ["100,200"] };
+        const issuesIn = (source: string, context: StoryCommandContext) => {
+            const line = parseCommandLine(source);
+            if (line.kind !== "command" || !line.def) {
+                throw new Error(`not a command: ${source}`);
+            }
+            return resolveCommandLine(line, context).issues.map(issue => issue.code);
+        };
+        expect(issuesIn("/transform hero pos=100,200", stored)).toEqual([]);
+        expect(issuesIn("/transform hero pos=100,201", stored)).toEqual(["positionOutOfRange"]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", stored)).toEqual([]);
+        expect(issuesIn("/transform hero from=pos=100,200 pos=0.5,0.5", CONTEXT)).toEqual(["unsupportedOption"]);
     });
 
     it("/transform takes a drawn easing curve where it takes an easing word", () => {
@@ -1164,6 +1198,44 @@ describe("logic and effects", () => {
         expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
+    it("says in the menu that a declaring command needs a /show", () => {
+        // `/image`, `/text` and `/vfx` put nothing on screen; the author learns that from the command
+        // menu's one line or not at all. `/vfx` was the one whose line did not say it.
+        const declaring = listCommandSpecs().filter(spec => spec.sequence?.lines[0]?.startsWith(`/${spec.token} `)
+            && spec.sequence.lines.some(line => line.startsWith("/show ")));
+        expect(declaring.map(spec => spec.id).sort()).toEqual(["image", "text", "vfx"]);
+        for (const locale of ["en", "zh", "ja"] as const) {
+            i18nStore.setLocale(locale);
+            try {
+                for (const spec of declaring) {
+                    expect(translate(`story.command.${spec.id}.detail` as TranslationKey), `${locale} ${spec.id}`).toContain("/show");
+                }
+            } finally {
+                i18nStore.setLocale("en");
+            }
+        }
+    });
+
+    it("names an unnamed overlay or text in the words the author writes", () => {
+        // The weather word the author typed is the name they will address it by: a zh 樱花 overlay
+        // was named `sakura`, and the next `/show 樱花` found nothing. A `/text` with no name is 文本.
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/氛围特效 樱花")).toMatchObject({ payload: { action: "vfx", objectName: "樱花", seed: { seed: "sakura" } } });
+            expect(build("/文本 欢迎")).toMatchObject({ payload: { action: "text", objectName: "文本", text: "欢迎" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        i18nStore.setLocale("ja");
+        try {
+            expect(build("/テキスト ようこそ")).toMatchObject({ payload: { action: "text", objectName: "テキスト" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/vfx sakura")).toMatchObject({ payload: { action: "vfx", objectName: "sakura" } });
+        expect(build("/text Hello")).toMatchObject({ payload: { action: "text", objectName: "text" } });
+    });
+
     it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
@@ -1175,8 +1247,9 @@ describe("logic and effects", () => {
         // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
         // duration would be a number the compile does not read.
         expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
-        // Blend mode decides whether the material reads at all, so the create row opens the inspector.
-        expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+        // The row is complete as typed, so its commit leaves a new line under it like every other
+        // command's; with 属性 closed, opening the inspector instead showed nothing at all.
+        expect(opensInspectorAfterCommit(getCommandSpec("vfx"), build("/vfx intro"))).toBe(false);
     });
 
     it("/vfx takes a weather word as its source, and the word names the row", () => {
@@ -1326,6 +1399,15 @@ describe("input commands", () => {
         expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
     });
 
+    it("/page names its page by id and writes its result into any variable", () => {
+        expect(build("/page Map into=gold")).toMatchObject({
+            kind: "action",
+            payload: { action: "page", surfaceId: "u1", resultTarget: { scope: "scene", variableId: "var_gold" } },
+        });
+        expect((build("/page Title") as { payload: object }).payload).toEqual({ action: "page", surfaceId: "u2" });
+        expect(build("/popup Map")).toMatchObject({ payload: { action: "page", surfaceId: "u1" } });
+    });
+
     it("/input lock and unlock", () => {
         expect(build("/input lock")).toMatchObject({ payload: { action: "input", operation: "lock" } });
         expect(build("/input unlock")).toMatchObject({ payload: { action: "input", operation: "unlock" } });
@@ -1381,6 +1463,11 @@ describe("manual examples", () => {
     it("parses, resolves and builds every one of them", () => {
         for (const spec of specs) {
             for (const example of spec.examples ?? []) {
+                if (spec.editScene) {
+                    // A command that changes the scene writes no row: what it commits is the change.
+                    expect(editSceneWith(example), example).not.toBeNull();
+                    continue;
+                }
                 // `build` asserts zero parse and zero resolution issues on the way through.
                 expect(build(example), example).toBeTruthy();
             }

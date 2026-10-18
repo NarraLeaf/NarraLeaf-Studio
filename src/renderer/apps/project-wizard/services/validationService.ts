@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { FsRequestResult } from "@shared/types/os";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { getLocaleMeta, type LocaleCode } from "@shared/i18n";
+import { authorNameForAppId, isValidNewAppId, prefixAppIdWithAuthor, uniqueAppId } from "@shared/project/appIdSuggestion";
 import { ProjectData, DirectoryValidationResult, ProjectFlow, ValidationErrors } from "../types";
 
 /** Han characters, which read differently in Chinese and in Japanese. */
@@ -42,10 +43,37 @@ export class ValidationService {
     }
 
     /**
-     * Validate if app ID contains only allowed characters
+     * The app ID the field offers: the name's, with the author's in front, and none another project
+     * on this machine uses (see `@shared/project/appIdSuggestion` for why each).
+     *
+     * The author is read by the same rule as the name, so a Chinese author line is spelled in pinyin
+     * only for somebody working in Chinese. `isTaken` is asked of every candidate.
+     */
+    static suggestAppId(input: {
+        name: string;
+        author: string;
+        locale: LocaleCode;
+        isTaken: (appId: string) => boolean;
+    }): string {
+        const game = this.generateAppId(input.name, input.locale);
+        const author = this.generateAppId(authorNameForAppId(input.author), input.locale);
+        return uniqueAppId(prefixAppIdWithAuthor(game, author), input.isTaken);
+    }
+
+    /**
+     * Whether an app id can be written down as typed.
+     *
+     * Two shapes, both lowercase. A bare name (`my-game`), which a build files under NarraLeaf's own
+     * namespace; and a reverse-domain id (`com.studio.game`), which a build uses as the package and
+     * bundle id verbatim - `deriveGameAppId` was written to take one, and a studio publishing to a
+     * store needs its own. The dotted shape is held to that function's own pattern, so every id the
+     * wizard accepts with a dot is one the build takes as it is, and none of its segments is empty or
+     * ends in a hyphen. That also keeps a dot from ending the name of the project's folder, which is
+     * named after this id and which Windows would silently shorten.
      */
     static validateAppId(appId: string): boolean {
-        return /^[a-z0-9-]+$/.test(appId);
+        // Shared with the agent endpoint's `project_create`, which makes projects too.
+        return isValidNewAppId(appId);
     }
 
     /**

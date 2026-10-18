@@ -11,7 +11,11 @@ import { DirectoryService } from "../services/directoryService";
 import { ProjectService } from "../services/projectService";
 import { CloneService } from "../services/cloneService";
 import { ImportService } from "../services/importService";
-import { join } from "@shared/utils/path";
+import { dirname, join } from "@shared/utils/path";
+import { appIdCollisionKey } from "@shared/project/appIdSuggestion";
+
+/** A project on this machine, as far as its app ID goes - what `listLocalAppIds` answers. */
+type LocalAppId = { appId: string; key: string; projectName: string };
 
 /**
  * The page that owns the destination-folder field, in either flow.
@@ -248,17 +252,75 @@ export function useProjectWizard() {
      * Update project name and auto-generate app ID if not manually edited
      */
     const updateProjectName = useCallback((name: string) => {
-        setProjectData(prevData => {
-            const newData = { ...prevData, name };
+        setProjectData(prevData => ({ ...prevData, name }));
+    }, []);
 
-            // Only auto-generate app ID if it wasn't manually edited
-            if (!appIdManuallyEdited) {
-                newData.appId = ValidationService.generateAppId(name, locale);
-            }
+    /**
+     * The app IDs the projects on this machine use - the ones Studio knows, the projects folder, and
+     * the folder this one is going into.
+     *
+     * Asked again when the destination moves to another folder: a folder the author picked can hold
+     * projects Studio has never opened, a copied one most of all. Until the first answer the list is
+     * empty, which suggests as before and refuses nothing.
+     */
+    const [localAppIds, setLocalAppIds] = useState<readonly LocalAppId[]>([]);
+    const destinationFolders = useMemo(() => {
+        const location = projectData.location.trim();
+        return location ? [location, dirname(location)] : [];
+    }, [projectData.location]);
+    const destinationKey = destinationFolders.join("\n");
+    useEffect(() => {
+        if (flow !== "create") {
+            return;
+        }
+        let alive = true;
+        const timer = setTimeout(() => {
+            void getInterface().listLocalAppIds(destinationFolders)
+                .then(result => {
+                    if (alive && result.success) {
+                        setLocalAppIds(result.data.projects);
+                    }
+                })
+                .catch(() => undefined);
+        }, 300);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
+        // Keyed by the folders' text: the array is rebuilt on every location keystroke.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [flow, destinationKey]);
 
-            return newData;
+    const takenKeys = useMemo(() => new Map(localAppIds.map(entry => [entry.key, entry.projectName] as const)), [localAppIds]);
+
+    /**
+     * Until the author types one, the ID follows the name and the author line, and steps around every
+     * ID a project on this machine already has. The ID cannot change once the project exists, so this
+     * is where two games are kept from sharing one.
+     */
+    useEffect(() => {
+        if (appIdManuallyEdited) {
+            return;
+        }
+        setProjectData(prev => {
+            const appId = ValidationService.suggestAppId({
+                name: prev.name,
+                author: prev.author,
+                locale,
+                isTaken: candidate => takenKeys.has(appIdCollisionKey(candidate, prev.name)),
+            });
+            return prev.appId === appId ? prev : { ...prev, appId };
         });
-    }, [appIdManuallyEdited, locale]);
+    }, [appIdManuallyEdited, locale, projectData.name, projectData.author, takenKeys]);
+
+    /** The project already using the ID in the field, by name, or null when none does. */
+    const appIdTakenBy = useMemo(() => {
+        const appId = projectData.appId.trim();
+        if (!appId || !ValidationService.validateAppId(appId)) {
+            return null;
+        }
+        return takenKeys.get(appIdCollisionKey(appId, projectData.name)) ?? null;
+    }, [projectData.appId, projectData.name, takenKeys]);
 
     /**
      * Update app ID and mark as manually edited
@@ -484,8 +546,12 @@ export function useProjectWizard() {
              !locationInputDirty &&
              !locationInputFocused);
 
-        return isStepValid() && locationValid;
-    }, [isStepValid, validationErrors, locationInputDirty, locationInputFocused, currentStep]);
+        // An ID another project here uses is refused on the page that has the field and on the page
+        // with the button that writes, which is reachable by walking back and forth.
+        const appIdFree = flow !== "create" || (currentStep !== "project" && currentStep !== "review") || appIdTakenBy === null;
+
+        return isStepValid() && locationValid && appIdFree;
+    }, [isStepValid, validationErrors, locationInputDirty, locationInputFocused, currentStep, flow, appIdTakenBy]);
 
     /**
      * Create project
@@ -626,6 +692,7 @@ export function useProjectWizard() {
         locationInputDirty,
         locationInputFocused,
         appIdManuallyEdited,
+        appIdTakenBy,
 
         // Actions
         setFlow,

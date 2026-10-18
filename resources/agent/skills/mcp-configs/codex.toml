@@ -1,5 +1,6 @@
 # Codex CLI - add to ~/.codex/config.toml. Replace <PORT> and <TOKEN> with the values from
-# NarraLeaf Studio: Settings -> Agent access -> Copy configuration.
+# NarraLeaf Studio: Agent menu -> Copy connection configuration -> Codex (or the address and token
+# under Settings -> Agent access).
 
 [mcp_servers.narraleaf]
 url = "http://127.0.0.1:<PORT>/mcp"

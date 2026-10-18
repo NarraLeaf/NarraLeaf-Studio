@@ -32,6 +32,15 @@ import {
  * still be told when that recording goes out of date or loses its line.
  */
 
+/**
+ * How a message names a voice language: by the display name the Voice panel lists it under, which is
+ * what the author reads on the row they are sent to. The code is the fallback for a language with
+ * no name.
+ */
+function voiceLanguageName(ctx: LintContext, locale: string): string {
+    return ctx.voice?.voicedLocaleNames?.get(locale)?.trim() || locale;
+}
+
 /** A unit only counts once it actually points at an imported clip. */
 function hasClip(unit: VoiceUnit | undefined): unit is VoiceUnit {
     return Boolean(unit && unit.assetId);
@@ -72,7 +81,7 @@ function runMissing(ctx: LintContext): LintFinding[] {
             if (hasClip(voice.documents.get(locale)?.units[ref.textId])) {
                 continue;
             }
-            findings.push(finding(ref, "lint.rule.voiceMissing.message", locale, "voice/missing"));
+            findings.push(finding(ctx, ref, "lint.rule.voiceMissing.message", locale, "voice/missing"));
         }
     }
     return findings;
@@ -100,7 +109,7 @@ function runStale(ctx: LintContext): LintFinding[] {
             if (!hasClip(unit) || !isSourceHashStale(unit.sourceHash, lineText)) {
                 continue;
             }
-            findings.push(finding(ref, "lint.rule.voiceStale.message", locale, "voice/stale"));
+            findings.push(finding(ctx, ref, "lint.rule.voiceStale.message", locale, "voice/stale"));
         }
     }
     return findings;
@@ -139,7 +148,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
         findings.push({
             ruleId: "voice/orphan",
             messageKey: "lint.rule.voiceOrphan.message",
-            messageParams: { count, locale },
+            messageParams: { count, locale, language: voiceLanguageName(ctx, locale) },
             messageParamCounts: { recordings: { key: "lint.rule.voiceOrphan.recordingCount", count } },
             location: { kind: "project" },
             target: { kind: "voiceOrphans", locale },
@@ -149,6 +158,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
 }
 
 function finding(
+    ctx: LintContext,
     ref: LintTextSegmentRef,
     messageKey: LintFinding["messageKey"],
     locale: string,
@@ -157,7 +167,7 @@ function finding(
     return {
         ruleId,
         messageKey,
-        messageParams: { locale },
+        messageParams: { locale, language: voiceLanguageName(ctx, locale) },
         // Filed under the line; opened in the language's voice table, at the line's row, which is
         // where a take is linked to it.
         location: storyLocation(ref),
@@ -169,7 +179,9 @@ export const VOICE_LINT_RULES: readonly LintRule[] = [
     {
         id: "voice/missing",
         category: "voice",
-        defaultSeverity: "warning",
+        // A minor warning: it fires once per spoken line per voiced language, so a voiced title still
+        // being recorded holds thousands of these, and the line still plays as text without its voice.
+        defaultSeverity: "minor",
         slug: "voiceMissing",
         run: ctx => runMissing(ctx),
     },

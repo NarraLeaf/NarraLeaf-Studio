@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Exercise the exact engine extension distributed through Yarn, without mounting a Player.
-const patch = readFileSync(path.resolve(".yarn/patches/narraleaf-react-npm-1.4.1-frame-sequence.patch"), "utf8");
+const patch = readFileSync(path.resolve(".yarn/patches/narraleaf-react-npm-1.5.0-frame-sequence.patch"), "utf8");
 const source = patch
     .split("+++ b/dist/frame-sequence.js\n")[1]
     .split("\n")

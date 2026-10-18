@@ -12,7 +12,7 @@ function entry(ruleId: LintRuleId, blockId: string | undefined, message = "m"): 
 }
 
 function report(entries: LintReportEntry[]): LintReport {
-    return { startedAt: 0, finishedAt: 0, entries, counts: { error: 0, warning: entries.length, info: 0 }, rulesRun: [], skipped: [] };
+    return { startedAt: 0, finishedAt: 0, entries, counts: { error: 0, warning: entries.length, minor: 0, info: 0 }, rulesRun: [], skipped: [] };
 }
 
 describe("isRowMarked", () => {

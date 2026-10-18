@@ -13,9 +13,10 @@ import { AGENT_MCP_DEFAULT_PORT, AGENT_MCP_LEGACY_DEFAULT_PORT, AGENT_MCP_PATH }
  * The same file is what a stdio bridge reads to find the endpoint, which is why the address it is
  * actually served on is written there too.
  *
- * There is no port setting. Which port the endpoint is on is not something an author should need to
- * know to fill in, so Studio picks it: the profile's port, then a fixed run of fallbacks, then any
- * free one, and whichever binds becomes the profile's port - see `AgentManager.startServer`.
+ * The port is the profile's, and only the Settings window changes it. The endpoint is served on that
+ * port or not at all: when it cannot be bound, a start fails and says which port and why, and a
+ * change from Settings is refused and leaves the endpoint where it was. Nothing moves the endpoint to
+ * another port on its own, so a configuration copied once keeps naming the right one.
  *
  * Comments in English per project convention.
  */
@@ -53,8 +54,8 @@ export type AgentSettingsFile = {
      */
     fullAccess: boolean;
     /**
-     * The port the endpoint is tried on first. Rewritten to the port it actually bound whenever it
-     * starts, so the next launch lands on the same one and configurations copied with it keep working.
+     * The port the endpoint is served on. Set from Settings; a profile from Studio 1.5 to 1.6.1 may
+     * name a port the endpoint moved to on its own back then, and keeps it.
      */
     port: number;
     /** The bearer token every request must carry. */
@@ -94,28 +95,58 @@ export type AgentPluginToolsSetting = {
 
 /** What the Settings window is shown. */
 export type AgentSettingsSnapshot = {
+    /** Whether the endpoint is to be served: the profile's switch, or `--agent` in development. */
     enabled: boolean;
+    /**
+     * A development launch: whether the endpoint is served and on which port come from `--agent` and
+     * `--agent-port`, not from the profile, and neither can be changed from Studio for this run.
+     */
+    setByLaunch: boolean;
     allowWrites: boolean;
     /** See {@link AgentSettingsFile.fullAccess}. */
     fullAccess: boolean;
     token: string;
     allowedImportRoots: string[];
+    /**
+     * The profile's port - the one the endpoint is on while it runs and the one it starts on next -
+     * or `--agent-port` in development.
+     */
+    port: number;
     /** Whether the endpoint is listening. */
     running: boolean;
     /** The endpoint a client connects to: the live one while running, else the one the profile's port gives. */
     url: string;
-    /** Why the endpoint is not running although it is enabled, when it failed to start. */
-    error: string | null;
     /**
-     * The port the endpoint moved to when it last started, while configurations copied before still
-     * name the port it had; null once a configuration has been copied since, or when it did not move.
-     * A stdio bridge reads the live address itself and is not affected.
+     * Why the endpoint is not running although it is enabled, when it failed to start for any reason
+     * but its port; that one is {@link portUnavailable}.
+     */
+    error: string | null;
+    /** The endpoint is enabled but did not start, because its port is in use or reserved. */
+    portUnavailable: AgentPortRefusal | null;
+    /**
+     * The new default a profile on the old one ({@link AGENT_MCP_LEGACY_DEFAULT_PORT}) was moved to,
+     * while configurations copied before still name the old port; null once a configuration has been
+     * copied since. A stdio bridge reads the live address itself and is not affected.
      */
     movedToPort: number | null;
+    /**
+     * Only on the answer to an update that asked for a port: why that port could not be bound. The
+     * endpoint and the profile's port are left as they were.
+     */
+    portRefused?: AgentPortRefusal;
     /** The command a stdio-only client runs to reach the endpoint through {@link AGENT_MCP_STDIO_FLAG}. */
     stdio: AgentStdioCommand;
     /** Installed, enabled plugins that offer agent tools, with whether the author allows them. */
     pluginTools: AgentPluginToolsSetting[];
+};
+
+/**
+ * A port the endpoint could not be served on: in use by another program (`EADDRINUSE`), or reserved
+ * by the system (`EACCES`, as Windows answers inside a range Hyper-V, WSL or Docker excluded).
+ */
+export type AgentPortRefusal = {
+    port: number;
+    reason: "inUse" | "reserved";
 };
 
 /**
@@ -141,6 +172,11 @@ export type AgentSettingsPatch = {
     allowWrites?: boolean;
     /** Turning it on is confirmed in the agent access window first; see `AgentManager`. */
     fullAccess?: boolean;
+    /**
+     * Move the endpoint to this port, from {@link AGENT_PORT_MIN} to {@link AGENT_PORT_MAX}. While it
+     * runs, it moves at once or not at all; see {@link AgentSettingsSnapshot.portRefused}.
+     */
+    port?: number;
     /** The author copied a configuration with the current address, so {@link AgentSettingsSnapshot.movedToPort} is answered. */
     acknowledgeMovedPort?: true;
     /** Remove this directory from the allowed list. Adding one goes through the folder picker. */
@@ -164,14 +200,15 @@ export function agentEndpointUrl(port: number): string {
 /** The name a client registers the server under. Short, because some clients prefix tool names with it. */
 export const AGENT_CLIENT_SERVER_KEY = "narraleaf";
 
-export type AgentClientConfigKind = "claudeCode" | "json" | "opencode" | "stdio";
+export type AgentClientConfigKind = "claudeCode" | "json" | "opencode" | "stdio" | "codex" | "gemini";
 
 /**
  * Ready-to-paste configuration for one kind of client.
  *
  * Built in one place so the shapes cannot drift apart: Claude Code takes a command line, most
  * clients (Cursor, Gemini CLI, Claude Desktop through mcp-remote) read the `mcpServers` JSON shape,
- * opencode has its own `mcp` block with `type: "remote"`, and a client that only launches local
+ * opencode has its own `mcp` block with `type: "remote"`, Codex reads a TOML table, Gemini CLI names
+ * the address `httpUrl` (its `url` means the older SSE transport), and a client that only launches local
  * programs gets the same `mcpServers` shape naming Studio's own executable with
  * {@link AGENT_MCP_STDIO_FLAG}. That last one needs `stdio`, which only main can fill in.
  */
@@ -191,6 +228,15 @@ export function buildAgentClientConfig(kind: AgentClientConfigKind, url: string,
             return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { type: "http", url, headers } } }, null, 2);
         case "opencode":
             return JSON.stringify({ mcp: { [AGENT_CLIENT_SERVER_KEY]: { type: "remote", url, headers } } }, null, 2);
+        case "codex":
+            // JSON.stringify writes a valid TOML basic string for anything a URL or a token holds.
+            return [
+                `[mcp_servers.${AGENT_CLIENT_SERVER_KEY}]`,
+                `url = ${JSON.stringify(url)}`,
+                `http_headers = { "Authorization" = ${JSON.stringify(headers.Authorization)} }`,
+            ].join("\n");
+        case "gemini":
+            return JSON.stringify({ mcpServers: { [AGENT_CLIENT_SERVER_KEY]: { httpUrl: url, headers } } }, null, 2);
     }
 }
 

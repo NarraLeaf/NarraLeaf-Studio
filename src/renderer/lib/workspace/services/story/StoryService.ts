@@ -22,6 +22,7 @@ import {
     StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
+    StorySceneLayer,
     StorySceneSnapshot,
     StorySceneUpdate,
     StorySceneVariableDefinition,
@@ -29,6 +30,10 @@ import {
     StoryDeclarationBlock,
     StoryDeclarationPayload,
     StoryVariableScope,
+    isDefaultSceneLayerStack,
+    normalizeSceneLayerStack,
+    sameSceneLayerStack,
+    sceneLayerStack,
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -52,6 +57,7 @@ import {
     findStoryDocumentTooNewError,
     findStoryDocumentTooOldError,
 } from "@shared/story/migrateStoryDocument";
+import { storyPluginActionKeywordsProblem, storyPluginActionParamsProblem } from "@/lib/story/pluginActionParams";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
@@ -940,6 +946,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // plugin they did not write, at the one moment they were trying to write a line.
             throw new RendererError(`Plugin action must supply createBlock: ${actionId}`);
         }
+        // Refused here for the same reason: a malformed field list would otherwise surface only when
+        // the author selects one of the action's rows, as an inspector that fails to draw, and a
+        // keyword with a space in it would simply never match.
+        const declarationProblem = storyPluginActionParamsProblem(registration.params)
+            ?? storyPluginActionKeywordsProblem(registration.keywords);
+        if (declarationProblem) {
+            throw new RendererError(`Plugin action ${actionId}: ${declarationProblem}`);
+        }
         const normalized = { ...registration, id: actionId };
         this.pluginActions.set(actionId, normalized);
         if (ownerPluginId) {
@@ -1246,41 +1260,71 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
-     * Run outline edits an agent connected over MCP makes - a chapter, a scene - as one step of undo
-     * on the project's stack that takes back exactly the scenes and chapters they added.
+     * Run outline edits an agent connected over MCP makes - a chapter, a scene, a name - as one step
+     * of undo on the project's stack that takes back exactly what they changed in the outline.
      *
      * Studio's own "new scene" and "new chapter" record nothing (deleting the new one is the author's
      * undo), but an agent's write has to be one Ctrl+Z like any other, and a scene made and then moved
      * into place was two edits, the second a "Move scene" step whose undo moved the new scene instead
      * of removing it. Edits inside `action` record nothing of their own.
      *
-     * A command over the added records rather than {@link recordStructuralChange}'s whole-structure
+     * What the step covers: the scenes and chapters `action` added, the names it gave chapters and
+     * scenes that were already there, and the chapters it removed that held no scene. A chapter
+     * removed with scenes in it, or a scene removed, is not something this step can put back, and no
+     * agent tool runs one inside it.
+     *
+     * A command over those records rather than {@link recordStructuralChange}'s whole-structure
      * snapshot: that restores every scene's rows too, so undoing it later would take back whatever
-     * the author wrote in other scenes since. Undo holds each added scene as it stands then - rows the
-     * agent wrote into it afterwards included - so redo puts it back whole, where it was. A chapter it
-     * added is removed only while no other scene is in it.
+     * the author - or the agent - wrote in any scene since. Undo holds each added scene as it stands
+     * then - rows the agent wrote into it afterwards included - so redo puts it back whole, where it
+     * was. A chapter it added is removed only while no other scene is in it, and a chapter it removed
+     * is removed again on redo only while it is still empty.
      */
     public runAgentOutlineStep<T>(storyId: StoryId, label: HistoryLabel, action: () => T): T {
         const history = this.getHistoryService();
         const before = this.getStoryDocument(storyId);
-        const scenesBefore = new Set(Object.keys(before.scenes));
-        const chaptersBefore = new Set(before.chapters.map(chapter => chapter.id));
+        const sceneNamesBefore = new Map(Object.values(before.scenes).map(scene => [scene.id, scene.name]));
+        type HeldChapter = { chapter: StoryChapter; beforeChapterId: StoryChapterId | null };
+        // A chapter is a name and a list of scene ids, so holding every one as it stood is cheap.
+        const chaptersBefore = new Map<StoryChapterId, HeldChapter>(before.chapters.map((chapter, index) => [chapter.id, {
+            chapter: JSON.parse(JSON.stringify(chapter)) as StoryChapter,
+            beforeChapterId: before.chapters[index + 1]?.id ?? null,
+        }]));
         const result = history.withoutRecording(action);
         if (this.opSink !== null) {
             // Inside a session an undo is the inverse operation, which is the session's to send.
             return result;
         }
         const after = this.getStoryDocument(storyId);
-        const addedSceneIds = listSceneIdsInDocumentOrder(after).filter(id => !scenesBefore.has(id));
+        const addedSceneIds = listSceneIdsInDocumentOrder(after).filter(id => !sceneNamesBefore.has(id));
         const addedChapterIds = after.chapters.map(chapter => chapter.id).filter(id => !chaptersBefore.has(id));
-        if (addedSceneIds.length === 0 && addedChapterIds.length === 0) {
+        const removedChapters = [...chaptersBefore.values()].filter(held =>
+            held.chapter.sceneIds.length === 0 && !after.chapters.some(chapter => chapter.id === held.chapter.id));
+        type Renamed = { id: string; from: string; to: string };
+        const renamedChapters: Renamed[] = after.chapters.flatMap(chapter => {
+            const was = chaptersBefore.get(chapter.id)?.chapter.name;
+            return was !== undefined && was !== chapter.name ? [{ id: chapter.id, from: was, to: chapter.name }] : [];
+        });
+        const renamedScenes: Renamed[] = Object.values(after.scenes).flatMap(scene => {
+            const was = sceneNamesBefore.get(scene.id);
+            return was !== undefined && was !== scene.name ? [{ id: scene.id, from: was, to: scene.name }] : [];
+        });
+        if (
+            addedSceneIds.length === 0 && addedChapterIds.length === 0 && removedChapters.length === 0
+            && renamedChapters.length === 0 && renamedScenes.length === 0
+        ) {
             return result;
         }
         type HeldScene = { scene: StoryScene; chapterId: StoryChapterId | null; beforeSceneId: StorySceneId | null; entry: boolean };
-        type HeldChapter = { chapter: StoryChapter; beforeChapterId: StoryChapterId | null };
         let heldScenes: HeldScene[] = [];
         let heldChapters: HeldChapter[] = [];
         const take = () => {
+            for (const renamed of renamedChapters) {
+                this.applyChapterName(storyId, renamed.id, renamed.from);
+            }
+            for (const renamed of renamedScenes) {
+                this.applySceneName(storyId, renamed.id, renamed.from);
+            }
             const document = this.getStoryDocument(storyId);
             heldScenes = addedSceneIds.flatMap(id => {
                 const scene = document.scenes[id];
@@ -1313,14 +1357,29 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const held of heldChapters) {
                 this.applyChapterDelete(storyId, held.chapter.id);
             }
+            // Back to front, so each record's neighbour is already in place when it is put back.
+            for (const held of [...removedChapters].reverse()) {
+                this.applyChapterCreate(storyId, held.chapter, held.beforeChapterId, undefined, undefined);
+            }
         };
-        // Back to front, so each record's neighbour is already in place when it is put back.
         const put = () => {
+            for (const held of removedChapters) {
+                const chapter = this.getStoryDocument(storyId).chapters.find(item => item.id === held.chapter.id);
+                if (chapter && chapter.sceneIds.length === 0) {
+                    this.applyChapterDelete(storyId, held.chapter.id);
+                }
+            }
             for (const held of [...heldChapters].reverse()) {
                 this.applyChapterCreate(storyId, held.chapter, held.beforeChapterId, undefined, undefined);
             }
             for (const held of [...heldScenes].reverse()) {
                 this.applySceneCreate(storyId, this.cloneScene(held.scene), held.chapterId, held.beforeSceneId, undefined, held.entry);
+            }
+            for (const renamed of renamedChapters) {
+                this.applyChapterName(storyId, renamed.id, renamed.to);
+            }
+            for (const renamed of renamedScenes) {
+                this.applySceneName(storyId, renamed.id, renamed.to);
             }
         };
         history.pushCommand(projectHistoryScope(), { label, undo: take, redo: put });
@@ -1558,6 +1617,50 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) return;
             // Copies, because the list may have arrived inside a message the sender still holds.
             scene.sceneSnapshots = snapshots.map(snapshot => ({ ...snapshot, values: { ...snapshot.values } }));
+            changed = true;
+        });
+        return changed;
+    }
+
+    // -----------------------------------------------------------------------
+    // The scene's layer stack (v30): which layers its stage is built from, front to back, and how
+    // much of the camera's movement each follows. One mutator over the whole stack, for the reason
+    // `set-scene-snapshots` has one: every gesture on the stack is a new stack.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Put the scene's layer stack as `layers` states it, normalized - the stack the stage can have, and
+     * none at all when that is the stack every scene starts with. False when the scene is gone or the
+     * stack is the one it already has.
+     */
+    public setSceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean {
+        const held = this.getStoryDocument(storyId).scenes[sceneId];
+        if (!held) {
+            return false;
+        }
+        const next = normalizeSceneLayerStack(layers);
+        if (sameSceneLayerStack(next, sceneLayerStack(held))) {
+            return false;
+        }
+        const stated = isDefaultSceneLayerStack(next) ? [] : next;
+        if (this.handedToSink(storyId, { op: "set-scene-layers", sceneId, layers: stated })) {
+            return true;
+        }
+        return this.applySceneLayers(storyId, sceneId, stated);
+    }
+
+    private applySceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            // Copies, because the stack may have arrived inside a message the sender still holds.
+            const next = normalizeSceneLayerStack(structuredClone(layers) as StorySceneLayer[]);
+            if (isDefaultSceneLayerStack(next)) {
+                delete scene.layers;
+            } else {
+                scene.layers = next;
+            }
             changed = true;
         });
         return changed;
@@ -2304,7 +2407,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * Cut a scene in two at one of its top-level rows: the rows from there on become a new scene
      * filed straight after this one.
      *
-     * The new scene inherits the original's background and music, and the original gets a jump to it
+     * The new scene inherits the original's background, music and layers, and the original gets a jump to it
      * appended when it would otherwise have run off its own end - the engine has no scene successor,
      * so a scene that stops stops the game. Both are what keeps the split playing the way the one
      * scene did.
@@ -2360,6 +2463,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 ...created,
                 ...(scene.defaultBackgroundAssetId ? { defaultBackgroundAssetId: scene.defaultBackgroundAssetId } : {}),
                 ...(scene.bgm ? { bgm: JSON.parse(JSON.stringify(scene.bgm)) as StoryScene["bgm"] } : {}),
+                // The layers too, under their own ids, so every row that moves finds its layer as it was.
+                ...(scene.layers ? { layers: structuredClone(scene.layers) } : {}),
             };
             const chapter = chapterId ? target.chapters.find(item => item.id === chapterId) : undefined;
             if (chapter) {
@@ -2530,6 +2635,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
                     return;
                 case "set-scene-snapshots":
                     this.applySceneSnapshots(storyId, op.sceneId, op.snapshots);
+                    return;
+                case "set-scene-layers":
+                    this.applySceneLayers(storyId, op.sceneId, op.layers);
                     return;
                 case "create-chapter":
                     this.applyChapterCreate(storyId, op.chapter, op.beforeChapterId, op.scenes, op.entry);

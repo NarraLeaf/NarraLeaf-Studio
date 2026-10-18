@@ -126,19 +126,61 @@ describe("computeStoryStageSnapshot", () => {
         expect(snapshot(document, "target").displayables).toEqual([]);
     });
 
-    it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
-        // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
-        // author reading a row-precise launch as complete when a layer of it is simply missing.
+    it("warns that a /vfx overlay or a clip is not previewed while it is on screen at the target", () => {
+        // An overlay showing, or a clip held on its last frame, is a real visual the snapshot cannot
+        // settle. Silence would leave the author reading the still as complete when a layer of it is
+        // simply missing. Each is said about the row that left it there.
         const document = baseDocument({
             rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
-            clip: block("clip", "action", { action: "video", operation: "create", objectName: "intro", assetId: "asset-intro" }),
+            showRain: block("showRain", "action", { action: "vfx", operation: "show", objectName: "rain" }),
+            clip: block("clip", "action", { action: "video", operation: "play", objectName: "intro", assetId: "asset-intro", hideOnEnd: false }),
             target: say("target"),
-        }, ["rain", "clip", "target"]);
+        }, ["rain", "showRain", "clip", "target"]);
         const result = snapshot(document, "target");
         expect(result.diagnostics).toEqual([
-            { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
             { level: "warning", blockId: "clip", message: "Videos are not previewed." },
+            { level: "warning", blockId: "showRain", message: "Ambience effects are not previewed." },
         ]);
+    });
+
+    it("says nothing about a clip that played and went, or an overlay not showing", () => {
+        // The opening clip plays, waits, fades and leaves; every row after it carried
+        // 「预览不播放视频」 although nothing of it is on screen there.
+        const document = baseDocument({
+            op: block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op" }),
+            rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
+            line: say("line"),
+            target: say("target"),
+        }, ["op", "rain", "line", "target"]);
+        expect(snapshot(document, "target").diagnostics).toEqual([]);
+        // A clip the story does not wait for is still running further on, so that one is said.
+        const running = baseDocument({
+            bgv: block("bgv", "action", { action: "video", operation: "play", objectName: "bgv", assetId: "asset-bgv", waitForEnd: false }),
+            target: say("target"),
+        }, ["bgv", "target"]);
+        expect(snapshot(running, "target").diagnostics).toEqual([
+            { level: "warning", blockId: "bgv", message: "Videos are not previewed." },
+        ]);
+    });
+
+    it("says it at the play row itself, where the game is showing the clip", () => {
+        // `@播放 op` selected: the game is playing the clip there, and the preview drew the stage
+        // under it with no note - with 播放结束后隐藏 on and off alike.
+        for (const hideOnEnd of [true, false]) {
+            const document = baseDocument({
+                op: block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op", hideOnEnd }),
+                line: say("line"),
+            }, ["op", "line"]);
+            expect(snapshot(document, "op").diagnostics, `hideOnEnd ${hideOnEnd}`).toEqual([
+                { level: "warning", blockId: "op", message: "Videos are not previewed." },
+            ]);
+        }
+        // A play row compiled out shows nothing there, so it says nothing.
+        const disabled = baseDocument({
+            op: { ...block("op", "action", { action: "video", operation: "play", objectName: "op", assetId: "asset-op" }), disabled: true } as StoryBlock,
+            line: say("line"),
+        }, ["op", "line"]);
+        expect(snapshot(disabled, "op").diagnostics).toEqual([]);
     });
 
     it("records the settled camera pose before the target and clamps degenerate values", () => {
@@ -185,6 +227,20 @@ describe("computeStoryStageSnapshot", () => {
             target: say("target"),
         }, ["zoom", "reset", "target"]);
         expect(snapshot(reset, "target").camera).toBeNull();
+    });
+
+    it("works out the camera a camera target leaves, without moving the snapshot past it", () => {
+        const document = baseDocument({
+            pan: block("pan", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 }, zoom: 2 } } }),
+            target: block("target", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 3 } } }),
+            line: say("line"),
+        }, ["pan", "target", "line"]);
+        const result = snapshot(document, "target");
+        // Still the camera before the row: the preview plays the row's move from here.
+        expect(result.camera?.props.zoom).toBe(2);
+        // And the frame it ends on: the earlier pan, with the row's zoom over it.
+        expect(result.targetCamera).toEqual({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }), zoom: 3 });
+        expect(snapshot(document, "line").targetCamera).toBeNull();
     });
 
     it("leaves the camera pose null when no /camera runs before the target", () => {
@@ -433,9 +489,8 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables).toEqual([]);
     });
 
-    it("flags nvl containers and layer records", () => {
+    it("flags nvl containers and layer records, with the scene's layers up from its first row", () => {
         const document = baseDocument({
-            layer: block("layer", "action", { action: "layer", operation: "create", objectName: "fg", zIndex: 5 }),
             "layer-move": block("layer-move", "action", {
                 action: "layer",
                 operation: "transform",
@@ -445,12 +500,14 @@ describe("computeStoryStageSnapshot", () => {
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
-        }, ["layer", "layer-move", "nvl"]);
+        }, ["layer-move", "nvl"]);
+        // In front of the characters: the stack puts it at z-index 1.
+        document.scenes["scene-1"].layers = [{ kind: "custom", id: "layer", name: "fg" }, { kind: "displayable" }, { kind: "background" }];
         const result = snapshot(document, "target");
         expect(result.nvl).toBe(true);
         const layer = result.displayables[0];
         expect(layer.kind).toBe("layer");
-        expect(layer.zIndex).toBe(5);
+        expect(layer.zIndex).toBe(1);
         expect(layer.visible).toBe(true);
         expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
     });

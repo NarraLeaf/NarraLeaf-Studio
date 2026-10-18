@@ -41,6 +41,17 @@ export type PlayHead = {
     /** The engine's own id for the action running now - raw, unresolved, and possibly unnamed. */
     actionId(): string | null;
     /**
+     * How many times the action running has changed, for this play head's whole life: it only ever
+     * rises, and {@link reset} does not take it back.
+     *
+     * A position that two stops never share, where the action id alone can repeat. Two `/wait click`
+     * rows with only an instant `/show` between them, or two `/wait 2s` back to back, look the same
+     * in everything else a driver reads - no line, no menu, the same wait - and a loop stands on the
+     * same row twice. A driver that compares this tells "still on the first" from "already on the
+     * next one", however quickly the engine got there.
+     */
+    moves(): number;
+    /**
      * The row to attribute to: the one the play head is standing on, or the last one it could name.
      * Undefined only when the run has not reached an authored row at all, which is the honest answer
      * for a boot failure and is what makes such a report `session` rather than a row.
@@ -90,6 +101,7 @@ export function createPlayHead(readBindings: () => readonly PlayHeadActionBindin
     let currentActionId: string | null = null;
     let lastNamedBlockId: string | undefined;
     let trail: string[] = [];
+    let moves = 0;
 
     const named = (actionId: string | null): string | undefined => {
         if (!actionId) {
@@ -100,6 +112,9 @@ export function createPlayHead(readBindings: () => readonly PlayHeadActionBindin
 
     return {
         observe(actionId) {
+            if (actionId !== currentActionId) {
+                moves += 1;
+            }
             currentActionId = actionId;
             const blockId = named(actionId);
             // Only ever moved forward onto a row that resolved. An engine-internal action leaves it
@@ -115,6 +130,7 @@ export function createPlayHead(readBindings: () => readonly PlayHeadActionBindin
             }
         },
         actionId: () => currentActionId,
+        moves: () => moves,
         blockId: () => named(currentActionId) ?? lastNamedBlockId,
         trail: () => trail,
         seedTrail(rows) {

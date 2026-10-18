@@ -9,11 +9,8 @@ import {
 } from "@shared/types/spellcheck";
 import { isEnglishContraction, isEnglishSpellcheckLanguage } from "./contractions";
 import { DictionaryCache } from "./dictionaryCache";
-import {
-    downloadDictionary,
-    fetchDictionaryIndex,
-    resolveDictionaryRegistryUrl,
-} from "./dictionaryRegistryClient";
+import { readStoreSourcePreference, type StoreSourceChoice } from "@shared/constants/storeSource";
+import { downloadDictionary, fetchDictionaryCatalogue } from "./dictionaryRegistryClient";
 import { containsSegmentedScript, extractWords, type SegmentationLexicon } from "./tokenizer";
 import { WordList } from "./wordList";
 
@@ -21,13 +18,13 @@ import { WordList } from "./wordList";
 export type SpellcheckSettingReader = () => string | undefined;
 
 /**
- * How it reads the configured registry URL. Empty or absent means the official index.
+ * How it reads a registry URL of its own, which the store source's `custom` choice reads. Empty or
+ * absent means the official index.
  *
- * Nothing configures one today, and there is deliberately no settings row for it: an author behind
- * a national firewall is already served by the download rewrite table, which is the mechanism that
- * can move both the index and the per-entry download - a source setting could only move the index,
- * leaving every download pointed at the original host. The hook is here because the registry client
- * takes the value through `resolveDownloadSource` either way, and because tests need to name one.
+ * Nothing configures one today, and there is deliberately no settings row for it: the dictionaries
+ * follow the store source setting (GitHub, GitCode, or both) like the plugin and template stores,
+ * and an author behind some other mirror is served by the download rewrite table. The hook is here
+ * because tests need to name a registry.
  */
 export type SpellcheckRegistryReader = () => string | undefined;
 
@@ -35,6 +32,8 @@ export type SpellcheckManagerOptions = {
     cacheRoot: () => string;
     readSetting: SpellcheckSettingReader;
     readRegistryUrl?: SpellcheckRegistryReader;
+    /** How it reads the store source setting (`STORE_SOURCE_KEY`); absent reads as automatic. */
+    readStoreSource?: () => unknown;
 };
 
 /**
@@ -245,7 +244,7 @@ export class SpellcheckManager {
      * whose Refresh does nothing.
      */
     public async listAvailable(): Promise<{ entries: AvailableSpellcheckDictionary[] }> {
-        const index = await fetchDictionaryIndex(this.registryUrl());
+        const { index } = await fetchDictionaryCatalogue(this.storeChoice());
         return {
             entries: index.dictionaries.map(entry => ({
                 code: entry.code,
@@ -264,12 +263,12 @@ export class SpellcheckManager {
      * renderer cannot name what is downloaded - it can only name which of the registry's entries.
      */
     public async download(code: string): Promise<{ ok: boolean }> {
-        const index = await fetchDictionaryIndex(this.registryUrl());
+        const { index, origin } = await fetchDictionaryCatalogue(this.storeChoice());
         const entry = index.dictionaries.find(candidate => candidate.code === code);
         if (!entry) {
             throw new Error(`The dictionary registry has no entry for "${code}"`);
         }
-        const compressed = await downloadDictionary(entry);
+        const compressed = await downloadDictionary(entry, origin);
         await this.cache.write(entry, compressed);
         // A language already parsed is now the wrong bytes. Dropping it means the next check
         // reloads, which is a few milliseconds once rather than a stale list forever.
@@ -291,8 +290,11 @@ export class SpellcheckManager {
         return this.cache.directory();
     }
 
-    private registryUrl(): string {
-        return resolveDictionaryRegistryUrl(this.options.readRegistryUrl?.());
+    private storeChoice(): StoreSourceChoice {
+        return {
+            preference: readStoreSourcePreference(this.options.readStoreSource?.()),
+            customUrl: this.options.readRegistryUrl?.()?.trim() ?? "",
+        };
     }
 
     /**

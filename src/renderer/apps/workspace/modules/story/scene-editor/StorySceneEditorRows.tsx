@@ -35,7 +35,7 @@ import {
     subjectGroupId,
     type StoryCommandCategoryId,
 } from "./storyCommandCategories";
-import { searchActionCommands } from "./storyCommandSearch";
+import { commandNamedByWord, searchActionCommands } from "./storyCommandSearch";
 import {
     characterScopedActions,
     characterScopedSidebarGroups,
@@ -102,7 +102,7 @@ import {
 import { ConditionPopover } from "./ConditionPopover";
 import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
@@ -112,6 +112,7 @@ import { RowProblemMark } from "./RowProblemMark";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { usePointerHighlight, type MenuPointer } from "./storyMenuPointer";
 
 /**
  * One story row's data.
@@ -652,19 +653,19 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         that is about the words rather than about the container: hearing this line
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
                     ) : containerInfo && rowProblems.length > 0 ? (
                         // A choice or a condition header: no voice to hear, but the checks can still
                         // have something to say about it (a choice with no options, a cut point).
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
                     {containerInfo ? null : (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {/* Mounted only on the rows that are cut points, unlike the two beside it:
                                 a component that answers "not me" still costs a translation
                                 subscription on every row of the screenful. */}
@@ -677,6 +678,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // The row's controls, not its line: the rich-text strip of the row below
+                        // measures where this row's words end without them (`RichTextToolbar`).
+                        data-story-row-trailing=""
                         // Who the cluster is showing for. In a narrow group it floats over the words
                         // (`.nl-story-row-actions`), and there it shows for the pointer only.
                         data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
@@ -2093,7 +2097,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext),
+        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
         [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
@@ -2130,12 +2134,22 @@ export function InsertRow(props: {
     /** What a name typed on this line may refer to — the same view the resolver reads. */
     commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
+    /**
+     * The controller's copy of the line (`insertDraftRef`), which outlives this component: the slot
+     * renders inside the windowed row list, so a hidden tab or a scroll unmounts it while the slot
+     * stays open. A remount seeds from this rather than from `mode.initialValue`, or the field came
+     * back empty while Enter still committed the text it had lost.
+     */
+    draftRef: RefObject<string>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
     /** Escape #1 — drop the candidates, keep the line. */
     onDismissChooser: () => void;
-    /** Escape #2 — an uncommitted slot leaves nothing behind. */
-    onDiscardSlot: () => void;
+    /**
+     * Escape #2 — an uncommitted slot leaves nothing behind. `lineBack` is the text a slot standing on a
+     * speaker's line hands back to it (the "・" an input method typed there, see `inputMethodLine`).
+     */
+    onDiscardSlot: (lineBack?: string) => void;
     /** Enter / Shift+Enter with no candidate to take: the line stands on its own or becomes invalid. */
     onResolveLine: () => void;
     onCommitInvalid: () => void;
@@ -2164,13 +2178,28 @@ export function InsertRow(props: {
      * The slot object is the identity of "which line is being typed", so a new slot re-seeds the
      * field. This is React's documented adjust-state-on-prop-change form rather than an effect: an
      * effect would render one frame of the previous slot's text into the new slot.
+     *
+     * Mounting is not always a new slot: the same slot comes back after its row was windowed out
+     * (a hidden tab measures 0 px and renders no rows; a long scroll does the same). The controller's
+     * draft is the line as it stood, so the field starts from that - what the author sees is then
+     * always what Enter commits. For a slot that has just opened the two are the same text.
      */
     const [seededSlot, setSeededSlot] = useState(props.mode.slot);
-    const [value, setValue] = useState(props.mode.initialValue);
+    const [value, setValue] = useState(() => props.draftRef.current ?? props.mode.initialValue);
+    /**
+     * The line as an input method typed it, while the slot still holds the "/" or "#" it was read as
+     * (`foldInputMethodTrigger`). Escape gives it back: the author's way of saying the "・" was a
+     * character. Any edit drops it, and so does a slot that is not this one.
+     */
+    const [inputMethodLine, setInputMethodLine] = useState<{ typed: string; folded: string } | null>(() =>
+        (props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null));
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
         setValue(props.mode.initialValue);
+        setInputMethodLine(props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null);
     }
+    /** The line as it stood when the running composition began, or null while none is running. */
+    const compositionBaseRef = useRef<string | null>(null);
     const setLineValue = (next: string) => {
         setValue(next);
         props.onValueChange(next);
@@ -2201,6 +2230,9 @@ export function InsertRow(props: {
      * slot object on every keystroke cannot invalidate the lists memoized against it.
      */
     const scopeName = props.mode.slot.characterScope?.name ?? null;
+    // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
+    const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
+    const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
@@ -2216,9 +2248,13 @@ export function InsertRow(props: {
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ];
-            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery, abbreviations);
+            return searchActionCommands(
+                scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
+                chooserQuery,
+                abbreviations,
+            );
         },
-        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
+        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2231,9 +2267,9 @@ export function InsertRow(props: {
                 buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
                 props.commandContext,
             );
-            return scopeName === null ? groups : characterScopedSidebarGroups(groups);
+            return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [ct, pluginCommands, props.commandContext, scopeName],
+        [ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the
@@ -2252,7 +2288,7 @@ export function InsertRow(props: {
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
-    const [caret, setCaret] = useState(props.mode.initialValue.length);
+    const [caret, setCaret] = useState(() => value.length);
     // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
     // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
     const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
@@ -2324,6 +2360,31 @@ export function InsertRow(props: {
         setLineValue(next);
         setCaret(nextCaret);
         window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(nextCaret, nextCaret));
+    };
+
+    /** Replace the whole line and put the caret at its end, by the same hand-off as `applyCompletion`. */
+    const replaceLine = (next: string) => {
+        setLineValue(next);
+        setCaret(next.length);
+        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(next.length, next.length));
+    };
+
+    /**
+     * What an input method put on the empty line, read as the trigger the author pressed: `・` becomes
+     * `/` and `＃` becomes `#`, and the menu that trigger opens follows from the text as it always does.
+     * Returns whether it took the line. The caller has already established that the line was empty.
+     */
+    const foldTypedTrigger = (typed: string): boolean => {
+        const folded = foldInputMethodTrigger(typed, {
+            command: word => commandNamedByWord(word, abbreviations) !== null,
+            speaker: name => isSpeakerName(props.characters, props.tempSpeakers, name),
+        });
+        if (folded === null) {
+            return false;
+        }
+        replaceLine(folded);
+        setInputMethodLine({ typed, folded });
+        return true;
     };
 
     const takeArgCandidate = (item: StoryCandidateItem) => {
@@ -2403,8 +2464,21 @@ export function InsertRow(props: {
                         colorLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
                     ].join(" ")}
                     style={textStyle}
-                    onCompositionStart={() => setComposing(true)}
-                    onCompositionEnd={() => setComposing(false)}
+                    onCompositionStart={() => {
+                        setComposing(true);
+                        compositionBaseRef.current = value;
+                    }}
+                    onCompositionEnd={event => {
+                        setComposing(false);
+                        // A trigger key under a Japanese input method is a conversion like any other
+                        // ("/" composes "・"), so it is read once the author confirms it - and only if
+                        // the line was empty when the conversion began.
+                        const base = compositionBaseRef.current;
+                        compositionBaseRef.current = null;
+                        if (base === "") {
+                            foldTypedTrigger(event.currentTarget.value);
+                        }
+                    }}
                     rows={1}
                     value={value}
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
@@ -2420,6 +2494,12 @@ export function InsertRow(props: {
                     onChange={event => {
                         const typed = event.target.value;
                         const typedCaret = event.target.selectionStart ?? typed.length;
+                        setInputMethodLine(null);
+                        // The same reading for an input method that puts the character down without
+                        // composing it. One that composes reaches `onCompositionEnd` instead.
+                        if (value === "" && !(event.nativeEvent as InputEvent).isComposing && foldTypedTrigger(typed)) {
+                            return;
+                        }
                         // The verb settles into the command language the moment it is finished, so a
                         // hand-typed `@show` reads as the `@显示` the menu, the ghost and the committed
                         // row all say - and one of the author's own abbreviations (`/c`) becomes the
@@ -2464,7 +2544,25 @@ export function InsertRow(props: {
                         // half-typed `/set` into a line of prose the author never wrote.
                         if (event.key === "Escape") {
                             event.preventDefault();
-                            chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
+                            // The first rung after an input method's "・" was read as "/": the author
+                            // meant the character, so it comes back as text and the menu goes with it.
+                            // A slot standing on a speaker's line hands it back to that line.
+                            if (inputMethodLine && value === inputMethodLine.folded) {
+                                setInputMethodLine(null);
+                                if (scopeName !== null) {
+                                    props.onDiscardSlot(inputMethodLine.typed);
+                                } else {
+                                    replaceLine(inputMethodLine.typed);
+                                }
+                                return;
+                            }
+                            // A committed row opened as its line (F2, Edit as text) is given back by
+                            // the first press while no menu is on screen: there is no candidate rung
+                            // to take first, and a press that changed nothing visible looked dead.
+                            const menuShown = argMenuOpen || actionMenuOpen || chooser === "character";
+                            chooser === "none" || (props.mode.slot.rewritesRow && !menuShown)
+                                ? props.onDiscardSlot()
+                                : props.onDismissChooser();
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -2619,6 +2717,13 @@ const tempSpeakerKey = (name: string) => `name:${name}`;
  * being a state with its own rules. An unknown name is just a candidate you pick like any other, so
  * Tab and Enter mean one thing here rather than two.
  */
+/** Whether `name` is, exactly (ignoring case, as the "#" menu matches), a speaker the menu offers. */
+function isSpeakerName(characters: Character[], tempSpeakers: TempSpeakerRef[], name: string): boolean {
+    const needle = name.toLowerCase();
+    return characters.some(character => character.profile.getName().toLowerCase() === needle)
+        || tempSpeakers.some(speaker => speaker.name.toLowerCase() === needle);
+}
+
 export function getSpeakerCandidates(characters: Character[], tempSpeakers: TempSpeakerRef[], query: string): SpeakerCandidate[] {
     const typed = query.trim();
     const needle = typed.toLowerCase();
@@ -2836,19 +2941,22 @@ function useActionCommandMenuState(
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
     /**
-     * The row an exact abbreviation names. A typed filter otherwise keeps the highlight wherever it
-     * already was, but `/c` is a word the line will turn into one particular command on the next space,
-     * so Enter has to take that command too - the highlight goes to it whenever the rows change.
+     * The row a finished command word names: a spelling the parser reads as one command (`bg`, `char`,
+     * 背景, 表示), or one of the author's abbreviations. A typed filter otherwise keeps the highlight
+     * wherever it already was - and `/show`, lit when the menu opened, still matches "b" and "bg" - but
+     * a finished word is the command the line will be once it is committed, so Enter has to take that
+     * command too: the highlight goes to it whenever the rows change. A built-in spelling comes before
+     * an abbreviation, as it does on the line.
      */
-    const abbreviatedCommandId = abbreviations.get(query.trim().toLowerCase()) ?? null;
-    const abbreviatedKey = abbreviatedCommandId === null
+    const namedCommandId = commandNamedByWord(query, abbreviations);
+    const namedKey = namedCommandId === null
         ? null
-        : stops.find(stop => stop.command.id === abbreviatedCommandId)?.key ?? null;
+        : stops.find(stop => stop.command.id.toLowerCase() === namedCommandId.toLowerCase())?.key ?? null;
 
     useEffect(() => {
-        setActiveKey(current => abbreviatedKey
+        setActiveKey(current => namedKey
             ?? (stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null));
-    }, [abbreviatedKey, stops]);
+    }, [namedKey, stops]);
 
     const selectKey = (key: string) => {
         setActiveKey(key);
@@ -2904,7 +3012,8 @@ function ActionCommandMenuRow(props: {
     active: boolean;
     starred: boolean;
     abbreviations: readonly string[];
-    onHighlight: (key: string) => void;
+    /** The menu's pointer; the row reports its `mousemove` to it. See `usePointerHighlight`. */
+    pointer: MenuPointer;
     onChoose: (commandId: string) => void;
     onToggleStarred: (commandId: string) => void;
 }) {
@@ -2915,7 +3024,7 @@ function ActionCommandMenuRow(props: {
     const Icon = command.icon;
     const starLabel = props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred");
     return (
-        <div className="relative" onMouseEnter={() => props.onHighlight(props.stop.key)}>
+        <div className="relative" onMouseMove={event => props.pointer.move(props.stop.key, event)}>
             <button
                 type="button"
                 role="option"
@@ -2925,7 +3034,7 @@ function ActionCommandMenuRow(props: {
                     // Room for the star is kept on every row, so a label does not re-truncate under
                     // the pointer when the star comes up beside it.
                     "flex w-full items-center gap-2 rounded-md py-2 pl-2 pr-9 text-left transition-colors",
-                    props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                    props.active ? "bg-primary/15 text-fg" : props.pointer.live ? "hover:bg-fill" : "",
                 ].join(" ")}
                 onMouseDown={() => props.onChoose(command.id)}
             >
@@ -2941,8 +3050,9 @@ function ActionCommandMenuRow(props: {
                     <button
                         type="button"
                         className={[
-                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-fill-strong",
-                            props.starred ? "text-warning" : "text-fg-subtle hover:text-warning",
+                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
+                            props.starred ? "text-warning" : "text-fg-subtle",
+                            props.pointer.live ? "hover:bg-fill-strong hover:text-warning" : "",
                         ].join(" ")}
                         data-tip={starLabel}
                         aria-label={starLabel}
@@ -3029,6 +3139,7 @@ function ActionCommandMenu(props: {
     // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
     const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointer = usePointerHighlight(props.onHighlight);
     // The scope header wears 角色's own glyph and hue — the same pair its category chip and every
     // committed character row wear, so a narrowed menu still says which subject it is narrowed to.
     const scopeCategory = getCommandCategory("character");
@@ -3081,7 +3192,12 @@ function ActionCommandMenu(props: {
                 // height, so a top-left line of text sits alone against a tall empty box and reads as
                 // a list that failed to draw rather than as the answer "there is nothing here".
                 <div className="flex h-full items-center justify-center">
-                    <button type="button" className="rounded-md px-3 py-2 text-center text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                    <button
+                        type="button"
+                        className={["rounded-md px-3 py-2 text-center text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                        onMouseMove={event => pointer.move(null, event)}
+                        onMouseDown={props.onCancel}
+                    >
                         {t("story.actionCreator.noActions")}
                     </button>
                 </div>
@@ -3094,7 +3210,7 @@ function ActionCommandMenu(props: {
                         active={stop.key === props.activeKey}
                         starred={props.starredIds.has(stop.command.id)}
                         abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                        onHighlight={props.onHighlight}
+                        pointer={pointer}
                         onChoose={props.onChoose}
                         onToggleStarred={props.onToggleStarred}
                     />
@@ -3116,7 +3232,7 @@ function ActionCommandMenu(props: {
                                 active={stop.key === props.activeKey}
                                 starred
                                 abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                                onHighlight={props.onHighlight}
+                                pointer={pointer}
                                 onChoose={props.onChoose}
                                 onToggleStarred={props.onToggleStarred}
                             />
@@ -3150,7 +3266,7 @@ function ActionCommandMenu(props: {
                                         active={key === props.activeKey}
                                         starred={props.starredIds.has(command.id)}
                                         abbreviations={abbreviationsOf(command.id, props.abbreviations)}
-                                        onHighlight={props.onHighlight}
+                                        pointer={pointer}
                                         onChoose={props.onChoose}
                                         onToggleStarred={props.onToggleStarred}
                                     />
@@ -3182,7 +3298,7 @@ function ActionCommandMenu(props: {
                         <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
                         <span className="truncate">{props.scopeLabel}</span>
                     </div>
-                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2">
+                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2" {...pointer.listProps}>
                         {rows}
                     </div>
                 </div>
@@ -3221,7 +3337,7 @@ function ActionCommandMenu(props: {
                 {/* Both columns open at the same height — `pt-3` here and on the categories, and no
                     gap above the first section header, so a browse, a ranked list and the category
                     column all start on one line. */}
-                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3">
+                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3" {...pointer.listProps}>
                     {rows}
                 </div>
             </div>
@@ -3292,6 +3408,7 @@ function CharacterPicker(props: {
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointer = usePointerHighlight(props.onHighlight);
 
     useEffect(() => {
         if (!props.activeCharacterId) {
@@ -3314,13 +3431,19 @@ function CharacterPicker(props: {
             }}
             className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
             style={props.frame.style}
+            {...pointer.listProps}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
             {props.characters.length === 0 ? (
-                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
+                <button
+                    type="button"
+                    className={["w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                    onMouseMove={event => pointer.move(null, event)}
+                    onMouseDown={props.onClear}
+                >
                     {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
@@ -3336,9 +3459,9 @@ function CharacterPicker(props: {
                             data-character-id={candidate.key}
                             className={[
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                                active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
                             ].join(" ")}
-                            onMouseEnter={() => props.onHighlight(candidate.key)}
+                            onMouseMove={event => pointer.move(candidate.key, event)}
                             onMouseDown={() => props.onChoose(candidate)}
                         >
                             {/* A real character shows their face, exactly as the argument menu does in
@@ -3360,9 +3483,12 @@ function CharacterPicker(props: {
                         type="button"
                         className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                            props.createDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-fill",
+                            props.createDisabled ? "cursor-not-allowed opacity-50" : pointer.live && "hover:bg-fill",
                         )}
                         disabled={props.createDisabled}
+                        // Not a highlight stop, but the same pointer: it scrolls under a resting
+                        // pointer like the rows above it, and is tinted only once the pointer moves.
+                        onMouseMove={event => pointer.move(null, event)}
                         // `data-tip` rather than `title`, like every other reason a freeze puts on a
                         // control: a disabled button receives no pointer events at all, and Studio's
                         // tooltip resolves this one by hit-testing the pointer instead.

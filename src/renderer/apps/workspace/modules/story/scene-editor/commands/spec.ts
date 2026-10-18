@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryBlock, StoryScene, StorySceneLayer } from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { StoryCommandParam, StoryCommandParamType } from "../storyCommandGrammar";
 import type {
@@ -47,6 +47,19 @@ export type StoryCommandBuildContext = {
     /** The rest of the line for text-bearing blocks created without their text arg. */
     initialText?: string;
     context: StoryCommandContext;
+};
+
+/** What a spec that changes the scene rather than adding a row to it is handed. */
+export type StoryCommandSceneEditContext = {
+    generateId: () => string;
+    context: StoryCommandContext;
+    /** The scene the line was written in, as it stands. */
+    scene: StoryScene;
+};
+
+/** The change to the scene a scene-editing command makes - for now, the scene's layer stack as it will stand. */
+export type StoryCommandSceneEdit = {
+    layers: StorySceneLayer[];
 };
 
 /** Validation helpers handed to a spec's `validate` - spans come from the parsed line, not the spec. */
@@ -103,6 +116,13 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * is what decides whether an unfilled line commits.
      */
     build?: (args: ResolvedArgsOf<P>, ctx: StoryCommandBuildContext) => StoryBlock;
+    /**
+     * Change the scene instead of adding a row to it - `/layer`, which adds a layer to the scene's
+     * stack, because a layer belongs to its scene rather than to a step of its story. A spec has this or
+     * {@link build}, never both, and committing it leaves no row behind. Null when the args do not
+     * make a change (an unfinished line is held back by the core gating and `validate` first).
+     */
+    editScene?: (args: ResolvedArgsOf<P>, ctx: StoryCommandSceneEditContext) => StoryCommandSceneEdit | null;
     /** Cross-param checks the generic resolver cannot know (`/font` size XOR color, `/set` type fit). */
     validate?: (args: ResolvedArgsOf<P>, ctx: StoryCommandValidateContext) => StoryCommandResolutionIssue[];
     /**
@@ -146,6 +166,12 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      */
     available?: (context: StoryCommandContext) => boolean;
     /**
+     * A verb only a character drawn by a runtime (Live2D, Spine) answers to - a motion, a skin, a
+     * model parameter. The menu scoped to one speaker leaves it out for a character Studio draws,
+     * whose rows would refuse it; the full menu and the parser are unaffected.
+     */
+    runtimeDrawnOnly?: true;
+    /**
      * Working lines for the manual, written exactly as an author would type them.
      *
      * Written in the canonical English spellings, and left that way in every locale. A locale may add
@@ -158,6 +184,25 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * author a line that no longer works. Use the fixture's names (`Alice`, `forest_day`, `gold`, …).
      */
     examples?: readonly string[];
+    /**
+     * A worked sequence of rows, for a command whose row is not the whole story on its own.
+     *
+     * The case it exists for is a declaration: `/image`, `/text` and `/vfx` put an object on the
+     * stage's books without putting it on screen, and a single example line reads as though it
+     * displayed something. `note` says what the row does and does not do; `lines` are the rows that
+     * together do the thing, in order. English, like the examples - the command catalogue prints it
+     * for an agent; the editor does not. The story CLI's catalogue test applies every sequence as a
+     * scene, so a sequence that stopped working fails the suite.
+     */
+    sequence?: { readonly note: string; readonly lines: readonly string[] };
+    /**
+     * What a `.story` file writes for a command that changes the scene rather than adding a row
+     * ({@link editScene}): the scene's header lines. A file refuses such a command as a row, so the
+     * command catalogue prints these in place of {@link examples}, which are the command line's. `note`
+     * says why it is not a row; `lines` are a header that does the thing. English, like the examples;
+     * the story CLI's catalogue test applies them as a scene's header.
+     */
+    header?: { readonly note: string; readonly lines: readonly string[] };
 };
 
 /**
@@ -317,23 +362,6 @@ export function audioTrackParam(): StoryCommandParamSpec {
  */
 export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
     return { hint, type: { kind: "appTag" }, positional: true, core: true };
-}
-
-/**
- * `pos=` - a placement.
- *
- * `pos` is the canonical key since M2, and `at` stays as an alias. The two were always the same slot;
- * what changed is which of them the prop vocabulary spells, and a placement is a POSITION - the same
- * channel `/transform pos=` writes - so the two surfaces now say one word for one channel. `at` is
- * kept rather than burned because a param key is not a command token: an old `/image forest at=left`
- * re-parses to exactly the same row, so there is nothing for a rename to silently reinterpret.
- */
-export function placementParam(): StoryCommandParamSpec {
-    return {
-        aliases: ["at"],
-        hint: "placement",
-        type: { kind: "enum", options: PLACEMENT_OPTIONS },
-    };
 }
 
 /**

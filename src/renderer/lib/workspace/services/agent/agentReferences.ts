@@ -87,22 +87,34 @@ export function storyReferencesTo(
     return out;
 }
 
-/** Every blueprint that names `id`, by name and owner. */
-export function blueprintReferencesTo(document: BlueprintDocument, id: string): string[] {
+/**
+ * Every blueprint that names `id`, by name and owner. `skip` leaves out blueprints that go with the
+ * thing being deleted - a page's own, which may name the page they are on.
+ */
+export function blueprintReferencesTo(
+    document: BlueprintDocument,
+    id: string,
+    skip?: (blueprint: BlueprintDocument["blueprints"][string]) => boolean,
+): string[] {
     const ownerOf = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
         ownerOf.set(record.blueprintId, ownerKey);
     }
     return Object.values(document.blueprints ?? {})
+        .filter(blueprint => !skip?.(blueprint))
         .filter(blueprint => holdsId(blueprint.graphs, id) || holdsId(blueprint.bindings, id))
         .map(blueprint => `blueprint "${blueprint.name}"${ownerOf.has(blueprint.id) ? ` (${ownerOf.get(blueprint.id)})` : ""}`);
 }
 
-/** Every interface element that names `id` in its props, by page or component and name. */
-export function uiReferencesTo(document: UIDocument, id: string): string[] {
+/**
+ * Every interface element that names `id` in its props, by page or component and name.
+ * `skipSurfaceId` leaves out one page's own elements: the page being deleted.
+ */
+export function uiReferencesTo(document: UIDocument, id: string, skipSurfaceId?: string): string[] {
     const out: string[] = [];
     const describe = (element: UIElement) => element.name?.trim() || element.type;
     const pageOf = new Map<string, string>();
+    const skipped = new Set<string>();
     for (const surface of document.surfaces) {
         const stack = [surface.rootElementId];
         while (stack.length > 0) {
@@ -112,11 +124,14 @@ export function uiReferencesTo(document: UIDocument, id: string): string[] {
                 continue;
             }
             pageOf.set(elementId, surface.name);
+            if (surface.id === skipSurfaceId) {
+                skipped.add(elementId);
+            }
             stack.push(...(element.childrenIds ?? []));
         }
     }
     for (const element of Object.values(document.elements)) {
-        if (holdsId(element.props, id)) {
+        if (!skipped.has(element.id) && holdsId(element.props, id)) {
             out.push(`page "${pageOf.get(element.id) ?? "?"}", element "${describe(element)}"`);
         }
     }
@@ -160,9 +175,11 @@ const ORDERED_OPERATORS = new Set(["greaterThan", "greaterOrEqual", "lessThan", 
  * null when nothing it does is wrong for that type: a `/set` writing a literal of another type, a
  * branch testing it as true/false, ordering it, or comparing it with a literal of another type.
  *
- * Only literals are judged. A computed right-hand side (`/set gold gold + 1`) or a typed expression
- * condition is evaluated at play time, and guessing its type here would be the kind of warning an
- * agent learns to read past.
+ * Only literals are judged, and a variable standing alone as a test: in an expression, a comparison
+ * with a literal, an ordering, `&&`/`||`/`!` on it, or a condition that is the variable itself. A
+ * computed right-hand side (`/set gold gold + 1`) is evaluated at play time, and guessing its type
+ * here would be the kind of warning an agent learns to read past.
+
  */
 function misfitIn(block: StoryBlock, id: string, valueType: StoryVariableValueType): string | null {
     if (valueType === "json") {
@@ -174,9 +191,20 @@ function misfitIn(block: StoryBlock, id: string, valueType: StoryVariableValueTy
         if (payload.expression === undefined && !literalFits(payload.value, valueType)) {
             return `sets it to ${JSON.stringify(payload.value)}`;
         }
+        // `/set x true` typed on the command line is an expression that is one literal.
+        const ast = (payload.expression as { ast?: { kind?: string; value?: unknown } } | undefined)?.ast;
+        if (ast?.kind === "literal" && !literalFits(ast.value, valueType)) {
+            return `sets it to ${JSON.stringify(ast.value)}`;
+        }
         return null;
     }
+    // A row waiting for the player writes whether they made it - a boolean, whatever it is pointed at.
+    // A `/page` row is left alone: it converts what the page closed with to the variable's type.
+    if (payload.action === "input" && (payload.resultTarget as { variableId?: string } | undefined)?.variableId === id) {
+        return valueType === "boolean" ? null : "writes true or false into it (its into=)";
+    }
     let found: string | null = null;
+
     const walk = (value: unknown): void => {
         if (found || !value || typeof value !== "object") {
             return;
@@ -198,9 +226,46 @@ function misfitIn(block: StoryBlock, id: string, valueType: StoryVariableValueTy
             }
             return;
         }
+        // An expression (`/if 好感 >= 1`, `/if met && 好感 == true`): the same three mistakes, where a
+        // variable meets a literal or stands alone as a test. Anything computed is still left alone.
+        if (node.kind === "binary" && typeof node.op === "string") {
+            const left = node.left as Record<string, unknown> | undefined;
+            const right = node.right as Record<string, unknown> | undefined;
+            const isOurs = (side: Record<string, unknown> | undefined) =>
+                side?.kind === "var" && (side.target as { variableId?: string } | undefined)?.variableId === id;
+            const literalOf = (side: Record<string, unknown> | undefined) => (side?.kind === "literal" ? side : null);
+            const other = isOurs(left) ? literalOf(right) : isOurs(right) ? literalOf(left) : null;
+            if (other && (node.op === "==" || node.op === "!=") && !literalFits(other.value, valueType)) {
+                found = `compares it with ${JSON.stringify(other.value)} (${node.op})`;
+                return;
+            }
+            if ((isOurs(left) || isOurs(right)) && ["<", "<=", ">", ">="].includes(node.op) && valueType === "boolean") {
+                found = `orders it (${node.op})`;
+                return;
+            }
+            if ((node.op === "&&" || node.op === "||") && (isOurs(left) || isOurs(right)) && valueType !== "boolean") {
+                found = `tests it as true or false (${node.op})`;
+                return;
+            }
+        }
+        if (node.kind === "unary" && node.op === "!" && valueType !== "boolean") {
+            const operand = node.operand as Record<string, unknown> | undefined;
+            if (operand?.kind === "var" && (operand.target as { variableId?: string } | undefined)?.variableId === id) {
+                found = "tests it as true or false (!)";
+                return;
+            }
+        }
         Object.values(node).forEach(walk);
     };
     walk(payload);
+    // A condition that is the variable and nothing else (`/if met`) tests it as true or false.
+    if (!found && valueType !== "boolean") {
+        const condition = (payload.condition ?? payload.when) as { kind?: string; expression?: { ast?: Record<string, unknown> } } | undefined;
+        const ast = condition?.kind === "expression" ? condition.expression?.ast : undefined;
+        if (ast?.kind === "var" && (ast.target as { variableId?: string } | undefined)?.variableId === id) {
+            found = "tests it as true or false";
+        }
+    }
     return found;
 }
 

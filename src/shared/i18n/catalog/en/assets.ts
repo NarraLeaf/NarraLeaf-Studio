@@ -16,6 +16,13 @@ export const assets = {
     history: {
         deleteAsset: "delete {name}",
         deleteGroup: "delete folder {name}",
+        // Replace File… on an asset, and converting an asset in place. `name` is the asset's name
+        // before the step.
+        replaceContent: "replace {name}",
+        convert: "convert {name}",
+        // An undo or redo that left the asset as it was. A reason from `replace.reason` or the
+        // disk's own follows it.
+        restoreFailed: "Could not restore “{name}”.",
     },
     delete: {
         inUseTitle: "These assets are still in use",
@@ -83,6 +90,11 @@ export const assets = {
         confirmAction: "Replace",
         failedTitle: "Failed to replace asset contents",
         remoteUnsupported: "Remote assets have no local file to replace.",
+        // An operation that stopped before writing over this asset. A reason follows it.
+        notKept: "Could not replace “{name}”.",
+        reason: {
+            notKept: "A copy of the current file could not be saved.",
+        },
     },
     /** Per-type labels, keyed by the `AssetType` enum value. Used where a single type is named. */
     types: {
@@ -361,7 +373,7 @@ export const assets = {
         familyNoRuntime: "No runtime is installed here. The drawing runtime is set on the character.",
         family: {
             live2d: "Live2D Cubism",
-            live2dHint: "A folder holding a .model3.json, or Cubism 2's model.json.",
+            live2dHint: "A folder holding a .model3.json (Cubism 3 or later).",
             spine: "Spine",
             spineHint: "A folder holding a .skel or .json skeleton beside its .atlas.",
         },
@@ -391,7 +403,7 @@ export const assets = {
             other: "Import {count} models",
         },
         /** Why a row starts unticked, and that ticking it anyway is allowed. */
-        blockedHint: "Models with missing files start unticked. Tick one to import it as-is.",
+        blockedHint: "Models marked in red start unticked. Tick one to import it as-is.",
         problemCount: {
             one: "{count} problem",
             other: "{count} problems",
@@ -403,6 +415,7 @@ export const assets = {
             atlasMissing: "No atlas beside the skeleton; {path} was expected.",
             atlasEmpty: "{path} names no image.",
             nestedModel: "Holds another model, {path}, which would be copied with it.",
+            cubism2: "{path} is a Cubism 2 model. The Live2D Cubism runtime draws Cubism 3 and later models only.",
         },
         /** How a missing file is named. Lower-case: these are read mid-sentence. */
         role: {

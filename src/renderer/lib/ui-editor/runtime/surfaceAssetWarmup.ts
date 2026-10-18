@@ -395,10 +395,72 @@ async function probePreloadKind(url: string): Promise<PreloadKind | null> {
     }
 }
 
+/**
+ * Decoded warm-up images, held so the decode survives until the page that needs it opens.
+ *
+ * An `Image` that is decoded and then dropped leaves its bitmap free to be evicted, and a large page
+ * background evicted that way is decoded again on first use - the black second a page showed on its
+ * first open although the warm-up had "loaded" it. Holding the element is what keeps it (the avatar
+ * cache in `characterAvatarAssets` does the same for the same reason). Bounded by pixels so a
+ * gallery's worth of pictures cannot pin unbounded memory: 48 megapixels is about a dozen 1920x1080
+ * backgrounds, ~190 MB decoded.
+ *
+ * # Held while there is room, and only what is held is decoded
+ *
+ * A picture is held - and only then decoded - when the hold has room for it. One that does not fit
+ * is loaded and nothing more: its bytes are in the asset cache for the page that shows it, and no
+ * bitmap is made (the browser decodes a picture when it is drawn or asked to `decode()`, not when it
+ * loads). Nothing held is let go for a later picture, so what is held is decided by the order the
+ * warm-up runs in, and that is the first screen first: `warmInterfaceAssets` settles the first
+ * screen's assets before it starts the rest, and Dev Mode warms its first screen on its own before
+ * that.
+ *
+ * It used to decode every picture and let the oldest held one go. Measured in Dev Mode on a project
+ * with 32 gallery pictures of 2560x1440: 33 pictures decoded at boot and decoded-image memory went
+ * from 16 to 469 MB (renderer working set 251 -> 705 MB). Only ~13 of them fit the hold; the other
+ * ~20 bitmaps (~290 MB) could not be reused and stayed until memory pressure - and the oldest held
+ * pictures, the first to be let go, were the first screen's.
+ */
+const HELD_IMAGE_PIXEL_BUDGET = 48_000_000;
+const heldImages = new Map<string, { image: HTMLImageElement; pixels: number }>();
+let heldPixels = 0;
+
+/** Hold a loaded picture if the hold has room for it, and say whether it did. */
+function holdLoadedImage(url: string, image: HTMLImageElement): boolean {
+    const pixels = Math.max(1, (image.naturalWidth || 0) * (image.naturalHeight || 0));
+    // The same picture warmed again - Dev Mode's whole-interface pass starts with the first screen
+    // it has already warmed - takes the place it already has.
+    const previous = heldImages.get(url)?.pixels ?? 0;
+    if (heldPixels - previous + pixels > HELD_IMAGE_PIXEL_BUDGET) {
+        return false;
+    }
+    heldImages.set(url, { image, pixels });
+    heldPixels += pixels - previous;
+    return true;
+}
+
+/** The URLs of the pictures held now, in the order they were first held. For tests. */
+export function heldWarmupImageUrlsForTest(): string[] {
+    return [...heldImages.keys()];
+}
+
+/** Let go of every held picture. For tests, which share one module instance across cases. */
+export function resetHeldWarmupImagesForTest(): void {
+    heldImages.clear();
+    heldPixels = 0;
+}
+
 function preloadImage(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.onload = () => {
+            // Loaded means fetched: the bytes are in and the size has been read from the header,
+            // nothing decoded yet. A picture the hold has no room for stops here - a bitmap made for
+            // it would be one nothing keeps for the page that needs it.
+            if (!holdLoadedImage(url, image)) {
+                resolve();
+                return;
+            }
             // decode() pre-rasterizes so the reveal doesn't jank, but the
             // decode queue is tied to rendering: in a hidden page (a web
             // export opened in a background tab) it can stay pending until
