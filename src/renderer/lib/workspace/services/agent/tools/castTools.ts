@@ -606,7 +606,10 @@ export const variableUpsert: AgentToolHandler = async (args, { ctx, request, fol
         return answerJson({ created: true, variable: describeVariable(stored) }, `Created ${scope} variable "${stored.name}". One step of undo in Studio.`);
     }
 
-    const target = entry;
+    // A copy, not the registry's own record: the registry mutates that record in place, so after the
+    // update below it already holds the new type and name, and every "did the type change" question
+    // asked of it answers no. That is how a retype went by without the warning this tool promises.
+    const target = { ...entry };
     if (scopeArg && target.scope !== scopeArg) {
         throw refuse("unavailable", `"${target.name}" is a ${target.scope} variable.`, "A variable cannot move between saved and persistent; create a new one and delete this one (variable_delete).");
     }

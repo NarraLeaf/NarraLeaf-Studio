@@ -25,6 +25,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "assets/missing",
     "assets/unreadable",
     "assets/oversized",
+    "assets/sprite-animation-finite",
     "assets/group-incomplete",
     "portability/media-format",
     "portability/vfx-alpha",
@@ -45,6 +46,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/cut-point-orphan",
     "story/rows-after-ending",
     "story/quit-page-missing",
+    "story/page-missing",
     "story/input-action-missing",
     "story/input-locked-dialogue",
     "story/ending-name-duplicate",
@@ -112,7 +114,7 @@ const JA_KEYS = flattenCatalog(ja);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(82);
+        expect(LINT_RULES).toHaveLength(84);
     });
 
     it("gives every rule a unique id", () => {

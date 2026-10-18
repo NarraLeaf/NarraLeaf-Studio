@@ -1461,6 +1461,8 @@ export const blueprint = {
         onFullscreenChanged: "全屏状态变更时",
         onWindowCloseRequested: "窗口关闭请求时",
         onWindowFocusChanged: "窗口焦点变更时",
+        onSavedVarChanged: "存档变量变化时",
+        onPersistentChanged: "持久变量变化时",
         onAction: "意图触发时",
         onKeyDown: "按键按下时",
         onKeyUp: "按键抬起时",

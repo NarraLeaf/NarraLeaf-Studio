@@ -1,3 +1,4 @@
+import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
 import type { StoryDocument } from "@shared/types/story";
@@ -80,7 +81,13 @@ export type LintCharacterEntry = {
 export type PersistentNameCollision = MergedPersistentNameCollision;
 
 export type LintImageProbe =
-    | { ok: true; width: number; height: number }
+    | {
+        ok: true;
+        width: number;
+        height: number;
+        /** What an APNG declares about its frames and loops; absent or null for a still image. */
+        animation?: PngAnimation | null;
+    }
     | { ok: false; reason: string };
 
 /**

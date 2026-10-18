@@ -187,6 +187,40 @@ describe("compiling a .ui file", () => {
         expect(second.surfaces[0].dropped).toEqual([]);
     });
 
+    it("refuses an element indented under a line that holds none, rather than dropping it", () => {
+        // `Label` sits one level too deep, under the `width =` line instead of beside it. It used to
+        // vanish with its binding while the apply reported no problems.
+        const text = `${MINIMAL}        Row: nl.container @0,0 100x40\n            layout.width = 100\n                Label: nl.text @0,0 100x40\n`;
+        expect(() => parseUiFile(text)).toThrow(/line 5: this line is indented under line 4/);
+        expect(() => parseUiFile('struct demo.row\n    field caption: string\n        field shot: image\n')).toThrow(/line 3/);
+        expect(() => parseUiFile(`surface "S" id=s kind=appSurface size=800x600\n    param title "Title" = ""\n        Root: nl.root @0,0 800x600\n`)).toThrow(/line 3/);
+    });
+
+    it("still reads an element indented under the element it belongs to", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 100x40\n            layout.width = 100\n            Label: nl.text id=label @0,0 100x40\n`);
+        expect(Object.keys(result.surfaces[0].elements)).toEqual(expect.arrayContaining(["row", "label"]));
+    });
+
+    it("reads a hex colour written without quotes, and still strips a real comment", () => {
+        const result = compile(`${MINIMAL}        Panel: nl.container id=panel @0,0 10x10\n            props.appearance.backgroundColor = #1a2b3c # the panel\n`);
+        const props = result.surfaces[0].elements.panel.props as Record<string, any>;
+        expect(props.appearance.backgroundColor).toBe("#1a2b3c");
+        // Not a colour, so still a comment - and the assignment it leaves has no value.
+        expect(() => parseUiFile(`${MINIMAL}        Panel: nl.container @0,0 10x10\n            props.label = #notacolour\n`)).toThrow(/has no value/);
+    });
+
+    it("accepts `type=` on a struct field", () => {
+        const result = compile("struct demo.row\n    field id type=string\n    field count: type=number\n");
+        expect(result.structs["demo.row"].fields.map(field => field.type)).toEqual(["string", "number"]);
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it("writes an element's navigation and prints it back", () => {
+        const result = compile(`${MINIMAL}        Row: nl.container id=row @0,0 10x10\n            navigation.focusable = always\n`);
+        expect(result.surfaces[0].elements.row.navigation).toEqual({ focusable: "always" });
+        expect(result.surfaces[0].elements.row.props?.navigation).toBeUndefined();
+    });
+
     it("reads a struct block", () => {
         const result = compile('struct demo.row\n    field caption: string label="Caption"\n    field shot: image\n');
         expect(result.structs["demo.row"]).toEqual({

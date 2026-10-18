@@ -454,6 +454,13 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
         }),
         options: { maxMegabytes: 1 },
     }],
+    "assets/sprite-animation-finite": [{
+        context: () => createTestLintContext({
+            assets: [asset("blink")],
+            characters: [{ id: "c1", name: "Alice", assetIds: ["blink"] }],
+            io: { probeImage: async () => ({ ok: true, width: 1, height: 1, animation: { frames: 4, plays: 1 } }) },
+        }),
+    }],
     "assets/group-incomplete": [
         { context: () => createTestLintContext({ assets: [asset("a", { tags: ["set:set-alice", "release:main"] })], appTags: [RELEASE_APP_TAG, DEMO], assetSets: [aliceSet(DEMO.id)] }) },
         // A declaration fault, which is reported instead of the set's holes.
@@ -530,6 +537,12 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
     "story/quit-page-missing": [{
         context: () => createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Hub", [{ id: "q1", kind: "control", payload: { control: "quit", surfaceId: "gone" } }])])],
+            uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
+        }),
+    }],
+    "story/page-missing": [{
+        context: () => createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Hub", [action("p1", { action: "page", surfaceId: "gone" })])])],
             uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
         }),
     }],

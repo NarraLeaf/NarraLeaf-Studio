@@ -15,6 +15,7 @@
  */
 
 import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import { normalizeLocalizationConfiguration, normalizeLocalizationKeysDocument } from "@shared/types/localization";
 import {
     UI_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -103,8 +104,21 @@ export type BlueprintIndex = {
     /** Every blueprint by id, with the owner it claims. */
     byId: Map<string, { name: string; owner: BlueprintOwnerRef }>;
     /** Blueprint ids by the element they hang off, whether as a widget's own graph or a value. */
-    byElement: Map<string, { id: string; name: string; owner: BlueprintOwnerRef }[]>;
+    byElement: Map<string, { id: string; name: string; owner: BlueprintOwnerRef; empty?: boolean }[]>;
 };
+
+/** A blueprint with no node and no script: what a widget is given the first time its graph is opened. */
+function isEmptyBlueprint(blueprint: BlueprintDocument["blueprints"][string]): boolean {
+    const graphs = blueprint.graphs;
+    for (const pool of [graphs?.events, graphs?.functions]) {
+        for (const graph of Object.values(pool ?? {})) {
+            if (Object.keys(graph.graph?.nodes ?? {}).length > 0) {
+                return false;
+            }
+        }
+    }
+    return listScriptLayers(graphs).length === 0;
+}
 
 /**
  * Which blueprints exist and which element each hangs off.
@@ -119,7 +133,7 @@ export function indexBlueprintDocument(document: BlueprintDocument | null | unde
         const owner = blueprint.owner as { elementId?: string };
         if (typeof owner.elementId === "string") {
             const list = index.byElement.get(owner.elementId) ?? [];
-            list.push({ id: blueprint.id, name: blueprint.name, owner: blueprint.owner });
+            list.push({ id: blueprint.id, name: blueprint.name, owner: blueprint.owner, ...(isEmptyBlueprint(blueprint) ? { empty: true } : {}) });
             index.byElement.set(owner.elementId, list);
         }
     }

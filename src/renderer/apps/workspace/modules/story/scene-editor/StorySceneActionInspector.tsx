@@ -1087,6 +1087,59 @@ function InputActionEditor(props: {
     );
 }
 
+/**
+ * A `/page` row: the page it opens and the variable its answer goes into.
+ *
+ * Every variable is offered, whatever its type: the page's result is converted to the variable's own
+ * type when it is written (`coerceStoryPageResult`). A page this project no longer has stays
+ * selectable, for the reason `QuitFields` gives.
+ */
+function PageActionEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: Extract<StoryActionPayload, { action: "page" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { payload, onChange } = props;
+    const surfaces = useProjectSurfaces();
+    const variables = useStoryVariableOptions(props.document, props.sceneId);
+    const selected = payload.surfaceId;
+    const pageOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.control.quitPageUnset") },
+        // Pages only: a Game UI is drawn in its slot and cannot be opened over the story.
+        ...surfaces.filter(surface => surface.kind !== "stageSurface").map(surface => ({ value: surface.id, label: surface.name })),
+        ...(selected && !surfaces.some(surface => surface.id === selected && surface.kind !== "stageSurface") ? [{ value: selected, label: selected }] : []),
+    ];
+    // Keyed by scope and id together, as the input rows' are: two scopes may hold the same id-shaped word.
+    const resultOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.noResult") },
+        ...(["scene", "saved", "persistent"] as const).flatMap(scope => variables[scope]
+            .map(option => ({ value: `${scope}:${option.id}`, label: option.name }))),
+    ];
+    const resultValue = payload.resultTarget ? `${payload.resultTarget.scope}:${payload.resultTarget.variableId}` : "";
+    const setResult = (next: string) => {
+        const split = next.indexOf(":");
+        if (split < 0) {
+            onChange({ ...payload, resultTarget: undefined });
+            return;
+        }
+        onChange({ ...payload, resultTarget: makeVariableRef(next.slice(0, split) as StoryVariableScope, next.slice(split + 1)) });
+    };
+    return (
+        <div className="flex max-w-sm flex-col gap-3">
+            <SelectField
+                label={t("storyInspector.control.pagePage")}
+                options={pageOptions}
+                value={selected}
+                onChange={next => onChange({ ...payload, surfaceId: String(next) })}
+            />
+            <SelectField label={t("storyInspector.input.result")} options={resultOptions} value={resultValue} onChange={next => setResult(String(next))} />
+            <div className="text-2xs text-fg-subtle">{t("storyInspector.control.pageHint")}</div>
+        </div>
+    );
+}
+
 function StoryActionBlueprintEditor(props: {
     payload: Extract<StoryActionPayload, { action: "blueprint" }>;
     onChange: (payload: StoryBlock["payload"]) => void;
@@ -1211,6 +1264,9 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "input") {
         return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "page") {
+        return <PageActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (

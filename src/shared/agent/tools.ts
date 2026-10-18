@@ -722,11 +722,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string" }, category: { type: "string" }, owner: { type: "string" }, widget: { type: "string" }, limit: { type: "integer", default: 60 } },
     ),
     ws("blueprint_node", "Blueprint node details", "Pins, inspector params, graph kinds and scope of one node type.", { type: { type: "string" } }, ["type"]),
-    ws("blueprint_list", "List blueprints", "Lists blueprints with their owner (surface/element) and event heads.", { query: { type: "string" } }),
+    ws(
+        "blueprint_list",
+        "List blueprints",
+        "Lists blueprints with their owner (surface/element) and event heads. Empty ones (no nodes) are left out unless `query` or `all` is given.",
+        { query: { type: "string" }, all: { type: "boolean", description: "Also list blueprints that hold no nodes." } },
+    ),
     ws(
         "blueprint_show",
         "Read a blueprint as text",
-        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>`, passed as `blueprint`, shows all of that element's blueprints.",
         { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
         ["blueprint"],
     ),
@@ -960,12 +965,22 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         {
             key: {
                 type: "string",
-                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, a single letter or digit, or rightClick, wheelUp, wheelDown.",
+                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, Control, Shift, Alt, Meta, a single letter or digit, or rightClick, wheelUp, wheelDown.",
             },
             shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
+            ctrl: { type: "boolean", description: "Hold Ctrl with the key." },
+            alt: { type: "boolean", description: "Hold Alt with the key." },
+            meta: { type: "boolean", description: "Hold Cmd (Meta) with the key." },
+            holdMs: { type: "integer", description: "Keep the key down this long, up to 8000 ms - e.g. `Control` held to skip." },
         },
         ["key"],
     )),
+    ws(
+        "playtest_variables",
+        "Read the game's variables",
+        "The saved and persistent variables as the running Dev Mode game holds them now - what the story, a screen or a page has written so far (variables_list gives only declarations and defaults). Scene variables are not listed. playtest_click and playtest_key also name the variables an act changed.",
+        { query: { type: "string", description: "Only variables whose name contains this." } },
+    ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(

@@ -1,3 +1,4 @@
+import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 export enum AssetType {
     Image = "image",
     Audio = "audio",
@@ -82,6 +83,8 @@ export type ImageAssetMetadata = {
     height: number;
     format: string;
     size: number;
+    /** What an APNG declares about its frames and loops; null for a still image. */
+    animation?: PngAnimation | null;
 };
 
 export type AudioAssetMetadata = {

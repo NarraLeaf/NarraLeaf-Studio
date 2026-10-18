@@ -436,7 +436,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input"
+    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input" | "page"
     | "label" | "goto" | "break" | "cut" | "ending" | "quit" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
@@ -500,6 +500,8 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
                 ? badge("rumble", "story.badge.rumble", "scene")
                 : badge("input", "story.badge.input", "flow");
         }
+        // Flow, beside the waits: what the row decides is when the story goes on.
+        if (block.payload.action === "page") return badge("page", "story.badge.page", "flow");
         // Defensive rather than reachable: the arms above are exhaustive over the union, and a
         // document from a newer schema can still carry an action this build has no badge for.
         return badge("effect", "story.badge.effect", "scene");
@@ -965,6 +967,14 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ?? translate("story.describe.pluginAction");
         }
         if (payload.action === "input") return describeInput(payload, lookups);
+        // The page IS the row, as it is a quit's: "Open page" alone would leave an author opening every
+        // such row to find which one is the phone.
+        if (payload.action === "page") {
+            const page = payload.surfaceId
+                ? lookups.surfaceName?.(payload.surfaceId) ?? payload.surfaceId
+                : "";
+            return page ? translate("story.describe.page", { page }) : translate("story.describe.pageUnset");
+        }
         return translate("story.badge.effect");
     }
     if (block.kind === "control") {

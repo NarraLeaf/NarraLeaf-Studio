@@ -84,6 +84,7 @@ import type {
     StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import {
     BGM_STAGE_OBJECT_NAME,
@@ -141,6 +142,7 @@ import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import { isStoryInputWaitPayload, resolveStoryRumble, type StoryInputActionPayload } from "@shared/types/story";
 import type { StoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
+import { coerceStoryPageResult, type StoryPageHost } from "./storyPageRow";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -974,6 +976,8 @@ type SceneCompileContext = {
     onQuitToPage?: (surfaceId: string) => void;
     /** The player's hands, for the `input` rows; see {@link CompileInput.storyInput}. */
     storyInput?: StoryInputHost;
+    /** The layer stack, for the `/page` rows; see {@link CompileInput.storyPages}. */
+    storyPages?: StoryPageHost;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -1239,6 +1243,15 @@ type CompileInput = {
      * preview that never settles.
      */
     storyInput?: StoryInputHost;
+    /**
+     * What a `/page` row asks of the running game: open a page over the stage and wait for it to
+     * close.
+     *
+     * Absent for the same callers `storyInput` is absent for, and their `/page` rows compile to
+     * nothing: a build sweep has no screen to draw a page on, and a scene preview that stopped on a
+     * page would be a preview that never settles.
+     */
+    storyPages?: StoryPageHost;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1450,6 +1463,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
             storyInput: input.storyInput,
+            storyPages: input.storyPages,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1706,6 +1720,7 @@ async function buildLaunchEntryScene(params: {
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
         storyInput: input.storyInput,
+        storyPages: input.storyPages,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -3771,8 +3786,87 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileInputAction(ctx, block, payload);
     }
 
+    if (payload.action === "page") {
+        return compilePageAction(ctx, block, payload);
+    }
+
     return [];
 }
+
+/**
+ * A `/page` row: open a page over the stage, hold the story until it closes, and write what it closed
+ * with into the row's variable.
+ *
+ * An awaited action, so the story waits on the row exactly as it waits on a `/waitinput`: a skip
+ * stops at it, and a save taken while the page is open replays the row on load - which opens the page
+ * afresh, since layers are not part of a save. Rolling back past the row (or a load, which aborts it
+ * the same way) takes the page down itself: the page is opened with no owning scope, so nothing else
+ * would, and a page left standing over a story that has moved on is the orphan the layer stack exists
+ * to prevent. The answer is written only when the row was not abandoned.
+ *
+ * With no host, or no page, the row compiles to nothing - as `/quit` does; a page that is missing is
+ * `story/page-missing`'s to report, in the editor rather than on the player's screen.
+ */
+function compilePageAction(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "action" }>,
+    payload: Extract<StoryActionPayload, { action: "page" }>,
+): NlrStatement[] {
+    const host = ctx.storyPages;
+    const surfaceId = payload.surfaceId.trim();
+    if (!host || !surfaceId) {
+        return [];
+    }
+    // Resolved now, so a deleted variable is the diagnostic every other write reports. The page still
+    // opens: it is the row's point, and the write is what "skipped" means in that diagnostic.
+    const target = payload.resultTarget;
+    const slot = target ? resolveVariableSlot(ctx, target, block.id) : null;
+    const valueType = target ? variableValueType(ctx, target) : null;
+    const persistence = ctx.persistence;
+    return [recordStatement(ctx, createStoryAwaitedAction({
+        run: async (scriptCtx, signal) => {
+            const handle = host.open(surfaceId);
+            if (!handle) {
+                return;
+            }
+            const onAbort = () => host.close(handle);
+            signal.addEventListener("abort", onAbort, { once: true });
+            let result: unknown;
+            try {
+                result = await host.wait(handle);
+            } finally {
+                signal.removeEventListener("abort", onAbort);
+            }
+            if (signal.aborted || !slot || !valueType) {
+                return;
+            }
+            const value = coerceStoryPageResult(result, valueType);
+            if (value === undefined) {
+                return;
+            }
+            if (slot.kind === "host") {
+                void persistence?.set(slot.key, value);
+                return;
+            }
+            scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, value as any);
+        },
+    }), block)];
+}
+
+/** The declared type of the variable a row writes, or `null` when no declaration answers to it. */
+function variableValueType(ctx: SceneCompileContext, ref: StoryVariableRef): StoryVariableValueType | null {
+    if (ref.scope === "scene") {
+        return ctx.sceneVariables[ref.variableId]?.valueType ?? null;
+    }
+    if (ref.scope === "saved") {
+        return ctx.savedVariables[ref.variableId]?.valueType ?? null;
+    }
+    // The persistent arm is keyed by storage key, the table by entry id (see `VariableRegistryEntry`).
+    return Object.values(ctx.persistentVariables).find(entry => entry.storageKey === ref.variableId)?.valueType
+        ?? ctx.persistentVariables[ref.variableId]?.valueType
+        ?? null;
+}
+
 
 /**
  * An `input` row: the player's hands rather than the stage.

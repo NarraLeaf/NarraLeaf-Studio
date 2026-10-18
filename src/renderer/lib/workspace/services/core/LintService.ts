@@ -911,6 +911,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     ok: true,
                     width: result.data.metadata.width,
                     height: result.data.metadata.height,
+                    animation: result.data.metadata.animation ?? null,
                 };
             })),
         };

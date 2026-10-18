@@ -214,6 +214,15 @@ those you deliberately keep.
 - **Endings:** `/ending Name of the ending` records the ending, ends the playthrough and takes the
   player to the build's ending page. Rows after it never run. Names must be unique across the story.
 - **Leave to a page without an ending:** `/quit Title` (any page from `story_targets`).
+- **Open a page and come back:** `/page Phone into=reply` opens a page over the story (a phone, a map,
+  a letter), holds the story until the page closes, then goes on from the next row. The page closes
+  itself with `Close This Layer`, and what it closes with is written into `into=` (any variable; the
+  value is converted to the variable's type, and a page closed with nothing - Back included - leaves it
+  as it was). The page also writes variables itself while it is open (`Set Saved Var`), so `/if` after
+  the row reads both. The page is modal: the quick menu under it does not answer until it closes.
+  The row passes the page no parameters, so the page's own `param`s take their defaults; give a page
+  what it starts with as those defaults, or have its `init` blueprint read saved variables.
+
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
 - **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row
   after it waits for all of them - two characters crossing the stage together.

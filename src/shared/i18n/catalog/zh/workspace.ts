@@ -613,6 +613,7 @@ export const workspace = {
             playtest_hover: "在试玩中悬停",
             playtest_key: "在试玩中按键",
             playtest_stop: "停止试玩",
+            playtest_variables: "读取游戏变量",
             console_read: "读取控制台",
             build: "构建游戏",
         },

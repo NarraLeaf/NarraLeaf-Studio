@@ -146,7 +146,80 @@ export function listDrawnSurfaces(env: InputEnvironment): string[] {
     return names;
 }
 
+/**
+ * The words each drawn page and layer shows, by surface name - what tells a driver that a click
+ * changed a page's contents (a message appended to a chat, a counter going up) when no page opened
+ * or closed. Game UI surfaces on the stage are left out: their dialogue box retypes every line, and
+ * the line is read from the engine instead.
+ */
+export function readDrawnPageTexts(env: InputEnvironment): Record<string, string> {
+    const texts: Record<string, string> = {};
+    const surfaces = new Map(env.document.surfaces.map(surface => [surface.id, surface]));
+    for (const shell of Array.from(env.root.querySelectorAll(`[${SURFACE_ID_ATTRIBUTE}]`))) {
+        const surface = surfaces.get(shell.getAttribute(SURFACE_ID_ATTRIBUTE) ?? "");
+        if (!surface || surface.kind !== "appSurface" || surface.name in texts || !env.measure(shell)) {
+            continue;
+        }
+        texts[surface.name] = visibleWords(shell).replace(/\s+/g, " ").trim();
+    }
+    return texts;
+}
+
+/**
+ * Where the keyboard focus is in the game, in words - `row 2 of "Replies"`, `"Start"` - or null when
+ * it is on nothing in the game. What tells a driver that a Tab or an arrow did something when no
+ * page opened and no words changed.
+ */
+export function describeGameFocus(env: InputEnvironment): string | null {
+    const active = env.root.ownerDocument.activeElement;
+    if (!active || active === env.root.ownerDocument.body || !env.root.contains(active)) {
+        return null;
+    }
+    const nameOf = (node: Element | null): string | null => {
+        const owner = node?.closest(`[${ELEMENT_ID_ATTRIBUTE}]`);
+        const id = owner?.getAttribute(ELEMENT_ID_ATTRIBUTE);
+        if (!id) {
+            return null;
+        }
+        const element = env.document.elements[id];
+        return element?.name ?? element?.type ?? id;
+    };
+    const row = active.closest("[data-ui-list-item-index]");
+    if (row) {
+        const index = Number(row.getAttribute("data-ui-list-item-index"));
+        const list = nameOf(row.parentElement);
+        return `row ${Number.isFinite(index) ? index + 1 : "?"}${list ? ` of "${list}"` : ""}`;
+    }
+    const name = nameOf(active);
+    return name ? `"${name}"` : null;
+}
+
+/**
+ * The words under a node a player can read - its text, without the stylesheets a widget puts in
+ * the tree (a list's scrollbar rules), which `textContent` reads like any other text.
+ */
+function visibleWords(node: Node): string {
+    if (node.nodeType === 3) {
+        return node.textContent ?? "";
+    }
+    if (node.nodeType !== 1) {
+        return "";
+    }
+    const tag = (node as Element).tagName.toLowerCase();
+    if (tag === "style" || tag === "script" || tag === "template") {
+        return "";
+    }
+    let out = "";
+    for (const child of Array.from(node.childNodes)) {
+        out += visibleWords(child);
+        // Blocks read as separate words even when nothing between them is a space.
+        out += " ";
+    }
+    return out;
+}
+
 /** An element as a refusal lists it: where it is, its path, and its id to name it by. */
+
 export function describeDrawnElement(drawn: DrawnElement): string {
     const where = drawn.surfaceName ? `${drawn.surfaceName}: ` : "";
     return `${where}${drawn.path} (id ${drawn.element.id})`;
@@ -479,7 +552,14 @@ export function describePointerAct(gesture: DevModeAgentPointerGesture, outcome:
 /** A key as the `KeyboardEvent` a keyboard raises for it, or null for a key this does not press. */
 export function keyEventInit(key: string): { key: string; code: string } | null {
     if ((DEV_MODE_AGENT_KEYS as readonly string[]).includes(key)) {
-        return key === "Space" ? { key: " ", code: "Space" } : { key, code: key };
+        if (key === "Space") {
+            return { key: " ", code: "Space" };
+        }
+        // A modifier on its own (Ctrl is the skip key in most games) raises the left-hand key's code.
+        if (key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") {
+            return { key, code: `${key}Left` };
+        }
+        return { key, code: key };
     }
     if (/^[a-z]$/i.test(key)) {
         return { key: key.toLowerCase(), code: `Key${key.toUpperCase()}` };
@@ -499,26 +579,74 @@ export function describeKnownKeys(): string {
     return `${[...DEV_MODE_AGENT_KEYS, ...DEV_MODE_AGENT_POINTER_KEYS].join(", ")}, or a single letter or digit`;
 }
 
+/** The modifier keys held while a key is pressed. */
+export type KeyModifiers = { shift?: boolean; ctrl?: boolean; alt?: boolean; meta?: boolean };
+
+function keyTarget(env: InputEnvironment): Element {
+    const doc = env.root.ownerDocument;
+    const active = doc.activeElement;
+    return active && active !== doc.body && env.root.contains(active) ? active : doc.body;
+}
+
+function dispatchKey(env: InputEnvironment, type: "keydown" | "keyup", init: { key: string; code: string }, modifiers: KeyModifiers): KeyboardEvent {
+    const view = env.root.ownerDocument.defaultView;
+    const Ctor = view?.KeyboardEvent ?? KeyboardEvent;
+    const event = new Ctor(type, {
+        key: init.key,
+        code: init.code,
+        shiftKey: modifiers.shift === true || init.key === "Shift",
+        ctrlKey: modifiers.ctrl === true || init.key === "Control",
+        altKey: modifiers.alt === true || init.key === "Alt",
+        metaKey: modifiers.meta === true || init.key === "Meta",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+    });
+    keyTarget(env).dispatchEvent(event);
+    return event;
+}
+
+/**
+ * What a browser does with a Tab nothing handled: move the focus to the next control in the game
+ * (the previous with Shift). A synthetic event never gets the browser's own default action, so
+ * without this a driven Tab moved nothing and a page navigable by keyboard looked as if it were not.
+ */
+function moveFocusLikeTab(env: InputEnvironment, backwards: boolean): void {
+    const candidates = Array.from(env.root.querySelectorAll<HTMLElement>(
+        "button, input, select, textarea, [tabindex]:not([tabindex='-1']), [data-ui-list-item-index][tabindex]",
+    )).filter(node => !node.hasAttribute("disabled") && !node.closest("[inert]") && env.measure(node));
+    if (candidates.length === 0) {
+        return;
+    }
+    const active = env.root.ownerDocument.activeElement as HTMLElement | null;
+    const at = active ? candidates.indexOf(active) : -1;
+    const next = at < 0
+        ? (backwards ? candidates[candidates.length - 1] : candidates[0])
+        : candidates[(at + (backwards ? -1 : 1) + candidates.length) % candidates.length];
+    next.focus();
+}
+
+/** Put a key down, as a keyboard does before it lets go. */
+export function keyDown(env: InputEnvironment, init: { key: string; code: string }, modifiers: KeyModifiers = {}): void {
+    const event = dispatchKey(env, "keydown", init, modifiers);
+    if (init.key === "Tab" && !event.defaultPrevented) {
+        moveFocusLikeTab(env, modifiers.shift === true);
+    }
+}
+
+/** Let a key go. */
+export function keyUp(env: InputEnvironment, init: { key: string; code: string }, modifiers: KeyModifiers = {}): void {
+    dispatchKey(env, "keyup", init, modifiers);
+}
+
 /**
  * Press and release a key where a keyboard's would go: the focused element when it is in the game,
  * the page body otherwise - never a field in Dev Mode's own panels, whose keys are not the game's.
  */
-export function pressKey(env: InputEnvironment, init: { key: string; code: string }, shift = false): void {
-    const doc = env.root.ownerDocument;
-    const active = doc.activeElement;
-    const target = active && active !== doc.body && env.root.contains(active) ? active : doc.body;
-    const view = doc.defaultView;
-    const Ctor = view?.KeyboardEvent ?? KeyboardEvent;
-    for (const type of ["keydown", "keyup"] as const) {
-        target.dispatchEvent(new Ctor(type, {
-            key: init.key,
-            code: init.code,
-            shiftKey: shift,
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-        }));
-    }
+export function pressKey(env: InputEnvironment, init: { key: string; code: string }, modifiers: KeyModifiers | boolean = {}): void {
+    const held = typeof modifiers === "boolean" ? { shift: modifiers } : modifiers;
+    keyDown(env, init, held);
+    keyUp(env, init, held);
 }
 
 /** The middle of the game, where a gesture that names no element aims. */

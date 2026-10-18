@@ -59,7 +59,7 @@ import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSi
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
-import { listQuitRows } from "./story";
+import { listPageRows, listQuitRows } from "./story";
 
 /**
  * `ui` - pages and widgets that do not do what the canvas suggests they do.
@@ -600,11 +600,12 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
     for (const named of collectComponentParamSurfaceTargets(document, surfaceIds)) {
         entered.add(named);
     }
-    for (const quit of listQuitRows(ctx)) {
-        if (quit.surfaceId) {
-            entered.add(quit.surfaceId);
+    for (const row of [...listQuitRows(ctx), ...listPageRows(ctx)]) {
+        if (row.surfaceId) {
+            entered.add(row.surfaceId);
         }
     }
+
     for (const ending of collectEndingSurfaceTargets(ctx)) {
         entered.add(ending);
     }

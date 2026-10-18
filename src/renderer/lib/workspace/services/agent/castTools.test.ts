@@ -151,6 +151,21 @@ describe("variable_upsert", () => {
         expect(fakes.transactions).toBe(1);
     });
 
+    it("warns about the rows a retype leaves writing the old type", async () => {
+        // The registry updates its own record in place - as the real one does - which is what once
+        // made the handler compare the new type with itself and say nothing.
+        const { run } = harness({
+            variables: [HONEST],
+            sceneBlocks: {
+                s1: { id: "s1", kind: "action", childrenIds: [], payload: { action: "setVariable", target: { scope: "saved", variableId: "v-honest" }, value: true } },
+            },
+        });
+        const out = await run(variableUpsert, { id: "v-honest", valueType: "number", defaultValue: 0 });
+        expect(out.warnings).toHaveLength(1);
+        expect(out.warnings[0]).toMatch(/1 story row\(s\) still use "真心" as a boolean/);
+        expect(out.warnings[0]).toContain("sets it to true");
+    });
+
     it("needs valueType only to create, and refuses a name another variable holds", async () => {
         const { refusal, run } = harness({ variables: [HONEST, { ...HONEST, id: "v-place", storageKey: "v-place", name: "地点" }] });
         expect((await refusal(variableUpsert, { name: "new_one" })).message).toMatch(/valueType.*required to create/);
