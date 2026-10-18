@@ -204,6 +204,14 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        characterListGrouping: {
+            label: "角色列表",
+            description: "选择角色时，角色列表的排列方式",
+            options: {
+                grouped: "按分组显示角色",
+                all: "显示所有角色",
+            },
+        },
         dictionaries: {
             label: "拼写词典",
         },

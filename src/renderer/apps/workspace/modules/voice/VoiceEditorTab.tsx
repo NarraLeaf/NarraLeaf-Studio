@@ -24,6 +24,7 @@ import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneE
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
+import { useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
 import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
 import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
@@ -88,6 +89,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t, tn } = useTranslation();
+    /** Whether the speaker filter files the cast under its groups, or lists every character flat. */
+    const characterListGrouping = useCharacterListGrouping();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
     // writing control this shell owns.
     const freeze = useFreezeGuard();
@@ -883,11 +886,16 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
      * Only the speakers with a line in the story on show: a dropdown of a hundred characters, ninety
      * of whom say nothing here, is a list to read rather than a filter to use. Group members sit
      * under their group's name in the Characters panel's order, with the ungrouped cast first, so the
-     * two read as one filing. Narration and the choice options come last - they are nobody's voice.
+     * two read as one filing - unless `editor.characterListGrouping` says to list every character
+     * flat, which this follows as the speaker picker does. Narration and the choice options come
+     * last: they are nobody's voice.
      */
     const speakerOptions: SelectOption[] = useMemo(() => {
         const present = new Set(rows.map(voiceSpeakerKey));
-        const groupNames = new Map(characterGroups.map(group => [group.id, group.name]));
+        // No groups to file under when the author asked for one flat list: the cast then comes out in
+        // the project's own order, which is what the Characters panel shows with its groups closed.
+        const groups = characterListGrouping === "grouped" ? characterGroups : [];
+        const groupNames = new Map(groups.map(group => [group.id, group.name]));
         const ungrouped: SelectOption[] = [];
         const byGroup = new Map<string, SelectOption[]>();
         for (const character of characters) {
@@ -908,7 +916,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             }
         }
         const cast = [...ungrouped];
-        for (const group of characterGroups) {
+        for (const group of groups) {
             cast.push(...(byGroup.get(group.id) ?? []));
         }
         // A speaker who is only a name, in the order the story first says it.
@@ -926,7 +934,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             ...(present.has(NARRATION_GROUP_KEY) ? [{ value: NARRATION_GROUP_KEY, label: t("workspace.voice.table.narrationGroup") }] : []),
             ...(present.has(CHOICE_GROUP_KEY) ? [{ value: CHOICE_GROUP_KEY, label: t("workspace.voice.table.choiceGroup") }] : []),
         ];
-    }, [rows, characters, characterGroups, t]);
+    }, [rows, characters, characterGroups, characterListGrouping, t]);
 
     const filterOptions: SelectOption[] = useMemo(() => [
         { value: "all", label: `${t("workspace.voice.table.filterAll")} (${counts.all})` },

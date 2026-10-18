@@ -4,6 +4,8 @@ import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
+import { useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
+import { useCharacterGroupNames } from "./useCharacterGroupNames";
 import { useCommandTranslation } from "@/lib/i18n";
 import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
@@ -100,6 +102,16 @@ export type StoryCommandLineContextValue = {
     blueprintName?: StoryRowLookups["blueprintName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
+    /**
+     * What the speaker picker files its candidates under: the project's cast groups, by id, in the
+     * Characters panel's order.
+     *
+     * Already resolved against `editor.characterListGrouping` — absent when the author asked for one
+     * flat list of every character, which is the same thing a project with no groups has. The picker
+     * asks "what do I file under", not "what did the author choose", and asking it here is what keeps
+     * the preference one read per editor tab rather than one per row behind every nametag.
+     */
+    characterGroupNames?: ReadonlyMap<string, string>;
 };
 
 const StoryCommandLineContext = createContext<StoryCommandLineContextValue>({ trigger: ACTION_TRIGGER });
@@ -122,6 +134,10 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     // Read here rather than threaded from the controller: nothing but the rows below this provider
     // wants it, and this is the one place that already resolves per-tab preferences for all of them.
     const hideParamNames = useHideParamNames();
+    // The cast's filing, for the speaker pickers below: the groups themselves, and whether the author
+    // wants them used at all. Read here for the reason the rest of this provider is read here.
+    const characterListGrouping = useCharacterListGrouping();
+    const characterGroupNames = useCharacterGroupNames();
     const blueprintName = useStoryBlueprintNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
@@ -176,7 +192,8 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         inputActionName: actionId => commandContext?.inputActions.find(action => action.id === actionId)?.name ?? null,
         blueprintName,
         commandContext,
-    }), [assets, blueprintName, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
+        ...(characterListGrouping === "grouped" ? { characterGroupNames } : {}),
+    }), [assets, blueprintName, characterGroupNames, characterListGrouping, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 

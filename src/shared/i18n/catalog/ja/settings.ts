@@ -216,6 +216,14 @@ export const settings = {
                 command: "コマンドを強調",
             },
         },
+        characterListGrouping: {
+            label: "キャラクター一覧",
+            description: "キャラクターを選ぶときの一覧の並べ方",
+            options: {
+                grouped: "グループごとに表示",
+                all: "すべてのキャラクターを表示",
+            },
+        },
         dictionaries: {
             label: "スペル辞書",
         },
