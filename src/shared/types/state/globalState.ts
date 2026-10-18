@@ -253,6 +253,14 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
     /**
+     * How the cast is arranged wherever a character is picked: filed under its groups the way the
+     * Characters panel files it, or one flat list of every character.
+     *
+     * Grouped by default, and a project with no cast groups cannot tell the two apart - with nothing
+     * to file under, the grouped list is the flat one. See lib/settings/characterListOptions.
+     */
+    "editor.characterListGrouping": "grouped" | "all";
+    /**
      * How tall, in CSS pixels, the story inspector draws the preview of a character's appearance.
      *
      * Remembered state rather than a settings row: it is set by looking at the picture and deciding
@@ -611,6 +619,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
+    "editor.characterListGrouping": "grouped",
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
