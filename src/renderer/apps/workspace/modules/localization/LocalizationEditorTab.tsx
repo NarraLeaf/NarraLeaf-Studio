@@ -256,6 +256,11 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                 return character.profile.getName();
             }
         }
+        // A temp speaker (`#name`) is a speaker: a translator reading the table has to see which
+        // of the scene's unprofiled voices this line belongs to, not "narration" three times over.
+        if (row.speakerName) {
+            return row.speakerName;
+        }
         return t("workspace.localization.table.narrationSpeaker");
     }, [characterService, t]);
 

@@ -166,6 +166,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                 return character.profile.getName();
             }
         }
+        // A temp speaker (`#name`) has no profile but does have a name, and it is the only thing
+        // telling this line apart from the narrator's in the same scene. Shown as it is written.
+        if (row.speakerName) {
+            return row.speakerName;
+        }
         return t("workspace.voice.table.narrationSpeaker");
     }, [characterService, t]);
     const namingSpeakerFor = useCallback((row: StoryTranslationRow) => voiceLineSpeaker(
