@@ -588,7 +588,7 @@ describe("applyUiPatch component params", () => {
         const target = { kind: "surface", surfaceId: "page" } as const;
         applyUiPatch(uidoc, target, readUiPatchOps([{ op: "instantiate", component: "slotDef", id: "slot1", params: { slot: "1" } }]), LABEL);
         applyUiPatch(uidoc, target, readUiPatchOps([{ op: "set", element: "slot1", params: { slot: "2", mode: "load" } }]), LABEL);
-        expect(uidoc.getDocument().elements.slot1.extra?.componentLink?.params).toEqual({ slot: "2", mode: "load" });
+        expect((uidoc.getDocument().elements.slot1.extra?.componentLink as { params?: unknown } | undefined)?.params).toEqual({ slot: "2", mode: "load" });
         const again = applyUiPatch(uidoc, target, readUiPatchOps([{ op: "set", element: "slot1", params: { slot: "2" } }]), LABEL);
         expect(again.skipped).toHaveLength(1);
     });
