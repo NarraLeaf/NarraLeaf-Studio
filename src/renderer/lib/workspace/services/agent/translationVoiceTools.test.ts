@@ -390,6 +390,35 @@ describe("voice tools", () => {
         expect(harness.voice.getDocumentIfLoaded("ja")!.units["t-c"]).toMatchObject({ status: "linked" });
     });
 
+    it("names a take with a dot in it as written, not as a name plus an extension", async () => {
+        // Ren'Py numbers takes `316.5-2.ogg`; imported, the library name is `voice_316.5-2`.
+        const harness = createHarness({
+            audio: [
+                { id: "au-316", name: "voice_316", type: "audio" },
+                { id: "au-316.5-2", name: "voice_316.5-2", type: "audio" },
+                { id: "au-132", name: "voice_132", type: "audio" },
+                { id: "au-132.5", name: "voice_132.5", type: "audio" },
+                { id: "au-ogg", name: "rain.ogg", type: "audio" },
+            ],
+        });
+        await harness.run(voiceLink, {
+            language: "ja",
+            links: [
+                { unitId: "t-a", asset: "voice_316.5-2" },
+                // `voice_132.5` is not `voice_132` with the extension `.5`, so the name is not ambiguous.
+                { unitId: "t-b", asset: "voice_132" },
+                // The file name the agent imported from works too.
+                { unitId: "t-c", asset: "voice_132.5.ogg" },
+            ],
+        });
+        const takes = harness.voice.getDocumentIfLoaded("ja")!.units;
+        expect(takes["t-a"]).toMatchObject({ assetId: "au-316.5-2" });
+        expect(takes["t-b"]).toMatchObject({ assetId: "au-132" });
+        expect(takes["t-c"]).toMatchObject({ assetId: "au-132.5" });
+        await harness.run(voiceLink, { language: "ja", links: [{ unitId: "t-a", asset: "rain" }] });
+        expect(harness.voice.getDocumentIfLoaded("ja")!.units["t-a"]).toMatchObject({ assetId: "au-ogg" });
+    });
+
     it("adds and refuses to silently drop voice languages, as one step of undo", async () => {
         const harness = createHarness();
         await harness.run(voiceSettingsSet, { languages: ["ja", "en"] });

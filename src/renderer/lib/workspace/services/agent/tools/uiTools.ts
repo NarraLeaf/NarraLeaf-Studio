@@ -132,10 +132,27 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
     // and an agent that is not told so goes looking for them afterwards.
     const blueprintsBefore = dryRun ? null : wiredBlueprints(ctx);
     const outcome = applyUiPatch(uidoc, target, ops, AGENT_HISTORY_LABEL, { dryRun });
+    const applied = ops.length - outcome.skipped.length;
+    // Said in the sentence, not only in the JSON: "Applied 25" when one of them did nothing is the
+    // count an agent believes.
+    const skippedLine = outcome.skipped.length > 0
+        ? ` Skipped ${outcome.skipped.length} that would change nothing: ${outcome.skipped.map(item => `ops[${item.op}] (${item.kind}) ${item.reason}`).join("; ")}.`
+        : "";
+    const warningLine = outcome.warnings.length > 0 ? ` Warning: ${outcome.warnings.join("; ")}.` : "";
+    const notes = {
+        ...(outcome.skipped.length > 0 ? { skipped: outcome.skipped } : {}),
+        ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
+    };
     if (dryRun) {
         return answerJson(
-            { revision: uiContentRevision(ctx, target), dryRun: true, wouldCreate: outcome.created, wouldDelete: outcome.deleted },
-            `All ${ops.length} operation(s) on "${name}" check out and each changes something. Nothing was written; send the same call without dryRun to apply it.`,
+            { revision: uiContentRevision(ctx, target), dryRun: true, wouldCreate: outcome.created, wouldDelete: outcome.deleted, ...notes },
+            `${applied} of ${ops.length} operation(s) on "${name}" check out and change something.${skippedLine}${warningLine} Nothing was written; send the same call without dryRun to apply it.`,
+        );
+    }
+    if (applied === 0) {
+        return answerJson(
+            { revision: uiContentRevision(ctx, target), created: [], deleted: [], ...notes },
+            `Nothing changed on "${name}": every operation would leave it as it is, so no undo step was recorded.${skippedLine}`,
         );
     }
     follow.noteWrite(target.kind === "surface"
@@ -153,8 +170,9 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
             created: outcome.created,
             deleted: outcome.deleted,
             ...(deletedBlueprints.length > 0 ? { deletedBlueprints } : {}),
+            ...notes,
         },
-        `Applied ${ops.length} operation(s) to "${name}" as one undo step.`
+        `Applied ${applied} operation(s) to "${name}" as one undo step.${skippedLine}${warningLine}`
             + (deletedBlueprints.length > 0
                 ? ` The deleted elements took ${deletedBlueprints.length} blueprint(s) with them: ${deletedBlueprints.map(item => `"${item.name}"`).join(", ")}.`
                 : "")

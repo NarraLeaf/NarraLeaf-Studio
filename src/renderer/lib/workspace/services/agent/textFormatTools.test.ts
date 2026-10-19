@@ -399,8 +399,8 @@ describe("scene_create", () => {
         const { story, history, storyId, steps, run } = createHarness();
         const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
         const before = chapters();
-        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 2", after: "Opening" }));
-        expect(refused.code).toBe("invalid_args");
+        const refused = await refusal(run(sceneCreate, { name: "Lost", after: "Nowhere" }));
+        expect(refused.code).toBe("not_found");
         expect(chapters()).toEqual(before);
 
         const projectSteps = steps(projectHistoryScope());
@@ -410,6 +410,48 @@ describe("scene_create", () => {
         expect(history.undo(projectHistoryScope())).toBe(true);
         expect(chapters()).toEqual(before);
         expect(Object.values(story.getStoryDocument(storyId).scenes).some(scene => scene.name === "Arrival")).toBe(false);
+    }, 60_000);
+});
+
+describe("scene_create across chapters", () => {
+    it("opens a new chapter right after the `after` scene's chapter, as one undo step", async () => {
+        const { story, history, storyId, sceneId, steps, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const first = document().chapters[0];
+        const later = story.createChapter(storyId, "Act 3");
+        story.createScene(storyId, { chapterId: later.id, name: "Finale" });
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+        expect(document().chapters[0].sceneIds).toEqual([sceneId]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 3"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+    }, 60_000);
+
+    it("puts the scene first in the existing next chapter, and refuses a chapter that does not follow", async () => {
+        const { story, storyId, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const two = story.createChapter(storyId, "Act 2");
+        const finale = story.createScene(storyId, { chapterId: two.id, name: "Duel" });
+        story.createChapter(storyId, "Act 3");
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters[1].sceneIds).toEqual([made.id, finale.id]);
+
+        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 3", after: "Opening" }));
+        expect(refused.code).toBe("invalid_args");
+        expect(refused.message).toContain('chapter "Act 3" does not come right after it');
+        expect(refused.hint).toContain("give a `chapter` name no chapter has yet");
+        expect(Object.values(document().scenes).some(scene => scene.name === "Lost")).toBe(false);
     }, 60_000);
 });
 
@@ -451,6 +493,69 @@ describe("ui_apply", () => {
         const refused = await refusal(run(uiApply, { source: edited, baseRevision: shown.revision }));
         expect(refused.code).toBe("stale_revision");
         expect(uidoc.getDocument().elements.title.props?.text).toBe("By hand");
+    }, 60_000);
+
+    /** The title page grown past one answer: a few hundred long texts. */
+    function growTitlePage(uidoc: UIDocumentService) {
+        const doc = uidoc.getDocument();
+        for (let index = 0; index < 600; index += 1) {
+            const id = `line${index}`;
+            doc.elements[id] = element(id, "nl.text", "root", [], { y: index }, { text: `Line ${index} `.padEnd(160, "x") });
+            doc.elements.root.childrenIds.push(id);
+        }
+    }
+
+    async function showAllParts(run: ReturnType<typeof createHarness>["run"]) {
+        const parts: string[] = [];
+        let offset: number | null = 0;
+        while (offset !== null) {
+            const result = await run(uiShow, { surface: "Title", offset });
+            parts.push(textOf(result));
+            offset = (result.ok ? result.structured?.nextOffset : null) as number | null;
+            expect(parts.length).toBeLessThan(20);
+        }
+        return parts;
+    }
+
+    it("serves a page too long for one answer in parts that join back into a page it applies", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const parts = await showAllParts(run);
+        expect(parts.length).toBeGreaterThan(1);
+        for (const part of parts) {
+            expect(part.length).toBeLessThan(61_000);
+        }
+        expect(parts[0]).toMatch(/# ui_show part: characters 0-\d+ of \d+ at revision \d+ - call ui_show again with offset=\d+/);
+        expect(parts[parts.length - 1]).toMatch(/the last part/);
+        const joined = parts.join("").replace("Line 599 ", "Changed 599 ");
+        const result = await run(uiApply, { source: joined });
+        expect(textOf(result)).toContain("Surfaces replaced: Title");
+        expect(String(uidoc.getDocument().elements.line599.props?.text)).toMatch(/^Changed 599/);
+        expect(Object.keys(uidoc.getDocument().elements).filter(id => id.startsWith("line"))).toHaveLength(600);
+    }, 60_000);
+
+    it("prints the whole page uncut with `full`", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const result = await run(uiShow, { surface: "Title", full: true });
+        expect(textOf(result)).not.toContain("# ui_show part:");
+        expect(textOf(result).length).toBeGreaterThan(60_000);
+        const refused = await refusal(run(uiShow, { surface: "Title", offset: 7 }));
+        expect(refused.code).toBe("invalid_args");
+    }, 60_000);
+
+    it("refuses a source missing a part, or cut short the old way, before parsing or deleting anything", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const parts = await showAllParts(run);
+        const before = JSON.stringify(uidoc.getDocument());
+        const missing = await refusal(run(uiApply, { source: parts.slice(0, -1).join("") }));
+        expect(missing.code).toBe("invalid_args");
+        expect(missing.message).toMatch(/not the whole page: characters \d+-\d+ of \d+ are missing/);
+        const oldCut = await refusal(run(uiApply, { source: `${parts[0]}\n... cut at 58801 of 99299 characters. This page is very large; edit it with ui_patch instead.` }));
+        expect(oldCut.code).toBe("invalid_args");
+        expect(oldCut.message).toMatch(/cut short at 58801 of 99299 characters/);
+        expect(JSON.stringify(uidoc.getDocument())).toBe(before);
     }, 60_000);
 
     it("refuses a source with errors as check_failed, writing nothing", async () => {
