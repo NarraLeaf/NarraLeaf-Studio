@@ -19,7 +19,11 @@ import { storyApply, storyShow } from "./tools/storyTextTools";
 import { chapterDelete, chapterRename, sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
 import { blueprintApply, blueprintShow, commitBlueprints, ownerQueryOf } from "./tools/blueprintTools";
-import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
+import { ownerRefToIndexKey, widgetMainOwnerKey } from "../ui-editor/blueprint/ownerKeys";
+import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "../ui-editor/blueprint/documentValidation";
+import { UIBlueprintLifecycleCoordinator } from "../ui-editor/UIBlueprintLifecycleCoordinator";
+import { uiPatch } from "./tools/uiTools";
+import { ensureCoreBlueprintNodes } from "@/lib/agent-core";
 import { createMainBlueprint } from "../ui-editor/blueprint/blueprintFactories";
 import { diagnosticsForRefusal, forAgent, withCanonicalCommandVocabulary } from "./tools/textFormat";
 import { formatCarriedFindings } from "@/lib/story-cli/apply";
@@ -689,5 +693,116 @@ describe("blueprint_show by owner key", () => {
         expect(ownerQueryOf("widgetMain:narraleaf-studio:main-surface:start-button")).toBe(stored);
         expect(ownerQueryOf(stored)).toBe(stored);
         expect(ownerQueryOf("开始")).toBe("开始");
+    });
+});
+
+describe("a widget's blueprint written with an id of its own", () => {
+    /** The harness with Studio's lifecycle sweep on: every interface write gives a new widget its empty blueprint. */
+    function harnessWithLifecycle() {
+        ensureCoreBlueprintNodes();
+        const harness = createHarness();
+        const lifecycle = new UIBlueprintLifecycleCoordinator();
+        lifecycle.setContext(harness.context);
+        lifecycle.activate(harness.context);
+        return harness;
+    }
+
+    const addButton = (id: string) => ({ surface: "Title", ops: [{ op: "add", parent: "root", type: "nl.button", id, name: id }] });
+
+    const CLICKER = (id: string) => `blueprint Start owner=widgetMain surface=page element=start id=${id}
+event Greet
+    head: blueprint.fn.head
+    text: blueprint.data.stringLiteral value="hi"
+    log: blueprint.log
+
+    head -> log
+    text -> log.value
+event Click
+    click: blueprint.event.head.mouseClick
+    call: blueprint.fn.call fnRef="fn:${id}:head"
+
+    click -> call
+`;
+
+    it("replaces the empty blueprint ui_patch gave the button, under its id, and later ui_patch writes still go through", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        const given = graphDocument.blueprintDocument.ownerRecords[key]?.blueprintId;
+        expect(given).toBeTruthy();
+
+        const applied = await run(blueprintApply, { source: CLICKER("my-start") });
+        expect(textOf(applied)).toContain(`already has an empty blueprint "${given}"`);
+        const blueprints = graphDocument.blueprintDocument.blueprints;
+        expect(Object.values(blueprints).filter(blueprint => ownerRefToIndexKey(blueprint.owner) === key).map(blueprint => blueprint.id)).toEqual([given]);
+        expect(blueprints["my-start"]).toBeUndefined();
+        expect(graphDocument.blueprintDocument.ownerRecords[key]).toEqual({ blueprintId: given });
+        // The file's call to its own function under the id it wrote follows the blueprint to the id it kept.
+        const refs = Object.values(blueprints[given!].graphs.events ?? {})
+            .flatMap(layer => Object.values(layer.graph?.nodes ?? {}))
+            .map(node => node.params?.fnRef)
+            .filter(Boolean);
+        expect(refs).toEqual([expect.stringMatching(new RegExp(`^fn:${given}:`))]);
+        expect(() => assertValidBlueprintDocument(graphDocument.blueprintDocument)).not.toThrow();
+
+        const patched = await run(uiPatch, addButton("quit"));
+        expect(textOf(patched)).toContain("Applied 1 operation(s)");
+        expect(graphDocument.blueprintDocument.ownerRecords[widgetMainOwnerKey("page", "quit")]).toBeDefined();
+    }, 60_000);
+
+    it("refuses an id of its own over a widget blueprint that already holds graphs, writing nothing", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        await run(blueprintApply, { source: CLICKER("my-start") });
+        const before = JSON.stringify(graphDocument.blueprintDocument);
+        const refused = await refusal(run(blueprintApply, { source: CLICKER("another-id") }));
+        expect(refused.code).toBe("check_failed");
+        expect(refused.message).toContain("compile.owner_has_blueprint");
+        expect(refused.message).toContain(`id=${graphDocument.blueprintDocument.ownerRecords[key].blueprintId}`);
+        expect(JSON.stringify(graphDocument.blueprintDocument)).toBe(before);
+    }, 60_000);
+
+    it("refuses an id that is another owner's blueprint", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        await run(uiPatch, addButton("quit"));
+        const quitId = graphDocument.blueprintDocument.ownerRecords[widgetMainOwnerKey("page", "quit")].blueprintId;
+        const refused = await refusal(run(blueprintApply, { source: CLICKER(quitId) }));
+        expect(refused.code).toBe("check_failed");
+        expect(refused.message).toContain("compile.id_of_another_owner");
+    }, 60_000);
+
+    it("drops an empty blueprint a project was left with beside its widget's own, so ui_patch writes again", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        const given = graphDocument.blueprintDocument.ownerRecords[key].blueprintId;
+        // The state an earlier Studio left: a second blueprint on the owner, the record moved to it.
+        graphDocument.blueprintDocument.blueprints["my-start"] = { ...JSON.parse(JSON.stringify(graphDocument.blueprintDocument.blueprints[given])), id: "my-start" };
+        graphDocument.blueprintDocument.ownerRecords[key] = { blueprintId: "my-start" };
+
+        const patched = await run(uiPatch, addButton("quit"));
+        expect(textOf(patched)).toContain("Applied 1 operation(s)");
+        expect(graphDocument.blueprintDocument.blueprints[given]).toBeUndefined();
+        expect(() => assertValidBlueprintDocument(graphDocument.blueprintDocument)).not.toThrow();
+    }, 60_000);
+
+    it("names the blueprint to remove when the one left beside its widget's own holds graphs", () => {
+        const owner = { kind: "widgetMain" as const, surfaceId: "page", elementId: "start" };
+        const key = ownerRefToIndexKey(owner);
+        const document = emptyBlueprints();
+        document.blueprints.kept = createMainBlueprint({ id: "kept", name: "Start", owner });
+        document.blueprints.orphan = { ...createMainBlueprint({ id: "orphan", name: "Old start", owner }), graphs: { eventIds: ["e"], events: { e: { id: "e", name: "Click", graph: { nodes: {} } } }, functionIds: [], functions: {} } };
+        document.ownerRecords[key] = { blueprintId: "kept" };
+        let caught: unknown = null;
+        try {
+            assertValidBlueprintDocument(document);
+        } catch (error) {
+            caught = error;
+        }
+        expect(caught).toBeInstanceOf(BlueprintDocumentValidationError);
+        expect((caught as BlueprintDocumentValidationError).message).toContain(`"orphan" ("Old start")`);
+        expect((caught as BlueprintDocumentValidationError).hint).toContain("blueprint_remove");
     });
 });
