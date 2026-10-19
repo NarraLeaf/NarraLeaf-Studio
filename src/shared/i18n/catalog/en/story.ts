@@ -781,6 +781,8 @@ export const story = {
         hold: "Hold Seconds",
         opacity: "Opacity",
         size: "Font Size",
+        outline: "Outline px",
+        outlineColor: "Outline Color",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
         // The two offsets are design pixels added to `pos=`, + right and + up.
         xOffset: "X Offset px",

@@ -998,13 +998,26 @@ export type StoryActionPayload =
       }
     | {
           action: "text";
-          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
+          /**
+           * `setFont` is the combined op: it sets whichever of {@link fontSize}, {@link fontColor} and
+           * {@link outline} the row states, so one `/font` line can say all three. The two single ops
+           * stay for the rows that hold them and for a line that names one value alone.
+           *
+           * Additive: no document written before it carries the value, so no schema bump - the same
+           * rule `bringToFront` came in under.
+           */
+          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor" | "setFont";
           objectName: string;
           /** Which text a non-`create` op acts on. Same rule as the `image` arm's `target`. */
           target?: StoryDisplayableTargetRef;
           text?: string;
           fontSize?: number;
           fontColor?: string;
+          /**
+           * The outline drawn round the glyphs, read by `setFont`. `null` takes an outline away
+           * (`outline=0`); absent leaves whatever the text has.
+           */
+          outline?: StoryTextOutline | null;
           layer?: StoryLayerRef;
           transform?: StoryTransformRef;
       }
@@ -1987,6 +2000,18 @@ export type StoryClipReveal = {
 export const STORY_TRANSFORM_REPEAT_TYPES = ["loop", "reverse", "mirror"] as const;
 
 export type StoryTransformRepeatType = (typeof STORY_TRANSFORM_REPEAT_TYPES)[number];
+
+/**
+ * An outline round a story text's glyphs - Ren'Py's `outlines [(width, color, 0, 0)]`.
+ *
+ * `width` is in design pixels. The runtime draws it on the text's CSS `filter` channel (a chain of
+ * offset drop shadows, which dilates the glyphs evenly), so a later row that writes that channel - a
+ * `/transform` filter or a look - replaces the outline, as any two writers of one channel do.
+ */
+export type StoryTextOutline = {
+    width: number;
+    color: string;
+};
 
 export type StoryTransformRef = {
     /** Absent means `"props"`. Only a Story Motion has to say which it is. */

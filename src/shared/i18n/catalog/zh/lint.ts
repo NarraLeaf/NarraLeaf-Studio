@@ -590,6 +590,18 @@ export const lint = {
                 + "\n"
                 + "- 在角色编辑器中重命名其中一个标签",
         },
+        storyParallelSameTarget: {
+            title: "并行分支作用于同一对象",
+            description: "/parallel 组的多个分支作用于同一个舞台对象",
+            message: "该 /parallel 组的另一个分支也作用于“{object}”",
+            help:
+                "同一个 /parallel 组的两个分支显示、隐藏、变换或修改同一个舞台对象。同一分支内的多行按顺序执行，不报告\n"
+                + "\n"
+                + "各分支同时开始，而对象同一时间只执行一个动画。一个分支可能中断另一个分支的动画，该组也可能一直等待无法完成的动画\n"
+                + "\n"
+                + "- 将该行移出该组，放在组之前或之后\n"
+                + "- 需要同时修改该对象的多项属性时，写在同一个 /transform 行中",
+        },
         blueprintReferenceMissing: {
             title: "目标缺失",
             description: "节点指向项目中已不存在的对象",

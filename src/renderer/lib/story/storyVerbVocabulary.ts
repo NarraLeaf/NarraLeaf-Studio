@@ -62,6 +62,7 @@ const TEXT: Record<OperationOf<"text">, CommandId> = {
     // Both spellings are the one `/font` command; its size and colour are two params of one row.
     setFontSize: "font",
     setFontColor: "font",
+    setFont: "font",
 };
 
 // `setZIndex` has no command: it moves a layer in the stacking order part way through a scene, which

@@ -687,6 +687,8 @@ export const story = {
         hold: "保持秒",
         opacity: "不透明度",
         size: "文字サイズ",
+        outline: "縁取りの太さ",
+        outlineColor: "縁取りの色",
         // 変形プロパティの語彙（`commands/transformVocabulary.ts`）。バッグの 1 チャンネルに 1 キー。
         // 2 つのオフセットは `pos=` に加えるデザイン上のピクセル。正の値で右、上へ動く。
         xOffset: "横オフセット",

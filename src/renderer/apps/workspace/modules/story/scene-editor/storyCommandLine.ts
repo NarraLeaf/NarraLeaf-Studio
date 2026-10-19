@@ -1,3 +1,4 @@
+import { STORY_TEXT_OUTLINE_DEFAULT_COLOR } from "@shared/story/textOutline";
 import type {
     StoryActionableTargetRef,
     StoryActionPayload,
@@ -878,6 +879,24 @@ function revealWord(transform: StoryTransformRef | undefined, direction: "reveal
 }
 
 /**
+ * `/show opacity=` — the opacity an entrance ends at, printed only when it is not the full 1 every
+ * reveal ends at anyway.
+ *
+ * A stated opacity also makes {@link revealWord} read the bag as `fade` (the channel is the one
+ * `fade` writes), and the word is kept beside the number: `in=fade` clears the other reveal channels
+ * before the opacity lands, so dropping it would print a line that builds a different row.
+ */
+function entranceOpacityArg<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(payload: P): Arg | null {
+    const opacity = payload.transform?.to?.opacity;
+    if (opacity === undefined || opacity === 1) {
+        return null;
+    }
+    return arg("opacity", numberValue(opacity), {
+        apply: next => patchTransformRef(payload, { ...(payload.transform ?? {}), to: { ...(payload.transform?.to ?? {}), opacity: Number(next) } }),
+    });
+}
+
+/**
  * A whole-screen `rule=` — the picture a rule transition plays in the order of.
  *
  * Printed only when the row actually holds one, so every other transition's line is unchanged. The
@@ -1054,7 +1073,7 @@ function characterSentence(
         case "enter":
             return {
                 commandId,
-                args: [positional("target", name, who), form, ...placement, reveal("reveal"), duration],
+                args: [positional("target", name, who), form, ...placement, reveal("reveal"), entranceOpacityArg(payload), duration],
             };
         case "exit":
             return { commandId, args: [positional("target", name, who), reveal("conceal"), duration] };
@@ -1229,12 +1248,17 @@ function imageSentence(
     if (revealCreates(payload)) {
         return {
             commandId,
-            args: [positional("target", asset, swapAsset), arg("name", name), ...placement, reveal("reveal"), duration],
+            args: [positional("target", asset, swapAsset), arg("name", name), ...placement, reveal("reveal"), entranceOpacityArg(payload), duration],
         };
     }
     return {
         commandId,
-        args: [positional("target", name, object), reveal(payload.operation === "show" ? "reveal" : "conceal"), duration],
+        args: [
+            positional("target", name, object),
+            reveal(payload.operation === "show" ? "reveal" : "conceal"),
+            payload.operation === "show" ? entranceOpacityArg(payload) : null,
+            duration,
+        ],
     };
 }
 
@@ -1272,6 +1296,28 @@ function textSentence(
                 commandId,
                 args: [positional("target", name, object), arg("color", payload.fontColor, { apply: next => ({ ...payload, fontColor: next }) })],
             };
+        case "setFont": {
+            // Whichever of the three the row states, in the order the line takes them. `outline=0` is
+            // the stored `null`, so a row that takes an outline away reads back as the line that did.
+            const outline = payload.outline;
+            return {
+                commandId,
+                args: [
+                    positional("target", name, object),
+                    positional("size", payload.fontSize === undefined ? undefined : numberValue(payload.fontSize), { apply: next => ({ ...payload, fontSize: Number(next) }) }),
+                    arg("color", payload.fontColor, { apply: next => ({ ...payload, fontColor: next }) }),
+                    arg("outline", outline === undefined ? undefined : outline === null ? "0" : numberValue(outline.width), {
+                        apply: next => ({
+                            ...payload,
+                            outline: Number(next) > 0 ? { width: Number(next), color: outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR } : null,
+                        }),
+                    }),
+                    arg("outlineColor", outline ? outline.color : undefined, {
+                        apply: next => ({ ...payload, outline: { width: outline?.width ?? 1, color: next } }),
+                    }),
+                ],
+            };
+        }
         case "show":
         case "hide": {
             const direction = payload.operation === "show" ? "reveal" : "conceal";
@@ -1283,6 +1329,7 @@ function textSentence(
                         enum: true,
                         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
                     }),
+                    direction === "reveal" ? entranceOpacityArg(payload) : null,
                     arg("d", seconds(payload.transform?.durationMs), { apply: next => patchTransform(payload, { durationMs: msOf(next) }) }),
                 ],
             };
@@ -1575,6 +1622,7 @@ function displayableSentence(
                 enum: true,
                 apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
             }),
+            direction === "reveal" ? entranceOpacityArg(payload) : null,
             arg("d", seconds(payload.transform?.durationMs), {
                 apply: next => patchTransform(payload, { durationMs: msOf(next) }),
             }),

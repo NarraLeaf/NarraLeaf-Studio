@@ -677,6 +677,20 @@ export const lint = {
                 + "\n"
                 + "- Rename one of the two tags in the character editor.",
         },
+        storyParallelSameTarget: {
+            title: "One object in two parallel branches",
+            description: "A /parallel group whose branches act on the same stage object",
+            message: "Another branch of this /parallel group also acts on \"{object}\"",
+            help:
+                "Two branches of one /parallel group show, hide, transform or change the same stage object. "
+                + "Rows inside one branch run in order and are not reported.\n"
+                + "\n"
+                + "The branches start at the same time, and the object takes one animation at a time. One branch "
+                + "can cut the other short, and the group can wait for an animation that never finishes.\n"
+                + "\n"
+                + "- Move this row out of the group, before or after it.\n"
+                + "- To change several properties of the object at once, write them on one /transform row.",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

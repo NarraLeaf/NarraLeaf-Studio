@@ -58,6 +58,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/transition-unavailable",
     "story/background-unchanged",
     "story/tag-name-shared",
+    "story/parallel-same-target",
     "blueprint/reference-missing",
     "blueprint/element-ref-missing",
     "blueprint/fn-target-missing",
@@ -114,7 +115,7 @@ const JA_KEYS = flattenCatalog(ja);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(84);
+        expect(LINT_RULES).toHaveLength(85);
     });
 
     it("gives every rule a unique id", () => {
