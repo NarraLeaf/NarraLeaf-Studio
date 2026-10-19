@@ -511,12 +511,15 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "scene_create",
         "Create a scene",
-        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). Returns its id; then write its rows with story_apply.",
+        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). To start a new chapter after an existing one, give the new `chapter` name and `after` = the last scene of the chapter before it. Returns its id; then write its rows with story_apply.",
         {
             name: { type: "string" },
             story: { type: "string", description: "Story name or id; defaults to the first story." },
-            chapter: { type: "string", description: "Chapter name; created if missing." },
-            after: { type: "string", description: "Place after this scene (name or id); defaults to the end." },
+            chapter: { type: "string", description: "Chapter name; created if missing - right after `after`'s chapter when `after` is in another one, else last." },
+            after: {
+                type: "string",
+                description: "Place after this scene (name or id); defaults to the end. With a `chapter` other than this scene's, the new scene opens that chapter: a new chapter is made right after this scene's chapter; an existing one must already be the next chapter.",
+            },
         },
         ["name"],
         true,

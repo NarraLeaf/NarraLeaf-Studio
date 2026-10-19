@@ -399,8 +399,8 @@ describe("scene_create", () => {
         const { story, history, storyId, steps, run } = createHarness();
         const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
         const before = chapters();
-        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 2", after: "Opening" }));
-        expect(refused.code).toBe("invalid_args");
+        const refused = await refusal(run(sceneCreate, { name: "Lost", after: "Nowhere" }));
+        expect(refused.code).toBe("not_found");
         expect(chapters()).toEqual(before);
 
         const projectSteps = steps(projectHistoryScope());
@@ -410,6 +410,48 @@ describe("scene_create", () => {
         expect(history.undo(projectHistoryScope())).toBe(true);
         expect(chapters()).toEqual(before);
         expect(Object.values(story.getStoryDocument(storyId).scenes).some(scene => scene.name === "Arrival")).toBe(false);
+    }, 60_000);
+});
+
+describe("scene_create across chapters", () => {
+    it("opens a new chapter right after the `after` scene's chapter, as one undo step", async () => {
+        const { story, history, storyId, sceneId, steps, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const first = document().chapters[0];
+        const later = story.createChapter(storyId, "Act 3");
+        story.createScene(storyId, { chapterId: later.id, name: "Finale" });
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+        expect(document().chapters[0].sceneIds).toEqual([sceneId]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 3"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+    }, 60_000);
+
+    it("puts the scene first in the existing next chapter, and refuses a chapter that does not follow", async () => {
+        const { story, storyId, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const two = story.createChapter(storyId, "Act 2");
+        const finale = story.createScene(storyId, { chapterId: two.id, name: "Duel" });
+        story.createChapter(storyId, "Act 3");
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters[1].sceneIds).toEqual([made.id, finale.id]);
+
+        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 3", after: "Opening" }));
+        expect(refused.code).toBe("invalid_args");
+        expect(refused.message).toContain('chapter "Act 3" does not come right after it');
+        expect(refused.hint).toContain("give a `chapter` name no chapter has yet");
+        expect(Object.values(document().scenes).some(scene => scene.name === "Lost")).toBe(false);
     }, 60_000);
 });
 
