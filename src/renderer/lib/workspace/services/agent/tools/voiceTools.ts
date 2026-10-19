@@ -39,7 +39,7 @@ import {
     refuse,
     type AgentToolHandler,
 } from "../agentCall";
-import { AGENT_HISTORY_LABEL, assetsService, stripExtension } from "../agentLookups";
+import { AGENT_HISTORY_LABEL, assetsNamed, assetsService } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import {
     collectAgentVoiceLines,
@@ -352,13 +352,13 @@ function sameTake(a: VoiceUnit | undefined, b: VoiceUnit | null): boolean {
         && (a.note ?? "") === (b.note ?? "") && a.duration === b.duration;
 }
 
-/** An audio asset by id, or by its library name (with or without extension); why not, otherwise. */
-function findAudio(pool: readonly AudioAsset[], ref: string): AudioAsset | "unknown" | "ambiguous" {
+/** An audio asset by id, or by its library name (see `assetsNamed`); why not, otherwise. */
+export function findAudio(pool: readonly AudioAsset[], ref: string): AudioAsset | "unknown" | "ambiguous" {
     const byId = pool.find(asset => asset.id === ref);
     if (byId) {
         return byId;
     }
-    const named = pool.filter(asset => asset.name === ref || stripExtension(asset.name) === ref);
+    const named = assetsNamed(pool, ref);
     if (named.length > 1) {
         return "ambiguous";
     }
