@@ -43,7 +43,7 @@ import {
     type AgentToolHandler,
 } from "../agentCall";
 import { describeBlockedDelete } from "../../assets/assetDeleteGuard";
-import { AGENT_ASSET_TYPES, assetsService, listAssets, stripExtension } from "../agentLookups";
+import { AGENT_ASSET_TYPES, assetsNamed, assetsService, listAssets, stripExtension } from "../agentLookups";
 import { ensureAgentMayReadPaths } from "../agentFolderRequest";
 import { agentWriteBlocked, assertAgentMayStillWrite } from "../agentCommitGate";
 import { findAssetMentions, type AssetMention } from "../assetMentions";
@@ -377,7 +377,7 @@ function resolveAnyAsset(ctx: WorkspaceContext, ref: string, type: AssetType | u
     if (byId) {
         return byId;
     }
-    const named = pool.filter(asset => asset.name === ref || stripExtension(asset.name) === ref);
+    const named = assetsNamed(pool, ref);
     if (named.length > 1) {
         throw refuse(
             "invalid_args",

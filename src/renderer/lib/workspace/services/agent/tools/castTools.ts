@@ -62,8 +62,15 @@ import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./text
  * read-only, because a Live2D or Spine model is set up in Studio (the runtime is the author's own
  * licensed copy, which Studio may neither ship nor fetch).
  */
-export function describeCharacter(character: Character, assets: AssetsService, stage: PixelSize, sprite: PixelSize | null) {
+export function describeCharacter(
+    character: Character,
+    assets: AssetsService,
+    stage: PixelSize,
+    sprite: PixelSize | null,
+    cast?: Pick<CharacterService, "getGroup">,
+) {
     const profile = character.profile;
+    const groupId = profile.getGroupId();
     const appearance = profile.appearance;
     const images = assets.getAssets()[AssetType.Image] ?? {};
     const entranceTransform = profile.getEntranceTransform();
@@ -98,6 +105,9 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         name: profile.getName(),
         nicknames: [...profile.getNicknames()],
         nameColor: profile.getColor() ?? null,
+        // The cast group the Characters panel files it under; null = ungrouped.
+        group: groupId ? cast?.getGroup(groupId)?.name ?? null : null,
+        groupId: groupId ?? null,
         kind,
         ...looks,
         ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
@@ -183,10 +193,40 @@ export const charactersList: AgentToolHandler = async (_args, { ctx }) => {
     const stage = stageSize(ctx);
     const characters = [];
     for (const character of cast.listCharacter()) {
-        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character)));
+        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast));
     }
-    return answerJson({ stage, characters });
+    // In the Characters panel's order; every character names its group by `group` / `groupId`.
+    const groups = cast.listGroups().map(group => ({
+        id: group.id,
+        name: group.name,
+        members: cast.listCharactersByGroup(group.id).length,
+    }));
+    return answerJson({ stage, groups, characters });
 };
+
+/**
+ * The cast group `ref` names: by id, then by exact name (trimmed). `create` when no group has that
+ * name, so "file her under NPC" works on a project that has no NPC group yet. A name two groups share
+ * is refused rather than resolved to the first, as everywhere else an agent names something.
+ */
+export function resolveCharacterGroup(
+    cast: Pick<CharacterService, "listGroups" | "getGroup">,
+    ref: string,
+): { kind: "existing"; id: string; name: string } | { kind: "create"; name: string } {
+    const byId = cast.getGroup(ref);
+    if (byId) {
+        return { kind: "existing", id: byId.id, name: byId.name };
+    }
+    const name = ref.trim();
+    if (!name) {
+        throw refuse("invalid_args", "`group` must name a group (its name or id), or be null to take the character out of its group.");
+    }
+    const named = cast.listGroups().filter(group => group.name.trim() === name);
+    if (named.length > 1) {
+        throw refuse("invalid_args", `${named.length} character groups are called "${name}".`, "Name the group by id (characters_list lists `groups`).");
+    }
+    return named[0] ? { kind: "existing", id: named[0].id, name: named[0].name } : { kind: "create", name };
+}
 
 type PoseInput = { name: string; asset: string };
 
@@ -315,6 +355,10 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
     const avatarArgs = readAvatarArgs(args);
+    if (args.group !== undefined && args.group !== null && typeof args.group !== "string") {
+        throw refuse("invalid_args", "`group` must be a group's name or id, or null to take the character out of its group.");
+    }
+    const groupArg = args.group as string | null | undefined;
     if (!id && !name) {
         throw refuse("invalid_args", "Give the character's `id` (to update one) or `name`.");
     }
@@ -341,6 +385,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     };
 
     const cast = ctx.services.get<CharacterService>(Services.Character);
+    const groupTarget = typeof groupArg === "string" ? resolveCharacterGroup(cast, groupArg) : groupArg;
     let character: Character | null = id ? cast.getCharacter(id) ?? null : null;
     if (id && !character) {
         throw refuse("not_found", `No character with id ${id}.`, "Call characters_list for the ids.");
@@ -436,15 +481,28 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
 
     // Reading the stories and measuring the poses took a while; the author may have paused meanwhile.
     assertAgentMayStillWrite({ ctx, request, follow });
+    // A group the call names but the project lacks is made now, after every check has passed, so a
+    // refused call leaves no empty group behind. Making a group is not a step of undo - it is not in
+    // the Characters panel either - so undoing the call puts the character back and leaves the group.
+    let groupNote = "";
+    if (groupTarget === null) {
+        profile.setGroupId(undefined);
+    } else if (groupTarget?.kind === "existing") {
+        profile.setGroupId(groupTarget.id);
+    } else if (groupTarget?.kind === "create") {
+        profile.setGroupId(cast.createGroup(groupTarget.name).id);
+        groupNote = ` Created the character group "${groupTarget.name}" (undo leaves the group, empty).`;
+    }
     const changed = commitRecord(cast, draft.toJSON() as StoredCharacter, created);
     const current = cast.getCharacter(profile.getId()) ?? draft;
     return answerJson(
         {
             created,
-            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite),
+            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast),
+            ...(groupTarget?.kind === "create" ? { createdGroup: groupTarget.name } : {}),
             ...(warnings.length > 0 ? { warnings } : {}),
         },
-        `${created ? "Created" : changed ? "Updated" : "Nothing to change on"} character "${current.profile.getName()}".${entranceNote}`
+        `${created ? "Created" : changed ? "Updated" : "Nothing to change on"} character "${current.profile.getName()}".${entranceNote}${groupNote}`
             + `${changed ? " One step of undo in Studio." : ""}${warnings.length > 0 ? ` ${warnings.length} warning(s).` : ""}`,
     );
 };
