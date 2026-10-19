@@ -64,6 +64,15 @@ export const characters = {
         colorReset: "名前から決める",
     },
     editor: {
+        sequenceImport: "PNG 連番画像を読み込む",
+        sequenceFps: "フレームレート",
+        sequenceLoop: "ループ",
+        sequenceStatic: "先頭フレームのみ使用",
+        sequenceMoveUp: "フレームを上へ移動",
+        sequenceMoveDown: "フレームを下へ移動",
+        sequencePngOnly: "すべてのフレームは PNG 画像である必要があります。",
+        sequenceSizeMismatch: "すべてのフレームの寸法を揃えてください。",
+
         // `live2d` / `spine` の項目は置かない。あれは製品自身の名前で、商標であり、
         // ここではなくランタイムのレジストリから来る。
         kind: { preset: "プリセットの立ち絵", layered: "レイヤー式の立ち絵", puppet: "外部ランタイム" },

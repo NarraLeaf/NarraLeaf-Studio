@@ -1,3 +1,5 @@
+import { FrameSequenceEditor } from "./components/FrameSequenceEditor";
+import { CharacterPosePreview } from "./components/CharacterPosePreview";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { Select } from "@/lib/components/elements";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -44,7 +46,7 @@ import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/u
 import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { EditorComponentProps } from "../../types";
-import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
+import type { PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
@@ -719,7 +721,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                             toolbar={gridToggle}
                         />
                     ) : (
-                    <LayerStackPreview
+                    <CharacterPosePreview
+                        sequence={kind === "preset" ? previewPose?.sequence : undefined}
                         layers={visibleLayers}
                         onion={onionLayers}
                         canvas={appearance.getCanvas()}
@@ -780,6 +783,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         ) : null}
                     />
                     )}
+                    {kind === "preset" && previewPose ? <FrameSequenceEditor pose={previewPose} appearance={appearance} frozen={freeze.frozen} /> : null}
                     {/* The strip is the answer to "how many poses does this character have and which
                         ones are missing art" - a question the pane above could not answer at all. */}
                     {kind === "preset" && !grid && (

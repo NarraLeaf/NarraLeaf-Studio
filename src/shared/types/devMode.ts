@@ -1,3 +1,4 @@
+import type { CharacterFrameSequence } from "./character/frameSequence";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDiagnostic, BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
@@ -434,6 +435,7 @@ export type CharacterAppearanceSummary =
     | {
           kind: "preset";
           poses: {
+              sequence?: CharacterFrameSequence;
               id: string;
               name: string;
               assetId: string | null;
