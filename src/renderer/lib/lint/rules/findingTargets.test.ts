@@ -622,6 +622,20 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             }],
         }),
     }],
+    "story/parallel-same-target": [{
+        context: () => stories(story("s1", "Main", [scene("sc1", "Credits", [
+            action("create", { action: "text", operation: "create", objectName: "credit", text: "Staff" }),
+            {
+                id: "group",
+                kind: "control",
+                payload: { control: "parallel" },
+                children: [
+                    action("show", { action: "text", operation: "show", objectName: "credit", transform: { to: { opacity: 1 }, durationMs: 500 } }),
+                    action("move", { action: "displayable", operation: "transform", target: { name: "credit", kind: "text" }, transform: { to: { zoom: 1.2 }, durationMs: 500 } }),
+                ],
+            },
+        ])])),
+    }],
 
     // --- blueprint ---
     "blueprint/reference-missing": [{

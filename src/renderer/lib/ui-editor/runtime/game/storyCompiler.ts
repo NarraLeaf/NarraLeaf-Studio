@@ -1,3 +1,4 @@
+import { storyTextOutlineFilter } from "@shared/story/textOutline";
 import {
     BlurDissolve,
     Character,
@@ -4958,11 +4959,19 @@ async function compileTextAction(
     if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
-    if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
+    // `setFont` sets whichever of the three it states, so one row can carry a size, a colour and an
+    // outline together; the two single ops keep reading the one field they always did.
+    const combined = payload.operation === "setFont";
+    if (payload.operation === "setFontSize" || ((payload.operation === "create" || combined) && payload.fontSize !== undefined)) {
         statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
-    if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
+    if (payload.operation === "setFontColor" || ((payload.operation === "create" || combined) && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
+    }
+    // The outline is drawn on the text's `filter` channel (see `storyTextOutlineFilter`), set as a
+    // cut: there is no halfway between two outlines worth easing through.
+    if ((payload.operation === "create" || combined) && payload.outline !== undefined) {
+        statements.push(recordStatement(ctx, text.transform(buildTransform({ filter: storyTextOutlineFilter(payload.outline) }, undefined)) as any, block));
     }
     // Declares, like `/image` create: the words, the size, the colour and the pose, all without
     // showing anything. See there.

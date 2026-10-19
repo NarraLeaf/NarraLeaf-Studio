@@ -1,3 +1,4 @@
+import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
 import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
@@ -518,6 +519,7 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "hide", label: t("common.hide") },
     { value: "setFontSize", label: t("storyInspector.textOperation.setFontSize") },
     { value: "setFontColor", label: t("storyInspector.textOperation.setFontColor") },
+    { value: "setFont", label: t("storyInspector.textOperation.setFont") },
 ];
 
 // `transform` is intentionally omitted: transforming a layer goes through the unified
@@ -1400,6 +1402,28 @@ function ActionPayloadFields(props: {
                     />
                     <NumberField label={t("storyInspector.text.fontSize")} value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
                     <ColorTextField label={t("storyInspector.text.fontColor")} value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
+                    {/* The outline is read by the combined op alone, so it is offered there and nowhere else. */}
+                    {payload.operation === "setFont" ? (
+                        <>
+                            <NumberField
+                                label={t("storyInspector.text.outlineWidth")}
+                                value={payload.outline === null ? 0 : payload.outline?.width}
+                                onChange={width => props.onChange({
+                                    ...payload,
+                                    outline: width === undefined
+                                        ? undefined
+                                        : width > 0
+                                            ? { width: Math.min(width, STORY_TEXT_OUTLINE_MAX_WIDTH), color: payload.outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR }
+                                            : null,
+                                })}
+                            />
+                            <ColorTextField
+                                label={t("storyInspector.text.outlineColor")}
+                                value={payload.outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR}
+                                onChange={color => props.onChange({ ...payload, outline: { width: payload.outline?.width ?? 1, color } })}
+                            />
+                        </>
+                    ) : null}
                 </div>
                 {payload.operation === "create" || payload.operation === "setText" ? (
                     <LabeledTextarea label={t("storyInspector.text.text")} className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />

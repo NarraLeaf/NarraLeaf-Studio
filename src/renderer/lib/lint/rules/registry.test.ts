@@ -59,6 +59,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/transition-unavailable",
     "story/background-unchanged",
     "story/tag-name-shared",
+    "story/parallel-same-target",
     "blueprint/reference-missing",
     "blueprint/element-ref-missing",
     "blueprint/fn-target-missing",

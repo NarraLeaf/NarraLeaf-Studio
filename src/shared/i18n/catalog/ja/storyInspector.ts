@@ -393,6 +393,7 @@ export const storyInspector = {
         setText: "文を差し替え",
         setFontSize: "文字サイズを決める",
         setFontColor: "文字色を決める",
+        setFont: "フォントを決める",
     },
 
     layerOperation: {
@@ -491,6 +492,8 @@ export const storyInspector = {
         textName: "テキストの名前",
         fontSize: "文字サイズ",
         fontColor: "文字色",
+        outlineWidth: "縁取りの太さ",
+        outlineColor: "縁取りの色",
         text: "テキスト",
     },
 
