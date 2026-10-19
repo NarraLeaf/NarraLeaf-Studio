@@ -311,6 +311,26 @@ the row as `» Blueprint Grant: reached the lighthouse  ⟦3b9f6a21⟧` - keep t
 entry as they are; to change what it does, `blueprint_show` / `blueprint_apply` its blueprint. One
 blueprint per row: copy the pattern with new UUIDs for the next one.
 
+## An achievement row
+
+With the Steam Achievements plugin loaded, an achievement is unlocked by a plugin row of its own, on
+the line where it is earned - no blueprint needed. In Studio the author types the plugin's
+`unlock` command with the name; the `.story` text has no spelling for a plugin row (a typed line
+is `compile.unknownCommand`), so write it as a `»` row with its payload in
+`#data` (one fresh UUID; the anchor is its first 8 characters):
+
+```
+Aki: We made it to the top.
+» Unlock  ⟦5c2e9d10⟧
+
+#data
+{"5c2e9d10":{"id":"5c2e9d10-4b7a-4c1e-9f2d-8a3b6c5d4e70","parentId":null,"childrenIds":[],"kind":"action","payload":{"action":"plugin","pluginId":"narraleaf.steam-achievements","actionId":"narraleaf.steam-achievements.story.unlock","params":{"achievementId":"ACH_LIGHTHOUSE"}}}}
+```
+
+`achievementId` is the API Name exactly as `narraleaf_steam_achievements__list` prints it (declare it
+first). `dryRun: true`, then check `story_show` prints the row under the plugin's label naming the
+achievement; a name the catalog lacks is kept, and the row's inspector lists it as missing.
+
 ## Rules that cause refusals or broken games
 
 | Symptom | Cause | Fix |

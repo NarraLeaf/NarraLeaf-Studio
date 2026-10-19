@@ -234,9 +234,14 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   1.5x its usual size write the entrance zoom times 1.5, not 1.5.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
-- A big cast reads better in groups (the main cast, side characters, passers-by):
-  `character_upsert {group}` files a character under a group by name or id, creating the group when it
-  is new (`null` takes it out); `characters_list` lists the groups with their members.
+- **File every character under a group as you make it.** An ungrouped cast is one flat list in the
+  Characters panel and in every speaker picker; once the extras arrive (a shopkeeper, three
+  classmates, "Voice on the phone", a narrator alias) the author can no longer find the leads in it.
+  Decide the groups before the first `character_upsert` - the main cast, side characters, passers-by
+  and one-off voices, or by route or place when the story is built that way - and pass `group` on
+  every call: it files the character by group name or id, creating the group when it is new (`null`
+  takes it out). Leave no character ungrouped, the lead included. `characters_list` lists the groups
+  with their members; read it before the checkpoint.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
   belonging to one playthrough (affection, choices made), `persistent` for anything that survives
   across saves (endings seen, unlocks). Name them as a script would (`trust_aoi`, `took_the_key`).
@@ -245,7 +250,8 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   rest (it refuses, listing users, while anything still reads it).
 
 Checkpoint: `story_targets` lists every speaker, asset and variable the script will name, and under
-*character looks* every pose or tag a `/show` or `/char` row will use.
+*character looks* every pose or tag a `/show` or `/char` row will use; `characters_list` shows every
+character in a group.
 
 ## Step 5 - Story
 
@@ -375,6 +381,23 @@ Prefer settings to blueprints where one exists: a button's click and hover sound
 hears and is told them. A CG needs an Unlock Gallery node: set a persistent variable in the story
 where the CG appears, and unlock from the title page's open event - the recipe is in
 `agent_guide {chapter:"plugin:narraleaf.gallery"}`.
+
+**Steam achievements.** When the project has the Steam Achievements plugin (`agent_status` lists
+`narraleaf_steam_achievements__*` tools; it is not in the skeleton, the author installs it), read
+`agent_guide {chapter:"plugin:narraleaf.steam-achievements"}` first. Then:
+- `narraleaf_steam_achievements__list` before anything else, for the names already declared;
+- `add_achievements {ids}` with API Names (`A-Z a-z 0-9 _`, up to 44 characters, case-sensitive,
+  conventionally `ACH_SOMETHING`), one per achievement the game awards; `set_stats {stats}` for
+  counters (it replaces the **whole** list: send back the ones you keep); `set_app_id` only with a
+  number the author gave you;
+- unlock each one where it is earned: a story row on the beat (`story-format`, "An achievement
+  row"), or the Unlock Achievement node in a graph that already worked it out. Declaring is not
+  unlocking: an achievement with no row or node is never awarded.
+- `rename_achievements` / `remove_achievements` leave rows and nodes naming the old name: fix those
+  too.
+- On the hand-over, list every API Name and say the author must enter the same names, with the text,
+  icons and hidden flag players see, in the Steamworks backend - no tool can, and Steam refuses a
+  name the backend lacks. A demo's own App ID is a build setting the author fills in.
 
 **Something to do at a story row** - grant an achievement, unlock a CG at the moment it shows, call
 any plugin's node: a `/blueprint` row runs a blueprint of its own (owner `storyAction`). The `.story`
