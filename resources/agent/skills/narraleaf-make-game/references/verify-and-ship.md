@@ -137,6 +137,14 @@ Verifying a button, the recipe:
    says the page closed.
 6. For hover looks, `playtest_hover {element}` then `playtest_screenshot`.
 
+**Sweep the page after every structural change.** When you have added, resized, re-parented or
+reordered elements, or a blueprint now shows or hides a panel, open the page in the game and
+`playtest_click` every control on it, one by one - each button, each slider, each toggle, the page's
+own Back and Title. A press that is refused names what covers the control (a transparent full-screen
+container is the usual culprit); a press that lands but says "Nothing visible changed" on a control
+that should visibly react needs a `playtest_screenshot` to tell. Do not sign off a page because its
+screenshot looks right: a covered page looks exactly like a working one.
+
 A save slot: start a scene, read on a few lines, open the save page (the quick-menu Save button, or
 `playtest_key {key:"rightClick"}` for the menu), `playtest_click {element:"<slot>", index:1}`, then
 `playtest_screenshot` to see the slot filled; load it from the title page the same way.

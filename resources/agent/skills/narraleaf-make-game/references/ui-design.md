@@ -299,6 +299,15 @@ reaches only the elements of its own page (`blueprint-format`).
   you a row to restyle, so rows cannot each carry a different picture (a confirm dialog's "Yes" and
   "No" drawn as two different images). Give such buttons words on a shared plate, or place fixed
   buttons instead of the list.
+- **A transparent box still takes clicks.** An `nl.container` with no fill and nothing drawn in it
+  still catches every press inside its box, so whatever lies under it - lower in the tree - is dead to
+  the player. The usual way in: placing a page by copying the original art's screen coordinates and
+  wrapping each panel or row in a 1920x1080 container so the children's numbers stay absolute. It looks
+  right in the editor and in screenshots; it only shows when a press is tried. Size every container to
+  its children (the bounding box of the visible ones, then move the children by the same offset - the
+  page looks identical), or put absolutely placed elements straight under the page's root container.
+  A hidden container takes no clicks, so the trap often springs later, when a blueprint starts showing
+  a panel that used to be hidden (two tabs' panels on screen at once).
 - **Ids you choose work in blueprints.** `add` with an `id` such as `title-locked-extra` is a stable
   target for `Element` nodes. When you replace an element a blueprint points at, point the blueprint at
   the new one in the same pass: lint reports the dangling reference as `blueprint/element-ref-missing`.
