@@ -14,9 +14,6 @@ import {
     duplicateStageObjectDeclarations,
     duplicateStoryEndingNames,
     finishedClipControls,
-    groupSameMotionTarget,
-    resolveStoryGroupRunMode,
-    storyGroupKindOfMode,
     isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneIdsInDocumentOrder,
@@ -1412,50 +1409,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         location: storyLocation(entry, scene, duplicate.blockId),
                         target: blockTarget(entry, scene, duplicate.blockId),
                     });
-                }
-            }
-            return findings;
-        },
-    },
-    {
-        /**
-         * Two rows in one `/parallel` (or race) that animate the same stage element. An element
-         * carries one transform and one transition at a time, so the engine cannot run them side by
-         * side - two `/char` rows with `t=` on one character used to stop the story dead. The compiler
-         * runs such rows one after another inside a single branch (`groupSameMotionTarget`), so the
-         * scene plays, just not the way the group reads: the later row waits for the earlier one.
-         *
-         * `warning`: the scene plays and the change lands; only the timing differs from what the
-         * group says. Reported on every row after the first of each shared set.
-         */
-        id: "story/parallel-same-target",
-        category: "story",
-        defaultSeverity: "warning",
-        slug: "storyParallelSameTarget",
-        run(ctx) {
-            const findings: LintFinding[] = [];
-            for (const { entry, scene } of eachScene(ctx)) {
-                for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: candidate => Boolean(candidate.disabled) })) {
-                    if (block.kind !== "control") {
-                        continue;
-                    }
-                    const payload = block.payload;
-                    if (payload.control !== "sequence" && payload.control !== "parallel" && payload.control !== "race") {
-                        continue;
-                    }
-                    if (storyGroupKindOfMode(resolveStoryGroupRunMode(payload)) === "sequence") {
-                        continue;
-                    }
-                    for (const group of groupSameMotionTarget(scene, block.childrenIds)) {
-                        for (const blockId of group.slice(1)) {
-                            findings.push({
-                                ruleId: "story/parallel-same-target",
-                                messageKey: "lint.rule.storyParallelSameTarget.message",
-                                location: storyLocation(entry, scene, blockId),
-                                target: blockTarget(entry, scene, blockId),
-                            });
-                        }
-                    }
                 }
             }
             return findings;

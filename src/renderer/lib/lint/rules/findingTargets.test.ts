@@ -570,20 +570,6 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             action("second", { action: "image", operation: "create", objectName: "poster", assetId: "asset-image" }),
         ])])),
     }],
-    "story/parallel-same-target": [{
-        context: () => stories(story("s1", "Main", [scene("sc1", "Opening", [
-            action("enter", { action: "character", operation: "enter", characterId: "char-alice" }),
-            {
-                id: "group",
-                kind: "control",
-                payload: { control: "parallel" },
-                children: [
-                    action("smile", { action: "character", operation: "expression", characterId: "char-alice", tags: { face: "smile" } }),
-                    action("blush", { action: "character", operation: "expression", characterId: "char-alice", tags: { skin: "blush" } }),
-                ],
-            },
-        ])])),
-    }],
     "story/video-control-after-end": [{
         context: () => stories(story("s1", "Main", [scene("sc1", "Opening", [
             action("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),

@@ -6813,6 +6813,13 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
+        // A bag that states its own opacity (`/show sign opacity=0.5 in=fade`) is the reveal itself:
+        // the eased half brings the element from hidden to that opacity together with the pose. Going
+        // through the instant show first put it at full opacity for a frame and then faded it DOWN to
+        // the value the row asked for - a flash on every half-visible reveal.
+        if (transform?.to?.opacity !== undefined && transform.mode !== "animation") {
+            return await emitTransformProps(target, transform, ctx, blockId);
+        }
         const visible = target.show({ ...instantTransformOptions(), ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }

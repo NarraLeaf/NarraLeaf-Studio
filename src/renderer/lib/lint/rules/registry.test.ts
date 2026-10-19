@@ -53,7 +53,6 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/cut-point-unreachable",
     "story/stage-object-missing",
     "story/stage-object-duplicate",
-    "story/parallel-same-target",
     "story/video-control-after-end",
     "story/character-missing",
     "story/transition-unavailable",

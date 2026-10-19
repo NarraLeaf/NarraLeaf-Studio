@@ -457,66 +457,6 @@ describe("story/stage-object-duplicate", () => {
     });
 });
 
-// --- story/parallel-same-target --------------------------------------------
-
-describe("story/parallel-same-target", () => {
-    /** A scene whose roots are only the top-level rows, so a group's rows are its children alone. */
-    async function reportedInGroup(control: Record<string, unknown>, children: StoryBlock[], before: StoryBlock[] = []): Promise<string[]> {
-        const group = {
-            id: "group",
-            kind: "control",
-            parentId: null,
-            childrenIds: children.map(child => child.id),
-            payload: control,
-        } as unknown as StoryBlock;
-        const nested = children.map(child => ({ ...child, parentId: "group" }) as StoryBlock);
-        const all = [...before, group, ...nested];
-        const entry = storyEntry(all);
-        const only = entry.document.scenes[SCENE_ID];
-        only.rootBlockIds = [...before.map(block => block.id), "group"];
-        const findings = await run("story/parallel-same-target", createTestLintContext({ stories: [entry] }));
-        return findings.map(finding => (finding.location.kind === "story" ? finding.location.blockId ?? "" : ""));
-    }
-    const enter = actionBlock("enter", { action: "character", operation: "enter", characterId: "char-1" });
-    const face = (id: string, tags: Record<string, string>) =>
-        actionBlock(id, { action: "character", operation: "expression", characterId: "char-1", tags, transition: { kind: "dissolve", durationMs: 500 } });
-
-    it("is a warning, because the scene plays and only the timing differs from what the group says", () => {
-        expect(rule("story/parallel-same-target").defaultSeverity).toBe("warning");
-    });
-
-    it("reports every row after the first that animates one element in a parallel group", async () => {
-        expect(await reportedInGroup({ control: "parallel", mode: "all" }, [
-            face("smile", { face: "smile" }),
-            face("blush", { skin: "blush" }),
-            actionBlock("move", {
-                action: "displayable",
-                operation: "transform",
-                target: { kind: "character", name: "char-1", label: "Alice" },
-                transform: { to: { opacity: 0.5 } },
-            }),
-        ], [enter])).toEqual(["blush", "move"]);
-    });
-
-    it("reports a race the same way", async () => {
-        expect(await reportedInGroup({ control: "race", mode: "any" }, [
-            face("smile", { face: "smile" }),
-            face("blush", { skin: "blush" }),
-        ], [enter])).toEqual(["blush"]);
-    });
-
-    it("says nothing about rows on different elements, or about a sequence", async () => {
-        expect(await reportedInGroup({ control: "parallel", mode: "all" }, [
-            face("smile", { face: "smile" }),
-            actionBlock("cam", { action: "camera", operation: "transform", transform: { to: { zoom: 1.2 } } }),
-        ], [enter])).toEqual([]);
-        expect(await reportedInGroup({ control: "sequence", mode: "do" }, [
-            face("smile", { face: "smile" }),
-            face("blush", { skin: "blush" }),
-        ], [enter])).toEqual([]);
-    });
-});
-
 // --- story/video-control-after-end ------------------------------------------
 
 describe("story/video-control-after-end", () => {

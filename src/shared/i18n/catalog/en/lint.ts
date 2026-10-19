@@ -582,22 +582,6 @@ export const lint = {
                 + "- For an image that should appear at once, replace the row with a /show naming the asset.\n"
                 + "- Delete the row if the object is not needed.",
         },
-        storyParallelSameTarget: {
-            title: "Parallel rows on one stage element",
-            description: "Rows in one parallel group that animate the same element run one after another",
-            message: "This row animates the same element as an earlier row in this group, so it runs after that row",
-            help:
-                "A parallel group (or a race) holds two or more rows that animate the same stage element: "
-                + "the same character or image, text, layer, the camera or the scene background.\n"
-                + "\n"
-                + "An element can play one transform and one transition at a time, so these rows cannot run "
-                + "side by side. They run in order inside the group, and the group takes as long as their "
-                + "durations added together.\n"
-                + "\n"
-                + "- To change several layers of one character at once, put the tags on one /char row.\n"
-                + "- To move and fade an element together, put both on one /transform row.\n"
-                + "- If the order is what you want, move these rows out of the group.",
-        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
@@ -701,8 +685,9 @@ export const lint = {
                 "Two branches of one /parallel group show, hide, transform or change the same stage object. "
                 + "Rows inside one branch run in order and are not reported.\n"
                 + "\n"
-                + "The branches start at the same time, and the object takes one animation at a time. One branch "
-                + "can cut the other short, and the group can wait for an animation that never finishes.\n"
+                + "The branches start at the same time, but the object takes one animation at a time, so they "
+                + "cannot run side by side. When the game plays, these branches run one after another, and the "
+                + "group takes as long as their durations added together.\n"
                 + "\n"
                 + "- Move this row out of the group, before or after it.\n"
                 + "- To change several properties of the object at once, write them on one /transform row.",

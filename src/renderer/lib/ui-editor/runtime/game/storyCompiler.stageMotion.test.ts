@@ -253,3 +253,27 @@ describe("a mirrored character re-entering without pos=", () => {
         })]);
     });
 });
+
+describe("a show that states its own opacity", () => {
+    it("fades from hidden to that opacity, never flashing to full first", async () => {
+        // `/show sign opacity=0.5 in=fade d=0.5` used to run an instant show to 1 and then fade DOWN to
+        // 0.5. The stated opacity is the reveal, so it goes straight there with the pose.
+        const compiled = await compile([
+            action("create", { action: "image", operation: "create", objectName: "sign", assetId: "asset-sign" }),
+            action("show", {
+                action: "image",
+                operation: "show",
+                objectName: "sign",
+                transform: { to: { opacity: 0.5, position: { xalign: 0.3, yalign: 0.5 } }, durationMs: 500 },
+            }),
+            narration("after"),
+        ]);
+        const sequences = transformsOfRow(compiled, "show").flatMap(transform => transform.sequences ?? []);
+
+        expect(sequences.some(sequence => sequence.props?.opacity === 1)).toBe(false);
+        expect(sequences).toEqual([expect.objectContaining({
+            props: expect.objectContaining({ opacity: 0.5 }),
+            options: expect.objectContaining({ duration: 500 }),
+        })]);
+    });
+});
