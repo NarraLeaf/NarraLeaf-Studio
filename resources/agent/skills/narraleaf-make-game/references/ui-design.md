@@ -268,6 +268,41 @@ A box of your own whose panel is a picture inside the container can hide that pi
 instead, the way the first layer shows the mark. Do not put this on the Choice page: a blueprint
 reaches only the elements of its own page (`blueprint-format`).
 
+## Pitfalls met in real builds
+
+- **A button drawn from the game's own art** is an `nl.button` with `fillType: "image"`, the label
+  emptied (`localizationKey: null`, `label: ""`), and an `appearance` whose `imageFill` group has one
+  row per state: no condition (normal), `hovered`, `focused` (same picture as hover, so pads and
+  keyboards see it) and `active` (pressed). A toggle that stays lit (fullscreen on/off, a page tab) gets
+  a second variant `selected` with the lit picture - the skeleton's toggles switch variants, so keep
+  the variant ids `default` and `selected`.
+- **Outlined text** (light text over busy art) is an `effectTextShadow` row with offset 0, blur 0 and
+  `spread` as the outline width - set it through the text's `appearance`, because the row, not the flat
+  prop, is what draws.
+- **Name colours.** The skeleton colours the nametag with the speaker's colour on every line through a
+  blueprint layer on the nametag; a fixed colour you set on the text is overwritten. If every name
+  should look the same, remove that layer (`blueprint_show` the nametag's blueprints, `blueprint_remove`
+  the colouring one) or give every character the same `nameColor`.
+- **Game menus over the stage.** Save, Load, Config and Log open over the running game; a page whose
+  `backgroundColor` setting is opaque hides it. Make it `transparent` (`ui_patch` `setting` op) when
+  the design shows the game behind a frame.
+- **A page that looks different with saved state** (a title that changes once the game is cleared, a
+  button locked until then) keeps every look on the page and switches with a blueprint that reads the
+  persistent variable (`Get Persistent` -> `If` -> `Set Element Property visible / x`). Start it from
+  the page's own blueprint with `blueprint.event.head.surfaceInit`, or from the root container's
+  `Init`; the page's own blueprint refuses a plain `Init`.
+- **The choice list does not recentre by count.** It sits where you put it; with menus of different
+  lengths, place it for the most common count and check the longest.
+- **A list has one gap.** `itemGap` spaces items both ways in a wrapping grid; for a larger gap between
+  rows than between columns, make the row template taller than its picture.
+- **One template, every row.** A list draws every row from one template, and its events do not hand
+  you a row to restyle, so rows cannot each carry a different picture (a confirm dialog's "Yes" and
+  "No" drawn as two different images). Give such buttons words on a shared plate, or place fixed
+  buttons instead of the list.
+- **Ids you choose work in blueprints.** `add` with an `id` such as `title-locked-extra` is a stable
+  target for `Element` nodes. When you replace an element a blueprint points at, point the blueprint at
+  the new one in the same pass: lint reports the dangling reference as `blueprint/element-ref-missing`.
+
 ## A phone chat (a page the story opens)
 
 A text conversation in the middle of a scene - the phone buzzes, the player reads, picks a reply,

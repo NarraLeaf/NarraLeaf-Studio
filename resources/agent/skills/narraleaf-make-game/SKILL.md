@@ -225,6 +225,13 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
   combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
   author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
+- **Place sprites by measuring, not by arithmetic alone.** When the author has a picture of how a
+  scene should look (concept art, a mock-up, a screenshot of an earlier version), put a character on
+  stage in a scratch scene, `playtest_screenshot` at full size and compare: entrance offsets computed
+  from image sizes can land a few dozen pixels off. Fix the entrance once (`entranceTransform`), not
+  every row. `scaleX: -1` in the entrance mirrors a sprite drawn facing the wrong way. A `zoom=` on a
+  character's `/transform` **replaces** the entrance zoom, as `yoffset=` does: to show a sprite at
+  1.5x its usual size write the entrance zoom times 1.5, not 1.5.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
 - A big cast reads better in groups (the main cast, side characters, passers-by):
@@ -266,6 +273,14 @@ with its rows indented under it (or a bare `/if` with `? condition` / `? else` b
 `/inc` to change variables, `/jump 'Scene name'` to move between scenes. Every route ends in an
 `/ending Name` row (unique names) - that is what the endings test and the extras screen count. Put
 shared material in shared scenes and jump to it rather than duplicating it.
+
+**A long script is generated, not typed.** For thousands of lines, write a small script in your working
+folder that turns the source into one `.story` file per scene and sends each with `story_apply` (dry run
+first, then for real), with the scene ids kept in a file so a re-run targets the same scenes. A fix
+then goes into the script and the scenes are regenerated, instead of hand-editing hundreds of rows.
+Regenerating replaces every row, so the voice takes and translations linked to the old rows are lost
+(step 8b): finish regenerating before linking voice, or make linking a script you re-run after every
+regeneration.
 
 When every scene is written: `scene_set_entry` on the opening scene, then find the title's Start
 button blueprint - `ui_show` the title page and read the `# blueprint: <name>` after the Start

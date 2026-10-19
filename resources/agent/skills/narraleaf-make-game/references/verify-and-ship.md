@@ -171,6 +171,23 @@ What to look for in each screenshot:
 
 Write a one-line verdict per screenshot in the chat; fix and replay what fails.
 
+### Playing every route to its end
+
+Spot checks miss what only a whole playthrough shows - a row the story never gets past, an ending that
+does not return to the title. For a game longer than a few scenes, drive each route from your working
+folder with a small script: `playtest_start {scene}`, then `playtest_advance {steps: 50}` in a loop,
+answering each menu with that route's option (`playtest_advance {choice}`), until the answer names an
+ending; keep each answer's first line in a log. Run it in the background and watch the log rather than
+your context. Then:
+
+- "No line came up within 10 s" with no line and no menu on screen means the story is stuck on the
+  rows after the last line it named: read them, simplify (one change per object inside a `/parallel`,
+  a `d=` on an instant `/transform` followed by another), re-apply and run that stretch again.
+- `playtest_start {scene, row}` resumes a long route near where it stopped instead of from the top.
+- After the ending, check what it was meant to change: `playtest_variables` for the flags it set,
+  then `playtest_screenshot` of the title for anything that should look different now.
+- `console_read` lines carry UTC times: compare them with when your run started before blaming it.
+
 ## 4. Console
 
 `console_read` returns Studio's recent console lines; filter with `level` (`error`, `warning`) and
