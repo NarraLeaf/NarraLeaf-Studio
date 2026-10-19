@@ -38,19 +38,31 @@ export type VoiceLineSpeaker = { speaker: string; speakerAliases: readonly strin
  * batch import, the assign picker and the agent's tools all use, so a name written by one is found
  * by the others.
  *
- * A character's name is project content and is spelled as it is. Narration, a line whose character
- * is gone and a voiced option have no name, and take the project's word for them, in its source
- * language (`voiceSpeakerWord`); the other languages' words are kept as aliases for matching.
+ * A character's name is project content and is spelled as it is, and so is the bare name a temp
+ * speaker (`#name`) is written under: it has no profile, but the line does say who speaks it, and
+ * an actor handed a script cannot tell two of them from the narrator otherwise. Neither gets
+ * aliases - the aliases exist for the narration and option words, which Studio spells differently
+ * per language; a person's name has one spelling.
+ *
+ * Narration, a voiced option and a dialogue line left with no name at all (its character gone and
+ * no bare name to fall back on) take the project's word for them, in its source language
+ * (`voiceSpeakerWord`); the other languages' words are kept as aliases for matching.
  */
 export function voiceLineSpeaker(
-    row: Pick<StoryTranslationRow, "role" | "characterId">,
+    row: Pick<StoryTranslationRow, "role" | "characterId" | "speakerName">,
     characterName: (characterId: string) => string | null | undefined,
     sourceLocale: string | null | undefined,
 ): VoiceLineSpeaker {
-    if (row.role === "dialogue" && row.characterId) {
-        const name = characterName(row.characterId);
-        if (name) {
-            return { speaker: name, speakerAliases: [] };
+    if (row.role === "dialogue") {
+        if (row.characterId) {
+            const name = characterName(row.characterId);
+            if (name) {
+                return { speaker: name, speakerAliases: [] };
+            }
+        }
+        const bare = row.speakerName?.trim();
+        if (bare) {
+            return { speaker: bare, speakerAliases: [] };
         }
     }
     // A choice option is read by whoever the game decides at that moment, so it carries no speaker
