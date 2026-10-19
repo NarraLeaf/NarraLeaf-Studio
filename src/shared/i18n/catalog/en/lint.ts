@@ -582,6 +582,22 @@ export const lint = {
                 + "- For an image that should appear at once, replace the row with a /show naming the asset.\n"
                 + "- Delete the row if the object is not needed.",
         },
+        storyParallelSameTarget: {
+            title: "Parallel rows on one stage element",
+            description: "Rows in one parallel group that animate the same element run one after another",
+            message: "This row animates the same element as an earlier row in this group, so it runs after that row",
+            help:
+                "A parallel group (or a race) holds two or more rows that animate the same stage element: "
+                + "the same character or image, text, layer, the camera or the scene background.\n"
+                + "\n"
+                + "An element can play one transform and one transition at a time, so these rows cannot run "
+                + "side by side. They run in order inside the group, and the group takes as long as their "
+                + "durations added together.\n"
+                + "\n"
+                + "- To change several layers of one character at once, put the tags on one /char row.\n"
+                + "- To move and fade an element together, put both on one /transform row.\n"
+                + "- If the order is what you want, move these rows out of the group.",
+        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
