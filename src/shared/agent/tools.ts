@@ -579,11 +579,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_show",
         "Read a page as text",
-        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply. Short by default: an element line ending in `+defaults` holds its widget's default for every prop not written (a `without` line names defaults it does not hold), and a bare key in an appearance's `propertyGroups` is a row repeating that prop. ui_apply restores both exactly, so the short text can be edited and applied as it is.",
+        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply. Short by default: an element line ending in `+defaults` holds its widget's default for every prop not written (a `without` line names defaults it does not hold), and a bare key in an appearance's `propertyGroups` is a row repeating that prop. ui_apply restores both exactly, so the short text can be edited and applied as it is. A page longer than one answer comes in parts: each ends with a `# ui_show part:` comment naming the `offset` of the next; call again with it until the part that says it is the last, join the parts in order, and that joined text applies back whole (ui_apply refuses a source missing a part). Or pass `full: true` for the whole text in one answer.",
         {
             surface: { type: "string", description: "Page name or id." },
             component: { type: "string", description: "Component name or id." },
             compact: { type: "boolean", default: true, description: "Leave out props at their default and appearance rows that repeat a prop. False prints every stored value." },
+            offset: { type: "integer", minimum: 0, default: 0, description: "Where the part starts, for a page served in parts: the offset the previous part's closing `# ui_show part:` comment names." },
+            full: { type: "boolean", default: false, description: "The whole page in one answer however long it is, instead of in parts. For a client that keeps long answers." },
         },
     ),
     ws(
@@ -610,7 +612,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_apply",
         "Write pages",
-        "Applies a `.ui` document. Each `surface` or `component` block replaces that page's whole element tree - elements the block leaves out are deleted (the answer names them). Prefer ui_patch for small edits. One step of undo.",
+        "Applies a `.ui` document. Each `surface` or `component` block replaces that page's whole element tree - elements the block leaves out are deleted (the answer names them). Prefer ui_patch for small edits. A page ui_show served in parts applies as the parts joined in order; a source missing a part is refused, never applied. One step of undo.",
         { source: { type: "string" }, baseRevision: BASE_REVISION, dryRun: DRY_RUN },
         ["source"],
         true,
@@ -618,7 +620,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_patch",
         "Edit elements",
-        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component. All operations in one call are one step of undo, and all or nothing: an operation that would change nothing (a prop the widget does not know, a value already held) refuses the whole call, so \"Applied N operation(s)\" means N real changes. Hide an element with `set` `{\"layout.visible\": false}`. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
+        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component with its params, change a page setting. All operations in one call are one step of undo. A mistake (a prop the widget does not know, an element that is not there) refuses the whole call and writes nothing; an operation that is already done (a value the element already holds) is skipped and listed under `skipped`, and the rest apply - so \"Applied N operation(s)\" means N real changes. `warnings` names an edit that will not look as meant (an image fill with no picture). Hide an element with `set` `{\"layout.visible\": false}`. Keys are the ones ui_show prints: `animation`/`navigation` are the element's own records, `setting <key>` lines are the `setting` op, `component <id> slot=\"7\"` is `params`. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
         {
             surface: { type: "string", description: "Page or component name or id." },
             ops: {
@@ -626,8 +628,8 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 items: {
                     type: "object",
                     properties: {
-                        op: { type: "string", enum: ["add", "set", "layout", "move", "rename", "delete", "instantiate"] },
-                        element: { type: "string", description: "Target element id or path (all ops but add/instantiate)." },
+                        op: { type: "string", enum: ["add", "set", "layout", "move", "rename", "delete", "instantiate", "setting"] },
+                        element: { type: "string", description: "Target element id or path (all ops but add/instantiate/setting)." },
                         parent: { type: "string", description: "add/instantiate/move: parent element id or path." },
                         index: { type: "integer", description: "add/instantiate/move: position among the parent's children." },
                         type: { type: "string", description: "add: widget type." },
@@ -641,8 +643,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                         props: {
                             type: "object",
                             description:
-                                "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`). As in the `.ui` format the first segment picks the bag: `layout.visible`/`layout.opacity`/`layout.rotation` (or `{\"layout\": {\"visible\": false}}`) write the element's layout, `style.*` its CSS overrides, `extra.*` its extra record; every other key is a widget prop and must be one the widget knows (ui_widget lists them).",
+                                "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`). As in the `.ui` format the first segment picks the bag: `layout.visible`/`layout.opacity`/`layout.rotation` (or `{\"layout\": {\"visible\": false}}`) write the element's layout, `style.*` its CSS overrides, `extra.*` its extra record, `animation` / `navigation` (or `animation.enter`) the element's own enter/exit and navigation records exactly as ui_show prints them (null removes); `props.<key>` is a widget prop whose name is one of those words (a Page widget's `props.animation`); every other key is a widget prop and must be one the widget knows (ui_widget lists them).",
                         },
+                        params: {
+                            type: "object",
+                            description:
+                                "instantiate, or set on a placed component: its param values by param id - `{\"slot\": \"7\", \"mode\": \"save\"}` is the `.ui` line `component <id> slot=\"7\" mode=save`. `<id>.key` names the translation key a text param reads (null for none). Only params the component declares (ui_show on the component prints its `param` lines).",
+                            additionalProperties: { description: "A string (a number or true/false is written as one); null only for a `.key`." },
+                        },
+                        key: { type: "string", description: "setting: the page setting - backgroundColor, backgroundImage, music, pageAnimation or navigation, dotted for a field inside one (`pageAnimation.enter`); the `setting <key> = <value>` lines ui_show prints under a page." },
+                        value: { description: "setting: the new value (`\"transparent\"`, `\"#202020\"`, or an object as ui_show prints it); null takes the setting away." },
                     },
                     required: ["op"],
                 },

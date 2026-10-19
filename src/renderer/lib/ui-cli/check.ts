@@ -32,6 +32,7 @@ import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
 import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./model";
 import { describeInvalidEnumProp, findInvalidEnumProps } from "./propValues";
+import { EMPTY_IMAGE_FILL_HINT, emptyImageFillWarning } from "./imageFill";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 
@@ -401,6 +402,16 @@ function checkElement(
             code: "ui.prop_value",
             message: `${where}: ${describeInvalidEnumProp(problem)}.`,
             hint: `Write one of the listed words, or leave ${problem.key} out for the widget's default.`,
+        });
+    }
+
+    const emptyFill = emptyImageFillWarning(element);
+    if (emptyFill) {
+        out.push({
+            severity: "warning",
+            code: "ui.image_fill_empty",
+            message: `${where}: ${emptyFill}.`,
+            hint: EMPTY_IMAGE_FILL_HINT,
         });
     }
 

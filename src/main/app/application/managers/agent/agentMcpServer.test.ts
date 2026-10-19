@@ -178,6 +178,26 @@ describe("AgentMcpServer", () => {
         expect(apply.annotations.readOnlyHint).toBe(false);
     });
 
+    it("lists the interface tools' paging, page-setting and component-param arguments, and passes them through", async () => {
+        const tools = (await rpc(port, "tools/list")).json().result.tools as { name: string; inputSchema: { properties: Record<string, any> } }[];
+        const show = tools.find(tool => tool.name === "ui_show")!;
+        expect(Object.keys(show.inputSchema.properties)).toEqual(expect.arrayContaining(["offset", "full"]));
+        const patch = tools.find(tool => tool.name === "ui_patch")!;
+        const op = patch.inputSchema.properties.ops.items;
+        expect(op.properties.op.enum).toContain("setting");
+        expect(Object.keys(op.properties)).toEqual(expect.arrayContaining(["params", "key", "value"]));
+        const ops = [
+            { op: "setting", key: "backgroundColor", value: "transparent" },
+            { op: "instantiate", component: "Save slot", params: { slot: "7", mode: "save" } },
+            { op: "set", element: "slot7", params: { slot: 8 } },
+        ];
+        const reply = await rpc(port, "tools/call", { name: "ui_patch", arguments: { surface: "Save", ops } });
+        expect(reply.json().result.isError).toBe(false);
+        expect(host.callTool).toHaveBeenCalledWith(expect.objectContaining({ name: "ui_patch" }), { surface: "Save", ops }, expect.anything());
+        const paged = await rpc(port, "tools/call", { name: "ui_show", arguments: { surface: "Settings", offset: 58801 } });
+        expect(paged.json().result.isError).toBe(false);
+    });
+
     it("calls a tool with the client name from its session and returns its content alone", async () => {
         const init = await rpc(port, "initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } });
         const session = init.headers["mcp-session-id"] as string;
