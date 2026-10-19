@@ -227,6 +227,9 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
+- A big cast reads better in groups (the main cast, side characters, passers-by):
+  `character_upsert {group}` files a character under a group by name or id, creating the group when it
+  is new (`null` takes it out); `characters_list` lists the groups with their members.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
   belonging to one playthrough (affection, choices made), `persistent` for anything that survives
   across saves (endings seen, unlocks). Name them as a script would (`trust_aoi`, `took_the_key`).
@@ -243,7 +246,9 @@ Read `story-format` first. Then, for each scene in order:
 
 1. **Have a scene.** First scenes: `scene_rename` the skeleton's demo scenes (that keeps the title
    screen's Start button, which names the first scene by id, pointing at your opening; it returns
-   the scene's new revision). Further scenes: `scene_create {name, chapter, after}`.
+   the scene's new revision). Further scenes: `scene_create {name, chapter, after}`. To open the next
+   chapter, give the new `chapter` name and the previous chapter's last scene as `after`: the chapter
+   is made right after that one, with this scene first.
 2. `story_show {scene}` - note the `revision`.
 3. Write the scene as a `.story` document: keep the `#nlstory`/`#story`/`#scene` header that
    `story_show` printed, replace the body with your rows. The header's `#background` / `#music` are
@@ -318,14 +323,29 @@ the same way.
    a small blueprint on the box's container - `ui-design`, "The dialogue box", has both, ready to
    paste. A blueprint reaches only the elements of its own page: one on the Choice page cannot hide
    the Dialogue page's box (the checker refuses it).
+8. **Beyond the skeleton.** The skeleton is where you start, not the edge of what the game may have.
+   When the game needs something it has no control for - a setting it does not offer, a per-track
+   mute, more save pages, a replay-voice button, a music room, a title that changes once the game is
+   cleared, menu buttons that animate in - build it rather than leave it out:
+   - **look first**: `blueprint_nodes {query}` (settings, audio tracks, voice, saves, pages, gallery,
+     variables), `ui_widgets` / `ui_widget`, `story_commands`; the catalogue answers from the code
+     Studio runs, so search before concluding something cannot be done;
+   - **then build**: new elements with `ui_patch`, a page or component of your own with `ui_apply`,
+     blueprints on their events (step 7), a persistent variable for state that outlives a save, `/page`
+     for a screen the story waits on, an element's `animation` for how it comes on;
+   - **check it works**: `playtest_click` / `playtest_key` in the running game, not only a screenshot.
+   Only when a search finds no way at all, build the nearest thing that does work and put the gap in
+   the hand-over with what you searched and tried. Never drop a feature because the skeleton lacked
+   it, and never leave a control that looks live and does nothing.
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.
 
 ## Step 7 - Interaction
 
 The skeleton already does starting, continuing, saving, loading, settings, backlog, skip, auto and
-quitting. Write blueprints **only for behaviour it lacks** - a new button, a page of your own, an
-unlock. Read `blueprint-format`, then:
+quitting. Write blueprints **for the behaviour it lacks** - a new button, a page of your own, an
+unlock, a setting the game needs (step 6, "Beyond the skeleton") - and leave the wired behaviour it
+already has alone. Read `blueprint-format`, then:
 
 1. `ui_surfaces {query}` for the owner ids (surface and element), `blueprint_list` /
    `blueprint_show` for what already hangs there.

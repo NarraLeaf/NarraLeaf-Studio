@@ -161,8 +161,8 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
   the menu column. Keep the menu to Start, Continue, Load, Config, Extra, Quit. If the game has no
   gallery content, hide the Extra button (`ui_patch` `set` with `{"layout.visible": false}`) rather
   than deleting it, so its blueprint is not left without an element; close the gap in the column.
-  Screenshot at full size. (`ui_patch` refuses a key the widget does not know and an edit that
-  changes nothing, so "Applied" means it changed.)
+  Screenshot at full size. (`ui_patch` refuses a key the widget does not know and skips an edit
+  that changes nothing, listing it under `skipped`, so "Applied N" counts real changes.)
 - **Dialogue** (Game UI, slot `dialog`): the band at the bottom, the nametag plate and rule, the
   sentence box, the avatar. Match the band's height to three lines of text plus the name; keep the
   quick menu clear of it. The nametag rule hides itself when nobody speaks (narration, a choice on
