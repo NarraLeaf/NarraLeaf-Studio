@@ -64,6 +64,7 @@ export const characters = {
         colorReset: "Compute from the name",
     },
     editor: {
+        sequenceTitle: "Frame sequence",
         sequenceImport: "Import PNG frames",
         sequenceFps: "Frames per second",
         sequenceLoop: "Loop",

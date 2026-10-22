@@ -55,14 +55,15 @@ export const characters = {
         colorReset: "使用名字计算",
     },
     editor: {
+        sequenceTitle: "序列帧",
         sequenceImport: "导入 PNG 序列帧",
         sequenceFps: "帧率",
         sequenceLoop: "循环",
         sequenceStatic: "仅使用首帧",
         sequenceMoveUp: "上移帧",
         sequenceMoveDown: "下移帧",
-        sequencePngOnly: "所有帧必须是 PNG 图片。",
-        sequenceSizeMismatch: "所有帧的尺寸必须一致。",
+        sequencePngOnly: "所有帧必须是 PNG 图片",
+        sequenceSizeMismatch: "所有帧的尺寸必须一致",
 
         kind: { preset: "成品立绘", layered: "分层立绘", puppet: "自定义运行时" },
         puppet: {

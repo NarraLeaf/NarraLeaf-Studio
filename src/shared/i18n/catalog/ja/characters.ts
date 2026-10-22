@@ -64,6 +64,7 @@ export const characters = {
         colorReset: "名前から決める",
     },
     editor: {
+        sequenceTitle: "連番フレーム",
         sequenceImport: "PNG 連番画像を読み込む",
         sequenceFps: "フレームレート",
         sequenceLoop: "ループ",
