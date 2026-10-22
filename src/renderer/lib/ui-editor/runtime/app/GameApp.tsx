@@ -348,6 +348,7 @@ import type {
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
 import { AutoSavePicture } from "./autoSavePicture";
+import { SaveRecordReads } from "./saveRecordReads";
 import { usePlaytime } from "./usePlaytime";
 import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import type { WeatherSeedRef } from "@shared/weather/model";
@@ -3594,6 +3595,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         [bundle.languageChange],
     );
     const readStageCoverPicture = stageCover.readPicture;
+    /**
+     * What a save screen reads, each record once however many of its nodes ask (see
+     * `saveRecordReads`). Writes and removals below drop what it holds for their slot.
+     */
+    const saveRecordReads = useMemo(() => new SaveRecordReads(host.saveStore), [host.saveStore]);
     const captureStage = host.captureStage;
     /**
      * The picture a save into `id` takes now, at the size it keeps it (see `saveCapture`). Under a
@@ -3628,6 +3634,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         const capture = typeof screenshot === "object"
             ? screenshot.picture
             : screenshot === true ? await takeSavePicture(id, liveGame) : undefined;
+        saveRecordReads.forget(id);
         await host.saveStore.write(
             id,
             liveGame.serialize(),
@@ -3636,6 +3643,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             currentSaveStamp() ?? undefined,
             playtime.getRunSeconds(),
         );
+        // Again after it landed: a screen that read the slot while the write was on its way holds the
+        // save this one replaced.
+        saveRecordReads.forget(id);
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
@@ -3645,6 +3655,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         playtime,
         pluginHost,
         requireActiveLiveGame,
+        saveRecordReads,
         takeSavePicture,
     ]);
     /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
@@ -4105,8 +4116,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
+        saveRecordReads.forget(id);
         await host.saveStore.remove(id);
-    }, [host.saveStore]);
+        saveRecordReads.forget(id);
+    }, [host.saveStore, saveRecordReads]);
 
     /**
      * Report a language-restart step to both channels a host has, on one call.
@@ -4334,14 +4347,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     // documented as direct store access, not the authoring view - and Has Quick
     // Save depends on that.)
     const listSaveIds = useCallback(async (): Promise<string[]> => listPlayerSaveIds(
-        await host.saveStore.listHeaders(),
+        await saveRecordReads.listHeaders(),
         {
             // No plugin host means no plugins loaded, and so nothing of theirs to leave out.
             pluginReservedSaveIds: pluginHost?.reservedSaveIds ?? new Set<string>(),
             build: saveBuild,
             compatibilityConfig: saveCompatibilityConfig,
         },
-    ), [host.saveStore, pluginHost, saveBuild, saveCompatibilityConfig]);
+    ), [pluginHost, saveBuild, saveCompatibilityConfig, saveRecordReads]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -4369,7 +4382,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         const entries = await Promise.all(ids.map(async (id): Promise<AutoSaveEntry | null> => {
             let record: GameAppSaveRecord | null;
             try {
-                record = await host.saveStore.read(id);
+                record = await saveRecordReads.read(id);
             } catch {
                 return null; // a corrupt slot must not take the whole list down
             }
@@ -4411,7 +4424,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig]);
+    }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig, saveRecordReads]);
 
     /**
      * When a scheduled auto-save takes its picture: at a quiet moment while the player reads, never
@@ -4465,7 +4478,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     });
 
     const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         const metadata = record?.metadata.user;
         if (metadata === undefined) {
             return null;
@@ -4476,7 +4489,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         } catch {
             return null;
         }
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * One slot's stamps, read from the record the store already keeps.
@@ -4487,7 +4500,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * slot exists, and a save screen still has a row to draw for it.
      */
     const getSaveTimes = useCallback(async (id: string): Promise<SaveRecordTimes | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4499,7 +4512,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedAt: toMs(record.metadata.updatedAt),
             createdAt: toMs(record.metadata.createdAt),
         };
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * Where one slot stopped, read from the engine metadata inside the record.
@@ -4518,7 +4531,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * be able to leave that row blank instead of stating the player finished in no time at all.
      */
     const getSavePlaytime = useCallback(async (id: string): Promise<SaveRecordPlaytime | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4526,15 +4539,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         return seconds === undefined
             ? { seconds: 0, recorded: false }
             : { seconds, recorded: true };
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
         return readSavedGameLineForPlayer(record.savedGame);
-    }, [host.saveStore, readSavedGameLineForPlayer]);
+    }, [saveRecordReads, readSavedGameLineForPlayer]);
 
     /**
      * Which of the project's stories one slot was written in.
@@ -4550,7 +4563,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * other.
      */
     const getSaveStory = useCallback(async (id: string): Promise<SaveRecordStory | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4561,15 +4574,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const entry = (bundle.storyLibrary?.index?.stories ?? []).find(story => story.id === storyId);
         return { id: storyId, name: entry?.name ?? "" };
-    }, [bundle.storyLibrary, host.saveStore]);
+    }, [bundle.storyLibrary, saveRecordReads]);
 
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
-        const capture = await host.saveStore.readPreview(id);
+        const capture = await saveRecordReads.readPreview(id);
         if (!capture) {
             return null;
         }
         return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * The last compiled story, kept so a second launch of the same one does not rebuild it.
