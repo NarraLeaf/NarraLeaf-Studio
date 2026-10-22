@@ -176,8 +176,8 @@ function run(key: string, changes: DocumentChange[]): Candidate[] {
  * character properties schema for the profile fields
  * (`modules/properties/schemas/characterSchema.ts`), the puppet editor for a custom runtime's.
  *
- * **No word is coined here.** Six fields the editor draws without ever labelling - a character's
- * nicknames, the group a row was moved into, a layered appearance's canvas, its avatar axes and the
+ * **No word is coined here.** Five fields the editor draws without ever labelling - the group a
+ * row was moved into, a layered appearance's canvas, its avatar axes and the
  * PSD it came from, and the state a puppet rests in - are named under
  * `documentDiff.characters.fields`, from the vocabulary the controls that reach them already use.
  * They are held there rather than beside the panel's own labels for the reason that block gives: a
@@ -198,9 +198,8 @@ export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> 
     voiceTrackId: "characters.properties.voiceTrack",
     entranceTransform: "characters.properties.entrance",
     portrait: "characters.preview.portraitTitle",
-    // Two the panel shows without labelling: the nicknames printed under a name in the cast list,
-    // and the group a row was moved into.
-    nicknames: "documentDiff.characters.fields.nicknames",
+    nicknames: "characters.properties.aliases",
+    // One the panel shows without labelling: the group a row was moved into.
     groupId: "documentDiff.characters.fields.group",
     // The appearance: the whole of it, the named combinations a layered one stores, and the four
     // fields a character drawn by a runtime is set up with.

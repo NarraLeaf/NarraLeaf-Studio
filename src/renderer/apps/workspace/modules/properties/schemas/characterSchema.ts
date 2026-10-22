@@ -7,6 +7,7 @@ import {
 } from "../framework";
 import type { Translator } from "@shared/i18n";
 import { CharacterAvatarField } from "../fields/CharacterAvatarField";
+import { CharacterAliasesField } from "../fields/CharacterAliasesField";
 import { CharacterColorField } from "../fields/CharacterColorField";
 import { CharacterVoiceTrackField } from "../fields/CharacterVoiceTrackField";
 import { CharacterEntranceField } from "../fields/CharacterEntranceField";
@@ -54,6 +55,16 @@ export const characterPropertySchema = (t: TranslateFn) =>
                 ctx.character.profile.setName(value);
             },
             order: 20,
+        },
+        {
+            // Under the name, because an alias is another way of writing it: a story line spoken as
+            // an alias binds to this character, and the name box still shows the name.
+            id: "nicknames",
+            type: "custom",
+            label: t("characters.properties.aliases"),
+            tip: t("characters.properties.aliasesTip"),
+            component: CharacterAliasesField,
+            order: 22,
         },
         {
             // Beside the name, not down with the appearance: the accent tints the *nametag*, so it

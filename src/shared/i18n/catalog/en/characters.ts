@@ -297,6 +297,13 @@ export const characters = {
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",
+        // Other spellings of the name a story line's speaker binds to this character by.
+        aliases: "Aliases",
+        aliasesTip: "A story line whose speaker is written as an alias belongs to this character. The game still shows the character's name.",
+        addAliasPlaceholder: "Add alias…",
+        aliasIsName: "\"{alias}\" is this character's name.",
+        aliasTakenByName: "\"{alias}\" is the name of {names}. Lines spoken as \"{alias}\" belong to {names}.",
+        aliasShared: "\"{alias}\" is also an alias of {names}. Lines spoken as \"{alias}\" cannot be assigned to one character.",
         namePlaceholder: "Character name",
         descriptionPlaceholder: "Character description…",
         tags: "Tags",

@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { TagsFieldDefinition } from "../types";
 import { FIELD_INPUT_CLASS } from "../../fieldControlClass";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { cn } from "@/lib/utils/cn";
 
 interface TagsFieldProps<TData> {
     field: TagsFieldDefinition<TData>;
@@ -54,7 +55,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
 
         // Check for duplicates (case-insensitive)
         const existingLower = localTags.map((t) => t.toLowerCase());
-        if (existingLower.includes(trimmed.toLowerCase())) {
+        if (existingLower.includes(trimmed.toLowerCase()) || field.rejectTag?.(dataRef.current, trimmed)) {
             setNewTag("");
             return;
         }
@@ -71,7 +72,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
             setIsSaving(false);
             onSaving(false);
         }
-    }, [field.id, field.addTag, field.getValue, localTags, newTag, onSaving]);
+    }, [field.id, field.addTag, field.getValue, field.rejectTag, localTags, newTag, onSaving]);
 
     const handleRemoveTag = useCallback(
         async (tag: string) => {
@@ -95,9 +96,10 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
     // chip but stays in the list, so it survives an add and is never what a remove takes out.
     const chips = localTags.flatMap(tag => {
         const label = field.formatTag ? field.formatTag(data, tag) : tag;
-        return label === null ? [] : [{ tag, label }];
+        return label === null ? [] : [{ tag, label, issue: field.tagIssue?.(data, tag) ?? null }];
     });
     const hasTags = chips.length > 0;
+    const issues = chips.flatMap(chip => (chip.issue ? [chip.issue] : []));
 
     return (
         <div className={field.className}>
@@ -106,16 +108,19 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                 {/* No tags: no chip row. The "Add tag…" field below is the whole affordance. */}
                 {hasTags && (
                     <div className="flex flex-wrap gap-1">
-                        {chips.map(({ tag, label }) => (
+                        {chips.map(({ tag, label, issue }) => (
                             <span
                                 key={tag}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
+                                className={cn(
+                                    "inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md",
+                                    issue ? "bg-warning/15 text-warning" : "bg-primary/20 text-primary",
+                                )}
                             >
                                 {label}
                                 <button
                                     onClick={() => handleRemoveTag(tag)}
                                     disabled={isDisabled}
-                                    className="hover:text-primary cursor-default disabled:opacity-50"
+                                    className="cursor-default disabled:opacity-50"
                                     data-tip={t("properties.tags.remove")}
                                     aria-label={t("properties.tags.removeAria", { tag: label })}
                                 >
@@ -156,6 +161,13 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                     </button>
                 </div>
             </div>
+            {issues.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                    {issues.map(issue => (
+                        <p key={issue} className="text-2xs text-warning">{issue}</p>
+                    ))}
+                </div>
+            )}
             {field.helpText && (
                 <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
