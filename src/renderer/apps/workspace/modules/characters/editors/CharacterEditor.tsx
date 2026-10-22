@@ -783,7 +783,6 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         ) : null}
                     />
                     )}
-                    {kind === "preset" && previewPose ? <FrameSequenceEditor pose={previewPose} appearance={appearance} frozen={freeze.frozen} /> : null}
                     {/* The strip is the answer to "how many poses does this character have and which
                         ones are missing art" - a question the pane above could not answer at all. */}
                     {kind === "preset" && !grid && (
@@ -868,6 +867,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         />
 
                         {kind === "preset" ? (
+                        <>
                         <Section
                             title={t("characters.editor.poses")}
                             onAdd={() => appearance.createPose(
@@ -928,6 +928,9 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 </div>
                             ))}
                         </Section>
+                        {/* The pose the preview is drawing, which is the one the list marks. */}
+                        {previewPose ? <FrameSequenceEditor pose={previewPose} appearance={appearance} /> : null}
+                        </>
                         ) : (
                         <>
                             <Section
