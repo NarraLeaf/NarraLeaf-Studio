@@ -30,8 +30,15 @@
  * (`LiveGame.captureImage`, narraleaf-react 1.5.1) is asked for the picture at the kept size and in the
  * kept encoding, and it goes into the save as it comes; {@link captureSavePicture} picks the way.
  *
+ * Even drawn small, a picture the page draws itself costs most of a second: the clone and its
+ * rasterisation do not shrink with the picture. A desktop shell reads the frame back from the
+ * compositor instead ({@link readBackSavePicture}, `@shared/utils/stageCapture`), and the page draws
+ * its own only where it cannot - the web export, or a window that gave no frame.
+ *
  * Comments in English per project convention.
  */
+
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 
 /** The longest edge, in pixels, a save's picture is kept at. See the module comment. */
 export const SAVE_CAPTURE_MAX_EDGE = 960;
@@ -163,4 +170,34 @@ export async function captureSavePicture(source: SavePictureSource, codec: Captu
         return shrinkSaveCapture(await source.capturePng(), codec);
     }
     throw new Error("the game runtime does not support capturePng");
+}
+
+/** A shell's read-back of the stage (`GameAppHost.captureStage`). */
+export type StageReadBack = (request: StageCaptureRequest) => Promise<string | null>;
+
+/**
+ * The stage read back from the compositor by the shell, at the kept size, or null when the shell
+ * cannot, the stage is not laid out, or no frame came - the caller then draws its own. Never rejects.
+ */
+export async function readBackSavePicture(
+    stage: Element | null | undefined,
+    readBack: StageReadBack | undefined,
+): Promise<string | null> {
+    if (!readBack || !stage) {
+        return null;
+    }
+    const box = stage.getBoundingClientRect();
+    if (!(box.width > 0 && box.height > 0)) {
+        return null;
+    }
+    try {
+        const picture = await readBack({
+            rect: { x: box.x, y: box.y, width: box.width, height: box.height },
+            maxEdge: SAVE_CAPTURE_MAX_EDGE,
+            quality: SAVE_CAPTURE_QUALITY,
+        });
+        return typeof picture === "string" && picture.startsWith("data:image/") ? picture : null;
+    } catch {
+        return null;
+    }
 }

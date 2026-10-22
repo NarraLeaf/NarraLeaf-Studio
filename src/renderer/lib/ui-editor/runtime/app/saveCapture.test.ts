@@ -14,6 +14,7 @@ import {
     canCaptureSavePicture,
     captureSavePicture,
     finishSavePicture,
+    readBackSavePicture,
     saveCaptureSize,
     shrinkSaveCapture,
     type CaptureCodec,
@@ -141,5 +142,42 @@ describe("taking a save's picture", () => {
         const shrunk = `data:image/webp;base64,${"S".repeat(3_000)}`;
         const { codec } = fakeCodec({ width: 1750, height: 985 }, { "image/webp": shrunk });
         expect(await finishSavePicture(CAPTURE, codec)).toBe(shrunk);
+    });
+});
+
+describe("reading a save's picture back from the shell", () => {
+    /** A laid-out stage at `box`, as `getBoundingClientRect` answers for it. */
+    const stageAt = (box: { x: number; y: number; width: number; height: number }) =>
+        ({ getBoundingClientRect: () => box }) as unknown as Element;
+    const jpeg = `data:image/jpeg;base64,${"J".repeat(3_000)}`;
+
+    it("asks the shell for the stage's rectangle at the kept size and quality", async () => {
+        const asked: unknown[] = [];
+        const picture = await readBackSavePicture(stageAt({ x: 0, y: 40, width: 1400, height: 787.5 }), async request => {
+            asked.push(request);
+            return jpeg;
+        });
+
+        expect(picture).toBe(jpeg);
+        expect(asked).toEqual([{
+            rect: { x: 0, y: 40, width: 1400, height: 787.5 },
+            maxEdge: SAVE_CAPTURE_MAX_EDGE,
+            quality: SAVE_CAPTURE_QUALITY,
+        }]);
+    });
+
+    it("answers null for the page to draw its own whenever the shell cannot give a frame", async () => {
+        const stage = stageAt({ x: 0, y: 0, width: 1400, height: 787.5 });
+        // A shell with no read-back (the web export), and a stage that is not there.
+        expect(await readBackSavePicture(stage, undefined)).toBeNull();
+        expect(await readBackSavePicture(null, async () => jpeg)).toBeNull();
+        // A stage with no size yet is not asked about at all.
+        let asked = 0;
+        expect(await readBackSavePicture(stageAt({ x: 0, y: 0, width: 0, height: 0 }), async () => { asked += 1; return jpeg; })).toBeNull();
+        expect(asked).toBe(0);
+        // A window that gave no frame, refused, or answered with something that is not a picture.
+        expect(await readBackSavePicture(stage, async () => null)).toBeNull();
+        expect(await readBackSavePicture(stage, async () => { throw new Error("gone"); })).toBeNull();
+        expect(await readBackSavePicture(stage, async () => "not a picture")).toBeNull();
     });
 });

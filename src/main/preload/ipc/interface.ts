@@ -50,6 +50,7 @@ import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
 } from "@shared/types/blueprint/screenshot";
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
@@ -546,6 +547,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeScreenshotSave, { projectRef }) as Promise<RequestStatus<BlueprintScreenshotResult>>,
         openScreenshotsFolder: (projectRef: DevModeSaveProjectRef) =>
             ipcClient.invoke(IPCEventType.devModeScreenshotOpenFolder, { projectRef }) as Promise<RequestStatus<BlueprintOpenScreenshotsResult>>,
+        captureStage: (request: StageCaptureRequest) =>
+            ipcClient.invoke(IPCEventType.devModeStageCapture, request) as Promise<RequestStatus<{ picture: string | null }>>,
         onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
         agentControl: (projectPath: string, action: DevModeAgentAction) =>

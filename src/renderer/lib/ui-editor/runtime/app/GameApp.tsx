@@ -283,7 +283,13 @@ import {
 } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
-import { canCaptureSavePicture, captureSavePicture, finishSavePicture, type SavePictureSource } from "./saveCapture";
+import {
+    canCaptureSavePicture,
+    captureSavePicture,
+    finishSavePicture,
+    readBackSavePicture,
+    type SavePictureSource,
+} from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -415,6 +421,11 @@ type SurfaceMountStart = { start: number; surfaceId: string; kind: "page" | "lay
 
 /** A save's picture as its writer asks for it: none, one taken now, or one already in hand. */
 type SaveScreenshot = boolean | { picture: string };
+
+/** What a save's picture needs of the running game: its own captures, and the stage to read back. */
+type SavePictureLiveGame = SavePictureSource & {
+    getGameState(): { mainContentNode: Element | null } | undefined;
+};
 
 /**
  * How many surfaces may be waiting for their first paint at once before the oldest is forgotten.
@@ -3583,17 +3594,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         [bundle.languageChange],
     );
     const readStageCoverPicture = stageCover.readPicture;
+    const captureStage = host.captureStage;
     /**
      * The picture a save into `id` takes now, at the size it keeps it (see `saveCapture`). Under a
      * page the stage's Game UI has stepped off, so the picture is the one taken as that page opened:
-     * the screen the player left to save, as an auto-save a moment earlier shows it. Undefined when
-     * none could be taken - the save itself still goes through, a failed preview must not lose progress.
+     * the screen the player left to save, as an auto-save a moment earlier shows it. Otherwise the
+     * shell reads the frame back from the compositor, and the page draws its own only when the shell
+     * cannot. Undefined when none could be taken - the save itself still goes through, a failed
+     * preview must not lose progress.
      */
-    const takeSavePicture = useCallback(async (id: string, liveGame: SavePictureSource): Promise<string | undefined> => {
+    const takeSavePicture = useCallback(async (id: string, liveGame: SavePictureLiveGame): Promise<string | undefined> => {
         const underPage = await (readStageCoverPicture() ?? null);
         try {
             if (underPage !== null) {
                 return await finishSavePicture(underPage);
+            }
+            const readBack = await readBackSavePicture(liveGame.getGameState()?.mainContentNode, captureStage);
+            if (readBack !== null) {
+                return readBack;
             }
             if (!canCaptureSavePicture(liveGame)) {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
@@ -3604,7 +3622,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             reportSaveCaptureFailure(id, normalizeError(error));
             return undefined;
         }
-    }, [readStageCoverPicture, reportSaveCaptureFailure]);
+    }, [captureStage, readStageCoverPicture, reportSaveCaptureFailure]);
     const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: SaveScreenshot) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         const capture = typeof screenshot === "object"
