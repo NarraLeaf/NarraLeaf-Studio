@@ -1305,15 +1305,27 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const stageCover = useStageCoverCapture({
         covered: stageCoveredByPage,
-        capture: () => {
+        capture: stillHeld => {
             const liveGame = nlrLiveGameRef.current;
             if (!liveGame || !gameEnteredRef.current || !canCaptureSavePicture(liveGame)) {
                 return null;
             }
             // At the size a save keeps it: a save is the only thing this picture is ever used for.
-            return captureSavePicture(liveGame);
+            // Read back by the shell while the page is held off the screen (`pagesHeldForCover`);
+            // a frame that came back after the hold let go may show the page, so the page's own
+            // picture - a clone of the stage, which leaves pages out - is taken instead.
+            return (async () => {
+                const readBack = await readBackSavePicture(liveGame.getGameState()?.mainContentNode, host.captureStage);
+                return readBack !== null && stillHeld() ? readBack : captureSavePicture(liveGame);
+            })();
         },
     });
+    /**
+     * The pages stay off the screen while the cover picture is read back, so the frame read is the
+     * stage and its Game UI alone; they appear in the render that steps the Game UI off. Only where
+     * the shell reads back: the page's own picture is a clone of the stage and never shows a page.
+     */
+    const pagesHeldForCover = stageCover.holding && host.captureStage !== undefined;
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
@@ -7492,7 +7504,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 {/* The pages start only after the NLR environment boot preload finishes; the layers do
                     not wait for it (see `layersMayDraw`). The box also guards the stage while a page
                     or layer plays its exit - see `SurfaceStackBox`. */}
-                <SurfaceStackBox className="absolute inset-0 z-10">
+                <SurfaceStackBox className="absolute inset-0 z-10" heldBack={pagesHeldForCover}>
                     <AnimatePresence
                         custom={navState.direction}
                         initial={false}

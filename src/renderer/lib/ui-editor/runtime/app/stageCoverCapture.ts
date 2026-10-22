@@ -20,6 +20,14 @@
  * Game UI on the stage for as long as drawing and encoding it took, for a picture no save ever kept
  * at that size.
  *
+ * A desktop shell reads the picture back from the compositor, which costs the page nothing - but a
+ * read-back shows what is on the screen, and the page is fading in over the stage. So while the
+ * hold lasts the host keeps the page off the screen ({@link StageCoverCapture.holding}), and a
+ * picture that arrives after the hold let go is not trusted to be of the stage alone: `capture` is
+ * handed `stillHeld` to ask. The page's own picture, a clone of the stage that leaves pages out, is
+ * the fallback; it blocked the main thread for most of a second per page opened, MEASURED in a
+ * 1920x1080 port, which is why it is no longer the first choice.
+ *
  * Comments in English per project convention.
  */
 
@@ -34,6 +42,11 @@ export const STAGE_COVER_CAPTURE_HOLD_MS = 1500;
 export type StageCoverCapture = {
     /** Whether the Game UI on the stage steps off for the page now: covered, and the picture in hand. */
     concealed: boolean;
+    /**
+     * Covered, and the picture still being taken: the Game UI is on the stage, and a host that reads
+     * the frame back keeps the page off the screen until this turns false.
+     */
+    holding: boolean;
     /**
      * The picture taken as the page now covering the stage opened, or null when the stage is not
      * covered or no picture could be taken. Resolves to null when taking it failed. Stable.
@@ -52,8 +65,12 @@ type CoverEpisode = {
 export function useStageCoverCapture(input: {
     /** Whether a page is drawn over the stage (`isStageCoveredByPage`). */
     covered: boolean;
-    /** Start taking the picture, or answer null when there is no game on the stage to picture. */
-    capture: () => Promise<string> | null;
+    /**
+     * Start taking the picture, or answer null when there is no game on the stage to picture.
+     * `stillHeld` answers whether this page's hold is still on - whether a frame read back now is
+     * one the page was kept out of.
+     */
+    capture: (stillHeld: () => boolean) => Promise<string> | null;
     holdMs?: number;
 }): StageCoverCapture {
     const [episode, setEpisode] = useState<CoverEpisode>({ id: 0, covered: false, holding: false });
@@ -66,24 +83,33 @@ export function useStageCoverCapture(input: {
     const captureRef = useRef(input.capture);
     captureRef.current = input.capture;
     const pictureRef = useRef<{ episodeId: number; picture: Promise<string | null> } | null>(null);
+    /** The cover whose hold is on, or null. Read by `stillHeld`, which outlives the render. */
+    const heldEpisodeRef = useRef<number | null>(null);
     const holdMs = input.holdMs ?? STAGE_COVER_CAPTURE_HOLD_MS;
 
     // A layout effect, so a hold with nothing to picture is let go before the screen is painted.
     useLayoutEffect(() => {
         if (!episode.covered) {
             pictureRef.current = null;
+            heldEpisodeRef.current = null;
             return;
         }
         if (!episode.holding || pictureRef.current?.episodeId === episode.id) {
             // Already taken for this cover - the second run StrictMode makes of an effect included.
             return;
         }
+        const episodeId = episode.id;
+        heldEpisodeRef.current = episodeId;
         const release = () => {
-            setEpisode(current => (current.id === episode.id && current.holding ? { ...current, holding: false } : current));
+            if (heldEpisodeRef.current === episodeId) {
+                heldEpisodeRef.current = null;
+            }
+            setEpisode(current => (current.id === episodeId && current.holding ? { ...current, holding: false } : current));
         };
+        const stillHeld = () => heldEpisodeRef.current === episodeId;
         let taking: Promise<string> | null;
         try {
-            taking = captureRef.current();
+            taking = captureRef.current(stillHeld);
         } catch {
             taking = null;
         }
@@ -101,5 +127,5 @@ export function useStageCoverCapture(input: {
 
     const readPicture = useCallback(() => pictureRef.current?.picture ?? null, []);
 
-    return { concealed: episode.covered && !episode.holding, readPicture };
+    return { concealed: episode.covered && !episode.holding, holding: episode.covered && episode.holding, readPicture };
 }
