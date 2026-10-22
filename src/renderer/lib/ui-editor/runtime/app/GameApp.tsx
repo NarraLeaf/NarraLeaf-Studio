@@ -283,7 +283,7 @@ import {
 } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
-import { shrinkSaveCapture } from "./saveCapture";
+import { canCaptureSavePicture, captureSavePicture, finishSavePicture, type SavePictureSource } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -341,6 +341,7 @@ import type {
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
+import { AutoSavePicture } from "./autoSavePicture";
 import { usePlaytime } from "./usePlaytime";
 import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import type { WeatherSeedRef } from "@shared/weather/model";
@@ -411,6 +412,9 @@ export type GameAppNavEntry = AppNavEntry;
 
 /** A page or layer that has been asked for and has not painted yet, for `nl.surface.mount`. */
 type SurfaceMountStart = { start: number; surfaceId: string; kind: "page" | "layer" };
+
+/** A save's picture as its writer asks for it: none, one taken now, or one already in hand. */
+type SaveScreenshot = boolean | { picture: string };
 
 /**
  * How many surfaces may be waiting for their first paint at once before the oldest is forgotten.
@@ -1291,10 +1295,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         covered: stageCoveredByPage,
         capture: () => {
             const liveGame = nlrLiveGameRef.current;
-            if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+            if (!liveGame || !gameEnteredRef.current || !canCaptureSavePicture(liveGame)) {
                 return null;
             }
-            return liveGame.capturePng();
+            // At the size a save keeps it: a save is the only thing this picture is ever used for.
+            return captureSavePicture(liveGame);
         },
     });
     /**
@@ -3578,32 +3583,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         [bundle.languageChange],
     );
     const readStageCoverPicture = stageCover.readPicture;
-    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
-        const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
-        let capture: string | undefined;
-        // Under a page the stage's Game UI has stepped off, so the picture is the one taken as that
-        // page opened: the screen the player left to save, as an auto-save a moment earlier shows it.
-        const underPage = screenshot === true ? await (readStageCoverPicture() ?? null) : null;
-        if (underPage !== null) {
-            try {
-                capture = await shrinkSaveCapture(underPage);
-            } catch (error) {
-                reportSaveCaptureFailure(id, normalizeError(error));
+    /**
+     * The picture a save into `id` takes now, at the size it keeps it (see `saveCapture`). Under a
+     * page the stage's Game UI has stepped off, so the picture is the one taken as that page opened:
+     * the screen the player left to save, as an auto-save a moment earlier shows it. Undefined when
+     * none could be taken - the save itself still goes through, a failed preview must not lose progress.
+     */
+    const takeSavePicture = useCallback(async (id: string, liveGame: SavePictureSource): Promise<string | undefined> => {
+        const underPage = await (readStageCoverPicture() ?? null);
+        try {
+            if (underPage !== null) {
+                return await finishSavePicture(underPage);
             }
-        } else if (screenshot === true) {
-            if (typeof liveGame.capturePng !== "function") {
+            if (!canCaptureSavePicture(liveGame)) {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
-            } else {
-                try {
-                    // Kept at thumbnail size: the full-size picture was 99% of every save file, and a
-                    // save screen only ever draws it small (see `saveCapture`).
-                    capture = await shrinkSaveCapture(await liveGame.capturePng());
-                } catch (error) {
-                    // The save itself still goes through — a failed preview must not lose progress.
-                    reportSaveCaptureFailure(id, normalizeError(error));
-                }
+                return undefined;
             }
+            return await captureSavePicture(liveGame);
+        } catch (error) {
+            reportSaveCaptureFailure(id, normalizeError(error));
+            return undefined;
         }
+    }, [readStageCoverPicture, reportSaveCaptureFailure]);
+    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: SaveScreenshot) => {
+        const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
+        const capture = typeof screenshot === "object"
+            ? screenshot.picture
+            : screenshot === true ? await takeSavePicture(id, liveGame) : undefined;
         await host.saveStore.write(
             id,
             liveGame.serialize(),
@@ -3620,15 +3626,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         playtime,
         pluginHost,
-        readStageCoverPicture,
-        reportSaveCaptureFailure,
         requireActiveLiveGame,
+        takeSavePicture,
     ]);
     /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
-    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: boolean) => timeGameSpan(
+    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: SaveScreenshot) => timeGameSpan(
         GameTimelineName.saveWrite,
         () => writeSaveNow(id, metadata, screenshot),
-        outcome => ({ slot: id, screenshot: screenshot === true, ok: outcome.ok }),
+        outcome => ({ slot: id, screenshot: screenshot !== undefined && screenshot !== false, ok: outcome.ok }),
     ), [writeSaveNow]);
 
     /**
@@ -4390,16 +4395,52 @@ export function GameApp(props: GameAppProps): ReactNode {
             .sort((a, b) => b.timestamp - a.timestamp);
     }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig]);
 
+    /**
+     * When a scheduled auto-save takes its picture: at a quiet moment while the player reads, never
+     * while the skip runs (see `autoSavePicture`). One instance for the mount; what it reads it
+     * reads through refs, because the picture outlives the render that asked for it.
+     */
+    const takeSavePictureRef = useRef(takeSavePicture);
+    takeSavePictureRef.current = takeSavePicture;
+    const [autoSavePicture] = useState(() => new AutoSavePicture({
+        isSkipping: () => {
+            const controller = skipControllerRef.current;
+            return controller ? controller.isRunning() || controller.isSkipping() : false;
+        },
+        playthrough: () => gameEntriesRef.current,
+        capture: async id => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !gameEnteredRef.current) {
+                return undefined;
+            }
+            return takeSavePictureRef.current(id, liveGame);
+        },
+    }));
+    useEffect(
+        () => storyRuntime.subscribeCurrentAction(() => autoSavePicture.markPlayHeadMoved()),
+        [autoSavePicture, storyRuntime.subscribeCurrentAction],
+    );
+
     const autoSave = useAutoSave({
         config: autoSaveConfig,
         // The same gate `writeSave` itself enforces, so a true here always means
         // the write can actually serialize something.
         isPlaying: isPlaythroughRunning,
         // Screenshots on: the point of an autosave ring is a screen that lists
-        // it, and a list of thumbnail-less rows is a worse feature. The cost is
-        // bounded by the scheduler's play-head gate - an idle game captures
-        // nothing.
-        write: id => writeSave(id, null, true),
+        // it, and a list of thumbnail-less rows is a worse feature. A scheduled
+        // write takes its picture at a quiet moment and keeps the last one while
+        // the player skips; one the author asked for (`Auto Save`) takes it now.
+        write: async (id, reason) => {
+            if (reason === "requested") {
+                return writeSave(id, null, true);
+            }
+            const picture = await autoSavePicture.pictureForWrite(id);
+            // The wait for a quiet moment can outlast the run: the player went back to the title.
+            if (!isPlaythroughRunning()) {
+                return;
+            }
+            return writeSave(id, null, picture === undefined ? false : { picture });
+        },
         listStored: listAutoSaves,
         subscribeStoryAdvanced: storyRuntime.subscribeCurrentAction,
         log: host.log,

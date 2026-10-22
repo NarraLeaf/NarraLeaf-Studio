@@ -16,8 +16,9 @@
  *
  * The picture is taken whether or not a save follows, because nothing can say beforehand that one
  * will: a page that saves is any page with a `Save Game` node. It is held only until the page closes,
- * and it is the same full-size capture a save always started from - `saveCapture` still scales and
- * re-encodes it when, and only when, a save is written.
+ * and it is taken at the size a save keeps it (`captureSavePicture`): a full-size capture held the
+ * Game UI on the stage for as long as drawing and encoding it took, for a picture no save ever kept
+ * at that size.
  *
  * Comments in English per project convention.
  */

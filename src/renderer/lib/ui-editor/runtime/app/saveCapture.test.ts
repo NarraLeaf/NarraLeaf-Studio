@@ -11,10 +11,14 @@ import { describe, expect, it } from "vitest";
 import {
     SAVE_CAPTURE_MAX_EDGE,
     SAVE_CAPTURE_QUALITY,
+    canCaptureSavePicture,
+    captureSavePicture,
+    finishSavePicture,
     saveCaptureSize,
     shrinkSaveCapture,
     type CaptureCodec,
     type CaptureSize,
+    type StageImageOptions,
 } from "./saveCapture";
 
 /** A full-size PNG capture, as the engine hands it over: long, because it is large. */
@@ -80,5 +84,62 @@ describe("shrinking a save's picture", () => {
         const { codec } = fakeCodec({ width: 1750, height: 985 }, { "image/webp": huge });
 
         expect(await shrinkSaveCapture(CAPTURE, codec)).toBe(CAPTURE);
+    });
+});
+
+describe("taking a save's picture", () => {
+    /** A codec that must not be used: a picture drawn at the kept size goes into the save as it came. */
+    const untouchable: CaptureCodec = { redraw: async () => { throw new Error("redrawn"); } };
+
+    it("asks an engine that can for the stage at the kept size, as WebP on black, and keeps it as it comes", async () => {
+        const webp = `data:image/webp;base64,${"W".repeat(3_000)}`;
+        const asked: StageImageOptions[] = [];
+        let fullSize = 0;
+        const source = {
+            captureImage: async (options: StageImageOptions) => { asked.push(options); return webp; },
+            capturePng: async () => { fullSize += 1; return CAPTURE; },
+        };
+
+        expect(await captureSavePicture(source, untouchable)).toBe(webp);
+        expect(asked).toEqual([{
+            maxEdge: SAVE_CAPTURE_MAX_EDGE,
+            type: "image/webp",
+            quality: SAVE_CAPTURE_QUALITY,
+            backgroundColor: "#000",
+        }]);
+        expect(fullSize).toBe(0);
+    });
+
+    it("re-encodes the small PNG a shell that cannot write WebP answers with", async () => {
+        const smallPng = `data:image/png;base64,${"P".repeat(40_000)}`;
+        const jpeg = `data:image/jpeg;base64,${"J".repeat(6_000)}`;
+        const { codec, asked } = fakeCodec({ width: 960, height: 540 }, { "image/jpeg": jpeg });
+
+        expect(await captureSavePicture({ captureImage: async () => smallPng }, codec)).toBe(jpeg);
+        expect(asked.size).toEqual({ width: 960, height: 540 });
+    });
+
+    it("captures full size and shrinks on an engine before captureImage", async () => {
+        const webp = `data:image/webp;base64,${"W".repeat(3_000)}`;
+        const { codec, asked } = fakeCodec({ width: 1750, height: 985 }, { "image/webp": webp });
+
+        expect(await captureSavePicture({ capturePng: async () => CAPTURE }, codec)).toBe(webp);
+        expect(asked.size).toEqual({ width: 960, height: 540 });
+    });
+
+    it("rejects when there is no way to capture at all", async () => {
+        expect(canCaptureSavePicture({})).toBe(false);
+        await expect(captureSavePicture({}, untouchable)).rejects.toThrow("does not support capturePng");
+    });
+
+    it("passes a WebP or JPEG through and shrinks anything else", async () => {
+        const webp = `data:image/webp;base64,${"W".repeat(3_000)}`;
+        const jpeg = `data:image/jpeg;base64,${"J".repeat(3_000)}`;
+        expect(await finishSavePicture(webp, untouchable)).toBe(webp);
+        expect(await finishSavePicture(jpeg, untouchable)).toBe(jpeg);
+
+        const shrunk = `data:image/webp;base64,${"S".repeat(3_000)}`;
+        const { codec } = fakeCodec({ width: 1750, height: 985 }, { "image/webp": shrunk });
+        expect(await finishSavePicture(CAPTURE, codec)).toBe(shrunk);
     });
 });
