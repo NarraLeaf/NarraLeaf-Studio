@@ -1222,8 +1222,10 @@ external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src
 ### 渲染进程接口
 
 ```ts
-window[RendererInterfaceKey].vcs
+getInterface().vcs   // renderer/lib/app/bridge.ts
 ```
+
+页面全局上只剩一次性的 `acquire` 句柄（Studio 启动时已经取走），插件代码拿不到这一层。
 
 43 个方法，与两个 handler 文件一一对应。逐条的语义写在
 [renderer.ts](../src/shared/types/renderer.ts) 的声明上，这里只列需要先知道的那几条与全部分组：

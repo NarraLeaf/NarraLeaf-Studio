@@ -70,7 +70,8 @@ export function dropDisplacedEmptyBlueprints(doc: BlueprintDocument): string[] {
     return dropped;
 }
 
-function isEmptyBlueprint(blueprint: Blueprint): boolean {
+/** Nothing written in it: no layer, function, binding or member. What the lifecycle sweep gives a new widget. */
+export function isEmptyBlueprint(blueprint: Blueprint): boolean {
     const isEmpty = (table: object | undefined) => Object.keys(table ?? {}).length === 0;
     return isEmpty(blueprint.graphs?.events)
         && isEmpty(blueprint.graphs?.functions)

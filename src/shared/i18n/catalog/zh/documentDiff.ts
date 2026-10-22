@@ -170,7 +170,6 @@ export const documentDiff = {
          * 数据袋，所以它们的行保留文档里的存储名。
          */
         fields: {
-            nicknames: "别名",
             group: "分组",
             canvas: "画布",
             avatarAxes: "头像差分轴",

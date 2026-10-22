@@ -18,6 +18,8 @@ const DEFAULT_CDP_PORT = 9222;
 const DEFAULT_TARGET_QUERY = 'workspace';
 const DEFAULT_RELOAD_SETTLE_MS = 250;
 const DEFAULT_LOAD_TIMEOUT_MS = 10000;
+const BRIDGE_GLOBAL = '__NLS_RENDERER_INTERFACE__';
+const ISOLATED_CONTEXT_NAME = 'Electron Isolated Context';
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,6 +82,21 @@ class CdpClient extends EventEmitter {
         this.target = target;
         this.nextId = 0;
         this.pending = new Map();
+        // The preload's isolated world, where Studio keeps the renderer bridge for debuggers. The
+        // page's own global only has a once-only handle the app has already used, so an expression
+        // that names the bridge has to run there (see src/main/preload/preload.ts).
+        this.isolatedContexts = new Map();
+        this.on('Runtime.executionContextCreated', ({ context }) => {
+            if (context.name === ISOLATED_CONTEXT_NAME || context.auxData?.type === 'isolated') {
+                this.isolatedContexts.set(context.id, context);
+            }
+        });
+        this.on('Runtime.executionContextDestroyed', ({ executionContextId }) => {
+            this.isolatedContexts.delete(executionContextId);
+        });
+        this.on('Runtime.executionContextsCleared', () => {
+            this.isolatedContexts.clear();
+        });
 
         this.socket.on('message', (data) => {
             const message = JSON.parse(data.toString());
@@ -161,19 +178,39 @@ class CdpClient extends EventEmitter {
         if (settleMs > 0) await delay(settleMs);
     }
 
+    /** The id of the preload's isolated world in the top frame, or null when there is none. */
+    async isolatedContextId() {
+        await this.enable('Runtime');
+        if (this.isolatedContexts.size === 0) {
+            // Contexts are reported once, when Runtime is first enabled; a client that enabled it
+            // before this listener existed has to ask again.
+            await this.send('Runtime.disable');
+            await this.send('Runtime.enable');
+            await delay(100);
+        }
+        const ids = [...this.isolatedContexts.keys()];
+        return ids.length > 0 ? Math.max(...ids) : null;
+    }
+
     async evaluate(expression, options = {}) {
         const {
             awaitPromise = true,
             returnByValue = true,
             userGesture = true,
+            isolated = String(expression).includes(BRIDGE_GLOBAL),
         } = options;
 
         await this.enable('Runtime');
+        const contextId = isolated ? await this.isolatedContextId() : null;
+        if (isolated && contextId === null) {
+            throw new Error(`No isolated context to reach ${BRIDGE_GLOBAL} in; is this a Studio window?`);
+        }
         const result = await this.send('Runtime.evaluate', {
             expression,
             awaitPromise,
             returnByValue,
             userGesture,
+            ...(contextId === null ? {} : { contextId }),
         });
 
         if (result.exceptionDetails) {

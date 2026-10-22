@@ -412,6 +412,7 @@ export const storyInspector = {
         setText: "Set text",
         setFontSize: "Set font size",
         setFontColor: "Set font color",
+        setFont: "Set font",
     },
 
     layerOperation: {
@@ -513,6 +514,8 @@ export const storyInspector = {
         textName: "Text name",
         fontSize: "Font size",
         fontColor: "Font color",
+        outlineWidth: "Outline width",
+        outlineColor: "Outline color",
         text: "Text",
     },
 

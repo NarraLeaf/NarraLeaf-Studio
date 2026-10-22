@@ -171,18 +171,40 @@ export const sceneCreate: AgentToolHandler = async (args, tool) => {
         ? document.chapters.find(chapter => chapter.name === chapterName || chapter.id === chapterName)
         : undefined;
     let placement: { chapterId: string; beforeSceneId: string | null } | null = null;
+    // A chapter this call makes goes right after `after`'s chapter, rather than last, when the two differ.
+    let newChapterBefore: string | null = null;
     if (afterRef) {
         const after = resolveScene(document, afterRef);
-        placement = placementAfter(story.getStoryDocument(entry.id), after.id);
+        const current = story.getStoryDocument(entry.id);
+        placement = placementAfter(current, after.id);
         if (placement && chapterName && placement.chapterId !== existingChapter?.id) {
-            throw refuse("invalid_args", `Scene "${after.name}" is not in chapter "${chapterName}".`, "Give either `chapter` or `after`, or an `after` scene inside that chapter.");
+            // `after` in another chapter: the new scene opens `chapter`, which has to be (or become)
+            // the chapter that follows `after`'s - "the first scene of chapter 2, after the last of
+            // chapter 1". An existing chapter elsewhere in the outline is not moved to make that true.
+            const afterChapterIndex = current.chapters.findIndex(chapter => chapter.id === placement!.chapterId);
+            const afterChapter = current.chapters[afterChapterIndex];
+            const following = current.chapters[afterChapterIndex + 1];
+            if (!existingChapter) {
+                newChapterBefore = following?.id ?? null;
+                placement = null;
+            } else if (following?.id === existingChapter.id) {
+                placement = { chapterId: existingChapter.id, beforeSceneId: existingChapter.sceneIds[0] ?? null };
+            } else {
+                throw refuse(
+                    "invalid_args",
+                    `Scene "${after.name}" is in chapter "${afterChapter?.name ?? "?"}", and chapter "${existingChapter.name}" does not come right after it, `
+                        + `so a scene cannot open "${existingChapter.name}" and follow "${after.name}" at once.`,
+                    `To add the scene to "${existingChapter.name}", name an \`after\` scene inside it, or drop \`after\` to put the scene last there. `
+                        + `To start a new chapter after "${afterChapter?.name ?? "?"}", give a \`chapter\` name no chapter has yet - it is made right after that chapter, holding this scene first.`,
+                );
+            }
         }
     }
 
     assertAgentMayStillWrite(tool);
     const scene = story.runAgentOutlineStep(entry.id, AGENT_HISTORY_LABEL, () => {
         const chapterId = existingChapter?.id
-            ?? (chapterName ? story.createChapter(entry.id, chapterName).id : placement?.chapterId);
+            ?? (chapterName ? story.createChapter(entry.id, chapterName, newChapterBefore).id : placement?.chapterId);
         return story.createScene(entry.id, { chapterId, name, beforeSceneId: placement?.beforeSceneId ?? null });
     });
     const created = story.getStoryDocument(entry.id).scenes[scene.id] ?? scene;

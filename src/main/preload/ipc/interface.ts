@@ -1,4 +1,3 @@
-import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
@@ -74,6 +73,8 @@ import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDesc
 import type {
     RendererAgentBridgeBootstrapInterface,
     RendererAgentBridgeInterface,
+    RendererGlobalBridge,
+    RendererPreloadedInterface,
     RendererPrivilegedBootstrapInterface,
     RendererPrivilegedInterface,
 } from "@shared/types/renderer";
@@ -232,7 +233,7 @@ const agentBridgeBootstrap: RendererAgentBridgeBootstrapInterface = {
     isHardened: () => agentBridgeHardened,
 };
 
-export const IPCInterface: Window[typeof RendererInterfaceKey] = {
+export const IPCInterface: RendererPreloadedInterface = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
     claimExperimentalNotice: () => ipcClient.invoke(IPCEventType.appClaimExperimentalNotice, {}),
@@ -1081,6 +1082,33 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     privileged: privilegedBootstrapBridge,
+};
+
+/**
+ * The page's global: the bridge above, handed out once and then closed. See
+ * `RendererGlobalBridge` for why the bridge itself is no longer on the global.
+ *
+ * Once, not "until hardened": the first caller is Studio's bootstrap, which runs before the page
+ * has loaded anything else, so a second caller is never Studio.
+ */
+let globalBridgeAcquired = false;
+let globalBridgeHardened = false;
+
+export const GlobalBridge: RendererGlobalBridge = {
+    acquire: () => {
+        if (globalBridgeHardened) {
+            throw new Error("The renderer bridge has already been hardened");
+        }
+        if (globalBridgeAcquired) {
+            throw new Error("The renderer bridge has already been acquired");
+        }
+        globalBridgeAcquired = true;
+        return IPCInterface;
+    },
+    harden: () => {
+        globalBridgeHardened = true;
+    },
+    isHardened: () => globalBridgeHardened,
 };
 
 function getPathForFile(file: File): string {

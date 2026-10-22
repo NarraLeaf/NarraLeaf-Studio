@@ -649,6 +649,8 @@ export const story = {
         hold: "保持秒数",
         opacity: "不透明度",
         size: "字号",
+        outline: "描边宽度",
+        outlineColor: "描边颜色",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
         // 两个偏移是叠加在 `pos=` 上的设计像素，正值向右、向上。
         // 与「模糊像素」（en Blur px）同一写法：单位写进词里。

@@ -1,3 +1,4 @@
+import { storyTextOutlineFilter } from "@shared/story/textOutline";
 import type {
     StoryActionPayload,
     StoryAnimationAsset,
@@ -1373,11 +1374,17 @@ class SnapshotWalker {
         if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
             record.text = payload.text;
         }
-        if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
+        const combined = payload.operation === "setFont";
+        if (payload.operation === "setFontSize" || ((payload.operation === "create" || combined) && payload.fontSize !== undefined)) {
             record.fontSize = payload.fontSize ?? 16;
         }
-        if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
+        if (payload.operation === "setFontColor" || ((payload.operation === "create" || combined) && payload.fontColor)) {
             record.fontColor = payload.fontColor ?? "#ffffff";
+        }
+        // An outline is the text's `filter` channel, so it settles into the pose the replay rebuilds
+        // the text with - the same place a `/transform` filter would have left it.
+        if ((payload.operation === "create" || combined) && payload.outline !== undefined) {
+            record.props = { ...record.props, filter: storyTextOutlineFilter(payload.outline) };
         }
         if (payload.operation === "create" && payload.fontSize === undefined && record.fontSize === undefined) {
             record.fontSize = 32;

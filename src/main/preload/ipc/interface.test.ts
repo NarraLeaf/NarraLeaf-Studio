@@ -94,3 +94,45 @@ describe("preload agent bridge", () => {
         expect(() => IPCInterface.agentBridge.acquire()).toThrow("already been hardened");
     });
 });
+
+/**
+ * The page's global. Plugin code runs in the page's realm and Electron's exposed property cannot be
+ * deleted, so what plugin code finds there is all it gets: the one-shot handle Studio's bootstrap
+ * has already used. The bridge itself - files, VCS, Team, agent settings - is not on it.
+ */
+describe("preload global bridge", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        invoke.mockReset();
+        invoke.mockResolvedValue({ success: true, data: "ok" });
+    });
+
+    it("holds nothing but the way to take the bridge", async () => {
+        const { GlobalBridge } = await import("./interface");
+
+        expect(Object.keys(GlobalBridge).sort()).toEqual(["acquire", "harden", "isHardened"]);
+    });
+
+    it("hands the bridge out once, and the copy handed out keeps working after hardening", async () => {
+        const { GlobalBridge, IPCInterface } = await import("./interface");
+
+        const api = GlobalBridge.acquire();
+        expect(api).toBe(IPCInterface);
+        expect(() => GlobalBridge.acquire()).toThrow("already been acquired");
+
+        GlobalBridge.harden();
+
+        expect(GlobalBridge.isHardened()).toBe(true);
+        expect(() => GlobalBridge.acquire()).toThrow("already been hardened");
+        await expect(api.fs.list("/project")).resolves.toEqual({ success: true, data: "ok" });
+    });
+
+    it("cannot be acquired at all once hardened, even if nothing acquired it first", async () => {
+        const { GlobalBridge } = await import("./interface");
+
+        GlobalBridge.harden();
+
+        expect(() => GlobalBridge.acquire()).toThrow("already been hardened");
+        expect(invoke).not.toHaveBeenCalled();
+    });
+});

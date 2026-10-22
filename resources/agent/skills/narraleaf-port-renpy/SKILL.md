@@ -183,11 +183,25 @@ parts you still compute are in `references/interface.md`. Per screen:
 4. `ui_screenshot` it and compare side by side; then check it **in the running game**
    (`playtest_screenshot`), because the editor render and the game can differ.
 
+A screen that changes with saved state (a title that looks different once the game is cleared, a
+locked gallery button) has one look per state: capture each, and switch between them with a
+blueprint that reads the persistent variable when the page opens.
+
 ## Step 8 - Behaviour
 
 Wire what the Ren'Py screens do with blueprints (`narraleaf-make-game` chapter *blueprint format*):
 navigation, confirm prompts, preferences, the gallery's locks, quick-menu actions. Test buttons with
 `playtest_click` / `playtest_key`, not by reading the graph.
+
+**Port the behaviour, not only the look.** Ren'Py games routinely have controls the skeleton has no
+counterpart for: extra preferences (voice continuing into the next line, per-channel mutes, a reset),
+save pages, a replay-voice button, a "jump back to this line" in the history, a music room with its
+own player. The skeleton is not the limit (`narraleaf-make-game`, step 6, "Beyond the skeleton"): for
+each one, search `blueprint_nodes` for what it needs, then build the control and wire it - a page or
+component of your own, a variable for its state, a blueprint on its events. Pages of slots come from
+a page variable and the slot component's params. Only what still has no way after that search goes
+into the hand-over as a difference, with what you searched and tried; a control the Ren'Py game had
+is never dropped silently, and none is left looking live but doing nothing.
 
 ## Step 9 - Gallery, replay, achievements, extras
 

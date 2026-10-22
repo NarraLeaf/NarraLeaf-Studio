@@ -276,7 +276,7 @@ async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "fo
     const name = draft.profile.getName();
     const structured = (live: Character) => ({
         created,
-        character: describeCharacter(live, assetsService(ctx), stage, appearance.canvas ?? null),
+        character: describeCharacter(live, assetsService(ctx), stage, appearance.canvas ?? null, cast),
         combinations,
         ...(scoped.length > 0 ? { scoped } : {}),
         ...(notes.length > 0 ? { notes } : {}),

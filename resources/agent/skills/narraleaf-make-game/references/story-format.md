@@ -128,6 +128,8 @@ those you deliberately keep.
   `pos=` on the row, its `in=` is dropped without a word. To fade in, leave `pos=` off
   (`/show Aoi smile in=fade d=0.4`), or `/show` first and `/transform` after; a picture can also be
   declared in place (`/image <asset> name=<name> pos=…`) and revealed with `/show <name> in=fade`.
+  `opacity=` is not a preset: `/show Aoi smile pos=left opacity=0.6` places her and brings her on at
+  that opacity (Studio 1.6.3 and earlier listed `opacity=` but refused it).
 - **Backgrounds**: `/bg <image> t=<transition> d=<seconds>`; also a colour, `/bg #000000`. A background
   covers the stage whatever the picture's size.
 - **Other pictures** (a CG over the background, a letter, a flashback frame): `/show <image asset>
@@ -141,7 +143,13 @@ those you deliberately keep.
   `/vfx snow name=snow` then `/show snow` (and `/hide snow` to stop it). `story_command <token>`
   prints these pairs under "together".
 - Do not create the same name twice in one scene (`story/stage-object-duplicate`): change the picture
-  of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`.
+  of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`. `/swap`'s `t=` /
+  `d=` crossfade pictures only; a text object's words change at once - to fade them, `/hide <text>
+  out=fade`, `/swap`, then `/show <text> in=fade`.
+- **Text objects** take their look from `/font`, any of size, colour and outline on one row:
+  `/font title 48 color=#ffffff outline=1 outlineColor=#332e3e` (`outline=0` removes it). The outline
+  lives on the text's filter, so a later `/transform` filter or `look=` on the same text replaces it.
+  Studio 1.6.3 and earlier: one value per `/font` row and no outline.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
@@ -225,7 +233,12 @@ those you deliberately keep.
 
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
 - **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row
-  after it waits for all of them - two characters crossing the stage together.
+  after it waits for all of them - two characters crossing the stage together. Rows on **one** object
+  inside a `/parallel` run in order, not at once (lint `story/parallel-same-target` points them out):
+  give a character one change per `/parallel`, or put its changes before or after the block. In
+  Studio 1.6.3 and earlier two transitions on one character in one `/parallel` never finished and the
+  story stopped there without an error; an instant `/transform` (no `d=`) followed by an animated one
+  on the same property could also leave the second undone - write `d=0.01` on the first there.
 - `/wait 1.5` pauses; `/wait click` waits for a click.
 
 ## Variables and expressions
@@ -297,6 +310,26 @@ Apply the blueprint first, then the scene (`dryRun: true` on both). From then on
 the row as `» Blueprint Grant: reached the lighthouse  ⟦3b9f6a21⟧` - keep that line and its `#data`
 entry as they are; to change what it does, `blueprint_show` / `blueprint_apply` its blueprint. One
 blueprint per row: copy the pattern with new UUIDs for the next one.
+
+## An achievement row
+
+With the Steam Achievements plugin loaded, an achievement is unlocked by a plugin row of its own, on
+the line where it is earned - no blueprint needed. In Studio the author types the plugin's
+`unlock` command with the name; the `.story` text has no spelling for a plugin row (a typed line
+is `compile.unknownCommand`), so write it as a `»` row with its payload in
+`#data` (one fresh UUID; the anchor is its first 8 characters):
+
+```
+Aki: We made it to the top.
+» Unlock  ⟦5c2e9d10⟧
+
+#data
+{"5c2e9d10":{"id":"5c2e9d10-4b7a-4c1e-9f2d-8a3b6c5d4e70","parentId":null,"childrenIds":[],"kind":"action","payload":{"action":"plugin","pluginId":"narraleaf.steam-achievements","actionId":"narraleaf.steam-achievements.story.unlock","params":{"achievementId":"ACH_LIGHTHOUSE"}}}}
+```
+
+`achievementId` is the API Name exactly as `narraleaf_steam_achievements__list` prints it (declare it
+first). `dryRun: true`, then check `story_show` prints the row under the plugin's label naming the
+achievement; a name the catalog lacks is kept, and the row's inspector lists it as missing.
 
 ## Rules that cause refusals or broken games
 

@@ -7,6 +7,7 @@ import type {
     LiveAssetRecord,
     LiveDigestScope,
 } from "@shared/live/ops";
+import { bundlePathIsInside } from "@shared/live/blobs";
 import type { TeamTransferProblem, TeamTransferState } from "@shared/types/teamTransfer";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
@@ -252,12 +253,20 @@ type AssetPayloadWork =
  * The one place the three answers turn into work, so a fourth kind cannot be added without deciding
  * what it means for the disk.
  */
-function payloadWorkForBytes(assetType: string, assetId: string, bytes: LiveAssetBytes): AssetPayloadWork[] {
+export function payloadWorkForBytes(assetType: string, assetId: string, bytes: LiveAssetBytes): AssetPayloadWork[] {
     if (!isAssetType(assetType)) {
         return [];
     }
     switch (bytes.from) {
         case "transfer":
+            // ⚠ **A part's path came from another Studio and decides where its bytes land.** One
+            // that climbs out of the asset is refused with every other part of the op beside it:
+            // half a bundle is not a thing to keep, and a peer that sent one such path is not
+            // owed the benefit of the doubt on the rest.
+            if (!bytes.parts.every(part => part.path === null || bundlePathIsInside(part.path))) {
+                console.warn(`[AssetsService] refused the bytes for ${assetId}: a part's path leaves the asset`);
+                return [];
+            }
             return [{ do: "write", assetType, assetId, parts: bytes.parts, whole: bytes.parts }];
         case "asset":
             return [{ do: "copy", assetType, assetId, fromAssetId: bytes.assetId }];
@@ -831,6 +840,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     /** Where one of an asset's files lives: its own payload, or one file inside a bundle. */
     private payloadPathFor(assetId: string, inBundle: string | null): string {
+        // Every route here already refused such a path; this is the one place they all pass.
+        if (inBundle !== null && !bundlePathIsInside(inBundle)) {
+            throw new Error(`Bundle path leaves the asset: ${inBundle}`);
+        }
         const root = this.getLocalAssetsManager().getLocalAssetPath(assetId);
         return inBundle === null ? root : `${root}/${inBundle}`;
     }

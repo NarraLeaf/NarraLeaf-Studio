@@ -274,6 +274,7 @@ describe("applyUiPatch", () => {
             layout: { visible: false },
             style: { mixBlendMode: "screen" },
             extra: { note: 1 },
+            element: {},
         });
         expect(() => routeUiPropsPatch(target, { "layout.visibel": false })).toThrow(/layout has no "visibel"/);
         expect(() => routeUiPropsPatch(target, { "layout.visible": "no" })).toThrow(/true or false/);
@@ -323,7 +324,7 @@ describe("applyUiPatch", () => {
         expect(uidoc.getDocument().elements.title.props?.textWrapMode).toBe("character");
     });
 
-    it("refuses an operation that changes nothing, so the count it reports is true", () => {
+    it("skips an operation that changes nothing and names it, recording no step for a call of nothing else", () => {
         const { uidoc, steps } = createHarness();
         for (const op of [
             { op: "set", element: "title", props: { text: "Hello" } },
@@ -332,9 +333,35 @@ describe("applyUiPatch", () => {
             { op: "rename", element: "box", name: "box" },
             { op: "move", element: "box", parent: "root", index: 1 },
         ]) {
-            expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([op]), LABEL))
-                .toThrow(expect.objectContaining({ code: "check_failed", message: expect.stringMatching(/changes nothing/) }));
+            const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([op]), LABEL);
+            expect(outcome.skipped).toEqual([expect.objectContaining({ op: 0, kind: op.op, reason: expect.stringMatching(/changes nothing/) })]);
         }
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("applies the rest of a call when one operation is already done, as one step", () => {
+        const { uidoc, steps } = createHarness();
+        const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { text: "Welcome" } },
+            { op: "set", element: "box", props: { "layout.visible": true } },
+            { op: "layout", element: "box", x: 40 },
+        ]), LABEL);
+        expect(outcome.skipped.map(item => item.op)).toEqual([1]);
+        const doc = uidoc.getDocument();
+        expect(doc.elements.title.props?.text).toBe("Welcome");
+        expect(doc.elements.box.layout.x).toBe(40);
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(1);
+    });
+
+    it("still refuses the whole call for a mistake, even after an operation that was skipped", () => {
+        const { uidoc, steps, snapshot } = createHarness();
+        const before = snapshot();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "title", props: { text: "Hello" } },
+            { op: "set", element: "box", props: { text: "x" } },
+            { op: "set", element: "title", props: { text: "Changed" } },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "invalid_args" }));
+        expect(snapshot()).toEqual(before);
         expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
     });
 
@@ -350,9 +377,9 @@ describe("applyUiPatch", () => {
         expect(snapshot()).toEqual(before);
         expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
         expect(uidoc.getSurfaceContentRevision("page")).toBe(revision);
-        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+        expect(applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
             { op: "set", element: "box", props: { "layout.visible": true } },
-        ]), LABEL, { dryRun: true })).toThrow(expect.objectContaining({ code: "check_failed" }));
+        ]), LABEL, { dryRun: true }).skipped).toEqual([expect.objectContaining({ op: 0 })]);
     });
 
     it("draws the size and colour a new text is given, not the ones its appearance was made with", () => {
@@ -472,6 +499,160 @@ describe("applyUiPatch with the blueprint reconcile installed", () => {
         expect(history.undo(uiSurfaceHistoryScope("page"))).toBe(true);
         expect(uidoc.getDocument().elements.start).toBeDefined();
         expect(startBlueprint()?.graphs.eventIds).toEqual(["click"]);
+    });
+});
+
+function withSaveSlotComponent(uidoc: UIDocumentService): void {
+    const doc = uidoc.getDocument();
+    doc.components = [{
+        id: "slotDef",
+        name: "Save slot",
+        rootElementId: "slotRoot",
+        params: [
+            { id: "slot", name: "Slot", type: "string", defaultValue: "1" },
+            { id: "mode", name: "Mode", type: "string", defaultValue: "save" },
+            { id: "caption", name: "Caption", type: "text", defaultValue: "" },
+        ],
+        elements: { slotRoot: element("slotRoot", "nl.container", null, [], { width: 385, height: 273 }) },
+    }];
+}
+
+describe("applyUiPatch page settings", () => {
+    it("writes a page setting, dotted or whole, as one undo step that takes it back", () => {
+        const { uidoc, history, steps } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "setting", key: "backgroundColor", value: "transparent" },
+            { op: "setting", key: "pageAnimation.enter", value: "fade" },
+        ]), LABEL);
+        const surface = () => uidoc.getDocument().surfaces.find(item => item.id === "page")!;
+        expect(surface().settings).toEqual({ backgroundColor: "transparent", pageAnimation: { enter: "fade" } });
+        const scope = uiSurfaceHistoryScope("page");
+        expect(steps(scope)).toBe(1);
+        expect(history.undo(scope)).toBe(true);
+        expect(surface().settings).toBeUndefined();
+    });
+
+    it("takes a setting away with null, and skips one already held", () => {
+        const { uidoc } = createHarness();
+        const target = { kind: "surface", surfaceId: "page" } as const;
+        applyUiPatch(uidoc, target, readUiPatchOps([{ op: "setting", key: "backgroundColor", value: "#202020" }]), LABEL);
+        const again = applyUiPatch(uidoc, target, readUiPatchOps([{ op: "setting", key: "backgroundColor", value: "#202020" }]), LABEL);
+        expect(again.skipped).toEqual([expect.objectContaining({ op: 0, kind: "setting" })]);
+        applyUiPatch(uidoc, target, readUiPatchOps([{ op: "setting", key: "backgroundColor", value: null }]), LABEL);
+        expect(uidoc.getDocument().surfaces.find(item => item.id === "page")!.settings).toBeUndefined();
+    });
+
+    it("checks a setting in a dry run and writes nothing", () => {
+        const { uidoc, steps } = createHarness();
+        applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "setting", key: "backgroundColor", value: "transparent" },
+        ]), LABEL, { dryRun: true });
+        expect(uidoc.getDocument().surfaces.find(item => item.id === "page")!.settings).toBeUndefined();
+        expect(steps(uiSurfaceHistoryScope("page"))).toBe(0);
+    });
+
+    it("refuses a setting a page does not have, a wrong shape, and a component target", () => {
+        const { uidoc } = createHarness();
+        withSaveSlotComponent(uidoc);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "setting", key: "backgroundColour", value: "red" },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "invalid_args", message: expect.stringMatching(/no setting "backgroundColour".*backgroundColor/) }));
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "setting", key: "backgroundColor", value: 3 },
+        ]), LABEL)).toThrow(/colour string/);
+        expect(() => applyUiPatch(uidoc, { kind: "component", componentId: "slotDef" }, readUiPatchOps([
+            { op: "setting", key: "backgroundColor", value: "red" },
+        ]), LABEL)).toThrow(/component has no page settings/);
+    });
+});
+
+describe("applyUiPatch component params", () => {
+    it("places a component with its params, as a `.ui` component line gives them", () => {
+        const { uidoc } = createHarness();
+        withSaveSlotComponent(uidoc);
+        const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "instantiate", component: "Save slot", id: "slot7", params: { slot: 7, mode: "save", "caption.key": "save.caption" } },
+        ]), LABEL);
+        expect(outcome.created).toEqual([expect.objectContaining({ id: "slot7" })]);
+        expect(uidoc.getDocument().elements.slot7.extra?.componentLink).toEqual({
+            componentId: "slotDef",
+            linked: true,
+            params: { slot: "7", mode: "save" },
+            paramKeys: { caption: "save.caption" },
+        });
+    });
+
+    it("changes a placed component's params with set, and skips a value it already holds", () => {
+        const { uidoc } = createHarness();
+        withSaveSlotComponent(uidoc);
+        const target = { kind: "surface", surfaceId: "page" } as const;
+        applyUiPatch(uidoc, target, readUiPatchOps([{ op: "instantiate", component: "slotDef", id: "slot1", params: { slot: "1" } }]), LABEL);
+        applyUiPatch(uidoc, target, readUiPatchOps([{ op: "set", element: "slot1", params: { slot: "2", mode: "load" } }]), LABEL);
+        expect((uidoc.getDocument().elements.slot1.extra?.componentLink as { params?: unknown } | undefined)?.params).toEqual({ slot: "2", mode: "load" });
+        const again = applyUiPatch(uidoc, target, readUiPatchOps([{ op: "set", element: "slot1", params: { slot: "2" } }]), LABEL);
+        expect(again.skipped).toHaveLength(1);
+    });
+
+    it("refuses a param the component does not declare, and params on a widget", () => {
+        const { uidoc, snapshot } = createHarness();
+        withSaveSlotComponent(uidoc);
+        const before = snapshot();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "instantiate", component: "slotDef", params: { slott: "7" } },
+        ]), LABEL)).toThrow(expect.objectContaining({ code: "invalid_args", message: expect.stringMatching(/declares no param "slott"/) }));
+        expect(snapshot()).toEqual(before);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", params: { slot: "7" } },
+        ]), LABEL)).toThrow(/not a placed component/);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "instantiate", component: "slotDef", params: { "slot.key": "x" } },
+        ]), LABEL)).toThrow(/not a text param/);
+    });
+});
+
+describe("applyUiPatch element records", () => {
+    it("takes `animation` as ui_show prints it, whole or dotted, and null takes it away", () => {
+        const { uidoc } = createHarness();
+        const target = { kind: "surface", surfaceId: "page" } as const;
+        applyUiPatch(uidoc, target, readUiPatchOps([
+            { op: "set", element: "box", props: { animation: { enter: "fade" } } },
+        ]), LABEL);
+        const animated = uidoc.getDocument().elements.box.animation;
+        expect(animated).toBeDefined();
+        expect(JSON.stringify(animated)).toContain("fade");
+        expect(uidoc.getDocument().elements.box.props?.animation).toBeUndefined();
+        expect(uidoc.getDocument().elements.box.extra?.animation).toBeUndefined();
+        applyUiPatch(uidoc, target, readUiPatchOps([{ op: "set", element: "box", props: { animation: null } }]), LABEL);
+        expect(uidoc.getDocument().elements.box.animation).toBeUndefined();
+    });
+
+    it("points `extra.animation` at `animation` instead of storing an extra nothing reads", () => {
+        const { uidoc } = createHarness();
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { "extra.animation": { enter: "fade" } } },
+        ]), LABEL)).toThrow(/write `animation`/);
+        expect(() => applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { extra: { animation: {} } } },
+        ]), LABEL)).toThrow(/write `animation`/);
+    });
+
+    it("keeps a Page widget's own `props.animation` a prop", () => {
+        const target = element("t", "nl.frame", null, []);
+        expect(routeUiPropsPatch(target, { "props.animation": { enter: "x" } })).toMatchObject({ props: { animation: { enter: "x" } }, element: {} });
+    });
+});
+
+describe("applyUiPatch warnings", () => {
+    it("warns about a container told to fill with an image and given none", () => {
+        const { uidoc } = createHarness();
+        const outcome = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { fillType: "image" } },
+        ]), LABEL);
+        expect(outcome.warnings).toEqual([expect.stringMatching(/box.*no imageFill/)]);
+        const fine = applyUiPatch(uidoc, { kind: "surface", surfaceId: "page" }, readUiPatchOps([
+            { op: "set", element: "box", props: { imageFill: { mode: "cover", assetId: "a" } } },
+        ]), LABEL);
+        expect(fine.warnings).toEqual([]);
     });
 });
 

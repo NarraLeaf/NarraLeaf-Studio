@@ -1,3 +1,4 @@
+import { storyTextOutlineFilter } from "@shared/story/textOutline";
 import {
     BlurDissolve,
     Character,
@@ -93,6 +94,7 @@ import {
     collectStoryExpressionVariables,
     declaresStageObject,
     displayableStageRefName,
+    groupSameMotionTarget,
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
     storyVisitedRefId,
@@ -2334,10 +2336,10 @@ async function resolveSnapshotImageSource(
     return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
 
-/** Re-apply a snapshot record's residual effects as instant (duration 0) statements. */
+/** Re-apply a snapshot record's residual effects as instant statements (see `INSTANT_TRANSFORM_MS`). */
 async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, effects: StageSnapshotEffects): Promise<NlrStatement[]> {
     const statements: NlrStatement[] = [];
-    const instant = { duration: 0 };
+    const instant = instantTransformOptions();
     if (effects.mask === "clear" && typeof element.clearMask === "function") {
         statements.push(element.clearMask(instant));
     } else if (effects.mask && effects.mask !== "clear" && typeof element.mask === "function") {
@@ -4957,11 +4959,19 @@ async function compileTextAction(
     if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
-    if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
+    // `setFont` sets whichever of the three it states, so one row can carry a size, a colour and an
+    // outline together; the two single ops keep reading the one field they always did.
+    const combined = payload.operation === "setFont";
+    if (payload.operation === "setFontSize" || ((payload.operation === "create" || combined) && payload.fontSize !== undefined)) {
         statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
-    if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
+    if (payload.operation === "setFontColor" || ((payload.operation === "create" || combined) && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
+    }
+    // The outline is drawn on the text's `filter` channel (see `storyTextOutlineFilter`), set as a
+    // cut: there is no halfway between two outlines worth easing through.
+    if ((payload.operation === "create" || combined) && payload.outline !== undefined) {
+        statements.push(recordStatement(ctx, text.transform(buildTransform({ filter: storyTextOutlineFilter(payload.outline) }, undefined)) as any, block));
     }
     // Declares, like `/image` create: the words, the size, the colour and the pose, all without
     // showing anything. See there.
@@ -5608,18 +5618,58 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         const block = ctx.scene.blocks[blockId];
-        const compiled = await compileBlock(ctx, blockId);
-        if (compiled.length > 0 && isReturnableJump(block)) {
-            // Recorded against the jump's own row, after the actions that row already emitted. An
-            // action id is numbered within its row alone, so the wrapper takes the next number in
-            // that row's own run and no other row's ids move.
-            statements.push(recordStatement(ctx, Control.do(compiled as any), block));
-        } else {
-            statements.push(...compiled);
-        }
+        statements.push(...await compileUnchainedRow(ctx, blockId));
         // The same stop `compileBlockList` makes: nothing written after an `/ending` row plays.
         if (endsPlayback(block)) {
             break;
+        }
+    }
+    return statements;
+}
+
+/** One row of an unchained body, a returnable jump wrapped as its own run - see above. */
+async function compileUnchainedRow(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
+    const block = ctx.scene.blocks[blockId];
+    const compiled = await compileBlock(ctx, blockId);
+    if (compiled.length > 0 && isReturnableJump(block)) {
+        // Recorded against the jump's own row, after the actions that row already emitted. An
+        // action id is numbered within its row alone, so the wrapper takes the next number in
+        // that row's own run and no other row's ids move.
+        return [recordStatement(ctx, Control.do(compiled as any), block)];
+    }
+    return compiled;
+}
+
+/**
+ * The body of a parallel group or a race: one branch per row, except that rows animating the same
+ * stage element share ONE branch and run in order inside it (`groupSameMotionTarget`).
+ *
+ * An element carries one transform and one transition at a time. Two branches handed to the engine
+ * on one element do not both happen: the second takes the element over, and a transition taken over
+ * that way never completes - so `Control.all` waits on it for ever. That was the story stopping dead
+ * with the dialogue box gone and nothing in the console, for two `/char` rows with `t=` on one
+ * layered character inside a `/parallel`. Running them in order is what the engine can do, and lint
+ * tells the author (`story/parallel-same-target`).
+ *
+ * The shared branch is recorded against its first row, after that row's own actions, the way a
+ * returnable jump's wrapper is - so no other row's action ids move.
+ */
+async function compileParallelGroupBody(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
+    const live = blockIds.filter(id => ctx.scene.blocks[id]);
+    const endIndex = live.findIndex(id => endsPlayback(ctx.scene.blocks[id]));
+    const playable = endIndex >= 0 ? live.slice(0, endIndex + 1) : live;
+    const statements: NlrStatement[] = [];
+    for (const group of groupSameMotionTarget(ctx.scene, playable)) {
+        if (group.length === 1) {
+            statements.push(...await compileUnchainedRow(ctx, group[0]));
+            continue;
+        }
+        const run: NlrStatement[] = [];
+        for (const blockId of group) {
+            run.push(...await compileUnchainedRow(ctx, blockId));
+        }
+        if (run.length > 0) {
+            statements.push(recordStatement(ctx, Control.do(run as any), ctx.scene.blocks[group[0]]));
         }
     }
     return statements;
@@ -5632,9 +5682,11 @@ async function compileControlGroup(ctx: SceneCompileContext, block: Extract<Stor
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.
     const unchainedBody = payload.control === "repeat" || mode === "all" || mode === "allAsync" || mode === "any";
-    const children = unchainedBody
+    const children = payload.control === "repeat"
         ? await compileUnchainedGroupBody(ctx, block.childrenIds)
-        : await compileBlockList(ctx, block.childrenIds);
+        : unchainedBody
+            ? await compileParallelGroupBody(ctx, block.childrenIds)
+            : await compileBlockList(ctx, block.childrenIds);
     // `until` selects the conditional form. A group that carries one is never a counted repeat, even
     // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
     // has to be true.
@@ -6348,9 +6400,42 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
     };
 }
 
+/**
+ * The shortest duration Studio ever hands the engine for a transform: one millisecond, which no one
+ * can see, instead of zero.
+ *
+ * **A zero-duration transform poisons the next one on the same channel.** The engine passes the
+ * duration straight to `motion`, whose instant path writes the element's style but leaves its own
+ * record of the channel at the value it held before. The next animated transform reads that stale
+ * record as its starting point, and when its target is the value the channel had before the instant
+ * row - the ordinary "dim her, then bring her back" pair, `opacity=0.3` then `opacity=1 d=0.5` - it
+ * sees nothing to animate and settles without writing a frame. The element stays where the instant
+ * row put it for the rest of the scene, and nothing reports anything. It is not about opacity: a
+ * snap to `pos=0.2` followed by `pos=0.5 d=0.5` from centre is swallowed the same way, and so is a
+ * zoom. Measured in Electron against the real engine (narraleaf-react 1.5.0, motion 11.18).
+ *
+ * Any positive duration takes `motion` through a real animation, which updates that record when it
+ * finishes; one millisecond is the floor that does so while still landing on the next frame. So
+ * every duration this compiler emits for a transform, a show and a hide goes through
+ * {@link transformDurationMs} - including the literal "instant" ones, which are exactly the rows
+ * that did the poisoning.
+ */
+export const INSTANT_TRANSFORM_MS = 1;
+
+/** A row's duration as the engine is handed it - never zero, see {@link INSTANT_TRANSFORM_MS}. */
+export function transformDurationMs(durationMs: number | undefined): number {
+    const value = typeof durationMs === "number" && Number.isFinite(durationMs) ? durationMs : 0;
+    return Math.max(INSTANT_TRANSFORM_MS, value);
+}
+
+/** The options of a transform that lands at once: as instant as the engine can be made to be. */
+function instantTransformOptions(): { duration: number } {
+    return { duration: INSTANT_TRANSFORM_MS };
+}
+
 /** The engine's `Partial<CommonTransformProps>` - what every chained call and every Transform takes. */
 function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
-    const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
+    const options: Record<string, unknown> = { duration: transformDurationMs(timing?.durationMs) };
     if (timing?.easing) {
         options.ease = parseStoryEasing(timing.easing);
     }
@@ -6581,7 +6666,7 @@ async function emitCutProps(
     ctx: SceneCompileContext,
     blockId: string,
 ): Promise<any> {
-    const instant = { duration: 0 };
+    const instant = instantTransformOptions();
     let next = chain;
     if (cut.maskAssetId !== undefined) {
         if (cut.maskAssetId === null) {
@@ -6728,7 +6813,14 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
-        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
+        // A bag that states its own opacity (`/show sign opacity=0.5 in=fade`) is the reveal itself:
+        // the eased half brings the element from hidden to that opacity together with the pose. Going
+        // through the instant show first put it at full opacity for a frame and then faded it DOWN to
+        // the value the row asked for - a flash on every half-visible reveal.
+        if (transform?.to?.opacity !== undefined) {
+            return await emitTransformProps(target, transform, ctx, blockId);
+        }
+        const visible = target.show({ ...instantTransformOptions(), ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
@@ -6736,7 +6828,7 @@ async function compileDisplayableOperation(
             return target.hide(transformOptions(timing));
         }
         const posed = await emitTransformProps(target, transform, ctx, blockId);
-        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
+        return (posed ?? target).hide({ ...instantTransformOptions(), ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;

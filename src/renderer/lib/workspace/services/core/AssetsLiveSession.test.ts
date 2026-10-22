@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LiveAssetFolderOp, LiveAssetOp } from "@shared/live/ops";
-import { AssetsService, type AssetOpSink } from "./AssetsService";
+import { AssetsService, payloadWorkForBytes, type AssetOpSink } from "./AssetsService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { AssetCategory, AssetType } from "../assets/assetTypes";
@@ -328,6 +328,36 @@ describe("an effect arriving for the asset library", () => {
             assetType: "a-type-from-a-newer-build",
             moves: [{ assetId: "nobody", groupId: null }],
         })).not.toThrow();
+    });
+});
+
+describe("the bytes another Studio says an asset has", () => {
+    const part = (path: string | null) => ({ path, transferId: "t", size: 1, digest: "d" });
+
+    it("are collected when every part stays inside the asset", () => {
+        const work = payloadWorkForBytes(AssetType.Model, "asset-1", {
+            from: "transfer",
+            parts: [part("model.moc3"), part("textures/00.png")],
+        });
+
+        expect(work).toHaveLength(1);
+        expect(work[0].do).toBe("write");
+    });
+
+    it("are refused whole when one part's path climbs out, so nothing of the op lands", () => {
+        // The path decides where the main process puts the file; one like this used to put it over
+        // a script in the project, where the editor would later run it.
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            for (const escaping of ["../../../../scripts/evil.js", "/etc/passwd", "C:/x", "a/./b", ""]) {
+                expect(payloadWorkForBytes(AssetType.Model, "asset-1", {
+                    from: "transfer",
+                    parts: [part("model.moc3"), part(escaping)],
+                })).toEqual([]);
+            }
+        } finally {
+            warn.mockRestore();
+        }
     });
 });
 
