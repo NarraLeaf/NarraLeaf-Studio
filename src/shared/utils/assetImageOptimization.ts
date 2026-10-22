@@ -70,6 +70,14 @@ export type AssetImageCandidate = {
      */
     assetType?: string;
     bytes: Uint8Array;
+    /**
+     * Every place the image is used draws it at a size its pixels do not decide
+     * (`findResizableImages`), so the size cap may shrink it.
+     *
+     * Absent is no. Most images are drawn from their pixels - a character sprite stands as tall
+     * as its file is - and a cap applied to one of those shrinks it on the stage, not just on disk.
+     */
+    resizable?: boolean;
 };
 
 /**
@@ -109,7 +117,9 @@ export function planAssetImageTranscode(
         return {
             action: "lossy",
             quality: policy.quality,
-            resizeTo: fitWithin(readImageDimensions(candidate.bytes), policy.maxDimension),
+            resizeTo: candidate.resizable
+                ? fitWithin(readImageDimensions(candidate.bytes), policy.maxDimension)
+                : null,
         };
     }
     // The lossless pass answers to nothing in the configuration: it cannot alter

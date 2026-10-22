@@ -71,11 +71,15 @@ const LOSSY: AssetCompressionConfiguration = { ...DEFAULT_ASSET_COMPRESSION_CONF
 /** Manifest keys for ordinary assets are UUIDs, so a "/" only ever means a bundle member. */
 const ASSET_ID = "3f2a1c04-5b6d-4e7f-8a9b-0c1d2e3f4a5b";
 
-function candidate(bytes: Uint8Array, overrides: { manifestKey?: string; assetType?: string } = {}) {
+function candidate(
+    bytes: Uint8Array,
+    overrides: { manifestKey?: string; assetType?: string; resizable?: boolean } = {},
+) {
     return {
         manifestKey: overrides.manifestKey ?? ASSET_ID,
         assetType: overrides.assetType ?? "image",
         bytes,
+        ...(overrides.resizable !== undefined ? { resizable: overrides.resizable } : {}),
     };
 }
 
@@ -179,14 +183,25 @@ describe("planAssetImageTranscode", () => {
         // The fixture is 64x64. Enlarging would spend bytes on pixels no artist drew, so the cap
         // only ever works downwards.
         const capped: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageMaxDimension: 32 };
-        expect(planAssetImageTranscode(candidate(png()), capped))
+        const resizable = candidate(png(), { resizable: true });
+        expect(planAssetImageTranscode(resizable, capped))
             .toMatchObject({ resizeTo: { width: 32, height: 32 } });
-        expect(planAssetImageTranscode(candidate(png()), { ...capped, imageMaxDimension: 512 }))
+        expect(planAssetImageTranscode(resizable, { ...capped, imageMaxDimension: 512 }))
             .toMatchObject({ resizeTo: null });
         // Auto has no cap at all: a build cannot tell art drawn at twice the stage size from art
         // that is meant to be that size.
-        expect(planAssetImageTranscode(candidate(png()), { ...LOSSY, imageMaxDimension: 32 }))
+        expect(planAssetImageTranscode(resizable, { ...LOSSY, imageMaxDimension: 32 }))
             .toMatchObject({ resizeTo: null });
+    });
+
+    it("keeps an image drawn at its own pixels at its size, compressing it all the same", () => {
+        // A character sprite stands as tall as its file is: shrunk on disk, it stood shorter in
+        // the shipped game. Only an image the build found drawn at a size its pixels do not
+        // decide is resizable, and one it was told nothing about is not.
+        const capped: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageMaxDimension: 32 };
+        const expected = { action: "lossy", resizeTo: null };
+        expect(planAssetImageTranscode(candidate(png(), { resizable: false }), capped)).toMatchObject(expected);
+        expect(planAssetImageTranscode(candidate(png()), capped)).toMatchObject(expected);
     });
 
     it("refuses an APNG even when it would otherwise qualify", () => {

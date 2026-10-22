@@ -230,6 +230,7 @@ describe("optimizeProjectImages", () => {
                 imageMaxDimension: 32,
             },
             openCodec: capped.openCodec,
+            resizableImageIds: new Set([ASSET_A]),
             log,
         });
         // Encoded again rather than answered from the entry the first build
@@ -237,6 +238,51 @@ describe("optimizeProjectImages", () => {
         // could not tell them apart would ship the wrong one.
         expect(capped.requests).toHaveLength(1);
         expect(capped.requests[0].resizeTo).toEqual({ width: 32, height: 32 });
+    });
+
+    it("keeps an image drawn at its own pixels at its size under a cap, and says which", async () => {
+        // ASSET_A is a background the build found drawn at the stage's width; ASSET_B stands for a
+        // character sprite, which the engine draws at its file's own size. Both are 64x64 and the
+        // cap is 32: the background shrinks, the sprite is compressed at its size and counted.
+        await writeLibrary({
+            [ASSET_A]: { name: "Kitchen", bytes: pngBytes() },
+            [ASSET_B]: { name: "Shuyu smiling", bytes: pngBytes() },
+        });
+        const codec = fakeCodec({ ratio: 0.2 });
+        const result = await optimizeProjectImages({
+            projectPath,
+            cacheDir,
+            config: {
+                ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+                compressImages: true,
+                imageMode: "advanced",
+                imageMaxDimension: 32,
+            },
+            openCodec: codec.openCodec,
+            resizableImageIds: new Set([ASSET_A]),
+            log,
+            lanes: 1,
+        });
+
+        const sizes = codec.requests.map(request => request.resizeTo ?? null);
+        expect(sizes).toHaveLength(2);
+        expect(sizes).toContainEqual({ width: 32, height: 32 });
+        expect(sizes).toContainEqual(null);
+        expect(result.converted).toBe(2);
+        expect(result).toMatchObject({ keptAtSize: 1, keptAtSizeNames: ["Shuyu smiling"] });
+    });
+
+    it("counts nothing as kept at its size when no cap is set", async () => {
+        await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
+        const codec = fakeCodec({ ratio: 0.2 });
+        const result = await optimizeProjectImages({
+            projectPath,
+            cacheDir,
+            config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true, imageMode: "advanced" },
+            openCodec: codec.openCodec,
+            log,
+        });
+        expect(result).toMatchObject({ converted: 1, keptAtSize: 0, keptAtSizeNames: [] });
     });
 
     it("leaves a JPEG alone by default and takes it once lossy is on", async () => {
