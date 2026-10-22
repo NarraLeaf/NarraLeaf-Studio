@@ -525,7 +525,7 @@ export const project = {
         imageWebpQualityTitle: "WebP quality",
         imageWebpQualityDescription: "Quality passed to the WebP encoder, from 1 to 100.",
         imageMaxDimensionTitle: "Maximum image size",
-        imageMaxDimensionDescription: "Images longer than this on their longest edge are scaled down. 0 keeps every image at the size it was saved.",
+        imageMaxDimensionDescription: "Backgrounds and interface images longer than this on their longest edge are scaled down. Character sprites and other images drawn at their own pixel size keep their size. 0 keeps every image at the size it was saved.",
         audioModeTitle: "Audio compression settings",
         audioBitrateKbpsTitle: "Audio bitrate",
         audioBitrateKbpsDescription: "AAC bitrate, in kbit/s.",

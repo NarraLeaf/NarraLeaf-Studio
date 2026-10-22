@@ -462,7 +462,7 @@ export const project = {
         imageWebpQualityTitle: "WebP 质量",
         imageWebpQualityDescription: "传给 WebP 编码器的质量，取值 1 到 100",
         imageMaxDimensionTitle: "图像最大边长",
-        imageMaxDimensionDescription: "长边超过这个像素数的图像会被缩小；填 0 保持原有尺寸",
+        imageMaxDimensionDescription: "长边超过该像素数的背景与界面图像会被缩小，角色立绘等按原始像素显示的图像保持原尺寸；填 0 则不缩小任何图像",
         audioModeTitle: "音频压缩方式",
         audioBitrateKbpsTitle: "音频码率",
         audioBitrateKbpsDescription: "AAC 码率，单位 kbit/s",
