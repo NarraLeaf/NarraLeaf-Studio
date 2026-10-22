@@ -1857,7 +1857,7 @@ export class App extends BaseApp {
      * Carry a change of trust to the windows already open on the project.
      *
      * Trust is read once when a workspace boots - the run controls, the status bar, the loader that
-     * refuses a puppet and the cut on the session all settle then - so a window that has booted
+     * refuses a puppet all settle then - so a window that has booted
      * reloads to read it again, with its pending saves flushed first as before any other reload
      * this process starts. Withdrawing trust also stops what the project is doing: a preview or a
      * Dev Mode session started while it was trusted is the project's code running, which is the
@@ -1881,13 +1881,8 @@ export class App extends BaseApp {
             if (normalizeProjectPath(workspace.getProps().projectPath) !== key) {
                 continue;
             }
-            const webContentsId = workspace.getWebContents().id;
-            if (trusted) {
-                devModeNetworkPolicy.releaseDistrusted(webContentsId);
-            } else {
-                devModeNetworkPolicy.blockDistrusted(webContentsId);
-                workspace.onClose(() => devModeNetworkPolicy.releaseDistrusted(webContentsId));
-            }
+            // The window's network stays as it is either way: every workspace is confined from the
+            // moment it is built (see `launchWorkspace`), trusted or not.
             await this.flushWorkspacePendingSaves(workspace);
             this.logger.info(
                 "[Trust] Reloading the workspace on", projectPath,
@@ -1941,20 +1936,21 @@ export class App extends BaseApp {
         // recorded it before putting the question; this covers the launches that do not pass
         // through there, so nothing reaches a window unrecorded.
         this.recordProjectArrival(props.projectPath, Boolean(props.commandLineRun));
-        // Before the document loads, which is what `blockDistrusted` requires: a request made
-        // while the first frame is coming up is still a request. A distrusted project reaches
-        // nothing remote from its own window - not through fetch, not through an <img>, not
-        // through a plugin panel - and this is the only hook Electron allows on that session,
-        // so it is shared with the Dev Mode policy rather than registered a second time.
-        if (!this.projectTrustManager.isTrusted(props.projectPath)) {
-            const distrustedWebContentsId = window.getWebContents().id;
-            devModeNetworkPolicy.blockDistrusted(distrustedWebContentsId);
-            // Released the way the Dev Mode policy beside it is. Electron does not hand the same
-            // id to a later window, so nothing is mis-blocked by leaving it - but a set that only
-            // ever grows is a lifecycle nobody is keeping, and the next reader would have to prove
-            // the id-reuse claim to themselves before touching anything near it.
-            window.onClose(() => devModeNetworkPolicy.releaseDistrusted(distrustedWebContentsId));
-        }
+        // Before the document loads, which is what `confine` requires: a request made while the
+        // first frame is coming up is still a request. A workspace reaches nothing remote from its
+        // own window - not through fetch, not through an <img>, not through a plugin panel -
+        // whatever its project's trust. Studio's renderer never asks for remote bytes itself (the
+        // main process fetches and checks them), so the only request this stops is one somebody
+        // else's code made: a plugin's, carrying the project out. This is the only hook Electron
+        // allows on that session, so it is shared with the Dev Mode policy rather than registered
+        // a second time.
+        const workspaceWebContentsId = window.getWebContents().id;
+        devModeNetworkPolicy.confine(workspaceWebContentsId);
+        // Released the way the Dev Mode policy beside it is. Electron does not hand the same id to
+        // a later window, so nothing is mis-blocked by leaving it - but a set that only ever grows
+        // is a lifecycle nobody is keeping, and the next reader would have to prove the id-reuse
+        // claim to themselves before touching anything near it.
+        window.onClose(() => devModeNetworkPolicy.releaseConfined(workspaceWebContentsId));
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
         // Maximized right here rather than once the page reports ready: the window is on screen

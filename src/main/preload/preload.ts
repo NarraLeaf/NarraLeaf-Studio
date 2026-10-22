@@ -1,5 +1,5 @@
 import { contextBridge } from "electron";
-import { IPCInterface } from "./ipc/interface";
+import { GlobalBridge, IPCInterface } from "./ipc/interface";
 import { RendererInterfaceKey } from "@shared/types/constants";
 
 /**
@@ -20,7 +20,16 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 const isDetachedChildDocument = window.opener !== null || location.href === "about:blank";
 
 if (!isDetachedChildDocument) {
-    contextBridge.exposeInMainWorld(RendererInterfaceKey, IPCInterface);
+    contextBridge.exposeInMainWorld(RendererInterfaceKey, GlobalBridge);
+    // The whole bridge, unhardened, on the global of THIS world - the preload's isolated one, which
+    // no script on the page can reach. What it is for is a debugger: a CDP client that evaluates in
+    // the "Electron Isolated Context" (project/app/cdp.js picks it for any expression that names the
+    // bridge) drives Studio exactly as acceptance recipes always have. Attaching a debugger already
+    // means owning the process, so this opens nothing that was closed. ⚠ Only while isolated: in a
+    // window without isolation this `window` IS the page's, and it would undo everything above.
+    if (process.contextIsolated) {
+        (window as unknown as Record<string, unknown>)[RendererInterfaceKey] = IPCInterface;
+    }
 }
 
 // Prevent default navigation when external files dropped on window
