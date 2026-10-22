@@ -50,6 +50,7 @@ import { gateAgentCall } from "./agentGate";
 import type { createAgentInternalHandlers, createAgentToolHandlers } from "./agentHandlers";
 import { AGENT_CONSOLE_CHANNEL, AGENT_CONSOLE_SOURCE } from "./agentConsole";
 import { pluginAgentToolRegistry, type PluginAgentToolRegistry } from "./pluginToolRegistry";
+import { BlueprintDocumentValidationError } from "../ui-editor/blueprint/documentValidation";
 
 export { AGENT_CONSOLE_CHANNEL, AGENT_CONSOLE_SOURCE };
 
@@ -257,7 +258,12 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
         } catch (error) {
             result = error instanceof AgentRefusal
                 ? agentRefusal(error.code, error.message, error.hint)
-                : agentRefusal("internal", `Studio failed while running ${request.tool}: ${error instanceof Error ? error.message : String(error)}`);
+                : error instanceof BlueprintDocumentValidationError
+                    // The project's blueprints are in a state no write may leave them in, so every
+                    // write that touches them is refused until it is put right - which the agent
+                    // can do, given which blueprint it is.
+                    ? agentRefusal("unavailable", `${request.tool} stopped: the project's blueprints are inconsistent. ${error.message}.`, error.hint)
+                    : agentRefusal("internal", `Studio failed while running ${request.tool}: ${error instanceof Error ? error.message : String(error)}`);
             if (!(error instanceof AgentRefusal)) {
                 console.error(`[AgentBridge] ${request.tool} failed`, error);
             }

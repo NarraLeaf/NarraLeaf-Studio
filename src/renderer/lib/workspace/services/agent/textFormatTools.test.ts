@@ -19,7 +19,11 @@ import { storyApply, storyShow } from "./tools/storyTextTools";
 import { chapterDelete, chapterRename, sceneCreate } from "./tools/storyTools";
 import { uiApply, uiShow } from "./tools/uiTextTools";
 import { blueprintApply, blueprintShow, commitBlueprints, ownerQueryOf } from "./tools/blueprintTools";
-import { ownerRefToIndexKey } from "../ui-editor/blueprint/ownerKeys";
+import { ownerRefToIndexKey, widgetMainOwnerKey } from "../ui-editor/blueprint/ownerKeys";
+import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "../ui-editor/blueprint/documentValidation";
+import { UIBlueprintLifecycleCoordinator } from "../ui-editor/UIBlueprintLifecycleCoordinator";
+import { uiPatch } from "./tools/uiTools";
+import { ensureCoreBlueprintNodes } from "@/lib/agent-core";
 import { createMainBlueprint } from "../ui-editor/blueprint/blueprintFactories";
 import { diagnosticsForRefusal, forAgent, withCanonicalCommandVocabulary } from "./tools/textFormat";
 import { formatCarriedFindings } from "@/lib/story-cli/apply";
@@ -399,8 +403,8 @@ describe("scene_create", () => {
         const { story, history, storyId, steps, run } = createHarness();
         const chapters = () => story.getStoryDocument(storyId).chapters.map(chapter => chapter.name);
         const before = chapters();
-        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 2", after: "Opening" }));
-        expect(refused.code).toBe("invalid_args");
+        const refused = await refusal(run(sceneCreate, { name: "Lost", after: "Nowhere" }));
+        expect(refused.code).toBe("not_found");
         expect(chapters()).toEqual(before);
 
         const projectSteps = steps(projectHistoryScope());
@@ -410,6 +414,48 @@ describe("scene_create", () => {
         expect(history.undo(projectHistoryScope())).toBe(true);
         expect(chapters()).toEqual(before);
         expect(Object.values(story.getStoryDocument(storyId).scenes).some(scene => scene.name === "Arrival")).toBe(false);
+    }, 60_000);
+});
+
+describe("scene_create across chapters", () => {
+    it("opens a new chapter right after the `after` scene's chapter, as one undo step", async () => {
+        const { story, history, storyId, sceneId, steps, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const first = document().chapters[0];
+        const later = story.createChapter(storyId, "Act 3");
+        story.createScene(storyId, { chapterId: later.id, name: "Finale" });
+        const projectSteps = steps(projectHistoryScope());
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+        expect(document().chapters[0].sceneIds).toEqual([sceneId]);
+        expect(steps(projectHistoryScope())).toBe(projectSteps + 1);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 3"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(document().chapters.map(chapter => chapter.name)).toEqual([first.name, "Act 2", "Act 3"]);
+        expect(document().chapters[1].sceneIds).toEqual([made.id]);
+    }, 60_000);
+
+    it("puts the scene first in the existing next chapter, and refuses a chapter that does not follow", async () => {
+        const { story, storyId, run } = createHarness();
+        const document = () => story.getStoryDocument(storyId);
+        const two = story.createChapter(storyId, "Act 2");
+        const finale = story.createScene(storyId, { chapterId: two.id, name: "Duel" });
+        story.createChapter(storyId, "Act 3");
+
+        const result = await run(sceneCreate, { name: "Act 2 opens", chapter: "Act 2", after: "Opening" });
+        const made = (result.ok ? result.structured?.scene : null) as { id: string };
+        expect(document().chapters[1].sceneIds).toEqual([made.id, finale.id]);
+
+        const refused = await refusal(run(sceneCreate, { name: "Lost", chapter: "Act 3", after: "Opening" }));
+        expect(refused.code).toBe("invalid_args");
+        expect(refused.message).toContain('chapter "Act 3" does not come right after it');
+        expect(refused.hint).toContain("give a `chapter` name no chapter has yet");
+        expect(Object.values(document().scenes).some(scene => scene.name === "Lost")).toBe(false);
     }, 60_000);
 });
 
@@ -451,6 +497,69 @@ describe("ui_apply", () => {
         const refused = await refusal(run(uiApply, { source: edited, baseRevision: shown.revision }));
         expect(refused.code).toBe("stale_revision");
         expect(uidoc.getDocument().elements.title.props?.text).toBe("By hand");
+    }, 60_000);
+
+    /** The title page grown past one answer: a few hundred long texts. */
+    function growTitlePage(uidoc: UIDocumentService) {
+        const doc = uidoc.getDocument();
+        for (let index = 0; index < 600; index += 1) {
+            const id = `line${index}`;
+            doc.elements[id] = element(id, "nl.text", "root", [], { y: index }, { text: `Line ${index} `.padEnd(160, "x") });
+            doc.elements.root.childrenIds.push(id);
+        }
+    }
+
+    async function showAllParts(run: ReturnType<typeof createHarness>["run"]) {
+        const parts: string[] = [];
+        let offset: number | null = 0;
+        while (offset !== null) {
+            const result = await run(uiShow, { surface: "Title", offset });
+            parts.push(textOf(result));
+            offset = (result.ok ? result.structured?.nextOffset : null) as number | null;
+            expect(parts.length).toBeLessThan(20);
+        }
+        return parts;
+    }
+
+    it("serves a page too long for one answer in parts that join back into a page it applies", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const parts = await showAllParts(run);
+        expect(parts.length).toBeGreaterThan(1);
+        for (const part of parts) {
+            expect(part.length).toBeLessThan(61_000);
+        }
+        expect(parts[0]).toMatch(/# ui_show part: characters 0-\d+ of \d+ at revision \d+ - call ui_show again with offset=\d+/);
+        expect(parts[parts.length - 1]).toMatch(/the last part/);
+        const joined = parts.join("").replace("Line 599 ", "Changed 599 ");
+        const result = await run(uiApply, { source: joined });
+        expect(textOf(result)).toContain("Surfaces replaced: Title");
+        expect(String(uidoc.getDocument().elements.line599.props?.text)).toMatch(/^Changed 599/);
+        expect(Object.keys(uidoc.getDocument().elements).filter(id => id.startsWith("line"))).toHaveLength(600);
+    }, 60_000);
+
+    it("prints the whole page uncut with `full`", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const result = await run(uiShow, { surface: "Title", full: true });
+        expect(textOf(result)).not.toContain("# ui_show part:");
+        expect(textOf(result).length).toBeGreaterThan(60_000);
+        const refused = await refusal(run(uiShow, { surface: "Title", offset: 7 }));
+        expect(refused.code).toBe("invalid_args");
+    }, 60_000);
+
+    it("refuses a source missing a part, or cut short the old way, before parsing or deleting anything", async () => {
+        const { uidoc, run } = createHarness();
+        growTitlePage(uidoc);
+        const parts = await showAllParts(run);
+        const before = JSON.stringify(uidoc.getDocument());
+        const missing = await refusal(run(uiApply, { source: parts.slice(0, -1).join("") }));
+        expect(missing.code).toBe("invalid_args");
+        expect(missing.message).toMatch(/not the whole page: characters \d+-\d+ of \d+ are missing/);
+        const oldCut = await refusal(run(uiApply, { source: `${parts[0]}\n... cut at 58801 of 99299 characters. This page is very large; edit it with ui_patch instead.` }));
+        expect(oldCut.code).toBe("invalid_args");
+        expect(oldCut.message).toMatch(/cut short at 58801 of 99299 characters/);
+        expect(JSON.stringify(uidoc.getDocument())).toBe(before);
     }, 60_000);
 
     it("refuses a source with errors as check_failed, writing nothing", async () => {
@@ -584,5 +693,116 @@ describe("blueprint_show by owner key", () => {
         expect(ownerQueryOf("widgetMain:narraleaf-studio:main-surface:start-button")).toBe(stored);
         expect(ownerQueryOf(stored)).toBe(stored);
         expect(ownerQueryOf("开始")).toBe("开始");
+    });
+});
+
+describe("a widget's blueprint written with an id of its own", () => {
+    /** The harness with Studio's lifecycle sweep on: every interface write gives a new widget its empty blueprint. */
+    function harnessWithLifecycle() {
+        ensureCoreBlueprintNodes();
+        const harness = createHarness();
+        const lifecycle = new UIBlueprintLifecycleCoordinator();
+        lifecycle.setContext(harness.context);
+        lifecycle.activate(harness.context);
+        return harness;
+    }
+
+    const addButton = (id: string) => ({ surface: "Title", ops: [{ op: "add", parent: "root", type: "nl.button", id, name: id }] });
+
+    const CLICKER = (id: string) => `blueprint Start owner=widgetMain surface=page element=start id=${id}
+event Greet
+    head: blueprint.fn.head
+    text: blueprint.data.stringLiteral value="hi"
+    log: blueprint.log
+
+    head -> log
+    text -> log.value
+event Click
+    click: blueprint.event.head.mouseClick
+    call: blueprint.fn.call fnRef="fn:${id}:head"
+
+    click -> call
+`;
+
+    it("replaces the empty blueprint ui_patch gave the button, under its id, and later ui_patch writes still go through", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        const given = graphDocument.blueprintDocument.ownerRecords[key]?.blueprintId;
+        expect(given).toBeTruthy();
+
+        const applied = await run(blueprintApply, { source: CLICKER("my-start") });
+        expect(textOf(applied)).toContain(`already has an empty blueprint "${given}"`);
+        const blueprints = graphDocument.blueprintDocument.blueprints;
+        expect(Object.values(blueprints).filter(blueprint => ownerRefToIndexKey(blueprint.owner) === key).map(blueprint => blueprint.id)).toEqual([given]);
+        expect(blueprints["my-start"]).toBeUndefined();
+        expect(graphDocument.blueprintDocument.ownerRecords[key]).toEqual({ blueprintId: given });
+        // The file's call to its own function under the id it wrote follows the blueprint to the id it kept.
+        const refs = Object.values(blueprints[given!].graphs.events ?? {})
+            .flatMap(layer => Object.values(layer.graph?.nodes ?? {}))
+            .map(node => node.params?.fnRef)
+            .filter(Boolean);
+        expect(refs).toEqual([expect.stringMatching(new RegExp(`^fn:${given}:`))]);
+        expect(() => assertValidBlueprintDocument(graphDocument.blueprintDocument)).not.toThrow();
+
+        const patched = await run(uiPatch, addButton("quit"));
+        expect(textOf(patched)).toContain("Applied 1 operation(s)");
+        expect(graphDocument.blueprintDocument.ownerRecords[widgetMainOwnerKey("page", "quit")]).toBeDefined();
+    }, 60_000);
+
+    it("refuses an id of its own over a widget blueprint that already holds graphs, writing nothing", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        await run(blueprintApply, { source: CLICKER("my-start") });
+        const before = JSON.stringify(graphDocument.blueprintDocument);
+        const refused = await refusal(run(blueprintApply, { source: CLICKER("another-id") }));
+        expect(refused.code).toBe("check_failed");
+        expect(refused.message).toContain("compile.owner_has_blueprint");
+        expect(refused.message).toContain(`id=${graphDocument.blueprintDocument.ownerRecords[key].blueprintId}`);
+        expect(JSON.stringify(graphDocument.blueprintDocument)).toBe(before);
+    }, 60_000);
+
+    it("refuses an id that is another owner's blueprint", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        await run(uiPatch, addButton("quit"));
+        const quitId = graphDocument.blueprintDocument.ownerRecords[widgetMainOwnerKey("page", "quit")].blueprintId;
+        const refused = await refusal(run(blueprintApply, { source: CLICKER(quitId) }));
+        expect(refused.code).toBe("check_failed");
+        expect(refused.message).toContain("compile.id_of_another_owner");
+    }, 60_000);
+
+    it("drops an empty blueprint a project was left with beside its widget's own, so ui_patch writes again", async () => {
+        const { graphDocument, run } = harnessWithLifecycle();
+        await run(uiPatch, addButton("start"));
+        const key = widgetMainOwnerKey("page", "start");
+        const given = graphDocument.blueprintDocument.ownerRecords[key].blueprintId;
+        // The state an earlier Studio left: a second blueprint on the owner, the record moved to it.
+        graphDocument.blueprintDocument.blueprints["my-start"] = { ...JSON.parse(JSON.stringify(graphDocument.blueprintDocument.blueprints[given])), id: "my-start" };
+        graphDocument.blueprintDocument.ownerRecords[key] = { blueprintId: "my-start" };
+
+        const patched = await run(uiPatch, addButton("quit"));
+        expect(textOf(patched)).toContain("Applied 1 operation(s)");
+        expect(graphDocument.blueprintDocument.blueprints[given]).toBeUndefined();
+        expect(() => assertValidBlueprintDocument(graphDocument.blueprintDocument)).not.toThrow();
+    }, 60_000);
+
+    it("names the blueprint to remove when the one left beside its widget's own holds graphs", () => {
+        const owner = { kind: "widgetMain" as const, surfaceId: "page", elementId: "start" };
+        const key = ownerRefToIndexKey(owner);
+        const document = emptyBlueprints();
+        document.blueprints.kept = createMainBlueprint({ id: "kept", name: "Start", owner });
+        document.blueprints.orphan = { ...createMainBlueprint({ id: "orphan", name: "Old start", owner }), graphs: { eventIds: ["e"], events: { e: { id: "e", name: "Click", graph: { nodes: {} } } }, functionIds: [], functions: {} } };
+        document.ownerRecords[key] = { blueprintId: "kept" };
+        let caught: unknown = null;
+        try {
+            assertValidBlueprintDocument(document);
+        } catch (error) {
+            caught = error;
+        }
+        expect(caught).toBeInstanceOf(BlueprintDocumentValidationError);
+        expect((caught as BlueprintDocumentValidationError).message).toContain(`"orphan" ("Old start")`);
+        expect((caught as BlueprintDocumentValidationError).hint).toContain("blueprint_remove");
     });
 });

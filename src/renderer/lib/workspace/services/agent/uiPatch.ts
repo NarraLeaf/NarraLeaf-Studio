@@ -14,17 +14,20 @@
  * recorded, and the refusal names the operation. Operations are applied in order and may refer to
  * elements an earlier operation in the same call created, by the id or name they gave it.
  *
- * "Applied N operations" has to be true. An operation that would change nothing - a prop the widget
- * does not know, a value it already holds, a layout key a placed component does not take - is
- * refused rather than counted, because an agent that is told an edit landed moves on, and the author
- * finds the button that was meant to be hidden still on the title page. A dry run goes through the
- * same checks against a private copy of the document (`runDetachedDraft`), so it answers exactly what
- * the real call would and touches nothing - not the page, not a blueprint, not the undo stack.
+ * "Applied N operations" has to be true. A write that would land nowhere - a prop the widget does
+ * not know, a layout key a placed component does not take - is refused, because an agent that is
+ * told an edit landed moves on, and the author finds the button that was meant to be hidden still on
+ * the title page. An operation that is merely already done - a value the element already holds - is
+ * different: it is skipped and named in the answer, and the rest of the call goes on. Refusing the
+ * whole call for it threw away twenty-four real edits because a twenty-fifth was redundant. A dry run
+ * goes through the same checks against a private copy of the document (`runDetachedDraft`), so it
+ * answers exactly what the real call would and touches nothing - not the page, not a blueprint, not
+ * the undo stack.
  *
  * Comments in English per project convention.
  */
 
-import { isLinkedUIComponentElement, type UIDocument, type UIElement, type UILayout } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, isLinkedUIComponentElement, type UIDocument, type UIElement, type UILayout, type UISurface } from "@shared/types/ui-editor/document";
 import { isAppearanceModel, type AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import type { HistoryLabel } from "../history/historyModel";
@@ -34,9 +37,11 @@ import { widgetKnownPropKeys } from "@/lib/ui-cli/catalog";
 import { deepEqual, expandAppearanceGroups } from "@/lib/ui-cli/dsl/compact";
 import { nearest } from "@/lib/ui-cli/text";
 import { describeInvalidEnumProp, findInvalidEnumProps } from "@/lib/ui-cli/propValues";
+import { emptyImageFillWarning } from "@/lib/ui-cli/imageFill";
+import { PARAM_KEY_SUFFIX } from "@/lib/ui-cli/dsl/parse";
 import { buildUiPropsPatch, resolveUiElementRef, uiElementPath, type UIElementPool } from "./uiElementRefs";
 
-export type UIPatchOpKind = "add" | "set" | "layout" | "move" | "rename" | "delete" | "instantiate";
+export type UIPatchOpKind = "add" | "set" | "layout" | "move" | "rename" | "delete" | "instantiate" | "setting";
 
 export type UIPatchOp = {
     op: UIPatchOpKind;
@@ -52,6 +57,15 @@ export type UIPatchOp = {
     width?: number;
     height?: number;
     props?: Record<string, unknown>;
+    /**
+     * instantiate/set: values for a placed component's params, by param id - what a `.ui` file writes
+     * as `component <id> slot="7" mode=save`. `<id>.key` names the translation key a text param reads.
+     */
+    params?: Record<string, unknown>;
+    /** setting: the page setting to write, dotted for a field inside one (`pageAnimation.enter`). */
+    key?: string;
+    /** setting: its new value; null takes the setting away. */
+    value?: unknown;
 };
 
 export type UIPatchTarget =
@@ -65,6 +79,10 @@ export type UIPatchOutcome = {
     deleted: string[];
     /** Every element the call touched and that still exists - what follow mode highlights. */
     touched: string[];
+    /** Operations left out because they would have changed nothing; the rest of the call went on. */
+    skipped: { op: number; kind: UIPatchOpKind; reason: string }[];
+    /** Things the call did that will not look the way the agent probably meant. */
+    warnings: string[];
 };
 
 /** The narrow part of `UIDocumentService` a patch needs; the real service satisfies it. */
@@ -92,9 +110,16 @@ export type UIPatchService = Pick<
     | "updateComponentElementExtra"
     | "updateElementStyle"
     | "updateComponentElementStyle"
+    | "updateElementAnimation"
+    | "updateComponentElementAnimation"
+    | "updateElementNavigation"
+    | "updateComponentElementNavigation"
+    | "setComponentInstanceParam"
+    | "setComponentInstanceParamKey"
+    | "updateSurface"
 >;
 
-export const UI_PATCH_OP_KINDS: readonly UIPatchOpKind[] = ["add", "set", "layout", "move", "rename", "delete", "instantiate"];
+export const UI_PATCH_OP_KINDS: readonly UIPatchOpKind[] = ["add", "set", "layout", "move", "rename", "delete", "instantiate", "setting"];
 
 /** Read `ops` out of the call's arguments, refusing anything that is not an operation. */
 export function readUiPatchOps(raw: unknown): UIPatchOp[] {
@@ -129,19 +154,23 @@ export function applyUiPatch(
     options: { dryRun?: boolean } = {},
 ): UIPatchOutcome {
     const historySurfaceId = target.kind === "surface" ? target.surfaceId : buildUIComponentEditorSurfaceId(target.componentId);
-    const outcome: UIPatchOutcome = { created: [], deleted: [], touched: [] };
+    const outcome: UIPatchOutcome = { created: [], deleted: [], touched: [], skipped: [], warnings: [] };
     const touched = new Set<string>();
     const applyAll = () => {
         ops.forEach((op, index) => {
             try {
-                const watched = CHANGE_CHECKED_OPS.has(op.op) ? watchElement(service, target, op, index) : null;
+                const watched = op.op === "setting"
+                    ? watchSurface(service, target, index)
+                    : CHANGE_CHECKED_OPS.has(op.op) ? watchElement(service, target, op, index) : null;
                 applyOne(service, target, op, index, outcome, touched);
                 if (watched && watched.before === watched.read()) {
-                    throw refuse(
-                        "check_failed",
-                        `ops[${index}] (${op.op}) changes nothing on ${watched.label}: it already holds those values, or something else decides them (a stack or list parent places its children itself).`,
-                        "Leave the operation out, or call ui_show to see what the element holds.",
-                    );
+                    // Already done is not a mistake worth losing the rest of the call over: the
+                    // operation is left out, said so, and the call goes on.
+                    outcome.skipped.push({
+                        op: index,
+                        kind: op.op,
+                        reason: `changes nothing on ${watched.label}: it already holds those values, or something else decides them (a stack or list parent places its children itself)`,
+                    });
                 }
             } catch (error) {
                 if (error instanceof Error && error.name === "AgentRefusal") {
@@ -152,6 +181,11 @@ export function applyUiPatch(
         });
         const pool = poolOf(service.getDocument(), target);
         outcome.touched = [...touched].filter(id => Boolean(pool[id]));
+        outcome.warnings = outcome.touched.flatMap(id => {
+            const element = pool[id];
+            const warning = element ? emptyImageFillWarning(element) : null;
+            return warning ? [`${uiElementPath(pool, element!)} (${id}): ${warning}`] : [];
+        });
     };
 
     if (options.dryRun) {
@@ -182,6 +216,24 @@ function watchElement(service: UIPatchService, target: UIPatchTarget, op: UIPatc
         return JSON.stringify([current ?? null, current?.parentId ? pool[current.parentId]?.childrenIds ?? null : null]);
     };
     return { label: `"${element.name ?? element.type}" (${id})`, before: read(), read };
+}
+
+/** The page's own record before and after a `setting`, which is everything that op can change. */
+function watchSurface(service: UIPatchService, target: UIPatchTarget, index: number): { label: string; before: string; read: () => string } {
+    const surface = surfaceOf(service, target, index);
+    const read = () => JSON.stringify(service.getDocument().surfaces.find(item => item.id === surface.id)?.settings ?? null);
+    return { label: `page "${surface.name}"`, before: read(), read };
+}
+
+function surfaceOf(service: UIPatchService, target: UIPatchTarget, index: number): UISurface {
+    if (target.kind !== "surface") {
+        throw refuse("invalid_args", `ops[${index}] (setting): a component has no page settings; its root element's props are what it draws.`, "Name a page in `surface`.");
+    }
+    const surface = service.getDocument().surfaces.find(item => item.id === target.surfaceId);
+    if (!surface) {
+        throw refuse("not_found", `No page with id ${target.surfaceId}.`);
+    }
+    return surface;
 }
 
 function poolOf(document: UIDocument, target: UIPatchTarget): UIElementPool {
@@ -262,7 +314,35 @@ export type RoutedUiProps = {
     layout: Partial<UILayout>;
     style: Record<string, unknown>;
     extra: Record<string, unknown>;
+    /**
+     * The element's own records that are not in a bag - its enter/exit `animation` and its
+     * `navigation` - each as the whole record to write (null takes it away), and only when written.
+     * ui_show prints them bare (`animation = {...}`), so a patch takes them under the same key.
+     */
+    element: { animation?: Record<string, unknown> | null; navigation?: Record<string, unknown> | null };
 };
+
+/** Keys of the element record itself, written bare as ui_show prints them; see `ELEMENT_KEYS` in the parser. */
+const ELEMENT_RECORD_KEYS = ["animation", "navigation"] as const;
+type ElementRecordKey = (typeof ELEMENT_RECORD_KEYS)[number];
+
+/** `value` written at `path` inside a copy of `base`, a null at the end removing that key. */
+function writeAtPath(base: unknown, path: readonly string[], value: unknown): Record<string, unknown> {
+    const root: Record<string, unknown> = isPlainObject(base) ? JSON.parse(JSON.stringify(base)) : {};
+    let at = root;
+    for (const segment of path.slice(0, -1)) {
+        const next = at[segment];
+        at[segment] = isPlainObject(next) ? { ...next } : {};
+        at = at[segment] as Record<string, unknown>;
+    }
+    const last = path[path.length - 1];
+    if (value === null || value === undefined) {
+        delete at[last];
+    } else {
+        at[last] = value;
+    }
+    return root;
+}
 
 /** Every key an element's layout holds, with the type a value for it must have. */
 const LAYOUT_KEY_TYPES: Readonly<Record<keyof UILayout, "number" | "boolean">> = {
@@ -309,6 +389,7 @@ function readLayoutValue(key: string, value: unknown): unknown {
 export function routeUiPropsPatch(element: UIElement, patch: Readonly<Record<string, unknown>>): RoutedUiProps {
     const layout: Record<string, unknown> = {};
     const bagged: Record<"props" | "style" | "extra", Record<string, unknown>> = { props: {}, style: {}, extra: {} };
+    const records: RoutedUiProps["element"] = {};
     const objectOf = (head: string, value: unknown): Record<string, unknown> => {
         if (!isPlainObject(value)) {
             throw new Error(`\`${head}\` takes an object (or write \`${head}.<key>\`)`);
@@ -328,6 +409,26 @@ export function routeUiPropsPatch(element: UIElement, patch: Readonly<Record<str
             }
             continue;
         }
+        if ((ELEMENT_RECORD_KEYS as readonly string[]).includes(head)) {
+            const recordKey = head as ElementRecordKey;
+            if (rest.length === 0) {
+                if (value !== null && !isPlainObject(value)) {
+                    throw new Error(`\`${head}\` takes an object (as ui_show prints it), or null to take it away`);
+                }
+                records[recordKey] = value === null ? null : { ...(value as Record<string, unknown>) };
+            } else {
+                const current = records[recordKey] !== undefined ? records[recordKey] : element[recordKey];
+                records[recordKey] = writeAtPath(current, rest, value);
+            }
+            continue;
+        }
+        if (head === "assetVariants") {
+            throw new Error("`assetVariants` is written by the build, from the asset sets the element names; set the asset instead");
+        }
+        const extraNames = head !== "extra" ? [] : rest.length > 0 ? [rest[0]] : isPlainObject(value) ? Object.keys(value) : [];
+        if (extraNames.some(name => (ELEMENT_RECORD_KEYS as readonly string[]).includes(name))) {
+            throw new Error("an element's animation and navigation are its own records, not extras: write `animation` / `navigation` (as ui_show prints them), not `extra.animation`");
+        }
         if (head === "props" || head === "style" || head === "extra") {
             if (rest.length === 0) {
                 Object.assign(bagged[head], objectOf(head, value));
@@ -343,6 +444,7 @@ export function routeUiPropsPatch(element: UIElement, patch: Readonly<Record<str
         layout: layout as Partial<UILayout>,
         style: buildUiPropsPatch(element.style ?? {}, bagged.style),
         extra: buildUiPropsPatch(element.extra ?? {}, bagged.extra),
+        element: records,
     };
 }
 
@@ -443,6 +545,25 @@ function writeRoutedProps(
         throw new Error("`props` is empty");
     }
     const routed = routeUiPropsPatch(element, patch);
+    // An element's animation and navigation belong to where it stands, so a placed component takes
+    // them on the page as it takes its position (the editor's own methods allow it).
+    for (const key of ELEMENT_RECORD_KEYS) {
+        if (!(key in routed.element)) {
+            continue;
+        }
+        const record = routed.element[key] ?? null;
+        if (key === "animation") {
+            if (componentId) {
+                service.updateComponentElementAnimation(componentId, element.id, record as never);
+            } else {
+                service.updateElementAnimation(element.id, record as never);
+            }
+        } else if (componentId) {
+            service.updateComponentElementNavigation(componentId, element.id, record as never);
+        } else {
+            service.updateElementNavigation(element.id, record as never);
+        }
+    }
     const label = element.name ?? element.id;
 
     if (!componentId && isLinkedUIComponentElement(element)) {
@@ -520,6 +641,53 @@ function writeRoutedProps(
     }
 }
 
+/** The settings a page record holds that a patch may write; `assetVariants` is the build's. */
+export const UI_PATCH_SURFACE_SETTING_KEYS = ["backgroundColor", "backgroundImage", "music", "pageAnimation", "navigation"] as const;
+
+/**
+ * Give a placed component's params their values, through the inspector's own methods: `<id>` takes
+ * words (or any string - an index, a mode), `<id>.key` names the translation key a text param reads,
+ * null there naming none. A param the definition does not declare is refused, not stored: the
+ * placement would carry a value nothing reads.
+ */
+function writeComponentParams(service: UIPatchService, element: UIElement, raw: unknown, index: number): void {
+    if (!isPlainObject(raw) || Object.keys(raw).length === 0) {
+        throw new Error("`params` must be an object of param id to value");
+    }
+    const link = getUIComponentLink(element);
+    if (!link) {
+        throw new Error(`${element.name ?? element.id} is not a placed component, so it has no params`);
+    }
+    const component = (service.getDocument().components ?? []).find(item => item.id === link.componentId);
+    const declared = component?.params ?? [];
+    for (const [name, value] of Object.entries(raw)) {
+        const isKey = name.endsWith(PARAM_KEY_SUFFIX) && name.length > PARAM_KEY_SUFFIX.length;
+        const paramId = isKey ? name.slice(0, -PARAM_KEY_SUFFIX.length) : name;
+        const param = declared.find(item => item.id === paramId);
+        if (!param) {
+            throw refuse(
+                "invalid_args",
+                `ops[${index}].params: component "${component?.name ?? link.componentId}" declares no param "${paramId}".`,
+                `It declares ${declared.length > 0 ? declared.map(item => `${item.id} (${item.name})`).join(", ") : "none"}; ui_show on the component prints them as \`param\` lines.`,
+            );
+        }
+        if (isKey) {
+            if (param.type !== "text") {
+                throw new Error(`params.${name}: "${paramId}" is not a text param, so it reads no translation key; write \`${paramId}\` instead`);
+            }
+            if (value !== null && typeof value !== "string") {
+                throw new Error(`params.${name} takes a key name, or null for none`);
+            }
+            service.setComponentInstanceParamKey(element.id, paramId, value === null ? null : value);
+            continue;
+        }
+        if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+            throw new Error(`params.${name} takes a string (numbers and true/false are written as one)`);
+        }
+        service.setComponentInstanceParam(element.id, paramId, String(value));
+    }
+}
+
 /** The order of `parent`'s children with `childId` moved to `index` (clamped), or null when unchanged. */
 function reordered(children: readonly string[], childId: string, index: number): string[] | null {
     const rest = children.filter(id => id !== childId);
@@ -585,6 +753,15 @@ function applyOne(
                     writeRoutedProps(service, componentId, element, requireProps(op.props), index);
                 }
             }
+            if (op.params !== undefined) {
+                if (op.op !== "instantiate") {
+                    throw new Error("`params` is for a placed component (instantiate, or set on one); a widget takes `props`");
+                }
+                const element = pool()[id];
+                if (element) {
+                    writeComponentParams(service, element, op.params, index);
+                }
+            }
             if (op.index !== undefined) {
                 const children = pool()[parent.id]?.childrenIds ?? [];
                 const order = reordered(children, id, op.index);
@@ -609,8 +786,51 @@ function applyOne(
         }
         case "set": {
             const element = resolveRef(service, target, requireString(op.element, "element"), index, "element");
-            writeRoutedProps(service, componentId, element, requireProps(op.props), index);
+            if (op.props === undefined && op.params === undefined) {
+                throw new Error("give `props` to write, or `params` for a placed component");
+            }
+            if (op.props !== undefined) {
+                writeRoutedProps(service, componentId, element, requireProps(op.props), index);
+            }
+            if (op.params !== undefined) {
+                if (componentId) {
+                    throw new Error("`params` is for a component placed on a page");
+                }
+                writeComponentParams(service, pool()[element.id] ?? element, op.params, index);
+            }
             touched.add(element.id);
+            return;
+        }
+        case "setting": {
+            const surface = surfaceOf(service, target, index);
+            const key = requireString(op.key, "key");
+            const path = key.split(".").filter(Boolean);
+            const head = path[0] ?? "";
+            if (!(UI_PATCH_SURFACE_SETTING_KEYS as readonly string[]).includes(head)) {
+                const close = nearest(head, [...UI_PATCH_SURFACE_SETTING_KEYS], 2);
+                throw refuse(
+                    "invalid_args",
+                    `ops[${index}] (setting): a page has no setting "${head}"${close.length > 0 ? ` - did you mean ${close.map(item => `"${item}"`).join(", ")}?` : ""}`,
+                    `The page settings are ${UI_PATCH_SURFACE_SETTING_KEYS.join(", ")} - the \`setting <key> = <value>\` lines ui_show prints under the page line.`,
+                );
+            }
+            if (!("value" in op)) {
+                throw new Error("`value` is required (null takes the setting away)");
+            }
+            const value = op.value;
+            if (path.length === 1 && value !== null) {
+                if (head === "backgroundColor" ? typeof value !== "string" : !isPlainObject(value)) {
+                    throw new Error(`setting ${head} takes ${head === "backgroundColor" ? "a colour string (\"#202020\", \"transparent\")" : "an object, as ui_show prints it"}, or null to take it away`);
+                }
+            }
+            service.updateSurface(surface.id, record => {
+                const settings = writeAtPath(record.settings, path, value);
+                if (Object.keys(settings).length > 0) {
+                    record.settings = settings as UISurface["settings"];
+                } else {
+                    delete record.settings;
+                }
+            });
             return;
         }
         case "layout": {

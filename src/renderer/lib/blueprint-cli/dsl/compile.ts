@@ -31,7 +31,7 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import { blueprintContract } from "@shared/blueprint/ownerShape";
-import { BLUEPRINT_NODE_TYPE_LOCAL_GET, BLUEPRINT_NODE_TYPE_LOCAL_SET, type BlueprintGraphKind } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_PARAM_FN_REF, BLUEPRINT_NODE_TYPE_LOCAL_GET, BLUEPRINT_NODE_TYPE_LOCAL_SET, type BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
@@ -44,6 +44,8 @@ import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
+import { isEmptyBlueprint } from "@services/ui-editor/blueprint/ownerRecords";
+import { createBlueprintFnRef, parseBlueprintFnRef } from "@services/ui-editor/blueprint/fnCatalog";
 import { parseBlueprintVariableRef } from "@services/ui-editor/blueprint/blueprintVariableRefs";
 import type { BpBlueprintAst, BpDiagnostic, BpDocumentAst, BpEndpointAst, BpGraphAst, BpNodeAst } from "./ast";
 import { autoLayout } from "./layout";
@@ -128,7 +130,11 @@ function compileBlueprint(
         return null;
     }
     const previous = findExistingBlueprint(options.existing ?? null, ast.id, owner);
-    const id = ast.id ?? previous?.id ?? newId();
+    const settled = settleBlueprintId(options.existing ?? null, ast, owner, diagnostics);
+    if (settled === null) {
+        return null;
+    }
+    const id = settled ?? previous?.id ?? newId();
 
     const events: Record<string, BlueprintLayer> = {};
     const eventIds: string[] = [];
@@ -208,7 +214,92 @@ function compileBlueprint(
     if (ast.meta && typeof ast.meta === "object") {
         blueprint.meta = ast.meta as Record<string, unknown>;
     }
+    if (ast.id && ast.id !== id) {
+        pointOwnCallsAt(blueprint, ast.id);
+    }
     return blueprint;
+}
+
+/**
+ * The id a blueprint with `id=` is written under; undefined when the header names none, and null when
+ * the id cannot be used (reported).
+ *
+ * One owner, one blueprint (`assertValidBlueprintDocument`). A widget is given an empty blueprint the
+ * moment it is added, so a header naming an id of its own for that widget would otherwise add a
+ * second blueprint beside it: the owner record moves to the new one, the empty one is left
+ * unreachable, and every later interface write fails validation on it. Instead:
+ *
+ * - an id that already names the blueprint of another owner is refused, since writing it here would
+ *   move that blueprint off its own owner;
+ * - an owner that holds an EMPTY blueprint under another id keeps that id: nothing can refer to an
+ *   empty blueprint, and the file's own calls to `fn:<its id>:` are pointed at the kept one
+ *   ({@link pointOwnCallsAt});
+ * - an owner whose blueprint has content is refused, because taking a written blueprint's place under
+ *   another id would break whatever calls or binds it by its id.
+ */
+function settleBlueprintId(
+    document: BlueprintDocument | null,
+    ast: BpBlueprintAst,
+    owner: BlueprintOwnerRef,
+    diagnostics: BpDiagnostic[],
+): string | undefined | null {
+    if (!ast.id) {
+        return undefined;
+    }
+    if (!document) {
+        return ast.id;
+    }
+    const ownerKey = ownerRefToIndexKey(owner);
+    const named = document.blueprints[ast.id];
+    if (named && ownerRefToIndexKey(named.owner) !== ownerKey) {
+        pushError(
+            diagnostics,
+            ast.line,
+            "compile.id_of_another_owner",
+            `id "${ast.id}" is the blueprint "${named.name}" of ${ownerRefToIndexKey(named.owner)}, not of ${ownerKey}.`,
+            "Leave id= out to write this owner's own blueprint, or pick an id no blueprint uses.",
+        );
+        return null;
+    }
+    const heldId = document.ownerRecords?.[ownerKey]?.blueprintId;
+    const held = heldId ? document.blueprints[heldId] : undefined;
+    if (!held || held.id === ast.id) {
+        return ast.id;
+    }
+    if (isEmptyBlueprint(held)) {
+        diagnostics.push({
+            severity: "warning",
+            code: "compile.id_kept_from_owner",
+            message: `${ownerKey} already has an empty blueprint "${held.id}"; this one replaces it under that id, not "${ast.id}".`,
+            hint: `Calls in this file to fn:${ast.id}:... now call fn:${held.id}:.... Write id=${held.id}, or leave id= out, to stop this warning.`,
+            line: ast.line,
+        });
+        return held.id;
+    }
+    pushError(
+        diagnostics,
+        ast.line,
+        "compile.owner_has_blueprint",
+        `${ownerKey} already runs blueprint "${held.name}" (${held.id}); an owner holds one blueprint, and id "${ast.id}" would be a second.`,
+        `Write id=${held.id}, or leave id= out, to replace it.`,
+    );
+    return null;
+}
+
+/** Point the blueprint's calls to its own functions under `fromId` at the id it was written under. */
+function pointOwnCallsAt(blueprint: Blueprint, fromId: string): void {
+    const graphs = [
+        ...Object.values(blueprint.graphs.events ?? {}).map(layer => layer.graph),
+        ...Object.values(blueprint.graphs.functions ?? {}).map(fn => fn.graph),
+    ];
+    for (const graph of graphs) {
+        for (const node of Object.values(graph?.nodes ?? {})) {
+            const ref = parseBlueprintFnRef(node.params?.[BLUEPRINT_NODE_PARAM_FN_REF]);
+            if (ref && ref.blueprintId === fromId && node.params) {
+                node.params[BLUEPRINT_NODE_PARAM_FN_REF] = createBlueprintFnRef(blueprint.id, ref.headNodeId);
+            }
+        }
+    }
 }
 
 /**

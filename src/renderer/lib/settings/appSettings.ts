@@ -29,6 +29,11 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
+    CHARACTER_LIST_GROUPING_DEFAULT,
+    CHARACTER_LIST_GROUPING_KEY,
+    CHARACTER_LIST_GROUPING_OPTIONS,
+} from "@/lib/settings/characterListOptions";
+import {
     SPELLCHECK_FOLLOW_PROJECT,
     SPELLCHECK_LANGUAGE_DEFAULT,
     SPELLCHECK_LANGUAGE_KEY,
@@ -828,6 +833,27 @@ export const AppSettings: AppSettingDefinition[] = [
             none: "settings.items.storyRowHighlight.options.none",
             script: "settings.items.storyRowHighlight.options.script",
             command: "settings.items.storyRowHighlight.options.command",
+        },
+    },
+    {
+        // Applied wherever the cast is offered for picking: the story editor's speaker picker (the
+        // "#" slot and the nametag) and the voice table's speaker filter. It arranges a list and
+        // nothing else - every character is offered either way, and the groups themselves are the
+        // Characters panel's, which this cannot change. Grouped by default; a project that files no
+        // cast groups sees the same list under both.
+        key: CHARACTER_LIST_GROUPING_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Character lists",
+        labelKey: "settings.items.characterListGrouping.label",
+        description: "How the cast is arranged where a character is picked.",
+        descriptionKey: "settings.items.characterListGrouping.description",
+        defaultValue: CHARACTER_LIST_GROUPING_DEFAULT,
+        options: [...CHARACTER_LIST_GROUPING_OPTIONS],
+        optionLabelKeys: {
+            grouped: "settings.items.characterListGrouping.options.grouped",
+            all: "settings.items.characterListGrouping.options.all",
         },
     },
     {

@@ -104,6 +104,39 @@ describe("extractStoryTranslationRows", () => {
         expect(dialogue?.sceneName).toBe("Chapter scene");
         expect(dialogue?.sourceText).toBe("We should go home.");
     });
+
+    /**
+     * A temp speaker (`#name`) has no profile, but the line does say who speaks it. The row is the
+     * only thing the voice table, the recording script and the translation table are given, so a
+     * row that dropped the name reported every one of them as narration.
+     */
+    it("keeps the bare name of a speaker with no character profile", () => {
+        const document = buildDocument();
+        document.scenes["scene-b"].blocks.d1.payload = {
+            action: "dialogue",
+            speakerName: "路人A",
+            text: { textId: "t-d1", value: "We should go home.", role: "dialogue" },
+        };
+        const row = extractStoryTranslationRows(document).find(row => row.unitId === "t-d1");
+        expect(row?.speakerName).toBe("路人A");
+        expect(row?.characterId).toBeUndefined();
+    });
+
+    it("drops a blank bare name, which names nobody", () => {
+        const document = buildDocument();
+        document.scenes["scene-b"].blocks.d1.payload = {
+            action: "dialogue",
+            speakerName: "   ",
+            text: { textId: "t-d1", value: "We should go home.", role: "dialogue" },
+        };
+        expect(extractStoryTranslationRows(document).find(row => row.unitId === "t-d1")?.speakerName).toBeUndefined();
+    });
+
+    it("leaves narration and option rows without a speaker name", () => {
+        const rows = extractStoryTranslationRows(buildDocument());
+        expect(rows.find(row => row.unitId === "t-n1")?.speakerName).toBeUndefined();
+        expect(rows.find(row => row.unitId === "t-o1")?.speakerName).toBeUndefined();
+    });
 });
 
 describe("run-tagged source", () => {

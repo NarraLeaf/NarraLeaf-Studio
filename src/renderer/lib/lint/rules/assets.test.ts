@@ -402,6 +402,45 @@ describe("assets/unreadable", () => {
     });
 });
 
+describe("assets/sprite-animation-finite", () => {
+    function animatedProbe(plays: number, frames = 8) {
+        return async (): Promise<LintImageProbe> => ({ ok: true, width: 10, height: 10, animation: { frames, plays } });
+    }
+    const character = { id: "c1", name: "Alice", assetIds: ["blink"] };
+
+    it("reports a sprite APNG that plays a fixed number of times", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("blink")],
+            characters: [character],
+            io: { probeImage: animatedProbe(1) },
+        });
+
+        const findings = await runRule("assets/sprite-animation-finite", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsSpriteAnimationFinite.message");
+        expect(findings[0].messageParams).toEqual({ asset: "blink.png", plays: 1 });
+        expect(findings[0].target).toEqual({ kind: "asset", assetId: "blink", assetType: AssetType.Image });
+    });
+
+    it("says nothing about a sprite that loops forever, or a single-frame APNG", async () => {
+        for (const probeImage of [animatedProbe(0), animatedProbe(3, 1)]) {
+            const ctx = createTestLintContext({ assets: [asset("blink")], characters: [character], io: { probeImage } });
+            expect(await runRule("assets/sprite-animation-finite", ctx)).toEqual([]);
+        }
+    });
+
+    it("only asks about images a character uses", async () => {
+        const probeImage = vi.fn(animatedProbe(1));
+        const ctx = createTestLintContext({ assets: [asset("blink"), asset("title-art")], characters: [character], io: { probeImage } });
+
+        const findings = await runRule("assets/sprite-animation-finite", ctx);
+
+        expect(findings.map(finding => finding.location)).toEqual([{ kind: "asset", assetId: "blink", assetName: "blink.png" }]);
+        expect(probeImage).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe("assets/oversized", () => {
     function runOversized(ctx: LintContext, maxMegabytes = 1): Promise<LintFinding[]> {
         const rule = ASSETS_LINT_RULES.find(entry => entry.id === "assets/oversized")!;

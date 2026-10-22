@@ -454,6 +454,13 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
         }),
         options: { maxMegabytes: 1 },
     }],
+    "assets/sprite-animation-finite": [{
+        context: () => createTestLintContext({
+            assets: [asset("blink")],
+            characters: [{ id: "c1", name: "Alice", assetIds: ["blink"] }],
+            io: { probeImage: async () => ({ ok: true, width: 1, height: 1, animation: { frames: 4, plays: 1 } }) },
+        }),
+    }],
     "assets/group-incomplete": [
         { context: () => createTestLintContext({ assets: [asset("a", { tags: ["set:set-alice", "release:main"] })], appTags: [RELEASE_APP_TAG, DEMO], assetSets: [aliceSet(DEMO.id)] }) },
         // A declaration fault, which is reported instead of the set's holes.
@@ -533,6 +540,12 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
         }),
     }],
+    "story/page-missing": [{
+        context: () => createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Hub", [action("p1", { action: "page", surfaceId: "gone" })])])],
+            uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
+        }),
+    }],
     "story/input-action-missing": [{
         context: () => createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Chase", [action("w1", { action: "input", operation: "wait", actionId: "gone" })])])],
@@ -594,6 +607,20 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                 axes: [{ name: "Outfit", tags: ["White", "Blue"] }, { name: "Hair", tags: ["Long", "Blue"] }],
             }],
         }),
+    }],
+    "story/parallel-same-target": [{
+        context: () => stories(story("s1", "Main", [scene("sc1", "Credits", [
+            action("create", { action: "text", operation: "create", objectName: "credit", text: "Staff" }),
+            {
+                id: "group",
+                kind: "control",
+                payload: { control: "parallel" },
+                children: [
+                    action("show", { action: "text", operation: "show", objectName: "credit", transform: { to: { opacity: 1 }, durationMs: 500 } }),
+                    action("move", { action: "displayable", operation: "transform", target: { name: "credit", kind: "text" }, transform: { to: { zoom: 1.2 }, durationMs: 500 } }),
+                ],
+            },
+        ])])),
     }],
 
     // --- blueprint ---

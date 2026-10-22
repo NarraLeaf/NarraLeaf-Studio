@@ -317,16 +317,20 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot. `groups` lists the cast groups the Characters panel files characters under (id, name, member count), and each character's `group`/`groupId` names its own (null = ungrouped); character_upsert {group} moves one.",
     ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites when the author opens the Characters panel. One step of undo.",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites when the author opens the Characters panel. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
         {
             id: { type: "string" },
             name: { type: "string" },
             nicknames: { type: "array", items: { type: "string" } },
+            group: {
+                description: "Cast group (Characters panel) to file the character under: a group's name or id from characters_list `groups`; a name no group has creates the group. null = ungrouped. Omit to leave it where it is.",
+                oneOf: [{ type: "string" }, { type: "null" }],
+            },
             nameColor: { type: "string", description: "CSS colour of the name in the dialogue box." },
             poses: {
                 type: "array",
@@ -507,12 +511,15 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "scene_create",
         "Create a scene",
-        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). Returns its id; then write its rows with story_apply.",
+        "Creates an empty scene in a story (and the story itself if `story` names none that exists - then the new story holds just this scene, in `chapter` when given, with no default chapter or scene beside it). To start a new chapter after an existing one, give the new `chapter` name and `after` = the last scene of the chapter before it. Returns its id; then write its rows with story_apply.",
         {
             name: { type: "string" },
             story: { type: "string", description: "Story name or id; defaults to the first story." },
-            chapter: { type: "string", description: "Chapter name; created if missing." },
-            after: { type: "string", description: "Place after this scene (name or id); defaults to the end." },
+            chapter: { type: "string", description: "Chapter name; created if missing - right after `after`'s chapter when `after` is in another one, else last." },
+            after: {
+                type: "string",
+                description: "Place after this scene (name or id); defaults to the end. With a `chapter` other than this scene's, the new scene opens that chapter: a new chapter is made right after this scene's chapter; an existing one must already be the next chapter.",
+            },
         },
         ["name"],
         true,
@@ -579,11 +586,13 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_show",
         "Read a page as text",
-        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply. Short by default: an element line ending in `+defaults` holds its widget's default for every prop not written (a `without` line names defaults it does not hold), and a bare key in an appearance's `propertyGroups` is a row repeating that prop. ui_apply restores both exactly, so the short text can be edited and applied as it is.",
+        "Prints a page or component in the `.ui` text format, ids and props included, with its `revision`. To change something: show, edit, apply. Short by default: an element line ending in `+defaults` holds its widget's default for every prop not written (a `without` line names defaults it does not hold), and a bare key in an appearance's `propertyGroups` is a row repeating that prop. ui_apply restores both exactly, so the short text can be edited and applied as it is. A page longer than one answer comes in parts: each ends with a `# ui_show part:` comment naming the `offset` of the next; call again with it until the part that says it is the last, join the parts in order, and that joined text applies back whole (ui_apply refuses a source missing a part). Or pass `full: true` for the whole text in one answer.",
         {
             surface: { type: "string", description: "Page name or id." },
             component: { type: "string", description: "Component name or id." },
             compact: { type: "boolean", default: true, description: "Leave out props at their default and appearance rows that repeat a prop. False prints every stored value." },
+            offset: { type: "integer", minimum: 0, default: 0, description: "Where the part starts, for a page served in parts: the offset the previous part's closing `# ui_show part:` comment names." },
+            full: { type: "boolean", default: false, description: "The whole page in one answer however long it is, instead of in parts. For a client that keeps long answers." },
         },
     ),
     ws(
@@ -610,7 +619,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_apply",
         "Write pages",
-        "Applies a `.ui` document. Each `surface` or `component` block replaces that page's whole element tree - elements the block leaves out are deleted (the answer names them). Prefer ui_patch for small edits. One step of undo.",
+        "Applies a `.ui` document. Each `surface` or `component` block replaces that page's whole element tree - elements the block leaves out are deleted (the answer names them). Prefer ui_patch for small edits. A page ui_show served in parts applies as the parts joined in order; a source missing a part is refused, never applied. One step of undo.",
         { source: { type: "string" }, baseRevision: BASE_REVISION, dryRun: DRY_RUN },
         ["source"],
         true,
@@ -618,7 +627,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "ui_patch",
         "Edit elements",
-        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component. All operations in one call are one step of undo, and all or nothing: an operation that would change nothing (a prop the widget does not know, a value already held) refuses the whole call, so \"Applied N operation(s)\" means N real changes. Hide an element with `set` `{\"layout.visible\": false}`. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
+        "Small edits to one page without rewriting it: add an element, set props, move/resize, re-parent, rename, delete, place a component with its params, change a page setting. All operations in one call are one step of undo. A mistake (a prop the widget does not know, an element that is not there) refuses the whole call and writes nothing; an operation that is already done (a value the element already holds) is skipped and listed under `skipped`, and the rest apply - so \"Applied N operation(s)\" means N real changes. `warnings` names an edit that will not look as meant (an image fill with no picture). Hide an element with `set` `{\"layout.visible\": false}`. Keys are the ones ui_show prints: `animation`/`navigation` are the element's own records, `setting <key>` lines are the `setting` op, `component <id> slot=\"7\"` is `params`. Prefer several small patches over one big apply when building a page, so the author can watch it come together.",
         {
             surface: { type: "string", description: "Page or component name or id." },
             ops: {
@@ -626,8 +635,8 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                 items: {
                     type: "object",
                     properties: {
-                        op: { type: "string", enum: ["add", "set", "layout", "move", "rename", "delete", "instantiate"] },
-                        element: { type: "string", description: "Target element id or path (all ops but add/instantiate)." },
+                        op: { type: "string", enum: ["add", "set", "layout", "move", "rename", "delete", "instantiate", "setting"] },
+                        element: { type: "string", description: "Target element id or path (all ops but add/instantiate/setting)." },
                         parent: { type: "string", description: "add/instantiate/move: parent element id or path." },
                         index: { type: "integer", description: "add/instantiate/move: position among the parent's children." },
                         type: { type: "string", description: "add: widget type." },
@@ -641,8 +650,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                         props: {
                             type: "object",
                             description:
-                                "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`). As in the `.ui` format the first segment picks the bag: `layout.visible`/`layout.opacity`/`layout.rotation` (or `{\"layout\": {\"visible\": false}}`) write the element's layout, `style.*` its CSS overrides, `extra.*` its extra record; every other key is a widget prop and must be one the widget knows (ui_widget lists them).",
+                                "add/set: props to merge, `.ui` dotted keys allowed (`imageFill.assetId`). As in the `.ui` format the first segment picks the bag: `layout.visible`/`layout.opacity`/`layout.rotation` (or `{\"layout\": {\"visible\": false}}`) write the element's layout, `style.*` its CSS overrides, `extra.*` its extra record, `animation` / `navigation` (or `animation.enter`) the element's own enter/exit and navigation records exactly as ui_show prints them (null removes); `props.<key>` is a widget prop whose name is one of those words (a Page widget's `props.animation`); every other key is a widget prop and must be one the widget knows (ui_widget lists them).",
                         },
+                        params: {
+                            type: "object",
+                            description:
+                                "instantiate, or set on a placed component: its param values by param id - `{\"slot\": \"7\", \"mode\": \"save\"}` is the `.ui` line `component <id> slot=\"7\" mode=save`. `<id>.key` names the translation key a text param reads (null for none). Only params the component declares (ui_show on the component prints its `param` lines).",
+                            additionalProperties: { description: "A string (a number or true/false is written as one); null only for a `.key`." },
+                        },
+                        key: { type: "string", description: "setting: the page setting - backgroundColor, backgroundImage, music, pageAnimation or navigation, dotted for a field inside one (`pageAnimation.enter`); the `setting <key> = <value>` lines ui_show prints under a page." },
+                        value: { description: "setting: the new value (`\"transparent\"`, `\"#202020\"`, or an object as ui_show prints it); null takes the setting away." },
                     },
                     required: ["op"],
                 },
@@ -722,11 +739,16 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string" }, category: { type: "string" }, owner: { type: "string" }, widget: { type: "string" }, limit: { type: "integer", default: 60 } },
     ),
     ws("blueprint_node", "Blueprint node details", "Pins, inspector params, graph kinds and scope of one node type.", { type: { type: "string" } }, ["type"]),
-    ws("blueprint_list", "List blueprints", "Lists blueprints with their owner (surface/element) and event heads.", { query: { type: "string" } }),
+    ws(
+        "blueprint_list",
+        "List blueprints",
+        "Lists blueprints with their owner (surface/element) and event heads. Empty ones (no nodes) are left out unless `query` or `all` is given.",
+        { query: { type: "string" }, all: { type: "boolean", description: "Also list blueprints that hold no nodes." } },
+    ),
     ws(
         "blueprint_show",
         "Read a blueprint as text",
-        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>` shows all of that element's blueprints.",
+        "Prints one blueprint (or all of one owner) in the `.bp` text format, with each blueprint's `revision`. Blueprint names are in the project's language (the skeleton's title Start button's is `开始` in a Chinese project), so find one by its owner: ui_show prints `# blueprint: <name>` after the element that owns it, and an owner key `widgetMain:<surfaceId>:<elementId>`, passed as `blueprint`, shows all of that element's blueprints.",
         { blueprint: { type: "string", description: "Blueprint name or id, or an owner key `widgetMain:<surfaceId>:<elementId>`." } },
         ["blueprint"],
     ),
@@ -960,12 +982,22 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         {
             key: {
                 type: "string",
-                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, a single letter or digit, or rightClick, wheelUp, wheelDown.",
+                description: "Escape, Enter, Space, Tab, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, F1-F12, Control, Shift, Alt, Meta, a single letter or digit, or rightClick, wheelUp, wheelDown.",
             },
             shift: { type: "boolean", description: "Hold Shift (Shift+Tab moves the focus backwards)." },
+            ctrl: { type: "boolean", description: "Hold Ctrl with the key." },
+            alt: { type: "boolean", description: "Hold Alt with the key." },
+            meta: { type: "boolean", description: "Hold Cmd (Meta) with the key." },
+            holdMs: { type: "integer", description: "Keep the key down this long, up to 8000 ms - e.g. `Control` held to skip." },
         },
         ["key"],
     )),
+    ws(
+        "playtest_variables",
+        "Read the game's variables",
+        "The saved and persistent variables as the running Dev Mode game holds them now - what the story, a screen or a page has written so far (variables_list gives only declarations and defaults). Scene variables are not listed. playtest_click and playtest_key also name the variables an act changed.",
+        { query: { type: "string", description: "Only variables whose name contains this." } },
+    ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(

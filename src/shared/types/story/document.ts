@@ -287,7 +287,15 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // becomes its place in the stack and its depth word the share the word stood for, and the scene's
 // `setDepth` row becomes the background layer's share. The bump is not optional: a v29 Studio would
 // find no `create` row for a layer every picture names, and build none of them.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 30 as const;
+// v31 adds the `page` action payload: `/page Phone into=reply` opens a page over the stage, holds the
+// story until the page closes, and writes what it closed with into a variable - the round trip a
+// phone chat, a map or a puzzle needs, which before could only be built by a blueprint polling a
+// variable from inside a Game UI.
+// No migration. A v30 document cannot contain one. The bump is not optional, and the reason is what a
+// v30 Studio would *play*: `compileStoryAction` would compile the row to nothing, so the story would
+// run straight past the page it was meant to wait on, its variable never written. Refusing the
+// document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 31 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -990,13 +998,26 @@ export type StoryActionPayload =
       }
     | {
           action: "text";
-          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
+          /**
+           * `setFont` is the combined op: it sets whichever of {@link fontSize}, {@link fontColor} and
+           * {@link outline} the row states, so one `/font` line can say all three. The two single ops
+           * stay for the rows that hold them and for a line that names one value alone.
+           *
+           * Additive: no document written before it carries the value, so no schema bump - the same
+           * rule `bringToFront` came in under.
+           */
+          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor" | "setFont";
           objectName: string;
           /** Which text a non-`create` op acts on. Same rule as the `image` arm's `target`. */
           target?: StoryDisplayableTargetRef;
           text?: string;
           fontSize?: number;
           fontColor?: string;
+          /**
+           * The outline drawn round the glyphs, read by `setFont`. `null` takes an outline away
+           * (`outline=0`); absent leaves whatever the text has.
+           */
+          outline?: StoryTextOutline | null;
           layer?: StoryLayerRef;
           transform?: StoryTransformRef;
       }
@@ -1244,7 +1265,30 @@ export type StoryActionPayload =
           params: Record<string, StoryPluginActionParamValue>;
       }
     /** The player's hands: a pad that shakes, a locked passage, a row that waits for a gesture. */
-    | StoryInputActionPayload;
+    | StoryInputActionPayload
+    | {
+          /**
+           * Open one of the project's pages over the stage (`/page`), hold the story until the page
+           * closes, and go on from the row after it - a phone, a map, a letter the player reads.
+           *
+           * The page is shown exactly as `Show Layer` shows one from a blueprint, so the page closes
+           * itself with `Close This Layer`, and what it closes with is the row's answer. Unlike
+           * `/quit`, the scene is not left: the story is where it was when the page goes away.
+           */
+          action: "page";
+          /**
+           * The page, by id - never by name, so a rename keeps the row on the same page, as `/quit`
+           * keeps naming its page.
+           */
+          surfaceId: string;
+          /**
+           * A variable to write what the page closed with. A boolean, a number or a text variable
+           * takes the result converted to its own type; a page closed with no result (Back on a
+           * dismissible page, a load, the story rolled back past the row) writes nothing, so the
+           * variable keeps the value it had. Absent writes nothing at all.
+           */
+          resultTarget?: StoryVariableRef;
+      };
 
 /** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
 export type StoryPluginActionParamValue =
@@ -1956,6 +2000,18 @@ export type StoryClipReveal = {
 export const STORY_TRANSFORM_REPEAT_TYPES = ["loop", "reverse", "mirror"] as const;
 
 export type StoryTransformRepeatType = (typeof STORY_TRANSFORM_REPEAT_TYPES)[number];
+
+/**
+ * An outline round a story text's glyphs - Ren'Py's `outlines [(width, color, 0, 0)]`.
+ *
+ * `width` is in design pixels. The runtime draws it on the text's CSS `filter` channel (a chain of
+ * offset drop shadows, which dilates the glyphs evenly), so a later row that writes that channel - a
+ * `/transform` filter or a look - replaces the outline, as any two writers of one channel do.
+ */
+export type StoryTextOutline = {
+    width: number;
+    color: string;
+};
 
 export type StoryTransformRef = {
     /** Absent means `"props"`. Only a Story Motion has to say which it is. */

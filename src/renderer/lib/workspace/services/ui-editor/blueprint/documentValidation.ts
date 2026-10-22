@@ -3,9 +3,13 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { ownerRefToIndexKey } from "./ownerKeys";
 
 export class BlueprintDocumentValidationError extends Error {
-    constructor(message: string) {
+    /** What to do about it, when there is something the reader can do. */
+    readonly hint?: string;
+
+    constructor(message: string, hint?: string) {
         super(message);
         this.name = "BlueprintDocumentValidationError";
+        this.hint = hint;
     }
 }
 
@@ -62,7 +66,8 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
         // to make reachable on purpose.
         if (rec.blueprintId !== bp.id) {
             throw new BlueprintDocumentValidationError(
-                `Blueprint "${bp.id}" is not the blueprint ownerRecords["${k}"] names`,
+                `Blueprint "${bp.id}" ("${bp.name}") is not the blueprint ownerRecords["${k}"] names ("${rec.blueprintId}"), so it can never run`,
+                `Remove "${bp.id}" (blueprint_remove), after moving anything it holds into "${rec.blueprintId}".`,
             );
         }
     }

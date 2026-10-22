@@ -169,7 +169,9 @@ export function findDeclarationBlock(document: StoryDocument, variableId: string
  *
  * Two kinds of row write a story variable: a `setVariable` (`/set` and every sugar that lowers to it)
  * and a row waiting for the player (`/waitinput`, `/hold`, `/mash`) whose `into=` names a variable,
- * which it sets to whether the player made it in time. The scans that ask "does anything write this"
+ * which it sets to whether the player made it in time; and a `/page` row whose `into=` takes what the
+ * page closed with. The scans that ask "does anything write this"
+
  * - the flag checks, the scene map's ranges, the route coverage walk - all read this one answer, so a
  * writer added later reaches every one of them rather than the one its author remembered. A scan that
  * only counted `setVariable` reported a flag set by a wait as never written.
@@ -185,6 +187,9 @@ export function storyRowAssignedVariable(block: StoryBlock): StoryVariableRef | 
         return payload.target;
     }
     if (payload.action === "input" && isStoryInputWaitPayload(payload)) {
+        return payload.resultTarget;
+    }
+    if (payload.action === "page") {
         return payload.resultTarget;
     }
     return undefined;

@@ -1,3 +1,4 @@
+import { normalizeFrameSequence } from "@shared/types/character/frameSequence";
 import type {
     CharacterAppearanceSummary,
     CharacterAvatarSummaryEntry,
@@ -157,7 +158,8 @@ function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
     const poses = (Array.isArray(raw?.poses) ? raw.poses : []).flatMap(entry => {
         const pose = named(entry);
         if (!pose) return [];
-        return [{ ...pose, assetId: trimmed((entry as { assetId?: unknown }).assetId) || null }];
+        const sequence = normalizeFrameSequence((entry as { sequence?: unknown }).sequence);
+        return [{ ...pose, assetId: trimmed((entry as { assetId?: unknown }).assetId) || null, ...(sequence ? { sequence } : {}) }];
     });
     const defaultPoseId = trimmed(raw?.defaultPoseId);
     const presetAvatars = mapAvatars(raw?.avatars);

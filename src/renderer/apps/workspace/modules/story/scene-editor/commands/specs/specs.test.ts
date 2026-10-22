@@ -237,7 +237,7 @@ describe("generic verbs", () => {
         });
     });
 
-    it("/show carries an opacity and a rate for an overlay, and refuses them anywhere else", () => {
+    it("/show carries an opacity anywhere, and a rate for an overlay alone", () => {
         // This showing's own values, not the overlay's: they ride the show row and never touch the
         // row that declares the overlay.
         expect(build("/show petals d=0.5 opacity=0.4 rate=2")).toMatchObject({
@@ -245,8 +245,14 @@ describe("generic verbs", () => {
         });
         // Nothing else has a field for either, so a row that types them elsewhere is reported rather
         // than storing numbers the compile does not read.
-        expect(issuesOf("/show hero opacity=0.4")).toEqual(["unsupportedParam"]);
         expect(issuesOf("/show Alice rate=2")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show hero rate=2")).toEqual(["unsupportedParam"]);
+        // `opacity=` is every other subject's entrance opacity: the value its reveal ends at.
+        expect(issuesOf("/show hero opacity=0.4")).toEqual([]);
+        expect(build("/show hero opacity=0.4")).toMatchObject({ payload: { action: "image", transform: { to: { opacity: 0.4 } } } });
+        expect(build("/show Alice pos=0.5,0.5 yoffset=-451 opacity=0")).toMatchObject({
+            payload: { action: "character", operation: "enter", transform: { to: { opacity: 0, position: { xalign: 0.5, yalign: 0.5, yoffset: -451 } } } },
+        });
         // On the way out there is nothing to say - a fade out ends at zero, with the clip stopped -
         // so `/hide` does not take either word at all, rather than taking one and ignoring it.
         expect(commandLineIssues("/hide petals opacity=0.4")).toEqual(["unknownParam"]);
@@ -607,10 +613,16 @@ describe("media objects", () => {
         });
     });
 
-    it("/font sets one thing per block and faults on both", () => {
+    it("/font keeps the single ops for one value and combines the rest into setFont", () => {
         expect(build("/font title 48")).toMatchObject({ payload: { operation: "setFontSize", fontSize: 48, objectName: "title" } });
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
-        expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
+        expect(issuesOf("/font title 48 color=#ff0000")).toEqual([]);
+        expect(build("/font title 48 color=#ff0000")).toMatchObject({ payload: { operation: "setFont", fontSize: 48, fontColor: "#ff0000" } });
+        expect(build("/font title outline=1 outlineColor=#332e3e")).toMatchObject({
+            payload: { operation: "setFont", outline: { width: 1, color: "#332e3e" } },
+        });
+        expect(build("/font title outline=0").payload).toMatchObject({ operation: "setFont", outline: null });
+        expect(build("/font title outline=0").payload).not.toHaveProperty("fontSize");
     });
 
     it("/front raises one displayable, and states nothing else", () => {
@@ -1397,6 +1409,15 @@ describe("input commands", () => {
 
     it("/rumble refuses a motor outside 0..1", () => {
         expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
+    });
+
+    it("/page names its page by id and writes its result into any variable", () => {
+        expect(build("/page Map into=gold")).toMatchObject({
+            kind: "action",
+            payload: { action: "page", surfaceId: "u1", resultTarget: { scope: "scene", variableId: "var_gold" } },
+        });
+        expect((build("/page Title") as { payload: object }).payload).toEqual({ action: "page", surfaceId: "u2" });
+        expect(build("/popup Map")).toMatchObject({ payload: { action: "page", surfaceId: "u1" } });
     });
 
     it("/input lock and unlock", () => {

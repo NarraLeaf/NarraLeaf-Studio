@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AudioLines, CheckCircle2, ListMusic, Mic, PenLine } from "lucide-react";
 import type { EditorComponentProps } from "../types";
-import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
+import { EmptyState, SearchInput, Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
@@ -24,8 +24,18 @@ import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneE
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
+import { useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
 import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
+import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
+import {
+    ALL_SPEAKERS_VALUE,
+    CHOICE_GROUP_KEY,
+    isBareSpeakerKey,
+    NARRATION_GROUP_KEY,
+    scopeVoiceRows,
+    voiceSpeakerKey,
+} from "./voiceTableScope";
 import { useTableRowReveal } from "@/apps/workspace/components/ui/useTableRowReveal";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -65,10 +75,6 @@ type GroupAxis = "scene" | "character";
 type RowFilter = "all" | "missing" | "outdated" | "voiced" | "approved";
 type AuditionFilter = "all" | "approved" | "pending";
 
-const NARRATION_GROUP_KEY = "__narration__";
-/** Every choice option shares one bucket on the character axis: an option has no speaker. */
-const CHOICE_GROUP_KEY = "__choice__";
-
 /** Starting estimates for the windowed list; every item re-measures itself once it mounts. */
 const GROUP_ROW_HEIGHT_PX = 26;
 const VOICE_ROW_HEIGHT_PX = 37;
@@ -83,6 +89,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t, tn } = useTranslation();
+    /** Whether the speaker filter files the cast under its groups, or lists every character flat. */
+    const characterListGrouping = useCharacterListGrouping();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
     // writing control this shell owns.
     const freeze = useFreezeGuard();
@@ -120,7 +128,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     );
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
-    const [characters, setCharacters] = useState<{ id: string; name: string }[]>([]);
+    const [characters, setCharacters] = useState<{ id: string; name: string; groupId?: string }[]>([]);
+    /** Cast groups, in the Characters panel's order: what the speaker filter files its entries under. */
+    const [characterGroups, setCharacterGroups] = useState<{ id: string; name: string }[]>([]);
     const [storyId, setStoryId] = useState<string | null>(null);
     const [rows, setRows] = useState<TableRow[]>([]);
     const [voiceDoc, setVoiceDoc] = useState<VoiceDocument | null>(null);
@@ -129,6 +139,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     const [groupAxis, setGroupAxis] = useState<GroupAxis>("scene");
     const [filter, setFilter] = useState<RowFilter>("all");
     const [auditionFilter, setAuditionFilter] = useState<AuditionFilter>("pending");
+    /** Whose lines are on show, and the words they have to contain. Both narrow every other filter. */
+    const [speakerFilter, setSpeakerFilter] = useState<string>(ALL_SPEAKERS_VALUE);
+    const [query, setQuery] = useState("");
     const [assetsRev, setAssetsRev] = useState(0);
 
     // Clip playback: one lazily-created audio element, one active object URL.
@@ -155,6 +168,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             if (character) {
                 return character.profile.getName();
             }
+        }
+        // A temp speaker (`#name`) has no profile but does have a name, and it is the only thing
+        // telling this line apart from the narrator's in the same scene. Shown as it is written.
+        if (row.speakerName) {
+            return row.speakerName;
         }
         return t("workspace.voice.table.narrationSpeaker");
     }, [characterService, t]);
@@ -213,7 +231,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             setCharacters(characterService.listCharacter().map(character => ({
                 id: character.profile.getId(),
                 name: character.profile.getName(),
+                ...(character.profile.getGroupId() ? { groupId: character.profile.getGroupId() } : {}),
             })));
+            setCharacterGroups(characterService.listGroups().map(group => ({ id: group.id, name: group.name })));
         };
         read();
         return characterService.subscribe(read);
@@ -485,6 +505,60 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         return undefined;
     }, [assetNameKeys, config, locale]);
 
+    /**
+     * Everything a row shows, as one string - what the toolbar's search narrows the table by, and
+     * what Mod+F steps through.
+     *
+     * The clip name and the direction note are in here beside the line, because a director looking
+     * for a take is as likely to know its filename or what they wrote about it as the words in it.
+     */
+    const rowHaystack = useCallback((row: TableRow): string => {
+        const unit = voiceDoc?.units[row.unitId];
+        return [
+            row.speaker,
+            row.sourceText,
+            row.authoredText ?? "",
+            unit?.note ?? "",
+            resolveAsset(unit?.assetId)?.name ?? "",
+        ].join("\n");
+    }, [voiceDoc, resolveAsset]);
+
+    /**
+     * The search box, compiled once per query.
+     *
+     * Through the same matcher as Mod+F and the project search panel, literal and case-insensitive:
+     * a word typed into this box and into the find bar has to find the same lines.
+     */
+    const searchMatcher = useMemo(() => {
+        const typed = query.trim();
+        return typed ? compileMatcher(typed, { caseSensitive: false, wholeWord: false, regex: false }) : null;
+    }, [query]);
+
+    /**
+     * The table the status filters then work on: this story's lines, narrowed to one speaker and to
+     * the words searched for.
+     *
+     * Ahead of the state counts on purpose - "Missing (3)" has to mean three of the lines on show,
+     * not three somewhere in a story whose other speakers are hidden.
+     */
+    const scopedRows = useMemo(
+        () => scopeVoiceRows(rows, speakerFilter, searchMatcher, rowHaystack),
+        [rows, speakerFilter, searchMatcher, rowHaystack],
+    );
+
+    /**
+     * A speaker filter outlives neither the story it was set in nor the character it named. Left
+     * standing, it would hold back every row and read as an empty table.
+     */
+    useEffect(() => {
+        if (speakerFilter === ALL_SPEAKERS_VALUE) {
+            return;
+        }
+        if (!rows.some(row => voiceSpeakerKey(row) === speakerFilter)) {
+            setSpeakerFilter(ALL_SPEAKERS_VALUE);
+        }
+    }, [rows, speakerFilter]);
+
     const rowStates = useMemo(() => {
         const states = new Map<string, VoiceUnitState>();
         for (const row of rows) {
@@ -498,19 +572,20 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         let voiced = 0;
         let approved = 0;
         let outdated = 0;
-        for (const state of rowStates.values()) {
+        for (const row of scopedRows) {
+            const state = rowStates.get(row.unitId) ?? "missing";
             if (state === "missing") missing += 1;
             else if (state === "stale") outdated += 1;
             else if (state === "approved") approved += 1;
             else voiced += 1;
         }
         const clips = voiced + approved + outdated;
-        return { all: rowStates.size, missing, voiced, approved, outdated, clips };
-    }, [rowStates]);
+        return { all: scopedRows.length, missing, voiced, approved, outdated, clips };
+    }, [rowStates, scopedRows]);
 
     const visibleRows = useMemo(() => {
         if (mode === "audition") {
-            const withClips = rows.filter(row => (rowStates.get(row.unitId) ?? "missing") !== "missing");
+            const withClips = scopedRows.filter(row => (rowStates.get(row.unitId) ?? "missing") !== "missing");
             if (auditionFilter === "approved") {
                 return withClips.filter(row => rowStates.get(row.unitId) === "approved");
             }
@@ -520,16 +595,16 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             return withClips;
         }
         if (filter === "all") {
-            return rows;
+            return scopedRows;
         }
-        return rows.filter(row => {
+        return scopedRows.filter(row => {
             const state = rowStates.get(row.unitId) ?? "missing";
             if (filter === "missing") return state === "missing";
             if (filter === "outdated") return state === "stale";
             if (filter === "approved") return state === "approved";
             return state === "linked"; // "voiced"
         });
-    }, [rows, rowStates, mode, filter, auditionFilter]);
+    }, [scopedRows, rowStates, mode, filter, auditionFilter]);
 
     const groups = useMemo(() => {
         type Group = { key: string; name: string; characterId?: string; rows: TableRow[] };
@@ -549,11 +624,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         const order: Group[] = [];
         const byKey = new Map<string, Group>();
         for (const row of visibleRows) {
-            const key = row.role === "narration"
-                ? NARRATION_GROUP_KEY
-                : row.role === "choiceText"
-                    ? CHOICE_GROUP_KEY
-                    : (row.characterId ?? `name:${row.speaker}`);
+            const key = voiceSpeakerKey(row);
             let group = byKey.get(key);
             if (!group) {
                 group = {
@@ -609,23 +680,6 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         overscan: 16,
         getItemKey: index => flatItems[index]?.key ?? index,
     });
-
-    /**
-     * Everything a row shows, as one string for Mod+F.
-     *
-     * The clip name and the direction note are in here beside the line, because a director looking
-     * for a take is as likely to know its filename or what they wrote about it as the words in it.
-     */
-    const rowHaystack = useCallback((row: TableRow): string => {
-        const unit = voiceDoc?.units[row.unitId];
-        return [
-            row.speaker,
-            row.sourceText,
-            row.authoredText ?? "",
-            unit?.note ?? "",
-            resolveAsset(unit?.assetId)?.name ?? "",
-        ].join("\n");
-    }, [voiceDoc, resolveAsset]);
 
     /**
      * Mod+F over the table, stepping the hits and scrolling each one into view.
@@ -730,6 +784,10 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         setMode("assign");
         setFilter("all");
         setAuditionFilter("all");
+        // The speaker filter and the search hide rows the same way the state filter does, so a line
+        // arrived at by deep link has to clear them too - it is somebody's line and holds some words.
+        setSpeakerFilter(ALL_SPEAKERS_VALUE);
+        setQuery("");
     }, []);
     const revealScrollTo = useCallback(
         (index: number) => virtualizer.scrollToIndex(index, { align: "center" }),
@@ -827,6 +885,62 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         [stories, orphanUnitIds, showingOrphans, t],
     );
 
+    /**
+     * Whose voices this story has, filed under the cast groups.
+     *
+     * Only the speakers with a line in the story on show: a dropdown of a hundred characters, ninety
+     * of whom say nothing here, is a list to read rather than a filter to use. Group members sit
+     * under their group's name in the Characters panel's order, with the ungrouped cast first, so the
+     * two read as one filing - unless `editor.characterListGrouping` says to list every character
+     * flat, which this follows as the speaker picker does. Narration and the choice options come
+     * last: they are nobody's voice.
+     */
+    const speakerOptions: SelectOption[] = useMemo(() => {
+        const present = new Set(rows.map(voiceSpeakerKey));
+        // No groups to file under when the author asked for one flat list: the cast then comes out in
+        // the project's own order, which is what the Characters panel shows with its groups closed.
+        const groups = characterListGrouping === "grouped" ? characterGroups : [];
+        const groupNames = new Map(groups.map(group => [group.id, group.name]));
+        const ungrouped: SelectOption[] = [];
+        const byGroup = new Map<string, SelectOption[]>();
+        for (const character of characters) {
+            if (!present.has(character.id)) {
+                continue;
+            }
+            const groupName = character.groupId ? groupNames.get(character.groupId) : undefined;
+            if (!groupName || !character.groupId) {
+                ungrouped.push({ value: character.id, label: character.name });
+                continue;
+            }
+            const option = { value: character.id, label: character.name, secondaryLabel: groupName };
+            const bucket = byGroup.get(character.groupId);
+            if (bucket) {
+                bucket.push(option);
+            } else {
+                byGroup.set(character.groupId, [option]);
+            }
+        }
+        const cast = [...ungrouped];
+        for (const group of groups) {
+            cast.push(...(byGroup.get(group.id) ?? []));
+        }
+        // A speaker who is only a name, in the order the story first says it.
+        const names: SelectOption[] = [];
+        for (const row of rows) {
+            const key = voiceSpeakerKey(row);
+            if (isBareSpeakerKey(key) && !names.some(option => option.value === key)) {
+                names.push({ value: key, label: row.speaker });
+            }
+        }
+        return [
+            { value: ALL_SPEAKERS_VALUE, label: t("workspace.voice.table.filterSpeakerAll") },
+            ...cast,
+            ...names,
+            ...(present.has(NARRATION_GROUP_KEY) ? [{ value: NARRATION_GROUP_KEY, label: t("workspace.voice.table.narrationGroup") }] : []),
+            ...(present.has(CHOICE_GROUP_KEY) ? [{ value: CHOICE_GROUP_KEY, label: t("workspace.voice.table.choiceGroup") }] : []),
+        ];
+    }, [rows, characters, characterGroups, characterListGrouping, t]);
+
     const filterOptions: SelectOption[] = useMemo(() => [
         { value: "all", label: `${t("workspace.voice.table.filterAll")} (${counts.all})` },
         { value: "missing", label: `${t("workspace.voice.table.filterMissing")} (${counts.missing})` },
@@ -892,6 +1006,27 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                             className="w-40"
                         />
                     </div>
+                    {showingOrphans ? null : (
+                        <>
+                            <SearchInput
+                                size="sm"
+                                value={query}
+                                onChange={event => setQuery(event.target.value)}
+                                placeholder={t("workspace.voice.table.searchPlaceholder")}
+                                aria-label={t("workspace.voice.table.searchPlaceholder")}
+                                className="w-44"
+                            />
+                            <Select
+                                options={speakerOptions}
+                                value={speakerFilter}
+                                onChange={value => setSpeakerFilter(String(value))}
+                                size="sm"
+                                portalMenu
+                                className="w-36"
+                                ariaLabel={t("workspace.voice.table.speakerFilterLabel")}
+                            />
+                        </>
+                    )}
                     <div className={cn("flex items-center rounded-md bg-surface-sunken p-0.5", showingOrphans && "hidden")}>
                         {groupAxisOptions.map(option => (
                             <button
@@ -1057,7 +1192,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                     speaker={row.speaker}
                                     state={state}
                                     asset={asset}
-                                    matcher={find.matcher}
+                                    matcher={find.matcher ?? searchMatcher}
                                     matchActive={find.activeIndex === item.index}
                                     duration={formatVoiceDuration(unit?.duration)}
                                     note={unit?.note ?? ""}

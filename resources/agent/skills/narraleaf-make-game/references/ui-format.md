@@ -70,8 +70,19 @@ surface Title id=narraleaf-studio:main-surface kind=appSurface size=1920x1080
   Dotted keys write one key of an object (`imageFill.assetId = <id>`, `clickSound.volume = 0.5`);
   `layout.`, `style.`, `extra.` reach the element's other bags.
 - `# blueprint: …` names the blueprints already attached. `# words: …` shows a translation key's text.
-- `setting <key> = <value>` writes a page setting (background colour, page animation);
-  `answers <action>` says which input actions the page handles (Escape -> `dismiss` and so on).
+- `setting <key> = <value>` writes a page setting (background colour, page animation) - `ui_patch`'s
+  `setting` op changes one; `answers <action>` says which input actions the page handles (Escape ->
+  `dismiss` and so on).
+- `animation = {…}` and `navigation = {…}` are the element's own records; `ui_patch` `set` takes them
+  under those same keys (`animation.enterDurationSeconds` for one field).
+- `component <id> slot="7" mode=save` under an element is a placed component with its param values;
+  `ui_patch` writes them as `params`.
+- A page longer than one answer comes in parts: each ends with a `# ui_show part:` comment naming the
+  `offset` of the next. Call again with it until the last part, and join the parts in order - the
+  joined text applies back whole (`full: true` gives it in one answer). `ui_apply` refuses a source
+  with a part missing rather than deleting what that part held. Studio 1.6.3 and earlier cut a long
+  page instead (`... cut at`), and that text cannot be applied back - change such a page with
+  `ui_patch`.
 
 ## Colours, assets, words
 
@@ -135,10 +146,18 @@ One call edits one page (or component) and is one undo step:
 | `move` | `element`, `parent`, optional `index` | Re-parents or reorders. |
 | `rename` | `element`, `name` | Renames (the outline name). |
 | `delete` | `element` | Deletes it and its subtree. |
-| `instantiate` | `component`, `parent`, optional `id`, `index`, position | Places a component. |
+| `instantiate` | `component`, `parent`, optional `id`, `index`, position, `params` | Places a component with its param values (`{"slot": "7", "mode": "save"}`); `set` with `params` changes a placed one's. |
+| `setting` | `key`, `value` | A page setting: `backgroundColor`, `backgroundImage`, `music`, `pageAnimation`, `navigation`, or one field (`pageAnimation.enter`); `null` removes it. |
 
 Address elements by **id** (paths work but break when anything is renamed). Give an explicit `id` to
 any element a blueprint will refer to.
+
+A mistake (a prop the widget does not know, an element that is not there) refuses the whole call and
+writes nothing. An operation that is already done - a value the element already holds - is skipped and
+listed under `skipped`, and the rest apply, so "Applied N" counts real changes. `warnings` names an edit
+that will not look as meant, such as a fill set to `image` with no picture (it paints nothing useful and
+can hide what is under it). Studio 1.6.3 and earlier refused the whole call for one already-done
+operation, and `instantiate` took no `params`.
 
 **New containers and images come out white.** A freshly added `nl.container` paints a white
 background through its default appearance even with `fillVisible = false`. When adding one, copy the

@@ -73,6 +73,8 @@ export const onboarding = {
         title: "セットアップ完了",
         expectation: "ここで設定した項目はすべて設定にある。F1 でカーソル位置のヘルプが開く",
         docs: "ドキュメントを開く",
+        bilibili: "bilibili でフォロー",
+        youtube: "YouTube でフォロー",
     },
     skipConfirm: {
         title: "セットアップをスキップしますか？",

@@ -393,6 +393,7 @@ export const storyInspector = {
         setText: "文を差し替え",
         setFontSize: "文字サイズを決める",
         setFontColor: "文字色を決める",
+        setFont: "フォントを決める",
     },
 
     layerOperation: {
@@ -491,6 +492,8 @@ export const storyInspector = {
         textName: "テキストの名前",
         fontSize: "文字サイズ",
         fontColor: "文字色",
+        outlineWidth: "縁取りの太さ",
+        outlineColor: "縁取りの色",
         text: "テキスト",
     },
 
@@ -630,6 +633,8 @@ export const storyInspector = {
         quitPage: "終了後に表示するページ",
         quitPageUnset: "未設定",
         quitHint: "このプレイはこの行で終了し、ページが表示される。エンディングは記録しない。",
+        pagePage: "ページ",
+        pageHint: "ページはストーリーの上に開き、ページが「このレイヤーを閉じる」で自分を閉じるまでストーリーは待つ。閉じたときの結果は変数の型に変換して結果の変数に書き込まれ、結果がなければ変数は元の値のまま",
         branch: "枝",
         elseHint: "前の枝がどれも当てはまらないとき、それ以外の枝が動く",
     },

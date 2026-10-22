@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden, useFloatingLayer } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, UserRoundPlus } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, UserRoundPlus, Users } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
@@ -59,6 +59,8 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
+import { groupSpeakerCandidates } from "./speakerCandidateGroups";
+import { NO_CHARACTER_GROUPS } from "./useCharacterGroupNames";
 import { RichTextInput, type ActiveMarks, type DictionaryClickInfo, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
 import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
 import { useStorySpellcheck } from "./useStorySpellcheck";
@@ -2282,8 +2284,9 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
+    const groupedCharacters = useGroupedSpeakerCandidates(characterOptions);
     const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands, abbreviations);
-    const characterMenu = useCharacterPickerState(characterOptions);
+    const characterMenu = useCharacterPickerState(groupedCharacters.ordered);
     const textStyle = useStoryEditorTextStyle();
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
@@ -2683,7 +2686,8 @@ export function InsertRow(props: {
                 ) : null}
                 {chooser === "character" ? (
                     <CharacterPicker
-                        characters={characterOptions}
+                        characters={groupedCharacters.ordered}
+                        groupHeaders={groupedCharacters.headers}
                         activeCharacterId={characterMenu.activeCharacter?.key ?? null}
                         onHighlight={characterMenu.selectCharacter}
                         onChoose={candidate => candidate.kind === "character"
@@ -3347,6 +3351,21 @@ function ActionCommandMenu(props: {
     );
 }
 
+/**
+ * The picker's list, filed under the cast groups - the order the keys walk and the headers drawn.
+ *
+ * What to file under comes from the row context, which has resolved it once for the whole editor tab
+ * (the groups themselves, and the `editor.characterListGrouping` preference that says whether to use
+ * them). Nothing is filed where the context carries none: outside a workspace, in a project with no
+ * cast groups, and when the author asked for one flat list of every character - three different
+ * reasons for the same, correct, answer.
+ */
+function useGroupedSpeakerCandidates(candidates: SpeakerCandidate[]) {
+    const { characterGroupNames } = useStoryCommandLineContext();
+    const groupNames = characterGroupNames ?? NO_CHARACTER_GROUPS;
+    return useMemo(() => groupSpeakerCandidates(candidates, groupNames), [candidates, groupNames]);
+}
+
 function useCharacterPickerState(candidates: SpeakerCandidate[]) {
     const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
     const activeCharacter = candidates.find(candidate => candidate.key === activeCharacterId) ?? candidates[0] ?? null;
@@ -3381,6 +3400,13 @@ function useCharacterPickerState(candidates: SpeakerCandidate[]) {
 
 function CharacterPicker(props: {
     characters: SpeakerCandidate[];
+    /**
+     * Candidate key -> the cast group whose name is drawn above it (see `groupSpeakerCandidates`).
+     *
+     * A header is drawn rather than offered: it is not a candidate, so the arrow keys walk straight
+     * past it and there is nothing to pick that is not a speaker.
+     */
+    groupHeaders?: ReadonlyMap<string, string>;
     activeCharacterId: string | null;
     onHighlight: (candidateKey: string) => void;
     onChoose: (candidate: SpeakerCandidate) => void;
@@ -3450,29 +3476,39 @@ function CharacterPicker(props: {
                 props.characters.map(candidate => {
                     const active = candidate.key === props.activeCharacterId;
                     const temp = candidate.kind === "temp";
+                    const group = props.groupHeaders?.get(candidate.key);
                     return (
-                        <button
-                            key={candidate.key}
-                            type="button"
-                            role="option"
-                            aria-selected={active}
-                            data-character-id={candidate.key}
-                            className={[
-                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
-                            ].join(" ")}
-                            onMouseMove={event => pointer.move(candidate.key, event)}
-                            onMouseDown={() => props.onChoose(candidate)}
-                        >
-                            {/* A real character shows their face, exactly as the argument menu does in
-                                this same slot — the two are meant to read as one menu following the
-                                caret. A temp speaker is a name with nobody behind it: it keeps the
-                                outline glyph and a tag, so picking one is never mistaken for picking a
-                                character. */}
-                            <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
-                            <span className="truncate text-sm text-fg">{candidate.name}</span>
-                            {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
-                        </button>
+                        <Fragment key={candidate.key}>
+                            {/* The group's name, drawn on the way past rather than offered: a header
+                                is not a speaker, so nothing here is pickable that is not one. */}
+                            {group ? (
+                                <div className="flex items-center gap-2 px-2 pb-1 pt-2 text-2xs text-fg-muted">
+                                    <Users className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{group}</span>
+                                </div>
+                            ) : null}
+                            <button
+                                type="button"
+                                role="option"
+                                aria-selected={active}
+                                data-character-id={candidate.key}
+                                className={[
+                                    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                                    active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
+                                ].join(" ")}
+                                onMouseMove={event => pointer.move(candidate.key, event)}
+                                onMouseDown={() => props.onChoose(candidate)}
+                            >
+                                {/* A real character shows their face, exactly as the argument menu does
+                                    in this same slot — the two are meant to read as one menu following
+                                    the caret. A temp speaker is a name with nobody behind it: it keeps
+                                    the outline glyph and a tag, so picking one is never mistaken for
+                                    picking a character. */}
+                                <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
+                                <span className="truncate text-sm text-fg">{candidate.name}</span>
+                                {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
+                            </button>
+                        </Fragment>
                     );
                 })
             )}
@@ -3595,7 +3631,8 @@ export function CharacterSelectTrigger(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
     );
-    const picker = useCharacterPickerState(candidates);
+    const grouped = useGroupedSpeakerCandidates(candidates);
+    const picker = useCharacterPickerState(grouped.ordered);
     /**
      * The nametag is a reference too — and the only one a dialogue row has, since the words below it
      * are prose rather than a command line.
@@ -3817,7 +3854,8 @@ export function CharacterSelectTrigger(props: {
                 }}
             />
             <CharacterPicker
-                characters={candidates}
+                characters={grouped.ordered}
+                groupHeaders={grouped.headers}
                 activeCharacterId={picker.activeCharacter?.key ?? null}
                 onHighlight={picker.selectCharacter}
                 onChoose={choose}

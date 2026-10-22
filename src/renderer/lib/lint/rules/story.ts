@@ -9,6 +9,7 @@ import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
     collectAppTagComparisonNames,
     danglingStageObjectRefs,
+    declaredStageObject,
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
     duplicateStoryEndingNames,
@@ -21,7 +22,9 @@ import {
     listStoryEndings,
     revealableStageObjectDeclarations,
     sceneLabelNames,
+    normalizeStageObjectName,
     shownStageObjectKeys,
+    stageObjectReference,
     storyTransitionKindOf,
     type StageObjectReference,
     type StoryBlock,
@@ -119,6 +122,23 @@ export function listQuitRows(ctx: LintContext): QuitRow[] {
     for (const cursor of eachScene(ctx)) {
         for (const block of liveBlocks(cursor.scene)) {
             if (block.kind === "control" && block.payload.control === "quit") {
+                rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
+            }
+        }
+    }
+    return rows;
+}
+
+/**
+ * Every live `/page` row in the project, with the page it opens - the same reading `listQuitRows`
+ * gives, for `story/page-missing` and for `ui/page-unreachable` (a page a story row opens is a page a
+ * player reaches).
+ */
+export function listPageRows(ctx: LintContext): QuitRow[] {
+    const rows: QuitRow[] = [];
+    for (const cursor of eachScene(ctx)) {
+        for (const block of liveBlocks(cursor.scene)) {
+            if (block.kind === "action" && block.payload.action === "page") {
                 rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
             }
         }
@@ -1111,7 +1131,43 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
+         * A `/page` row that names no page, or a page the project no longer has.
+         *
+         * Nothing opens and the story does not wait, so the variable the page was to answer into is
+         * never written and the `/if` after it always takes the same branch - the round trip the row
+         * exists for is silently gone. An error for the reason a quit row's missing page is one: the
+         * scene does not play as written, and nothing on the player's screen says why.
+         */
+        id: "story/page-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyPageMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            // Quiet when the interface document could not be read, as `quit-page-missing` is.
+            const surfaces = ctx.uiDocument
+                ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
+                : null;
+            for (const { entry, scene, block, surfaceId } of listPageRows(ctx)) {
+                if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "story/page-missing",
+                    messageKey: surfaceId
+                        ? "lint.rule.storyPageMissing.deleted"
+                        : "lint.rule.storyPageMissing.message",
+                    location: storyLocation(entry, scene, block.id),
+                    target: blockTarget(entry, scene, block.id),
+                });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
          * A `/waitinput`, `/hold` or `/mash` row waiting for an input action the project no longer
+
          * declares.
          *
          * No input can ever perform it, so the row waits until its time limit and fails, or - with no
@@ -1657,7 +1713,99 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * Two branches of one `/parallel` group acting on the same stage object.
+         *
+         * A parallel group starts every branch at once, and an element carries one transform at a
+         * time: two branches posing, revealing or swapping the same sprite race for it, and the group
+         * can wait on a branch whose animation the other one cut short. The order inside ONE branch is
+         * fine - a branch runs its rows in turn - so the unit compared is the branch (a direct child
+         * of the group, with every row under it), not the row.
+         *
+         * One finding per object and group, on the first row of the later branch that touches it, so
+         * the author is pointed at the row to move out of the group. The reserved music channel is
+         * left out for the reason `story/stage-object-missing` leaves it out.
+         */
+        id: "story/parallel-same-target",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyParallelSameTarget",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    if (block.kind !== "control" || block.payload.control !== "parallel") {
+                        continue;
+                    }
+                    const firstBranch = new Map<string, number>();
+                    const reported = new Set<string>();
+                    liveChildren(scene, block).forEach((branch, branchIndex) => {
+                        const seenInBranch = new Set<string>();
+                        for (const row of subtreeRows(scene, branch)) {
+                            const touched = stageObjectTouchedBy(scene, row);
+                            if (!touched || seenInBranch.has(touched.key)) {
+                                continue;
+                            }
+                            seenInBranch.add(touched.key);
+                            const earlier = firstBranch.get(touched.key);
+                            if (earlier === undefined) {
+                                firstBranch.set(touched.key, branchIndex);
+                                continue;
+                            }
+                            if (reported.has(touched.key)) {
+                                continue;
+                            }
+                            reported.add(touched.key);
+                            findings.push({
+                                ruleId: "story/parallel-same-target",
+                                messageKey: "lint.rule.storyParallelSameTarget.message",
+                                messageParams: { object: touched.label },
+                                location: storyLocation(entry, scene, row.id),
+                                target: blockTarget(entry, scene, row.id),
+                            });
+                        }
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/** A row and every live row under it, in authoring order. */
+function subtreeRows(scene: StoryScene, root: StoryBlock): StoryBlock[] {
+    const rows: StoryBlock[] = [root];
+    for (const child of liveChildren(scene, root)) {
+        rows.push(...subtreeRows(scene, child));
+    }
+    return rows;
+}
+
+/**
+ * The stage object a row declares or acts on, as one comparable key, or null when it touches none.
+ *
+ * A character portrait is filed in the image table (see `stageObjectReference`), so the two kinds
+ * share a key space; every other kind has its own, and two objects of different kinds that happen to
+ * share a name are two objects.
+ */
+function stageObjectTouchedBy(scene: StoryScene, block: StoryBlock): { key: string; label: string } | null {
+    const declared = declaredStageObject(block);
+    const reference = declared ? null : stageObjectReference(scene, block);
+    if (reference?.reservedMusicChannel) {
+        return null;
+    }
+    const found = declared
+        ? { kind: declared.kind, name: declared.name, label: declared.label }
+        : reference
+            ? { kind: reference.subject, name: reference.name, label: reference.label }
+            : null;
+    if (!found || !found.name) {
+        return null;
+    }
+    const space = found.kind === "character" ? "image" : found.kind;
+    return { key: `${space}:${normalizeStageObjectName(found.name)}`, label: found.label };
+}
 
 /** Either half of what a background can be. Asset and colour never compare equal. */
 type BackgroundOnStage = { assetId: string } | { color: string };

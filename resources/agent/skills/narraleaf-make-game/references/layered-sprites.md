@@ -105,6 +105,25 @@ character; a new layered character gets a standing entrance fitted to its canvas
 discards its looks - nothing is converted. The tools refuse first and list the story rows that chose
 one of its looks; pass `confirmSwitch: true` only when the author agreed, then rewrite those rows.
 
+## Pitfalls met in real builds
+
+- **Tag names are global to the character.** `/char Mei black` must mean one thing, so an axis that
+  repeats another axis's word (a `black` skin tone and a `black` expression) is refused. Prefix the
+  smaller axis (`skin_black`, `skin_base`) and keep the expressions bare - they are the tags the story
+  writes most.
+- **Identical parts import once.** Two expressions drawn the same (or the same face shared by two
+  outfits) are byte-identical files: `assets_import` lists the second under `duplicates` with the
+  existing asset's name and makes nothing under yours. Point that tag's option at the existing asset;
+  keep a name map from every import answer instead of assuming your names exist.
+- **Two outfits whose body parts differ are two characters.** A layer follows one axis, so "outfit"
+  cannot change which skin or pose layer draws. When each outfit has its own full set of parts, make
+  one layered character per outfit (`Mei`, `Mei (uniform)`), keep every line on the main one, and
+  `/show` / `/hide` the outfit that should be on stage. The dialogue still reads under one name.
+- **A look the player chose earlier is not remembered by the sprite.** If something the player picked
+  (a colour, an accessory) must show every time a character enters, `/show` resets the other axes to
+  their defaults: follow each `/show` of that character with a short `/if` on the variable that picks
+  the tag (`/char Mei <tag>`). Keep that variable persistent if the choice outlives a save.
+
 ## Checking the looks
 
 `character_preview { "character": "Mei", "look": { "expression": "angry", "outfit": "casual" } }`
@@ -139,6 +158,11 @@ faces instead, `avatars` maps one tag per avatar axis (joined with `+` when ther
 image: `{ "avatars": { "smile": "mei_face_smile", "angry": "mei_face_angry" } }`. `defaultAvatar` is
 what shows where no combination has one. `characters_list` reports `avatarAxes`, the drawn `avatars`
 and how many crops Studio has cut (`bakedAvatars`).
+
+Avatars appear on **every** line the character speaks once any are set or baked, and baking makes one
+per combination of the avatar axes (a 4 × 3 × 20 character bakes 240): narrow `avatarAxes` to the
+expression axis. If the game's dialogue box shows no portrait at all, hide the box's avatar element
+rather than leaving portraits on lines that should not have them.
 
 ## Live2D, Spine and custom runtimes
 

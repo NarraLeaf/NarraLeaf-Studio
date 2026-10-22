@@ -75,33 +75,35 @@ nl.switch
     bind checked = blueprint <id>      # boolean
 
   events (head nodes a private blueprint on this widget may carry)
-    init                     lifecycle   blueprint.event.head.init
-    flush                    lifecycle   blueprint.event.head.flush
-    beforeSurfaceExit        lifecycle   blueprint.event.head.beforeSurfaceExit
-    afterSurfaceEnter        lifecycle   blueprint.event.head.afterSurfaceEnter
-    unmount                  lifecycle   blueprint.event.head.unmount
-    changed                  interaction blueprint.event.head.switchChanged
-    turnedOn                 interaction blueprint.event.head.switchTurnedOn
-    turnedOff                interaction blueprint.event.head.switchTurnedOff
-    mouseClick               interaction blueprint.event.head.mouseClick
-    mouseDoubleClick         interaction blueprint.event.head.mouseDoubleClick
-    mouseEnter               interaction blueprint.event.head.mouseEnter
-    mouseLeave               interaction blueprint.event.head.mouseLeave
-    mouseMove                interaction blueprint.event.head.mouseMove
-    mouseDown                interaction blueprint.event.head.mouseDown
-    mouseUp                  interaction blueprint.event.head.mouseUp
-    mouseWheel               interaction blueprint.event.head.mouseWheel
-    rightClick               interaction blueprint.event.head.rightClick
-    keyDown                  interaction blueprint.event.head.keyDown, blueprint.event.head.anyKeyDown
-    keyUp                    interaction blueprint.event.head.keyUp, blueprint.event.head.anyKeyUp
-    gamepadButtonDown        interaction blueprint.event.head.gamepadButtonDown, blueprint.event.head.anyGamepadButtonDown
-    gamepadButtonUp          interaction blueprint.event.head.gamepadButtonUp, blueprint.event.head.anyGamepadButtonUp
-    focus                    interaction blueprint.event.head.focus
-    blur                     interaction blueprint.event.head.blur
-    onAnyBroadcast           interaction blueprint.event.head.onAnyBroadcast
-    onBroadcast              interaction blueprint.event.head.onBroadcast
-    windowFullscreenChanged  interaction blueprint.event.head.fullscreenChanged
-    windowFocusChanged       interaction blueprint.event.head.windowFocusChanged
+    init                       lifecycle   blueprint.event.head.init
+    flush                      lifecycle   blueprint.event.head.flush
+    beforeSurfaceExit          lifecycle   blueprint.event.head.beforeSurfaceExit
+    afterSurfaceEnter          lifecycle   blueprint.event.head.afterSurfaceEnter
+    unmount                    lifecycle   blueprint.event.head.unmount
+    changed                    interaction blueprint.event.head.switchChanged
+    turnedOn                   interaction blueprint.event.head.switchTurnedOn
+    turnedOff                  interaction blueprint.event.head.switchTurnedOff
+    mouseClick                 interaction blueprint.event.head.mouseClick
+    mouseDoubleClick           interaction blueprint.event.head.mouseDoubleClick
+    mouseEnter                 interaction blueprint.event.head.mouseEnter
+    mouseLeave                 interaction blueprint.event.head.mouseLeave
+    mouseMove                  interaction blueprint.event.head.mouseMove
+    mouseDown                  interaction blueprint.event.head.mouseDown
+    mouseUp                    interaction blueprint.event.head.mouseUp
+    mouseWheel                 interaction blueprint.event.head.mouseWheel
+    rightClick                 interaction blueprint.event.head.rightClick
+    keyDown                    interaction blueprint.event.head.keyDown, blueprint.event.head.anyKeyDown
+    keyUp                      interaction blueprint.event.head.keyUp, blueprint.event.head.anyKeyUp
+    gamepadButtonDown          interaction blueprint.event.head.gamepadButtonDown, blueprint.event.head.anyGamepadButtonDown
+    gamepadButtonUp            interaction blueprint.event.head.gamepadButtonUp, blueprint.event.head.anyGamepadButtonUp
+    focus                      interaction blueprint.event.head.focus
+    blur                       interaction blueprint.event.head.blur
+    onAnyBroadcast             interaction blueprint.event.head.onAnyBroadcast
+    onBroadcast                interaction blueprint.event.head.onBroadcast
+    windowFullscreenChanged    interaction blueprint.event.head.fullscreenChanged
+    windowFocusChanged         interaction blueprint.event.head.windowFocusChanged
+    savedVariableChanged       interaction blueprint.event.head.savedVariableChanged
+    persistentVariableChanged  interaction blueprint.event.head.persistentVariableChanged
 
   commands
     setVisible  Set visible

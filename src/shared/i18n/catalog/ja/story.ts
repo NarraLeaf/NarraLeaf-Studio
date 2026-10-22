@@ -202,6 +202,7 @@ export const story = {
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
             inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方は無い",
+            pageAction: "この行はストーリーの上にページを開いて閉じるまで待つ。スクリプトの書き方は無い",
             blueprintCondition: "この条件はブループリントが決める",
             blueprintInterpolation: "文の中の値をブループリントが計算する",
             inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
@@ -686,6 +687,8 @@ export const story = {
         hold: "保持秒",
         opacity: "不透明度",
         size: "文字サイズ",
+        outline: "縁取りの太さ",
+        outlineColor: "縁取りの色",
         // 変形プロパティの語彙（`commands/transformVocabulary.ts`）。バッグの 1 チャンネルに 1 キー。
         // 2 つのオフセットは `pos=` に加えるデザイン上のピクセル。正の値で右、上へ動く。
         xOffset: "横オフセット",
@@ -1371,6 +1374,7 @@ export const story = {
         cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
         ending: { label: "エンディング", detail: "この行でストーリーを終わらせ、到達したエンディングを記録する" },
         quit: { label: "ページへ戻る", detail: "この行でプレイを終了してページを表示する。エンディングは記録しない" },
+        page: { label: "ページを開く", detail: "ストーリーの上にページを開き、閉じるまで待つ。ページが閉じたときの結果を変数に書き込める" },
         rumble: { label: "振動", detail: "プレイヤーのコントローラーを振動させる。プリセットを選ぶか、左右のモーターを個別に設定する" },
         input: { label: "入力ロック", detail: "プレイヤーの入力をロックまたは解除する。ロック中はクリックでの送り、送りキー、オート、スキップが無効になるが、選択肢は選べる。次の台詞の前に解除する" },
         waitInput: { label: "入力待ち", detail: "プレイヤーが入力アクションを行うまで待つ。制限時間を設定できる" },
@@ -1427,6 +1431,7 @@ export const story = {
         cut: "カットポイント",
         ending: "エンディング",
         quit: "ページへ戻る",
+        page: "ページ",
         rumble: "振動",
         input: "入力",
         jump: "ジャンプ",
@@ -1500,6 +1505,8 @@ export const story = {
         cutUnknown: "カットポイント",
         ending: "エンディング {name}",
         quit: "{page} へ戻る",
+        page: "{page} を開く",
+        pageUnset: "ページを開く",
         rumble: "振動：{shape}",
         rumbleStop: "振動を停止",
         inputLock: "プレイヤーの入力をロック",

@@ -246,3 +246,28 @@ describe("props that take one word out of a list", () => {
         }
     });
 });
+
+describe("an image fill with no picture", () => {
+    const page = (lines: string) => `surface "S" id=s kind=appSurface size=8x6
+    Root: nl.root @0,0 8x6
+        Plate: nl.container id=plate @0,0 8x6
+${lines}`;
+
+    it("warns about a container told to fill with an image and given none", () => {
+        for (const lines of ['            fillType = "image"\n', '            fillType = "image"\n            imageFill = {"mode": "cover", "assetId": null}\n']) {
+            const result = checkUiSource(page(lines));
+            expect(result.ok).toBe(true);
+            expect(result.diagnostics).toContainEqual(expect.objectContaining({ severity: "warning", code: "ui.image_fill_empty", message: expect.stringContaining('"Root / Plate"') }));
+        }
+    });
+
+    it("says nothing for a picture, a colour fill, a hidden fill or a bound asset", () => {
+        for (const lines of [
+            '            fillType = "image"\n            imageFill = {"mode": "cover", "assetId": "a"}\n',
+            '            fillType = "color"\n',
+            '            fillType = "image"\n            fillVisible = false\n',
+        ]) {
+            expect(checkUiSource(page(lines)).diagnostics.filter(item => item.code === "ui.image_fill_empty")).toEqual([]);
+        }
+    });
+});

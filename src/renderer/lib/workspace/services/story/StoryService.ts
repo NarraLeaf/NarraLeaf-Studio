@@ -1003,20 +1003,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.revision;
     }
 
-    public createChapter(storyId: StoryId, name: string): StoryChapter {
+    /** A new, empty chapter: last, or in front of `beforeChapterId` when that names one. */
+    public createChapter(storyId: StoryId, name: string, beforeChapterId: StoryChapterId | null = null): StoryChapter {
         const now = new Date().toISOString();
         const chapter = createStoryChapterModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(name, "New Chapter"),
             now,
         });
-        if (this.handedToSink(storyId, { op: "create-chapter", chapter, beforeChapterId: null })) {
+        if (this.handedToSink(storyId, { op: "create-chapter", chapter, beforeChapterId })) {
             // ⚠ The chapter is NOT in the document. It is returned anyway because the caller may
             // file a scene under it, exactly as `insertBlock` returns a row that has not landed yet:
             // the id is real from this moment, and the record appears when the effect comes back.
             return chapter;
         }
-        this.applyChapterCreate(storyId, chapter, null, undefined, undefined);
+        this.applyChapterCreate(storyId, chapter, beforeChapterId, undefined, undefined);
         return chapter;
     }
 

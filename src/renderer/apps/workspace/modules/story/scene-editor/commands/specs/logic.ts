@@ -1,4 +1,4 @@
-import { AppWindow, Bookmark, CornerUpLeft, Flag, FlagTriangleRight, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
+import { AppWindow, Bookmark, CornerUpLeft, Flag, FlagTriangleRight, GitBranch, ListChecks, ListOrdered, LogOut, PictureInPicture2, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
@@ -389,6 +389,49 @@ export const quit = defineStoryCommand({
     },
 });
 
+/**
+ * `/page <page> [into=<variable>]` - open a page over the story and wait for it to close.
+ *
+ * The round trip `/quit` deliberately is not: the scene stays where it is, the page is drawn over it
+ * as `Show Layer` draws one, and the row after this one plays once the page has closed itself with
+ * `Close This Layer`. What it closed with goes into `into=`, so a phone chat, a map or a puzzle can
+ * hand the story its answer the way `/menu` does.
+ *
+ * The page is a core argument for the reason `/quit`'s is: a `/page` naming nothing would wait on
+ * nothing, so a bare one stays a draft row asking for the page.
+ */
+export const page = defineStoryCommand({
+    id: "page",
+    token: "page",
+    aliases: ["overlay", "popup"],
+    category: "flow",
+    icon: PictureInPicture2,
+    examples: ["/page Map", "/page Map into=met"],
+    params: {
+        page: { hint: "quitPage", type: { kind: "surface" }, positional: true, core: true },
+        into: {
+            aliases: ["result"],
+            hint: "inputResult",
+            type: { kind: "variable" },
+            about: "Takes the value the page closes with (Close This Layer's result), converted to the variable's type; "
+                + "a page closed with none, Back included, leaves the variable as it was. The page gets no parameters: its params take their defaults.",
+        },
+    },
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            payload: {
+                action: "page",
+                surfaceId: asSurfaceId(args.page) ?? "",
+                ...(args.into?.kind === "variable" ? { resultTarget: args.into.ref } : {}),
+            },
+        };
+    },
+});
+
 /** A Story Action Blueprint call - the blueprint itself is picked in the inspector. */
 export const blueprint = defineStoryCommand({
     id: "blueprint",
@@ -402,4 +445,4 @@ export const blueprint = defineStoryCommand({
     inspectorAfterCommit: true,
 });
 
-export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, quit, blueprint];
+export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, quit, page, blueprint];

@@ -225,8 +225,23 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
   combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
   author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
+- **Place sprites by measuring, not by arithmetic alone.** When the author has a picture of how a
+  scene should look (concept art, a mock-up, a screenshot of an earlier version), put a character on
+  stage in a scratch scene, `playtest_screenshot` at full size and compare: entrance offsets computed
+  from image sizes can land a few dozen pixels off. Fix the entrance once (`entranceTransform`), not
+  every row. `scaleX: -1` in the entrance mirrors a sprite drawn facing the wrong way. A `zoom=` on a
+  character's `/transform` **replaces** the entrance zoom, as `yoffset=` does: to show a sprite at
+  1.5x its usual size write the entrance zoom times 1.5, not 1.5.
 - A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
   one-off speakers may stay plain `Name: text` lines.
+- **File every character under a group as you make it.** An ungrouped cast is one flat list in the
+  Characters panel and in every speaker picker; once the extras arrive (a shopkeeper, three
+  classmates, "Voice on the phone", a narrator alias) the author can no longer find the leads in it.
+  Decide the groups before the first `character_upsert` - the main cast, side characters, passers-by
+  and one-off voices, or by route or place when the story is built that way - and pass `group` on
+  every call: it files the character by group name or id, creating the group when it is new (`null`
+  takes it out). Leave no character ungrouped, the lead included. `characters_list` lists the groups
+  with their members; read it before the checkpoint.
 - `variable_upsert` for every flag, counter and route switch the story needs: `saved` for anything
   belonging to one playthrough (affection, choices made), `persistent` for anything that survives
   across saves (endings seen, unlocks). Name them as a script would (`trust_aoi`, `took_the_key`).
@@ -235,7 +250,8 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   rest (it refuses, listing users, while anything still reads it).
 
 Checkpoint: `story_targets` lists every speaker, asset and variable the script will name, and under
-*character looks* every pose or tag a `/show` or `/char` row will use.
+*character looks* every pose or tag a `/show` or `/char` row will use; `characters_list` shows every
+character in a group.
 
 ## Step 5 - Story
 
@@ -243,7 +259,9 @@ Read `story-format` first. Then, for each scene in order:
 
 1. **Have a scene.** First scenes: `scene_rename` the skeleton's demo scenes (that keeps the title
    screen's Start button, which names the first scene by id, pointing at your opening; it returns
-   the scene's new revision). Further scenes: `scene_create {name, chapter, after}`.
+   the scene's new revision). Further scenes: `scene_create {name, chapter, after}`. To open the next
+   chapter, give the new `chapter` name and the previous chapter's last scene as `after`: the chapter
+   is made right after that one, with this scene first.
 2. `story_show {scene}` - note the `revision`.
 3. Write the scene as a `.story` document: keep the `#nlstory`/`#story`/`#scene` header that
    `story_show` printed, replace the body with your rows. The header's `#background` / `#music` are
@@ -261,6 +279,14 @@ with its rows indented under it (or a bare `/if` with `? condition` / `? else` b
 `/inc` to change variables, `/jump 'Scene name'` to move between scenes. Every route ends in an
 `/ending Name` row (unique names) - that is what the endings test and the extras screen count. Put
 shared material in shared scenes and jump to it rather than duplicating it.
+
+**A long script is generated, not typed.** For thousands of lines, write a small script in your working
+folder that turns the source into one `.story` file per scene and sends each with `story_apply` (dry run
+first, then for real), with the scene ids kept in a file so a re-run targets the same scenes. A fix
+then goes into the script and the scenes are regenerated, instead of hand-editing hundreds of rows.
+Regenerating replaces every row, so the voice takes and translations linked to the old rows are lost
+(step 8b): finish regenerating before linking voice, or make linking a script you re-run after every
+regeneration.
 
 When every scene is written: `scene_set_entry` on the opening scene, then find the title's Start
 button blueprint - `ui_show` the title page and read the `# blueprint: <name>` after the Start
@@ -318,14 +344,29 @@ the same way.
    a small blueprint on the box's container - `ui-design`, "The dialogue box", has both, ready to
    paste. A blueprint reaches only the elements of its own page: one on the Choice page cannot hide
    the Dialogue page's box (the checker refuses it).
+8. **Beyond the skeleton.** The skeleton is where you start, not the edge of what the game may have.
+   When the game needs something it has no control for - a setting it does not offer, a per-track
+   mute, more save pages, a replay-voice button, a music room, a title that changes once the game is
+   cleared, menu buttons that animate in - build it rather than leave it out:
+   - **look first**: `blueprint_nodes {query}` (settings, audio tracks, voice, saves, pages, gallery,
+     variables), `ui_widgets` / `ui_widget`, `story_commands`; the catalogue answers from the code
+     Studio runs, so search before concluding something cannot be done;
+   - **then build**: new elements with `ui_patch`, a page or component of your own with `ui_apply`,
+     blueprints on their events (step 7), a persistent variable for state that outlives a save, `/page`
+     for a screen the story waits on, an element's `animation` for how it comes on;
+   - **check it works**: `playtest_click` / `playtest_key` in the running game, not only a screenshot.
+   Only when a search finds no way at all, build the nearest thing that does work and put the gap in
+   the hand-over with what you searched and tried. Never drop a feature because the skeleton lacked
+   it, and never leave a control that looks live and does nothing.
 
 Checkpoint: every page screenshot passes the checklist, and the title shows the game's title and art.
 
 ## Step 7 - Interaction
 
 The skeleton already does starting, continuing, saving, loading, settings, backlog, skip, auto and
-quitting. Write blueprints **only for behaviour it lacks** - a new button, a page of your own, an
-unlock. Read `blueprint-format`, then:
+quitting. Write blueprints **for the behaviour it lacks** - a new button, a page of your own, an
+unlock, a setting the game needs (step 6, "Beyond the skeleton") - and leave the wired behaviour it
+already has alone. Read `blueprint-format`, then:
 
 1. `ui_surfaces {query}` for the owner ids (surface and element), `blueprint_list` /
    `blueprint_show` for what already hangs there.
@@ -340,6 +381,23 @@ Prefer settings to blueprints where one exists: a button's click and hover sound
 hears and is told them. A CG needs an Unlock Gallery node: set a persistent variable in the story
 where the CG appears, and unlock from the title page's open event - the recipe is in
 `agent_guide {chapter:"plugin:narraleaf.gallery"}`.
+
+**Steam achievements.** When the project has the Steam Achievements plugin (`agent_status` lists
+`narraleaf_steam_achievements__*` tools; it is not in the skeleton, the author installs it), read
+`agent_guide {chapter:"plugin:narraleaf.steam-achievements"}` first. Then:
+- `narraleaf_steam_achievements__list` before anything else, for the names already declared;
+- `add_achievements {ids}` with API Names (`A-Z a-z 0-9 _`, up to 44 characters, case-sensitive,
+  conventionally `ACH_SOMETHING`), one per achievement the game awards; `set_stats {stats}` for
+  counters (it replaces the **whole** list: send back the ones you keep); `set_app_id` only with a
+  number the author gave you;
+- unlock each one where it is earned: a story row on the beat (`story-format`, "An achievement
+  row"), or the Unlock Achievement node in a graph that already worked it out. Declaring is not
+  unlocking: an achievement with no row or node is never awarded.
+- `rename_achievements` / `remove_achievements` leave rows and nodes naming the old name: fix those
+  too.
+- On the hand-over, list every API Name and say the author must enter the same names, with the text,
+  icons and hidden flag players see, in the Steamworks backend - no tool can, and Steam refuses a
+  name the backend lacks. A demo's own App ID is a build setting the author fills in.
 
 **Something to do at a story row** - grant an achievement, unlock a CG at the moment it shows, call
 any plugin's node: a `/blueprint` row runs a blueprint of its own (owner `storyAction`). The `.story`
