@@ -3,6 +3,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
 import { ASSET_UNDECODABLE } from "./assetReadFailure";
+import { pngAnimation } from "@shared/utils/assetImageOptimization";
 
 export class ImageService extends AssetServiceBase {
 
@@ -32,6 +33,7 @@ export class ImageService extends AssetServiceBase {
                     metadata: {
                         ...metadata,
                         size,
+                        animation: pngAnimation(buffer),
                     },
                 },
             };

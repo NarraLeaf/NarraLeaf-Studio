@@ -297,6 +297,16 @@ export function NlrStageLayer(props: {
     onPlayerCrash?: (error: Error, sessionId: string, componentStack: string | null) => void;
 }) {
     const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onEnd, onError, onPlayerCrash } = props;
+    useEffect(() => {
+        if (!session) return;
+        const game = session.game as typeof session.game & { frameSequencePaused?: boolean; frameSequenceClockEpoch?: number };
+        game.frameSequencePaused = !visible || !interactive;
+        game.frameSequenceClockEpoch = (game.frameSequenceClockEpoch ?? 0) + 1;
+        return () => {
+            game.frameSequencePaused = true;
+            game.frameSequenceClockEpoch = (game.frameSequenceClockEpoch ?? 0) + 1;
+        };
+    }, [session, visible, interactive]);
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
     const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);

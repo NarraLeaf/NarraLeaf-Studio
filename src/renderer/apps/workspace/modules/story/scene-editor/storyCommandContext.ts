@@ -387,7 +387,8 @@ export function buildStoryCommandContext(input: {
      * page name as unknown - the honest answer when the list could not be read at all, and the same
      * bargain the audio tracks above take.
      */
-    surfaces?: readonly { id: string; name: string }[];
+    /** `kind` keeps the Game UIs (`stageSurface`) out: a story row opens or quits to a page, never to a slot surface. */
+    surfaces?: readonly { id: string; name: string; kind?: string }[];
     /**
      * The project's input actions. Omitted where no project is open, which leaves the waiting
      * commands reporting every action name as unknown - the same bargain the pages above take.
@@ -459,7 +460,9 @@ export function buildStoryCommandContext(input: {
         // What lets a row that already holds a far-out pair have its own line committed again.
         storedFarPositions: storedFarPositions(input.scene),
         appTags: appTagRefs(input.appTags),
-        surfaces: (input.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
+        surfaces: (input.surfaces ?? [])
+            .filter(surface => surface.kind !== "stageSurface")
+            .map(surface => ({ id: surface.id, name: surface.name })),
         inputActions: (input.inputActions ?? []).map(action => ({ id: action.id, name: action.name })),
         variables: variableEntries(
             input.document,

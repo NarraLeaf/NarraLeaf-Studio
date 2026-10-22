@@ -289,6 +289,9 @@ export const properties = {
         descriptionPlaceholder: "説明を入力…",
         info: {
             dimensions: "寸法",
+            animation: "アニメーション",
+            animationLoops: "{frames} フレーム、無限ループ",
+            animationPlays: "{frames} フレーム、{plays} 回再生",
             format: "形式",
             size: "サイズ",
             hash: "ハッシュ",

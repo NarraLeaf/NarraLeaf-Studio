@@ -218,6 +218,14 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        characterListGrouping: {
+            label: "Character lists",
+            description: "How the cast is arranged where a character is picked.",
+            options: {
+                grouped: "Group by cast group",
+                all: "Show all characters",
+            },
+        },
         dictionaries: {
             label: "Spelling dictionaries",
         },

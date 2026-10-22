@@ -152,6 +152,21 @@ function createImageInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<Asset
             hidden: (ctx) => !ctx.metadata,
         },
         {
+            // Only for an APNG with more than one frame: a still image has nothing to say here, and
+            // the loop count is what decides whether it suits a sprite (see `assets/sprite-animation-finite`).
+            label: t("properties.asset.info.animation"),
+            getValue: (ctx) => {
+                const animation = (ctx.metadata?.metadata as ImageAssetMetadata | undefined)?.animation;
+                if (!animation) {
+                    return "-";
+                }
+                return animation.plays === 0
+                    ? t("properties.asset.info.animationLoops", { frames: animation.frames })
+                    : t("properties.asset.info.animationPlays", { frames: animation.frames, plays: animation.plays });
+            },
+            hidden: (ctx) => ((ctx.metadata?.metadata as ImageAssetMetadata | undefined)?.animation?.frames ?? 0) < 2,
+        },
+        {
             label: t("properties.asset.info.format"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as ImageAssetMetadata | undefined;

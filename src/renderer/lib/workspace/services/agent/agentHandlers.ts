@@ -38,6 +38,7 @@ import {
     playtestScreenshot,
     playtestStart,
     playtestStop,
+    playtestVariables,
 } from "./tools/verifyTools";
 
 export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
@@ -114,6 +115,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         playtest_hover: playtestHover,
         playtest_key: playtestKey,
         playtest_stop: playtestStop,
+        playtest_variables: playtestVariables,
     };
     return handlers;
 }

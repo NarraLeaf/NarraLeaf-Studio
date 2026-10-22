@@ -1,3 +1,5 @@
+import { FrameSequenceEditor } from "./components/FrameSequenceEditor";
+import { CharacterPosePreview } from "./components/CharacterPosePreview";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { Select } from "@/lib/components/elements";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -44,7 +46,7 @@ import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/u
 import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { EditorComponentProps } from "../../types";
-import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
+import type { PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
@@ -719,7 +721,8 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                             toolbar={gridToggle}
                         />
                     ) : (
-                    <LayerStackPreview
+                    <CharacterPosePreview
+                        sequence={kind === "preset" ? previewPose?.sequence : undefined}
                         layers={visibleLayers}
                         onion={onionLayers}
                         canvas={appearance.getCanvas()}
@@ -864,6 +867,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                         />
 
                         {kind === "preset" ? (
+                        <>
                         <Section
                             title={t("characters.editor.poses")}
                             onAdd={() => appearance.createPose(
@@ -924,6 +928,9 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 </div>
                             ))}
                         </Section>
+                        {/* The pose the preview is drawing, which is the one the list marks. */}
+                        {previewPose ? <FrameSequenceEditor pose={previewPose} appearance={appearance} /> : null}
+                        </>
                         ) : (
                         <>
                             <Section

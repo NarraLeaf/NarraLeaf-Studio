@@ -151,6 +151,21 @@ describe("variable_upsert", () => {
         expect(fakes.transactions).toBe(1);
     });
 
+    it("warns about the rows a retype leaves writing the old type", async () => {
+        // The registry updates its own record in place - as the real one does - which is what once
+        // made the handler compare the new type with itself and say nothing.
+        const { run } = harness({
+            variables: [HONEST],
+            sceneBlocks: {
+                s1: { id: "s1", kind: "action", childrenIds: [], payload: { action: "setVariable", target: { scope: "saved", variableId: "v-honest" }, value: true } },
+            },
+        });
+        const out = await run(variableUpsert, { id: "v-honest", valueType: "number", defaultValue: 0 });
+        expect(out.warnings).toHaveLength(1);
+        expect(out.warnings[0]).toMatch(/1 story row\(s\) still use "真心" as a boolean/);
+        expect(out.warnings[0]).toContain("sets it to true");
+    });
+
     it("needs valueType only to create, and refuses a name another variable holds", async () => {
         const { refusal, run } = harness({ variables: [HONEST, { ...HONEST, id: "v-place", storageKey: "v-place", name: "地点" }] });
         expect((await refusal(variableUpsert, { name: "new_one" })).message).toMatch(/valueType.*required to create/);
@@ -248,6 +263,48 @@ describe("character_upsert undo", () => {
         fakes.history.undo(projectHistoryScope());
         await fakes.history.settled();
         expect(cast.getCharacter(out.character.id)).toBeUndefined();
+    });
+});
+
+describe("character_upsert group", () => {
+    it("files a character under a group by name, creating it once, and lists the groups", async () => {
+        const { cast, fakes, run } = harness({ characters: [fakeCharacter("narra", "Narra"), fakeCharacter("guard", "Guard")] });
+        const first = await run(characterUpsert, { id: "guard", group: "NPC / 别名" });
+        expect(first.createdGroup).toBe("NPC / 别名");
+        expect(first.character).toMatchObject({ group: "NPC / 别名" });
+        expect(cast.listGroups()).toHaveLength(1);
+        const groupId = cast.listGroups()[0].id;
+        expect(cast.getCharacter("guard")!.profile.getGroupId()).toBe(groupId);
+
+        // The same name again files under the existing group; an id works as well.
+        const made = await run(characterUpsert, { name: "Clerk", group: "NPC / 别名" });
+        expect(made.createdGroup).toBeUndefined();
+        await run(characterUpsert, { id: "narra", group: groupId });
+        expect(cast.listGroups()).toHaveLength(1);
+        expect(cast.listCharactersByGroup(groupId)).toHaveLength(3);
+
+        const listed = await run(charactersList, {});
+        expect(listed.groups).toEqual([{ id: groupId, name: "NPC / 别名", members: 3 }]);
+        expect(listed.characters.find((item: { id: string }) => item.id === "guard")).toMatchObject({ group: "NPC / 别名", groupId });
+
+        // null takes it out again, as one step of undo the history can take back.
+        const steps = fakes.history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo ?? 0;
+        await run(characterUpsert, { id: "narra", group: null });
+        expect(cast.getCharacter("narra")!.profile.getGroupId()).toBeUndefined();
+        expect(fakes.history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo).toBe(steps + 1);
+        fakes.history.undo(projectHistoryScope());
+        await fakes.history.settled();
+        expect(cast.getCharacter("narra")!.profile.getGroupId()).toBe(groupId);
+    });
+
+    it("refuses a group name two groups share, and makes no group for a refused call", async () => {
+        const { cast, refusal } = harness({ characters: [fakeCharacter("narra", "Narra")] });
+        cast.createGroup("NPC");
+        cast.createGroup("NPC");
+        expect((await refusal(characterUpsert, { id: "narra", group: "NPC" })).message).toMatch(/2 character groups are called "NPC"/);
+        expect((await refusal(characterUpsert, { id: "narra", group: 3 })).code).toBe("invalid_args");
+        await refusal(characterUpsert, { id: "narra", group: "Extras", poses: [{ name: "x", asset: "no_such_image" }] });
+        expect(cast.listGroups().map(group => group.name)).toEqual(["NPC", "NPC"]);
     });
 });
 

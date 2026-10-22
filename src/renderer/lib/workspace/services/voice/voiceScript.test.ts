@@ -193,6 +193,58 @@ describe("the speaker a narration line is named by", () => {
     });
 });
 
+describe("the speaker a line with no character profile is named by", () => {
+    const noCharacter = () => undefined;
+
+    it("is the bare name the line is written under, not the narration word", () => {
+        expect(voiceLineSpeaker({ role: "dialogue", speakerName: "路人A" }, noCharacter, "zh-CN"))
+            .toEqual({ speaker: "路人A", speakerAliases: [] });
+    });
+
+    /** Aliases spell narration and options in Studio's other languages; a person's name has one spelling. */
+    it("carries no aliases, so it is never matched by another language's word", () => {
+        expect(voiceLineSpeaker({ role: "dialogue", speakerName: "路人A" }, noCharacter, "en").speakerAliases)
+            .toEqual([]);
+    });
+
+    it("is the character's name when the line has both", () => {
+        const line = voiceLineSpeaker({ role: "dialogue", characterId: "c1", speakerName: "Stale" }, () => "Aoi", "zh");
+        expect(line).toEqual({ speaker: "Aoi", speakerAliases: [] });
+    });
+
+    it("is the bare name when the line's character is gone", () => {
+        expect(voiceLineSpeaker({ role: "dialogue", characterId: "gone", speakerName: "路人A" }, noCharacter, "zh-CN").speaker)
+            .toBe("路人A");
+    });
+
+    it("is the narration word when the bare name is blank", () => {
+        expect(voiceLineSpeaker({ role: "dialogue", speakerName: "   " }, noCharacter, "zh-CN").speaker).toBe("旁白");
+    });
+
+    /**
+     * The harm this exists to prevent: a scene with the narrator and two bare-name speakers used to
+     * hand the booth three lines filed under "旁白", with nothing to tell the voices apart.
+     */
+    it("keeps a scene's narrator and its bare-name speakers apart in the script and on import", () => {
+        const scene = { sceneName: "放学后", sourceText: "…" };
+        const entries: VoiceScriptEntry[] = [
+            { ...scene, unitId: "t-n", indexInScene: 1, ...voiceLineSpeaker({ role: "narration" }, noCharacter, "zh-CN") },
+            { ...scene, unitId: "t-a", indexInScene: 2, ...voiceLineSpeaker({ role: "dialogue", speakerName: "路人A" }, noCharacter, "zh-CN") },
+            { ...scene, unitId: "t-b", indexInScene: 3, ...voiceLineSpeaker({ role: "dialogue", speakerName: "路人B" }, noCharacter, "zh-CN") },
+        ];
+        expect(buildRecordingScriptRows(entries, PATTERN, "zh", undefined).map(row => [row.character, row.filename]))
+            .toEqual([
+                ["旁白", "放学后_001_旁白"],
+                ["路人A", "放学后_002_路人A"],
+                ["路人B", "放学后_003_路人B"],
+            ]);
+        expect(voiceMatchKeyForEntry(entries[1], PATTERN, "zh")).toBe(matchKeyForFilename("放学后_002_路人A.wav"));
+        const keyMap = buildVoiceNameKeyMap(entries, PATTERN, "zh");
+        expect(matchImportedFiles(["放学后_002_路人A.wav", "放学后_003_路人B.wav"], keyMap).matched.map(m => m.unitId))
+            .toEqual(["t-a", "t-b"]);
+    });
+});
+
 describe("a pickup imported under the name its take already has", () => {
     const keyMap = buildVoiceNameKeyMap(ENTRIES, PATTERN, "ja");
 

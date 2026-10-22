@@ -1462,6 +1462,8 @@ export const blueprint = {
         onFullscreenChanged: "全画面が変わったとき",
         onWindowCloseRequested: "ウィンドウを閉じようとしたとき",
         onWindowFocusChanged: "ウィンドウのフォーカスが変わったとき",
+        onSavedVarChanged: "セーブ変数が変わったとき",
+        onPersistentChanged: "永続変数が変わったとき",
         onAction: "アクションが起きたとき",
         onKeyDown: "キーを押したとき",
         onKeyUp: "キーを離したとき",

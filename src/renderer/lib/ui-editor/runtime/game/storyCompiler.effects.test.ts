@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
-import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, INSTANT_TRANSFORM_MS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 /**
  * The two `/fx` operations: `backdrop` (CSS backdrop-filter, the
@@ -62,7 +62,7 @@ describe("compiles /fx backdrop and blend", () => {
         const document = imageDocument(
             {
                 // A negative duration used to be the clamp probe here. Since v18 it cannot be: a
-                // backdrop-filter is a DISCRETE channel, so the emitter gives it its own zero-duration
+                // backdrop-filter is a DISCRETE channel, so the emitter gives it its own instant
                 // statement whatever the row asked for. The clamp still exists and is exercised by the
                 // rows that do tween (see `floors a negative duration` below).
                 frost: effectBlock("frost", {
@@ -83,7 +83,7 @@ describe("compiles /fx backdrop and blend", () => {
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
         const sequence = transformsOf(actions)[0]?.sequences?.[0];
         expect(sequence?.props).toEqual(expect.objectContaining({ backdropFilter: "blur(8px)" }));
-        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
     });
 
     it("carries a curated blend mode through, in one frame", async () => {
@@ -111,10 +111,10 @@ describe("compiles /fx backdrop and blend", () => {
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
         const sequence = transformsOf(actions)[0]?.sequences?.[0];
         expect(sequence?.props).toEqual(expect.objectContaining({ mixBlendMode: "screen" }));
-        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
     });
 
-    it("floors a negative duration to 0 on the half that does tween", async () => {
+    it("floors a negative duration to the instant minimum on the half that does tween", async () => {
         const document = imageDocument(
             {
                 dim: effectBlock("dim", {
@@ -134,7 +134,7 @@ describe("compiles /fx backdrop and blend", () => {
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
         const sequence = transformsOf(actions)[0]?.sequences?.[0];
         expect(sequence?.props).toEqual(expect.objectContaining({ opacity: 0.4 }));
-        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
     });
 
     it("emits nothing when the row states no prop at all", async () => {
@@ -157,7 +157,7 @@ describe("compiles /fx backdrop and blend", () => {
 });
 
 describe("one row, two statements: the cut lands before the tween", () => {
-    it("drops the discrete half in its own zero-duration statement and eases the rest", async () => {
+    it("drops the discrete half in its own instant statement and eases the rest", async () => {
         // The shape `1e626400` arrived at for the camera, now the general rule. A row that both grades
         // and pushes in cannot be one transform: the grade has no midpoint worth rendering and the
         // zoom has nothing but midpoints, so they are separated rather than averaged into a duration
@@ -183,7 +183,7 @@ describe("one row, two statements: the cut lands before the tween", () => {
         const transforms = transformsOf(actions);
         expect(transforms).toHaveLength(2);
         expect(transforms[0]?.sequences?.[0]?.props).toEqual(expect.objectContaining({ filter: "sepia(1) hue-rotate(120deg)" }));
-        expect(transforms[0]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(transforms[0]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
         expect(transforms[1]?.sequences?.[0]?.props).toEqual(expect.objectContaining({ zoom: 1.4 }));
         expect(transforms[1]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 800 }));
     });
@@ -277,7 +277,7 @@ describe("compiles a camera grade as a cut", () => {
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
         const sequence = transformsOf(actions)[0]?.sequences?.[0];
         expect(String(sequence?.props?.filter)).toContain("hue-rotate");
-        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
     });
 
     it("eases a grade that turns no hue, over the row's own duration", async () => {

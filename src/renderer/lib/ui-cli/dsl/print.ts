@@ -35,7 +35,7 @@ export type PrintOptions = {
     /** Structs and actions are document-wide, so they are printed only for a whole-document dump. */
     includeSharedTables?: boolean;
     /** A note beside each element that a blueprint hangs off, which `ui show` uses. */
-    blueprintsByElement?: Map<string, { id: string; name: string }[]>;
+    blueprintsByElement?: Map<string, { id: string; name: string; empty?: boolean }[]>;
     /** Stop at the element itself, for a reference example whose subtree is not the point. */
     withoutChildren?: boolean;
     /**
@@ -50,6 +50,51 @@ export type PrintOptions = {
     compact?: boolean;
 };
 
+function printStructBlock(struct: NonNullable<UIDocument["structs"]>[string]): string {
+    const lines = [`struct ${struct.id}`];
+    for (const field of struct.fields) {
+        lines.push(
+            `${INDENT}field ${field.key}: ${field.type}`
+                + (field.id !== field.key ? ` id=${printValue(field.id)}` : "")
+                + (field.label ? ` label=${printValue(field.label)}` : ""),
+        );
+    }
+    return lines.join("\n");
+}
+
+/** The project's own structs a list on the printed pages or components names as its row shape. */
+function structsUsedBy(document: UIDocument, options: PrintOptions): NonNullable<UIDocument["structs"]>[string][] {
+    const named = new Set<string>();
+    const walk = (pool: Record<string, UIElement>, rootId: string | undefined) => {
+        const stack = rootId ? [rootId] : [];
+        const seen = new Set<string>();
+        while (stack.length > 0) {
+            const id = stack.pop() as string;
+            const element = pool[id];
+            if (!element || seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
+            const structId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+            if (typeof structId === "string" && structId) {
+                named.add(structId);
+            }
+            stack.push(...(element.childrenIds ?? []));
+        }
+    };
+    for (const surface of document.surfaces) {
+        if (!options.surfaceIds || options.surfaceIds.includes(surface.id)) {
+            walk(document.elements, surface.rootElementId);
+        }
+    }
+    for (const component of document.components ?? []) {
+        if (!options.componentIds || options.componentIds.includes(component.id)) {
+            walk(component.elements ?? {}, component.rootElementId);
+        }
+    }
+    return [...named].map(id => document.structs?.[id]).filter((struct): struct is NonNullable<typeof struct> => Boolean(struct));
+}
+
 export function printUiDocument(document: UIDocument, options: PrintOptions = {}): string {
     const blocks: string[] = [];
     if (options.includeSharedTables !== false) {
@@ -60,15 +105,7 @@ export function printUiDocument(document: UIDocument, options: PrintOptions = {}
                 + (document.entrySurfaceId ? ` entry=${printValue(document.entrySurfaceId)}` : ""),
         );
         for (const struct of Object.values(document.structs ?? {})) {
-            const lines = [`struct ${struct.id}`];
-            for (const field of struct.fields) {
-                lines.push(
-                    `${INDENT}field ${field.key}: ${field.type}`
-                        + (field.id !== field.key ? ` id=${printValue(field.id)}` : "")
-                        + (field.label ? ` label=${printValue(field.label)}` : ""),
-                );
-            }
-            blocks.push(lines.join("\n"));
+            blocks.push(printStructBlock(struct));
         }
         for (const action of Object.values(document.actions ?? {})) {
             const lines = [`action ${action.id} ${printValue(action.name)}`];
@@ -85,6 +122,13 @@ export function printUiDocument(document: UIDocument, options: PrintOptions = {}
                 lines.push(`${INDENT}navigation ${action.navigationSlot}`);
             }
             blocks.push(lines.join("\n"));
+        }
+    }
+    if (options.includeSharedTables === false) {
+        // One page shown on its own still says what its lists' rows are made of: the structs those
+        // lists name, printed as the blocks they are, so the file applies back with them.
+        for (const struct of structsUsedBy(document, options)) {
+            blocks.push(printStructBlock(struct));
         }
     }
     for (const surface of document.surfaces) {
@@ -192,7 +236,9 @@ export function printElementTree(
         `${layout.width ?? 0}x${layout.height ?? 0}`,
         ...(compact?.defaults ? [COMPACT_DEFAULTS_FLAG] : []),
     ].join(" ");
-    const attached = options.blueprintsByElement?.get(element.id) ?? [];
+    // Only blueprints that do something: a widget is given an empty one the first time its graph is
+    // opened, and noting those on every line buried the few that are wired.
+    const attached = (options.blueprintsByElement?.get(element.id) ?? []).filter(item => !item.empty);
     const lines = [
         pad + header + (attached.length > 0 ? `  # blueprint: ${attached.map(item => item.name).join(", ")}` : ""),
     ];
@@ -271,6 +317,12 @@ export function printElementTree(
     if (element.assetVariants !== undefined) {
         lines.push(`${inner}assetVariants = ${printValue(element.assetVariants)}`);
     }
+    for (const [key, value] of Object.entries(element.navigation ?? {})) {
+        if (value !== undefined) {
+            lines.push(`${inner}navigation.${key} = ${printValue(value)}`);
+        }
+    }
+
     if (options.withoutChildren) {
         if ((element.childrenIds ?? []).length > 0) {
             lines.push(`${inner}# ${element.childrenIds.length} child element(s) not shown`);

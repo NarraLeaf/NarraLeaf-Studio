@@ -33,6 +33,15 @@ export async function authorizeActorFileSystemRequest(
         };
     }
 
+    // ⚠ **Refused, not folded.** Every check below reads a resolved spelling, and resolving folds a
+    // `..` away: `granted/link/../x` is judged as `granted/x`. The operation is then handed the path
+    // as given, and the system walks it through the link and back up from wherever that points - out
+    // of the grant, as far as protected storage. A plugin has no reason to spell a parent step, so
+    // one that does is refused before anything is resolved.
+    if (hasParentSegment(fsPath)) {
+        return { allowed: false, reason: `Plugin paths may not step up a directory: ${actor.pluginId}` };
+    }
+
     if (await window.app.storageManager.isPathProtected(fsPath)) {
         return { allowed: false, reason: "Protected application storage cannot be accessed" };
     }
@@ -58,6 +67,10 @@ export async function authorizeActorFileSystemRequest(
     return {
         allowed: true,
     };
+}
+
+function hasParentSegment(fsPath: string): boolean {
+    return fsPath.split(/[\\/]/).includes("..");
 }
 
 export function authorizeActorCapabilityRequest(

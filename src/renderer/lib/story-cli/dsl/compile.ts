@@ -67,6 +67,7 @@ import {
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
 import type {
     StoryCommandContext,
+    StoryCommandResolutionIssue,
     StoryCommandResolvedArgs,
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import type { StoryCommandParamType } from "@/apps/workspace/modules/story/scene-editor/storyCommandGrammar";
@@ -573,7 +574,7 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
         diagnostics.push(
             errorAt(
                 `compile.${issue.code}`,
-                `${issue.code}: "${(issue as { value?: string }).value ?? ""}" in ${source}`.trim(),
+                describeResolutionIssue(issue, source),
                 line.lineNumber,
             ),
         );
@@ -711,6 +712,35 @@ function segmentAt(block: StoryBlock, slot: "text" | "prompt"): { textId: string
     return value && typeof value === "object" && "textId" in value
         ? (value as { textId: string; role: string })
         : null;
+}
+
+/**
+ * A resolution issue as one English sentence that names what the line got wrong.
+ *
+ * Every issue carries a different payload - a `value` for most, a `key` for a slot refused on this
+ * target, a `keys` list for two slots that cannot share a row - so the sentence is picked by code and
+ * falls back to whichever of the three the issue has. The old one-size message read `value` alone,
+ * which left `unsupportedParam` and `conflictingParams` reporting an empty name.
+ */
+export function describeResolutionIssue(issue: StoryCommandResolutionIssue, source: string): string {
+    switch (issue.code) {
+        case "unsupportedParam":
+            return `"${issue.key}=" does not apply to this ${issue.kind}, in ${source}`;
+        case "conflictingParams":
+            return `${issue.keys.map(key => `"${key}="`).join(" and ")} cannot be set on one row; split the line in two, in ${source}`;
+        case "offsetWithoutPosition":
+            return `"${issue.key}=" needs a "pos=" on the same line, in ${source}`;
+        case "repeatTimesAndUntil":
+            return `a repeat count and "until=" say the same thing twice; keep one, in ${source}`;
+        case "unsupportedOption":
+            return `"${issue.value}" is not available here (one of: ${issue.allowed.join(", ")}), in ${source}`;
+        case "unsupportedTarget":
+            return `"${issue.value}" (${issue.kind}) is not something this command acts on, in ${source}`;
+        default: {
+            const named = (issue as { value?: unknown }).value;
+            return named === undefined ? `${issue.code} in ${source}` : `${issue.code}: "${String(named)}" in ${source}`;
+        }
+    }
 }
 
 function describeParseIssue(issue: { code: string } & Record<string, unknown>, source: string): string {

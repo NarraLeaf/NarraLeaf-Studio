@@ -1,3 +1,4 @@
+import type { CharacterFrameSequence } from "./frameSequence";
 import type { PsdFingerprint } from "@shared/types/psdImport";
 import type { StoryTransformProps } from "@shared/types/story/document";
 import type { PuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
@@ -146,6 +147,7 @@ export interface CharacterNamed {
 
 /** One finished sprite of a `preset` character. */
 export interface CharacterPose extends CharacterNamed {
+    sequence?: CharacterFrameSequence;
     /** Groups the list in the editor. Never consulted when resolving. */
     folder?: string;
     assetId: string | null;

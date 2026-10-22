@@ -143,6 +143,12 @@ the library**, so a misnamed take can be fixed by renaming the asset.
    for the author as missing recordings.
 5. `voice_status {language}` to report coverage per character.
 
+When the takes are not named by the recording rule (an existing set of recordings), link them from your
+own record of which file belongs to which line: list each scene's lines with `voice_list {scene}` and
+match by the line's position among the scene's lines, checking that each matched line's `text` is the
+text you expected before sending `voice_link`. Link by asset id rather than name when names carry
+dots or extensions. A scene re-applied without anchors gets new lines: run the same linking again.
+
 ### Approval, stale takes, playback
 
 - New takes are `linked`. `voice_link {links:[{unitId, status:"approved"}]}` signs a take off -

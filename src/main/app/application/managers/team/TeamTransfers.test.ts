@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { JOURNAL, TeamTransfers, measure, partial, slowly, type TeamTransferDeps } from "./TeamTransfers";
-import { fileIsInProject } from "../window/handlers/teamAction";
+import { fileIsInAssetContent } from "../window/handlers/teamAction";
 
 /**
  * Moving a file between a project and a server.
@@ -259,22 +259,52 @@ describe("sending slowly enough to watch", () => {
 
 describe("the boundary a path is held to", () => {
     const project = path.resolve("/projects/lantern");
+    const content = path.join(project, "assets", "content");
 
-    it("takes a file inside the project this window has open", () => {
-        expect(fileIsInProject(project, path.join(project, "assets", "content", "a.png"))).toBe(true);
+    it("takes a file in the asset content store of the project this window has open", async () => {
+        expect(await fileIsInAssetContent(project, path.join(content, "ab", "cd", "ef01"))).toBe(true);
     });
 
-    it("refuses one that climbs out of it", () => {
-        expect(fileIsInProject(project, path.join(project, "..", "secrets.txt"))).toBe(false);
+    it("refuses a file elsewhere in the project, which is where a peer's path used to be able to land", async () => {
+        expect(await fileIsInAssetContent(project, path.join(project, "scripts", "evil.js"))).toBe(false);
+        expect(await fileIsInAssetContent(project, path.join(content, "..", "..", "scripts", "evil.js"))).toBe(false);
+        expect(await fileIsInAssetContent(project, path.join(project, ".lore", "config.toml"))).toBe(false);
     });
 
-    it("refuses a sibling whose name begins with the project's", () => {
-        // ⚠ The comparison is at a separator: `lantern-house` is not inside `lantern`.
-        expect(fileIsInProject(project, path.resolve("/projects/lantern-house/x.png"))).toBe(false);
+    it("refuses the store itself, which is not a file in it", async () => {
+        expect(await fileIsInAssetContent(project, content)).toBe(false);
     });
 
-    it("refuses everything for a window with no project, because there is nothing to be inside", () => {
-        expect(fileIsInProject(undefined, path.join(project, "a.png"))).toBe(false);
-        expect(fileIsInProject("", path.join(project, "a.png"))).toBe(false);
+    it("refuses one that climbs out of the project", async () => {
+        expect(await fileIsInAssetContent(project, path.join(project, "..", "secrets.txt"))).toBe(false);
+    });
+
+    it("refuses a sibling whose name begins with the store's", async () => {
+        // ⚠ The comparison is at a separator: `content-old` is not inside `content`.
+        expect(await fileIsInAssetContent(project, path.join(project, "assets", "content-old", "x"))).toBe(false);
+    });
+
+    it("refuses everything for a window with no project, because there is nothing to be inside", async () => {
+        expect(await fileIsInAssetContent(undefined, path.join(content, "a"))).toBe(false);
+        expect(await fileIsInAssetContent("", path.join(content, "a"))).toBe(false);
+    });
+
+    it("refuses a path that spells the store but runs through a link out of it", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-team-boundary-"));
+        try {
+            const real = path.join(root, "project");
+            const outside = path.join(root, "outside");
+            await fs.mkdir(path.join(real, "assets", "content", "ab"), { recursive: true });
+            await fs.mkdir(outside, { recursive: true });
+            await fs.writeFile(path.join(outside, "secret.txt"), "x");
+            await fs.symlink(outside, path.join(real, "assets", "content", "cd"), "dir");
+            await fs.symlink(path.join(outside, "secret.txt"), path.join(real, "assets", "content", "ab", "link"));
+
+            expect(await fileIsInAssetContent(real, path.join(real, "assets", "content", "ab", "new"))).toBe(true);
+            expect(await fileIsInAssetContent(real, path.join(real, "assets", "content", "cd", "new"))).toBe(false);
+            expect(await fileIsInAssetContent(real, path.join(real, "assets", "content", "ab", "link"))).toBe(false);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
     });
 });

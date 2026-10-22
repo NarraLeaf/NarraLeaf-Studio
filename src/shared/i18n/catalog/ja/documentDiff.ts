@@ -211,7 +211,6 @@ export const documentDiff = {
          * 取り込みが書き込む入れ物なので、行は保存名のままにしてある。
          */
         fields: {
-            nicknames: "別名",
             group: "グループ",
             canvas: "キャンバス",
             avatarAxes: "アバターの軸",

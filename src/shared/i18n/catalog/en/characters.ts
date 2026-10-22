@@ -64,6 +64,16 @@ export const characters = {
         colorReset: "Compute from the name",
     },
     editor: {
+        sequenceTitle: "Frame sequence",
+        sequenceImport: "Import PNG frames",
+        sequenceFps: "Frames per second",
+        sequenceLoop: "Loop",
+        sequenceStatic: "Use first frame only",
+        sequenceMoveUp: "Move frame up",
+        sequenceMoveDown: "Move frame down",
+        sequencePngOnly: "All frames must be PNG images.",
+        sequenceSizeMismatch: "All frames must have the same dimensions.",
+
         // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
         // and comes from the runtime registry rather than from here.
         kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },
@@ -288,6 +298,13 @@ export const characters = {
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",
+        // Other spellings of the name a story line's speaker binds to this character by.
+        aliases: "Aliases",
+        aliasesTip: "A story line whose speaker is written as an alias belongs to this character. The game still shows the character's name.",
+        addAliasPlaceholder: "Add alias…",
+        aliasIsName: "\"{alias}\" is this character's name.",
+        aliasTakenByName: "\"{alias}\" is the name of {names}. Lines spoken as \"{alias}\" belong to {names}.",
+        aliasShared: "\"{alias}\" is also an alias of {names}. Lines spoken as \"{alias}\" cannot be assigned to one character.",
         namePlaceholder: "Character name",
         descriptionPlaceholder: "Character description…",
         tags: "Tags",

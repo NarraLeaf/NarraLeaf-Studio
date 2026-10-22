@@ -239,6 +239,7 @@ export const story = {
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
             inputAction: "This row works with the player's input or the controller's rumble, and has no script form.",
+            pageAction: "This row opens a page over the story and waits for it, and has no script form.",
             blueprintCondition: "A blueprint decides this condition.",
             blueprintInterpolation: "A blueprint computes a value inside this text.",
             inlineEvent: "The text carries an event that fires while it is being typed out.",
@@ -780,6 +781,8 @@ export const story = {
         hold: "Hold Seconds",
         opacity: "Opacity",
         size: "Font Size",
+        outline: "Outline px",
+        outlineColor: "Outline Color",
         // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
         // The two offsets are design pixels added to `pos=`, + right and + up.
         xOffset: "X Offset px",
@@ -1513,6 +1516,7 @@ export const story = {
         // Named for what the player sees, not for the act: "Quit" alone reads as leaving the game.
         // The detail carries the half the name cannot - the run ends without an ending being recorded.
         quit: { label: "Quit to page", detail: "End this playthrough at this line and show a page. No ending is recorded" },
+        page: { label: "Open page", detail: "Open a page over the story and wait until it closes. What the page closes with can be written into a variable" },
         rumble: { label: "Rumble", detail: "Vibrate the player's controller. Pick a preset, or set each motor" },
         input: { label: "Input lock", detail: "Lock or unlock player input. While locked, clicking to advance, the advance key, auto-forward and skipping do nothing; choices can still be picked. Unlock before the next line of dialogue" },
         waitInput: { label: "Wait for input", detail: "Wait until the player performs an input action, optionally within a time limit" },
@@ -1575,6 +1579,7 @@ export const story = {
         cut: "Cut point",
         ending: "Ending",
         quit: "Quit to page",
+        page: "Page",
         rumble: "Rumble",
         input: "Input",
         jump: "Jump",
@@ -1656,6 +1661,8 @@ export const story = {
         cutUnknown: "Cut point",
         ending: "Ending {name}",
         quit: "Quit to {page}",
+        page: "Open {page}",
+        pageUnset: "Open page",
         rumble: "Rumble: {shape}",
         rumbleStop: "Stop rumble",
         inputLock: "Lock player input",

@@ -1616,8 +1616,25 @@ export interface RendererPreloadedInterface {
     privileged: RendererPrivilegedBootstrapInterface;
 }
 
+/**
+ * What the page's global holds: not the bridge, but the one way to take it.
+ *
+ * ⚠ **Plugin code shares the page's realm**, so anything on the global is plugin code's too, and
+ * Electron defines the exposed property so it cannot be deleted. The bridge used to sit there in
+ * full: a plugin whose manifest asked for nothing could list, read, write and delete every file the
+ * window could reach, all through calls main had no way to tell from Studio's own. Now Studio's
+ * bootstrap (`renderer/lib/app/bridge.ts`) takes it once, before the page has loaded anything but
+ * Studio, and hardens this before the first plugin module is imported - after which the global
+ * answers nothing at all, and a plugin has the facade its permissions were checked against.
+ */
+export interface RendererGlobalBridge {
+    acquire(): RendererPreloadedInterface;
+    harden(): void;
+    isHardened(): boolean;
+}
+
 declare global {
     interface Window {
-        [RendererInterfaceKey]: RendererPreloadedInterface;
+        [RendererInterfaceKey]: RendererGlobalBridge;
     }
 }
