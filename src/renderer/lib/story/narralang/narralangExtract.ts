@@ -543,16 +543,16 @@ function nodeActionShape(ctx: NarralangExtractContext, block: StoryBlock, payloa
                 },
             };
         case "choiceOption": {
-            const showIf = conditionSource(ctx, block.id, payload.hiddenWhen);
-            const enableIf = conditionSource(ctx, block.id, payload.disabledWhen);
+            const hideIf = conditionSource(ctx, block.id, payload.hiddenWhen);
+            const disableIf = conditionSource(ctx, block.id, payload.disabledWhen);
             return {
                 form: "statement",
                 verb: "choiceOption",
                 opensBlock: true,
                 slots: {
                     text: { kind: "text", text: textOf(ctx, block.id, payload.text, "option") },
-                    showIf: showIf ? asExpression(showIf) : undefined,
-                    enableIf: enableIf ? asExpression(enableIf) : undefined,
+                    hideIf: hideIf ? asExpression(hideIf) : undefined,
+                    disableIf: disableIf ? asExpression(disableIf) : undefined,
                 },
             };
         }

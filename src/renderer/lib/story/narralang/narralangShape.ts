@@ -211,8 +211,8 @@ export type NarralangSlot =
     | "description"
     // Control
     | "test"
-    | "showIf"
-    | "enableIf"
+    | "hideIf"
+    | "disableIf"
     | "times"
     | "async"
     // Stage properties
