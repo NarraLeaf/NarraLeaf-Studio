@@ -115,7 +115,11 @@ Narra: You're late.  ⟦51d4f8dc⟧
   is a one-off speaker.
 - **plain text** - narration, which is any line that is none of the others.
 - **`// text`** - a note.
-- **`- text`** - a choice option, under a `/menu` row.
+- **`- text`** - a choice option, under a `/menu` row. It may end with
+  `[hide if <expression>]` and `[disable if <expression>]` - the option is hidden,
+  or shown but greyed out, while the expression is true. A clause left off clears
+  that condition; one held in a blueprint has no spelling and stays on the row.
+  Write `\[` for a bracket in the words that would otherwise read as a clause.
 - **`? expression`** or **`? else`** - a branch of the `/if` above it. The first
   is the `/if`'s own condition and every later one an else-if, so the order of the
   lines is what says which; `? else` comes last.

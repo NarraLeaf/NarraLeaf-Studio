@@ -6,6 +6,7 @@ import {
     type BlueprintOpenScreenshotsResult,
     type BlueprintScreenshotResult,
 } from "@shared/types/blueprint/screenshot";
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -918,6 +919,12 @@ function GameRuntimeSession() {
             ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
     }, [bridge]);
 
+    /** A save's picture, read back by the main process; undefined where the shell has no way to. */
+    const captureStage = useMemo(() => {
+        const read = bridge?.captureStage;
+        return read ? (request: StageCaptureRequest) => read.call(bridge, request) : undefined;
+    }, [bridge]);
+
     /*
      * The menu bar, when this shell has one.
      *
@@ -997,6 +1004,9 @@ function GameRuntimeSession() {
             subscribeCloseRequested,
             // Present only where the shell can really take one; see `saveScreenshot` above.
             ...(bridge?.capabilities?.screenshot ? { saveScreenshot, openScreenshotsFolder } : {}),
+            // Present only where the main process can read the window back: the web export has no
+            // such method, and the game then draws a save's picture itself.
+            ...(captureStage ? { captureStage } : {}),
             // Present only when the shell really has a bar: see the host's own note on why an
             // absent pair is the answer rather than a pair that does nothing.
             ...(bridge?.menu ? { setApplicationMenu, subscribeMenuCommand } : {}),
@@ -1041,6 +1051,7 @@ function GameRuntimeSession() {
         subscribeWindowFocusChanged,
         saveScreenshot,
         openScreenshotsFolder,
+        captureStage,
         subscribeCloseRequested,
         setApplicationMenu,
         subscribeMenuCommand,

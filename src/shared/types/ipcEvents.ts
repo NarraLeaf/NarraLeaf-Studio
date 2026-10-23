@@ -7,6 +7,7 @@ import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuic
 import type { AgentClientId, AgentClientSetupInfo, AgentSkillInstallResult } from "../agent/clients";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
+import type { StageCaptureRequest } from "../utils/stageCapture";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -347,6 +348,7 @@ export enum IPCEventType {
     devModeWindowFocusChanged = "devMode.window.focusChanged",
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
+    devModeStageCapture = "devMode.stage.capture",
     devModeWindowCloseRequested = "devMode.window.closeRequested",
     devModeAgentControl = "devMode.agent.control",
     devModeAgentDrive = "devMode.agent.drive",
@@ -3145,6 +3147,17 @@ export type IPCDevModeEvents = {
             projectRef: DevModeSaveProjectRef;
         },
         response: BlueprintOpenScreenshotsResult;
+    };
+    /**
+     * Read the Dev Mode window's stage back from the compositor, for a save's picture - see
+     * `@shared/utils/stageCapture`. Nothing is written: the picture goes back to the page, which
+     * puts it in the save. Null when the window gave no frame, and the page then draws its own.
+     */
+    [IPCEventType.devModeStageCapture]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: StageCaptureRequest,
+        response: { picture: string | null };
     };
     /**
      * Asks the Dev Mode renderer whether the window may close, giving its blueprints a chance to

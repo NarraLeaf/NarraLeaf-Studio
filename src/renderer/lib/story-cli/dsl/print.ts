@@ -36,6 +36,7 @@ import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-e
 import { buildLineBlock } from "./compile";
 import { conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
+import { spellOptionClauses } from "./optionConditions";
 import { proseLineOf, type ProseLookups } from "./prose";
 import { printSceneSettings } from "./sceneSettings";
 import { printSceneLayers } from "./sceneLayers";
@@ -225,6 +226,18 @@ function spellRow(block: StoryBlock, input: PrintInput, rowsAbove: ReadonlySet<S
 function candidateLine(block: StoryBlock, input: PrintInput): SpelledLine | null {
     const prose = proseLineOf(block, input.prose);
     if (prose) {
+        if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
+            // A condition with no source (a blueprint) is left off the line and rides on the row.
+            const hide = conditionSource(block.payload.hiddenWhen, input.conditions);
+            const disable = conditionSource(block.payload.disabledWhen, input.conditions);
+            return {
+                shape: "option",
+                text: prose.text + spellOptionClauses({
+                    ...(hide === null ? {} : { hide }),
+                    ...(disable === null ? {} : { disable }),
+                }),
+            };
+        }
         return prose;
     }
     if (block.kind === "control" && block.payload.control === "conditionBranch") {

@@ -111,4 +111,70 @@ describe("the picture a page opened over the game keeps", () => {
         taking.resolve("late");
         await expect(picture).resolves.toBe("late");
     });
+
+    it("says it is holding until the picture is in hand, and the page can be kept off the screen that long", async () => {
+        const taking = deferred<string>();
+        const { result, rerender } = renderHook(({ covered }) => useStageCoverCapture({ covered, capture: () => taking.promise }), {
+            initialProps: { covered: false },
+        });
+        expect(result.current.holding).toBe(false);
+
+        rerender({ covered: true });
+        expect(result.current.holding).toBe(true);
+
+        await act(async () => {
+            taking.resolve("picture");
+            await taking.promise;
+        });
+        // The page comes on in the same render that steps the Game UI off.
+        expect(result.current.holding).toBe(false);
+        expect(result.current.concealed).toBe(true);
+    });
+
+    it("tells the capture whether the hold is still on, so a frame read back after it let go is not trusted", async () => {
+        vi.useFakeTimers();
+        const asked: Array<() => boolean> = [];
+        const taking = deferred<string>();
+        const { result, rerender } = renderHook(
+            ({ covered }) => useStageCoverCapture({
+                covered,
+                capture: stillHeld => {
+                    asked.push(stillHeld);
+                    return taking.promise;
+                },
+                holdMs: 1000,
+            }),
+            { initialProps: { covered: false } },
+        );
+
+        rerender({ covered: true });
+        expect(asked).toHaveLength(1);
+        expect(asked[0]()).toBe(true);
+
+        await act(async () => {
+            vi.advanceTimersByTime(1000);
+        });
+        // The hold gave up waiting and the page is on the screen: a read-back now could show it.
+        expect(result.current.holding).toBe(false);
+        expect(asked[0]()).toBe(false);
+    });
+
+    it("lets go of the hold when the page closes before the picture came", async () => {
+        const asked: Array<() => boolean> = [];
+        const { rerender } = renderHook(
+            ({ covered }) => useStageCoverCapture({
+                covered,
+                capture: stillHeld => {
+                    asked.push(stillHeld);
+                    return new Promise<string>(() => undefined);
+                },
+            }),
+            { initialProps: { covered: false } },
+        );
+
+        rerender({ covered: true });
+        expect(asked[0]()).toBe(true);
+        await act(async () => rerender({ covered: false }));
+        expect(asked[0]()).toBe(false);
+    });
 });

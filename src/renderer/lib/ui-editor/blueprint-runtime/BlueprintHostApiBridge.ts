@@ -66,6 +66,7 @@ import {
     type AudioMixPreferences,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import { blueprintValuesEqual } from "@shared/blueprint/blueprintValueEquality";
 import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
@@ -217,6 +218,23 @@ export function mergeWidgetPatch(
         merged.props = { ...(previous?.props ?? {}), ...(patch.props ?? {}) };
     }
     return merged;
+}
+
+/**
+ * Whether laying `patch` over what a drawing already had leaves it holding the same: every field
+ * the write states, the drawing already shows.
+ *
+ * Such a write changes nothing on screen, so it is not a write. A graph that keeps a widget in step
+ * by polling - a quick menu reading the skip state every quarter of a second and setting the
+ * indicator's visibility each time - set the same value over and over, and every time the table
+ * became a new object: the whole game surface drew again four times a second while the player sat
+ * reading one line, MEASURED in a ported game in Dev Mode.
+ */
+export function isWidgetPatchUnchanged(
+    previous: DevModeWidgetRuntimePatch | undefined,
+    patch: DevModeWidgetRuntimePatch,
+): boolean {
+    return previous !== undefined && blueprintValuesEqual(mergeWidgetPatch(previous, patch), previous);
 }
 
 /** How the widget readers below see a drawing's runtime patches: one address at a time. */
@@ -2928,6 +2946,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         patch: DevModeWidgetRuntimePatch,
         options?: { widgetStateChanged?: boolean },
     ) => {
+        // Unless the write also changed widget state beside the patch, which still has to be told.
+        if (!options?.widgetStateChanged && isWidgetPatchUnchanged(runtimePatches.get(elementId), patch)) {
+            return;
+        }
         ownPatches?.set(elementId, mergeWidgetPatch(ownPatches.get(elementId), patch));
         onWidgetPatch(elementId, patch);
         widgetRuntimeStore.notifyRuntimePatchesChanged(options);

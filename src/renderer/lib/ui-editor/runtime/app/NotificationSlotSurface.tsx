@@ -45,12 +45,17 @@ export function NotificationSlotSurface(props: {
         [bundle.ui.uidoc, surface],
     );
 
+    // Keyed on what the toasts say rather than on the array: NarraLeaf hands a new one, empty or
+    // not, every time it draws the stage. Keyed on the array, every redraw wrote the list store and
+    // flushed the slot again, and the list store redrew its list - a second pass of the whole Game UI
+    // for each one the stage made, with not one toast on screen.
+    const itemsKey = JSON.stringify(notifications.map(notification => [
+        String(notification.id ?? ""),
+        String(notification.message ?? ""),
+    ]));
     const items = useMemo<BlueprintGameNotification[]>(
-        () => notifications.map(notification => ({
-            id: String(notification.id ?? ""),
-            message: String(notification.message ?? ""),
-        })),
-        [notifications],
+        () => (JSON.parse(itemsKey) as [string, string][]).map(([id, message]) => ({ id, message })),
+        [itemsKey],
     );
 
     useEffect(() => {

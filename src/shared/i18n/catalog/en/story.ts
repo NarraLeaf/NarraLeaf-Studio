@@ -271,6 +271,7 @@ export const story = {
             badTag: "This line carries a formatting tag that is unknown, or left open.",
             badExpression: "This expression does not resolve.",
             layerDeclaration: "A script cannot declare a layer. Add it to the scene's layers",
+            retiredLead: "Options no longer read \"show if\" or \"enable if\". Write \"hide if\" or \"disable if\" followed by the condition under which the option is hidden or greyed out",
         },
         // The scene read and written as a script inside the editor. Editable for a scene the script
         // can say in full; read-only for good for one it cannot - which is the whole job of `gate`:

@@ -1,6 +1,7 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
+import os from "os";
 import { existsSync } from "fs";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
@@ -94,6 +95,9 @@ import {
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages } from "./optimizeAssetImages";
+import { findResizableImages } from "@shared/build/imageResizeEligibility";
+import { assembleDevModeBundleFromProjectPath } from "../devMode/pipeline/bundleAssembler";
+import { readPublishedPluginData } from "../pluginRuntimeData";
 import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -1276,7 +1280,7 @@ export class GameBuildManager {
         // would read as changed against the build being patched, and the patch
         // would carry the author's whole art library back to a player who already
         // has it - under the extension the pack no longer names.
-        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig, pluginSelection.selected);
         this.ensureNotCancelled(session);
 
         /**
@@ -2121,7 +2125,7 @@ export class GameBuildManager {
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // Before either compile, so both carry the same bytes for an asset and a
         // protected pack is optimized like an unprotected one. See optimizeAssets.
-        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig, pluginSelection.selected);
         this.ensureNotCancelled(session);
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
@@ -3738,9 +3742,14 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         projectConfig: ProjectConfigData | null,
+        runtimePlugins: RuntimePluginPackSelection["selected"],
     ): Promise<Record<string, OptimizedAssetFile>> {
         const config = this.assetCompressionConfig(projectConfig);
-        const images = await this.optimizeImages(session, projectPath, config);
+        // Only a size cap needs to know how an image is drawn, and working it out assembles the story.
+        const resizableImageIds = resolveImageCompression(config).maxDimension !== null
+            ? await this.findResizableImages(session, projectPath, runtimePlugins)
+            : undefined;
+        const images = await this.optimizeImages(session, projectPath, config, resizableImageIds);
         const media = await this.compressMedia(session, projectPath, config);
         // Two passes, two counts, one after the other: each reads its own half of the library and
         // neither knows the other's length before it runs, so the readout fills twice rather than
@@ -3755,6 +3764,50 @@ export class GameBuildManager {
         // zeroes and inviting an author to work out what went wrong.
         session.assetCompression = assetCompressionDidSomething(compression) ? compression : null;
         return { ...images.files, ...media.files };
+    }
+
+    /**
+     * The images the size cap may shrink: every place they are used draws them at a size their
+     * pixels do not decide (`findResizableImages`).
+     *
+     * Read from the story as the release edition assembles it with every DLC carried - the most any
+     * package of this project draws - and the published data of the plugins it ships. Any edition
+     * draws a subset of that, so an image resizable here is resizable in each of them.
+     *
+     * Never fatal, and never optimistic: a story that cannot be assembled here will refuse the
+     * compile with its own words a moment later, and until then every image keeps its size.
+     */
+    private async findResizableImages(
+        session: BuildSession,
+        projectPath: string,
+        runtimePlugins: RuntimePluginPackSelection["selected"],
+    ): Promise<Set<string>> {
+        // The author's scripts are bundled as part of assembling, and that output is nobody's here.
+        const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "nls-image-uses-"));
+        try {
+            const bundle = await assembleDevModeBundleFromProjectPath({
+                projectPath,
+                bundleId: crypto.randomUUID(),
+                revision: 1,
+                scriptOutput: { directory: scratch, toUrl: filePath => path.basename(filePath) },
+            });
+            const pluginData = await Promise.all(runtimePlugins.map(plugin => readPublishedPluginData({
+                projectPath,
+                manifest: plugin.manifest,
+            })));
+            return findResizableImages({ bundle, extra: pluginData });
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not work out which images are drawn at a size their pixels do not decide, "
+                    + "so the maximum image size shrinks none of them: "
+                    + (error instanceof Error ? error.message : String(error)),
+            });
+            return new Set();
+        } finally {
+            await fs.rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+        }
     }
 
     /**
@@ -3827,6 +3880,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         config: AssetCompressionConfiguration,
+        resizableImageIds: ReadonlySet<string> | undefined,
     ): Promise<AssetPassOutcome> {
         try {
             const result = await optimizeProjectImages({
@@ -3834,6 +3888,7 @@ export class GameBuildManager {
                 cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
                 openCodec: pages => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"), { pages }),
+                ...(resizableImageIds ? { resizableImageIds } : {}),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
                 onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
@@ -3852,6 +3907,17 @@ export class GameBuildManager {
                     message: `running image compression on ${result.converted} image(s)...`,
                 });
             }
+            if (result.keptAtSize > 0) {
+                const more = result.keptAtSize - result.keptAtSizeNames.length;
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `${result.keptAtSize} image(s) over the maximum image size keep their size, `
+                        + "because they are drawn at their own pixels, as character sprites are: "
+                        + result.keptAtSizeNames.map(name => `"${name}"`).join(", ")
+                        + (more > 0 ? ` and ${more} more` : ""),
+                });
+            }
             return {
                 files: result.images,
                 track: {
@@ -3860,6 +3926,7 @@ export class GameBuildManager {
                     compressed: result.converted,
                     beforeBytes: result.beforeBytes,
                     afterBytes: result.afterBytes,
+                    ...(result.keptAtSize > 0 ? { keptAtSize: result.keptAtSize } : {}),
                 },
             };
         } catch (error) {

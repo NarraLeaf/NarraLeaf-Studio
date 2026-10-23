@@ -474,7 +474,7 @@ export const project = {
         imageWebpQualityTitle: "WebP の品質",
         imageWebpQualityDescription: "WebP エンコーダーに渡す品質。1 から 100 まで",
         imageMaxDimensionTitle: "画像の最大の辺",
-        imageMaxDimensionDescription: "長辺がこのピクセル数を超える画像は縮小される。0 なら保存されたときの大きさのまま",
+        imageMaxDimensionDescription: "長辺がこのピクセル数を超える背景とインターフェース画像は縮小される。立ち絵など元のピクセルサイズで表示される画像は縮小しない。0 なら保存されたときの大きさのまま",
         audioModeTitle: "音声の圧縮方法",
         audioBitrateKbpsTitle: "音声のビットレート",
         audioBitrateKbpsDescription: "AAC のビットレート（kbit/s）",

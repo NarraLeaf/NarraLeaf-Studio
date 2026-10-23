@@ -31,6 +31,7 @@ import {
     type GameRuntimeTestSignalBridge,
 } from "../gameTestSignal";
 import type { GameTestCommand } from "@shared/types/gameTest";
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 
 // Version tag for asset URLs, injected by the main process at window creation
 // so immutable HTTP cache entries are keyed per pack. The fallback is
@@ -244,6 +245,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
         ipcRenderer.invoke("runtime:screenshot:save") as Promise<BlueprintScreenshotResult>,
     openScreenshotsFolder: () =>
         ipcRenderer.invoke("runtime:screenshot:openFolder") as Promise<BlueprintOpenScreenshotsResult>,
+    // A save's picture: the main process reads the stage back and fits it; the page only names where.
+    captureStage: (request: StageCaptureRequest) =>
+        ipcRenderer.invoke("runtime:stage:capture", request) as Promise<string | null>,
     // The one file a player can send after a crash. The page contributes what only it knows; the
     // log, the build, the machine, the path and what is left out of all of them are the main
     // process's, which is also the only side that could write a file at all.
