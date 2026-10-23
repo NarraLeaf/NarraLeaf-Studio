@@ -41,6 +41,7 @@ import {
     type StoryLineShape,
 } from "./shapes";
 import { escapePlainWithTags, readInlineMarkup, spellRichSegment } from "./inlineMarkup";
+import { escapeOptionWords } from "./optionConditions";
 
 /** Naming the things a prose line mentions. Only characters, since prose names nothing else. */
 export type ProseLookups = {
@@ -88,8 +89,10 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
             return words === null ? null : { shape: "narration", text: words };
         }
         case "choiceOption": {
+            // The words only: the printer adds the option's clauses (`optionConditions.ts`), which
+            // need condition lookups this module does not have.
             const words = spokenWords(payload.text);
-            return words === null ? null : { shape: "option", text: words };
+            return words === null ? null : { shape: "option", text: escapeOptionWords(words) };
         }
         case "dialogue": {
             const speaker = payload.characterId
@@ -183,8 +186,9 @@ export function buildProseBlock(
         const payload: StoryNodeActionPayload = {
             action: "choiceOption",
             text: segment(previous, "choiceText", words, mintId),
-            // The two conditions an option may carry have no spelling on the line, so they ride on
-            // the row: editing an option's words must not clear the check that hides it.
+            // The two conditions ride on the row from here. The caller then replaces each with what
+            // the line's clauses say, and drops one the line could have spelled but did not - a
+            // blueprint condition has no spelling, so editing an option's words keeps it.
             ...(carried?.action === "choiceOption" && carried.hiddenWhen ? { hiddenWhen: carried.hiddenWhen } : {}),
             ...(carried?.action === "choiceOption" && carried.disabledWhen ? { disabledWhen: carried.disabledWhen } : {}),
         };
