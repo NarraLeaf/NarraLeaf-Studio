@@ -410,6 +410,8 @@ export const build = {
         compressionImages: "圧縮した画像",
         compressionMedia: "圧縮した音声と映像",
         compressionMetadata: "メタデータを削除したファイル",
+        compressionKeptAtSize: "元のサイズを保った画像",
+        compressionKeptAtSizeHint: "元のピクセルで表示",
         includedTitle: "収録したアセット",
         includedEmpty: "この実行が収録したアセットはない",
         excludedTitle: "収録しなかったアセット",

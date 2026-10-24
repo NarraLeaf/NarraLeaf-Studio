@@ -71,6 +71,15 @@ export type NarralangVerbSyntax = {
      */
     readonly keyword: string;
     readonly slots: readonly NarralangSlotSyntax[];
+    /**
+     * Lead words this verb once read and no longer does, refused with a diagnostic rather than read.
+     *
+     * Dropping a lead from the table is not enough on its own: on a prose-shaped verb the words would
+     * quietly become part of the text, and the line would commit as something its author never wrote.
+     * Listed only when the old word cannot simply be read as an alias, because it meant something the
+     * new one does not.
+     */
+    readonly retiredLeads?: readonly string[];
 };
 
 export type NarralangMarkSyntax = {
@@ -254,9 +263,17 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             keyword: "",
             slots: [
                 { slot: "text", value: "text" },
-                { slot: "showIf", lead: "show if", value: "expression" },
-                { slot: "enableIf", lead: "enable if", value: "expression" },
+                // Named for what the stored condition does: the option is hidden (or greyed out) WHILE
+                // the expression is true. That is `hiddenWhen` / `disabledWhen`, the inspector's
+                // "Hidden when", and the `.story` format's `[hide if …]` - one meaning in every surface.
+                { slot: "hideIf", lead: "hide if", value: "expression" },
+                { slot: "disableIf", lead: "disable if", value: "expression" },
             ],
+            // These leads printed the same stored conditions under the opposite words, so `show if
+            // trust > 0` hid the option once trust was positive. A line still using them cannot be
+            // read either way without flipping somebody's intent - an exported line meant the stored
+            // condition, a hand-written one meant the words - so it is refused until it is rewritten.
+            retiredLeads: ["show if", "enable if"],
         },
 
         // --- Scene ---------------------------------------------------------------------------------

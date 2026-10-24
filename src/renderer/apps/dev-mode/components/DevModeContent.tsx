@@ -24,6 +24,7 @@ import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
 } from "@shared/types/blueprint/screenshot";
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 import { getInterface } from "@/lib/app/bridge";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
@@ -1687,6 +1688,16 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data;
     }, [awaitProjectRef]);
 
+    /**
+     * A save's picture, read back from this window's compositor by the main process, as the packaged
+     * game's is - so an auto-save costs the author's window what it costs a player's. Null sends the
+     * game back to drawing its own.
+     */
+    const captureStage = useCallback(async (request: StageCaptureRequest): Promise<string | null> => {
+        const result = await getInterface().devMode.captureStage(request);
+        return result.success ? result.data.picture : null;
+    }, []);
+
     // Runtime plugin capability backends for the Dev Mode window. Built once and kept stable:
     // plugin setup captures these objects, and they have to outlive every bundle revision and
     // in-window relaunch.
@@ -1951,6 +1962,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeWindowFocusChanged,
             saveScreenshot,
             openScreenshotsFolder,
+            captureStage,
             subscribeCloseRequested,
             networkFetch,
             movePointer,
@@ -1997,6 +2009,7 @@ export function DevModeContent(props: DevModeContentProps) {
         subscribeWindowFocusChanged,
         saveScreenshot,
         openScreenshotsFolder,
+        captureStage,
         subscribeCloseRequested,
         surface,
     ]);

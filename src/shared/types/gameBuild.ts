@@ -457,6 +457,12 @@ export type AssetCompressionTrackReport = {
     /** What those re-encoded files came to before the pass, and after it. */
     beforeBytes: number;
     afterBytes: number;
+    /**
+     * Images over the maximum image size that kept their size, because something draws them at
+     * their own pixels - a character sprite stands as tall as its file is. Images only, and absent
+     * when there were none, which is every run without a size cap.
+     */
+    keptAtSize?: number;
 };
 
 /**
