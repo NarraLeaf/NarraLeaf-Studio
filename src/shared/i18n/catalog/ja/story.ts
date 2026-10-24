@@ -229,6 +229,7 @@ export const story = {
             badTag: "この行に、知らない書式タグか、閉じていないタグがある",
             badExpression: "この式は解決できない",
             layerDeclaration: "スクリプトではレイヤーを宣言できない。シーンのレイヤーに追加する",
+            retiredLead: "選択肢では「show if」と「enable if」はもう使えない。「hide if」か「disable if」の後に、選択肢を隠す条件またはグレーアウトする条件を書く",
         },
         view: {
             open: "スクリプトとして読む",

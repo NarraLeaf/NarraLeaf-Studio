@@ -214,6 +214,7 @@ export const story = {
             badTag: "该行含有未知的排版标记，或标记没有闭合",
             badExpression: "该表达式无法求值",
             layerDeclaration: "脚本中不能声明图层；在场景的图层中添加",
+            retiredLead: "选项已不再使用“show if”或“enable if”；改写为“hide if”或“disable if”，后接选项被隐藏或置灰时的条件",
         },
         view: {
             open: "以脚本形式阅读",

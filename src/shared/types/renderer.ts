@@ -58,6 +58,7 @@ import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
 } from "./blueprint/screenshot";
+import type { StageCaptureRequest } from "../utils/stageCapture";
 import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -772,6 +773,11 @@ export interface RendererPreloadedInterface {
         openScreenshotsFolder(
             projectRef: DevModeSaveProjectRef,
         ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
+        /**
+         * Read this window's stage back from the compositor for a save's picture: a JPEG data URL,
+         * or null when the window gave no frame. See `@shared/utils/stageCapture`.
+         */
+        captureStage(request: StageCaptureRequest): Promise<RequestStatus<{ picture: string | null }>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         /**
          * Workspace: ask the project's running Dev Mode game to capture itself or advance, for an

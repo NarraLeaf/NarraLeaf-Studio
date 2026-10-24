@@ -74,9 +74,10 @@ import type { StoryCommandParamType } from "@/apps/workspace/modules/story/scene
 import { getCommandSpec, type AnyStoryCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { DECLARATION_COMMANDS } from "@/apps/workspace/modules/story/scene-editor/commands/specs/variables";
 import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLine } from "./ast";
-import { conditionFromSource, type ConditionLookups } from "./condition";
+import { conditionFromSource, conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
-import { buildProseBlock, type ProseLookups } from "./prose";
+import { splitOptionLine } from "./optionConditions";
+import { buildProseBlock, type ProseBuildResult, type ProseLookups } from "./prose";
 import { applySceneSettings } from "./sceneSettings";
 import { applySceneLayerDirectives } from "./sceneLayers";
 import { BRANCH_ELSE, escapeText, unescapeText } from "./shapes";
@@ -398,28 +399,32 @@ export function buildLineBlock(line: StoryFileLine, ctx: LineContext): LineResul
             return buildBranch(line, ctx);
         case "command":
             return buildCommand(line, ctx);
+        case "option":
+            return buildOption(line, ctx);
         default: {
             const built = buildProseBlock({ shape: line.shape, text: line.text }, {
                 previous: ctx.previous,
                 mintId: ctx.mintId,
                 lookups: ctx.prose,
             });
-            return built.ok
-                ? { ok: true, block: built.block }
-                : {
-                    ok: false,
-                    diagnostics: [
-                        errorAt(
-                            `compile.${built.reason}`,
-                            built.reason === "inlineMarkup"
-                                ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; write \\{ for a literal brace that would read as a tag.`
-                                : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
-                            line.lineNumber,
-                        ),
-                    ],
-                };
+            return built.ok ? { ok: true, block: built.block } : proseFailure(built, line);
         }
     }
+}
+
+function proseFailure(built: Extract<ProseBuildResult, { ok: false }>, line: StoryFileLine): LineResult {
+    return {
+        ok: false,
+        diagnostics: [
+            errorAt(
+                `compile.${built.reason}`,
+                built.reason === "inlineMarkup"
+                    ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; write \\{ for a literal brace that would read as a tag.`
+                    : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
+                line.lineNumber,
+            ),
+        ],
+    };
 }
 
 /**
@@ -504,6 +509,52 @@ function storedRowKindProblem(block: StoryBlock): string | null {
         + (expected === "nodeAction" && (action === "narration" || action === "dialogue")
             ? ", or write the line as prose and let the file build the row."
             : ".");
+}
+
+/** The payload field each option clause writes. */
+const OPTION_CONDITION_FIELD = { hide: "hiddenWhen", disable: "disabledWhen" } as const;
+
+/**
+ * An option line: its words as prose, its clauses as the option's two conditions.
+ *
+ * The line states each condition it can spell, so a clause left off clears one the row had - except
+ * a condition the printer could not have written (a blueprint), which no line can state and which
+ * therefore stays on the row however the words are edited.
+ */
+function buildOption(line: StoryFileLine, ctx: LineContext): LineResult {
+    const split = splitOptionLine(line.text);
+    if (!split.ok) {
+        return { ok: false, diagnostics: [errorAt("compile.bad_option_clause", split.message, line.lineNumber)] };
+    }
+    const built = buildProseBlock({ shape: "option", text: split.parts.words }, {
+        previous: ctx.previous,
+        mintId: ctx.mintId,
+        lookups: ctx.prose,
+    });
+    if (!built.ok) {
+        return proseFailure(built, line);
+    }
+    const block = built.block;
+    if (block.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+        return { ok: true, block };
+    }
+    const payload = { ...block.payload };
+    for (const key of ["hide", "disable"] as const) {
+        const field = OPTION_CONDITION_FIELD[key];
+        const source = split.parts.conditions[key];
+        if (source === undefined) {
+            if (payload[field] && conditionSource(payload[field], ctx.conditions) !== null) {
+                delete payload[field];
+            }
+            continue;
+        }
+        const condition = conditionFromSource(source, expressionScope(ctx.context));
+        if (!condition.ok) {
+            return { ok: false, diagnostics: [errorAt("compile.bad_condition", condition.message, line.lineNumber)] };
+        }
+        payload[field] = condition.condition;
+    }
+    return { ok: true, block: { ...block, payload } };
 }
 
 function buildBranch(line: StoryFileLine, ctx: LineContext): LineResult {

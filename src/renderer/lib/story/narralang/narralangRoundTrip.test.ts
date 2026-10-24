@@ -555,6 +555,16 @@ const corpus: Record<string, StoryScene> = {
         { id: "j4", kind: "declaration", payload: { scope: "scene", name: "flags", valueType: "json", defaultValue: { a: true }, storageKey: "j4" } },
     ] as never),
 
+    // An option's words that happen to hold a condition lead - the live ones and the retired ones.
+    // Printed bare, the first two would come back as conditions and the last two would be refused.
+    "option words that hold a condition lead": scene([
+        { id: "k1", kind: "nodeAction", payload: { action: "choice" }, children: ["k2", "k3", "k4", "k5"] },
+        { id: "k2", kind: "nodeAction", payload: { action: "choiceOption", text: text("Ask him to hide if he can", "choiceText") } },
+        { id: "k3", kind: "nodeAction", payload: { action: "choiceOption", text: text("Run, and disable if caught", "choiceText") } },
+        { id: "k4", kind: "nodeAction", payload: { action: "choiceOption", text: text("I'll show if you ask", "choiceText") } },
+        { id: "k5", kind: "nodeAction", payload: { action: "choiceOption", text: text("enable if needed", "choiceText") } },
+    ] as never),
+
     "disabled rows and an invalid one": scene([
         { id: "i1", kind: "action", payload: { action: "wait", mode: "duration", durationMs: 1500 }, disabled: true },
         { id: "i2", kind: "nodeAction", payload: { action: "narration", text: text("这一行被关掉了", "narration") }, disabled: true },
@@ -754,5 +764,56 @@ describe("a jump that comes back", () => {
             { id: "k1", kind: "jump", payload: { targetSceneId: "scene-4" } },
             { id: "k2", kind: "jump", payload: { targetSceneId: "scene-4", returnable: true } },
         ] as never))).toEqual(["jump return", "jump return return"]);
+    });
+});
+
+describe("an option's two conditions", () => {
+    // The words say what the game does: `hiddenWhen` hides the option while its expression is true,
+    // `disabledWhen` greys it out while its expression is true. These leads were once `show if` and
+    // `enable if` over the same stored fields, which read as the exact opposite of what played.
+    const menu = scene([
+        { id: "o-var", kind: "declaration", payload: { scope: "scene", name: "trust", valueType: "number", defaultValue: 0, storageKey: "o-var" } },
+        { id: "o1", kind: "nodeAction", payload: { action: "choice" }, children: ["o2"] },
+        {
+            id: "o2",
+            kind: "nodeAction",
+            payload: {
+                action: "choiceOption",
+                text: text("Stay", "choiceText"),
+                hiddenWhen: { kind: "expression", expression: expr("trust > 0", [{ name: "trust", ref: { scope: "scene", variableId: "o-var" } }]) },
+                disabledWhen: { kind: "expression", expression: expr("trust == 0", [{ name: "trust", ref: { scope: "scene", variableId: "o-var" } }]) },
+            },
+        },
+    ] as never);
+
+    it("prints hiddenWhen as `hide if` and disabledWhen as `disable if`", () => {
+        const printed = roundTrip(menu, NARRALANG_DEFAULT_DIALECT);
+
+        expect(printed).toContain("  Stay hide if trust > 0 disable if trust == 0");
+        expect(printed).not.toMatch(/show if|enable if/);
+    });
+
+    it("reads `hide if` into hiddenWhen and `disable if` into disabledWhen, unnegated", () => {
+        const parsed = parseNarralangSceneWithDialect(
+            ["var trust: number = 0", "menu:", "  Stay hide if trust > 0 disable if trust == 0"].join("\n"),
+            parseLookups,
+            NARRALANG_DEFAULT_DIALECT,
+        );
+
+        expect(parsed.diagnostics).toEqual([]);
+        const option = Object.values(parsed.blocks).find((block) => (block.payload as { action?: string }).action === "choiceOption");
+        expect(option?.payload).toMatchObject({
+            text: { value: "Stay" },
+            hiddenWhen: { kind: "expression", expression: { source: "trust > 0" } },
+            disabledWhen: { kind: "expression", expression: { source: "trust == 0" } },
+        });
+    });
+
+    it("refuses the retired leads rather than reading them either way", () => {
+        for (const line of ["  Stay show if trust > 0", "  Stay enable if trust == 0"]) {
+            const parsed = parseNarralangSceneWithDialect(["var trust: number = 0", "menu:", line].join("\n"), parseLookups, NARRALANG_DEFAULT_DIALECT);
+
+            expect(parsed.diagnostics.map((diagnostic) => diagnostic.reason)).toEqual(["retiredLead"]);
+        }
     });
 });

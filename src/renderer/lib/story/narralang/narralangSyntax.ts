@@ -63,6 +63,23 @@ function replaceAll(text: string, find: string, replacement: string): string {
 }
 
 /**
+ * Escape the first word of every place a lead's words stand as whole tokens.
+ *
+ * Splits the way the line reader does, on spaces and tabs, so "whole token" means the same thing on
+ * both sides. One escaped word is enough: the reader only takes a lead whose every word is bare.
+ */
+function escapeLeadWords(text: string, lead: string, mark: string): string {
+    const words = lead.split(" ");
+    const parts = text.split(/([ \t]+)/);
+    for (let index = 0; index < parts.length; index += 2) {
+        if (words.every((word, offset) => parts[index + offset * 2] === word)) {
+            parts[index] = `${mark}${parts[index]}`;
+        }
+    }
+    return parts.join("");
+}
+
+/**
  * Escape author text for a given line context.
  *
  * Order matters: the escape character itself goes first, or every escape added afterwards gets
@@ -97,6 +114,20 @@ export function escapeNarralangProse(
     // stray mark), and a note is already claimed by its own prefix.
     if (context === "narration" && out.endsWith(dialect.speakerSeparator)) {
         out = `${out.slice(0, -dialect.speakerSeparator.length)}${mark}${dialect.speakerSeparator}`;
+    }
+
+    // An option's condition leads end its text wherever they stand, so words that happen to spell one
+    // (`hide if he can`) would come back as a condition. The retired leads too: printed bare they are
+    // refused, and the scene could no longer be edited as a script for the sake of a phrase.
+    if (context === "option") {
+        const option = dialect.verbs.choiceOption;
+        const leads = [
+            ...option.slots.flatMap((slot) => (slot.lead === undefined ? [] : [slot.lead])),
+            ...(option.retiredLeads ?? []),
+        ];
+        for (const lead of leads) {
+            out = escapeLeadWords(out, lead, mark);
+        }
     }
 
     // An option's text is a line of its own, so it can be misread exactly as narration can - and the
