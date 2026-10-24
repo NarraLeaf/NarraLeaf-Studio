@@ -240,7 +240,9 @@ from what it starts with, and nothing else.
                               answers to is a one-off speaker.
   The rain had stopped.       narration - any line that is none of the others.
   // check this line          a note. Never compiled, never shown to a player.
-  - I was waiting for you.    a choice option. Only under a /menu row.
+  - I was waiting for you.    a choice option. Only under a /menu row. It may end with
+                              [hide if <expression>] and [disable if <expression>]: hidden or
+                              greyed out while the expression is true.
   ? gold > 10                 a branch of the /if above it: the first is its if, every later one an
                               else-if. "? else" is the else branch, and comes last.
   » Story Motion: sway        a row this format cannot spell. Kept verbatim from #data below,

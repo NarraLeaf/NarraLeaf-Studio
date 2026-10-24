@@ -197,6 +197,23 @@ those you deliberately keep.
 - **Choice:** `/menu Question text` then `- option` lines, each with its rows indented under it. A
   menu with no options, or an option with no words, is refused (`story/empty-choice`); an option with
   no rows simply carries on after the menu, as does every option that does not jump away.
+- **Conditional options:** end an option line with `[hide if <expression>]` to hide it while the
+  expression is true, `[disable if <expression>]` to show it greyed out, or both. A clause left off
+  clears that condition (`story_show` prints the ones the option has). A menu that offers only what
+  is left - three errands done in any order - is one menu in a loop, each errand its own scene that
+  comes back:
+  ```
+  /repeat 3
+    /menu Where next?
+      - Library [hide if done_library]
+        /jump Library return
+      - Rooftop [hide if done_rooftop]
+        /jump Rooftop return
+      - Clubroom [hide if done_clubroom]
+        /jump Clubroom return
+  ```
+  Each errand scene sets its own flag (`/set done_library true`) and appends to a string variable
+  when the order matters (`/set order order + "L"`), which `/if` reads after the loop.
 - **Condition, short form:** `/if <expression>` with the rows to run indented under it. It reads back
   in the long form below (a bare `/if` and one `? <expression>`); for an else, write the long form - a
   `?` line directly under a short `/if` is refused (`compile.short_if_branch`). Studio 1.6.1 and

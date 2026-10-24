@@ -92,6 +92,7 @@ import {
 } from "@shared/utils/gameProgressFile";
 import { BLUEPRINT_SCREENSHOTS_DIR_NAME } from "@shared/types/blueprint/screenshot";
 import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
+import { captureStageThumbnail, normalizeStageCaptureRequest } from "@shared/utils/stageCapture";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { writeCrashReport, type CrashReportBuild } from "./crashReport";
@@ -2068,6 +2069,20 @@ function registerRuntimeIpc(): void {
         directory: screenshotsDir(),
         openPath: directory => shell.openPath(directory),
     }));
+    /*
+     * A save's picture of the stage, read back from the compositor rather than drawn by the page,
+     * which costs the page most of a second per picture (see `@shared/utils/stageCapture`). Nothing
+     * is written: the picture goes back to the page, which puts it in the save. The rectangle comes
+     * from the page and is read defensively; it can only name part of this window.
+     */
+    ipcMain.handle("runtime:stage:capture", async (_event, request: unknown) => {
+        const win = mainWindow;
+        const normalized = normalizeStageCaptureRequest(request);
+        if (!win || win.isDestroyed() || !normalized) {
+            return null;
+        }
+        return captureStageThumbnail(win.webContents, normalized);
+    });
     /*
      * The crash screen's report file.
      *

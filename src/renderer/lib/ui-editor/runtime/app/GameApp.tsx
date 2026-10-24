@@ -283,7 +283,13 @@ import {
 } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
-import { shrinkSaveCapture } from "./saveCapture";
+import {
+    canCaptureSavePicture,
+    captureSavePicture,
+    finishSavePicture,
+    readBackSavePicture,
+    type SavePictureSource,
+} from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -341,6 +347,8 @@ import type {
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
+import { AutoSavePicture } from "./autoSavePicture";
+import { SaveRecordReads } from "./saveRecordReads";
 import { usePlaytime } from "./usePlaytime";
 import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import type { WeatherSeedRef } from "@shared/weather/model";
@@ -411,6 +419,14 @@ export type GameAppNavEntry = AppNavEntry;
 
 /** A page or layer that has been asked for and has not painted yet, for `nl.surface.mount`. */
 type SurfaceMountStart = { start: number; surfaceId: string; kind: "page" | "layer" };
+
+/** A save's picture as its writer asks for it: none, one taken now, or one already in hand. */
+type SaveScreenshot = boolean | { picture: string };
+
+/** What a save's picture needs of the running game: its own captures, and the stage to read back. */
+type SavePictureLiveGame = SavePictureSource & {
+    getGameState(): { mainContentNode: Element | null } | undefined;
+};
 
 /**
  * How many surfaces may be waiting for their first paint at once before the oldest is forgotten.
@@ -1289,14 +1305,27 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const stageCover = useStageCoverCapture({
         covered: stageCoveredByPage,
-        capture: () => {
+        capture: stillHeld => {
             const liveGame = nlrLiveGameRef.current;
-            if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+            if (!liveGame || !gameEnteredRef.current || !canCaptureSavePicture(liveGame)) {
                 return null;
             }
-            return liveGame.capturePng();
+            // At the size a save keeps it: a save is the only thing this picture is ever used for.
+            // Read back by the shell while the page is held off the screen (`pagesHeldForCover`);
+            // a frame that came back after the hold let go may show the page, so the page's own
+            // picture - a clone of the stage, which leaves pages out - is taken instead.
+            return (async () => {
+                const readBack = await readBackSavePicture(liveGame.getGameState()?.mainContentNode, host.captureStage);
+                return readBack !== null && stillHeld() ? readBack : captureSavePicture(liveGame);
+            })();
         },
     });
+    /**
+     * The pages stay off the screen while the cover picture is read back, so the frame read is the
+     * stage and its Game UI alone; they appear in the render that steps the Game UI off. Only where
+     * the shell reads back: the page's own picture is a clone of the stage and never shows a page.
+     */
+    const pagesHeldForCover = stageCover.holding && host.captureStage !== undefined;
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
@@ -3578,32 +3607,46 @@ export function GameApp(props: GameAppProps): ReactNode {
         [bundle.languageChange],
     );
     const readStageCoverPicture = stageCover.readPicture;
-    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
-        const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
-        let capture: string | undefined;
-        // Under a page the stage's Game UI has stepped off, so the picture is the one taken as that
-        // page opened: the screen the player left to save, as an auto-save a moment earlier shows it.
-        const underPage = screenshot === true ? await (readStageCoverPicture() ?? null) : null;
-        if (underPage !== null) {
-            try {
-                capture = await shrinkSaveCapture(underPage);
-            } catch (error) {
-                reportSaveCaptureFailure(id, normalizeError(error));
+    /**
+     * What a save screen reads, each record once however many of its nodes ask (see
+     * `saveRecordReads`). Writes and removals below drop what it holds for their slot.
+     */
+    const saveRecordReads = useMemo(() => new SaveRecordReads(host.saveStore), [host.saveStore]);
+    const captureStage = host.captureStage;
+    /**
+     * The picture a save into `id` takes now, at the size it keeps it (see `saveCapture`). Under a
+     * page the stage's Game UI has stepped off, so the picture is the one taken as that page opened:
+     * the screen the player left to save, as an auto-save a moment earlier shows it. Otherwise the
+     * shell reads the frame back from the compositor, and the page draws its own only when the shell
+     * cannot. Undefined when none could be taken - the save itself still goes through, a failed
+     * preview must not lose progress.
+     */
+    const takeSavePicture = useCallback(async (id: string, liveGame: SavePictureLiveGame): Promise<string | undefined> => {
+        const underPage = await (readStageCoverPicture() ?? null);
+        try {
+            if (underPage !== null) {
+                return await finishSavePicture(underPage);
             }
-        } else if (screenshot === true) {
-            if (typeof liveGame.capturePng !== "function") {
+            const readBack = await readBackSavePicture(liveGame.getGameState()?.mainContentNode, captureStage);
+            if (readBack !== null) {
+                return readBack;
+            }
+            if (!canCaptureSavePicture(liveGame)) {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
-            } else {
-                try {
-                    // Kept at thumbnail size: the full-size picture was 99% of every save file, and a
-                    // save screen only ever draws it small (see `saveCapture`).
-                    capture = await shrinkSaveCapture(await liveGame.capturePng());
-                } catch (error) {
-                    // The save itself still goes through — a failed preview must not lose progress.
-                    reportSaveCaptureFailure(id, normalizeError(error));
-                }
+                return undefined;
             }
+            return await captureSavePicture(liveGame);
+        } catch (error) {
+            reportSaveCaptureFailure(id, normalizeError(error));
+            return undefined;
         }
+    }, [captureStage, readStageCoverPicture, reportSaveCaptureFailure]);
+    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: SaveScreenshot) => {
+        const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
+        const capture = typeof screenshot === "object"
+            ? screenshot.picture
+            : screenshot === true ? await takeSavePicture(id, liveGame) : undefined;
+        saveRecordReads.forget(id);
         await host.saveStore.write(
             id,
             liveGame.serialize(),
@@ -3612,6 +3655,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             currentSaveStamp() ?? undefined,
             playtime.getRunSeconds(),
         );
+        // Again after it landed: a screen that read the slot while the write was on its way holds the
+        // save this one replaced.
+        saveRecordReads.forget(id);
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
@@ -3620,15 +3666,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         playtime,
         pluginHost,
-        readStageCoverPicture,
-        reportSaveCaptureFailure,
         requireActiveLiveGame,
+        saveRecordReads,
+        takeSavePicture,
     ]);
     /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
-    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: boolean) => timeGameSpan(
+    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: SaveScreenshot) => timeGameSpan(
         GameTimelineName.saveWrite,
         () => writeSaveNow(id, metadata, screenshot),
-        outcome => ({ slot: id, screenshot: screenshot === true, ok: outcome.ok }),
+        outcome => ({ slot: id, screenshot: screenshot !== undefined && screenshot !== false, ok: outcome.ok }),
     ), [writeSaveNow]);
 
     /**
@@ -4082,8 +4128,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
+        saveRecordReads.forget(id);
         await host.saveStore.remove(id);
-    }, [host.saveStore]);
+        saveRecordReads.forget(id);
+    }, [host.saveStore, saveRecordReads]);
 
     /**
      * Report a language-restart step to both channels a host has, on one call.
@@ -4311,14 +4359,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     // documented as direct store access, not the authoring view - and Has Quick
     // Save depends on that.)
     const listSaveIds = useCallback(async (): Promise<string[]> => listPlayerSaveIds(
-        await host.saveStore.listHeaders(),
+        await saveRecordReads.listHeaders(),
         {
             // No plugin host means no plugins loaded, and so nothing of theirs to leave out.
             pluginReservedSaveIds: pluginHost?.reservedSaveIds ?? new Set<string>(),
             build: saveBuild,
             compatibilityConfig: saveCompatibilityConfig,
         },
-    ), [host.saveStore, pluginHost, saveBuild, saveCompatibilityConfig]);
+    ), [pluginHost, saveBuild, saveCompatibilityConfig, saveRecordReads]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -4346,7 +4394,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         const entries = await Promise.all(ids.map(async (id): Promise<AutoSaveEntry | null> => {
             let record: GameAppSaveRecord | null;
             try {
-                record = await host.saveStore.read(id);
+                record = await saveRecordReads.read(id);
             } catch {
                 return null; // a corrupt slot must not take the whole list down
             }
@@ -4388,7 +4436,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig]);
+    }, [host.saveStore, readSavedGameLineForPlayer, saveBuild, saveCompatibilityConfig, saveRecordReads]);
+
+    /**
+     * When a scheduled auto-save takes its picture: at a quiet moment while the player reads, never
+     * while the skip runs (see `autoSavePicture`). One instance for the mount; what it reads it
+     * reads through refs, because the picture outlives the render that asked for it.
+     */
+    const takeSavePictureRef = useRef(takeSavePicture);
+    takeSavePictureRef.current = takeSavePicture;
+    const [autoSavePicture] = useState(() => new AutoSavePicture({
+        isSkipping: () => {
+            const controller = skipControllerRef.current;
+            return controller ? controller.isRunning() || controller.isSkipping() : false;
+        },
+        playthrough: () => gameEntriesRef.current,
+        capture: async id => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !gameEnteredRef.current) {
+                return undefined;
+            }
+            return takeSavePictureRef.current(id, liveGame);
+        },
+    }));
+    useEffect(
+        () => storyRuntime.subscribeCurrentAction(() => autoSavePicture.markPlayHeadMoved()),
+        [autoSavePicture, storyRuntime.subscribeCurrentAction],
+    );
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
@@ -4396,17 +4470,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         // the write can actually serialize something.
         isPlaying: isPlaythroughRunning,
         // Screenshots on: the point of an autosave ring is a screen that lists
-        // it, and a list of thumbnail-less rows is a worse feature. The cost is
-        // bounded by the scheduler's play-head gate - an idle game captures
-        // nothing.
-        write: id => writeSave(id, null, true),
+        // it, and a list of thumbnail-less rows is a worse feature. A scheduled
+        // write takes its picture at a quiet moment and keeps the last one while
+        // the player skips; one the author asked for (`Auto Save`) takes it now.
+        write: async (id, reason) => {
+            if (reason === "requested") {
+                return writeSave(id, null, true);
+            }
+            const picture = await autoSavePicture.pictureForWrite(id);
+            // The wait for a quiet moment can outlast the run: the player went back to the title.
+            if (!isPlaythroughRunning()) {
+                return;
+            }
+            return writeSave(id, null, picture === undefined ? false : { picture });
+        },
         listStored: listAutoSaves,
         subscribeStoryAdvanced: storyRuntime.subscribeCurrentAction,
         log: host.log,
     });
 
     const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         const metadata = record?.metadata.user;
         if (metadata === undefined) {
             return null;
@@ -4417,7 +4501,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         } catch {
             return null;
         }
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * One slot's stamps, read from the record the store already keeps.
@@ -4428,7 +4512,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * slot exists, and a save screen still has a row to draw for it.
      */
     const getSaveTimes = useCallback(async (id: string): Promise<SaveRecordTimes | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4440,7 +4524,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedAt: toMs(record.metadata.updatedAt),
             createdAt: toMs(record.metadata.createdAt),
         };
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * Where one slot stopped, read from the engine metadata inside the record.
@@ -4459,7 +4543,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * be able to leave that row blank instead of stating the player finished in no time at all.
      */
     const getSavePlaytime = useCallback(async (id: string): Promise<SaveRecordPlaytime | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4467,15 +4551,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         return seconds === undefined
             ? { seconds: 0, recorded: false }
             : { seconds, recorded: true };
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
         return readSavedGameLineForPlayer(record.savedGame);
-    }, [host.saveStore, readSavedGameLineForPlayer]);
+    }, [saveRecordReads, readSavedGameLineForPlayer]);
 
     /**
      * Which of the project's stories one slot was written in.
@@ -4491,7 +4575,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * other.
      */
     const getSaveStory = useCallback(async (id: string): Promise<SaveRecordStory | null> => {
-        const record = await host.saveStore.read(id);
+        const record = await saveRecordReads.read(id);
         if (!record) {
             return null;
         }
@@ -4502,15 +4586,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const entry = (bundle.storyLibrary?.index?.stories ?? []).find(story => story.id === storyId);
         return { id: storyId, name: entry?.name ?? "" };
-    }, [bundle.storyLibrary, host.saveStore]);
+    }, [bundle.storyLibrary, saveRecordReads]);
 
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
-        const capture = await host.saveStore.readPreview(id);
+        const capture = await saveRecordReads.readPreview(id);
         if (!capture) {
             return null;
         }
         return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
-    }, [host.saveStore]);
+    }, [saveRecordReads]);
 
     /**
      * The last compiled story, kept so a second launch of the same one does not rebuild it.
@@ -7420,7 +7504,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 {/* The pages start only after the NLR environment boot preload finishes; the layers do
                     not wait for it (see `layersMayDraw`). The box also guards the stage while a page
                     or layer plays its exit - see `SurfaceStackBox`. */}
-                <SurfaceStackBox className="absolute inset-0 z-10">
+                <SurfaceStackBox className="absolute inset-0 z-10" heldBack={pagesHeldForCover}>
                     <AnimatePresence
                         custom={navState.direction}
                         initial={false}

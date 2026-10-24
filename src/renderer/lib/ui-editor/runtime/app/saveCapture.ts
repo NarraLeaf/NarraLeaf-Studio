@@ -23,8 +23,22 @@
  * Old saves are untouched. They are read as they were written - a data URL says what it holds - and a
  * save screen draws a large PNG as happily as a small WebP.
  *
+ * Shrinking afterwards is the fallback, not the way in. Drawing the stage at full size, encoding it as
+ * a PNG, decoding it and drawing it again was most of what a picture cost - about half a second of the
+ * main thread per save in a 1920x1080 game on a 2x display, every few seconds while an auto-save ring
+ * ran, which the player saw as the text stalling. An engine that can draw the stage at a given size
+ * (`LiveGame.captureImage`, narraleaf-react 1.5.1) is asked for the picture at the kept size and in the
+ * kept encoding, and it goes into the save as it comes; {@link captureSavePicture} picks the way.
+ *
+ * Even drawn small, a picture the page draws itself costs most of a second: the clone and its
+ * rasterisation do not shrink with the picture. A desktop shell reads the frame back from the
+ * compositor instead ({@link readBackSavePicture}, `@shared/utils/stageCapture`), and the page draws
+ * its own only where it cannot - the web export, or a window that gave no frame.
+ *
  * Comments in English per project convention.
  */
+
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 
 /** The longest edge, in pixels, a save's picture is kept at. See the module comment. */
 export const SAVE_CAPTURE_MAX_EDGE = 960;
@@ -100,5 +114,90 @@ export async function shrinkSaveCapture(capture: string, codec: CaptureCodec = b
         return shrunk;
     } catch {
         return capture;
+    }
+}
+
+/** What `LiveGame.captureImage` takes. Declared here because engines before 1.5.1 have no such method. */
+export type StageImageOptions = {
+    maxEdge?: number;
+    type?: string;
+    quality?: number;
+    backgroundColor?: string;
+};
+
+/** The two ways a running game can picture its stage; an engine before 1.5.1 has only the first. */
+export type SavePictureSource = {
+    capturePng?: () => Promise<string>;
+    captureImage?: (options: StageImageOptions) => Promise<string>;
+};
+
+/** Whether `source` can picture its stage at all. */
+export function canCaptureSavePicture(source: SavePictureSource): boolean {
+    return typeof source.captureImage === "function" || typeof source.capturePng === "function";
+}
+
+/**
+ * A picture already at the kept size in a kept encoding goes into the save as it is; anything else is
+ * shrunk. Only a WebP or JPEG passes - every picture drawn at the kept size comes in one of the two,
+ * and a full-size capture is always a PNG.
+ */
+export async function finishSavePicture(picture: string, codec: CaptureCodec = browserCaptureCodec): Promise<string> {
+    if (picture.startsWith("data:image/webp") || picture.startsWith("data:image/jpeg")) {
+        return picture;
+    }
+    return shrinkSaveCapture(picture, codec);
+}
+
+/**
+ * The stage as a save keeps it: drawn straight at {@link SAVE_CAPTURE_MAX_EDGE} as WebP by an engine
+ * that can, else captured full size and shrunk. A shell that cannot write WebP answers with a PNG at
+ * the kept size, which {@link finishSavePicture} re-encodes - a small picture, so a cheap one.
+ *
+ * Rejects when the engine's capture does, or when `source` has no way to capture at all.
+ */
+export async function captureSavePicture(source: SavePictureSource, codec: CaptureCodec = browserCaptureCodec): Promise<string> {
+    if (typeof source.captureImage === "function") {
+        const picture = await source.captureImage({
+            maxEdge: SAVE_CAPTURE_MAX_EDGE,
+            type: "image/webp",
+            quality: SAVE_CAPTURE_QUALITY,
+            // Neither encoder keeps transparency, and the stage is drawn on black.
+            backgroundColor: "#000",
+        });
+        return finishSavePicture(picture, codec);
+    }
+    if (typeof source.capturePng === "function") {
+        return shrinkSaveCapture(await source.capturePng(), codec);
+    }
+    throw new Error("the game runtime does not support capturePng");
+}
+
+/** A shell's read-back of the stage (`GameAppHost.captureStage`). */
+export type StageReadBack = (request: StageCaptureRequest) => Promise<string | null>;
+
+/**
+ * The stage read back from the compositor by the shell, at the kept size, or null when the shell
+ * cannot, the stage is not laid out, or no frame came - the caller then draws its own. Never rejects.
+ */
+export async function readBackSavePicture(
+    stage: Element | null | undefined,
+    readBack: StageReadBack | undefined,
+): Promise<string | null> {
+    if (!readBack || !stage) {
+        return null;
+    }
+    const box = stage.getBoundingClientRect();
+    if (!(box.width > 0 && box.height > 0)) {
+        return null;
+    }
+    try {
+        const picture = await readBack({
+            rect: { x: box.x, y: box.y, width: box.width, height: box.height },
+            maxEdge: SAVE_CAPTURE_MAX_EDGE,
+            quality: SAVE_CAPTURE_QUALITY,
+        });
+        return typeof picture === "string" && picture.startsWith("data:image/") ? picture : null;
+    } catch {
+        return null;
     }
 }

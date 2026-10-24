@@ -7,6 +7,7 @@ import type {
     BlueprintScreenshotResult,
 } from "@shared/types/blueprint/screenshot";
 import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
+import { captureStageThumbnail, normalizeStageCaptureRequest } from "@shared/utils/stageCapture";
 import { devModeProjectDirectoryName } from "./devModeSaveAction";
 import {
     fitInside,
@@ -193,6 +194,32 @@ export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devMod
             directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
             capture: async () => (await window.win.webContents.capturePage()).toPNG(),
         }));
+    }
+}
+
+/**
+ * A save's picture of the Dev Mode window's stage, read back from the compositor - the way the
+ * packaged game's main process answers the same request, through the same helper, so an auto-save
+ * costs an author's window what it costs a player's.
+ *
+ * The rectangle comes from the page and is read defensively; it can only ever name part of the
+ * window that asked, which is the window this reads back.
+ */
+export class DevModeStageCaptureHandler extends IPCHandler<IPCEventType.devModeStageCapture> {
+    readonly name = IPCEventType.devModeStageCapture;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeStageCapture]["data"],
+    ): Promise<RequestStatus<{ picture: string | null }>> {
+        return this.tryUse(async () => {
+            const request = normalizeStageCaptureRequest(data);
+            if (!request || window.isClosed()) {
+                return { picture: null };
+            }
+            return { picture: await captureStageThumbnail(window.win.webContents, request) };
+        });
     }
 }
 

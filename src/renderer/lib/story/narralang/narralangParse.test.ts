@@ -165,12 +165,13 @@ describe("structure", () => {
         const result = parse(
             "var trust: number = 0",
             "menu 要说点什么吗？:",
-            "  「其实我在等你。」 show if trust > 0 enable if trust == 0:",
+            "  「其实我在等你。」 hide if trust > 0 disable if trust == 0:",
             "    wait click",
         );
 
         expect(result.diagnostics).toEqual([]);
         const option = rows(result)[2];
+        // Word for word: the option is hidden while `trust > 0`, greyed out while `trust == 0`.
         expect(option.payload).toMatchObject({
             action: "choiceOption",
             text: { value: "「其实我在等你。」", role: "choiceText" },
@@ -178,6 +179,28 @@ describe("structure", () => {
             disabledWhen: { kind: "expression", expression: { source: "trust == 0" } },
         });
         expect(option.childrenIds).toHaveLength(1);
+    });
+
+    it("refuses an option still spelling its conditions `show if` / `enable if`", () => {
+        // Those leads stored the condition unchanged as `hiddenWhen` / `disabledWhen`, so they said
+        // the opposite of what the game did. Read either way, a line using them flips somebody's
+        // intent; read as text, it commits a condition-less option. So it is refused, at the lead.
+        const shown = parse("var trust: number = 0", "menu:", "  Stay show if trust > 0:", "    wait click");
+        expect(shown.diagnostics).toEqual([{ line: 3, column: 8, reason: "retiredLead" }]);
+
+        const enabled = parse("var trust: number = 0", "menu:", "  Stay enable if trust == 0:", "    wait click");
+        expect(enabled.diagnostics).toEqual([{ line: 3, column: 8, reason: "retiredLead" }]);
+    });
+
+    it("reads a retired lead that was escaped as the option's own words", () => {
+        const result = parse("menu:", "  I'll \\show if you ask:", "    wait click");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(rows(result)[1].payload).toMatchObject({
+            action: "choiceOption",
+            text: { value: "I'll show if you ask" },
+        });
+        expect(rows(result)[1].payload).not.toHaveProperty("hiddenWhen");
     });
 
     it("reads the scene header's name and nests by indentation", () => {

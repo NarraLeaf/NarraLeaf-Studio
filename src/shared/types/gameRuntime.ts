@@ -1,6 +1,7 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenScreenshotsResult, BlueprintScreenshotResult } from "./blueprint/screenshot";
+import type { StageCaptureRequest } from "../utils/stageCapture";
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
@@ -980,6 +981,15 @@ export type GameRuntimePreloadBridge = {
     saveScreenshot(): Promise<BlueprintScreenshotResult>;
     /** Show the player the folder those go in. Inert on the same shell, for the same reason. */
     openScreenshotsFolder(): Promise<BlueprintOpenScreenshotsResult>;
+    /**
+     * A save's picture of the stage, read back from the compositor by the main process: a JPEG data
+     * URL fitted to the request, or null when the window gave no frame. See
+     * `@shared/utils/stageCapture`.
+     *
+     * Absent on the web export, and absence is the whole signal: a page cannot read its own window
+     * back, so the game draws the picture itself there, as it does on a preload that predates this.
+     */
+    captureStage?(request: StageCaptureRequest): Promise<string | null>;
     /**
      * Write one file about the crash the player is looking at, and show it to them.
      *
