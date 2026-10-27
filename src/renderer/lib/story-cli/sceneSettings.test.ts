@@ -136,7 +136,7 @@ describe("#background and #music", () => {
         const summary = summariseApply(panelOrder, readerOrder, () => "", {
             before: describeSceneSettings(panelOrder, lookups),
             after: describeSceneSettings(readerOrder, lookups),
-            stated: { background: true, music: true },
+            stated: { background: true, music: true, description: false },
         });
         expect(summary.settingsChanged).toEqual([]);
         expect(settingsOf("#music bgm-quiet vol=0.7 fade=1.5s loop=true", panelOrder).scene.bgm)
@@ -201,17 +201,93 @@ describe("#background and #music", () => {
         const changed = summariseApply(scene, bare, () => "", {
             before: describe(scene),
             after: describe(bare),
-            stated: { background: true, music: false },
+            stated: { background: true, music: false, description: false },
         });
         expect(formatApplySummary(changed, true)).toContain('Scene setting: opening background "classroom" -> none.');
         const kept = summariseApply(scene, scene, () => "", {
             before: describe(scene),
             after: describe(scene),
-            stated: { background: false, music: false },
+            stated: { background: false, music: false, description: false },
         });
         const text = formatApplySummary(kept, false);
         expect(text).toContain('This scene still opens with opening background "classroom", before its first row');
         expect(text).toContain('Write "#background none" in the header to clear them.');
+    });
+});
+
+describe("#description", () => {
+    it("is printed only for a scene that has one, and reads back as the same text", () => {
+        expect(printSceneSettings(bare, lookups)).toEqual(["#background none", "#music none"]);
+        expect(printSceneSettings({ ...bare, description: "" }, lookups)).toEqual(["#background none", "#music none"]);
+        for (const description of [
+            "After class, the two of them alone",
+            "Two lines:\nthe second one",
+            "  leading space",
+            "none",
+            "NONE",
+            "'quoted' at the start",
+            "\"double\" at the start",
+            "ends with a quote'",
+            "a backslash \\ and a #hash",
+        ]) {
+            const scene: StoryScene = { ...bare, description };
+            const printed = printSceneSettings(scene, lookups);
+            expect(printed).toHaveLength(3);
+            expect(printed[2]).not.toContain("\n#");
+            const back = settingsOf(printed.join("\n"), bare);
+            expect(back.diagnostics, description).toEqual([]);
+            expect(back.scene, description).toEqual(scene);
+        }
+        expect(printSceneSettings({ ...bare, description: "After class" }, lookups)[2]).toBe("#description After class");
+        expect(printSceneSettings({ ...bare, description: "a\nb" }, lookups)[2]).toBe('#description "a\\nb"');
+        expect(printSceneSettings({ ...bare, description: "none" }, lookups)[2]).toBe('#description "none"');
+    });
+
+    it("clears with none, takes single quotes off, and leaves a description the file does not state", () => {
+        const scene: StoryScene = { ...bare, description: "Old note" };
+        const cleared = settingsOf("#description none", scene);
+        expect(cleared.diagnostics).toEqual([]);
+        expect("description" in cleared.scene).toBe(false);
+        expect(settingsOf('#description ""', scene).scene).toEqual(bare);
+        expect(settingsOf("#description 'A quiet room'", bare).scene.description).toBe("A quiet room");
+        expect(settingsOf("#description   A quiet room  ", bare).scene.description).toBe("A quiet room");
+        expect(settingsOf("#background none", scene).scene.description).toBe("Old note");
+        // The panel can leave an empty description behind; none is no change to it.
+        const empty: StoryScene = { ...bare, description: "" };
+        expect(settingsOf("#description none", empty).scene).toBe(empty);
+        expect(settingsOf("#description Old note", scene).scene).toBe(scene);
+    });
+
+    it("refuses an empty directive and a double-quoted value that is not one JSON string", () => {
+        expect(settingsOf("#description").diagnostics).toMatchObject([{ code: "file.bad_setting", line: 2, message: expect.stringMatching(/rest of the line/) }]);
+        expect(settingsOf('#description "unclosed').diagnostics).toMatchObject([{ code: "file.bad_setting", line: 2, message: expect.stringMatching(/one JSON string/) }]);
+        expect(settingsOf('#description "a" and more').diagnostics[0].message).toMatch(/one JSON string/);
+        expect(parseStoryFile("#nlstory 1\n#description a\n#description b\n").diagnostics).toMatchObject([{ code: "file.duplicate_setting", line: 3 }]);
+    });
+
+    it("counts only in the header", () => {
+        const parsed = parseStoryFile("#nlstory 1\n#scene S\nHello.\n#description later\n");
+        expect(parsed.ast.settings.description).toBeUndefined();
+        expect(parsed.diagnostics).toMatchObject([{ code: "file.setting_outside_header", line: 4 }]);
+    });
+
+    it("says in the summary when it changed, on one line, and never that the scene still opens with it", () => {
+        const scene: StoryScene = { ...bare, description: "Old" };
+        const next: StoryScene = { ...bare, description: "New\nsecond line" };
+        const describe = (value: StoryScene) => describeSceneSettings(value, lookups);
+        const changed = summariseApply(scene, next, () => "", {
+            before: describe(scene),
+            after: describe(next),
+            stated: { background: false, music: false, description: true },
+        });
+        expect(changed.settingsChanged).toEqual([{ setting: "description", from: "Old", to: "New\nsecond line" }]);
+        expect(formatApplySummary(changed, true)).toContain('Scene setting: description "Old" -> "New\\nsecond line".');
+        const kept = summariseApply(scene, scene, () => "", {
+            before: describe(scene),
+            after: describe(scene),
+            stated: { background: false, music: false, description: false },
+        });
+        expect(kept.settingsKept).toEqual([]);
     });
 });
 
@@ -369,6 +445,23 @@ describe("story show / apply on the command line", () => {
         expect(applied.code, applied.out + applied.err).toBe(0);
         expect(applied.out).toContain('Scene setting: opening background "classroom" -> none.');
         expect(stored().defaultBackgroundAssetId).toBeUndefined();
+    });
+
+    it("sets a scene's description from the header, and prints it back", async () => {
+        const file = path.join(projectDir, "clubroom.story");
+        await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file);
+        const shown = fs.readFileSync(file, "utf8");
+        expect(shown).not.toContain("#description");
+        fs.writeFileSync(file, shown.replace("#music none\n", "#music none\n#description Where the club meets\n"), "utf8");
+        const applied = await cli("apply", file, "--project", projectDir, "--write");
+        expect(applied.code, applied.out + applied.err).toBe(0);
+        expect(applied.out).toContain('Scene setting: description none -> "Where the club meets".');
+        expect(stored().description).toBe("Where the club meets");
+
+        await cli("show", "--project", projectDir, "--scene", "The clubroom", "--out", file);
+        expect(fs.readFileSync(file, "utf8")).toContain("\n#music none\n#description Where the club meets\n");
+        const again = await cli("apply", file, "--project", projectDir, "--write");
+        expect(again.out).not.toContain("Scene setting");
     });
 
     it("keeps the background when the file leaves the directive out, and says so", async () => {
