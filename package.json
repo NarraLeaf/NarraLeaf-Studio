@@ -37,6 +37,8 @@
     "clean": "rimraf dist",
     "lint": "node scripts/typecheck.mjs",
     "lint:oxc": "oxlint",
+    "typecheck": "node scripts/typecheck.mjs",
+    "typecheck:fast": "node scripts/typecheck.mjs --fast",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "test": "vitest run",
