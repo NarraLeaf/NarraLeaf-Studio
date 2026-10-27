@@ -39,7 +39,7 @@ export type StoryFileAst = {
     sceneName: string | null;
     /** From the scene directive's anchor. Null when the file names the scene only by name. */
     sceneId: string | null;
-    /** The `#background` / `#music` directives the file states; see `sceneSettings.ts`. */
+    /** The `#background` / `#music` / `#description` directives the file states; see `sceneSettings.ts`. */
     settings: SceneSettingsAst;
     lines: StoryFileLine[];
     /** Anchor id to the block it stands for, from the `#data` footer. */

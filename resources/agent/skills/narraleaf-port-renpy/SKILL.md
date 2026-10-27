@@ -145,6 +145,9 @@ that byte-identical files are imported once (the second name points at the first
   computed (`references/positions-and-atl.md` → "Sprites"). Verify one with a screenshot.
 - Name colours, name-box styles and per-character text styles come from the `Character(...)`
   arguments.
+- After each character has its sprites, run `character_avatars_autoframe` for it (required; see
+  `narraleaf-make-game` step 4). Ren'Py side images, where the game has them, go on `avatars`
+  instead - they are the original's own avatars.
 
 ## Step 5 - Variables
 

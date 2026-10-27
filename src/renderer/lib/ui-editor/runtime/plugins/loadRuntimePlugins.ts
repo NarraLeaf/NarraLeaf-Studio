@@ -18,6 +18,7 @@ import type { RuntimePluginDescriptor } from "@shared/types/plugins";
 import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
 import { registerStoryCompilePass } from "../game/storyCompilePass";
+import { registerInlineTextEffectRenderer } from "./inlineTextEffectRenderers";
 import {
     getStoryPluginActionOwner,
     registerStoryPluginAction,
@@ -32,6 +33,7 @@ import {
     defineRuntimePlugin,
     isRuntimePluginDefinition,
     type RuntimeBlueprintNodeDef,
+    type RuntimeInlineTextEffectDef,
     type RuntimePluginApp,
     type RuntimePluginGame,
     type RuntimePluginLogLevel,
@@ -416,6 +418,26 @@ function createRuntimePluginApp(
         notifyContributedWidgetsChanged();
     };
 
+    const registerInlineTextEffect = (def: RuntimeInlineTextEffectDef): void => {
+        const id = typeof def?.id === "string" ? def.id.trim() : "";
+        if (!id || typeof def.render !== "function") {
+            throw new Error("Runtime inline text effect requires an id and a render function");
+        }
+        if (!id.startsWith(`${pluginId}.`)) {
+            throw new Error(`Inline text effect id must be prefixed with plugin id: ${pluginId}`);
+        }
+        // `?? []` because a descriptor built from a pack is parsed JSON, and a pack written before
+        // this key existed has none.
+        if (!(descriptor.manifest.contributes.inlineTextEffects ?? []).includes(id)) {
+            throw new Error(
+                `Inline text effect is not declared in manifest contributes.inlineTextEffects: ${id}. ` +
+                "Declare it so Studio can ship the plugin with projects that use it.",
+            );
+        }
+        // Throws when another plugin already drew this id, as the widget registration does.
+        registerInlineTextEffectRenderer(pluginId, { ...def, id });
+    };
+
     const registerStoryAction = (def: RuntimeStoryActionDef): void => {
         const id = typeof def?.id === "string" ? def.id.trim() : "";
         if (!id || typeof def.run !== "function") {
@@ -503,6 +525,14 @@ function createRuntimePluginApp(
             registerMany: defs => {
                 for (const def of defs) {
                     registerWidget(def);
+                }
+            },
+        },
+        inlineTextEffects: {
+            register: registerInlineTextEffect,
+            registerMany: defs => {
+                for (const def of defs) {
+                    registerInlineTextEffect(def);
                 }
             },
         },

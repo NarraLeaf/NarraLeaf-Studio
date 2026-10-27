@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
+import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Rows3, Star, Waypoints } from "lucide-react";
 import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -11,6 +11,7 @@ import { PanelStateService } from "@/lib/workspace/services/core/PanelStateServi
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { ProjectDlc } from "@shared/types/dlc";
 import { useWorkspace } from "../../../context";
@@ -35,6 +36,15 @@ import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer
 import { usePanelRevealRequests } from "../../search/panelRevealRequest";
 import { REVEAL_MARK_MS } from "@/apps/workspace/components/ui/useTableRowReveal";
 import { storyPanelReveal } from "./storyPanelReveal";
+import { StoryOutlineCast } from "./StoryOutlineCast";
+import {
+    DEFAULT_STORY_OUTLINE_DENSITY,
+    normalizeStoryOutlineDensity,
+    STORY_OUTLINE_NARROW_PX,
+    storyOutlineCastCap,
+    storySceneCastIds,
+    type StoryOutlineDensity,
+} from "./storyOutlineView";
 import {
     buildOutlineRows,
     isOutlineDropAllowed,
@@ -53,6 +63,9 @@ interface StoryPanelState {
     selectedStoryId?: string;
     rootOpenItems?: string[];
     chapterOpenItemsByStoryId?: Record<string, string[]>;
+    outlineDensity?: StoryOutlineDensity;
+    /** Faces of each scene's cast on its row. Absent means on: the default is to show them. */
+    outlineCastAvatars?: boolean;
 }
 
 const DEFAULT_STORY_ROOT_OPEN_ITEMS = ["stories", "outline"];
@@ -97,8 +110,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const [rootOpenItems, setRootOpenItems] = useState<string[]>(DEFAULT_STORY_ROOT_OPEN_ITEMS);
     const [chapterOpenItemsByStoryId, setChapterOpenItemsByStoryId] = useState<Record<string, string[]>>({});
     const [stateReady, setStateReady] = useState(false);
+    const [outlineDensity, setOutlineDensity] = useState<StoryOutlineDensity>(DEFAULT_STORY_OUTLINE_DENSITY);
+    const [outlineCastAvatars, setOutlineCastAvatars] = useState(true);
     const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    // Its own menu rather than the shared one above: it ticks the current choices, so it reserves the
+    // icon column the row menus do not.
+    const viewMenu = useContextMenu();
     /**
      * The other half of the freeze answer: the outline - chapters and scenes - which lives inside the
      * selected story's own document.
@@ -181,6 +199,26 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         return context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     }, [context, isInitialized]);
 
+    const characterService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<CharacterService>(Services.Character);
+    }, [context, isInitialized]);
+
+    // Watched, not read once: renaming a character, giving one an avatar or a colour is done in the
+    // Characters panel beside this one, and the faces on the outline should follow without a reload.
+    const [characterRevision, setCharacterRevision] = useState(0);
+    useEffect(() => {
+        if (!characterService) {
+            return;
+        }
+        return characterService.subscribe(() => {
+            setCharacterRevision(revision => revision + 1);
+        });
+    }, [characterService]);
+    const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+
     const dlcService = useMemo(() => {
         if (!context || !isInitialized) {
             return null;
@@ -223,6 +261,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             setSelectedStoryId(saved.selectedStoryId);
         }
         setRootOpenItems(filterStoryRootOpenItems(saved?.rootOpenItems));
+        setOutlineDensity(normalizeStoryOutlineDensity(saved?.outlineDensity));
+        setOutlineCastAvatars(saved?.outlineCastAvatars !== false);
         if (saved?.chapterOpenItemsByStoryId && typeof saved.chapterOpenItemsByStoryId === "object") {
             const next: Record<string, string[]> = {};
             Object.entries(saved.chapterOpenItemsByStoryId).forEach(([storyId, chapterIds]) => {
@@ -400,8 +440,10 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             selectedStoryId: selectedStoryId ?? undefined,
             rootOpenItems: filterStoryRootOpenItems(rootOpenItems),
             chapterOpenItemsByStoryId,
+            outlineDensity,
+            outlineCastAvatars,
         });
-    }, [chapterOpenItemsByStoryId, context, panelId, rootOpenItems, selectedStoryId, stateReady]);
+    }, [chapterOpenItemsByStoryId, context, outlineCastAvatars, outlineDensity, panelId, rootOpenItems, selectedStoryId, stateReady]);
 
     useEffect(() => {
         if (selectedStoryId) {
@@ -967,6 +1009,66 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [buildSceneContextMenu, showMenu, withDeveloperRows]);
 
+    // Two settings, and the second is not under the first: either layout can show the faces or not.
+    const outlineViewMenuItems: ContextMenuDef = [
+        ...(["comfortable", "compact"] as const).map(density => ({
+            id: density,
+            label: t(`story.view.density.${density}`),
+            icon: outlineDensity === density ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined,
+            onClick: () => setOutlineDensity(density),
+        })),
+        { separator: true, id: "cast-separator" },
+        {
+            id: "cast-avatars",
+            label: t("story.panel.showCastAvatars"),
+            icon: outlineCastAvatars ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined,
+            onClick: () => setOutlineCastAvatars(value => !value),
+        },
+    ];
+
+    /**
+     * Whether the panel is too narrow for a compact row to carry its count and three faces. Measured
+     * rather than set by a breakpoint: the panel is resized by its own splitter, not by the window.
+     */
+    const [outlineNarrow, setOutlineNarrow] = useState(false);
+    useEffect(() => {
+        const root = panelRootRef.current;
+        if (!root) {
+            return;
+        }
+        // A width of 0 is a panel not laid out (collapsed, or hidden behind another tab), which is no
+        // reason to drop anything: it is measured again the moment it has a size.
+        const measure = () => setOutlineNarrow(root.clientWidth > 0 && root.clientWidth < STORY_OUTLINE_NARROW_PX);
+        measure();
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const observer = new ResizeObserver(measure);
+        observer.observe(root);
+        return () => observer.disconnect();
+    }, []);
+
+    /**
+     * Each scene's cast, keyed by scene id.
+     *
+     * ⚠ On `document`, never on the scenes: `StoryService` edits a scene in place, so a scene object is
+     * the same object before and after a line is added, and a memo on it would never recompute. The
+     * document wrapper is the one thing that is new on every change.
+     */
+    const sceneCasts = useMemo(() => {
+        const casts = new Map<string, string[]>();
+        if (!document || !outlineCastAvatars) {
+            return casts;
+        }
+        for (const scene of Object.values(document.scenes)) {
+            casts.set(scene.id, storySceneCastIds(scene));
+        }
+        return casts;
+    }, [document, outlineCastAvatars]);
+    const outlineCastCap = storyOutlineCastCap(outlineDensity, outlineNarrow);
+    // A compact row lets its count go first when the panel is narrow: the name is what the row is for.
+    const compactShowsCount = !outlineNarrow;
+
     /**
      * Where the one drop indicator goes: which row it hangs on and which edge of it.
      *
@@ -1102,6 +1204,18 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     >
                                         <Plus className="h-3 w-3" />
                                     </button>
+                                    {/* A view setting, not an edit, so no freeze guard: a frozen story
+                                        can still be laid out however its reader likes. */}
+                                    <button
+                                        type="button"
+                                        className="p-1 hover:text-primary"
+                                        data-tip={t("story.panel.outlineView")}
+                                        aria-label={t("story.panel.outlineView")}
+                                        aria-haspopup="menu"
+                                        onClick={event => viewMenu.showMenu(event)}
+                                    >
+                                        <Rows3 className="h-3 w-3" />
+                                    </button>
                                 </>
                             }
                         >
@@ -1193,6 +1307,17 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             const sceneRowIndex = outlineRows.findIndex(row => row.kind === "scene" && row.sceneId === scene.id);
                                                             const sceneDrag = { kind: "scene" as const, sceneId: scene.id };
                                                             const sceneMark = dropAnchor?.rowIndex === sceneRowIndex ? dropAnchor.edge : null;
+                                                            const sceneCast = sceneCasts.get(scene.id);
+                                                            const sceneActions = (
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover/scene:opacity-100"
+                                                                    data-tip={t("story.panel.sceneActions")} aria-label={t("story.panel.sceneActions")}
+                                                                    onClick={event => handleOpenSceneMenu(event, scene)}
+                                                                >
+                                                                    <MoreVertical className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            );
                                                             return (
                                                                 <div
                                                                     key={scene.id}
@@ -1218,20 +1343,37 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                                     ) : (
                                                                         <FileText className="h-4 w-4 shrink-0 text-fg-muted" />
                                                                     )}
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <div className="flex min-w-0 items-center gap-2">
+                                                                    {outlineDensity === "compact" ? (
+                                                                        <>
                                                                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
-                                                                        </div>
-                                                                        <div className="truncate text-2xs text-fg-subtle">{tn("story.panel.lineCount", lineCount)}</div>
-                                                                    </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
-                                                                        data-tip={t("story.panel.sceneActions")} aria-label={t("story.panel.sceneActions")}
-                                                                        onClick={event => handleOpenSceneMenu(event, scene)}
-                                                                    >
-                                                                        <MoreVertical className="h-3.5 w-3.5" />
-                                                                    </button>
+                                                                            {sceneCast ? <StoryOutlineCast characterIds={sceneCast} characters={characters} max={outlineCastCap} /> : null}
+                                                                            {compactShowsCount ? (
+                                                                                // The count and the actions button share one slot: the
+                                                                                // count is what the row says at rest, the button what it
+                                                                                // offers under the pointer, and a slot held empty for a
+                                                                                // button nobody is pointing at is width the name could use.
+                                                                                <span className="relative flex shrink-0 items-center justify-end">
+                                                                                    <span className="min-w-[2rem] text-right text-2xs tabular-nums text-fg-subtle group-hover/scene:invisible group-focus-within/scene:invisible">
+                                                                                        {tn("story.panel.lineCount", lineCount)}
+                                                                                    </span>
+                                                                                    <span className="absolute inset-y-0 right-0 flex items-center">{sceneActions}</span>
+                                                                                </span>
+                                                                            ) : sceneActions}
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="flex min-w-0 items-center gap-2">
+                                                                                    <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
+                                                                                </div>
+                                                                                <div className="flex min-w-0 items-center gap-2">
+                                                                                    {sceneCast ? <StoryOutlineCast characterIds={sceneCast} characters={characters} max={outlineCastCap} /> : null}
+                                                                                    <span className="min-w-0 truncate text-2xs text-fg-subtle">{tn("story.panel.lineCount", lineCount)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            {sceneActions}
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })
@@ -1253,6 +1395,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
+            />
+            <ContextMenu
+                items={outlineViewMenuItems}
+                position={viewMenu.menuState.position}
+                visible={viewMenu.menuState.visible}
+                onClose={viewMenu.hideMenu}
+                iconsEnabled
             />
             {scriptDialogs}
             {narralangDialogs}

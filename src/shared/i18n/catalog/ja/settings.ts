@@ -224,6 +224,10 @@ export const settings = {
                 all: "すべてのキャラクターを表示",
             },
         },
+        groupSubmenus: {
+            label: "グループをサブメニューで表示",
+            description: "候補メニューで、キャラクターグループとアセットのフォルダを一項目にまとめ、中身を隣の列に表示する",
+        },
         dictionaries: {
             label: "スペル辞書",
         },

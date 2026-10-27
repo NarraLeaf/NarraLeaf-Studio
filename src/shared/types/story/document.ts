@@ -1545,6 +1545,25 @@ export type StoryTextMarks = {
      */
     fontSizeStep?: number;
     emphasis?: StoryTextEmphasis;
+    /** An inline effect a plugin contributes, such as shaking text. */
+    effect?: StoryTextEffect;
+};
+
+/** A value an inline effect's parameter takes. Numbers today; the type leaves room for a toggle. */
+export type StoryTextEffectParamValue = number | string | boolean;
+
+/**
+ * An inline text effect on a run: a plugin-contributed way of drawing the run's characters.
+ *
+ * `id` is the contributed effect id, prefixed with the plugin id (`narraleaf.text-effects.shake`).
+ * It compiles to the engine's word renderer of the same id, which the plugin's runtime entry
+ * registers; a game without that plugin draws the run as plain text. `params` holds the values of
+ * the parameters the effect declares, keyed by parameter key, and is absent when every parameter is
+ * at its default.
+ */
+export type StoryTextEffect = {
+    id: string;
+    params?: Record<string, StoryTextEffectParamValue>;
 };
 
 /**

@@ -151,8 +151,11 @@ too; every axis it does not name takes its default.
 ## Avatars
 
 The face beside a line in the dialogue box and the backlog. Studio cuts one per combination of the
-character's **avatar axes** from the composited sprite when the author opens the Characters panel;
-by default every axis counts, so two axes of four tags make sixteen avatars. Usually only the
+character's **avatar axes** from the composited sprite; by default every axis counts, so two axes of
+four tags make sixteen avatars. Once the stack is written (and `avatarAxes` narrowed, below), call
+`character_avatars_autoframe { "character": "Mei" }`: it frames every combination on the head the
+detection model finds. This is required after every `character_layered_set` or
+`character_layers_import` that creates a character or changes its images. Usually only the
 expression should: `character_upsert {id, avatarAxes: ["expression"]}`. To supply drawn
 faces instead, `avatars` maps one tag per avatar axis (joined with `+` when there are several) to an
 image: `{ "avatars": { "smile": "mei_face_smile", "angry": "mei_face_angry" } }`. `defaultAvatar` is

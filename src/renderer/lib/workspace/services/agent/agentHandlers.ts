@@ -18,6 +18,7 @@ import { projectInfo, projectSettingsSet } from "./tools/projectTools";
 import { assetDelete, assetsImport, assetsList, assetsPlaceholder, assetUsage } from "./tools/assetTools";
 import { audioTracksList, characterDelete, characterUpsert, charactersList, variableDelete, variableUpsert, variablesList } from "./tools/castTools";
 import { characterLayeredSet, characterLayersImport, characterPreview } from "./tools/layeredTools";
+import { characterAvatarsAutoframe } from "./tools/avatarTools";
 import { chapterDelete, chapterRename, sceneCreate, sceneDelete, sceneRename, sceneSetEntry, storyList, storyRename } from "./tools/storyTools";
 import { storyApply, storyCommand, storyCommands, storyShow, storyTargets } from "./tools/storyTextTools";
 import { brandGet, brandSet, uiPatch, uiScreenshot, uiSelection, uiTemplateApply, uiTemplates } from "./tools/uiTools";
@@ -56,6 +57,7 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         character_layered_set: characterLayeredSet,
         character_layers_import: characterLayersImport,
         character_preview: characterPreview,
+        character_avatars_autoframe: characterAvatarsAutoframe,
         variables_list: variablesList,
         variable_upsert: variableUpsert,
         variable_delete: variableDelete,

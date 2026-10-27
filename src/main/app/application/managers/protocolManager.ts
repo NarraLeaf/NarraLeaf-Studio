@@ -8,6 +8,7 @@ import { AppHost, AppProtocol } from "@shared/types/constants";
 import path from "path";
 import { pathToFileURL } from "url";
 import { resolveWindowIcon } from "@shared/constants/windowIcon";
+import { ML_ROUTE_PREFIX, resolveMlAsset } from "./protocol/mlAssets";
 import { BaseApp } from "../baseApp";
 
 export class ProtocolManager implements IProtocolManager {
@@ -148,6 +149,28 @@ export class ProtocolManager implements IProtocolManager {
             AppHost.Windows,
             this.app.isDevMode()
         );
+        // The head detector's model and runtime, ahead of the bundle rule below - which would
+        // otherwise look for them in dist/windows. See mlAssets.ts.
+        windowsHandler.addRule({
+            include: (requested) => {
+                const url = new URL(requested);
+                return url.protocol === AppProtocol + ":" && url.hostname === AppHost.Windows
+                    && url.pathname.startsWith(ML_ROUTE_PREFIX);
+            },
+            handler: (requested) => {
+                const file = resolveMlAsset(new URL(requested).pathname, {
+                    resourcesDir: this.app.getResourcesDir(),
+                    appPath: this.app.getAppPath(),
+                    packaged: this.app.isPackaged(),
+                });
+                // A name outside the table maps to a path that does not exist, which the handler
+                // answers with a 404 - never to a file joined from the request.
+                return {
+                    path: pathToFileURL(file ?? path.join(this.app.getResourcesDir(), "ml", ".not-served")).toString(),
+                    noCache: false,
+                };
+            }
+        });
         windowsHandler.addRule({
             include: (requested) => {
                 const url = new URL(requested);

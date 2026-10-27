@@ -12,6 +12,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const { assertStudioNoticesComplete } = require('../build/third-party-notices');
 
@@ -48,6 +49,29 @@ function targetArch(args) {
     return null;
 }
 
+/**
+ * The two files of onnxruntime-web's WebAssembly runtime the head detector loads, copied out of
+ * node_modules into resources/ml/onnxruntime so extraResources carries them.
+ *
+ * onnxruntime-web is a devDependency - its JavaScript is bundled into the workspace window - so the
+ * package itself never reaches the installer, and it is 90 MB of variants of which these two are the
+ * ones used: the CPU build, no WebGPU. Its licence reaches the notice with the bundled JavaScript,
+ * which is the same package. The names must match ML_RUNTIME_FILES in
+ * src/main/app/application/managers/protocol/mlAssets.ts, which serves them; a dev session reads them
+ * straight from node_modules and never needs this step.
+ */
+function stageMlRuntime(rootDir) {
+    const from = path.join(rootDir, 'node_modules', 'onnxruntime-web', 'dist');
+    const to = path.join(rootDir, 'resources', 'ml', 'onnxruntime');
+    fs.rmSync(to, { recursive: true, force: true });
+    fs.mkdirSync(to, { recursive: true });
+    for (const name of ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm']) {
+        // Copying a file that is not there throws, which is the point: an installer without the
+        // runtime would build fine and fail the first time an author pressed Auto-frame.
+        fs.copyFileSync(path.join(from, name), path.join(to, name));
+    }
+}
+
 (async () => {
     const rootDir = path.resolve(__dirname, '../..');
     process.chdir(rootDir);
@@ -79,6 +103,9 @@ function targetArch(args) {
 
         console.log('[pack] Staging mobile shell templates...');
         await run('node', ['project/build/prepare-mobile-shell.js']);
+
+        console.log('[pack] Staging the head detector runtime...');
+        stageMlRuntime(rootDir);
 
         // --arch goes to both staging steps below and to none of the ones above: these two write
         // native binaries that electron-builder then copies into the installer wholesale, and the

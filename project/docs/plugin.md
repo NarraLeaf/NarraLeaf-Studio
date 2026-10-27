@@ -69,7 +69,7 @@ runtime entry 的安全模型与 studio entry 不同：它作为游戏代码运�
 | `publisher` | 否 | 发布者。 |
 | `description` | 否 | 简短介绍。 |
 | `entries` | 是 | 按 target 声明的入口对象；`studio` 和 `runtime` 均可选，但至少声明一个。未知 target key 会被拒绝。 |
-| `contributes` | 否 | 声明式贡献清单。`blueprintNodes` / `widgets` 列出插件提供的蓝图节点与 widget type（必须以插件 ID 为前缀，自动去重）。省略等同空数组。未知 key 会被拒绝。 |
+| `contributes` | 否 | 声明式贡献清单。`blueprintNodes` / `widgets` / `inlineTextEffects` 列出插件提供的蓝图节点、widget type 与行内文本效果（必须以插件 ID 为前缀，自动去重）。省略等同空数组。未知 key 会被拒绝。 |
 | `permissions` | 否 | 安装时一次性展示并授予的权限声明。省略时等同空数组。仅作用于 studio entry 的特权请求。 |
 
 `contributes` 是静态校验的锚点：两侧注册 API 都强制"注册的节点 type 必须已声明"，因此 Studio 不需要执行插件代码就能回答"这个节点谁提供、随游戏发布时是否可用"。
@@ -418,6 +418,7 @@ type PluginApp = {
 | --- | --- | --- |
 | 边栏 / actions / editors / keybindings / notifications | ✅ | — |
 | widget 模块 | ✅ 编辑面（module + inspector 等） | ✅ 游戏渲染器（`game.widgets`，须声明于 `contributes.widgets`） |
+| 行内文本效果 | ✅ 对白文本工具栏的「效果」项（`inlineTextEffects`，须声明于 `contributes.inlineTextEffects`） | ✅ 画带效果的文字（`game.inlineTextEffects`，同一个 id） |
 | 蓝图节点 | 元数据 + palette + 编辑器预览 execute | 游戏 execute（`game.blueprintNodes`，须声明于 `contributes.blueprintNodes`） |
 | 动态 select 选项源 | ✅ | — |
 | story action | ✅ palette + slash chooser 动作（创建标准故事块，或插件自己的 `{action:"plugin"}` 行） | ✅ `game.storyActions`：执行插件自己的行，故事等它结束 |

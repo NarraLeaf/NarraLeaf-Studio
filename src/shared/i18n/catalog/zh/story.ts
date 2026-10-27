@@ -23,6 +23,9 @@ export const story = {
         },
         sceneActions: "场景操作",
         chapterActions: "章节操作",
+        outlineView: "大纲显示",
+        showCastAvatars: "显示出场角色头像",
+        castLabel: "出场角色：{names}",
         setEntryScene: "设为入口场景",
         documentUnavailable: "故事文档不可用",
         newStoryPlaceholder: "输入故事名称",
@@ -508,6 +511,12 @@ export const story = {
         speedUnit: "字/秒",
         speedPlaceholder: "整行",
     },
+    textEffect: {
+        effect: "效果",
+        none: "无",
+        /** 文本使用的效果没有已安装的插件提供。 */
+        unavailable: "{id}（未安装）",
+    },
     ruby: {
         title: "注音",
         placeholder: "读音",
@@ -551,6 +560,8 @@ export const story = {
         rubyHint: "注音（先选中要注音的文字）",
         type: "文字",
         typeHint: "文本（先选中要设置的文本）",
+        effects: "效果",
+        effectsHint: "效果（先选中要设置的文本）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",

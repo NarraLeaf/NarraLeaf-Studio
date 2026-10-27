@@ -10,7 +10,7 @@
  * that to tell a name slot from a string slot, which is a distinction the printer spends quoting on.
  */
 
-import type { StoryTextMarks } from "@shared/types/story";
+import type { StoryTextEffect, StoryTextEffectParamValue, StoryTextMarks } from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 
 import type { NarralangDialect } from "./narralangDialect";
@@ -265,7 +265,7 @@ export function parseNarralangText(
     report: (issue: NarralangTextIssue, offset: number, detail?: string) => void,
 ): NarralangText {
     const runs: NarralangTextRun[] = [];
-    const open: { mark: keyof StoryTextMarks; value: boolean | string | number }[] = [];
+    const open: { mark: keyof StoryTextMarks; value: boolean | string | number | StoryTextEffect }[] = [];
     const mark = dialect.escape;
     const { open: fenceOpen, close: fenceClose, closeSigil } = dialect.text;
     let pending = "";
@@ -275,7 +275,7 @@ export function parseNarralangText(
         if (open.length === 0) {
             return undefined;
         }
-        const marks: Record<string, boolean | string | number> = {};
+        const marks: Record<string, boolean | string | number | StoryTextEffect> = {};
         for (const entry of open) {
             marks[entry.mark] = entry.value;
         }
@@ -369,6 +369,15 @@ export function parseNarralangText(
             report("unknownTag", index, head);
             return;
         }
+        if (spec.arg === "effect") {
+            const effect = readEffectArgument(argument ?? "", dialect);
+            if (!effect) {
+                report("unknownTag", index, body);
+                return;
+            }
+            open.push({ mark: spec.mark, value: effect });
+            return;
+        }
         const value = spec.arg === undefined
             ? true
             : spec.arg === "number"
@@ -411,6 +420,77 @@ function findFenceClose(raw: string, from: number, close: string, dialect: Narra
         index += 1;
     }
     return -1;
+}
+
+/**
+ * An inline effect's tag argument: the id, then `key=value` words. A value reads as a number when it
+ * is one, as a boolean when it is `true` or `false`, and as text otherwise. `null` when there is no id.
+ */
+function readEffectArgument(argument: string, dialect: NarralangDialect): StoryTextEffect | null {
+    const words = splitTagWords(argument, dialect);
+    const id = words.length > 0 ? readTagArgument(words[0], dialect) : "";
+    if (!id) {
+        return null;
+    }
+    const params: Record<string, StoryTextEffectParamValue> = {};
+    for (const word of words.slice(1)) {
+        const equals = word.indexOf("=");
+        if (equals <= 0) {
+            continue;
+        }
+        const key = word.slice(0, equals);
+        const raw = word.slice(equals + 1);
+        const numeric = Number(raw);
+        params[key] = raw === "true" ? true
+            : raw === "false" ? false
+                : raw !== "" && Number.isFinite(numeric) ? numeric
+                    : readTagArgument(raw, dialect);
+    }
+    return Object.keys(params).length > 0 ? { id, params } : { id };
+}
+
+/** A tag argument split at the spaces that are not inside a quoted string. */
+function splitTagWords(argument: string, dialect: NarralangDialect): string[] {
+    const [open, shut] = dialect.quote.string;
+    const mark = dialect.escape;
+    const words: string[] = [];
+    let current = "";
+    let inString = false;
+    let index = 0;
+    while (index < argument.length) {
+        if (mark !== "" && argument.startsWith(mark, index)) {
+            current += argument.slice(index, index + mark.length + 1);
+            index += mark.length + 1;
+            continue;
+        }
+        if (!inString && open !== "" && argument.startsWith(open, index)) {
+            inString = true;
+            current += open;
+            index += open.length;
+            continue;
+        }
+        if (inString && shut !== "" && argument.startsWith(shut, index)) {
+            inString = false;
+            current += shut;
+            index += shut.length;
+            continue;
+        }
+        const char = argument[index];
+        if (!inString && /\s/.test(char)) {
+            if (current !== "") {
+                words.push(current);
+            }
+            current = "";
+            index += 1;
+            continue;
+        }
+        current += char;
+        index += 1;
+    }
+    if (current !== "") {
+        words.push(current);
+    }
+    return words;
 }
 
 /** A tag argument as it was authored: the quotes taken off and the escapes decoded, when it has any. */

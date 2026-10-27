@@ -7,7 +7,7 @@ import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
 import { reservedTargetName } from "./commands/reservedTargetNames";
 import type { StoryCommandCursor } from "./storyCommandCursor";
-import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
+import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandFolder, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
 /**
  * What to offer at the caret.
@@ -106,6 +106,8 @@ export type StoryCommandCandidate = {
     free?: true;
     /** What this candidate is, for the menu's leading mark. See {@link StoryCandidateMark}. */
     mark?: StoryCandidateMark;
+    /** Where the author filed it, outermost first; the menu files it the same way. */
+    folders?: readonly StoryCommandFolder[];
 };
 
 function startsWithFold(haystack: string, needle: string): boolean {
@@ -128,7 +130,12 @@ function refCandidates(
     // Prefix matches first - an author typing `fo` means forest, not "the one with fo in the middle".
     const prefix = entries.filter(entry => startsWithFold(entry.name, query));
     const rest = query ? entries.filter(entry => !startsWithFold(entry.name, query) && containsFold(entry.name, query)) : [];
-    return [...prefix, ...rest].map(entry => ({ value: entry.name, label: entry.name, ...(mark ? { mark: mark(entry) } : {}) }));
+    return [...prefix, ...rest].map(entry => ({
+        value: entry.name,
+        label: entry.name,
+        ...(mark ? { mark: mark(entry) } : {}),
+        ...(entry.folders ? { folders: entry.folders } : {}),
+    }));
 }
 
 /** Plain names, prefix matches first - the same ordering {@link refCandidates} gives ids-with-names. */

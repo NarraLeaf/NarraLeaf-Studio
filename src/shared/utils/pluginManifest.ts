@@ -288,7 +288,7 @@ function hostnameOf(url: string): string | null {
 }
 
 /** Contribution kinds whose value is an array of `<pluginId>.`-prefixed identifiers. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests", "reservedSaveIds"] as const;
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "inlineTextEffects", "runtimeData", "tests", "reservedSaveIds"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped ones. */
 const CONTRIBUTES_KEYS = [
@@ -356,6 +356,7 @@ export function isPluginBinaryPlatformKey(value: string): boolean {
 const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], string> = {
     blueprintNodes: "blueprint node",
     widgets: "widget",
+    inlineTextEffects: "inline text effect",
     runtimeData: "storage namespace",
     tests: "test",
     reservedSaveIds: "reserved save id",
@@ -368,6 +369,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
     const empty: Required<PluginContributes> = {
         blueprintNodes: [],
         widgets: [],
+        inlineTextEffects: [],
         runtimeData: [],
         tests: [],
         reservedSaveIds: [],

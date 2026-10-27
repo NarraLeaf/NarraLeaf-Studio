@@ -185,6 +185,24 @@ says `#background none` (or names the new picture). `targets` lists every scene 
 under "scene settings", which is where an image the linter counts as used, and no row
 names, is used.
 
+### `#description` is the scene's description
+
+The note Studio's scene panel shows under the scene's name. The game never shows it; it is
+in the header so a file that writes a scene can also say what the scene is for.
+
+```
+#description After class, the two of them alone
+#description "Two lines:\nthe second one"     a JSON string, for text with line breaks
+#description none
+```
+
+The value is the rest of the line. One that starts with a double quote is read as a JSON
+string, which is how `show` prints a description with line breaks, space at either end,
+a leading quote or the word `none`; single quotes round the whole value are taken off.
+`show` writes the line only for a scene that has a description. Like the other settings,
+it counts only in the header, a file without the line keeps the description, and
+`#description none` clears it.
+
 ### `#layer` lines are the scene's layers
 
 A layer belongs to its scene, not to a row: the scene puts up every layer it has before
@@ -371,7 +389,8 @@ Six things to know before using it:
   `--write`.
 - **Scene settings change only when the header states them.** `#background` and
   `#music` left out of a file are kept, and `apply` names what the scene still opens
-  with; `#background none` / `#music none` clear them. `#layer` lines are the same:
+  with; `#background none` / `#music none` clear them. `#description` is the same,
+  and `#description none` clears it. `#layer` lines are the same:
   none leaves the layers alone, any state all of them.
 - **A project's own errors do not block it.** One bad row in another chapter used
   to mean nothing could be written anywhere.

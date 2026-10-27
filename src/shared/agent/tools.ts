@@ -322,7 +322,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites when the author opens the Characters panel. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites: after giving a character sprites, call character_avatars_autoframe so they are framed on the detected head. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -452,6 +452,17 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         },
         ["character"],
     ),
+    ws(
+        "character_avatars_autoframe",
+        "Auto-frame dialog avatars",
+        "Frames dialog avatars (the face beside a line in the dialogue box and the backlog) on the head Studio's head-detection model finds in the sprite: every pose of a preset character, every avatar tag combination of a layered one. Each framing is written as that pose's or look's own framing - what the author's framing box writes - and the avatar is cut from it at the next bake. Call it once for a character right after creating it or giving it sprites (character_upsert with `poses`, character_layered_set, character_layers_import); without it the avatar is cut by a silhouette guess that often frames hair ornaments or the whole figure. Without `character`, runs over the whole cast. A pose or look that already has its own framing is kept unless `overwrite`; one with a hand-drawn avatar (`avatars` on character_upsert) or nothing drawn is left alone. Reports per character which looks were framed and in which no head was found (those keep the automatic crop). About a quarter of a second per picture. One step of undo per character.",
+        {
+            character: { type: "string", description: "Character name or id. Omit to frame every character." },
+            overwrite: { type: "boolean", default: false, description: "Replace framings poses or looks already have, the author's included." },
+        },
+        [],
+        true,
+    ),
     ws("variables_list", "List variables", "Lists the project's global variables (saved with the game or persistent across saves)."),
     ws(
         "variable_upsert",
@@ -496,14 +507,14 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "story_show",
         "Read a scene as text",
-        "Prints one scene in the `.story` text format, with its `revision`. The header names the scene's own settings - `#background` (the image it opens on before its first row) and `#music` - or `none`. Edit the text and pass it to story_apply.",
+        "Prints one scene in the `.story` text format, with its `revision`. The header names the scene's own settings - `#background` (the image it opens on before its first row) and `#music` - or `none`, and `#description` (the note Studio shows under the scene's name; the game never shows it) when the scene has one. Edit the text and pass it to story_apply.",
         { scene: { type: "string", description: "Scene name or id." }, story: { type: "string", description: "Story name or id; defaults to the first story." } },
         ["scene"],
     ),
     ws(
         "story_apply",
         "Write a scene",
-        "Replaces the rows of the scene named in the source's `#scene` header with the rows in `source`. Rows the source does not mention are deleted. The scene's own settings change only when the header states them: `#background none` / `#music none` clear them (do this when reusing a skeleton demo scene, or its old picture shows before your first /bg), and a header without them keeps them - the answer says what the scene still opens with. Checked first: a source with an error writes nothing. One step of undo in Studio. Write one scene per call so the author can watch it arrive.",
+        "Replaces the rows of the scene named in the source's `#scene` header with the rows in `source`. Rows the source does not mention are deleted. The scene's own settings change only when the header states them: `#background none` / `#music none` clear them (do this when reusing a skeleton demo scene, or its old picture shows before your first /bg), and a header without them keeps them - the answer says what the scene still opens with. `#description <text>` sets the scene's description (a JSON string for text with line breaks), `#description none` clears it, and leaving the line out keeps it. Checked first: a source with an error writes nothing. One step of undo in Studio. Write one scene per call so the author can watch it arrive.",
         { source: { type: "string", description: "A `.story` document (one scene)." }, baseRevision: BASE_REVISION, dryRun: DRY_RUN },
         ["source"],
         true,

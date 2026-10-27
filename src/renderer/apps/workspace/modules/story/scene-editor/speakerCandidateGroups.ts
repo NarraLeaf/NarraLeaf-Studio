@@ -19,17 +19,30 @@ export type GroupableSpeakerCandidate =
     | { key: string; kind: "character"; character: Character }
     | { key: string; kind: "temp" };
 
+/**
+ * One line of the drawn list.
+ *
+ *  - `candidate` — a speaker.
+ *  - `label` — a group's name over its members, drawn on the way past rather than offered.
+ *  - `group` — a whole group as one entry, whose members open in a column beside it. The arrow keys
+ *    stop on it; its members are not in the list at all until that column is open.
+ */
+export type SpeakerPickerEntry<T> =
+    | { kind: "candidate"; candidate: T }
+    | { kind: "label"; groupId: string; name: string }
+    | { kind: "group"; groupId: string; name: string; members: T[] };
+
+/**
+ * How groups are drawn: `inline` lists each group's members under its name; `submenus` makes each
+ * group one entry with its members in a column of their own.
+ */
+export type SpeakerGroupLayout = "inline" | "submenus";
+
 export interface GroupedSpeakerCandidates<T> {
-    /** The candidates in the order they are drawn, which is the order the arrow keys walk. */
+    /** Every candidate in the order `inline` draws them, members of a group right after its name. */
     ordered: T[];
-    /**
-     * Candidate key -> the group name drawn immediately above that candidate.
-     *
-     * A header per group rather than a section object, because the list is one flat run of pickable
-     * rows: the arrow keys step candidates, and a header is something the picker draws on the way
-     * past rather than a stop of its own.
-     */
-    headers: ReadonlyMap<string, string>;
+    /** What is drawn in the list, in order. */
+    entries: SpeakerPickerEntry<T>[];
 }
 
 /**
@@ -41,6 +54,7 @@ export interface GroupedSpeakerCandidates<T> {
 export function groupSpeakerCandidates<T extends GroupableSpeakerCandidate>(
     candidates: readonly T[],
     groupNames: ReadonlyMap<string, string>,
+    layout: SpeakerGroupLayout = "inline",
 ): GroupedSpeakerCandidates<T> {
     const ungrouped: T[] = [];
     const temps: T[] = [];
@@ -65,16 +79,22 @@ export function groupSpeakerCandidates<T extends GroupableSpeakerCandidate>(
     }
 
     const ordered = [...ungrouped];
-    const headers = new Map<string, string>();
+    const entries: SpeakerPickerEntry<T>[] = ungrouped.map(candidate => ({ kind: "candidate", candidate }));
     for (const [groupId, name] of groupNames) {
         const bucket = members.get(groupId);
         if (!bucket || bucket.length === 0) {
             continue;
         }
-        headers.set(bucket[0].key, name);
         ordered.push(...bucket);
+        if (layout === "submenus") {
+            entries.push({ kind: "group", groupId, name, members: bucket });
+            continue;
+        }
+        entries.push({ kind: "label", groupId, name });
+        entries.push(...bucket.map(candidate => ({ kind: "candidate" as const, candidate })));
     }
     ordered.push(...temps);
+    entries.push(...temps.map(candidate => ({ kind: "candidate" as const, candidate })));
 
-    return { ordered, headers };
+    return { ordered, entries };
 }
