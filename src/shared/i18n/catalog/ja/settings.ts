@@ -224,9 +224,9 @@ export const settings = {
                 all: "すべてのキャラクターを表示",
             },
         },
-        characterGroupsCollapsed: {
-            label: "キャラクターグループを折りたたむ",
-            description: "話者の選択メニューで、まだ手動で開閉していないグループをグループ名だけに折りたたむ",
+        characterGroupSubmenus: {
+            label: "キャラクターグループをサブメニューで表示",
+            description: "話者の選択メニューで、各グループを一項目にまとめ、そのキャラクターを隣の列に表示する",
         },
         dictionaries: {
             label: "スペル辞書",

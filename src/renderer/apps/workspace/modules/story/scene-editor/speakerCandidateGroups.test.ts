@@ -20,8 +20,8 @@ function headersAbove(entries: readonly SpeakerPickerEntry<{ key: string }>[]) {
     const headers = new Map<string, string>();
     entries.forEach((entry, index) => {
         const next = entries[index + 1];
-        if (entry.kind === "header" && next?.kind === "candidate") {
-            headers.set(next.candidate.key, entry.header.name);
+        if (entry.kind === "label" && next?.kind === "candidate") {
+            headers.set(next.candidate.key, entry.name);
         }
     });
     return headers;
@@ -60,18 +60,17 @@ describe("groupSpeakerCandidates", () => {
         expect(grouped.entries.every(entry => entry.kind === "candidate")).toBe(true);
     });
 
-    it("folds a group to its header, out of the keys' reach, and keeps its count", () => {
+    it("makes each group one entry with its members inside it, as submenus", () => {
         const groups = new Map([["g-1", "Leads"], ["g-2", "Extras"]]);
         const grouped = groupSpeakerCandidates(
             [candidate("a", "A", "g-1"), candidate("b", "B", "g-2"), candidate("c", "C", "g-2"), candidate("d", "D"), temp("E")],
             groups,
-            groupId => groupId === "g-2",
+            "submenus",
         );
 
-        expect(grouped.ordered.map(entry => entry.name)).toEqual(["D", "A", "E"]);
-        expect(grouped.entries.map(entry => entry.kind === "header" ? `[${entry.header.name}]` : entry.candidate.name))
-            .toEqual(["D", "[Leads]", "A", "[Extras]", "E"]);
-        const extras = grouped.entries.find(entry => entry.kind === "header" && entry.header.groupId === "g-2");
-        expect(extras?.kind === "header" && extras.header).toMatchObject({ count: 2, collapsed: true });
+        expect(grouped.entries.map(entry => entry.kind === "candidate"
+            ? entry.candidate.name
+            : `[${entry.name}: ${entry.kind === "group" ? entry.members.map(member => member.name).join(",") : ""}]`))
+            .toEqual(["D", "[Leads: A]", "[Extras: B,C]", "E"]);
     });
 });

@@ -19,35 +19,29 @@ export type GroupableSpeakerCandidate =
     | { key: string; kind: "character"; character: Character }
     | { key: string; kind: "temp" };
 
-/** A cast group's header as the picker draws it. */
-export interface SpeakerGroupHeader {
-    groupId: string;
-    name: string;
-    /** Members on show under the current query, counted whether or not the group is folded. */
-    count: number;
-    collapsed: boolean;
-}
-
-/** One line of the drawn list: a group's header, or a candidate. */
+/**
+ * One line of the drawn list.
+ *
+ *  - `candidate` — a speaker.
+ *  - `label` — a group's name over its members, drawn on the way past rather than offered.
+ *  - `group` — a whole group as one entry, whose members open in a column beside it. The arrow keys
+ *    stop on it; its members are not in the list at all until that column is open.
+ */
 export type SpeakerPickerEntry<T> =
-    | { kind: "header"; header: SpeakerGroupHeader }
-    | { kind: "candidate"; candidate: T };
+    | { kind: "candidate"; candidate: T }
+    | { kind: "label"; groupId: string; name: string }
+    | { kind: "group"; groupId: string; name: string; members: T[] };
+
+/**
+ * How groups are drawn: `inline` lists each group's members under its name; `submenus` makes each
+ * group one entry with its members in a column of their own.
+ */
+export type SpeakerGroupLayout = "inline" | "submenus";
 
 export interface GroupedSpeakerCandidates<T> {
-    /**
-     * The candidates the arrow keys walk, in the order they are drawn.
-     *
-     * A folded group's members are not here: a highlight that stepped onto a row nobody can see would
-     * leave Enter choosing a speaker the author never looked at.
-     */
+    /** Every candidate in the order `inline` draws them, members of a group right after its name. */
     ordered: T[];
-    /**
-     * Everything drawn, headers included.
-     *
-     * A header is drawn rather than offered: it is not a candidate, so the arrow keys walk straight
-     * past it. It does keep its place when its group is folded, which is the one way back in short
-     * of typing.
-     */
+    /** What is drawn in the list, in order. */
     entries: SpeakerPickerEntry<T>[];
 }
 
@@ -56,14 +50,11 @@ export interface GroupedSpeakerCandidates<T> {
  *
  * A character whose group has since been deleted is ungrouped here as well: the picker shows what the
  * project holds, and a header for a group that is gone would name nothing.
- *
- * `isCollapsed` folds a group to its header. Leave it out to unfold everything, which is what a typed
- * query wants: a search has to reach every member, folded or not.
  */
 export function groupSpeakerCandidates<T extends GroupableSpeakerCandidate>(
     candidates: readonly T[],
     groupNames: ReadonlyMap<string, string>,
-    isCollapsed?: (groupId: string) => boolean,
+    layout: SpeakerGroupLayout = "inline",
 ): GroupedSpeakerCandidates<T> {
     const ungrouped: T[] = [];
     const temps: T[] = [];
@@ -94,12 +85,12 @@ export function groupSpeakerCandidates<T extends GroupableSpeakerCandidate>(
         if (!bucket || bucket.length === 0) {
             continue;
         }
-        const collapsed = isCollapsed?.(groupId) ?? false;
-        entries.push({ kind: "header", header: { groupId, name, count: bucket.length, collapsed } });
-        if (collapsed) {
+        ordered.push(...bucket);
+        if (layout === "submenus") {
+            entries.push({ kind: "group", groupId, name, members: bucket });
             continue;
         }
-        ordered.push(...bucket);
+        entries.push({ kind: "label", groupId, name });
         entries.push(...bucket.map(candidate => ({ kind: "candidate" as const, candidate })));
     }
     ordered.push(...temps);

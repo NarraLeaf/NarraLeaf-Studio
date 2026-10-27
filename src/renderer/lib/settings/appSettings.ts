@@ -29,8 +29,8 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
-    CHARACTER_GROUPS_COLLAPSED_DEFAULT,
-    CHARACTER_GROUPS_COLLAPSED_KEY,
+    CHARACTER_GROUP_SUBMENUS_DEFAULT,
+    CHARACTER_GROUP_SUBMENUS_KEY,
     CHARACTER_LIST_GROUPING_DEFAULT,
     CHARACTER_LIST_GROUPING_KEY,
     CHARACTER_LIST_GROUPING_OPTIONS,
@@ -859,18 +859,19 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Read by the story editor's speaker picker (the "#" slot and the nametag). It sets how a
-        // group starts out until the author folds or unfolds it, which the project then remembers;
-        // typing a name unfolds them all. Only meaningful while the lists are grouped.
-        key: CHARACTER_GROUPS_COLLAPSED_KEY,
+        // Read by the story editor's speaker picker (the "#" slot and the nametag). On, each group is
+        // one entry and its members open in a column beside it; off, the members are listed under
+        // the group's name. Typing a name lists the matches either way. Only meaningful while the
+        // lists are grouped.
+        key: CHARACTER_GROUP_SUBMENUS_KEY,
         category: "editor",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Collapse character groups",
-        labelKey: "settings.items.characterGroupsCollapsed.label",
-        description: "In the speaker picker, character groups not yet expanded or collapsed by hand start collapsed to their name.",
-        descriptionKey: "settings.items.characterGroupsCollapsed.description",
-        defaultValue: CHARACTER_GROUPS_COLLAPSED_DEFAULT,
+        label: "Show character groups as submenus",
+        labelKey: "settings.items.characterGroupSubmenus.label",
+        description: "In the speaker picker, each character group is one entry whose characters open in a column beside it.",
+        descriptionKey: "settings.items.characterGroupSubmenus.description",
+        defaultValue: CHARACTER_GROUP_SUBMENUS_DEFAULT,
     },
     {
         /**

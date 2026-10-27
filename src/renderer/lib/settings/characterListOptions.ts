@@ -40,19 +40,19 @@ export function resolveCharacterListGrouping(stored: unknown): CharacterListGrou
         : CHARACTER_LIST_GROUPING_DEFAULT;
 }
 
-/** Global-state key for whether the speaker picker's cast groups start folded. */
-export const CHARACTER_GROUPS_COLLAPSED_KEY = "editor.characterGroupsCollapsed" as const;
+/** Global-state key for whether the speaker picker shows cast groups as submenus. */
+export const CHARACTER_GROUP_SUBMENUS_KEY = "editor.characterGroupSubmenus" as const;
 
 /**
- * Folded by default.
+ * Submenus by default.
  *
  * The picker is opened to take one name, and a cast large enough to be filed into groups is a long
- * list to scroll past for it. The headers alone say where everyone is; a click opens one, and typing
- * opens them all.
+ * list to scroll past for it. One entry per group says where everyone is; the arrow onto it shows
+ * who, and typing reaches anyone directly.
  */
-export const CHARACTER_GROUPS_COLLAPSED_DEFAULT = true;
+export const CHARACTER_GROUP_SUBMENUS_DEFAULT = true;
 
-/** Narrow an unknown stored value to the folding preference, falling back to the default. */
-export function resolveCharacterGroupsCollapsed(stored: unknown): boolean {
-    return typeof stored === "boolean" ? stored : CHARACTER_GROUPS_COLLAPSED_DEFAULT;
+/** Narrow an unknown stored value to the submenu preference, falling back to the default. */
+export function resolveCharacterGroupSubmenus(stored: unknown): boolean {
+    return typeof stored === "boolean" ? stored : CHARACTER_GROUP_SUBMENUS_DEFAULT;
 }

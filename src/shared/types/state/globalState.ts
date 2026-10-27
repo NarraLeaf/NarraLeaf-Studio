@@ -261,14 +261,15 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.characterListGrouping": "grouped" | "all";
     /**
-     * Whether the speaker picker opens with its cast groups folded to their headers.
+     * Whether the speaker picker shows each cast group as one entry whose members open in a column
+     * beside it, or lists every group's members under its name.
      *
-     * Folded by default: a sizeable cast is the reason a project has groups, and the picker is
-     * opened to pick one name. Typing a name unfolds every group, since a search that skipped
-     * folded groups would answer "nobody" about someone who is there. See
+     * Submenus by default: a sizeable cast is the reason a project has groups, and the picker is
+     * opened to pick one name. Typing a name lists every match regardless, since a search that
+     * stopped at a group would answer "nobody" about someone who is there. See
      * lib/settings/characterListOptions.
      */
-    "editor.characterGroupsCollapsed": boolean;
+    "editor.characterGroupSubmenus": boolean;
     /**
      * How tall, in CSS pixels, the story inspector draws the preview of a character's appearance.
      *
@@ -629,7 +630,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
     "editor.characterListGrouping": "grouped",
-    "editor.characterGroupsCollapsed": true,
+    "editor.characterGroupSubmenus": true,
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,

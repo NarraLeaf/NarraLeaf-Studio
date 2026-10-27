@@ -226,9 +226,9 @@ export const settings = {
                 all: "Show all characters",
             },
         },
-        characterGroupsCollapsed: {
-            label: "Collapse character groups",
-            description: "In the speaker picker, character groups not yet expanded or collapsed by hand start collapsed to their name.",
+        characterGroupSubmenus: {
+            label: "Show character groups as submenus",
+            description: "In the speaker picker, each character group is one entry whose characters open in a column beside it.",
         },
         dictionaries: {
             label: "Spelling dictionaries",

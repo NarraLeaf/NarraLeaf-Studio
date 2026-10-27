@@ -212,9 +212,9 @@ export const settings = {
                 all: "显示所有角色",
             },
         },
-        characterGroupsCollapsed: {
-            label: "折叠角色分组",
-            description: "说话人选单中尚未手动展开或折叠的角色分组，默认折叠为分组名",
+        characterGroupSubmenus: {
+            label: "角色分组显示为子菜单",
+            description: "说话人选单中，每个角色分组收为一项，其中的角色在旁边一列列出",
         },
         dictionaries: {
             label: "拼写词典",

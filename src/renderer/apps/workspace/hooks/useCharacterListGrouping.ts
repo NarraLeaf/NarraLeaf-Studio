@@ -1,8 +1,8 @@
 import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import {
-    CHARACTER_GROUPS_COLLAPSED_KEY,
+    CHARACTER_GROUP_SUBMENUS_KEY,
     CHARACTER_LIST_GROUPING_KEY,
-    resolveCharacterGroupsCollapsed,
+    resolveCharacterGroupSubmenus,
     resolveCharacterListGrouping,
     type CharacterListGrouping,
 } from "@/lib/settings/characterListOptions";
@@ -19,9 +19,10 @@ export function useCharacterListGrouping(): CharacterListGrouping {
 }
 
 /**
- * Reads the `editor.characterGroupsCollapsed` preference — whether the speaker picker opens with its
- * cast groups folded to their headers. Follows the broadcast for the same reason as above.
+ * Reads the `editor.characterGroupSubmenus` preference — whether the speaker picker shows each cast
+ * group as one entry with its members in a column beside it. Follows the broadcast for the same
+ * reason as above.
  */
-export function useCharacterGroupsCollapsed(): boolean {
-    return useGlobalSetting(CHARACTER_GROUPS_COLLAPSED_KEY, resolveCharacterGroupsCollapsed);
+export function useCharacterGroupSubmenus(): boolean {
+    return useGlobalSetting(CHARACTER_GROUP_SUBMENUS_KEY, resolveCharacterGroupSubmenus);
 }
