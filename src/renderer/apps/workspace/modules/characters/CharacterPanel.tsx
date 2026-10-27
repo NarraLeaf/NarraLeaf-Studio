@@ -19,12 +19,13 @@ import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { CreateCharacterDialogContent, CreateCharacterDialogValue } from "./dialogs/CreateCharacterDialogContent";
 import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
-import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, Loader2, MoreVertical, RefreshCw, ScanFace, Tag, User, UserPlus, Users } from "lucide-react";
 import { useAvatarAutoFrame } from "./useAvatarAutoFrame";
+import { HeadThumbnail } from "./editors/components/HeadThumbnail";
+import { useCharacterAvatar } from "../story/scene-editor/storyCharacterFace";
 import { readableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import { cn } from "@/lib/utils/cn";
@@ -53,7 +54,6 @@ type CharacterItem = {
     id: string;
     name: string;
     groupId?: string;
-    thumbnailId: string | null;
     nicknames: string[];
     tags: string[];
     /**
@@ -95,7 +95,6 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
     const [groupFilter, setGroupFilter] = useState<string>("all");
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
     const [filterRefreshKey, setFilterRefreshKey] = useState(0);
-    const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [menuState, setMenuState] = useState({ visible: false, position: { x: 0, y: 0 } });
@@ -147,7 +146,6 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                 id: profile.id,
                 name: profile.name,
                 groupId: profile.groupId,
-                thumbnailId: profile.thumbnail,
                 nicknames: profile.nicknames,
                 tags: profile.tags,
                 // Resolved here, once, rather than where the row paints it: the stored value can be
@@ -165,54 +163,6 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
         });
         return map;
     }, [groups]);
-
-    useEffect(() => {
-        if (!context || !isInitialized) return;
-        let cancelled = false;
-        const serviceAssets = context.services.get<ServiceAssetsService>(Services.ServiceAssets);
-
-        const loadThumbnails = async () => {
-            const results = await Promise.all(characterItems.map(async (item) => {
-                if (!item.thumbnailId) {
-                    return [item.id, null] as const;
-                }
-                const result = await serviceAssets.readRaw(item.thumbnailId);
-                if (!result.ok || cancelled) {
-                    return [item.id, null] as const;
-                }
-                const buffer = new Uint8Array(result.data);
-                const url = URL.createObjectURL(new Blob([buffer]));
-                return [item.id, url] as const;
-            }));
-
-            if (cancelled) {
-                results.forEach(([, url]) => {
-                    if (url) URL.revokeObjectURL(url);
-                });
-                return;
-            }
-
-            const next: Record<string, string> = {};
-            results.forEach(([id, url]) => {
-                if (url) {
-                    next[id] = url;
-                }
-            });
-            setThumbnails(next);
-        };
-
-        loadThumbnails();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [context, isInitialized, characterItems]);
-
-    useEffect(() => {
-        return () => {
-            Object.values(thumbnails).forEach(url => URL.revokeObjectURL(url));
-        };
-    }, [thumbnails]);
 
     const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
 
@@ -613,13 +563,12 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
         <CharacterRow
             key={item.id}
             item={item}
-            thumbnailUrl={thumbnails[item.id]}
             isFocused={focusedCharacterId === item.id}
             onSelect={handleCharacterClick}
             onOpen={handleCharacterOpen}
             onMenu={handleMenuOpen}
         />
-    ), [focusedCharacterId, handleCharacterClick, handleCharacterOpen, handleMenuOpen, thumbnails]);
+    ), [focusedCharacterId, handleCharacterClick, handleCharacterOpen, handleMenuOpen]);
 
     const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
@@ -785,9 +734,8 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
  * changes. Inlined in the list's callback, every row in the panel would repaint whenever anybody in
  * the room opened or closed any character.
  */
-function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu }: {
+function CharacterRow({ item, isFocused, onSelect, onOpen, onMenu }: {
     item: CharacterItem;
-    thumbnailUrl: string | undefined;
     isFocused: boolean;
     onSelect: (character: Character) => void;
     /** Double click: the same character, in a tab the next click will not take over. */
@@ -796,6 +744,9 @@ function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu 
 }) {
     const { t, formatList } = useTranslation();
     const claimedBy = useCharacterClaim(item.id);
+    // The face the speaker picker draws for the same character: the author's avatar when there is
+    // one, else the head of the default look, framed the way the dialogue avatar bake frames it.
+    const { url, frame, showingSprite } = useCharacterAvatar(item.source, { resolveVariant: true, preferThumbnail: true });
 
     return (
         <div
@@ -811,8 +762,10 @@ function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu 
             onDoubleClick={() => onOpen(item.source)}
         >
             <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
-                {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
+                {url ? (
+                    showingSprite
+                        ? <HeadThumbnail url={url} alt={item.name} frame={frame} className="w-full h-full" iconClassName="w-5 h-5" />
+                        : <img src={url} alt={item.name} className="w-full h-full object-cover" draggable={false} />
                 ) : (
                     <User className="w-5 h-5 text-fg-muted" />
                 )}
