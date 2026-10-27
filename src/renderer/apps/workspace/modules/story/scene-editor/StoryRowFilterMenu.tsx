@@ -3,10 +3,9 @@ import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { characterIdentity } from "./StoryRowGutter";
-import { useCharacterAvatar } from "./storyCharacterFace";
-import { characterSpeakerIdentity, storySpeakerInitial, storySpeakerPaint, type StorySpeakerIdentity } from "./storySpeakerIdentity";
+import { StoryCastMark } from "./StoryCastMark";
+import { characterSpeakerIdentity } from "./storySpeakerIdentity";
 import {
     EMPTY_STORY_ROW_FILTER,
     isDialogueOnlyStoryRowFilter,
@@ -90,61 +89,6 @@ function FilterRow(props: { label: string; count: number; selected: boolean; mar
                 {props.selected ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
             </span>
         </button>
-    );
-}
-
-/**
- * A cast member's mark: their face when the project has one, their colour disc when it does not.
- *
- * The same two-state treatment the gutter gives a speaker, at menu scale — a list of faces beside the
- * scene's own faces is how you pick a name out of it without reading; a column of coloured letters is
- * a legend you have to decode. `preferThumbnail`, because this list asks "who is this" rather than
- * "what do they look like right now": the avatar the author chose answers that better than a head
- * cropped out of whichever sprite the scene last put on stage.
- *
- * Both states are SOLID and both wear the character's own colour (gutter 规范 §3.1, §3.3) — the disc
- * as its fill, the portrait as its hairline. A face too small to recognise still says whose it is.
- */
-function CastMark(props: { identity: StorySpeakerIdentity; character: Character | null }) {
-    const paint = storySpeakerPaint(props.identity.paint);
-    // `resolveVariant` still on under `preferThumbnail`: the thumbnail short-circuits the sprite
-    // resolve when there is one, and when there is not, a head cropped from the character's default
-    // sprite is a face — falling straight to the disc would blank half a cast nobody has drawn an
-    // avatar for. Same pair the `/` menu's candidate list asks for, for the same reason.
-    const { url, frame, showingSprite } = useCharacterAvatar(props.character, { resolveVariant: true, preferThumbnail: true });
-    if (url) {
-        return (
-            <span
-                className={`${paint.className} block shrink-0 overflow-hidden rounded-full bg-fill-subtle`}
-                style={{
-                    ...paint.style,
-                    width: CAST_MARK_PX,
-                    height: CAST_MARK_PX,
-                    borderWidth: 1,
-                    borderStyle: "solid",
-                    borderColor: "var(--nl-speaker-disc)",
-                }}
-            >
-                {showingSprite
-                    ? <HeadThumbnail url={url} alt="" frame={frame} className="h-full w-full" iconClassName="h-2 w-2" />
-                    : <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />}
-            </span>
-        );
-    }
-    return (
-        <span
-            className={`${paint.className} flex shrink-0 select-none items-center justify-center rounded-full font-medium leading-none`}
-            style={{
-                ...paint.style,
-                width: CAST_MARK_PX,
-                height: CAST_MARK_PX,
-                fontSize: 9,
-                backgroundColor: "var(--nl-speaker-disc)",
-                color: "var(--nl-speaker-ink)",
-            }}
-        >
-            {storySpeakerInitial(props.identity.name)}
-        </span>
     );
 }
 
@@ -328,7 +272,7 @@ export function StoryRowFilterMenu(props: {
                             label={member.identity.name}
                             count={member.count}
                             selected={props.filter.speakers.has(member.key)}
-                            mark={<CastMark identity={member.identity} character={member.character} />}
+                            mark={<StoryCastMark identity={member.identity} character={member.character} size={CAST_MARK_PX} />}
                             onToggle={() => toggleSpeaker(member.key)}
                         />
                     ))}
