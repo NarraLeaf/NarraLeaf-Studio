@@ -212,6 +212,10 @@ export const settings = {
                 all: "显示所有角色",
             },
         },
+        characterGroupsCollapsed: {
+            label: "折叠角色分组",
+            description: "打开说话人选单时，各角色分组默认折叠为分组名",
+        },
         dictionaries: {
             label: "拼写词典",
         },

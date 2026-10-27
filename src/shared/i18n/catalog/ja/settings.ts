@@ -224,6 +224,10 @@ export const settings = {
                 all: "すべてのキャラクターを表示",
             },
         },
+        characterGroupsCollapsed: {
+            label: "キャラクターグループを折りたたむ",
+            description: "話者の選択メニューを開いたとき、各グループをグループ名だけに折りたたむ",
+        },
         dictionaries: {
             label: "スペル辞書",
         },

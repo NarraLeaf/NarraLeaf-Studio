@@ -39,3 +39,20 @@ export function resolveCharacterListGrouping(stored: unknown): CharacterListGrou
         ? stored as CharacterListGrouping
         : CHARACTER_LIST_GROUPING_DEFAULT;
 }
+
+/** Global-state key for whether the speaker picker's cast groups start folded. */
+export const CHARACTER_GROUPS_COLLAPSED_KEY = "editor.characterGroupsCollapsed" as const;
+
+/**
+ * Folded by default.
+ *
+ * The picker is opened to take one name, and a cast large enough to be filed into groups is a long
+ * list to scroll past for it. The headers alone say where everyone is; a click opens one, and typing
+ * opens them all.
+ */
+export const CHARACTER_GROUPS_COLLAPSED_DEFAULT = true;
+
+/** Narrow an unknown stored value to the folding preference, falling back to the default. */
+export function resolveCharacterGroupsCollapsed(stored: unknown): boolean {
+    return typeof stored === "boolean" ? stored : CHARACTER_GROUPS_COLLAPSED_DEFAULT;
+}

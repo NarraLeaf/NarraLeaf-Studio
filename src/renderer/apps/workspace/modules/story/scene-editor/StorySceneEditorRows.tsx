@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden, useFloatingLayer } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
@@ -59,7 +59,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
-import { groupSpeakerCandidates } from "./speakerCandidateGroups";
+import { groupSpeakerCandidates, type SpeakerPickerEntry } from "./speakerCandidateGroups";
 import { NO_CHARACTER_GROUPS } from "./useCharacterGroupNames";
 import { RichTextInput, type ActiveMarks, type DictionaryClickInfo, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
 import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
@@ -2284,7 +2284,7 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const groupedCharacters = useGroupedSpeakerCandidates(characterOptions);
+    const groupedCharacters = useGroupedSpeakerCandidates(characterOptions, chooserQuery, chooser === "character");
     const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands, abbreviations);
     const characterMenu = useCharacterPickerState(groupedCharacters.ordered);
     const textStyle = useStoryEditorTextStyle();
@@ -2686,8 +2686,8 @@ export function InsertRow(props: {
                 ) : null}
                 {chooser === "character" ? (
                     <CharacterPicker
-                        characters={groupedCharacters.ordered}
-                        groupHeaders={groupedCharacters.headers}
+                        entries={groupedCharacters.entries}
+                        onToggleGroup={groupedCharacters.toggleGroup}
                         activeCharacterId={characterMenu.activeCharacter?.key ?? null}
                         onHighlight={characterMenu.selectCharacter}
                         onChoose={candidate => candidate.kind === "character"
@@ -3352,18 +3352,50 @@ function ActionCommandMenu(props: {
 }
 
 /**
- * The picker's list, filed under the cast groups - the order the keys walk and the headers drawn.
+ * The picker's list, filed under the cast groups - the order the keys walk and the lines drawn.
  *
  * What to file under comes from the row context, which has resolved it once for the whole editor tab
  * (the groups themselves, and the `editor.characterListGrouping` preference that says whether to use
  * them). Nothing is filed where the context carries none: outside a workspace, in a project with no
  * cast groups, and when the author asked for one flat list of every character - three different
  * reasons for the same, correct, answer.
+ *
+ * Groups start folded or open as `editor.characterGroupsCollapsed` says, and a header click flips one.
+ * The flips last while the picker is open and are dropped when it closes, so every opening starts
+ * from the preference. A typed query unfolds everything without touching the flips: deleting the
+ * query puts back exactly the folding the author left.
  */
-function useGroupedSpeakerCandidates(candidates: SpeakerCandidate[]) {
-    const { characterGroupNames } = useStoryCommandLineContext();
+function useGroupedSpeakerCandidates(candidates: SpeakerCandidate[], query: string, open: boolean) {
+    const { characterGroupNames, characterGroupsCollapsed } = useStoryCommandLineContext();
     const groupNames = characterGroupNames ?? NO_CHARACTER_GROUPS;
-    return useMemo(() => groupSpeakerCandidates(candidates, groupNames), [candidates, groupNames]);
+    const collapsedByDefault = characterGroupsCollapsed ?? false;
+    const [flipped, setFlipped] = useState<ReadonlySet<string>>(() => new Set());
+
+    useEffect(() => {
+        if (!open) {
+            setFlipped(current => current.size === 0 ? current : new Set());
+        }
+    }, [open]);
+
+    const searching = query.trim().length > 0;
+    const grouped = useMemo(
+        () => groupSpeakerCandidates(
+            candidates,
+            groupNames,
+            searching ? undefined : groupId => collapsedByDefault !== flipped.has(groupId),
+        ),
+        [candidates, collapsedByDefault, flipped, groupNames, searching],
+    );
+    const toggleGroup = useCallback((groupId: string) => {
+        setFlipped(current => {
+            const next = new Set(current);
+            if (!next.delete(groupId)) {
+                next.add(groupId);
+            }
+            return next;
+        });
+    }, []);
+    return { ...grouped, toggleGroup };
 }
 
 function useCharacterPickerState(candidates: SpeakerCandidate[]) {
@@ -3399,14 +3431,14 @@ function useCharacterPickerState(candidates: SpeakerCandidate[]) {
 }
 
 function CharacterPicker(props: {
-    characters: SpeakerCandidate[];
     /**
-     * Candidate key -> the cast group whose name is drawn above it (see `groupSpeakerCandidates`).
+     * The candidates with their cast groups' headers between them (see `groupSpeakerCandidates`).
      *
      * A header is drawn rather than offered: it is not a candidate, so the arrow keys walk straight
-     * past it and there is nothing to pick that is not a speaker.
+     * past it and there is nothing to pick that is not a speaker. The pointer can fold it.
      */
-    groupHeaders?: ReadonlyMap<string, string>;
+    entries: SpeakerPickerEntry<SpeakerCandidate>[];
+    onToggleGroup: (groupId: string) => void;
     activeCharacterId: string | null;
     onHighlight: (candidateKey: string) => void;
     onChoose: (candidate: SpeakerCandidate) => void;
@@ -3463,7 +3495,7 @@ function CharacterPicker(props: {
                 event.stopPropagation();
             }}
         >
-            {props.characters.length === 0 ? (
+            {props.entries.length === 0 ? (
                 <button
                     type="button"
                     className={["w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
@@ -3473,42 +3505,57 @@ function CharacterPicker(props: {
                     {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
-                props.characters.map(candidate => {
+                props.entries.map(entry => {
+                    if (entry.kind === "header") {
+                        const { header } = entry;
+                        const Chevron = header.collapsed ? ChevronRight : ChevronDown;
+                        // The group's name, drawn on the way past rather than offered: a header is
+                        // not a speaker, so the keys never land on it. The pointer folds it.
+                        return (
+                            <button
+                                key={`group:${header.groupId}`}
+                                type="button"
+                                aria-expanded={!header.collapsed}
+                                className={cn(
+                                    "flex w-full items-center gap-2 rounded-md px-2 pb-1 pt-2 text-left text-2xs text-fg-muted transition-colors",
+                                    pointer.live && "hover:text-fg",
+                                )}
+                                onMouseMove={event => pointer.move(null, event)}
+                                onMouseDown={() => props.onToggleGroup(header.groupId)}
+                            >
+                                <Users className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{header.name}</span>
+                                <span className="shrink-0 tabular-nums text-fg-subtle">{header.count}</span>
+                                <Chevron className="ml-auto h-3 w-3 shrink-0" />
+                            </button>
+                        );
+                    }
+                    const { candidate } = entry;
                     const active = candidate.key === props.activeCharacterId;
                     const temp = candidate.kind === "temp";
-                    const group = props.groupHeaders?.get(candidate.key);
                     return (
-                        <Fragment key={candidate.key}>
-                            {/* The group's name, drawn on the way past rather than offered: a header
-                                is not a speaker, so nothing here is pickable that is not one. */}
-                            {group ? (
-                                <div className="flex items-center gap-2 px-2 pb-1 pt-2 text-2xs text-fg-muted">
-                                    <Users className="h-3 w-3 shrink-0" />
-                                    <span className="truncate">{group}</span>
-                                </div>
-                            ) : null}
-                            <button
-                                type="button"
-                                role="option"
-                                aria-selected={active}
-                                data-character-id={candidate.key}
-                                className={[
-                                    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                    active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
-                                ].join(" ")}
-                                onMouseMove={event => pointer.move(candidate.key, event)}
-                                onMouseDown={() => props.onChoose(candidate)}
-                            >
-                                {/* A real character shows their face, exactly as the argument menu does
-                                    in this same slot — the two are meant to read as one menu following
-                                    the caret. A temp speaker is a name with nobody behind it: it keeps
-                                    the outline glyph and a tag, so picking one is never mistaken for
-                                    picking a character. */}
-                                <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
-                                <span className="truncate text-sm text-fg">{candidate.name}</span>
-                                {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
-                            </button>
-                        </Fragment>
+                        <button
+                            key={candidate.key}
+                            type="button"
+                            role="option"
+                            aria-selected={active}
+                            data-character-id={candidate.key}
+                            className={[
+                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                                active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
+                            ].join(" ")}
+                            onMouseMove={event => pointer.move(candidate.key, event)}
+                            onMouseDown={() => props.onChoose(candidate)}
+                        >
+                            {/* A real character shows their face, exactly as the argument menu does
+                                in this same slot — the two are meant to read as one menu following
+                                the caret. A temp speaker is a name with nobody behind it: it keeps
+                                the outline glyph and a tag, so picking one is never mistaken for
+                                picking a character. */}
+                            <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
+                            <span className="truncate text-sm text-fg">{candidate.name}</span>
+                            {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
+                        </button>
                     );
                 })
             )}
@@ -3631,7 +3678,7 @@ export function CharacterSelectTrigger(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
     );
-    const grouped = useGroupedSpeakerCandidates(candidates);
+    const grouped = useGroupedSpeakerCandidates(candidates, draft, editing);
     const picker = useCharacterPickerState(grouped.ordered);
     /**
      * The nametag is a reference too — and the only one a dialogue row has, since the words below it
@@ -3854,8 +3901,8 @@ export function CharacterSelectTrigger(props: {
                 }}
             />
             <CharacterPicker
-                characters={grouped.ordered}
-                groupHeaders={grouped.headers}
+                entries={grouped.entries}
+                onToggleGroup={grouped.toggleGroup}
                 activeCharacterId={picker.activeCharacter?.key ?? null}
                 onHighlight={picker.selectCharacter}
                 onChoose={choose}

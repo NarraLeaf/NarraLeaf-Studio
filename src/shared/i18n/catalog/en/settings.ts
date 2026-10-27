@@ -226,6 +226,10 @@ export const settings = {
                 all: "Show all characters",
             },
         },
+        characterGroupsCollapsed: {
+            label: "Collapse character groups",
+            description: "The speaker picker opens with each character group collapsed to its name.",
+        },
         dictionaries: {
             label: "Spelling dictionaries",
         },

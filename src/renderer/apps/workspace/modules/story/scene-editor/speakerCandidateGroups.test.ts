@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterProfile } from "@/lib/workspace/services/character/CharacterProfile";
-import { groupSpeakerCandidates, type GroupableSpeakerCandidate } from "./speakerCandidateGroups";
+import { groupSpeakerCandidates, type GroupableSpeakerCandidate, type SpeakerPickerEntry } from "./speakerCandidateGroups";
 
 function candidate(id: string, name: string, groupId?: string): GroupableSpeakerCandidate & { name: string } {
     const profile = CharacterProfile.create(id, name);
@@ -15,13 +15,25 @@ function temp(name: string): GroupableSpeakerCandidate & { name: string } {
 
 const npc = new Map([["g-npc", "NPC"]]);
 
+/** Each header's name, keyed by the candidate drawn right under it. */
+function headersAbove(entries: readonly SpeakerPickerEntry<{ key: string }>[]) {
+    const headers = new Map<string, string>();
+    entries.forEach((entry, index) => {
+        const next = entries[index + 1];
+        if (entry.kind === "header" && next?.kind === "candidate") {
+            headers.set(next.candidate.key, entry.header.name);
+        }
+    });
+    return headers;
+}
+
 describe("groupSpeakerCandidates", () => {
     it("lists the ungrouped cast first, then each group under its name", () => {
         const grouped = groupSpeakerCandidates([candidate("a", "A", "g-npc"), candidate("b", "B")], npc);
 
         expect(grouped.ordered.map(entry => entry.name)).toEqual(["B", "A"]);
-        expect(grouped.headers.get("a")).toBe("NPC");
-        expect(grouped.headers.has("b")).toBe(false);
+        expect(headersAbove(grouped.entries).get("a")).toBe("NPC");
+        expect(headersAbove(grouped.entries).has("b")).toBe(false);
     });
 
     it("keeps the group list's own order, and heads only the groups with a member on show", () => {
@@ -29,7 +41,7 @@ describe("groupSpeakerCandidates", () => {
         const grouped = groupSpeakerCandidates([candidate("b", "B", "g-2"), candidate("a", "A", "g-1")], groups);
 
         expect(grouped.ordered.map(entry => entry.name)).toEqual(["A", "B"]);
-        expect([...grouped.headers.values()]).toEqual(["Chapter one", "Chapter two"]);
+        expect([...headersAbove(grouped.entries).values()]).toEqual(["Chapter one", "Chapter two"]);
     });
 
     it("leaves bare names at the end, where the name being typed has to stay", () => {
@@ -45,6 +57,21 @@ describe("groupSpeakerCandidates", () => {
         const grouped = groupSpeakerCandidates([candidate("a", "A", "g-dropped"), candidate("b", "B")], npc);
 
         expect(grouped.ordered.map(entry => entry.name)).toEqual(["A", "B"]);
-        expect(grouped.headers.size).toBe(0);
+        expect(grouped.entries.every(entry => entry.kind === "candidate")).toBe(true);
+    });
+
+    it("folds a group to its header, out of the keys' reach, and keeps its count", () => {
+        const groups = new Map([["g-1", "Leads"], ["g-2", "Extras"]]);
+        const grouped = groupSpeakerCandidates(
+            [candidate("a", "A", "g-1"), candidate("b", "B", "g-2"), candidate("c", "C", "g-2"), candidate("d", "D"), temp("E")],
+            groups,
+            groupId => groupId === "g-2",
+        );
+
+        expect(grouped.ordered.map(entry => entry.name)).toEqual(["D", "A", "E"]);
+        expect(grouped.entries.map(entry => entry.kind === "header" ? `[${entry.header.name}]` : entry.candidate.name))
+            .toEqual(["D", "[Leads]", "A", "[Extras]", "E"]);
+        const extras = grouped.entries.find(entry => entry.kind === "header" && entry.header.groupId === "g-2");
+        expect(extras?.kind === "header" && extras.header).toMatchObject({ count: 2, collapsed: true });
     });
 });
