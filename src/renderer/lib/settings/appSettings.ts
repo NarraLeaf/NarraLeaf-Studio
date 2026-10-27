@@ -859,16 +859,16 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Read by the story editor's speaker picker (the "#" slot and the nametag). It sets how the
-        // groups start out each time the picker opens; a header click still folds or unfolds one,
-        // and typing a name unfolds them all. Only meaningful while the lists are grouped.
+        // Read by the story editor's speaker picker (the "#" slot and the nametag). It sets how a
+        // group starts out until the author folds or unfolds it, which the project then remembers;
+        // typing a name unfolds them all. Only meaningful while the lists are grouped.
         key: CHARACTER_GROUPS_COLLAPSED_KEY,
         category: "editor",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Collapse character groups",
         labelKey: "settings.items.characterGroupsCollapsed.label",
-        description: "The speaker picker opens with each character group collapsed to its name.",
+        description: "In the speaker picker, character groups not yet expanded or collapsed by hand start collapsed to their name.",
         descriptionKey: "settings.items.characterGroupsCollapsed.description",
         defaultValue: CHARACTER_GROUPS_COLLAPSED_DEFAULT,
     },

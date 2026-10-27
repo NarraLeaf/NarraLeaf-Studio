@@ -228,7 +228,7 @@ export const settings = {
         },
         characterGroupsCollapsed: {
             label: "Collapse character groups",
-            description: "The speaker picker opens with each character group collapsed to its name.",
+            description: "In the speaker picker, character groups not yet expanded or collapsed by hand start collapsed to their name.",
         },
         dictionaries: {
             label: "Spelling dictionaries",

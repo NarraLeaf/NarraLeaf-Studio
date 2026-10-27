@@ -226,7 +226,7 @@ export const settings = {
         },
         characterGroupsCollapsed: {
             label: "キャラクターグループを折りたたむ",
-            description: "話者の選択メニューを開いたとき、各グループをグループ名だけに折りたたむ",
+            description: "話者の選択メニューで、まだ手動で開閉していないグループをグループ名だけに折りたたむ",
         },
         dictionaries: {
             label: "スペル辞書",

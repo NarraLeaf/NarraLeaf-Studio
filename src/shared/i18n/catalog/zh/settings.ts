@@ -214,7 +214,7 @@ export const settings = {
         },
         characterGroupsCollapsed: {
             label: "折叠角色分组",
-            description: "打开说话人选单时，各角色分组默认折叠为分组名",
+            description: "说话人选单中尚未手动展开或折叠的角色分组，默认折叠为分组名",
         },
         dictionaries: {
             label: "拼写词典",

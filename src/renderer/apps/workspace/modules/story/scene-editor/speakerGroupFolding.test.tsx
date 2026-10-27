@@ -15,6 +15,21 @@ import { CharacterSelectTrigger } from "./StorySceneEditorRows";
 
 let collapsedByDefault = true;
 
+/** The project's panel state, as far as the picker uses it: one record per panel id. */
+const panelStore = new Map<string, Record<string, unknown>>();
+const panelState = {
+    getPanelState: (id: string) => panelStore.get(id),
+    setPanelState: (id: string, partial: Record<string, unknown>) => panelStore.set(id, { ...panelStore.get(id), ...partial }),
+};
+
+vi.mock("@/apps/workspace/context", async importOriginal => ({
+    ...await importOriginal<typeof import("@/apps/workspace/context")>(),
+    useOptionalWorkspace: () => ({
+        context: { services: { get: () => panelState } },
+        isInitialized: true,
+    }),
+}));
+
 vi.mock("./StoryCommandLineView", async importOriginal => ({
     ...await importOriginal<typeof import("./StoryCommandLineView")>(),
     useStoryCommandLineContext: () => ({
@@ -42,6 +57,7 @@ const CAST = [character("lead", "Lead"), character("clerk", "Clerk", "g-extras")
 
 beforeEach(() => {
     collapsedByDefault = true;
+    panelStore.clear();
 });
 
 afterEach(cleanup);
@@ -59,7 +75,11 @@ function renderNametag() {
     );
 }
 
-const shown = () => [...document.body.querySelectorAll("[data-character-id]")].map(node => node.getAttribute("data-character-id"));
+const shown = () => [...document.body.querySelectorAll("[data-character-id]")]
+    .map(node => node.getAttribute("data-character-id"))
+    .filter(key => !key?.startsWith("group:"));
+const highlighted = () => document.body.querySelector("[data-character-id].bg-primary\\/15")?.getAttribute("data-character-id");
+const field = () => screen.getByRole("textbox");
 const header = () => document.body.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
 
 describe("the speaker picker's cast groups", () => {
@@ -87,7 +107,7 @@ describe("the speaker picker's cast groups", () => {
         renderNametag();
         fireEvent.click(screen.getByRole("button"));
 
-        fireEvent.change(screen.getByRole("textbox"), { target: { value: "gua" } });
+        fireEvent.change(field(), { target: { value: "gua" } });
         expect(shown()).toContain("guard");
     });
 
@@ -97,5 +117,39 @@ describe("the speaker picker's cast groups", () => {
         fireEvent.click(screen.getByRole("button"));
 
         expect(shown()).toEqual(["lead", "clerk", "guard"]);
+    });
+
+    it("open on the first speaker, and let the arrows reach a header that Enter folds", () => {
+        renderNametag();
+        fireEvent.click(screen.getByRole("button"));
+        expect(highlighted()).toBe("lead");
+
+        fireEvent.keyDown(field(), { key: "ArrowDown" });
+        expect(highlighted()).toBe("group:g-extras");
+        fireEvent.keyDown(field(), { key: "Enter" });
+        expect(shown()).toEqual(["lead", "clerk", "guard"]);
+        expect(highlighted()).toBe("group:g-extras");
+
+        fireEvent.keyDown(field(), { key: "ArrowDown" });
+        expect(highlighted()).toBe("clerk");
+    });
+
+    it("remember a fold from one opening to the next", () => {
+        renderNametag();
+        fireEvent.click(screen.getByRole("button"));
+        fireEvent.mouseDown(header());
+        fireEvent.keyDown(field(), { key: "Escape" });
+
+        fireEvent.click(screen.getByRole("button"));
+        expect(shown()).toEqual(["lead", "clerk", "guard"]);
+        expect(panelStore.get("story:speaker-picker")).toEqual({ folded: { "g-extras": false } });
+    });
+
+    it("draw a folded header the size of a speaker's row", () => {
+        renderNametag();
+        fireEvent.click(screen.getByRole("button"));
+
+        expect(header().className).toContain("py-2");
+        expect(header().querySelector(".text-sm")?.textContent).toBe("Extras");
     });
 });
