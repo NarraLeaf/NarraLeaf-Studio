@@ -56,7 +56,7 @@ import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCu
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
-import type { StoryCommandValue } from "./storyCommandValues";
+import type { StoryCommandFolder, StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
 import { groupSpeakerCandidates, type SpeakerPickerEntry } from "./speakerCandidateGroups";
@@ -2308,8 +2308,14 @@ export function InsertRow(props: {
         () => argMenuOffer(cursor, props.commandContext, resolvedArgs),
         [ct, cursor, props.commandContext, resolvedArgs],
     );
+    // Assets are filed under their folders and characters under their cast groups, as submenus while
+    // nothing is typed at this slot. Typed, the matches are one list, each with where it is filed.
+    const { characterGroupNames, groupSubmenus } = useStoryCommandLineContext();
+    const argQuery = "query" in cursor ? cursor.query : "";
+    const argSubmenus = Boolean(groupSubmenus) && argQuery.trim() === "";
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         return argOffer.candidates.map((candidate, index) => {
+            const folders = candidateFolders(candidate, props.characters, characterGroupNames);
             return {
                 // Values are not unique on their own — two assets may share a name.
                 key: `${index}:${candidate.value}`,
@@ -2335,13 +2341,17 @@ export function InsertRow(props: {
                 mark: candidate.mark,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
                 ...(candidate.free ? { free: true as const } : {}),
+                ...(folders ? { folders } : {}),
             };
-        });
-    }, [argOffer, ct, t]);
+        }).map(item => !argSubmenus && item.folders && !item.detail
+            // One list: where each name is filed rides beside it, so two names alike can be told apart.
+            ? { ...item, detail: item.folders.map(folder => folder.name).join(" / ") }
+            : item);
+    }, [argOffer, argSubmenus, characterGroupNames, ct, props.characters, t]);
     // The candidates decide the highlight along with the cursor: an untyped slot, a slot whose best
     // offer is the author's own text, and every expression slot all have to leave Enter meaning
     // "submit". See `defaultHighlights`, and `argMenuOffer` for why the expression case is deliberate.
-    const argMenu = useStoryCandidateMenuState(argItems, argOffer.autoHighlight);
+    const argMenu = useStoryCandidateMenuState(argItems, argOffer.autoHighlight, argSubmenus);
 
     // The argument menu owns the slot whenever the caret is past the command name and `argMenuOffer`
     // says there is something to show.
@@ -2592,6 +2602,13 @@ export function InsertRow(props: {
                             event.preventDefault();
                             return;
                         }
+                        // Likewise a folder in the argument menu. → only goes in while a folder is
+                        // highlighted, and folders are listed only while nothing is typed at the slot;
+                        // ← only comes back out of a column the keyboard went into.
+                        if (argMenuOpen && (event.key === "ArrowRight" ? argMenu.enter() : event.key === "ArrowLeft" && argMenu.leave())) {
+                            event.preventDefault();
+                            return;
+                        }
                         // ←/→ are never the menu's: they belong to the caret in the line being typed,
                         // in EVERY chooser. The command menu's category column is a mouse-driven
                         // filter for that reason — a column that took the arrows would cost `@shwo`
@@ -2603,6 +2620,10 @@ export function InsertRow(props: {
                             if (argMenuOpen) {
                                 // No highlight is the answer at a `k=` position: Enter falls through and
                                 // submits the line instead of grabbing `t=`.
+                                // On a folder, the highlight goes into it rather than choosing.
+                                if (argMenu.onFolder) {
+                                    return argMenu.enter();
+                                }
                                 if (!argMenu.activeItem) {
                                     return false;
                                 }
@@ -2641,8 +2662,8 @@ export function InsertRow(props: {
                             // Tab advances *within* the row. With nothing highlighted — a `k=` position,
                             // where Enter submits instead — it still takes the first candidate, which is
                             // what walks the caret on to the next argument.
-                            if (argMenuOpen && argItems.length > 0) {
-                                takeArgCandidate(argItems[0]);
+                            if (argMenuOpen && argMenu.firstItem) {
+                                takeArgCandidate(argMenu.firstItem);
                             }
                             return;
                         }
@@ -2686,9 +2707,10 @@ export function InsertRow(props: {
                 ) : null}
                 {argMenuOpen ? (
                     <StoryCommandCandidateMenu
-                        items={argItems}
-                        activeKey={argMenu.activeItem?.key ?? null}
-                        onHighlight={argMenu.selectItem}
+                        columns={argMenu.columns}
+                        trail={argMenu.trail}
+                        onHighlight={argMenu.select}
+                        onEnterFolder={argMenu.enterFolder}
                         onChoose={takeArgCandidate}
                         onCancel={props.onDismissChooser}
                         frame={menuFrame}
@@ -2714,6 +2736,28 @@ export function InsertRow(props: {
             </div>
         </div>
     );
+}
+
+/**
+ * Where an argument candidate is filed: an asset's folders, carried on the candidate from the
+ * context, or a character's cast group, looked up here because the cast groups are the row context's
+ * (and absent when the author asked for one flat list of characters).
+ */
+function candidateFolders(
+    candidate: StoryCommandCandidate,
+    characters: readonly Character[],
+    groupNames: ReadonlyMap<string, string> | undefined,
+): readonly StoryCommandFolder[] | undefined {
+    if (candidate.folders) {
+        return candidate.folders;
+    }
+    if (candidate.mark?.kind !== "character" || !candidate.mark.characterId || !groupNames) {
+        return undefined;
+    }
+    const characterId = candidate.mark.characterId;
+    const groupId = characters.find(character => character.profile.getId() === characterId)?.profile.getGroupId();
+    const name = groupId ? groupNames.get(groupId) : undefined;
+    return groupId && name ? [{ id: groupId, name, kind: "cast" }] : undefined;
 }
 
 /**
@@ -3386,15 +3430,15 @@ const SPEAKER_GROUP_COLUMN_GAP_PX = 4;
  * cast groups, and when the author asked for one flat list of every character - three different
  * reasons for the same, correct, answer.
  *
- * With `editor.characterGroupSubmenus` on, each group is one stop whose members open in a column
+ * With `editor.groupSubmenus` on, each group is one stop whose members open in a column
  * beside the list. A typed query lists every match under its group's name instead: the author has
  * said who they want, and a column to open would stand between them and the name.
  */
 function useGroupedSpeakerCandidates(candidates: SpeakerCandidate[], query: string) {
-    const { characterGroupNames, characterGroupSubmenus } = useStoryCommandLineContext();
+    const { characterGroupNames, groupSubmenus } = useStoryCommandLineContext();
     const groupNames = characterGroupNames ?? NO_CHARACTER_GROUPS;
     const searching = query.trim().length > 0;
-    const layout = characterGroupSubmenus && !searching ? "submenus" : "inline";
+    const layout = groupSubmenus && !searching ? "submenus" : "inline";
     const entries = useMemo(
         () => groupSpeakerCandidates(candidates, groupNames, layout).entries,
         [candidates, groupNames, layout],

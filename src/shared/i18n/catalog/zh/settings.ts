@@ -212,9 +212,9 @@ export const settings = {
                 all: "显示所有角色",
             },
         },
-        characterGroupSubmenus: {
-            label: "角色分组显示为子菜单",
-            description: "说话人选单中，每个角色分组收为一项，其中的角色在旁边一列列出",
+        groupSubmenus: {
+            label: "分组显示为子菜单",
+            description: "候选菜单中，角色分组与资产文件夹各收为一项，其中的内容在旁边一列列出",
         },
         dictionaries: {
             label: "拼写词典",

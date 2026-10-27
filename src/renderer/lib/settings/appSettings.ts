@@ -29,8 +29,8 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
-    CHARACTER_GROUP_SUBMENUS_DEFAULT,
-    CHARACTER_GROUP_SUBMENUS_KEY,
+    GROUP_SUBMENUS_DEFAULT,
+    GROUP_SUBMENUS_KEY,
     CHARACTER_LIST_GROUPING_DEFAULT,
     CHARACTER_LIST_GROUPING_KEY,
     CHARACTER_LIST_GROUPING_OPTIONS,
@@ -859,19 +859,20 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Read by the story editor's speaker picker (the "#" slot and the nametag). On, each group is
-        // one entry and its members open in a column beside it; off, the members are listed under
-        // the group's name. Typing a name lists the matches either way. Only meaningful while the
-        // lists are grouped.
-        key: CHARACTER_GROUP_SUBMENUS_KEY,
+        // Read by the story editor's candidate menus: the speaker picker (the "#" slot and the
+        // nametag) files characters under their cast groups, the argument menu files assets under
+        // their folders and characters under their groups. On, each group or folder is one entry
+        // whose contents open in a column beside it; off, everything is one list. Typing a name lists
+        // the matches either way.
+        key: GROUP_SUBMENUS_KEY,
         category: "editor",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Show character groups as submenus",
-        labelKey: "settings.items.characterGroupSubmenus.label",
-        description: "In the speaker picker, each character group is one entry whose characters open in a column beside it.",
-        descriptionKey: "settings.items.characterGroupSubmenus.description",
-        defaultValue: CHARACTER_GROUP_SUBMENUS_DEFAULT,
+        label: "Show groups as submenus",
+        labelKey: "settings.items.groupSubmenus.label",
+        description: "In candidate menus, each character group and asset folder is one entry whose contents open in a column beside it.",
+        descriptionKey: "settings.items.groupSubmenus.description",
+        defaultValue: GROUP_SUBMENUS_DEFAULT,
     },
     {
         /**

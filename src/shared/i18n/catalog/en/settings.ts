@@ -226,9 +226,9 @@ export const settings = {
                 all: "Show all characters",
             },
         },
-        characterGroupSubmenus: {
-            label: "Show character groups as submenus",
-            description: "In the speaker picker, each character group is one entry whose characters open in a column beside it.",
+        groupSubmenus: {
+            label: "Show groups as submenus",
+            description: "In candidate menus, each character group and asset folder is one entry whose contents open in a column beside it.",
         },
         dictionaries: {
             label: "Spelling dictionaries",

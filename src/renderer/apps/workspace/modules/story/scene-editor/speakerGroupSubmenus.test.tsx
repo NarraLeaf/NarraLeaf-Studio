@@ -22,7 +22,7 @@ vi.mock("./StoryCommandLineView", async importOriginal => ({
     ...await importOriginal<typeof import("./StoryCommandLineView")>(),
     useStoryCommandLineContext: () => ({
         characterGroupNames: new Map([["g-extras", "Extras"]]),
-        characterGroupSubmenus: submenus,
+        groupSubmenus: submenus,
     }),
 }));
 

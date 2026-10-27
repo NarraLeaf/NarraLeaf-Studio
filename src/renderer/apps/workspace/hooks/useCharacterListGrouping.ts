@@ -1,8 +1,8 @@
 import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import {
-    CHARACTER_GROUP_SUBMENUS_KEY,
+    GROUP_SUBMENUS_KEY,
     CHARACTER_LIST_GROUPING_KEY,
-    resolveCharacterGroupSubmenus,
+    resolveGroupSubmenus,
     resolveCharacterListGrouping,
     type CharacterListGrouping,
 } from "@/lib/settings/characterListOptions";
@@ -19,10 +19,10 @@ export function useCharacterListGrouping(): CharacterListGrouping {
 }
 
 /**
- * Reads the `editor.characterGroupSubmenus` preference — whether the speaker picker shows each cast
- * group as one entry with its members in a column beside it. Follows the broadcast for the same
- * reason as above.
+ * Reads the `editor.groupSubmenus` preference — whether the story editor's candidate menus show each
+ * cast group and asset folder as one entry with its contents in a column beside it. Follows the
+ * broadcast for the same reason as above.
  */
-export function useCharacterGroupSubmenus(): boolean {
-    return useGlobalSetting(CHARACTER_GROUP_SUBMENUS_KEY, resolveCharacterGroupSubmenus);
+export function useGroupSubmenus(): boolean {
+    return useGlobalSetting(GROUP_SUBMENUS_KEY, resolveGroupSubmenus);
 }

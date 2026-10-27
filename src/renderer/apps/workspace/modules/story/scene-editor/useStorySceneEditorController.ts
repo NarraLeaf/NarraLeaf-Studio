@@ -56,7 +56,8 @@ import { createBlockForCommand, dialogueSpeakerOf, pluginActionToPaletteCommand,
 import { commandNamedByWord, findPluginActionsByCommandWord } from "./storyCommandSearch";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
-import { buildStoryCommandContext, listPuppetCharacterIds } from "./storyCommandContext";
+import { buildStoryCommandContext, listPuppetCharacterIds, type StoryCommandAssetFolderInput } from "./storyCommandContext";
+import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { useContentStable, useDocumentStableForRows } from "./storyRowIdentity";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -846,6 +847,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const commandContext = useMemo(
         () => buildStoryCommandContext({
             assets: assetsService?.getAssets(),
+            assetFolders: commandAssetFolders(assetsService),
             assetSets: assetSetService?.listSets() ?? [],
             characters,
             document,
@@ -4020,5 +4022,23 @@ function nextSceneLayerName(stack: readonly StorySceneLayer[]): string {
         if (sceneLayerNameProblem(stack, candidate) === null) {
             return candidate;
         }
+    }
+}
+
+/**
+ * The folders the command line files asset names under: the image and media categories', in the
+ * asset browser's order. Empty while the library has not read its groups yet, which offers every name
+ * unfiled rather than failing the whole context.
+ */
+function commandAssetFolders(assetsService: AssetsService | null | undefined): StoryCommandAssetFolderInput[] {
+    if (!assetsService) {
+        return [];
+    }
+    try {
+        const groups = assetsService.getGroupAssetsManager();
+        return [AssetCategory.Image, AssetCategory.Media].flatMap(category => groups.getGroups(category))
+            .map(group => ({ id: group.id, name: group.name, parentGroupId: group.parentGroupId }));
+    } catch {
+        return [];
     }
 }
