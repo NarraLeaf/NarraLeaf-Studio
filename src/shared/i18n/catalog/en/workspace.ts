@@ -609,6 +609,7 @@ export const workspace = {
             character_layered_set: "Lay out a layered character",
             character_layers_import: "Build a layered character from files",
             character_preview: "Preview a character look",
+            character_avatars_autoframe: "Auto-frame dialog avatars",
             variables_list: "List variables",
             variable_upsert: "Create or update a variable",
             variable_delete: "Delete a variable",

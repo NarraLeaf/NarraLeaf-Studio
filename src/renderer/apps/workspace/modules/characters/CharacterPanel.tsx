@@ -23,7 +23,8 @@ import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAsset
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
-import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
+import { FolderPlus, Loader2, MoreVertical, RefreshCw, ScanFace, Tag, User, UserPlus, Users } from "lucide-react";
+import { useAvatarAutoFrame } from "./useAvatarAutoFrame";
 import { readableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import { cn } from "@/lib/utils/cn";
@@ -117,6 +118,7 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
     // Reconcile the baked dialog avatars when the panel opens. An up-to-date project performs
     // reads only, so the common case leaves the working tree untouched.
     useCharacterAvatarBake(Boolean(characterService));
+    const autoFrame = useAvatarAutoFrame();
 
     const loadCharacters = useCallback(() => {
         if (!characterService) return;
@@ -659,6 +661,14 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                         onFilterOpen={handleFilterOpen}
                     />
                     {/* Count removed per request */}
+                    <button
+                        onClick={(event) => { event.stopPropagation(); void autoFrame.frameAll(); }}
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={t("characters.autoFrame.all")}
+                        {...freeze.writes(autoFrame.running, autoFrame.running ? t("characters.autoFrame.running") : t("characters.autoFrame.all"))}
+                    >
+                        {autoFrame.running ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanFace className="w-4 h-4" />}
+                    </button>
                     <button
                         onClick={loadCharacters}
                         className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"

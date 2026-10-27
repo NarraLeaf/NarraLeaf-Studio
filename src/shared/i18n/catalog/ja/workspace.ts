@@ -566,6 +566,7 @@ export const workspace = {
             character_layered_set: "レイヤー立ち絵を設定",
             character_layers_import: "ファイルからレイヤー立ち絵を構成",
             character_preview: "キャラクターの見た目をプレビュー",
+            character_avatars_autoframe: "アバターを自動で切り抜く",
             variables_list: "変数一覧",
             variable_upsert: "変数を作成・更新",
             variable_delete: "変数を削除",

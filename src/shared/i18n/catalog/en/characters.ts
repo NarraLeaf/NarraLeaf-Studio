@@ -43,6 +43,22 @@ export const characters = {
         createCharacter: "create character {name}",
         editCharacter: "edit character {name}",
         deleteGroup: "delete group {name}",
+        autoFrameAvatars: "auto-frame dialog avatars of {name}",
+    },
+    // Framing dialog avatars on the head the detector model finds. Only ever on request: the
+    // panel's button, the button beside a portrait's framing, and the agent tool.
+    autoFrame: {
+        all: "Auto-frame all dialog avatars",
+        one: "Auto-frame avatar",
+        running: "Auto-framing dialog avatars",
+        consoleChannel: "Avatars",
+        consoleChannelDescription: "Dialog avatars framed on a detected head",
+        started: "Detecting heads to frame dialog avatars",
+        summary: "Framed {framed} · No head found {noHead} · Kept existing framing {kept}",
+        noHeadLine: "{name}: no head found in {looks}",
+        nothingToDo: "No dialog avatars to frame",
+        noHead: "No head found",
+        failed: "Auto-framing failed: {message}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,
     // including the accent — it is what every surface identifies them by from their first line.
@@ -341,7 +357,7 @@ export const characters = {
         resetView: "Reset View",
         alt: "Variant preview",
         setPortrait: "Portrait framing",
-        resetPortrait: "Frame automatically",
+        resetPortrait: "Clear framing",
         portraitTitle: "Portrait framing",
         // A switch label, so it names the state rather than describing the click. "Look" rather than
         // "pose" because both kinds have one: a pose for a preset character, a tag combination for a
