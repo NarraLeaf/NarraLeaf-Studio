@@ -605,6 +605,10 @@ export const project = {
                 one: "{count} 个动作",
                 other: "{count} 个动作",
             },
+            inlineTextEffect: {
+                one: "{count} 种文本效果",
+                other: "{count} 种文本效果",
+            },
         },
     },
     live: {

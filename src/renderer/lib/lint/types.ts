@@ -205,6 +205,7 @@ export type LintRuleId =
     | "variables/condition-never-holds"
     | "text/overlong"
     | "text/empty"
+    | "text/unknown-effect"
     | "localization/missing"
     | "localization/stale"
     | "localization/markup"

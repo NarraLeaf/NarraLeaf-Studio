@@ -33,7 +33,7 @@ async function loadPlugin(source: string[], capabilities: PluginRuntimeCapabilit
         "",
     ].join("\n"), "utf-8");
     const contributes = {
-        blueprintNodes: [], widgets: [], tests: [], reservedSaveIds: [], runtimeData: [], locales: [],
+        blueprintNodes: [], widgets: [], inlineTextEffects: [], tests: [], reservedSaveIds: [], runtimeData: [], locales: [],
         runtimeCapabilities: capabilities, sidecars: [], buildDependencies: [], buildConfig: [],
         externalLinks: [], network: [], widgetText: {}, structs: [], agentTools: [], agentGuide: "",
     } satisfies NormalizedPluginManifestV2["contributes"];

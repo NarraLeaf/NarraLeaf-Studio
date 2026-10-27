@@ -629,6 +629,12 @@ export const story = {
         speedUnit: "cps",
         speedPlaceholder: "Line",
     },
+    textEffect: {
+        effect: "Effect",
+        none: "None",
+        /** A run names an effect that no installed plugin provides. */
+        unavailable: "{id} (not installed)",
+    },
     ruby: {
         title: "Ruby text",
         placeholder: "Reading",
@@ -675,6 +681,8 @@ export const story = {
         rubyHint: "Ruby text (select the words to annotate)",
         type: "Type",
         typeHint: "Type (select the words to set)",
+        effects: "Effects",
+        effectsHint: "Effects (select the words to set)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",

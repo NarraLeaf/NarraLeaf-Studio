@@ -1333,6 +1333,21 @@ export const lint = {
                 + "\n"
                 + "- Write the text the row was meant to have, or delete the row.",
         },
+        textUnknownEffect: {
+            title: "Text effect not installed",
+            description: "A line uses a text effect that no installed plugin provides",
+            message: "The text effect {effect} is not provided by any installed plugin",
+            help:
+                "Text in a narration, dialogue or choice row is set in an inline effect, such as shaking text, "
+                + "and no installed and enabled plugin provides it. The effect's id begins with the id of the "
+                + "plugin that provides it.\n"
+                + "\n"
+                + "The game draws the text without the effect. A build is refused, because the plugin that "
+                + "draws the effect cannot be packaged.\n"
+                + "\n"
+                + "- Install or enable the plugin named by the effect's id.\n"
+                + "- Or select the text, open Effects in the text toolbar and choose None.",
+        },
         localizationMissing: {
             title: "Missing translation",
             description: "A line or interface text with no translation in a target language",

@@ -45,6 +45,10 @@ type RuntimePluginApp = {
       register(def: RuntimeWidgetRendererDef): void;
       registerMany(defs: RuntimeWidgetRendererDef[]): void;
     };
+    inlineTextEffects: {
+      register(def: RuntimeInlineTextEffectDef): void;
+      registerMany(defs: RuntimeInlineTextEffectDef[]): void;
+    };
     storyActions: {
       register(def: RuntimeStoryActionDef): void;
       registerMany(defs: RuntimeStoryActionDef[]): void;
@@ -68,6 +72,12 @@ type RuntimeWidgetRendererDef = {
   type: string;
   render: (props: RuntimeWidgetRendererProps) => ReactElement | null;
   logicApi?: WidgetLogicApi;   // 与 studio 侧 widget module 的 logicApi 是同一个对象
+};
+
+type RuntimeInlineTextEffectDef = {
+  id: string;                  // 与 studio 侧 inlineTextEffects 注册的 id 相同
+  render: (props: RuntimeInlineTextEffectRenderProps) => ReactElement | null;
+  interactive?: boolean;       // 带效果的字是否拦截玩家的点击，默认 false
 };
 ```
 
@@ -144,6 +154,22 @@ type RuntimeWidgetRendererProps = {
 - **`dispatchEvent` 与 `game` 是可选的**，这样同一个 render 函数也能直接当 studio 侧 widget module 的
   `render` 用：编辑器画布上既没有在跑的游戏，也没有可以发事件的蓝图，两者在那里确实不存在。
   **反过来不成立**——按编辑器那份 props 写的函数当不了 runtime 渲染器，因为 `hostAdapter` 不会在那里。
+
+### game.inlineTextEffects
+
+画作者设置了本插件行内文本效果的对白文字。对白里带效果的一段编译成引擎的 `Word`（`render` 为效果 id，
+`data` 为参数），引擎绘制时按 id 找到这里注册的组件。注册时 id 必须以插件 ID 为前缀，并已在
+`contributes.inlineTextEffects` 里声明，否则抛错；另一个插件已经注册过的 id 也会抛错。
+
+- 组件收到的是 `RuntimeInlineTextEffectRenderProps`：`children`（引擎排好的字，含注音、竖排与逐字淡入）、
+  `text` / `fullText` / `revealed` / `done`、`style`、`hasRuby` 与 `params`。引擎给内建渲染器的 `config`
+  不会传过来。
+- 组件放在错误边界后面，抛错时这段字按无效果显示，错误只报告一次。
+- `interactive` 默认 `false`：带效果的字不拦截点击，点在上面照常推进对白。要做可以点击的字时传 `true`。
+  这一项依赖引擎 `registerWordRenderer` 的 `interactive` 选项（narraleaf-react 1.5.1 起，Studio 用的 1.5.0
+  已通过补丁带上）。
+- 与 `widgets` 一样总是存在、不需要声明能力：组件只画作者标了本插件效果的文字。
+- 没有任何插件注册某个效果 id 时，引擎把那段字按普通文字画，并在控制台提示一次。
 
 ### game.menu
 

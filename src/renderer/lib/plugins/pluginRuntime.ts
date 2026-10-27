@@ -66,6 +66,7 @@ import type { HistoryService } from "@/lib/workspace/services/history/HistorySer
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { pluginAgentToolRegistry } from "@/lib/workspace/services/agent/pluginToolRegistry";
 import { createPluginAgentFacade } from "./pluginAgentTools";
+import { inlineTextEffectRegistry, normalizeInlineTextEffectDef } from "./inlineTextEffectRegistry";
 
 type PluginModule = {
     default?: unknown;
@@ -383,6 +384,15 @@ function describeWidgetType(module: UIWidgetModule | undefined): PluginWidgetTyp
     };
 }
 
+function assertDeclaredInlineTextEffect(descriptor: WorkspacePluginDescriptor, id: string): void {
+    if (!descriptor.manifest.contributes.inlineTextEffects.includes(id)) {
+        throw new Error(
+            `Inline text effect is not declared in manifest contributes.inlineTextEffects: ${id}. ` +
+            "Declare it so Studio can ship the plugin with projects that use it.",
+        );
+    }
+}
+
 function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: string): void {
     if (!descriptor.manifest.contributes.widgets.includes(type)) {
         throw new Error(
@@ -460,6 +470,10 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
         widgets: {
             register: () => registrationUnavailable("widgets"),
             registerMany: () => registrationUnavailable("widgets"),
+        },
+        inlineTextEffects: {
+            register: () => registrationUnavailable("inlineTextEffects"),
+            registerMany: () => registrationUnavailable("inlineTextEffects"),
         },
         // Not `registrationUnavailable`: the studio entry's `app.services.story.actions` registers
         // the action the author inserts, which is the other half of the pair rather than this one,
@@ -943,6 +957,27 @@ export function createPluginApp(
                     return info ? [info] : [];
                 }),
                 has: type => widgetModuleRegistry.has(type),
+            },
+            inlineTextEffects: {
+                register: def => {
+                    const entry = normalizeInlineTextEffectDef(def, descriptor.plugin.id);
+                    if (typeof entry === "string") {
+                        throw new Error(entry);
+                    }
+                    assertDeclaredInlineTextEffect(descriptor, entry.id);
+                    return trackReturn(inlineTextEffectRegistry.register(entry));
+                },
+                registerMany: defs => {
+                    const entries = defs.map(def => {
+                        const entry = normalizeInlineTextEffectDef(def, descriptor.plugin.id);
+                        if (typeof entry === "string") {
+                            throw new Error(entry);
+                        }
+                        assertDeclaredInlineTextEffect(descriptor, entry.id);
+                        return entry;
+                    });
+                    return combine(entries.map(entry => trackReturn(inlineTextEffectRegistry.register(entry))));
+                },
             },
             interface: {
                 listSurfaces: () => uiDocument.getDocument().surfaces

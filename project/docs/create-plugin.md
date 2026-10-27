@@ -97,6 +97,7 @@ Manifest 字段：
 |---|---|---|
 | `blueprintNodes` | `string[]` | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。 |
 | `widgets` | `string[]` | widget type，同上。 |
+| `inlineTextEffects` | `string[]` | 行内文本效果 id（必须以插件 ID 为前缀），如抖动的文字。studio 入口与 runtime 入口注册未声明的 id 都会抛错。**不派生安装权限**。见下面的 [行内文本效果](#行内文本效果appservicesinlinetexteffects)。 |
 | `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
 | `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
 | `reservedSaveIds` | `string[]` | 插件留作自用的存档 id（如快速存档槽，必须以插件 ID 为前缀）。游戏的 `List Saves` 不列出它们，就像不列出自动存档一样；插件自己的 `app.game.saves.listIds` 仍是原始列表、照样看得到，`Load Save` / `Delete Save` / `Get Save` 系列按 id 也照常可用。**不派生安装权限**：它只能影响插件自己命名空间里的 id。 |
@@ -496,6 +497,51 @@ export const ON_RATED = {
 编辑器画布与游戏都把插件的 `render` 放在错误边界后面：抛错的那个元素变成「控件绘制失败」并写出
 type，错误进控制台，同一页上别的控件照常画。这是宿主的兜底，不是可以依赖的错误处理——
 渲染器该自己处理拿不到的数据。
+
+## 行内文本效果（`app.services.inlineTextEffects`）
+
+行内文本效果是作者选中一段对白后加上的一种画法，像粗体一样按文本段保存，例如让文字抖动。studio 入口
+注册对白文本工具栏里的那一项，runtime 入口注册游戏里画这段文字的组件，两边用同一个 id，并都要在
+manifest 的 `contributes.inlineTextEffects` 里声明：
+
+```ts
+// main.js（studio 入口）
+const tr = app.services.i18n.createTranslator(MESSAGES);
+app.services.inlineTextEffects.register({
+  id: `${app.plugin.id}.shake`,
+  get label() { return tr.t("shake"); },
+  params: [
+    { key: "intensity", get label() { return tr.t("intensity"); }, min: 1, max: 10, step: 1, default: 3 },
+  ],
+});
+
+// runtime.js（runtime 入口）
+app.game.inlineTextEffects.register({ id: `${app.plugin.id}.shake`, render: ShakeText });
+```
+
+注册之后：
+
+- 对白文本工具栏出现「效果」按钮（没有任何插件注册效果时不出现）。作者选中文字后打开它，选一种效果，
+  再用滑块调参数。`label` 每次绘制都会重新读取，写成翻译器上的 getter 就能跟随界面语言切换。
+- 参数只支持数字，`default` 必须在 `min` 与 `max` 之间。参数停在默认值时不写进文档，所以之后调整默认值，
+  没动过滑块的文本会跟着变。
+- 编辑器里带效果的字只加一条虚线下划线，不播放效果；效果只在游戏里画。
+- Script View 里写作 `{fx <效果 id> intensity=6}…{/fx}`，导出再导入不会丢。
+
+游戏里，这段文字编译成引擎的一个 `Word`，交给 runtime 入口注册的组件画。组件收到
+`RuntimeInlineTextEffectRenderProps`：
+
+- `children`：引擎排好的字，注音、竖排、逐字淡入都已经处理。画它就能保留这些效果。
+- `text` / `fullText` / `revealed` / `done`：已经显示出来的字、整段字，以及显示进度。只有要逐字摆放时才用 `text`。
+- `hasRuby`：这段字带注音。注音在 `children` 里，`text` 里没有。
+- `params`：作者设置的参数值，停在默认值的参数不在里面。
+
+默认情况下，带效果的字**不拦截玩家的点击**，点在上面照常推进对白。要做可以点击的字（例如点开术语解释），
+注册时传 `interactive: true`。组件抛错时这段字按无效果显示，错误进控制台，对白框照常工作。
+
+插件不在时，游戏里这段字按普通文字显示。项目检查报 `text/unknown-effect`（error），依赖表记录用到的效果，
+构建时会带上提供它的插件，插件缺失或被禁用时构建报错。内建的 Text Effects 插件
+（`src/builtin-plugins/text-effects/`）是参照实现。
 
 ## 扩展文本编辑器（`app.services.textEditor`）
 

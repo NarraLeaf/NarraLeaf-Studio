@@ -541,6 +541,12 @@ export const story = {
         speedUnit: "字/秒",
         speedPlaceholder: "行と同じ",
     },
+    textEffect: {
+        effect: "エフェクト",
+        none: "なし",
+        /** テキストのエフェクトを提供するプラグインがインストールされていない。 */
+        unavailable: "{id}（未インストール）",
+    },
     ruby: {
         title: "ルビ",
         placeholder: "読み",
@@ -584,6 +590,8 @@ export const story = {
         rubyHint: "ルビ（振りたい語を選んでから）",
         type: "文字",
         typeHint: "文字（設定する語を選んでから）",
+        effects: "エフェクト",
+        effectsHint: "エフェクト（設定する語を選んでから）",
         tools: "リッチテキストの道具",
         pauseClick: "停止（クリックを待つ）",
         pauseSeconds: "停止 {seconds} 秒",

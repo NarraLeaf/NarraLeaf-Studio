@@ -1059,6 +1059,14 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
     // --- text ---
     "text/overlong": [{ context: () => createTestLintContext({ stories: singleSceneStories([narrationBlock("b1", textSegment("t-1", "word ".repeat(40), "narration"))]) }) }],
     "text/empty": [{ context: () => createTestLintContext({ stories: singleSceneStories([narrationBlock("b1", textSegment("t-1", "   ", "narration"))]) }) }],
+    "text/unknown-effect": [{
+        // The rule stands down while no widget is registered at all, which is not a workspace.
+        setup: () => widgetModuleRegistry.register({ type: "nl.root", displayName: "Root", icon: Box, createDefaultElement: () => ({ type: "nl.root" }), render: () => null } as never),
+        teardown: () => widgetModuleRegistry.unregister("nl.root"),
+        context: () => createTestLintContext({ stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", "Run!", "dialogue", [
+            { text: "Run!", marks: { effect: { id: "acme.fx.shake" } } },
+        ]))]) }),
+    }],
 
     // --- localization ---
     "localization/missing": [

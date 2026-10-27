@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { inlineTextEffectRegistry } from "@/lib/plugins/inlineTextEffectRegistry";
 import {
     PROJECT_DEPENDENCY_SCHEMA_VERSION,
     createEmptyDependencyTable,
@@ -17,6 +18,7 @@ import {
     collectBlueprintDocumentUsage,
     collectInterfaceDocumentUsage,
     collectStoryDocumentUsage,
+    collectStoryTextEffectUsage,
     type DependencyUsageRecord,
     type InterfaceDocumentElements,
 } from "@/lib/plugins/projectPluginUsage";
@@ -262,6 +264,11 @@ export class ProjectDependencyService
                 continue;
             }
             scan.usage.push(...collectStoryDocumentUsage(document));
+            scan.usage.push(...collectStoryTextEffectUsage(document, {
+                ownerOf: id => inlineTextEffectRegistry.get(id)?.ownerPluginId,
+                isRegistered: id => inlineTextEffectRegistry.get(id) !== undefined,
+                candidatePluginIds: scan.candidatePluginIds,
+            }));
         }
     }
 
