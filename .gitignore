@@ -165,6 +165,11 @@ package-lock.json
 # behind it: the staged pair is roughly 217 MB per platform.
 /resources/ffmpeg/
 
+# onnxruntime-web's WebAssembly runtime, copied out of node_modules at Studio build
+# time by project/app/pack-electron.js (stageMlRuntime). Dev reads it from
+# node_modules directly; see src/main/app/application/managers/protocol/mlAssets.ts.
+/resources/ml/onnxruntime/
+
 # Generated plugin API declarations (regenerate with: yarn build:plugin-types)
 packages/plugin-types/dist/
 packages/plugin-types/.gen/

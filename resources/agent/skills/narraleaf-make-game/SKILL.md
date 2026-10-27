@@ -223,8 +223,14 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
 - **Avatars** (the face beside a line in the dialogue box and the backlog): `character_upsert` with
   `defaultAvatar` (shown wherever nothing more specific is - off-stage lines and the backlog too) and
   `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
-  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
-  author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
+  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites.
+- **Required: auto-frame every character you add.** Right after a character gets its sprites -
+  `character_upsert` with `poses`, `character_layered_set` or `character_layers_import` - call
+  `character_avatars_autoframe { "character": "<name>" }` once. It frames each pose's or look's
+  avatar on the head Studio's detection model finds; without it the avatar is cut by a silhouette
+  guess that often frames a hair ornament or the whole figure. Do it again with `overwrite: true`
+  only when the sprites themselves change. Any look it reports under `noHeadFound` keeps the automatic
+  crop: name it on the hand-over, or give that look a drawn face with `avatars`.
 - **Place sprites by measuring, not by arithmetic alone.** When the author has a picture of how a
   scene should look (concept art, a mock-up, a screenshot of an earlier version), put a character on
   stage in a scratch scene, `playtest_screenshot` at full size and compare: entrance offsets computed
@@ -251,7 +257,7 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
 
 Checkpoint: `story_targets` lists every speaker, asset and variable the script will name, and under
 *character looks* every pose or tag a `/show` or `/char` row will use; `characters_list` shows every
-character in a group.
+character in a group; `character_avatars_autoframe` has run for every character with sprites.
 
 ## Step 5 - Story
 

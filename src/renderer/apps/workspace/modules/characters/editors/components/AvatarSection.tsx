@@ -1,4 +1,4 @@
-import { Crop, ImagePlus, RefreshCw, RotateCcw, UserRound, X } from "lucide-react";
+import { Crop, ImagePlus, Loader2, RefreshCw, RotateCcw, ScanFace, UserRound, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { EmptyState } from "@/lib/components/elements/EmptyState";
@@ -97,6 +97,13 @@ export function AvatarSection(props: {
     onResetCrop: () => void;
     cropping: boolean;
     onToggleCropping: () => void;
+    /**
+     * Frame this differential on the head the detector finds, replacing its own framing. The result
+     * is an ordinary framing: the box shows it and can adjust it, and reset clears it.
+     */
+    onAutoFrame: () => void;
+    /** An auto-frame run is in progress - this one, the panel's batch, or an agent's. */
+    autoFrameBusy: boolean;
     onPickOverride: (anchor: HTMLElement) => void;
     onClearOverride: () => void;
     /** Whether the writes here are available at all (a frozen project switches them off). */
@@ -181,6 +188,16 @@ export function AvatarSection(props: {
                             {...writes(false, t("characters.preview.setPortrait"))}
                         >
                             <Crop className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            className={ICON_BTN}
+                            onClick={props.onAutoFrame}
+                            aria-label={t("characters.autoFrame.one")}
+                            {...writes(props.autoFrameBusy || !props.avatarKey, props.autoFrameBusy ? t("characters.autoFrame.running") : t("characters.autoFrame.one"))}
+                        >
+                            {props.autoFrameBusy
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <ScanFace className="w-3.5 h-3.5" />}
                         </button>
                         <button
                             className={ICON_BTN}
