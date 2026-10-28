@@ -43,6 +43,20 @@ export const characters = {
         createCharacter: "キャラクター {name} の作成",
         editCharacter: "キャラクター {name} の編集",
         deleteGroup: "グループ {name} の削除",
+        autoFrameAvatars: "{name} のアバターの自動切り抜き",
+    },
+    autoFrame: {
+        all: "すべてのアバターを自動で切り抜く",
+        one: "アバターを自動で切り抜く",
+        running: "アバターを自動で切り抜いています",
+        consoleChannel: "アバター",
+        consoleChannelDescription: "検出した頭部で切り抜いたアバター",
+        started: "頭部を検出してアバターを切り抜いています",
+        summary: "切り抜き {framed} · 頭部なし {noHead} · 既存の切り抜きを維持 {kept}",
+        noHeadLine: "{name}：{looks} で頭部が見つかりません",
+        nothingToDo: "切り抜くアバターはありません",
+        noHead: "頭部が見つかりません",
+        failed: "自動切り抜きに失敗しました：{message}",
     },
     // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。
     // 最初の 1 行から、どの画面もその色でこのキャラクターを見分けるため。
@@ -330,7 +344,7 @@ export const characters = {
         resetView: "表示をリセット",
         alt: "バリアントのプレビュー",
         setPortrait: "顔まわりの切り抜き",
-        resetPortrait: "自動で切り抜く",
+        resetPortrait: "切り抜きをクリア",
         portraitTitle: "顔まわりの切り抜き",
         // スイッチのラベルなので、クリックの説明ではなく状態を言う。「ポーズ」ではなく「見た目」
         // なのは、どちらの種類にもそれがあるから。プリセットならポーズ、レイヤー式ならタグの

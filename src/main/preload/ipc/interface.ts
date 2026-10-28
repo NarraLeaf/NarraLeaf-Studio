@@ -1049,8 +1049,8 @@ export const IPCInterface: RendererPreloadedInterface = {
     projectTemplates: {
         list: () =>
             ipcClient.invoke(IPCEventType.projectTemplateList, {}),
-        scaffold: (templateId: string, projectPath: string, locale?: string) =>
-            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath, locale }),
+        scaffold: (templateId: string, projectPath: string, locale?: string, leaveOut?: string[]) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath, locale, leaveOut }),
         readInterface: (templateId: string, locale?: string) =>
             ipcClient.invoke(IPCEventType.projectTemplateReadInterface, { templateId, locale }),
         readAssets: (templateId: string, assetIds: string[], locale?: string) =>

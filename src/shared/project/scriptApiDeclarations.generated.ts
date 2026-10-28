@@ -338,6 +338,13 @@ declare module "@narraleaf/script" {
     	 */
     	fontSizeStep?: number;
     	emphasis?: StoryTextEmphasis;
+    	/** An inline effect a plugin contributes, such as shaking text. */
+    	effect?: StoryTextEffect;
+    };
+    type StoryTextEffectParamValue = number | string | boolean;
+    type StoryTextEffect = {
+    	id: string;
+    	params?: Record<string, StoryTextEffectParamValue>;
     };
     type SaveRecordTimes = {
     	/** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */

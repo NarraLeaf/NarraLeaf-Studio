@@ -56,6 +56,13 @@ export const wizard = {
             name: "空白",
             description: "只有项目结构",
         },
+        // 模板自带的示例内容可以不要。界面总会带上，这里只列模板声明的示例部分
+        parts: {
+            label: "示例内容",
+            helper: "未勾选的部分不会放进新项目；界面始终保留",
+            all: "全部",
+            none: "不含示例内容",
+        },
     },
     project: {
         name: "项目名称",

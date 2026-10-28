@@ -176,6 +176,24 @@ describe("rich text", () => {
 
         expect(printNarralangScene(fixture, lookups).text).toContain("  {b}{i}{color #ff8080}重要{/color}{/i}{/b}{p 0.4}{= gold + 1}");
     });
+
+    it("prints an inline effect outermost, as its id and its parameters in key order", () => {
+        const fixture = scene([
+            {
+                id: "b1",
+                kind: "nodeAction",
+                payload: {
+                    action: "narration",
+                    text: text("", "narration", [
+                        { text: "别过来", marks: { bold: true, effect: { id: "narraleaf.text-effects.shake", params: { speed: 1.5, intensity: 6 } } } },
+                    ]),
+                },
+            },
+        ] as never);
+
+        expect(printNarralangScene(fixture, lookups).text)
+            .toContain("  {fx narraleaf.text-effects.shake intensity=6 speed=1.5}{b}别过来{/b}{/fx}");
+    });
 });
 
 // --- The gate -----------------------------------------------------------------------------------

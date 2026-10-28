@@ -1,6 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { DependencyKind } from "@shared/types/pluginDependencies";
-import type { StoryDocument } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryTextSegment } from "@shared/types/story";
 
 /**
  * How a project's documents are read for the plugins they use.
@@ -146,6 +146,53 @@ export function collectStoryDocumentUsage(document: StoryDocument): DependencyUs
                     id: block.payload.actionId,
                     hard: true,
                 });
+            }
+        }
+    }
+    return usage;
+}
+
+/** The text a row shows the player, or none: narration, dialogue, a choice's prompt, a choice's option. */
+function playerTextOfBlock(block: StoryBlock): StoryTextSegment | undefined {
+    if (block.kind !== "nodeAction") {
+        return undefined;
+    }
+    const payload = block.payload;
+    switch (payload.action) {
+        case "narration":
+        case "dialogue":
+        case "choiceOption":
+            return payload.text;
+        case "choice":
+            return payload.prompt ?? undefined;
+        default:
+            return undefined;
+    }
+}
+
+/**
+ * Plugin inline text effects set on any run of player-facing text in one story.
+ *
+ * Hard, like a widget: the run was written to be drawn by the plugin, and a game without it shows
+ * plain text where the author put an effect. Disabled rows count, as they do for story actions: they
+ * are still in the document, and enabling one again must not find its plugin dropped from the table.
+ * Each effect is reported once per story; the table records which effects, not how often.
+ */
+export function collectStoryTextEffectUsage(document: StoryDocument, types: TypeOwnership): DependencyUsageRecord[] {
+    const seen = new Set<string>();
+    const usage: DependencyUsageRecord[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            for (const run of playerTextOfBlock(block)?.rich ?? []) {
+                const id = "marks" in run ? run.marks?.effect?.id : undefined;
+                if (!id || seen.has(id)) {
+                    continue;
+                }
+                seen.add(id);
+                const record = attributeType(id, "inlineTextEffect", types);
+                if (record) {
+                    usage.push(record);
+                }
             }
         }
     }

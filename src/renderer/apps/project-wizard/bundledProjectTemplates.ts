@@ -6,6 +6,7 @@ import {
     resolveProjectTemplateText,
     type ProjectTemplateDescriptor,
 } from "@shared/types/projectTemplate";
+import { resolveLocalizedText } from "@shared/types/localizedText";
 import { blankTemplate } from "./constants";
 import type { ProjectTemplate } from "./types";
 
@@ -48,6 +49,11 @@ function toEntry(descriptor: ProjectTemplateDescriptor, locale: string): Project
         // `nameKey`/`descriptionKey` would have to name keys that do not exist.
         contentTemplateId: descriptor.id,
         stageSizes: projectTemplateStageSizes(descriptor),
+        parts: (descriptor.parts ?? []).map(part => ({
+            id: part.id,
+            ...resolveLocalizedText(part, locale),
+            requires: part.requires,
+        })),
     };
 }
 

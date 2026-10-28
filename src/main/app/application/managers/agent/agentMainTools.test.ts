@@ -208,11 +208,18 @@ describe("project_create", () => {
             name: "Ghost",
             parentDir: "/home/me/NarraLeaf",
             template: "skeleton",
+            leaveOut: [],
             language: "en",
             languages: [],
             width: 1920,
             height: 1080,
         });
+    });
+
+    it("passes the parts of the sample to leave out, and nothing else in that list", async () => {
+        const host = fakeHost();
+        await AGENT_MAIN_TOOL_HANDLERS.project_create(host, { name: "Ghost", leaveOut: ["story", 3, "files"] }, ctx);
+        expect(host.createProject).toHaveBeenCalledWith(expect.objectContaining({ leaveOut: ["story", "files"] }));
     });
 
     it("passes further languages through, and none unless asked", async () => {

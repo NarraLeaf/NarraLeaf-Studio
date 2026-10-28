@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 const patch = readFileSync(path.resolve(".yarn/patches/narraleaf-react-npm-1.5.0-frame-sequence.patch"), "utf8");
 const source = patch
     .split("+++ b/dist/frame-sequence.js\n")[1]
+    // The patch carries other files after this one; their lines are not part of the module.
+    .split("\ndiff --git ")[0]
     .split("\n")
     .filter(line => line.startsWith("+"))
     .map(line => line.slice(1))

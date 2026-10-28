@@ -74,6 +74,14 @@ export const wizard = {
             name: "Empty",
             description: "Project structure only",
         },
+        // The sample content a template lets the author leave out. The screens always come in; this
+        // lists only the parts the template declares.
+        parts: {
+            label: "Sample content",
+            helper: "Unticked parts are left out of the new project. The screens always come in.",
+            all: "All",
+            none: "No sample content",
+        },
     },
     project: {
         name: "Project Name",

@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ALargeSmall, Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Superscript, Type } from "lucide-react";
+import { ALargeSmall, Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Sparkles, Superscript, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -10,6 +10,8 @@ import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
 import { TypePopover } from "./TypePopover";
+import { EffectPopover } from "./EffectPopover";
+import { useInlineTextEffects } from "@/lib/plugins/inlineTextEffectRegistry";
 import type { ActiveMarks, RichTextInputHandle, RubyTarget, TypeTarget } from "./RichTextInput";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
@@ -288,6 +290,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      */
     const [typePanel, setTypePanel] = useState<{ top: number; left: number; bottom: number; target: TypeTarget } | null>(null);
     const typeBtnRef = useRef<HTMLButtonElement | null>(null);
+    /** The effects panel's anchor and characters, captured at open time like the type panel's. */
+    const [effectPanel, setEffectPanel] = useState<{ top: number; left: number; bottom: number; target: TypeTarget } | null>(null);
+    const effectBtnRef = useRef<HTMLButtonElement | null>(null);
+    /**
+     * The inline effects the loaded plugins contribute. The control is drawn only when there is at
+     * least one: without a plugin offering an effect it would open an empty panel.
+     */
+    const effects = useInlineTextEffects();
     const active = props.active ?? { bold: false, italic: false, canRuby: false, hasSelection: false };
     /**
      * What the type panel can act on: a selection, or a run that already carries one of its marks.
@@ -299,6 +309,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         || active.emphasis !== undefined
         || active.fontSizeStep !== undefined
         || active.cps !== undefined;
+    /** What the effects panel can act on, by the type panel's rule. */
+    const canEffect = Boolean(effectPanel) || active.hasSelection || active.effect !== undefined;
     const recent = useRecentColors();
     // Quick swatches favour the author's recently used colors, padded with defaults so the strip
     // always stays full and stable-width.
@@ -572,6 +584,30 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         props.editor.current?.focus();
     };
 
+    const openEffect = () => {
+        const target = props.editor.current?.getEffectTarget();
+        if (!target) {
+            return;
+        }
+        const rect = effectBtnRef.current?.getBoundingClientRect();
+        if (props.commitGuard) {
+            props.commitGuard.current = true;
+        }
+        setEffectPanel({
+            top: rect?.top ?? 120,
+            left: rect?.left ?? 120,
+            bottom: rect?.bottom ?? 140,
+            target,
+        });
+    };
+    const closeEffect = () => {
+        if (props.commitGuard) {
+            props.commitGuard.current = false;
+        }
+        setEffectPanel(null);
+        props.editor.current?.focus();
+    };
+
     const applyColor = (color: string) => {
         props.editor.current?.setColor(color);
         addRecentColor(color);
@@ -713,6 +749,30 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             >
                 <ALargeSmall className="h-3.5 w-3.5" />
             </button>
+            {effects.length > 0 ? (
+                // NOT wrapped in `keepKeyboard`, for the type panel's reason.
+                <button
+                    ref={effectBtnRef}
+                    type="button"
+                    className={!canEffect ? BTN_INERT : effectPanel || active.effect ? BTN_ACTIVE : BTN}
+                    aria-disabled={!canEffect}
+                    aria-expanded={Boolean(effectPanel)}
+                    onClick={() => {
+                        if (!canEffect) {
+                            return;
+                        }
+                        if (effectPanel) {
+                            closeEffect();
+                            return;
+                        }
+                        openEffect();
+                    }}
+                    data-tip={canEffect ? t("story.richText.effects") : t("story.richText.effectsHint")}
+                    aria-label={canEffect ? t("story.richText.effects") : t("story.richText.effectsHint")}
+                >
+                    <Sparkles className="h-3.5 w-3.5" />
+                </button>
+            ) : null}
             <div className="mx-0.5 h-4 w-px bg-fill" />
             {swatches.map(color => {
                 const isActive = activeKey !== null && colorKey(color) === activeKey;
@@ -827,6 +887,16 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     target={typePanel.target}
                     onSet={(mark, value, target) => props.editor.current?.setTypeMark(mark, value, target)}
                     onClose={() => closeType()}
+                />
+            ) : null}
+            {pos && effectPanel ? (
+                <EffectPopover
+                    anchor={effectPanel}
+                    anchorRef={effectBtnRef}
+                    target={effectPanel.target}
+                    effects={effects}
+                    onSet={(value, target) => props.editor.current?.setTypeMark("effect", value, target)}
+                    onClose={() => closeEffect()}
                 />
             ) : null}
             {pos && ruby ? (

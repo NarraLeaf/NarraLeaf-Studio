@@ -1532,7 +1532,7 @@ export interface RendererPreloadedInterface {
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
         /** `locale` picks the template's own copy of its content written in that language, if it has one. */
-        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string }>>;
+        scaffold(templateId: string, projectPath: string, locale?: string, leaveOut?: string[]): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string; leftOut: string[] }>>;
         /** A template's interface documents, to bring a page out of it into an open project. */
         readInterface(templateId: string, locale?: string): Promise<RequestStatus<ProjectTemplateInterfaceContent>>;
         /** A template's own asset files, by id. An id the template does not ship is left out. */

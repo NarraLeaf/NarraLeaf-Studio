@@ -33,7 +33,7 @@ import {
     splitIndent,
     STORY_FILE_FORMAT_VERSION,
 } from "./shapes";
-import { DIRECTIVE_BACKGROUND, DIRECTIVE_MUSIC } from "./sceneSettings";
+import { DIRECTIVE_BACKGROUND, DIRECTIVE_DESCRIPTION, DIRECTIVE_MUSIC } from "./sceneSettings";
 import { DIRECTIVE_LAYER } from "./sceneLayers";
 
 export type StoryFileParse = {
@@ -142,7 +142,7 @@ function readDirective(
         ast.sceneId = id;
         return false;
     }
-    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC || name === DIRECTIVE_LAYER) {
+    if (name === DIRECTIVE_BACKGROUND || name === DIRECTIVE_MUSIC || name === DIRECTIVE_DESCRIPTION || name === DIRECTIVE_LAYER) {
         if (!inHeader) {
             // Only the header sets a scene setting. Every `#` line further down was a comment before
             // these directives existed, and has to stay one: a note reading "#music swells here"
@@ -163,7 +163,7 @@ function readDirective(
             ast.settings.layers = [...(ast.settings.layers ?? []), { value: rest, line: lineNumber }];
             return false;
         }
-        const key = name === DIRECTIVE_BACKGROUND ? "background" : "music";
+        const key = name === DIRECTIVE_BACKGROUND ? "background" : name === DIRECTIVE_MUSIC ? "music" : "description";
         if (ast.settings[key]) {
             diagnostics.push(errorAt("file.duplicate_setting", `A second ${name} directive. A scene has one; keep the line you mean.`, lineNumber));
             return false;

@@ -4,7 +4,7 @@ import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
-import { useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
+import { useGroupSubmenus, useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
 import { useCharacterGroupNames } from "./useCharacterGroupNames";
 import { useCommandTranslation } from "@/lib/i18n";
 import { audioTrackDisplayName } from "@shared/types/audioTrack";
@@ -112,6 +112,11 @@ export type StoryCommandLineContextValue = {
      * the preference one read per editor tab rather than one per row behind every nametag.
      */
     characterGroupNames?: ReadonlyMap<string, string>;
+    /**
+     * `editor.groupSubmenus`: whether candidate menus draw cast groups and asset folders as submenus.
+     * Carried whatever `editor.characterListGrouping` says, since asset folders do not depend on it.
+     */
+    groupSubmenus?: boolean;
 };
 
 const StoryCommandLineContext = createContext<StoryCommandLineContextValue>({ trigger: ACTION_TRIGGER });
@@ -138,6 +143,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     // wants them used at all. Read here for the reason the rest of this provider is read here.
     const characterListGrouping = useCharacterListGrouping();
     const characterGroupNames = useCharacterGroupNames();
+    const groupSubmenus = useGroupSubmenus();
     const blueprintName = useStoryBlueprintNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
@@ -192,8 +198,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         inputActionName: actionId => commandContext?.inputActions.find(action => action.id === actionId)?.name ?? null,
         blueprintName,
         commandContext,
+        groupSubmenus,
         ...(characterListGrouping === "grouped" ? { characterGroupNames } : {}),
-    }), [assets, blueprintName, characterGroupNames, characterListGrouping, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
+    }), [assets, blueprintName, characterGroupNames, groupSubmenus, characterListGrouping, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 

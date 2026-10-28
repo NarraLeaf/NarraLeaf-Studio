@@ -78,6 +78,7 @@ async function writeRatingPlugin(id: string, options: { declareLogic: boolean })
         contributes: {
             blueprintNodes: [`${id}.onRated`],
             widgets: [`${id}.rating`],
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

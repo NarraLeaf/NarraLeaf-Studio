@@ -226,6 +226,10 @@ export const settings = {
                 all: "Show all characters",
             },
         },
+        groupSubmenus: {
+            label: "Show groups as submenus",
+            description: "In candidate menus, each character group and asset folder is one entry whose contents open in a column beside it.",
+        },
         dictionaries: {
             label: "Spelling dictionaries",
         },

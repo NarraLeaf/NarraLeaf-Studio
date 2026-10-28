@@ -395,6 +395,24 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("accepts inline text effects in the plugin's namespace and refuses one outside it", () => {
+        const base = {
+            manifestVersion: 2,
+            id: "acme.fx",
+            name: "Effects",
+            version: "1.0.0",
+            entries: { studio: "main.js", runtime: "runtime.js" },
+        };
+        const accepted = validatePluginManifest({ ...base, contributes: { inlineTextEffects: ["acme.fx.shake", "acme.fx.shake"] } });
+        expect(accepted.ok && accepted.manifest.contributes.inlineTextEffects).toEqual(["acme.fx.shake"]);
+        // Like a widget, an effect grants nothing an install prompt would have to name.
+        expect(accepted.ok && accepted.manifest.permissions).toEqual([]);
+        expect(validatePluginManifest({ ...base, contributes: { inlineTextEffects: ["shake"] } })).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("Contributed inline text effect must be prefixed with the plugin id"),
+        });
+    });
+
     it("derives no install permission from reserved save ids", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

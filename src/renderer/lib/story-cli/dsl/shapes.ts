@@ -275,6 +275,7 @@ The header is these directives; the footer is the verbatim payloads the » lines
   #background classroom       the image the scene opens on, before its first row, or "none"
   #music theme_day vol=0.8    the music it opens with ("none", or a clip with optional
                               track=, vol=, fade=1.2s, loop= - spelled as a /bgm row spells them)
+  #description After class    the note Studio shows under the scene's name; the game never shows it
   #layer displayableLayer     the scene's layers, one line each, nearest first: the base layer,
   #layer hills distance=3     then a layer three times as far (inf does not move; below 1 is nearer)
   ...
@@ -284,6 +285,9 @@ The header is these directives; the footer is the verbatim payloads the » lines
 #background and #music are the scene's own settings, not rows, and count only here in the header,
 at the start of a line before the first row; further down they are comments. "story show" always
 writes both; a file that leaves one out leaves that setting as it is. "#background none" clears it.
+#description is header-only too, written for a scene that has one: the rest of the line, or a JSON
+string ("line one\\nline two") for text with line breaks. "#description none" clears it, and a file
+without the line keeps it.
 #layer lines are the scene's layers, header-only too: "story show" writes them for a scene with layers
 of its own. A file with no #layer keeps the layers; one with any states all of them, and a layer it
 leaves out is removed. There is no /layer row.`;
