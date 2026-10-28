@@ -4202,6 +4202,11 @@ export type IPCUITemplateEvents = {
              * the base one, so what opens is a project authored in it rather than a translated one.
              */
             locale?: string;
+            /**
+             * Ids of the template's parts the author unticked (`@shared/project/templateParts`).
+             * What they require goes with them; `leftOut` in the answer is the closed set.
+             */
+            leaveOut?: string[];
         },
         // `locales` are the language codes the scaffolded project ends up with a translation file
         // for; the creator registers them, because the registry lives in the `.nlproj` it is about
@@ -4214,6 +4219,7 @@ export type IPCUITemplateEvents = {
             locales: string[];
             dependencies: string[];
             contentLocale?: string;
+            leftOut: string[];
         };
     };
     // Read one bundled template's interface documents, to bring a page out of it into an open

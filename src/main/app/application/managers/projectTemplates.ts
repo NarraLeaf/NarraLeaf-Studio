@@ -9,6 +9,13 @@ import {
 import { isStageSizeUsable, stageSizesEqual, type StageSize } from "@shared/types/stageSize";
 import { isValidAssetStorageId, splitAssetStorageId } from "@shared/utils/assetStorageId";
 import {
+    leaveOutTemplateParts,
+    parseProjectTemplateParts,
+    resolveLeftOutParts,
+    type ProjectTemplatePartId,
+    type TemplatePartFiles,
+} from "@shared/project/templateParts";
+import {
     PROJECT_TEMPLATE_CONTENT_DIR,
     projectTemplateContentDirForLocale,
     PROJECT_TEMPLATE_MANIFEST,
@@ -148,6 +155,7 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
     const designSizes = asStageSizes(record.designSizes);
     const contentLocales = Object.keys(asContentLocales(record.contentLocales)).sort();
     const dependencies = asPluginIds(record.dependencies);
+    const parts = parseProjectTemplateParts(record.parts);
     return {
         id,
         name,
@@ -158,6 +166,7 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
         designSizes: designSizes.length > 0 ? designSizes : undefined,
         contentLocales: contentLocales.length > 0 ? contentLocales : undefined,
         dependencies: dependencies.length > 0 ? dependencies : undefined,
+        parts: parts.length > 0 ? parts : undefined,
     };
 }
 
@@ -258,6 +267,8 @@ export type ScaffoldResult = {
     dependencies: string[];
     /** The language variant of the content that landed, when one did. */
     contentLocale?: string;
+    /** The parts of the template that were left out, after their requirements were followed. */
+    leftOut: ProjectTemplatePartId[];
 };
 
 /**
@@ -277,6 +288,7 @@ export async function scaffoldProjectFromTemplate(
     templateId: string,
     projectPath: string,
     locale?: string,
+    leaveOut: readonly string[] = [],
 ): Promise<ScaffoldResult> {
     if (!SAFE_TEMPLATE_ID.test(templateId)) {
         throw new Error(`Unsafe project template id: ${templateId}`);
@@ -293,12 +305,21 @@ export async function scaffoldProjectFromTemplate(
     if (!stat?.isDirectory()) {
         // A template with a manifest and no content is a metadata-only entry; it
         // produces the plain skeleton rather than failing the author's creation.
-        return { filesCopied: 0, locales: [], dependencies: [] };
+        return { filesCopied: 0, locales: [], dependencies: [], leftOut: [] };
     }
     let filesCopied = await copyTree(resolvedContent, projectPath);
     const contentLocale = await applyContentLocale(templateDir, projectPath, locale);
     if (contentLocale) {
         filesCopied += contentLocale.filesCopied;
+    }
+    const manifest = await readManifestRecord(templateDir);
+    const parts = parseProjectTemplateParts(manifest?.parts);
+    const leftOut = resolveLeftOutParts(parts, leaveOut);
+    if (leftOut.length > 0) {
+        // The project's content is in the variant's language when one landed, and in the base
+        // tree's otherwise - which is the language the manifest's own words are written in, so no
+        // locale at all reads those.
+        await leaveOutTemplateParts(projectPartFiles(projectPath), parts, leftOut, contentLocale?.code ?? "");
     }
     return {
         // Read from the project rather than from the template: after a variant has landed,
@@ -310,6 +331,34 @@ export async function scaffoldProjectFromTemplate(
         // version, which the window that asked for the scaffold is the side that can read.
         dependencies: asPluginIds((await readManifestRecord(templateDir))?.dependencies),
         ...(contentLocale ? { contentLocale: contentLocale.code } : {}),
+        leftOut,
+    };
+}
+
+/**
+ * The project just scaffolded, as the part trim reads it. Only ever the project's own files: every
+ * path the trim names came out of `list`, which walks nothing but the project directory.
+ */
+function projectPartFiles(projectPath: string): TemplatePartFiles {
+    const resolve = (relative: string) => path.join(projectPath, ...relative.split("/"));
+    const walk = async (relative: string): Promise<string[]> => {
+        const entries = await fs.readdir(resolve(relative), { withFileTypes: true }).catch(() => []);
+        const out: string[] = [];
+        for (const entry of entries) {
+            const child = relative ? `${relative}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+                out.push(...await walk(child));
+            } else if (entry.isFile()) {
+                out.push(child);
+            }
+        }
+        return out;
+    };
+    return {
+        list: () => walk(""),
+        read: relative => fs.readFile(resolve(relative), "utf-8"),
+        write: (relative, text) => fs.writeFile(resolve(relative), text, "utf-8"),
+        remove: relative => fs.rm(resolve(relative), { force: true }),
     };
 }
 

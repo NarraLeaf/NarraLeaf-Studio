@@ -69,9 +69,14 @@ network like any program they install. Reading the scripts as text is safe; runn
 - `agent_status`. Writes must be on. Call `request_folder_access` once for the Ren'Py `game` folder
   and your working folder (converted media lands there), with a one-line reason. "Pending" means the
   author has not answered yet: carry on with work that needs no import and retry every minute.
-- **The project.** Start from a project made from the **skeleton** template: its pages are already
-  wired to saving, loading, settings and the backlog, and you restyle them to look like the Ren'Py
-  screens. If the author already opened a project made from the empty template, run
+- **The project.** Start from a project made with `project_create {template: "skeleton", leaveOut:
+  ["story", "characters", "files"]}`: the skeleton's pages, already wired to saving, loading,
+  settings and the backlog, with one empty scene that the title's Start begins at, and no sample
+  story, characters, backgrounds, music or sprite to delete. You restyle the pages to look like the
+  Ren'Py screens and write the story into that scene (rename it; add the others beside it). If the
+  author already opened a project made from the whole `skeleton`, keep it: delete its sample characters and files before you import, and write every
+  scene's `#background` (`none` for black), since a reused demo scene otherwise opens on its demo
+  picture. If the author already opened a project made from the empty template, run
   `ui_install_standard_screens {dryRun:true}`, show the author what it adds, then run it. Do not
   rebuild save, load or settings logic by hand from store templates - they are layouts only.
 - Resolution: the skeleton is laid out for 1920x1080 only, so the project is 1920x1080. Read the

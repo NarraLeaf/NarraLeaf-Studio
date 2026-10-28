@@ -48,6 +48,8 @@ export type AgentProjectCreateInput = {
     /** Absolute parent directory; the project lands in `<parentDir>/<appId>`. */
     parentDir: string;
     template: "skeleton" | "empty";
+    /** Parts of the template's sample content to leave out (`@shared/project/templateParts`). */
+    leaveOut?: readonly string[];
     language: string;
     /** Languages the game offers besides `language`; none by default. */
     languages?: readonly string[];
@@ -204,7 +206,7 @@ export async function writeAgentProject(
     let scaffold: ScaffoldResult | null = null;
     let next = config;
     if (input.template !== "empty") {
-        scaffold = await scaffoldProjectFromTemplate(deps.templatesDir, input.template, projectPath, sourceLocale);
+        scaffold = await scaffoldProjectFromTemplate(deps.templatesDir, input.template, projectPath, sourceLocale, input.leaveOut ?? []);
         for (const code of scaffold.locales) {
             if (code !== sourceLocale && !extraLanguages.includes(code)) {
                 await fs.rm(path.join(projectPath, ...LOCALIZATION_DIR, `${code}.json`), { force: true });
