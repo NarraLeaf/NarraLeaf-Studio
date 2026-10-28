@@ -1,0 +1,386 @@
+{
+  "locale": "ja",
+  "schemaVersion": 1,
+  "units": {
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:0ea3945f",
+      "status": "translated",
+      "target": "自動送りの待ち時間"
+    },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:ba3ee816",
+      "status": "translated",
+      "target": "音楽"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:40e77494",
+      "status": "translated",
+      "target": "サウンド"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:6377b5fe",
+      "status": "translated",
+      "target": "テキスト"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:b705ddc8",
+      "status": "translated",
+      "target": "フルスクリーン"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:39b523bd",
+      "status": "translated",
+      "target": "オフ"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:7e6d2390",
+      "status": "translated",
+      "target": "オン"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:ce70910c",
+      "status": "translated",
+      "target": "全体の音量"
+    },
+    "key:config.muteOnBlur": {
+      "sourceHash": "fnv1a:ea34f136",
+      "status": "translated",
+      "target": "非アクティブ時にミュート"
+    },
+    "key:config.muteOnBlurOff": {
+      "sourceHash": "fnv1a:39b523bd",
+      "status": "translated",
+      "target": "オフ"
+    },
+    "key:config.muteOnBlurOn": {
+      "sourceHash": "fnv1a:7e6d2390",
+      "status": "translated",
+      "target": "オン"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:577b1035",
+      "status": "translated",
+      "target": "秒"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:3ae7f41f",
+      "status": "translated",
+      "target": "スキップ"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:5e6558ad",
+      "status": "translated",
+      "target": "すべて"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:ebbf9a67",
+      "status": "translated",
+      "target": "スキップ待ち時間"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:4cef7d77",
+      "status": "translated",
+      "target": "既読のみ"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:b266367e",
+      "status": "translated",
+      "target": "効果音"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:f7b6ea16",
+      "status": "translated",
+      "target": "文字表示速度"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:85bd6651",
+      "status": "translated",
+      "target": "ボイス"
+    },
+    "key:confirm.cancel": {
+      "sourceHash": "fnv1a:949856b3",
+      "status": "translated",
+      "target": "キャンセル"
+    },
+    "key:confirm.deleteSave": {
+      "sourceHash": "fnv1a:72e5d06a",
+      "status": "translated",
+      "target": "このセーブデータを削除しますか？元に戻せません。"
+    },
+    "key:confirm.deleteSaveAnswer": {
+      "sourceHash": "fnv1a:ea8d5381",
+      "status": "translated",
+      "target": "削除"
+    },
+    "key:confirm.historyBack": {
+      "sourceHash": "fnv1a:59d8d642",
+      "status": "translated",
+      "target": "この行まで戻りますか？それ以降は取り消されます。"
+    },
+    "key:confirm.historyBackAnswer": {
+      "sourceHash": "fnv1a:58cbffa7",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:confirm.load": {
+      "sourceHash": "fnv1a:1c06294e",
+      "status": "translated",
+      "target": "このセーブデータをロードしますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.loadAnswer": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:confirm.loadAuto": {
+      "sourceHash": "fnv1a:1b1a0e9a",
+      "status": "translated",
+      "target": "このオートセーブをロードしますか？いま進めているゲームは失われます。"
+    },
+    "key:confirm.overwrite": {
+      "sourceHash": "fnv1a:1fe9eb49",
+      "status": "translated",
+      "target": "このスロットにはすでにセーブデータがあります。上書きしますか？"
+    },
+    "key:confirm.overwriteAnswer": {
+      "sourceHash": "fnv1a:a6317c7d",
+      "status": "translated",
+      "target": "上書き"
+    },
+    "key:confirm.quit": {
+      "sourceHash": "fnv1a:186e6933",
+      "status": "translated",
+      "target": "ゲームを終了しますか？"
+    },
+    "key:confirm.quitAnswer": {
+      "sourceHash": "fnv1a:73191c7f",
+      "status": "translated",
+      "target": "終了"
+    },
+    "key:confirm.toTitle": {
+      "sourceHash": "fnv1a:c50b4673",
+      "status": "translated",
+      "target": "タイトル画面に戻りますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.toTitleAnswer": {
+      "sourceHash": "fnv1a:f82cb4e8",
+      "status": "translated",
+      "target": "タイトルへ"
+    },
+    "key:extra.categoryCg": {
+      "sourceHash": "fnv1a:79da17ef",
+      "status": "translated",
+      "target": "CG"
+    },
+    "key:extra.categoryMusic": {
+      "sourceHash": "fnv1a:ba3ee816",
+      "status": "translated",
+      "target": "音楽"
+    },
+    "key:extra.categoryScene": {
+      "sourceHash": "fnv1a:37027476",
+      "status": "translated",
+      "target": "回想"
+    },
+    "key:extra.categoryVoice": {
+      "sourceHash": "fnv1a:85bd6651",
+      "status": "translated",
+      "target": "ボイス"
+    },
+    "key:extra.emptyCg": {
+      "sourceHash": "fnv1a:43c1e988",
+      "status": "translated",
+      "target": "解放された CG はまだありません。"
+    },
+    "key:extra.emptyMusic": {
+      "sourceHash": "fnv1a:6f4be0d1",
+      "status": "translated",
+      "target": "解放された楽曲はまだありません。"
+    },
+    "key:extra.emptyScene": {
+      "sourceHash": "fnv1a:417a40f1",
+      "status": "translated",
+      "target": "回想できるシーンはまだありません。"
+    },
+    "key:extra.emptyVoice": {
+      "sourceHash": "fnv1a:99df7fa1",
+      "status": "translated",
+      "target": "解放されたボイスはまだありません。"
+    },
+    "key:extra.progress": {
+      "sourceHash": "fnv1a:ca6c0303",
+      "status": "translated",
+      "target": "{unlocked} / {total}"
+    },
+    "key:extra.title": {
+      "sourceHash": "fnv1a:01a70d84",
+      "status": "translated",
+      "target": "鑑賞"
+    },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:1b4650e2",
+      "status": "translated",
+      "target": "オートセーブ"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:736862cf",
+      "status": "translated",
+      "target": "ボイス再生"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:2c9d9f0e",
+      "status": "translated",
+      "target": "ログ"
+    },
+    "key:menu.continue": {
+      "sourceHash": "fnv1a:70f57871",
+      "status": "translated",
+      "target": "つづきから"
+    },
+    "key:menu.extra": {
+      "sourceHash": "fnv1a:01a70d84",
+      "status": "translated",
+      "target": "鑑賞"
+    },
+    "key:menu.load": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:menu.quit": {
+      "sourceHash": "fnv1a:73191c7f",
+      "status": "translated",
+      "target": "終了"
+    },
+    "key:menu.save": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:menu.settings": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:menu.start": {
+      "sourceHash": "fnv1a:22696cbc",
+      "status": "translated",
+      "target": "はじめから"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:58cbffa7",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:10e077da",
+      "status": "translated",
+      "target": "タイトル"
+    },
+    "key:quickMenu.auto": {
+      "sourceHash": "fnv1a:e3d822cf",
+      "status": "translated",
+      "target": "オート"
+    },
+    "key:quickMenu.config": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:quickMenu.hide": {
+      "sourceHash": "fnv1a:36c1a900",
+      "status": "translated",
+      "target": "非表示"
+    },
+    "key:quickMenu.load": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:quickMenu.log": {
+      "sourceHash": "fnv1a:2c9d9f0e",
+      "status": "translated",
+      "target": "ログ"
+    },
+    "key:quickMenu.save": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:quickMenu.skip": {
+      "sourceHash": "fnv1a:3ae7f41f",
+      "status": "translated",
+      "target": "スキップ"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:24c870aa",
+      "status": "translated",
+      "target": "部室"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:8986903f",
+      "status": "translated",
+      "target": "廊下"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:4c439264",
+      "status": "translated",
+      "target": "最後の光"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:e5c41d32",
+      "status": "translated",
+      "target": "データなし"
+    },
+    "key:splash.disclaimer": {
+      "sourceHash": "fnv1a:e065b441",
+      "status": "translated",
+      "target": "この作品はフィクションです。\n実在の人物・団体・事件などとは一切関係ありません。"
+    },
+    "key:splash.wordmark": {
+      "sourceHash": "fnv1a:0e2f29fc",
+      "status": "translated",
+      "target": "あなたのスタジオ"
+    },
+    "scene:f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
+      "sourceHash": "fnv1a:22696cbc",
+      "status": "translated",
+      "target": "開始"
+    },
+    "ui:c6d9dc8d-9524-4102-985e-5612b971a776.text": {
+      "sourceHash": "fnv1a:327140fc",
+      "status": "translated",
+      "target": "あなたのゲーム"
+    }
+  }
+}

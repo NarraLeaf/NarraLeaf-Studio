@@ -161,3 +161,6 @@ title and from inside a game.
 - Before and after any change: `blueprint.js check` and `ui.js check` on `content/`, `content.zh/`
   and `content.ja/`, the generator's `--check`, and the tests under
   `src/renderer/apps/project-wizard/starter*.test.ts`.
+- After any change, regenerate `../skeleton-port/` - the same screens without the sample game, which a
+  port starts from - with `node scripts/gen-skeleton-port.mjs` (after the locale generator, whose
+  trees it reads). It is never edited by hand; `skeletonPortTemplate.test.ts` fails while it lags.

@@ -1,0 +1,227 @@
+{
+  "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "自动前进等待时间"
+    },
+    "config.bgm": {
+      "sourceText": "音乐"
+    },
+    "config.categorySound": {
+      "sourceText": "声音"
+    },
+    "config.categoryText": {
+      "sourceText": "文本"
+    },
+    "config.fullscreen": {
+      "sourceText": "全屏"
+    },
+    "config.fullscreenOff": {
+      "sourceText": "关闭"
+    },
+    "config.fullscreenOn": {
+      "sourceText": "开启"
+    },
+    "config.masterVolume": {
+      "sourceText": "总音量"
+    },
+    "config.muteOnBlur": {
+      "sourceText": "失去焦点时静音"
+    },
+    "config.muteOnBlurOff": {
+      "sourceText": "关闭"
+    },
+    "config.muteOnBlurOn": {
+      "sourceText": "开启"
+    },
+    "config.secondsSuffix": {
+      "sourceText": "秒"
+    },
+    "config.skip": {
+      "sourceText": "跳过"
+    },
+    "config.skipAllText": {
+      "sourceText": "全部"
+    },
+    "config.skipDelay": {
+      "sourceText": "跳过等待时间"
+    },
+    "config.skipReadOnly": {
+      "sourceText": "仅已读"
+    },
+    "config.soundEffects": {
+      "sourceText": "音效"
+    },
+    "config.textSpeed": {
+      "sourceText": "文字速度"
+    },
+    "config.title": {
+      "sourceText": "设置"
+    },
+    "config.voice": {
+      "sourceText": "语音"
+    },
+    "confirm.cancel": {
+      "sourceText": "取消"
+    },
+    "confirm.deleteSave": {
+      "sourceText": "删除这个存档？删除后无法恢复。"
+    },
+    "confirm.deleteSaveAnswer": {
+      "sourceText": "删除"
+    },
+    "confirm.historyBack": {
+      "sourceText": "回到这一行？在此之后的内容都会被撤销。"
+    },
+    "confirm.historyBackAnswer": {
+      "sourceText": "返回"
+    },
+    "confirm.load": {
+      "sourceText": "加载这个存档？未保存的进度将会丢失。"
+    },
+    "confirm.loadAnswer": {
+      "sourceText": "加载"
+    },
+    "confirm.loadAuto": {
+      "sourceText": "加载这个自动存档？当前进行中的游戏将被放弃。"
+    },
+    "confirm.overwrite": {
+      "sourceText": "该槽位已有存档。要覆盖吗？"
+    },
+    "confirm.overwriteAnswer": {
+      "sourceText": "覆盖"
+    },
+    "confirm.quit": {
+      "sourceText": "退出游戏？"
+    },
+    "confirm.quitAnswer": {
+      "sourceText": "退出"
+    },
+    "confirm.toTitle": {
+      "sourceText": "返回标题画面？未保存的进度将会丢失。"
+    },
+    "confirm.toTitleAnswer": {
+      "sourceText": "返回标题"
+    },
+    "extra.categoryCg": {
+      "sourceText": "CG"
+    },
+    "extra.categoryMusic": {
+      "sourceText": "音乐"
+    },
+    "extra.categoryScene": {
+      "sourceText": "回想"
+    },
+    "extra.categoryVoice": {
+      "sourceText": "语音"
+    },
+    "extra.emptyCg": {
+      "sourceText": "还没有解锁任何图片。"
+    },
+    "extra.emptyMusic": {
+      "sourceText": "还没有解锁任何曲目。"
+    },
+    "extra.emptyScene": {
+      "sourceText": "还没有可以回想的场景。"
+    },
+    "extra.emptyVoice": {
+      "sourceText": "还没有解锁任何语音。"
+    },
+    "extra.progress": {
+      "sourceText": "{unlocked} / {total}"
+    },
+    "extra.title": {
+      "sourceText": "鉴赏"
+    },
+    "load.autoSaves": {
+      "sourceText": "自动存档"
+    },
+    "load.title": {
+      "sourceText": "加载"
+    },
+    "log.replayVoice": {
+      "sourceText": "重播语音"
+    },
+    "log.title": {
+      "sourceText": "记录"
+    },
+    "menu.continue": {
+      "sourceText": "继续"
+    },
+    "menu.extra": {
+      "sourceText": "鉴赏"
+    },
+    "menu.load": {
+      "sourceText": "加载"
+    },
+    "menu.quit": {
+      "sourceText": "退出"
+    },
+    "menu.save": {
+      "sourceText": "保存"
+    },
+    "menu.settings": {
+      "sourceText": "设置"
+    },
+    "menu.start": {
+      "sourceText": "开始"
+    },
+    "nav.back": {
+      "sourceText": "返回"
+    },
+    "nav.config": {
+      "sourceText": "设置"
+    },
+    "nav.load": {
+      "sourceText": "加载"
+    },
+    "nav.save": {
+      "sourceText": "保存"
+    },
+    "nav.title": {
+      "sourceText": "标题"
+    },
+    "quickMenu.auto": {
+      "sourceText": "自动"
+    },
+    "quickMenu.config": {
+      "sourceText": "设置"
+    },
+    "quickMenu.hide": {
+      "sourceText": "隐藏"
+    },
+    "quickMenu.load": {
+      "sourceText": "加载"
+    },
+    "quickMenu.log": {
+      "sourceText": "记录"
+    },
+    "quickMenu.save": {
+      "sourceText": "保存"
+    },
+    "quickMenu.skip": {
+      "sourceText": "跳过"
+    },
+    "save.title": {
+      "sourceText": "保存"
+    },
+    "scenes.sceneClubroom": {
+      "sourceText": "社团活动室"
+    },
+    "scenes.sceneCorridor": {
+      "sourceText": "走廊"
+    },
+    "scenes.sceneLastLight": {
+      "sourceText": "最后的光"
+    },
+    "slot.empty": {
+      "sourceText": "无存档"
+    },
+    "splash.disclaimer": {
+      "sourceText": "本作品纯属虚构。\n与现实中的人物、团体、地点及事件无关。"
+    },
+    "splash.wordmark": {
+      "sourceText": "你的工作室"
+    }
+  },
+  "schemaVersion": 1
+}

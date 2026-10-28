@@ -1457,9 +1457,7 @@ export class AgentManager implements AgentMainToolHost {
         return agentText(
             [
                 `Created "${input.name}" at ${projectPath} from the ${input.template} template and opened it in Studio.`,
-                input.template === "skeleton"
-                    ? "It already has a title page, dialogue box, save/load, settings and history, plus a short sample story. Read the workflow guide, then restyle and rewrite it."
-                    : "It is empty: one blank page and no story yet.",
+                CREATED_PROJECT_CONTENTS[input.template],
                 `Pass project: "${projectPath}" to workspace tools if more than one project is open.`,
             ].join("\n"),
             { project: projectPath, appId: written.appId, template: input.template, contentLocale: scaffold?.contentLocale ?? null },
@@ -1562,6 +1560,13 @@ export class AgentManager implements AgentMainToolHost {
         return headlessTestResult(testId, finished, log);
     }
 }
+
+/** What `project_create` tells the agent it has just been handed, per template. */
+const CREATED_PROJECT_CONTENTS: Record<AgentProjectCreateInput["template"], string> = {
+    skeleton: "It already has a title page, dialogue box, save/load, settings and history, plus a short sample story. Read the workflow guide, then restyle and rewrite it.",
+    "skeleton-port": "It already has a title page, dialogue box, save/load, settings and history, and one empty scene that Start begins at; there are no characters and no sample story. Read the workflow guide, then restyle the pages and write the story into that scene.",
+    empty: "It is empty: one blank page and no story yet.",
+};
 
 const STATE_TIMEOUT_MS = 3000;
 /** Longest a call waits for the author to answer a folder dialog before it answers `pending`. */

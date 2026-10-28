@@ -119,6 +119,9 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   wants translated. The skeleton is a small working game: splash, title, dialogue box, choice menu,
   quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You
   restyle and refill it; you do not build those screens from nothing.
+- **A finished game from another engine:** `template: "skeleton-port"` instead - the same wired
+  screens at the same size, with one empty scene that Start begins at and no demo story, characters
+  or sample files to clear out first.
 - **Existing game:** `project_open` with its folder.
 - **A project made from the empty template** (or any project whose `ui_surfaces` shows one blank page
   and no Game UIs): it has no title, dialogue box, save/load, settings or log, and nothing below

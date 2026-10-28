@@ -47,7 +47,7 @@ export type AgentProjectCreateInput = {
     name: string;
     /** Absolute parent directory; the project lands in `<parentDir>/<appId>`. */
     parentDir: string;
-    template: "skeleton" | "empty";
+    template: "skeleton" | "skeleton-port" | "empty";
     language: string;
     /** Languages the game offers besides `language`; none by default. */
     languages?: readonly string[];

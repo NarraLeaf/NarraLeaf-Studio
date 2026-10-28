@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "createdAt": "2026-08-07T03:54:29.229Z",
+    "updatedAt": "2026-08-07T03:54:29.229Z"
+  },
+  "schemaVersion": 2,
+  "tracks": [
+    {
+      "builtin": true,
+      "id": "bgm",
+      "loop": true,
+      "name": "Music",
+      "parentId": null,
+      "volume": 1
+    },
+    {
+      "builtin": true,
+      "id": "sound",
+      "loop": false,
+      "name": "SFX",
+      "parentId": null,
+      "volume": 1
+    },
+    {
+      "builtin": true,
+      "id": "voice",
+      "loop": false,
+      "name": "Voice",
+      "parentId": null,
+      "volume": 1
+    }
+  ]
+}

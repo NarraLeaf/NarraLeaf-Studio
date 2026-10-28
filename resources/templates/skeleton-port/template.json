@@ -1,0 +1,34 @@
+{
+    "name": "Skeleton (screens only)",
+    "description": "The skeleton's working screens - splash, title, extra, save, load, config, backlog and confirm, with their blueprints wired - and one empty scene. No sample story, characters or art: for porting a finished game.",
+    "locales": {
+        "zh": {
+            "name": "骨架（仅界面）",
+            "description": "骨架的全部可用界面：启动画面、标题、鉴赏、存档、读档、设置、记录与确认，蓝图都已接好；只带一个空场景，不含示例剧情、角色和素材，用于迁移已完成的作品"
+        },
+        "ja": {
+            "name": "スケルトン（画面のみ）",
+            "description": "スケルトンの動作する画面一式（スプラッシュ・タイトル・鑑賞・セーブ・ロード・設定・履歴・確認、ブループリント接続済み）と空のシーン一つ。サンプルの物語・キャラクター・素材は含まず、完成した作品の移植向け"
+        }
+    },
+    "version": "1.20.7",
+    "designSize": {
+        "width": 1920,
+        "height": 1080
+    },
+    "contentLocales": {
+        "zh": {
+            "remove": [
+                "editor/localization/zh-CN.json"
+            ]
+        },
+        "ja": {
+            "remove": [
+                "editor/localization/ja.json"
+            ]
+        }
+    },
+    "dependencies": [
+        "narraleaf.gallery"
+    ]
+}

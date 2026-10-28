@@ -274,7 +274,7 @@ async function projectCreate(host: AgentMainToolHost, args: Record<string, unkno
     return host.createProject({
         name: String(args.name),
         parentDir: dir ?? host.defaultProjectsDir(),
-        template: args.template === "empty" ? "empty" : "skeleton",
+        template: args.template === "empty" || args.template === "skeleton-port" ? args.template : "skeleton",
         language: typeof args.language === "string" && args.language.trim() ? args.language : "en",
         languages: Array.isArray(args.languages) ? args.languages.filter((code): code is string => typeof code === "string") : [],
         width: typeof args.width === "number" ? args.width : 1920,
