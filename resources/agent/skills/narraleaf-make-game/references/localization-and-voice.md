@@ -117,12 +117,14 @@ takes; the text of a line in a voice language is its translation in that languag
 ### The file-name rule
 
 The default rule is `{scene}_{index}_{character}`: the scene name, the line's position among the
-voiced lines of its scene (`001`, `002`, ...), and the speaker. Narration and choice options are
-named with Studio's word for them in the project's source language (narration is `旁白` in a
-Chinese project, `Narration` in an English one, `地の文` in a Japanese one), and a take named with
-another language's word matches as well. `voice_list {language}` gives every line's exact name as
-`expect` - hand that list to the author or the booth when files still need naming. Matching ignores
-case, spaces, punctuation, audio extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
+voiced lines of its scene (`001`, `002`, ...), and the speaker: a character's name, or the name a
+one-off speaker's line is written under (`Name: text` with no character behind it), never
+narration. Narration and choice options are named with Studio's word for them in the project's
+source language (narration is `旁白` in a Chinese project, `Narration` in an English one, `地の文` in
+a Japanese one), and a take named with another language's word matches as well.
+`voice_list {language}` gives every line's exact name as `expect` - hand that list to the author or
+the booth when files still need naming. Matching ignores case, spaces, punctuation, audio
+extensions and folders, so `Opening_001_Aoi.ogg`, `opening 001 aoi.wav` and
 `voice/ja/Opening-001-Aoi.mp3` all match `Opening_001_Aoi`. It matches against an asset's **name in
 the library**, so a misnamed take can be fixed by renaming the asset.
 
@@ -156,8 +158,11 @@ dots or extensions. A scene re-applied without anchors gets new lines: run the s
 - A take goes `stale` when its line's text changes after linking (or its translation, for a dubbed
   language). Report stale takes to the author; the line may need a pickup recording. A line rewritten
   without its anchor is not stale but a new line: its take stays on the old id, orphaned.
-- The game plays a line's take as the line is shown, on the character's voice track. A Gallery
-  voice tab (`plugin:narraleaf.gallery`) unlocks voice lines by itself.
+- The game plays a line's take as the line is shown, on the character's voice track. A one-off
+  speaker's takes play on the plain voice track, and it can have no voice actor; `voice_status` counts
+  its lines under its name and `voice_list {character}` takes that name. Make it a character (no
+  sprite needed) when it needs its own volume or a voice actor. A Gallery voice tab
+  (`plugin:narraleaf.gallery`) unlocks voice lines by itself.
 - `lint` reports `voice/missing`, `voice/stale` and `voice/orphan` (a take whose line is gone).
 
 ## Reporting

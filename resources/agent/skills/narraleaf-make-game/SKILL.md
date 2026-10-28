@@ -238,8 +238,9 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   every row. `scaleX: -1` in the entrance mirrors a sprite drawn facing the wrong way. A `zoom=` on a
   character's `/transform` **replaces** the entrance zoom, as `yoffset=` does: to show a sprite at
   1.5x its usual size write the entrance zoom times 1.5, not 1.5.
-- A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
-  one-off speakers may stay plain `Name: text` lines.
+- A speaker with no sprite still deserves a character (name colour, backlog, its own voice volume
+  and voice actor later). Truly one-off speakers may stay plain `Name: text` lines: their
+  lines can still be voiced, and the voice table and recording script name them by that name.
 - **File every character under a group as you make it.** An ungrouped cast is one flat list in the
   Characters panel and in every speaker picker; once the extras arrive (a shopkeeper, three
   classmates, "Voice on the phone", a narrator alias) the author can no longer find the leads in it.
