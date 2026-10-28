@@ -369,7 +369,9 @@ export function useBlueprintValueBinding(
                     literalValue: config.getLiteralValue({ liveElement: current, data }),
                 },
             );
-            openValueBlueprint(blueprintId);
+            // Not a preview: the author just made it, and the next blueprint opened must not take
+            // its tab (`BlueprintOpenOptions.preview`).
+            openValueBlueprint(blueprintId, { preview: false });
         },
         clear: () => {
             if (config) {
