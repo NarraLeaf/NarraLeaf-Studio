@@ -30,36 +30,25 @@ import { createTestLintContext, LINT_RULES, runLintRules } from "@/lib/lint";
 import type { LintContext } from "@/lib/lint/context";
 import { listStories, readStoryDocument } from "@/lib/story-cli/project";
 
-/**
- * The skeleton, and the copy of its screens without its sample game that a port starts from
- * (`scripts/gen-skeleton-port.mjs`). Taking the sample out must not leave a page, a blueprint or a
- * translation pointing at something that went with it.
- */
-const TEMPLATES = ["skeleton", "skeleton-port"] as const;
+const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton");
 
 /**
- * Each language a template ships, as the wizard lands it: the English content, with a variant's
+ * Each language the template ships, as the wizard lands it: the English content, with a variant's
  * files laid over it when the author writes in that language. `sourceLocale` is what the wizard
  * writes for an author reading Studio in that language.
  */
-const LANGUAGES = TEMPLATES.flatMap(template => [
-    { name: `${template} in English`, template, variant: null, sourceLocale: "en" },
-    { name: `${template} in Chinese`, template, variant: "content.zh", sourceLocale: "zh" },
-    { name: `${template} in Japanese`, template, variant: "content.ja", sourceLocale: "ja" },
-] as const);
-
-type Language = (typeof LANGUAGES)[number];
-
-function templateDir(language: Language): string {
-    return path.join(process.cwd(), "resources/templates", language.template);
-}
+const LANGUAGES = [
+    { name: "English", variant: null, sourceLocale: "en" },
+    { name: "Chinese", variant: "content.zh", sourceLocale: "zh" },
+    { name: "Japanese", variant: "content.ja", sourceLocale: "ja" },
+] as const;
 
 const CATEGORIES = new Set(["story", "ui", "localization"]);
 
 /** The file a project made in this language ends up with: the variant's copy when it has one. */
-function landed(language: Language, relative: string): string {
-    const override = language.variant ? path.join(templateDir(language), language.variant, relative) : null;
-    return override && fs.existsSync(override) ? override : path.join(templateDir(language), "content", relative);
+function landed(variant: string | null, relative: string): string {
+    const override = variant ? path.join(TEMPLATE, variant, relative) : null;
+    return override && fs.existsSync(override) ? override : path.join(TEMPLATE, "content", relative);
 }
 
 function readJson<T>(file: string): T {
@@ -67,8 +56,8 @@ function readJson<T>(file: string): T {
 }
 
 /** The translation files a project made in this language receives. */
-function translationFiles(language: Language): string[] {
-    const dir = path.dirname(landed(language, "editor/localization/keys.json"));
+function translationFiles(variant: string | null): string[] {
+    const dir = path.dirname(landed(variant, "editor/localization/keys.json"));
     return fs
         .readdirSync(dir)
         .filter(name => name.endsWith(".json") && name !== "keys.json")
@@ -76,29 +65,29 @@ function translationFiles(language: Language): string[] {
 }
 
 /** The languages the project registers: its own, and one per translation file it received. */
-function targetLocales(language: Language): string[] {
-    return [language.sourceLocale, ...translationFiles(language).map(file => path.basename(file, ".json"))];
+function targetLocales(variant: string | null, sourceLocale: string): string[] {
+    return [sourceLocale, ...translationFiles(variant).map(file => path.basename(file, ".json"))];
 }
 
 /** Each translation file, keyed by the language it is for. */
-function translationDocuments(language: Language): Map<string, LocalizationDocument> {
+function translationDocuments(variant: string | null): Map<string, LocalizationDocument> {
     return new Map(
-        translationFiles(language).map(file => [path.basename(file, ".json"), readJson<LocalizationDocument>(file)]),
+        translationFiles(variant).map(file => [path.basename(file, ".json"), readJson<LocalizationDocument>(file)]),
     );
 }
 
 /** The named keys - the menu's own words - mapped to the words they say in the source language. */
-function localizationKeys(language: Language): Map<string, string> {
-    const { keys } = readJson<LocalizationKeysDocument>(landed(language, "editor/localization/keys.json"));
+function localizationKeys(variant: string | null): Map<string, string> {
+    const { keys } = readJson<LocalizationKeysDocument>(landed(variant, "editor/localization/keys.json"));
     return new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]));
 }
 
-function contextFor(language: Language): LintContext {
-    const storyDir = path.join(templateDir(language), language.variant ?? "content");
+function contextFor(language: (typeof LANGUAGES)[number]): LintContext {
+    const storyDir = language.variant ? path.join(TEMPLATE, language.variant) : path.join(TEMPLATE, "content");
     return createTestLintContext({
-        uiDocument: readJson<UIDocument>(landed(language, "editor/ui/uidoc.json")),
+        uiDocument: readJson<UIDocument>(landed(language.variant, "editor/ui/uidoc.json")),
         blueprintDocument: migrateBlueprintDocumentToLatest(
-            readJson<{ blueprintDocument: unknown }>(landed(language, "editor/ui/uigraphs.json")).blueprintDocument,
+            readJson<{ blueprintDocument: unknown }>(landed(language.variant, "editor/ui/uigraphs.json")).blueprintDocument,
         ),
         stories: listStories(storyDir).map(story => ({
             id: story.id,
@@ -107,14 +96,14 @@ function contextFor(language: Language): LintContext {
         })),
         // The cast, so a row that brings a character on stage names somebody the project has.
         characters: readJson<{ characters: { profile: { id: string; name: string } }[] }>(
-            landed(language, "editor/services/character.json"),
+            landed(language.variant, "editor/services/character.json"),
         ).characters.map(({ profile }) => ({ id: profile.id, name: profile.name, assetIds: [] })),
         localization: {
             sourceLocale: language.sourceLocale,
-            targetLocales: targetLocales(language),
-            documents: translationDocuments(language),
+            targetLocales: targetLocales(language.variant, language.sourceLocale),
+            documents: translationDocuments(language.variant),
         },
-        localizationKeys: localizationKeys(language),
+        localizationKeys: localizationKeys(language.variant),
     });
 }
 
@@ -125,16 +114,13 @@ async function sweep(context: LintContext): Promise<string[]> {
     return report.entries.map(entry => `${entry.ruleId} ${JSON.stringify(entry.location)}`);
 }
 
-describe.each(LANGUAGES)("a project made from the $name template", language => {
+describe.each(LANGUAGES)("a project made from the starter template in $name", language => {
     it("has a second language, so the interface rules have something to say", () => {
-        expect(targetLocales(language).length).toBeGreaterThan(1);
+        expect(targetLocales(language.variant, language.sourceLocale).length).toBeGreaterThan(1);
     });
 
-    it("passes the story, interface and localization checks with nothing to report but what is left to write", async () => {
-        // The port template's one scene is empty on purpose - it is where the ported story goes - and
-        // saying so is the only thing the checks should have to say about it.
-        const expected = language.template === "skeleton-port" ? ["story/empty-scene"] : [];
-        expect((await sweep(contextFor(language))).map(finding => finding.split(" ")[0])).toEqual(expected);
+    it("passes the story, interface and localization checks with nothing to report", async () => {
+        expect(await sweep(contextFor(language))).toEqual([]);
     });
 
     it("says so only because it can report: the game's title, with its translation gone, is found", async () => {

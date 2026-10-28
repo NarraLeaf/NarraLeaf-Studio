@@ -1,6 +1,7 @@
 import { LucideIcon } from "lucide-react";
 import { TranslationKey } from "@shared/i18n";
 import type { StageSize } from "@shared/types/stageSize";
+import type { ProjectTemplatePartId } from "@shared/project/templateParts";
 
 /**
  * Which path through the wizard a first-page choice starts.
@@ -60,6 +61,20 @@ export interface ProjectTemplate {
      * which is what `blank` means, and what a template that declares no size means.
      */
     stageSizes: StageSize[];
+    /**
+     * The parts of the content the author may untick, in the author's language and in offer order.
+     * Empty for `blank` and for a template that is copied whole.
+     */
+    parts: ProjectTemplatePartChoice[];
+}
+
+/** One part of a template's content, as the wizard offers it. */
+export interface ProjectTemplatePartChoice {
+    id: ProjectTemplatePartId;
+    name: string;
+    description: string;
+    /** The parts this one cannot be kept without. */
+    requires: ProjectTemplatePartId[];
 }
 
 /**
@@ -126,6 +141,11 @@ export interface ProjectData {
      * against the entry list, and an entry renamed later would silently stop scaffolding.
      */
     contentTemplateId?: string;
+    /**
+     * The parts of the content template the author unticked, by id. Cleared whenever the template
+     * changes: the ids belong to the template they were picked from.
+     */
+    leaveOutParts: readonly ProjectTemplatePartId[];
     /**
      * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
      *

@@ -161,6 +161,18 @@ title and from inside a game.
 - Before and after any change: `blueprint.js check` and `ui.js check` on `content/`, `content.zh/`
   and `content.ja/`, the generator's `--check`, and the tests under
   `src/renderer/apps/project-wizard/starter*.test.ts`.
-- After any change, regenerate `../skeleton-port/` - the same screens without the sample game, which a
-  port starts from - with `node scripts/gen-skeleton-port.mjs` (after the locale generator, whose
-  trees it reads). It is never edited by hand; `skeletonPortTemplate.test.ts` fails while it lags.
+
+## 9. The sample can be left out
+
+`template.json` declares the sample story, its characters and its files as `parts`, and an author can
+untick them when creating a project (`src/shared/project/templateParts.ts` does the taking out). What
+stays is decided by what is still named once a part is gone, so:
+
+- The title's Start names the story's entry scene by id; that scene is the one kept, emptied. Keep
+  Start pointing at the entry scene.
+- A file the screens use stays only because a page or the palette names it by id. A picture or sound
+  a page shows must be named there, not reached through the story.
+- A variable the screens read stays for the same reason; one only the story sets and reads goes with
+  the story.
+- `starterTemplateParts.test.ts` makes a project with each part left out, in every language, and runs
+  the story, interface and localization checks on it.
