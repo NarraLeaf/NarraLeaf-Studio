@@ -949,6 +949,8 @@ export const blueprint = {
         image: "Image",
         in: "In",
         inGame: "In Game",
+        // The stem of an added input pin's label, "Input 3"; the number is put back after it.
+        input: "Input",
         index: "Index",
         integer: "Integer",
         isEntering: "Is Entering",

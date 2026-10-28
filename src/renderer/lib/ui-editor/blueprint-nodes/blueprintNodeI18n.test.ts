@@ -68,7 +68,12 @@ function collectLabels(): Array<{ text: string; where: string }> {
                 push(option.label, `${def.type}!${param.key}=${option.value}`);
             }
         }
-        push(def.dynamicInputPins?.labelPrefix, `${def.type} (dynamic pin prefix)`);
+        // A node that adds pins without naming them gets `effectivePins`' default stem, "Input" -
+        // the one that was missed, so Concat's added pins read "Input 3" in every language.
+        push(
+            def.dynamicInputPins ? def.dynamicInputPins.labelPrefix ?? "Input" : undefined,
+            `${def.type} (dynamic pin prefix)`,
+        );
         push(def.dynamicInputPins?.addButtonLabel, `${def.type} (add pin button)`);
     }
     return out;
@@ -98,6 +103,10 @@ describe("blueprint node i18n coverage", () => {
             .filter(({ text }) => !seen.has(text) && seen.add(text))
             .map(({ text, where }) => `${text} (${where})`);
         expect(unmapped).toEqual([]);
+    });
+
+    it("translates an added input pin's default label by its stem", () => {
+        expect(resolveBlueprintLabel("Input 3", echoKey)).toBe("blueprint.port.input 3");
     });
 });
 

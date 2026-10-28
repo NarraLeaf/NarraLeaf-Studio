@@ -801,6 +801,9 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Image": "blueprint.port.image",
     "In": "blueprint.port.in",
     "In Game": "blueprint.port.inGame",
+    // The default stem of an added input pin ("Input 3", see `effectivePins`), which
+    // `resolveBlueprintLabel` translates by its stem.
+    "Input": "blueprint.port.input",
     "Index": "blueprint.port.index",
     "Integer": "blueprint.port.integer",
     "Is Entering": "blueprint.port.isEntering",
