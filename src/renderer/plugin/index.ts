@@ -80,6 +80,10 @@ export type {
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 export type {
+    PluginInlineTextEffectDef,
+    PluginInlineTextEffectParamDef,
+} from "@/lib/plugins/inlineTextEffectRegistry";
+export type {
     PluginWidgetContextMenuContext,
     PluginWidgetDockerBarContext,
     PluginWidgetDocumentApi,
@@ -658,6 +662,8 @@ export type PluginAgentService = {
     registerTools(defs: PluginAgentToolDef[]): PluginCleanup;
 };
 
+import type { PluginInlineTextEffectDef } from "@/lib/plugins/inlineTextEffectRegistry";
+
 export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
@@ -717,6 +723,17 @@ export type PluginServices = {
         get(type: string): PluginWidgetTypeInfo | undefined;
         list(): PluginWidgetTypeInfo[];
         has(type: string): boolean;
+    };
+    /**
+     * Contribute an inline text effect to the dialogue toolbar; see {@link PluginInlineTextEffectDef}.
+     *
+     * The author selects text in a line of dialogue and picks the effect, the way they pick bold. The
+     * runtime entry draws the result through `app.game.inlineTextEffects` under the same id. The
+     * toolbar shows its effects control only while at least one effect is registered.
+     */
+    inlineTextEffects: {
+        register(def: PluginInlineTextEffectDef): PluginCleanup;
+        registerMany(defs: PluginInlineTextEffectDef[]): PluginCleanup;
     };
     story: {
         /**

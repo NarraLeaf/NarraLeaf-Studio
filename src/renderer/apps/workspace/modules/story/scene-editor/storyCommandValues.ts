@@ -24,7 +24,23 @@ export type StoryCommandSpan = { start: number; end: number };
  * offered: a seeded audio track is offered by the interface word for it and still answers to the
  * stored English name an older line was typed with.
  */
-export type StoryCommandNamedRef = { id: string; name: string; aliases?: readonly string[] };
+export type StoryCommandNamedRef = {
+    id: string;
+    name: string;
+    aliases?: readonly string[];
+    /**
+     * Where the author filed it, outermost first: an asset's folders in the asset browser. Absent for
+     * anything not filed, and for every kind of name that has no filing at all. Only the candidate
+     * menu reads it - resolving a name never depends on where it is filed.
+     */
+    folders?: readonly StoryCommandFolder[];
+};
+
+/**
+ * One level of a name's filing. `kind` picks the glyph: an asset folder, or a cast group (which the
+ * candidate menu files character names under the same way).
+ */
+export type StoryCommandFolder = { id: string; name: string; kind?: "folder" | "cast" };
 
 /**
  * A named appearance of one character. `axisId` is present exactly when the character is layered,

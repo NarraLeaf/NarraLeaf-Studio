@@ -71,6 +71,12 @@ export const wizard = {
             name: "空",
             description: "プロジェクトの骨組みだけ",
         },
+        parts: {
+            label: "サンプル内容",
+            helper: "チェックを外した部分は新しいプロジェクトに含まれません。画面は常に含まれます",
+            all: "すべて",
+            none: "サンプル内容なし",
+        },
     },
     project: {
         name: "プロジェクト名",

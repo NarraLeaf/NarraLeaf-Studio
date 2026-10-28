@@ -1457,12 +1457,10 @@ export class AgentManager implements AgentMainToolHost {
         return agentText(
             [
                 `Created "${input.name}" at ${projectPath} from the ${input.template} template and opened it in Studio.`,
-                input.template === "skeleton"
-                    ? "It already has a title page, dialogue box, save/load, settings and history, plus a short sample story. Read the workflow guide, then restyle and rewrite it."
-                    : "It is empty: one blank page and no story yet.",
+                createdProjectContents(input.template, scaffold?.leftOut ?? []),
                 `Pass project: "${projectPath}" to workspace tools if more than one project is open.`,
             ].join("\n"),
-            { project: projectPath, appId: written.appId, template: input.template, contentLocale: scaffold?.contentLocale ?? null },
+            { project: projectPath, appId: written.appId, template: input.template, contentLocale: scaffold?.contentLocale ?? null, leftOut: scaffold?.leftOut ?? [] },
         );
     }
 
@@ -1561,6 +1559,23 @@ export class AgentManager implements AgentMainToolHost {
         }
         return headlessTestResult(testId, finished, log);
     }
+}
+
+/** What `project_create` tells the agent it has just been handed. */
+function createdProjectContents(template: AgentProjectCreateInput["template"], leftOut: readonly string[]): string {
+    if (template === "empty") {
+        return "It is empty: one blank page and no story yet.";
+    }
+    if (leftOut.length === 0) {
+        return "It already has a title page, dialogue box, save/load, settings and history, plus a short sample story. Read the workflow guide, then restyle and rewrite it.";
+    }
+    return [
+        `It already has a title page, dialogue box, save/load, settings and history. Left out of the sample: ${leftOut.join(", ")}.`,
+        leftOut.includes("story")
+            ? "The story has one empty scene, the one Start begins at: write into it (scene_rename it) rather than making another entry scene."
+            : "",
+        "Read the workflow guide, then restyle it and write the game.",
+    ].filter(Boolean).join(" ");
 }
 
 const STATE_TIMEOUT_MS = 3000;

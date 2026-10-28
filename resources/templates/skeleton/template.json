@@ -1,7 +1,7 @@
 {
     "name": "Skeleton",
     "description": "A three-scene story with a branching choice, and splash, title, extra, save, load, config and backlog screens with their blueprints already wired.",
-    "version": "1.20.7",
+    "version": "1.21.0",
     "designSize": {
         "width": 1920,
         "height": 1080
@@ -30,5 +30,67 @@
     },
     "dependencies": [
         "narraleaf.gallery"
+    ],
+    "parts": [
+        {
+            "id": "story",
+            "name": "Sample story",
+            "description": "Three scenes and a choice. Left out, the scene Start begins at stays, empty.",
+            "locales": {
+                "zh": {
+                    "name": "示例剧情",
+                    "description": "三个场景与一次选择；不要时只保留开始游戏进入的空场景"
+                },
+                "ja": {
+                    "name": "サンプルの物語",
+                    "description": "三つのシーンと一度の選択。外すと、ゲーム開始時に入る空のシーンだけが残ります"
+                }
+            },
+            "requires": [
+                "characters",
+                "files"
+            ],
+            "emptyScene": {
+                "name": "Start",
+                "locales": {
+                    "zh": {
+                        "name": "开始"
+                    },
+                    "ja": {
+                        "name": "開始"
+                    }
+                }
+            }
+        },
+        {
+            "id": "characters",
+            "name": "Sample characters",
+            "description": "Narra and Aoi.",
+            "locales": {
+                "zh": {
+                    "name": "示例角色",
+                    "description": "Narra 与 Aoi"
+                },
+                "ja": {
+                    "name": "サンプルのキャラクター",
+                    "description": "Narra と Aoi"
+                }
+            }
+        },
+        {
+            "id": "files",
+            "name": "Sample files",
+            "description": "Backgrounds, music and Narra's sprite. The pictures and sounds the screens use always stay.",
+            "locales": {
+                "zh": {
+                    "name": "示例素材",
+                    "description": "背景、音乐与 Narra 的立绘；界面用到的图片和音效始终保留"
+                },
+                "ja": {
+                    "name": "サンプル素材",
+                    "description": "背景・音楽・Narra の立ち絵。画面が使う画像と効果音は常に残ります"
+                }
+            }
+        }
     ]
 }

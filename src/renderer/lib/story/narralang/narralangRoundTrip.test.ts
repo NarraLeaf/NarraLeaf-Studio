@@ -161,6 +161,7 @@ const SHOUTED: NarralangDialect = {
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
             { mark: "emphasis", tag: "MARK", arg: "raw" },
+            { mark: "effect", tag: "FX", arg: "effect" },
         ],
     },
     verbs: {
@@ -533,6 +534,19 @@ const corpus: Record<string, StoryScene> = {
                 // open before the argument learned to quote itself.
                 text: text("彼女", "narration", [
                     { text: "彼女", marks: { color: "rgb(56, 189, 248)", ruby: "かの じょ" } },
+                ]),
+            },
+        },
+        {
+            id: "h13",
+            kind: "nodeAction",
+            payload: {
+                action: "narration",
+                // An inline effect is an id and its parameters as `key=value` words; a run inside it
+                // keeps its own marks, and an effect left at its defaults carries no parameters.
+                text: text("别过来！快跑", "narration", [
+                    { text: "别过来！", marks: { effect: { id: "narraleaf.text-effects.shake", params: { intensity: 6, speed: 1.5 } } } },
+                    { text: "快跑", marks: { bold: true, effect: { id: "narraleaf.text-effects.shake" } } },
                 ]),
             },
         },

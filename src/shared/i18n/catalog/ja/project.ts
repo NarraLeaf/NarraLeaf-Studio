@@ -612,6 +612,9 @@ export const project = {
             storyAction: {
                 other: "アクション {count} 個",
             },
+            inlineTextEffect: {
+                other: "テキストエフェクト {count} 種",
+            },
         },
     },
     live: {

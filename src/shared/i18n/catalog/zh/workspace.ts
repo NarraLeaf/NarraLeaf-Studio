@@ -557,6 +557,7 @@ export const workspace = {
             character_layered_set: "设置分层立绘角色",
             character_layers_import: "从文件构建分层立绘",
             character_preview: "预览角色外观",
+            character_avatars_autoframe: "自动截取对白头像",
             variables_list: "列出变量",
             variable_upsert: "新建或更新变量",
             variable_delete: "删除变量",

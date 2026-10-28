@@ -38,6 +38,7 @@ async function writePlugin(id: string, name: string, source: string): Promise<Ru
         contributes: {
             blueprintNodes: [],
             widgets: [],
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

@@ -10,7 +10,7 @@
 
 import type { GameMenuSpec } from "@shared/types/gameMenu";
 import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
-import type { ReactElement, ReactNode } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
@@ -234,6 +234,49 @@ export type RuntimeWidgetRendererDef = {
      * declaration in the module both entries import, as with the render function.
      */
     logicApi?: WidgetLogicApi;
+};
+
+/**
+ * What an inline text effect draws one word of dialogue with. The engine hands these over each time
+ * the word renders: once per character while the line is being typed, and again when it settles.
+ */
+export type RuntimeInlineTextEffectRenderProps = {
+    /**
+     * The word as the engine lays it out, with its reading (ruby), vertical writing and upright short
+     * runs applied, and the characters still being revealed fading in. Draw this to keep all of that;
+     * draw `text` instead only to place each character yourself.
+     */
+    children: ReactNode;
+    /** The characters revealed so far. Equal to `fullText` once the typewriter has passed the word. */
+    text: string;
+    /** The whole word, revealed or not. */
+    fullText: string;
+    /** Whether every character of the word has been revealed. */
+    revealed: boolean;
+    /** Whether the whole line has finished revealing. */
+    done: boolean;
+    /** The word's resolved style, already applied to the element around it. */
+    style: Readonly<CSSProperties>;
+    /** Whether the word carries a reading, which `children` draws and `text` does not. */
+    hasRuby: boolean;
+    /** The parameter values the author set on the run. A parameter left at its default is absent. */
+    params: Readonly<Record<string, number | string | boolean>>;
+};
+
+/**
+ * Runtime-side inline text effect: the component that draws a run of dialogue the author set the
+ * effect on. The studio entry registers the toolbar entry under the same id.
+ */
+export type RuntimeInlineTextEffectDef = {
+    /** The effect id; must start with the plugin id and be declared in `contributes.inlineTextEffects`. */
+    id: string;
+    render: (props: RuntimeInlineTextEffectRenderProps) => ReactElement | null;
+    /**
+     * Whether the word takes the player's clicks once it is revealed, instead of letting them advance
+     * the line. Off by default: an effect that only changes how the text looks must not make part of
+     * the dialogue box stop responding.
+     */
+    interactive?: boolean;
 };
 
 /** Removes a subscription. Also tracked by the host, so a failed plugin cannot leak listeners. */
@@ -604,6 +647,17 @@ export type RuntimePluginGame = {
     widgets: {
         register(def: RuntimeWidgetRendererDef): void;
         registerMany(defs: RuntimeWidgetRendererDef[]): void;
+    };
+    /**
+     * Draw the runs of dialogue the author set one of this plugin's inline text effects on. A run
+     * whose effect has no renderer here is drawn as plain text.
+     *
+     * Always present, like `widgets`: a renderer only draws text the author marked with this
+     * plugin's own effect, so it grants nothing an install prompt would have to name.
+     */
+    inlineTextEffects: {
+        register(def: RuntimeInlineTextEffectDef): void;
+        registerMany(defs: RuntimeInlineTextEffectDef[]): void;
     };
     /**
      * What runs when the story reaches a row one of this plugin's story actions inserted. The id is

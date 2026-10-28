@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StoryCommandCandidateMenu, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
+import { buildCandidateTree, StoryCommandCandidateMenu, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 
 afterEach(cleanup);
 
@@ -18,9 +18,10 @@ function renderMenu(items: StoryCandidateItem[] = ITEMS) {
     const onHighlight = vi.fn<(key: string) => void>();
     const view = render(
         <StoryCommandCandidateMenu
-            items={items}
-            activeKey={null}
-            onHighlight={onHighlight}
+            columns={[buildCandidateTree(items, false)]}
+            trail={[]}
+            onHighlight={(_column, key) => onHighlight(key)}
+            onEnterFolder={() => {}}
             onChoose={() => {}}
             onCancel={() => {}}
             frame={{ placement: "below", style: {} }}

@@ -51,6 +51,10 @@ Aoi: It is. I just don't know how to start.
   classroom` and the like): write `#background none` (or your own picture) and `#music none` in your
   source, or that picture shows for a beat before your first `/bg` - in the game the player sees.
   `story_targets {query}` lists, under "scene settings", which scenes open on which picture.
+- `#description <text>` is the scene's description: the note Studio shows under the scene's name, never
+  shown in the game. Header-only, the rest of the line; a JSON string (`#description "Line one\nline
+  two"`) for text with line breaks. `story_show` prints it only for a scene that has one; leaving it out
+  keeps it, `#description none` clears it.
 - `#layer` lines are the **scene's layers**, also header-only: one line per layer, nearest first.
   `#layer displayableLayer` is the base layer - where everything not placed on another layer stands, at
   distance 1 - and `#layer hills distance=3` is a layer three times as far, which moves a third as much

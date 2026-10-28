@@ -119,6 +119,10 @@ Checkpoint: a filled brief and, for a supplied script, an inventory and name map
   wants translated. The skeleton is a small working game: splash, title, dialogue box, choice menu,
   quick menu, save/load, settings, backlog, extras, and a three-scene demo story - all wired. You
   restyle and refill it; you do not build those screens from nothing.
+- **A finished game from another engine:** add `leaveOut: ["story", "characters", "files"]` - the
+  same wired screens, with one empty scene that Start begins at and no demo story, characters or
+  sample files to clear out first (the screens' own pictures and sounds stay). The answer's
+  `leftOut` lists what went; leaving out `characters` or `files` takes `story` with it.
 - **Existing game:** `project_open` with its folder.
 - **A project made from the empty template** (or any project whose `ui_surfaces` shows one blank page
   and no Game UIs): it has no title, dialogue box, save/load, settings or log, and nothing below
@@ -223,8 +227,14 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
 - **Avatars** (the face beside a line in the dialogue box and the backlog): `character_upsert` with
   `defaultAvatar` (shown wherever nothing more specific is - off-stage lines and the backlog too) and
   `avatars` per pose (`{ "smile": "mei_face_smile" }`) or, for a layered character, per tag
-  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites when the
-  author opens the Characters panel - say so on the hand-over if the dialogue box shows one.
+  combination of its `avatarAxes`. Without either, Studio cuts avatars from the sprites.
+- **Required: auto-frame every character you add.** Right after a character gets its sprites -
+  `character_upsert` with `poses`, `character_layered_set` or `character_layers_import` - call
+  `character_avatars_autoframe { "character": "<name>" }` once. It frames each pose's or look's
+  avatar on the head Studio's detection model finds; without it the avatar is cut by a silhouette
+  guess that often frames a hair ornament or the whole figure. Do it again with `overwrite: true`
+  only when the sprites themselves change. Any look it reports under `noHeadFound` keeps the automatic
+  crop: name it on the hand-over, or give that look a drawn face with `avatars`.
 - **Place sprites by measuring, not by arithmetic alone.** When the author has a picture of how a
   scene should look (concept art, a mock-up, a screenshot of an earlier version), put a character on
   stage in a scratch scene, `playtest_screenshot` at full size and compare: entrance offsets computed
@@ -232,8 +242,9 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   every row. `scaleX: -1` in the entrance mirrors a sprite drawn facing the wrong way. A `zoom=` on a
   character's `/transform` **replaces** the entrance zoom, as `yoffset=` does: to show a sprite at
   1.5x its usual size write the entrance zoom times 1.5, not 1.5.
-- A speaker with no sprite still deserves a character (name colour, backlog, voice later). Truly
-  one-off speakers may stay plain `Name: text` lines.
+- A speaker with no sprite still deserves a character (name colour, backlog, its own voice volume
+  and voice actor later). Truly one-off speakers may stay plain `Name: text` lines: their
+  lines can still be voiced, and the voice table and recording script name them by that name.
 - **File every character under a group as you make it.** An ungrouped cast is one flat list in the
   Characters panel and in every speaker picker; once the extras arrive (a shopkeeper, three
   classmates, "Voice on the phone", a narrator alias) the author can no longer find the leads in it.
@@ -251,7 +262,7 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
 
 Checkpoint: `story_targets` lists every speaker, asset and variable the script will name, and under
 *character looks* every pose or tag a `/show` or `/char` row will use; `characters_list` shows every
-character in a group.
+character in a group; `character_avatars_autoframe` has run for every character with sprites.
 
 ## Step 5 - Story
 

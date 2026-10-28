@@ -277,6 +277,15 @@ export type PluginContributes = {
     blueprintNodes?: string[];
     /** Widget element types this plugin provides (editor module + runtime renderer). */
     widgets?: string[];
+    /**
+     * Inline text effects this plugin provides (rich text toolbar entry + runtime word renderer).
+     *
+     * An effect is set on a run of dialogue the way bold is, and the run compiles to the engine word
+     * renderer of the same id. The studio entry registers the toolbar entry through
+     * `app.services.richText.registerInlineEffect`; the runtime entry registers the renderer through
+     * `app.game.wordRenderers.register`. Both refuse an id this list does not name.
+     */
+    inlineTextEffects?: string[];
     /** Studio language packs: locales this plugin adds or fills. */
     locales?: PluginLocaleContribution[];
     /**

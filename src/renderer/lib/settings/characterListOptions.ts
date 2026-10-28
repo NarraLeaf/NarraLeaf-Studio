@@ -39,3 +39,20 @@ export function resolveCharacterListGrouping(stored: unknown): CharacterListGrou
         ? stored as CharacterListGrouping
         : CHARACTER_LIST_GROUPING_DEFAULT;
 }
+
+/** Global-state key for whether candidate menus show cast groups and asset folders as submenus. */
+export const GROUP_SUBMENUS_KEY = "editor.groupSubmenus" as const;
+
+/**
+ * Submenus by default.
+ *
+ * A menu is opened to take one name, and a cast or an asset library large enough to be filed is a long
+ * list to scroll past for it. One entry per group or folder says where everything is; the arrow onto
+ * it shows what, and typing reaches anything directly.
+ */
+export const GROUP_SUBMENUS_DEFAULT = true;
+
+/** Narrow an unknown stored value to the submenu preference, falling back to the default. */
+export function resolveGroupSubmenus(stored: unknown): boolean {
+    return typeof stored === "boolean" ? stored : GROUP_SUBMENUS_DEFAULT;
+}

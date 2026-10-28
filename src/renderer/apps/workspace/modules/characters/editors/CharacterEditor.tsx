@@ -60,6 +60,7 @@ import { AvatarSection } from "./components/AvatarSection";
 import { ICON_BTN, ICON_BTN_ON } from "./components/iconButton";
 import { characterKindLabel } from "../characterKindLabel";
 import { useCharacterAvatarBake } from "../useCharacterAvatarBake";
+import { useAvatarAutoFrame } from "../useAvatarAutoFrame";
 import { syncCharacterEditorTabTitle } from "../state/useCharacterFocus";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
@@ -385,6 +386,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
     // Baking is the panel's job on open; this instance exists only for the manual re-bake and for
     // the receipt, which is why it is created disabled.
     const { rebake, running: rebaking, summary: bakeSummary } = useCharacterAvatarBake(false);
+    const autoFrame = useAvatarAutoFrame();
     // What a pose's inherited avatar framing is decided by; see `inheritedPosePortrait`.
     const posePictureSizes = usePosePictureSizes(kind === "preset" ? appearance?.getPoses() : null);
 
@@ -853,6 +855,10 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                             onResetCrop={resetCrop}
                             cropping={cropping}
                             onToggleCropping={() => setCropping(current => !current)}
+                            onAutoFrame={() => {
+                                if (avatarKey && !freeze.frozen) void autoFrame.frameOne(character.profile.getId(), avatarKey);
+                            }}
+                            autoFrameBusy={autoFrame.running}
                             onPickOverride={anchor => {
                                 if (avatarKey) openSlot({ kind: "avatar", avatarKey }, anchor);
                             }}

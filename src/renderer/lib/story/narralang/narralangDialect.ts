@@ -85,8 +85,11 @@ export type NarralangVerbSyntax = {
 export type NarralangMarkSyntax = {
     readonly mark: keyof StoryTextMarks;
     readonly tag: string;
-    /** How the mark's argument prints; absent when the tag takes none. */
-    readonly arg?: "raw" | "number";
+    /**
+     * How the mark's argument prints; absent when the tag takes none. `effect` is an inline effect's
+     * id followed by its parameters as `key=value` words.
+     */
+    readonly arg?: "raw" | "number" | "effect";
 };
 
 export type NarralangTextSyntax = {
@@ -228,6 +231,8 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         // The vocabulary NarraLeaf's own `Sentence` markup uses, so an author who has written a
         // dialogue line in the engine reads this without a second table to learn.
         marks: [
+            // Outermost: an effect draws the whole run, whatever else is set on its characters.
+            { mark: "effect", tag: "fx", arg: "effect" },
             { mark: "bold", tag: "b" },
             { mark: "italic", tag: "i" },
             { mark: "color", tag: "color", arg: "raw" },

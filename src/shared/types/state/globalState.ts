@@ -261,6 +261,16 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.characterListGrouping": "grouped" | "all";
     /**
+     * Whether the story editor's candidate menus show each cast group and asset folder as one entry
+     * whose contents open in a column beside it, or list everything in one column.
+     *
+     * Submenus by default: a sizeable cast or library is the reason a project files it, and a menu is
+     * opened to pick one name. Typing a name lists every match regardless, since a search that
+     * stopped at a folder would answer "nothing" about something that is there. See
+     * lib/settings/characterListOptions.
+     */
+    "editor.groupSubmenus": boolean;
+    /**
      * How tall, in CSS pixels, the story inspector draws the preview of a character's appearance.
      *
      * Remembered state rather than a settings row: it is set by looking at the picture and deciding
@@ -620,6 +630,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
     "editor.characterListGrouping": "grouped",
+    "editor.groupSubmenus": true,
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,

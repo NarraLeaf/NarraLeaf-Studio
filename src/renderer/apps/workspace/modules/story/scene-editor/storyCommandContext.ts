@@ -18,7 +18,7 @@ import { listDisplayableTargetsInScene } from "../../story-motion/storyMotionPre
 import { segmentPlainText } from "./storyFindReplace";
 import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVideoClips } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
-import type { StoryPuppetVocabulary } from "./storyCommandValues";
+import type { StoryCommandFolder, StoryPuppetVocabulary } from "./storyCommandValues";
 import { storedFarPositions } from "./commands/transformVocabulary";
 
 /**
@@ -29,8 +29,37 @@ import { storedFarPositions } from "./commands/transformVocabulary";
  * reads this same context, which is what stops the two from disagreeing about what a name means.
  */
 
-function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommandNamedRef[] {
-    return Object.values(assets?.[type] ?? {}).map(asset => ({ id: asset.id, name: asset.name }));
+/** An asset folder as the context reads it: the group record's id, name and parent. */
+export type StoryCommandAssetFolderInput = { id: string; name: string; parentGroupId?: string };
+
+/**
+ * The asset library's names of one type, each with the folders it is filed under.
+ *
+ * Ordered by where the folder sits in `folders` (the asset browser's own order), unfiled names
+ * first, so a menu that draws folders in the order it meets them draws them in the browser's.
+ */
+function assetRefs(assets: AssetsMap | undefined, type: AssetType, folders: readonly StoryCommandAssetFolderInput[]): StoryCommandNamedRef[] {
+    const byId = new Map(folders.map((folder, index) => [folder.id, { folder, index }]));
+    const chainOf = (groupId: string | undefined): StoryCommandFolder[] => {
+        const chain: StoryCommandFolder[] = [];
+        const seen = new Set<string>();
+        for (let id = groupId; id && byId.has(id) && !seen.has(id); id = byId.get(id)!.folder.parentGroupId) {
+            seen.add(id);
+            const { folder } = byId.get(id)!;
+            chain.unshift({ id: folder.id, name: folder.name });
+        }
+        return chain;
+    };
+    return Object.values(assets?.[type] ?? {})
+        .map(asset => {
+            const chain = chainOf(asset.groupId);
+            return {
+                ref: { id: asset.id, name: asset.name, ...(chain.length > 0 ? { folders: chain } : {}) },
+                order: asset.groupId && byId.has(asset.groupId) ? byId.get(asset.groupId)!.index : -1,
+            };
+        })
+        .sort((a, b) => a.order - b.order)
+        .map(entry => entry.ref);
 }
 
 /**
@@ -334,6 +363,12 @@ export function listPuppetCharacterIds(characters: readonly Pick<Character, "pro
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
     /**
+     * The asset browser's folders, in its order, across the categories a command line can name (image
+     * and media). Only the candidate menu uses them, to file names the way the browser does; omitted,
+     * every name is offered unfiled.
+     */
+    assetFolders?: readonly StoryCommandAssetFolderInput[];
+    /**
      * The project's asset sets. Omitted where no project is open, which names none.
      *
      * `type` is the `AssetType` string off the set record. It is required rather than optional
@@ -428,10 +463,10 @@ export function buildStoryCommandContext(input: {
     });
 
     return {
-        images: assetRefs(input.assets, AssetType.Image),
+        images: assetRefs(input.assets, AssetType.Image, input.assetFolders ?? []),
         characterLayerAssetIds: [...characterLayerAssetIds],
-        audio: assetRefs(input.assets, AssetType.Audio),
-        videos: assetRefs(input.assets, AssetType.Video),
+        audio: assetRefs(input.assets, AssetType.Audio, input.assetFolders ?? []),
+        videos: assetRefs(input.assets, AssetType.Video, input.assetFolders ?? []),
         assetSets: (input.assetSets ?? []).map(set => ({
             id: set.id,
             name: set.name,

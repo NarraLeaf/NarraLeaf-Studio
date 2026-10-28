@@ -688,6 +688,10 @@ export const project = {
                 one: "{count} action",
                 other: "{count} actions",
             },
+            inlineTextEffect: {
+                one: "{count} text effect",
+                other: "{count} text effects",
+            },
         },
     },
     // What a live session changes about this page. The build variants, the DLC and the palette are

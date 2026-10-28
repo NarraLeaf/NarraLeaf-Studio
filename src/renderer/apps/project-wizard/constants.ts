@@ -67,6 +67,7 @@ export const blankTemplate: ProjectTemplate = {
     description: "Start from a blank project",
     descriptionKey: "wizard.template.blank.description",
     stageSizes: [],
+    parts: [],
 };
 
 /**
@@ -98,6 +99,7 @@ export const defaultProjectData = {
     name: "",
     description: "",
     template: "",
+    leaveOutParts: [],
     location: "",
     author: "",
     website: "",

@@ -29,6 +29,8 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
+    GROUP_SUBMENUS_DEFAULT,
+    GROUP_SUBMENUS_KEY,
     CHARACTER_LIST_GROUPING_DEFAULT,
     CHARACTER_LIST_GROUPING_KEY,
     CHARACTER_LIST_GROUPING_OPTIONS,
@@ -855,6 +857,22 @@ export const AppSettings: AppSettingDefinition[] = [
             grouped: "settings.items.characterListGrouping.options.grouped",
             all: "settings.items.characterListGrouping.options.all",
         },
+    },
+    {
+        // Read by the story editor's candidate menus: the speaker picker (the "#" slot and the
+        // nametag) files characters under their cast groups, the argument menu files assets under
+        // their folders and characters under their groups. On, each group or folder is one entry
+        // whose contents open in a column beside it; off, everything is one list. Typing a name lists
+        // the matches either way.
+        key: GROUP_SUBMENUS_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show groups as submenus",
+        labelKey: "settings.items.groupSubmenus.label",
+        description: "In candidate menus, each character group and asset folder is one entry whose contents open in a column beside it.",
+        descriptionKey: "settings.items.groupSubmenus.description",
+        defaultValue: GROUP_SUBMENUS_DEFAULT,
     },
     {
         /**
