@@ -5745,7 +5745,8 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_SKIP)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED)).toBe(false);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
+        // A binding reads a persistent variable directly; it never writes one.
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(false);
@@ -5891,7 +5892,7 @@ describe("built-in blueprint nodes", () => {
         expect(byType.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
-        expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
+        expect(byType.get(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)?.category).toBe("Variables");
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
     });
@@ -8501,6 +8502,16 @@ describe("Saved variables outside a story", () => {
         );
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_SET)).toBe(false);
+    });
+
+    it("lets a Blueprint Value read a persistent variable, and keeps that write out too", () => {
+        registerCoreBlueprintNodes();
+        const read = persistentVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET)!;
+        const write = persistentVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET)!;
+        // Latent, like Call Fn, which value graphs have always run.
+        expect(read.isLatent).toBe(true);
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(read)).toBe(true);
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(write)).toBe(false);
     });
 
     it("reads the running playthrough through the host, and reports when there is none", async () => {

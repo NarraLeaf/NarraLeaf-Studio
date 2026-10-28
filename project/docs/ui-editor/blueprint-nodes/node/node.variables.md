@@ -42,7 +42,7 @@ Blueprint Value 不使用 `Var` 节点声明变量。旧版 blueprint-level `mem
 
 `blueprint.persistent.get` - 读取 Persistent 变量
 
-通过 Host 管理的项目存储异步读取 Persistent 变量；没有已保存值时返回变量定义中的默认值。
+通过 Host 管理的项目存储异步读取 Persistent 变量；没有已保存值时返回变量定义中的默认值。Blueprint Value 里也可以直接使用：读取会被记录，变量被写入后绑定重新求值。
 
 - `Persistent` - 节点参数，选择 Persistent 变量
 - `Value` - 输出读取结果
@@ -51,7 +51,7 @@ Blueprint Value 不使用 `Var` 节点声明变量。旧版 blueprint-level `mem
 
 `blueprint.persistent.set` - 写入 Persistent 变量
 
-通过 Host 管理的项目存储异步写入 Persistent 变量。
+通过 Host 管理的项目存储异步写入 Persistent 变量。不能放在 Blueprint Value 里。
 
 - `Persistent` - 节点参数，选择 Persistent 变量
 - `Value` - 输入要保存的值

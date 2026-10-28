@@ -59,8 +59,8 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const variable = resolvePersistentVariable(ctx);
-            // A value binding that reaches this through a Fn shows the value; it has to hear the
-            // next write to it.
+            // A value binding that reads this - directly or through a Fn - shows the value; it has to
+            // hear the next write to it.
             ctx.valueExecution?.trackState?.(persistentStateKey(variable.storageKey));
             // No default applied here: the persistence scope answers an unwritten variable with its
             // default for every reader (`ScopeStoreBridge.persistenceGet`). A fallback here never
