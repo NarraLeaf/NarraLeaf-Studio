@@ -44,11 +44,21 @@ type Actuator = {
 /** Where the pads come from. A seam for tests; the game reads the window's navigator. */
 export type GamepadSource = () => readonly (Gamepad | null)[];
 
+/**
+ * The window's pads as a real array. Older Chromium - the Android System WebView an APK runs in among
+ * them - hands back a `GamepadList`, which indexes like an array but has no `filter`; and a document a
+ * permissions policy denies `gamepad` throws instead of answering. Both are "no pad" here, the same
+ * reading `gamepadState` takes, because this runs on every session reset and a throw there is a crash.
+ */
 function navigatorPads(): readonly (Gamepad | null)[] {
     if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") {
         return [];
     }
-    return navigator.getGamepads() ?? [];
+    try {
+        return Array.from(navigator.getGamepads() ?? []);
+    } catch {
+        return [];
+    }
 }
 
 /** Every connected standard-mapping pad, the same set `gamepadState` reads buttons from. */
