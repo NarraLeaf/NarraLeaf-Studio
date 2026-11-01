@@ -20,6 +20,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
@@ -144,6 +145,13 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     // player never asked for.
     if (def.type === BLUEPRINT_NODE_TYPE_SAVED_GET) {
         return !def.isLatent;
+    }
+    // The same read for a persistent variable - a title page showing how many times the game was
+    // cleared. Latent, as the host's storage answers asynchronously, but so is Call Fn above, and the
+    // value runtime awaits both; the read is recorded the same way, so a write runs the binding again.
+    // Set Persistent stays out for the reason Set Saved Var does.
+    if (def.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET) {
+        return true;
     }
     if (def.category === "Flow") {
         return !def.isLatent &&

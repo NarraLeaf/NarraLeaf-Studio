@@ -873,6 +873,7 @@ export const blueprint = {
         image: "画像",
         in: "イン",
         inGame: "ゲーム中",
+        input: "入力",
         index: "位置",
         integer: "整数",
         isEntering: "入場中か",

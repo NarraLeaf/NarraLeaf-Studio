@@ -12,10 +12,15 @@ export const TEXT_BLUEPRINT_VALUE_CONFIG: BlueprintValueFieldConfig = {
     valueType: "string",
     valueLabel: "text",
     title: "widgets.blueprintValue.textTitle",
-    getDisplayName: ({ liveElement }) =>
-        translate("widgets.blueprintValue.nameText", {
-            name: liveElement.name ?? translate("widgets.defaults.text.name"),
-        }),
+    getDisplayName: ({ liveElement }) => {
+        const kindName = translate("widgets.defaults.text.name");
+        const name = liveElement.name?.trim() || kindName;
+        // A text still called by its kind's name would make "Text text": the blueprint is then
+        // named for what it gives, as its tab is - "Text Value".
+        return name === kindName
+            ? translate("widgets.blueprintValue.textTitle")
+            : translate("widgets.blueprintValue.nameText", { name });
+    },
     getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
     renderLiteralEditor: ({ data, liveElement, readOnly }) => (
         <TextRunMarksEditor

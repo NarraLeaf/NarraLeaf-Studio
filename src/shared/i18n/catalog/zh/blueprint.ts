@@ -872,6 +872,7 @@ export const blueprint = {
         image: "图片",
         in: "进入",
         inGame: "游戏中",
+        input: "输入",
         index: "索引",
         integer: "整数",
         isEntering: "进入中",
