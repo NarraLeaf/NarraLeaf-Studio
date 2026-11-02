@@ -2,7 +2,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { actions as enActions } from "@shared/i18n/catalog/en/actions";
+import { Services } from "@/lib/workspace/services/services";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { RunControl } from "./RunControl";
+import { RUN_LOCALE_SETTINGS_KEY } from "./runLanguage";
 
 /**
  * What the Run split-button offers while the workspace is frozen.
@@ -36,8 +39,14 @@ vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFreeze: () => null,
 }));
 
+/**
+ * The workspace context the control renders against. Null for the freeze cases, which need no
+ * services; the Language row reads the project's languages and the stored choice on its first
+ * render, so those cases stand up just those two services.
+ */
+let workspaceContext: unknown = null;
 vi.mock("../../context", () => ({
-    useWorkspace: () => ({ workspace: null, context: null }),
+    useWorkspace: () => ({ workspace: null, context: workspaceContext }),
 }));
 
 // The run chords register in effects and render nothing; their `when` predicates read the same flag
@@ -90,6 +99,7 @@ function isOff(rows: Map<string, boolean>, label: string): boolean {
 
 beforeEach(() => {
     operationsFrozen = false;
+    workspaceContext = null;
 });
 
 describe("RunControl while frozen", () => {
@@ -122,5 +132,64 @@ describe("RunControl while frozen", () => {
         expect(isOff(rows, enActions.run.productionBuild)).toBe(false);
         expect(isOff(rows, enActions.run.exportPatch)).toBe(false);
         expect(isOff(rows, enActions.run.preview)).toBe(false);
+    });
+});
+
+/** A context with these languages and, optionally, a language already chosen for Dev Mode. */
+function contextWith(locales: { code: string; displayName: string }[], chosen?: string): unknown {
+    const projectPath = "D:/Games/Rain";
+    const services: Record<string, unknown> = {
+        [Services.Project]: {
+            getLocalizationConfiguration: () => ({ sourceLocale: locales[0]?.code ?? "", locales }),
+        },
+        [Services.GlobalSettings]: {
+            getSync: (key: string) => (key === RUN_LOCALE_SETTINGS_KEY && chosen
+                ? { [normalizeProjectPath(projectPath)]: chosen }
+                : undefined),
+        },
+    };
+    return {
+        project: { getConfig: () => ({ projectPath }), resolve: () => projectPath },
+        services: { get: (name: string) => services[name] },
+    };
+}
+
+/** The Language row's label and the value it shows, or null when there is no such row. */
+function languageRow(): { label: string; value: string } | null {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<RunControl />);
+    const row = host.querySelector("[data-run-language-row]");
+    if (!row) {
+        return null;
+    }
+    const spans = row.querySelectorAll(":scope > span");
+    return { label: (spans[1]?.textContent ?? "").trim(), value: (spans[2]?.textContent ?? "").trim() };
+}
+
+describe("RunControl's Language row", () => {
+    it("is not offered for a project with one language", () => {
+        workspaceContext = contextWith([{ code: "en", displayName: "English" }]);
+        expect(languageRow()).toBeNull();
+    });
+
+    it("is offered for two languages, leaving the language to the game until one is chosen", () => {
+        workspaceContext = contextWith([
+            { code: "zh-CN", displayName: "简体中文" },
+            { code: "en", displayName: "English" },
+        ]);
+        expect(languageRow()).toEqual({ label: enActions.run.language, value: enActions.run.languageAuto });
+    });
+
+    it("names the chosen language, on the row and on the Run button", () => {
+        workspaceContext = contextWith([
+            { code: "ja", displayName: "日本語" },
+            { code: "en", displayName: "English" },
+        ], "en");
+        expect(languageRow()?.value).toBe("English");
+
+        const host = document.createElement("div");
+        host.innerHTML = renderToStaticMarkup(<RunControl />);
+        const face = host.querySelector(`[aria-label="${enActions.run.runDevMode}"]`);
+        expect(face?.textContent).toBe(`${enActions.run.devMode} · English`);
     });
 });
