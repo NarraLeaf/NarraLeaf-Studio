@@ -473,27 +473,35 @@ function actionDurationMs(payload: Record<string, unknown>): number {
     return Math.max(read(payload.durationMs), nested(payload.transition), nested(payload.transform));
 }
 
-export type StageTimelineLayoutMode = "equal" | "timed";
-
-/** Width of a column in the equal layout. */
-export const STAGE_TIMELINE_EQUAL_PX = 28;
-/** Width of one second in the timed layout. */
-export const STAGE_TIMELINE_SECOND_PX = 48;
-/** The narrowest a column gets, so an instant row can still be seen and clicked. */
-export const STAGE_TIMELINE_MIN_PX = 8;
+/** Width of a column that says nothing: a row of stage work. */
+export const STAGE_TIMELINE_UNIT_PX = 28;
+/** Room a line keeps around its words in the dialogue strip (its padding, and a little air). */
+export const STAGE_TIMELINE_LINE_PAD_PX = 16;
 
 export type StageTimelineColumn = { x: number; width: number };
 
-export function stageTimelineColumns(
-    timings: readonly StageTimelineTiming[],
-    mode: StageTimelineLayoutMode,
-    zoom: number,
-): StageTimelineColumn[] {
+/**
+ * Lay the columns out so every line can be read whole. A row of stage work is one unit wide; a
+ * line's column widens until the line's span - its column and the stage work up to the next line,
+ * which the dialogue strip runs it across - is as wide as its words. `textWidths` is each row's words
+ * measured at zoom 1, null for a row with none.
+ */
+export function stageTimelineColumns(textWidths: readonly (number | null)[], zoom: number): StageTimelineColumn[] {
+    const unit = STAGE_TIMELINE_UNIT_PX * zoom;
+    const widths = textWidths.map(() => unit);
+    textWidths.forEach((textWidth, index) => {
+        if (textWidth === null) {
+            return;
+        }
+        let next = index + 1;
+        while (next < textWidths.length && textWidths[next] === null) {
+            next += 1;
+        }
+        const span = next - index;
+        widths[index] = Math.max(unit, (textWidth + STAGE_TIMELINE_LINE_PAD_PX) * zoom - (span - 1) * unit);
+    });
     let x = 0;
-    return timings.map(timing => {
-        const width = mode === "equal"
-            ? STAGE_TIMELINE_EQUAL_PX * zoom
-            : Math.max(STAGE_TIMELINE_MIN_PX, (timing.durationMs / 1000) * STAGE_TIMELINE_SECOND_PX * zoom);
+    return widths.map(width => {
         const column = { x, width };
         x += width;
         return column;

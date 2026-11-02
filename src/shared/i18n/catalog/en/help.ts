@@ -347,7 +347,7 @@ export const help = {
                 + "- Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.\n"
                 + "- A bar means the object is on stage, and a new expression or picture starts a new block. A change that keeps the name, such as a move or a zoom, shows as a diamond on the object it changes.\n"
                 + "- Clicking a column moves the editor and the preview to that row. Columns and lanes stretch to fill the panel when it is made wider or taller.\n"
-                + "- In Equal width every row has the same width. In By duration a line takes the length of its voice take, a line without a take is estimated from its length, and a command takes the length of its transition or movement.\n"
+                + "- Each line is as wide as its words, and a row that only acts on the stage keeps a narrow width. The slider at the top zooms the timeline, and Show all row numbers numbers every row on the ruler.\n"
                 + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
                 + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
                 + "- Hold Ctrl or Command and scroll to zoom the timeline.",

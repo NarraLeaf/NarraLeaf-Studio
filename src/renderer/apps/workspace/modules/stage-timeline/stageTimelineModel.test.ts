@@ -7,9 +7,8 @@ import {
     estimateReadingMs,
     isNeutralCamera,
     sceneBlockOrder,
-    STAGE_TIMELINE_EQUAL_PX,
-    STAGE_TIMELINE_MIN_PX,
-    STAGE_TIMELINE_SECOND_PX,
+    STAGE_TIMELINE_LINE_PAD_PX,
+    STAGE_TIMELINE_UNIT_PX,
     stageTimelineColumns,
     stageTimelineCursorColumn,
     stageTimelineThrough,
@@ -205,19 +204,19 @@ describe("timeline helpers", () => {
         expect(estimateReadingMs("a b")).toBe(estimateReadingMs("ab"));
     });
 
-    it("lays columns out equally or by time, never narrower than the minimum", () => {
-        const timings = [
-            { durationMs: 1000, source: "voice" as const },
-            { durationMs: 0, source: "instant" as const },
-        ];
-        expect(stageTimelineColumns(timings, "equal", 1)).toEqual([
-            { x: 0, width: STAGE_TIMELINE_EQUAL_PX },
-            { x: STAGE_TIMELINE_EQUAL_PX, width: STAGE_TIMELINE_EQUAL_PX },
+    it("widens a line's column until its span holds its words, and keeps stage work one unit wide", () => {
+        // Row 0 says something 100px long and two rows of stage work follow it; row 3 says something short.
+        const columns = stageTimelineColumns([100, null, null, 4], 1);
+        const lineSpan = 100 + STAGE_TIMELINE_LINE_PAD_PX;
+        expect(columns.map(column => column.width)).toEqual([
+            lineSpan - 2 * STAGE_TIMELINE_UNIT_PX,
+            STAGE_TIMELINE_UNIT_PX,
+            STAGE_TIMELINE_UNIT_PX,
+            STAGE_TIMELINE_UNIT_PX,
         ]);
-        expect(stageTimelineColumns(timings, "timed", 1)).toEqual([
-            { x: 0, width: STAGE_TIMELINE_SECOND_PX },
-            { x: STAGE_TIMELINE_SECOND_PX, width: STAGE_TIMELINE_MIN_PX },
-        ]);
+        expect(columns[3].x).toBe(lineSpan);
+        // Zoom scales every width.
+        expect(stageTimelineColumns([null, null], 2).map(column => column.width)).toEqual([2 * STAGE_TIMELINE_UNIT_PX, 2 * STAGE_TIMELINE_UNIT_PX]);
     });
 
     it("puts a cursor on a row that does not run at the last column before it", () => {

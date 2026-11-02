@@ -1035,10 +1035,8 @@ export const story = {
     timeline: {
         empty: "打开故事场景以查看舞台时间轴",
         emptyScene: "该场景没有会执行的行",
-        layout: {
-            equal: "等长",
-            timed: "按时长",
-        },
+        showAllRows: "显示完整行号",
+        zoom: "缩放",
         row: "第 {index} 行",
         seconds: "{seconds} 秒",
         source: {

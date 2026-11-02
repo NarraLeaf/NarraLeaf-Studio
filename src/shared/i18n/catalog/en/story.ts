@@ -1194,10 +1194,8 @@ export const story = {
     timeline: {
         empty: "Open a story scene to see its stage timeline",
         emptyScene: "This scene has no rows that run",
-        layout: {
-            equal: "Equal width",
-            timed: "By duration",
-        },
+        showAllRows: "Show all row numbers",
+        zoom: "Zoom",
         row: "Row {index}",
         seconds: "{seconds} s",
         source: {

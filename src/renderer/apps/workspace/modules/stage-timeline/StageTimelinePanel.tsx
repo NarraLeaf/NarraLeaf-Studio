@@ -33,13 +33,12 @@ import {
     stageTimelineColumns,
     stageTimelineCursorColumn,
     stageTimelineThrough,
-    type StageTimelineLayoutMode,
     type StageTimelineNames,
 } from "./stageTimelineModel";
 import { StageTimelineView, type StageTimelineLanePaint } from "./StageTimelineView";
 import { STAGE_TIMELINE_PANEL_ID } from "./stageTimelineIds";
 
-type StageTimelinePanelState = { layout?: StageTimelineLayoutMode };
+type StageTimelinePanelState = { showAllRows?: boolean };
 
 const selectTargetTab = (hub: StoryPreviewHub) => hub.getTab(hub.getTarget());
 
@@ -57,12 +56,12 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
     const scene = document && sceneId ? document.scenes[sceneId] ?? null : null;
 
     const panelState = useMemo(() => (context && ready ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, ready]);
-    const [layout, setLayout] = useState<StageTimelineLayoutMode>(
-        () => panelState?.getPanelState<StageTimelinePanelState>(STAGE_TIMELINE_PANEL_ID)?.layout ?? "equal",
+    const [showAllRows, setShowAllRows] = useState(
+        () => panelState?.getPanelState<StageTimelinePanelState>(STAGE_TIMELINE_PANEL_ID)?.showAllRows ?? false,
     );
-    const changeLayout = useCallback((next: StageTimelineLayoutMode) => {
-        setLayout(next);
-        panelState?.setPanelState<StageTimelinePanelState>(STAGE_TIMELINE_PANEL_ID, { layout: next });
+    const changeShowAllRows = useCallback((next: boolean) => {
+        setShowAllRows(next);
+        panelState?.setPanelState<StageTimelinePanelState>(STAGE_TIMELINE_PANEL_ID, { showAllRows: next });
     }, [panelState]);
     const [zoom, setZoom] = useState(1);
 
@@ -93,7 +92,8 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
     }, [document, names, scene, sceneId, throughKey]);
 
     const order = useMemo(() => (scene ? sceneBlockOrder(scene) : new Map<StoryBlockId, number>()), [scene]);
-    const columns = useMemo(() => (model ? stageTimelineColumns(model.timings, layout, zoom) : []), [layout, model, zoom]);
+    const textWidths = useMemo(() => (model ? model.lines.map(line => (line === null ? null : measureLine(line))) : []), [model]);
+    const columns = useMemo(() => stageTimelineColumns(textWidths, zoom), [textWidths, zoom]);
     const cursorColumn = model ? stageTimelineCursorColumn(model.blockIds, cursor, order) : -1;
 
     const paints = useMemo(() => {
@@ -122,8 +122,8 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
             model={model}
             columns={columns}
             cursorColumn={cursorColumn}
-            layout={layout}
-            onLayoutChange={changeLayout}
+            showAllRows={showAllRows}
+            onShowAllRowsChange={changeShowAllRows}
             zoom={zoom}
             onZoomChange={setZoom}
             paints={paints}
@@ -135,6 +135,25 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
 }
 
 const EMPTY_PICKS: ReadonlyMap<StoryBlockId, StoryBlockId> = new Map();
+
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * How wide a line's words are in the dialogue strip (`text-2xs`, the app's own face), so its column
+ * can hold it whole. Zero where there is no canvas to measure with, which leaves the column one unit.
+ */
+function measureLine(text: string): number {
+    if (measureContext === undefined) {
+        measureContext = typeof window.document?.createElement === "function"
+            ? window.document.createElement("canvas").getContext("2d")
+            : null;
+    }
+    if (!measureContext) {
+        return 0;
+    }
+    measureContext.font = `11px ${getComputedStyle(window.document.body).fontFamily}`;
+    return Math.ceil(measureContext.measureText(text).width);
+}
 
 /**
  * The names and lengths the model puts on things, kept current with the cast, the asset library and

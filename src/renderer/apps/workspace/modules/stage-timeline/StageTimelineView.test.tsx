@@ -58,10 +58,10 @@ function renderView(cursorColumn: number) {
         <StageTimelineView
             scene={scene}
             model={model}
-            columns={stageTimelineColumns(model.timings, "equal", 1)}
+            columns={stageTimelineColumns(model.lines.map(line => (line === null ? null : 40)), 1)}
             cursorColumn={cursorColumn}
-            layout="equal"
-            onLayoutChange={() => undefined}
+            showAllRows={false}
+            onShowAllRowsChange={() => undefined}
             zoom={1}
             onZoomChange={() => undefined}
             paints={new Map()}

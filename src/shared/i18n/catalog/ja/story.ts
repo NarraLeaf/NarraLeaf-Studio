@@ -1077,10 +1077,8 @@ export const story = {
     timeline: {
         empty: "ストーリーのシーンを開くとステージタイムラインを表示します",
         emptyScene: "このシーンには実行される行がありません",
-        layout: {
-            equal: "等幅",
-            timed: "所要時間",
-        },
+        showAllRows: "すべての行番号を表示",
+        zoom: "ズーム",
         row: "{index} 行目",
         seconds: "{seconds} 秒",
         source: {

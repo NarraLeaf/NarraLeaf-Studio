@@ -2,8 +2,8 @@
  * The stage timeline's drawing: lane names on the left, the ruler and lanes beside them, scrolling
  * sideways.
  *
- * Every column is one row that runs, with a hairline between columns. A column is as wide as the
- * layout says - all the same, or as long as the row takes - and a press anywhere in it moves the
+ * Every column is one row that runs, with a hairline between columns. A row of stage work is a
+ * narrow column and a line is as wide as its words need, and a press anywhere in a column moves the
  * editor to its row. Columns stretch to fill a wider panel; lanes keep their height, and a taller
  * panel carries the column lines on down below them.
  *
@@ -11,22 +11,20 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Check, GitBranch, Image, ImagePlay, MessageSquareText, Music, Sparkles, Type, User, Video, Volume2 } from "lucide-react";
+import { Check, GitBranch, Image, ImagePlay, ListOrdered, MessageSquareText, Music, Sparkles, Type, User, Video, Volume2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useCharacterAvatar } from "../story/scene-editor/storyCharacterFace";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { ContextMenu, PanelHeader, Select, type ContextMenuDef } from "@/lib/components/elements";
+import { ContextMenu, PanelHeader, Slider, type ContextMenuDef } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
 import {
-    STAGE_TIMELINE_SECOND_PX,
     type StageTimelineCell,
     type StageTimelineColumn,
     type StageTimelineLane,
-    type StageTimelineLayoutMode,
     type StageTimelineModel,
     type StageTimelineSprite,
     type StageTimelineTiming,
@@ -52,8 +50,9 @@ export function StageTimelineView(props: {
     model: StageTimelineModel;
     columns: readonly StageTimelineColumn[];
     cursorColumn: number;
-    layout: StageTimelineLayoutMode;
-    onLayoutChange: (layout: StageTimelineLayoutMode) => void;
+    /** Number every row on the ruler, not only the ones that say something. */
+    showAllRows: boolean;
+    onShowAllRowsChange: (showAllRows: boolean) => void;
     zoom: number;
     onZoomChange: (zoom: number) => void;
     paints: ReadonlyMap<string, StageTimelineLanePaint>;
@@ -62,7 +61,7 @@ export function StageTimelineView(props: {
     onStepTo: (blockId: StoryBlockId) => void;
     onPick: (choiceId: StoryBlockId, optionId: StoryBlockId) => void;
 }) {
-    const { scene, model, cursorColumn, layout, zoom, onZoomChange, paints, onStepTo } = props;
+    const { scene, model, cursorColumn, zoom, onZoomChange, paints, onStepTo } = props;
     const { t } = useTranslation();
     const trackRef = useRef<HTMLDivElement | null>(null);
     const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -116,11 +115,6 @@ export function StageTimelineView(props: {
         }
     }, [columns, cursorColumn]);
 
-    const layoutOptions = useMemo(() => [
-        { value: "equal", label: t("story.timeline.layout.equal") },
-        { value: "timed", label: t("story.timeline.layout.timed") },
-    ], [t]);
-
     const cursorTiming = model.timings[cursorColumn];
 
     return (
@@ -135,13 +129,29 @@ export function StageTimelineView(props: {
                         {describeTiming(cursorTiming, t)}
                     </span>
                 ) : null}
-                <Select
+                <ToolbarButton
                     size="sm"
-                    options={layoutOptions}
-                    value={layout}
-                    onChange={value => props.onLayoutChange(value === "timed" ? "timed" : "equal")}
-                    className="w-28 shrink-0"
-                />
+                    active={props.showAllRows}
+                    aria-label={t("story.timeline.showAllRows")}
+                    aria-pressed={props.showAllRows}
+                    data-tip={t("story.timeline.showAllRows")}
+                    onClick={() => props.onShowAllRowsChange(!props.showAllRows)}
+                >
+                    <ListOrdered className="h-4 w-4" />
+                </ToolbarButton>
+                {/* The slider fills whatever holds it; the box is what keeps it short. */}
+                <div className="flex w-28 shrink-0 items-center">
+                    <Slider
+                        value={zoom}
+                        min={MIN_ZOOM}
+                        max={MAX_ZOOM}
+                        step="any"
+                        onValueChange={onZoomChange}
+                        aria-label={t("story.timeline.zoom")}
+                        data-tip={t("story.timeline.zoom")}
+                        className="w-full"
+                    />
+                </div>
             </PanelHeader>
             {/* The names and the track scroll down together. They sit in a row of their own so the row
                 is as tall as its lanes: a scroller that is itself the row would squeeze the track to
@@ -176,7 +186,7 @@ export function StageTimelineView(props: {
                                     style={{ left: columns[cursorColumn].x, width: columns[cursorColumn].width }}
                                 />
                             ) : null}
-                            <Ruler model={model} columns={columns} layout={layout} zoom={zoom * fill} />
+                            <Ruler model={model} columns={columns} showAllRows={props.showAllRows} />
                             <DialogueStrip model={model} columns={columns} />
                             <div className="absolute left-0 right-0" style={{ top: RULER_PX + DIALOGUE_PX }}>
                                 {model.lanes.map(lane => (
@@ -545,43 +555,28 @@ function DialogueStrip({ model, columns }: { model: StageTimelineModel; columns:
     );
 }
 
-function Ruler({ model, columns, layout, zoom }: {
+function Ruler({ model, columns, showAllRows }: {
     model: StageTimelineModel;
     columns: readonly StageTimelineColumn[];
-    layout: StageTimelineLayoutMode;
-    zoom: number;
+    showAllRows: boolean;
 }) {
     const labels = useMemo(() => {
         const result: { x: number; text: string }[] = [];
-        if (layout === "equal") {
-            // A number over every row that says something - the script's lines - and none over the
-            // stage work between them. A number that would run into the one before it is left out.
-            let lastEnd = -Infinity;
-            model.lines.forEach((line, index) => {
-                if (line === null || columns[index].x < lastEnd) {
-                    return;
-                }
-                result.push({ x: columns[index].x, text: String(model.lineNumbers[index]) });
-                lastEnd = columns[index].x + RULER_NUMBER_PX;
-            });
-        } else {
-            const everySeconds = niceStep(RULER_LABEL_GAP_PX / (STAGE_TIMELINE_SECOND_PX * zoom), [1, 2, 5, 10, 15, 30, 60, 120, 300]);
-            let elapsed = 0;
-            let next = 0;
-            model.timings.forEach((timing, index) => {
-                const end = elapsed + timing.durationMs;
-                while (next * 1000 <= end && (timing.durationMs > 0 || next * 1000 === elapsed)) {
-                    const fraction = timing.durationMs > 0 ? (next * 1000 - elapsed) / timing.durationMs : 0;
-                    result.push({ x: columns[index].x + fraction * columns[index].width, text: formatClock(next) });
-                    next += everySeconds;
-                }
-                elapsed = end;
-            });
-        }
+        // A number over every row that says something - the script's lines - and, with every row
+        // numbered, over the stage work between them too. A number that would run into the one
+        // before it is left out.
+        let lastEnd = -Infinity;
+        model.lines.forEach((line, index) => {
+            if ((line === null && !showAllRows) || columns[index].x < lastEnd) {
+                return;
+            }
+            result.push({ x: columns[index].x, text: String(model.lineNumbers[index]) });
+            lastEnd = columns[index].x + RULER_NUMBER_PX;
+        });
         // A menu's branch button sits on the ruler; a label under it would show only its last digit.
         const buttons = model.choices.map(choice => choiceButtonLeft(columns[choice.column]));
         return result.filter(label => !buttons.some(x => label.x + 3 < x + 24 && label.x + 3 + RULER_LABEL_GAP_PX * 0.75 > x));
-    }, [columns, layout, model.choices, model.lineNumbers, model.lines, model.timings, zoom]);
+    }, [columns, model.choices, model.lineNumbers, model.lines, showAllRows]);
 
     return (
         <div className="absolute left-0 right-0 top-0 border-b border-edge" style={{ height: RULER_PX }}>
@@ -613,15 +608,6 @@ function Ruler({ model, columns, layout, zoom }: {
 /** A menu's branch button, centred in the menu's column. */
 function choiceButtonLeft(column: StageTimelineColumn): number {
     return column.x + Math.max(0, (column.width - 24) / 2);
-}
-
-function niceStep(minimum: number, steps: readonly number[]): number {
-    return steps.find(step => step >= minimum) ?? steps[steps.length - 1];
-}
-
-function formatClock(seconds: number): string {
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 /** A button on the ruler at every menu, listing its options; picking one walks the scene down it. */
