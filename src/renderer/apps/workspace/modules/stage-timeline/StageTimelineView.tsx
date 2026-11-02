@@ -42,6 +42,8 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
 const RULER_LABEL_GAP_PX = 44;
+/** The narrowest column a row number is printed over on every line. */
+const RULER_NUMBER_PX = 24;
 /** The scrollbar slot a scroller keeps (`::-webkit-scrollbar` in styles.css). */
 const SCROLLBAR_PX = 8;
 
@@ -128,8 +130,9 @@ export function StageTimelineView(props: {
                 <span className="flex-1" />
                 {cursorTiming ? (
                     <span className="shrink-0 text-fg-subtle">
-                        {t("story.timeline.row", { index: model.lineNumbers[cursorColumn] })}
-                        {" · "}
+                        {model.lineNumbers[cursorColumn] !== null
+                            ? `${t("story.timeline.row", { index: model.lineNumbers[cursorColumn] })} · `
+                            : null}
                         {describeTiming(cursorTiming, t)}
                     </span>
                 ) : null}
@@ -552,11 +555,15 @@ function Ruler({ model, columns, layout, zoom }: {
     const labels = useMemo(() => {
         const result: { x: number; text: string }[] = [];
         if (layout === "equal") {
+            // Every line's number above its column, while the numbers have room; a column with no
+            // line has none. Narrower than that, every few lines.
             const width = columns[0]?.width ?? 1;
-            const every = niceStep(RULER_LABEL_GAP_PX / width, [1, 2, 5, 10, 20, 50, 100, 200, 500]);
-            for (let index = 0; index < columns.length; index += every) {
-                result.push({ x: columns[index].x, text: String(model.lineNumbers[index]) });
-            }
+            const every = width >= RULER_NUMBER_PX ? 1 : niceStep(RULER_LABEL_GAP_PX / width, [2, 5, 10, 20, 50, 100, 200, 500]);
+            model.lineNumbers.forEach((lineNumber, index) => {
+                if (lineNumber !== null && index % every === 0) {
+                    result.push({ x: columns[index].x, text: String(lineNumber) });
+                }
+            });
         } else {
             const everySeconds = niceStep(RULER_LABEL_GAP_PX / (STAGE_TIMELINE_SECOND_PX * zoom), [1, 2, 5, 10, 15, 30, 60, 120, 300]);
             let elapsed = 0;

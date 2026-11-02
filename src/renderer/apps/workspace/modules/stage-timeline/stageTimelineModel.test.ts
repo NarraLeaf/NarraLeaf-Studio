@@ -6,6 +6,7 @@ import {
     buildStageTimelineModel,
     estimateReadingMs,
     groupRowsByLine,
+    STAGE_TIMELINE_CHOICE_MS,
     isNeutralCamera,
     sceneBlockOrder,
     STAGE_TIMELINE_EQUAL_PX,
@@ -103,7 +104,7 @@ describe("walkStoryStageTimeline", () => {
 });
 
 describe("buildStageTimelineModel", () => {
-    it("gives every line a column and files the rows before it into that column", () => {
+    it("gives every line a column that runs on over the rows after it", () => {
         const document = documentOf([
             say("a"),
             enter("in", "normal"),
@@ -116,10 +117,10 @@ describe("buildStageTimelineModel", () => {
         const model = modelOf(document);
         expect(model.blockIds).toEqual(["a", "b", "c", "d"]);
         expect(model.lineNumbers).toEqual([1, 3, 5, 7]);
-        expect(model.rowColumns).toEqual([0, 1, 1, 2, 2, 3, 3]);
+        expect(model.rowColumns).toEqual([0, 0, 1, 1, 2, 2, 3]);
         expect(model.lanes.map(lane => [lane.kind, lane.name])).toEqual([["character", "Alice"]]);
         const cells = model.lanes[0].cells;
-        // Each column shows the stage its line is read on.
+        // Each column shows the stage as its line is read.
         expect(cells.map(cell => cell.present)).toEqual([false, true, true, false]);
         expect(cells.map(cell => cell.label)).toEqual([null, "Normal", "Smile", null]);
         expect(cells.map(cell => cell.sprite?.poseId ?? null)).toEqual([null, "normal", "smile", null]);
@@ -136,13 +137,15 @@ describe("buildStageTimelineModel", () => {
             say("c"),
         ], ["in", "a", "b", "move", "c"]);
         const model = modelOf(document);
-        expect(model.blockIds).toEqual(["a", "b", "c"]);
-        // The move is the first of the two rows the third column holds.
-        expect(model.lanes[0].marks).toEqual([{ column: 2, at: 0.25 }]);
-        expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["Normal", "Normal", "Normal"]);
+        // The entrance before the first line is a column of its own, with no row number.
+        expect(model.blockIds).toEqual(["in", "a", "b", "c"]);
+        expect(model.lineNumbers).toEqual([null, 2, 3, 5]);
+        // The move is the second of the two rows line b's column holds.
+        expect(model.lanes[0].marks).toEqual([{ column: 2, at: 0.75 }]);
+        expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["Normal", "Normal", "Normal", "Normal"]);
     });
 
-    it("names backgrounds and music by their assets, and gives rows after the last line a column", () => {
+    it("names backgrounds and music by their assets", () => {
         const document = documentOf([
             block("bg", "action", { action: "setBackground", assetId: "room" }),
             block("bgm", "action", { action: "audio", operation: "setBgm", assetId: "theme" }),
@@ -150,11 +153,12 @@ describe("buildStageTimelineModel", () => {
             block("bgm-off", "action", { action: "audio", operation: "setBgm" }),
         ], ["bg", "bgm", "a", "bgm-off"]);
         const model = modelOf(document);
-        expect(model.blockIds).toEqual(["a", "bgm-off"]);
+        expect(model.blockIds).toEqual(["bgm", "a"]);
         expect(model.lanes.map(lane => lane.kind)).toEqual(["background", "music"]);
         expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["asset:room", "asset:room"]);
         expect(model.lanes[0].cells[0].image).toBe("room");
-        expect(model.lanes[1].cells.map(cell => cell.present)).toEqual([true, false]);
+        // The music stops after line a is read, inside its column; the column shows it playing.
+        expect(model.lanes[1].cells.map(cell => cell.present)).toEqual([true, true]);
         expect(model.lanes[1].cells[0].label).toBe("asset:theme");
         expect(model.lanes[1].cells[0].image).toBeNull();
     });
@@ -171,7 +175,7 @@ describe("buildStageTimelineModel", () => {
         const model = modelOf(document);
         const rain = model.lanes.find(lane => lane.id === "sound:rain")!;
         const bang = model.lanes.find(lane => lane.id === "sound:bang")!;
-        expect(rain.cells.map(cell => cell.present)).toEqual([true, true, true, false]);
+        expect(rain.cells.map(cell => cell.present)).toEqual([true, true, true, true]);
         expect(bang.cells.map(cell => cell.present)).toEqual([false, true, false, false]);
     });
 
@@ -183,10 +187,13 @@ describe("buildStageTimelineModel", () => {
         ], ["push", "a", "reset"]);
         const model = modelOf(document);
         const camera = model.lanes.find(lane => lane.kind === "camera")!;
-        expect(camera.cells.map(cell => cell.present)).toEqual([true, false]);
+        expect(camera.cells.map(cell => cell.present)).toEqual([true, true]);
         expect(camera.cells[0].label).toBe("1.5×");
-        // A column lasts as long as all its rows, and is timed like its line.
-        expect(model.timings[0]).toEqual({ durationMs: 1200 + estimateReadingMs("Text"), source: "estimate" });
+        // A column lasts as long as all its rows, and is timed like its line when it has one.
+        expect(model.timings).toEqual([
+            { durationMs: 1200, source: "action" },
+            { durationMs: estimateReadingMs("Text"), source: "estimate" },
+        ]);
     });
 
     it("times a voiced line by its take and an unvoiced one by its words", () => {
@@ -197,11 +204,12 @@ describe("buildStageTimelineModel", () => {
             block("menu", "nodeAction", { action: "choice" }, null, []),
         ], ["voiced", "plain", "in", "menu"]);
         const model = modelOf(document);
-        expect(model.timings.map(timing => timing.source)).toEqual(["voice", "estimate", "action"]);
+        expect(model.timings.map(timing => timing.source)).toEqual(["voice", "estimate"]);
         expect(model.timings[0].durationMs).toBe(2400);
-        expect(model.timings[1].durationMs).toBe(estimateReadingMs("今天也结束了"));
-        expect(model.lines).toEqual(["Hi", "今天也结束了", null]);
-        expect(model.choices.map(choice => [choice.column, choice.at])).toEqual([[2, 0.75]]);
+        expect(model.timings[1].durationMs).toBe(estimateReadingMs("今天也结束了") + STAGE_TIMELINE_CHOICE_MS);
+        expect(model.lines).toEqual(["Hi", "今天也结束了"]);
+        expect(model.choices[0].column).toBe(1);
+        expect(model.choices[0].at).toBeCloseTo(2.5 / 3);
     });
 });
 
@@ -213,9 +221,9 @@ describe("timeline helpers", () => {
 
     it("splits rows into a column per line", () => {
         expect(groupRowsByLine([false, true, false, false, true, false])).toEqual([
-            { start: 0, end: 1, anchor: 1, line: true },
-            { start: 2, end: 4, anchor: 4, line: true },
-            { start: 5, end: 5, anchor: 5, line: false },
+            { start: 0, end: 0, anchor: 0, line: false },
+            { start: 1, end: 3, anchor: 1, line: true },
+            { start: 4, end: 5, anchor: 4, line: true },
         ]);
         // No lines at all: a column per row.
         expect(groupRowsByLine([false, false]).map(group => group.anchor)).toEqual([0, 1]);

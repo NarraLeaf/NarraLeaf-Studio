@@ -1,10 +1,10 @@
 /**
  * The stage timeline's model: a scene's walk turned into lanes, cells and column widths.
  *
- * A column is a line: every row of dialogue or narration has one, and the rows that only act on the
- * stage (a character entering, a background changing) have none of their own. They belong to the
- * line after them - they set the stage that line is read on - and show as a mark on the lane they
- * changed, inside that line's column. Rows after the last line take one column of their own.
+ * A column is a line: every row of dialogue or narration starts one, and the rows that only act on
+ * the stage (a character entering, a background changing) have none of their own. They belong to the
+ * line before them - the column runs from a line to the next - and show as a mark on the lane they
+ * changed, at their place in that column. Rows before the first line take one column of their own.
  *
  * Pure on purpose. The walk ({@link walkStoryStageTimeline}) says what is on the stage after every
  * row; everything here only reads those frames, so the rules for "where does a lane start", "which
@@ -70,8 +70,8 @@ export type StageTimelineTiming = {
 export type StageTimelineModel = {
     /** The row behind each column, in play order. */
     blockIds: StoryBlockId[];
-    /** The number the editor's gutter prints beside each column's row. */
-    lineNumbers: number[];
+    /** The number the editor's gutter prints beside each column's line; null for a column with no line. */
+    lineNumbers: (number | null)[];
     /** The words a column's row says - a line of dialogue or narration - or null for any other row. */
     lines: (string | null)[];
     lanes: StageTimelineLane[];
@@ -133,7 +133,7 @@ export function buildStageTimelineModel(input: {
     const anchors = groups.map(group => frames[group.anchor].blockId);
     return {
         blockIds: anchors,
-        lineNumbers: anchors.map(blockId => (order.get(blockId) ?? 0) + 1),
+        lineNumbers: groups.map((group, column) => (group.line ? (order.get(anchors[column]) ?? 0) + 1 : null)),
         lines: anchors.map(blockId => spokenText(scene.blocks[blockId])),
         lanes,
         timings: groups.map(group => columnTiming(rowTimings.slice(group.start, group.end + 1), rowTimings[group.anchor], group.line)),
@@ -149,33 +149,36 @@ export function buildStageTimelineModel(input: {
 type RowGroup = { start: number; end: number; anchor: number; line: boolean };
 
 /**
- * Split the rows into columns: each line closes a column holding it and the rows since the line
- * before it; rows after the last line make one more. A scene with no lines at all keeps a column
- * per row, so it still reads as a sequence.
+ * Split the rows into columns: each line opens a column that holds it and the rows up to the next
+ * line; rows before the first line make one more column in front. A scene with no lines at all keeps
+ * a column per row, so it still reads as a sequence.
  */
 export function groupRowsByLine(isLine: readonly boolean[]): RowGroup[] {
     if (!isLine.includes(true)) {
         return isLine.map((_, row) => ({ start: row, end: row, anchor: row, line: false }));
     }
     const groups: RowGroup[] = [];
-    let start = 0;
-    isLine.forEach((line, row) => {
-        if (line) {
-            groups.push({ start, end: row, anchor: row, line: true });
-            start = row + 1;
-        }
-    });
-    if (start < isLine.length) {
-        groups.push({ start, end: isLine.length - 1, anchor: start, line: false });
+    const first = isLine.indexOf(true);
+    if (first > 0) {
+        groups.push({ start: 0, end: first - 1, anchor: first - 1, line: false });
     }
+    isLine.forEach((line, row) => {
+        if (!line) {
+            return;
+        }
+        if (groups.length > 0 && groups[groups.length - 1].line) {
+            groups[groups.length - 1].end = row - 1;
+        }
+        groups.push({ start: row, end: isLine.length - 1, anchor: row, line: true });
+    });
     return groups;
 }
 
 /**
- * A lane read by column. A column shows the lane as it stands once its last row has run - the stage
- * its line is read on. A one-shot sound is the exception: it is heard if any row in the column
- * starts it. A row that changed the lane but kept its name leaves a mark; a change of name shows as
- * the next column's block instead.
+ * A lane read by column. A line's column shows the lane as it stands when the line is read - once
+ * its row has run; the column in front of the first line shows the stage those rows set up. A
+ * one-shot sound is the exception: it is heard if any row in the column starts it. A row that changed
+ * the lane but kept its name leaves a mark; a change of name shows as the next column's block.
  */
 function toColumns(
     lane: StageTimelineLane,
@@ -185,10 +188,10 @@ function toColumns(
 ): StageTimelineLane {
     const cells = groups.map(group => {
         const rows = lane.cells.slice(group.start, group.end + 1);
-        const last = rows[rows.length - 1];
-        const heard = lane.kind === "sound" ? [...rows].reverse().find(cell => cell.present) : undefined;
-        const cell = heard ?? last;
-        return { ...cell, present: Boolean(heard) || last.present, since: rowColumns[cell.since] ?? 0, changed: false };
+        const shown = lane.cells[group.anchor];
+        const heard = lane.kind === "sound" ? rows.find(cell => cell.present) : undefined;
+        const cell = heard ?? shown;
+        return { ...cell, present: Boolean(heard) || shown.present, since: rowColumns[cell.since] ?? 0, changed: false };
     });
     const marks = lane.kind === "sound" ? [] : lane.cells.flatMap((cell, row) => {
         const previous = lane.cells[row - 1];

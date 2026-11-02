@@ -77,10 +77,10 @@ afterEach(cleanup);
 
 describe("StageTimelineView", () => {
     it("gives every line a column and labels each block", () => {
-        const { model } = renderView(0);
-        expect(model.blockIds).toEqual(["a", "stay", "b"]);
-        // Columns carry the editor's own row numbers.
-        expect(model.lineNumbers).toEqual([3, 6, 8]);
+        const { model } = renderView(1);
+        // The rows before the first line are a column of their own, with no number.
+        expect(model.blockIds).toEqual(["in", "a", "stay", "b"]);
+        expect(model.lineNumbers).toEqual([null, 3, 6, 8]);
         expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
         expect(screen.getByText("Normal")).toBeTruthy();
         expect(screen.getByText("Picture room")).toBeTruthy();
@@ -92,12 +92,12 @@ describe("StageTimelineView", () => {
     });
 
     it("moves the editor to a column's line", () => {
-        const { view, onStepTo } = renderView(0);
+        const { view, onStepTo } = renderView(1);
         const hitAreas = view.container.querySelectorAll<HTMLDivElement>("div.z-10");
-        expect(hitAreas.length).toBe(3);
-        fireEvent.mouseDown(hitAreas[0], { button: 0 });
+        expect(hitAreas.length).toBe(4);
+        fireEvent.mouseDown(hitAreas[1], { button: 0 });
         expect(onStepTo).toHaveBeenLastCalledWith("a");
-        fireEvent.mouseDown(hitAreas[2], { button: 0 });
+        fireEvent.mouseDown(hitAreas[3], { button: 0 });
         expect(onStepTo).toHaveBeenLastCalledWith("b");
     });
 
