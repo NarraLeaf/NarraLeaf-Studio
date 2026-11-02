@@ -267,23 +267,23 @@ function LaneTrack({ lane, columns, height, paint }: {
     paint?: StageTimelineLanePaint;
 }) {
     const pieces = useMemo(() => lanePieces(lane), [lane]);
+    // A block is one name: it starts where the lane enters or the name changes, and ends where the
+    // lane leaves or the name changes again. A change that keeps the name (a move, a new zoom) is a
+    // mark on the block, not a new block.
+    const named = pieces.map((piece, index) => piece.opens || piece.label !== pieces[index - 1]?.label);
     const geometry = pieces.map((piece, index) => {
         const left = columns[piece.start].x;
         const right = columns[piece.end].x + columns[piece.end].width;
-        // Pieces of one span touch; only the span's own ends are inset, so a change reads as a mark
-        // on one bar rather than as two bars. A change inside a span is not the bar's end: only the
-        // column the lane leaves (or the last column) closes it.
-        const inset = piece.opens ? 1 : 0;
-        const closes = piece.end + 1 >= lane.cells.length || !lane.cells[piece.end + 1].present;
-        // A change that keeps the name (a move, a new zoom) is told by its mark; the bar names a state
-        // only where the name changes, so a span reads as one word rather than the same word repeated.
-        const named = piece.opens || piece.label !== pieces[index - 1]?.label;
-        return { left: left + inset, width: Math.max(2, right - left - inset - (closes ? 1 : 0)), closes, named };
+        const opens = named[index];
+        const leaves = piece.end + 1 >= lane.cells.length || !lane.cells[piece.end + 1].present;
+        const closes = leaves || named[index + 1] === true;
+        const inset = opens ? 1 : 0;
+        return { left: left + inset, width: Math.max(2, right - left - inset - (closes ? 1 : 0)), opens, closes, named: opens };
     });
     const nodes: ReactNode[] = [];
     const labels: ReactNode[] = [];
     pieces.forEach((piece, index) => {
-        const { left, width, closes, named } = geometry[index];
+        const { left, width, opens, closes, named } = geometry[index];
         if (lane.kind === "sound") {
             nodes.push(
                 <div key={`${piece.start}`} className="absolute" style={{ left, width, top: 0, bottom: 0 }}>
@@ -301,7 +301,7 @@ function LaneTrack({ lane, columns, height, paint }: {
                 key={`${piece.start}`}
                 className={cn(
                     "absolute top-1 bottom-1 border",
-                    piece.opens ? "rounded-l-md" : "border-l-0",
+                    opens ? "rounded-l-md" : "border-l-0",
                     closes ? "rounded-r-md" : "border-r-0",
                     character ? paint.className : lane.kind === "music" ? "border-primary/60 bg-primary/20" : "border-edge-strong bg-fill",
                 )}
@@ -317,8 +317,8 @@ function LaneTrack({ lane, columns, height, paint }: {
             />,
         );
         if (named && piece.label) {
-            // A name runs on over the pieces after it until the name changes or the bar ends, so a
-            // state that is marked again a column later is still named in full.
+            // A name runs on over the pieces after it to the end of its block, so a state that is
+            // marked again a column later is still named in full.
             let last = index;
             while (!geometry[last].closes && geometry[last + 1] && !geometry[last + 1].named) {
                 last += 1;
@@ -334,7 +334,7 @@ function LaneTrack({ lane, columns, height, paint }: {
                 </span>,
             );
         }
-        if (!piece.opens) {
+        if (!opens) {
             // On the bar's top edge (`top-1`), clear of the name centred in the bar.
             labels.push(
                 <span
