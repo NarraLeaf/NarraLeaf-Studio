@@ -42,7 +42,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
 const RULER_LABEL_GAP_PX = 44;
-/** The narrowest column a row number is printed over on every line. */
+/** Room one row number takes on the ruler. */
 const RULER_NUMBER_PX = 24;
 /** The scrollbar slot a scroller keeps (`::-webkit-scrollbar` in styles.css). */
 const SCROLLBAR_PX = 8;
@@ -130,9 +130,8 @@ export function StageTimelineView(props: {
                 <span className="flex-1" />
                 {cursorTiming ? (
                     <span className="shrink-0 text-fg-subtle">
-                        {model.lineNumbers[cursorColumn] !== null
-                            ? `${t("story.timeline.row", { index: model.lineNumbers[cursorColumn] })} · `
-                            : null}
+                        {t("story.timeline.row", { index: model.lineNumbers[cursorColumn] })}
+                        {" · "}
                         {describeTiming(cursorTiming, t)}
                     </span>
                 ) : null}
@@ -555,14 +554,15 @@ function Ruler({ model, columns, layout, zoom }: {
     const labels = useMemo(() => {
         const result: { x: number; text: string }[] = [];
         if (layout === "equal") {
-            // Every line's number above its column, while the numbers have room; a column with no
-            // line has none. Narrower than that, every few lines.
-            const width = columns[0]?.width ?? 1;
-            const every = width >= RULER_NUMBER_PX ? 1 : niceStep(RULER_LABEL_GAP_PX / width, [2, 5, 10, 20, 50, 100, 200, 500]);
-            model.lineNumbers.forEach((lineNumber, index) => {
-                if (lineNumber !== null && index % every === 0) {
-                    result.push({ x: columns[index].x, text: String(lineNumber) });
+            // A number over every row that says something - the script's lines - and none over the
+            // stage work between them. A number that would run into the one before it is left out.
+            let lastEnd = -Infinity;
+            model.lines.forEach((line, index) => {
+                if (line === null || columns[index].x < lastEnd) {
+                    return;
                 }
+                result.push({ x: columns[index].x, text: String(model.lineNumbers[index]) });
+                lastEnd = columns[index].x + RULER_NUMBER_PX;
             });
         } else {
             const everySeconds = niceStep(RULER_LABEL_GAP_PX / (STAGE_TIMELINE_SECOND_PX * zoom), [1, 2, 5, 10, 15, 30, 60, 120, 300]);
@@ -579,9 +579,9 @@ function Ruler({ model, columns, layout, zoom }: {
             });
         }
         // A menu's branch button sits on the ruler; a label under it would show only its last digit.
-        const buttons = model.choices.map(choice => choiceButtonLeft(columns[choice.column], choice.at));
+        const buttons = model.choices.map(choice => choiceButtonLeft(columns[choice.column]));
         return result.filter(label => !buttons.some(x => label.x + 3 < x + 24 && label.x + 3 + RULER_LABEL_GAP_PX * 0.75 > x));
-    }, [columns, layout, model.blockIds, model.choices, model.lineNumbers, model.timings, zoom]);
+    }, [columns, layout, model.choices, model.lineNumbers, model.lines, model.timings, zoom]);
 
     return (
         <div className="absolute left-0 right-0 top-0 border-b border-edge" style={{ height: RULER_PX }}>
@@ -610,10 +610,9 @@ function Ruler({ model, columns, layout, zoom }: {
     );
 }
 
-/** A menu's branch button, centred on the menu's place in its column and kept inside the column. */
-function choiceButtonLeft(column: StageTimelineColumn, at: number): number {
-    const centre = column.x + at * column.width;
-    return Math.min(Math.max(column.x, centre - 12), column.x + Math.max(0, column.width - 24));
+/** A menu's branch button, centred in the menu's column. */
+function choiceButtonLeft(column: StageTimelineColumn): number {
+    return column.x + Math.max(0, (column.width - 24) / 2);
 }
 
 function niceStep(minimum: number, steps: readonly number[]): number {
@@ -665,7 +664,7 @@ function ChoiceMarks({ scene, model, columns, onPick }: {
                         aria-label={t("story.timeline.chooseBranch")}
                         data-tip={t("story.timeline.chooseBranch")}
                         className="absolute top-0 z-20 bg-surface text-fg-muted"
-                        style={{ left: choiceButtonLeft(column, choice.at) }}
+                        style={{ left: choiceButtonLeft(column) }}
                         onClick={event => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setMenu({ choiceId: choice.choiceBlockId, x: rect.left, y: rect.bottom + 2 });

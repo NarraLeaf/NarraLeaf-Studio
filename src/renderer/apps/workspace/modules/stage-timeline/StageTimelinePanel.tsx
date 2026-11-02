@@ -94,9 +94,7 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
 
     const order = useMemo(() => (scene ? sceneBlockOrder(scene) : new Map<StoryBlockId, number>()), [scene]);
     const columns = useMemo(() => (model ? stageTimelineColumns(model.timings, layout, zoom) : []), [layout, model, zoom]);
-    // The cursor stands on a row; the timeline shows the column that row belongs to.
-    const cursorRow = model ? stageTimelineCursorColumn(model.rowBlockIds, cursor, order) : -1;
-    const cursorColumn = model && cursorRow >= 0 ? model.rowColumns[cursorRow] : -1;
+    const cursorColumn = model ? stageTimelineCursorColumn(model.blockIds, cursor, order) : -1;
 
     const paints = useMemo(() => {
         const result = new Map<string, StageTimelineLanePaint>();
