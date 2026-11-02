@@ -1079,6 +1079,7 @@ export const story = {
         emptyScene: "このシーンには実行される行がありません",
         showAllRows: "すべての行番号を表示",
         zoom: "ズーム",
+        resetZoom: "100% に戻す",
         row: "{index} 行目",
         seconds: "{seconds} 秒",
         source: {

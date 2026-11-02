@@ -18,7 +18,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useCharacterAvatar } from "../story/scene-editor/storyCharacterFace";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { ContextMenu, PanelHeader, Slider, type ContextMenuDef } from "@/lib/components/elements";
+import { Button, ContextMenu, PanelHeader, Slider, type ContextMenuDef } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
 import {
@@ -152,6 +152,17 @@ export function StageTimelineView(props: {
                         className="w-full"
                     />
                 </div>
+                {/* Reads the zoom and puts it back to where the timeline started. */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t("story.timeline.resetZoom")}
+                    data-tip={t("story.timeline.resetZoom")}
+                    className="w-14 shrink-0 px-0 tabular-nums"
+                    onClick={() => onZoomChange(1)}
+                >
+                    {`${Math.round(zoom * 100)}%`}
+                </Button>
             </PanelHeader>
             {/* The names and the track scroll down together. They sit in a row of their own so the row
                 is as tall as its lanes: a scroller that is itself the row would squeeze the track to

@@ -1196,6 +1196,7 @@ export const story = {
         emptyScene: "This scene has no rows that run",
         showAllRows: "Show all row numbers",
         zoom: "Zoom",
+        resetZoom: "Reset to 100%",
         row: "Row {index}",
         seconds: "{seconds} s",
         source: {

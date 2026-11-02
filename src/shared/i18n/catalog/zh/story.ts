@@ -1037,6 +1037,7 @@ export const story = {
         emptyScene: "该场景没有会执行的行",
         showAllRows: "显示完整行号",
         zoom: "缩放",
+        resetZoom: "重置为 100%",
         row: "第 {index} 行",
         seconds: "{seconds} 秒",
         source: {
