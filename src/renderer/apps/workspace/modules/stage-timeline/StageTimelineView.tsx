@@ -37,7 +37,7 @@ export type StageTimelineLanePaint = { className: string; style: CSSProperties }
 const RULER_PX = 24;
 /** The dialogue strip keeps this height; it is words to read, not a lane to stretch. */
 const DIALOGUE_PX = 22;
-const LANE_PX = 28;
+const LANE_PX = 40;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
