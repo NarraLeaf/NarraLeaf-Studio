@@ -1048,6 +1048,7 @@ export const story = {
             instant: "即时",
         },
         lane: {
+            dialogue: "对白",
             background: "背景",
             camera: "镜头",
             music: "音乐",

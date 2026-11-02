@@ -180,6 +180,8 @@ describe("buildStageTimelineModel", () => {
         ], ["voiced", "plain", "in", "menu"]);
         const model = modelOf(document);
         expect(model.timings.map(timing => timing.source)).toEqual(["voice", "estimate", "instant", "choice"]);
+        // The dialogue strip carries what a column's row says, and nothing for the rest.
+        expect(model.lines).toEqual(["Hi", "今天也结束了", null, null]);
         expect(model.timings[0].durationMs).toBe(2400);
         expect(model.timings[1].durationMs).toBe(estimateReadingMs("今天也结束了"));
         expect(model.timings[2].durationMs).toBe(0);

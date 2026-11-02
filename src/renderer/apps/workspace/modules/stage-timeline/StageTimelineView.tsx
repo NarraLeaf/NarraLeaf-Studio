@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Check, GitBranch, Image, ImagePlay, Music, Sparkles, Type, User, Video, Volume2 } from "lucide-react";
+import { Check, GitBranch, Image, ImagePlay, MessageSquareText, Music, Sparkles, Type, User, Video, Volume2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -35,6 +35,8 @@ import {
 export type StageTimelineLanePaint = { className: string; style: CSSProperties };
 
 const RULER_PX = 24;
+/** The dialogue strip keeps this height; it is words to read, not a lane to stretch. */
+const DIALOGUE_PX = 22;
 const LANE_PX = 28;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
@@ -76,7 +78,7 @@ export function StageTimelineView(props: {
     // scrolls sideways gives its scrollbar's slot back first.
     const scrollbar = totalWidth > room.width + 0.5 ? SCROLLBAR_PX : 0;
     const laneHeight = model.lanes.length > 0
-        ? Math.max(LANE_PX, Math.floor((room.height - RULER_PX - scrollbar) / model.lanes.length))
+        ? Math.max(LANE_PX, Math.floor((room.height - RULER_PX - DIALOGUE_PX - scrollbar) / model.lanes.length))
         : LANE_PX;
     const lanesHeight = model.lanes.length * laneHeight;
 
@@ -147,6 +149,10 @@ export function StageTimelineView(props: {
                 <div className="flex min-h-full">
                     <div className="w-32 shrink-0 border-r border-edge-subtle">
                         <div style={{ height: RULER_PX }} className="border-b border-edge" />
+                        <div style={{ height: DIALOGUE_PX }} className="flex items-center gap-2 border-b border-edge-subtle px-3 text-fg-muted">
+                            <MessageSquareText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span className="min-w-0 truncate">{t("story.timeline.lane.dialogue")}</span>
+                        </div>
                         {model.lanes.map(lane => (
                             <div key={lane.id} style={{ height: laneHeight }} className="flex items-center gap-2 px-3 text-fg-muted">
                                 <LaneMark lane={lane} paint={paints.get(lane.id)} />
@@ -155,7 +161,7 @@ export function StageTimelineView(props: {
                         ))}
                     </div>
                     <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-                        <div className="relative" style={{ width: totalWidth, height: RULER_PX + lanesHeight }}>
+                        <div className="relative" style={{ width: totalWidth, height: RULER_PX + DIALOGUE_PX + lanesHeight }}>
                             {columns.map((column, index) => (
                                 <div
                                     key={index}
@@ -170,7 +176,8 @@ export function StageTimelineView(props: {
                                 />
                             ) : null}
                             <Ruler model={model} columns={columns} layout={layout} zoom={zoom * fill} />
-                            <div className="absolute left-0 right-0" style={{ top: RULER_PX }}>
+                            <DialogueStrip model={model} columns={columns} />
+                            <div className="absolute left-0 right-0" style={{ top: RULER_PX + DIALOGUE_PX }}>
                                 {model.lanes.map(lane => (
                                     <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} characters={props.characters} />
                                 ))}
@@ -499,6 +506,39 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
         <div className="relative border-b border-edge-subtle" style={{ height }}>
             {nodes}
             {labels}
+        </div>
+    );
+}
+
+/**
+ * What each row says, along the top of the lanes. A line runs on over the rows after it that say
+ * nothing (commands, menus) until the next line, so a short column still reads as a sentence.
+ */
+function DialogueStrip({ model, columns }: { model: StageTimelineModel; columns: readonly StageTimelineColumn[] }) {
+    const nodes: ReactNode[] = [];
+    model.lines.forEach((line, index) => {
+        if (line === null) {
+            return;
+        }
+        let next = index + 1;
+        while (next < model.lines.length && model.lines[next] === null) {
+            next += 1;
+        }
+        const left = columns[index].x;
+        const right = next < columns.length ? columns[next].x : columns[columns.length - 1].x + columns[columns.length - 1].width;
+        nodes.push(
+            <span
+                key={index}
+                className="absolute inset-y-0 flex items-center px-1.5 text-2xs text-fg-muted"
+                style={{ left, width: right - left }}
+            >
+                <span className="truncate">{line}</span>
+            </span>,
+        );
+    });
+    return (
+        <div className="absolute left-0 right-0 border-b border-edge-subtle" style={{ top: RULER_PX, height: DIALOGUE_PX }}>
+            {nodes}
         </div>
     );
 }

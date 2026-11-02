@@ -59,6 +59,8 @@ export type StageTimelineModel = {
     blockIds: StoryBlockId[];
     /** The number the editor's gutter prints beside each column's row. */
     lineNumbers: number[];
+    /** The words a column's row says - a line of dialogue or narration - or null for any other row. */
+    lines: (string | null)[];
     lanes: StageTimelineLane[];
     timings: StageTimelineTiming[];
     choices: StageTimelineWalk["choices"];
@@ -99,6 +101,7 @@ export function buildStageTimelineModel(input: {
     return {
         blockIds: frames.map(frame => frame.blockId),
         lineNumbers: frames.map(frame => (order.get(frame.blockId) ?? 0) + 1),
+        lines: frames.map(frame => spokenText(scene.blocks[frame.blockId])),
         lanes,
         timings: frames.map(frame => stageTimelineTiming(scene.blocks[frame.blockId], names)),
         choices: walk.choices,
@@ -366,6 +369,14 @@ function rowAssetId(block: StoryBlock | undefined): string | undefined {
 function rowAssetName(block: StoryBlock | undefined, names: StageTimelineNames): string | null {
     const assetId = rowAssetId(block);
     return assetId ? names.asset(assetId) : null;
+}
+
+function spokenText(block: StoryBlock | undefined): string | null {
+    if (block?.kind !== "nodeAction") {
+        return null;
+    }
+    const payload = block.payload;
+    return payload.action === "narration" || payload.action === "dialogue" ? payload.text.value : null;
 }
 
 /** Base reading time of a line, before its words. */

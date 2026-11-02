@@ -1207,6 +1207,7 @@ export const story = {
             instant: "Instant",
         },
         lane: {
+            dialogue: "Dialogue",
             background: "Background",
             camera: "Camera",
             music: "Music",

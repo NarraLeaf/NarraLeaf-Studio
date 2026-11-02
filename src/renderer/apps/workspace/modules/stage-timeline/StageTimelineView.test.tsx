@@ -84,6 +84,9 @@ describe("StageTimelineView", () => {
         expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
         expect(screen.getByText("Normal")).toBeTruthy();
         expect(screen.getByText("Picture room")).toBeTruthy();
+        // The dialogue strip says what each line says.
+        expect(screen.getAllByText("Line").length).toBe(3);
+        expect(screen.getByText("Dialogue")).toBeTruthy();
         // The header reads the cursor's row by the editor's number.
         expect(screen.getByText(/Row 3/)).toBeTruthy();
     });
