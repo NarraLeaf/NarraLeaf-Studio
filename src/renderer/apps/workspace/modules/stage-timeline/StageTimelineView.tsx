@@ -4,8 +4,8 @@
  *
  * Every column is one row that runs, with a hairline between columns. A column is as wide as the
  * layout says - all the same, or as long as the row takes - and a press anywhere in it moves the
- * editor to its row. The track never leaves room unused: columns stretch to fill a wider panel and
- * lanes grow to fill a taller one.
+ * editor to its row. Columns stretch to fill a wider panel; lanes keep their height, and a taller
+ * panel carries the grid on down below them.
  *
  * Comments in English per project convention.
  */
@@ -42,6 +42,11 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
 const RULER_LABEL_GAP_PX = 44;
+/** Empty lanes below the real ones: a hairline every lane height, in the lanes' own divider colour. */
+const GRID_FILL: CSSProperties = {
+    backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${LANE_PX - 1}px, var(--nl-edge-subtle) ${LANE_PX - 1}px, var(--nl-edge-subtle) ${LANE_PX}px)`,
+};
+
 /** The scrollbar slot a scroller keeps (`::-webkit-scrollbar` in styles.css). */
 const SCROLLBAR_PX = 8;
 
@@ -74,13 +79,12 @@ export function StageTimelineView(props: {
         [fill, props.columns],
     );
     const totalWidth = columnsWidth(columns);
-    // Lanes share the height below the ruler, never shorter than their own row height. A track that
-    // scrolls sideways gives its scrollbar's slot back first.
+    // Lanes keep their height; below them the grid runs on to the bottom of the panel. A track that
+    // scrolls sideways keeps its scrollbar's slot out of that.
     const scrollbar = totalWidth > room.width + 0.5 ? SCROLLBAR_PX : 0;
-    const laneHeight = model.lanes.length > 0
-        ? Math.max(LANE_PX, Math.floor((room.height - RULER_PX - DIALOGUE_PX - scrollbar) / model.lanes.length))
-        : LANE_PX;
+    const laneHeight = LANE_PX;
     const lanesHeight = model.lanes.length * laneHeight;
+    const trackHeight = Math.max(RULER_PX + DIALOGUE_PX + lanesHeight, room.height - scrollbar);
 
     // Ctrl/Cmd + wheel zooms the track, as it zooms the stage preview. A native listener: React's
     // wheel handler is passive and cannot keep the page from scrolling.
@@ -147,7 +151,7 @@ export function StageTimelineView(props: {
                 the visible height and clip the lanes below it. */}
             <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto">
                 <div className="flex min-h-full">
-                    <div className="w-32 shrink-0 border-r border-edge-subtle">
+                    <div className="flex w-32 shrink-0 flex-col border-r border-edge-subtle">
                         <div style={{ height: RULER_PX }} className="border-b border-edge" />
                         <div style={{ height: DIALOGUE_PX }} className="flex items-center gap-2 border-b border-edge-subtle px-3 text-fg-muted">
                             <MessageSquareText className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -159,9 +163,10 @@ export function StageTimelineView(props: {
                                 <span className="min-w-0 truncate">{laneName(lane, t)}</span>
                             </div>
                         ))}
+                        <div className="min-h-0 flex-1" style={GRID_FILL} />
                     </div>
                     <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-                        <div className="relative" style={{ width: totalWidth, height: RULER_PX + DIALOGUE_PX + lanesHeight }}>
+                        <div className="relative" style={{ width: totalWidth, height: trackHeight }}>
                             {columns.map((column, index) => (
                                 <div
                                     key={index}
@@ -182,6 +187,10 @@ export function StageTimelineView(props: {
                                     <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} characters={props.characters} />
                                 ))}
                             </div>
+                            <div
+                                className="pointer-events-none absolute bottom-0 left-0 right-0"
+                                style={{ top: RULER_PX + DIALOGUE_PX + lanesHeight, ...GRID_FILL }}
+                            />
                             {columns.map((column, index) => (
                                 <div
                                     key={index}
