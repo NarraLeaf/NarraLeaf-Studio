@@ -170,6 +170,12 @@ export function useCharacterAvatar(
          * her default look's avatar.
          */
         offStage?: boolean;
+        /**
+         * Longest edge to composite a layered look at, in device pixels. Defaults to the size the
+         * script's plate needs; a surface that draws the face larger asks for more, or the head it
+         * crops out of the composite is a few dozen pixels stretched across its box.
+         */
+        compositePx?: number;
     },
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
     // The appearance stores asset ids; the image cache needs the `Asset` record to fetch bytes, so
@@ -214,7 +220,7 @@ export function useCharacterAvatar(
     const layered = character && pictureLook && character.profile.appearance.getKind() === "layered"
         ? character
         : null;
-    const composite = useCompositedSprite(layered, { tags: spec.tags }, FACE_COMPOSITE_PX);
+    const composite = useCompositedSprite(layered, { tags: spec.tags }, spec.compositePx ?? FACE_COMPOSITE_PX);
     const url = composite.url ?? fallbackUrl;
     return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
 }

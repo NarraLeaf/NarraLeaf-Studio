@@ -28,6 +28,7 @@ import {
     type StageTimelineLane,
     type StageTimelineLayoutMode,
     type StageTimelineModel,
+    type StageTimelineSprite,
     type StageTimelineTiming,
 } from "./stageTimelineModel";
 
@@ -229,6 +230,12 @@ function laneName(lane: StageTimelineLane, t: Translate): string {
     }
 }
 
+/** Lanes that carry a tint of their own; the rest are neutral. */
+const LANE_TINTS: Partial<Record<StageTimelineLane["kind"], string>> = {
+    background: "border-success/50 bg-success/15",
+    music: "border-primary/60 bg-primary/20",
+};
+
 const LANE_ICONS = {
     background: Image,
     character: User,
@@ -242,8 +249,8 @@ const LANE_ICONS = {
 
 /**
  * A block's picture and name. A block with a picture has it laid along its left end, fading into the
- * block's own colour, with the name over the fade: a character's face as the Characters panel shows
- * it, a background or image as it is. A block with none (a track, a camera pose, a colour) leads its
+ * block's own colour, with the name over the fade: a character's face in the look the block shows, a
+ * background or image as it is. A block with none (a track, a camera pose, a colour) leads its
  * name with its lane's icon, as it does while the picture loads.
  */
 function BlockContent(props: {
@@ -264,12 +271,29 @@ function BlockContent(props: {
             style={{ left: props.left, width: props.width }}
         >
             {character ? (
-                <CharacterBackdrop lane={lane} character={character} label={props.label} height={props.height} width={props.width} />
+                <CharacterBackdrop
+                    lane={lane}
+                    character={character}
+                    sprite={cell.sprite!}
+                    label={props.label}
+                    height={props.height}
+                    width={props.width}
+                />
             ) : (
                 <ImageBackdrop lane={lane} assetId={cell.image} label={props.label} height={props.height} width={props.width} />
             )}
         </span>
     );
+}
+
+/**
+ * The composite a face of `size` CSS pixels is cut from. A head is about a quarter of a standing
+ * sprite's height, so the whole sprite needs four times the face, at the screen's density. Rounded up
+ * to a step so a panel being resized does not composite again at every pixel.
+ */
+function compositeSizeFor(size: number): number {
+    const wanted = size * 4 * (window.devicePixelRatio || 1);
+    return Math.min(1024, Math.ceil(wanted / 128) * 128);
 }
 
 /** A picture's share of the block: as wide as its shape at the block's height, never past the block. */
@@ -286,7 +310,7 @@ function Backdrop(props: { width: number; label: string | null; children: ReactN
                 {props.children}
             </span>
             {props.label ? (
-                <span className="relative flex h-full items-center pr-1.5" style={{ paddingLeft: props.width * 0.6 + 6 }}>
+                <span className="relative flex h-full items-center pr-1.5" style={{ paddingLeft: props.width * 0.85 + 10 }}>
                     <span className="truncate">{props.label}</span>
                 </span>
             ) : null}
@@ -303,13 +327,26 @@ function IconLabel({ lane, label }: { lane: StageTimelineLane; label: string | n
     );
 }
 
-function CharacterBackdrop(props: { lane: StageTimelineLane; character: Character; label: string | null; height: number; width: number }) {
-    // The face the Characters panel shows: the author's avatar, else the head of the default look.
-    const { url, frame, showingSprite } = useCharacterAvatar(props.character, { resolveVariant: true, preferThumbnail: true });
+function CharacterBackdrop(props: {
+    lane: StageTimelineLane;
+    character: Character;
+    sprite: StageTimelineSprite;
+    label: string | null;
+    height: number;
+    width: number;
+}) {
+    // The face in the look this block shows, cut by the same frame the Characters panel cuts its
+    // avatar with: the pose's own frame, else the character's.
+    const size = Math.min(props.height, props.width);
+    const { url, frame, showingSprite } = useCharacterAvatar(props.character, {
+        pose: props.sprite.poseId,
+        tags: props.sprite.tags,
+        resolveVariant: true,
+        compositePx: compositeSizeFor(size),
+    });
     if (!url) {
         return <IconLabel lane={props.lane} label={props.label} />;
     }
-    const size = Math.min(props.height, props.width);
     return (
         <Backdrop width={size} label={props.label}>
             {showingSprite
@@ -413,7 +450,7 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
                     "absolute top-1 bottom-1 border",
                     opens ? "rounded-l-md" : "border-l-0",
                     closes ? "rounded-r-md" : "border-r-0",
-                    character ? paint.className : lane.kind === "music" ? "border-primary/60 bg-primary/20" : "border-edge-strong bg-fill",
+                    character ? paint.className : LANE_TINTS[lane.kind] ?? "border-edge-strong bg-fill",
                 )}
                 style={{
                     left,
