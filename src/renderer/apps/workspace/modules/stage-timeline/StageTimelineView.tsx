@@ -184,11 +184,20 @@ export function StageTimelineView(props: {
                     </div>
                     <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
                         <div className="relative" style={{ width: totalWidth, height: trackHeight }}>
+                            {/* Column lines on the ruler and through the lanes; the dialogue strip between
+                                them has none, so a line reads as one run of words. */}
                             {columns.map((column, index) => (
                                 <div
                                     key={index}
-                                    className="pointer-events-none absolute top-0 bottom-0 border-l border-edge-subtle"
-                                    style={{ left: column.x }}
+                                    className="pointer-events-none absolute top-0 border-l border-edge-subtle"
+                                    style={{ left: column.x, height: RULER_PX }}
+                                />
+                            ))}
+                            {columns.map((column, index) => (
+                                <div
+                                    key={`lane-${index}`}
+                                    className="pointer-events-none absolute bottom-0 border-l border-edge-subtle"
+                                    style={{ left: column.x, top: RULER_PX + DIALOGUE_PX }}
                                 />
                             ))}
                             {columns[cursorColumn] ? (
