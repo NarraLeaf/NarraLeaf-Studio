@@ -66,6 +66,7 @@ export function StageTimelineView(props: {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const room = useRoom(trackRef, scrollerRef);
+    const scrollLeft = useScrollLeft(trackRef);
 
     // Columns narrower in total than the track stretch, in proportion, to fill it.
     const baseWidth = columnsWidth(props.columns);
@@ -210,7 +211,15 @@ export function StageTimelineView(props: {
                             <DialogueStrip model={model} columns={columns} />
                             <div className="absolute left-0 right-0" style={{ top: RULER_PX + DIALOGUE_PX }}>
                                 {model.lanes.map(lane => (
-                                    <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} characters={props.characters} />
+                                    <LaneTrack
+                                        key={lane.id}
+                                        lane={lane}
+                                        columns={columns}
+                                        height={laneHeight}
+                                        paint={paints.get(lane.id)}
+                                        characters={props.characters}
+                                        scrollLeft={scrollLeft}
+                                    />
                                 ))}
                             </div>
                             {columns.map((column, index) => (
@@ -300,6 +309,8 @@ function BlockContent(props: {
     width: number;
     /** The block's inner height, which a picture fills. */
     height: number;
+    /** The track is scrolled past the block's start, so its name hangs at the left edge. */
+    hanging: boolean;
 }) {
     const { lane, cell } = props;
     const character = cell.sprite ? props.characters.find(candidate => candidate.profile.getId() === cell.sprite?.characterId) : undefined;
@@ -312,7 +323,11 @@ function BlockContent(props: {
                 only by the block's own end - so a long block scrolled into keeps saying what it is.
                 Nothing between this and the track may clip, or it sticks to that instead. */}
             <span className="sticky left-0 flex h-full w-fit max-w-full items-center">
-                {character ? (
+                {props.hanging ? (
+                    // Hanging, the name is a reminder of what the block is; the picture stays at the
+                    // block's start.
+                    props.label ? <span className="truncate px-1.5">{props.label}</span> : null
+                ) : character ? (
                     <CharacterBackdrop
                         lane={lane}
                         character={character}
@@ -447,12 +462,14 @@ function lanePieces(lane: StageTimelineLane): { start: number; end: number; labe
     return pieces;
 }
 
-function LaneTrack({ lane, columns, height, paint, characters }: {
+function LaneTrack({ lane, columns, height, paint, characters, scrollLeft }: {
     lane: StageTimelineLane;
     columns: readonly StageTimelineColumn[];
     height: number;
     paint?: StageTimelineLanePaint;
     characters: readonly Character[];
+    /** How far the track is scrolled, to tell a block whose name is hanging at the edge. */
+    scrollLeft: number;
 }) {
     const pieces = useMemo(() => lanePieces(lane), [lane]);
     // A block is one name: it starts where the lane enters or the name changes, and ends where the
@@ -525,6 +542,7 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
                     left={left}
                     width={end - left}
                     height={height - 8}
+                    hanging={scrollLeft > left + 0.5}
                 />,
             );
         }
@@ -696,6 +714,33 @@ function ChoiceMarks({ scene, model, columns, onPick }: {
 function columnsWidth(columns: readonly StageTimelineColumn[]): number {
     const last = columns[columns.length - 1];
     return last ? last.x + last.width : 0;
+}
+
+/** How far the track is scrolled sideways, read once a frame while it scrolls. */
+function useScrollLeft(trackRef: RefObject<HTMLDivElement | null>): number {
+    const [scrollLeft, setScrollLeft] = useState(0);
+    useEffect(() => {
+        const track = trackRef.current;
+        if (!track) {
+            return;
+        }
+        let frame = 0;
+        const onScroll = () => {
+            if (frame) {
+                return;
+            }
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                setScrollLeft(track.scrollLeft);
+            });
+        };
+        track.addEventListener("scroll", onScroll, { passive: true });
+        return () => {
+            track.removeEventListener("scroll", onScroll);
+            cancelAnimationFrame(frame);
+        };
+    }, [trackRef]);
+    return scrollLeft;
 }
 
 /** The track's width and the scroller's height, kept current as the panel is resized. */
