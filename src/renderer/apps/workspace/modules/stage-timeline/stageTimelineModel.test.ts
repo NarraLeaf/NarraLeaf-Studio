@@ -5,6 +5,7 @@ import { walkStoryStageTimeline } from "@/lib/ui-editor/runtime/game/storyStageS
 import {
     buildStageTimelineModel,
     estimateReadingMs,
+    groupRowsByLine,
     isNeutralCamera,
     sceneBlockOrder,
     STAGE_TIMELINE_EQUAL_PX,
@@ -102,30 +103,46 @@ describe("walkStoryStageTimeline", () => {
 });
 
 describe("buildStageTimelineModel", () => {
-    it("gives a character one lane, with spans, changes and the row that set each state", () => {
+    it("gives every line a column and files the rows before it into that column", () => {
         const document = documentOf([
             say("a"),
             enter("in", "normal"),
             say("b"),
             face("smile", "smile"),
-            exit("out"),
             say("c"),
-        ], ["a", "in", "b", "smile", "out", "c"]);
+            exit("out"),
+            say("d"),
+        ], ["a", "in", "b", "smile", "c", "out", "d"]);
         const model = modelOf(document);
+        expect(model.blockIds).toEqual(["a", "b", "c", "d"]);
+        expect(model.lineNumbers).toEqual([1, 3, 5, 7]);
+        expect(model.rowColumns).toEqual([0, 1, 1, 2, 2, 3, 3]);
         expect(model.lanes.map(lane => [lane.kind, lane.name])).toEqual([["character", "Alice"]]);
         const cells = model.lanes[0].cells;
-        expect(cells.map(cell => cell.present)).toEqual([false, true, true, true, false, false]);
-        expect(cells.map(cell => cell.label)).toEqual([null, "Normal", "Normal", "Smile", null, null]);
-        expect(cells.map(cell => cell.changed)).toEqual([false, false, false, true, false, false]);
-        // Each state carries the picture behind it, for the preview beside its name.
-        expect(cells.map(cell => cell.sprite?.poseId ?? null)).toEqual([null, "normal", "normal", "smile", null, null]);
-        expect(cells[1].sprite?.characterId).toBe("alice");
-        // Each state points at the row that brought it about.
-        expect(cells.map(cell => cell.since)).toEqual([0, 1, 1, 3, 4, 4]);
-        expect(model.lineNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+        // Each column shows the stage its line is read on.
+        expect(cells.map(cell => cell.present)).toEqual([false, true, true, false]);
+        expect(cells.map(cell => cell.label)).toEqual([null, "Normal", "Smile", null]);
+        expect(cells.map(cell => cell.sprite?.poseId ?? null)).toEqual([null, "normal", "smile", null]);
+        // A change of name is the next block, not a mark.
+        expect(model.lanes[0].marks).toEqual([]);
     });
 
-    it("names backgrounds and music by their assets, and drops lanes that never appear", () => {
+    it("marks a row that changes a lane but keeps its name, at its place in its column", () => {
+        const document = documentOf([
+            enter("in", "normal"),
+            say("a"),
+            say("b"),
+            block("move", "action", { action: "character", operation: "move", characterId: "alice", transform: { to: { position: { xalign: 0.2 } } } }),
+            say("c"),
+        ], ["in", "a", "b", "move", "c"]);
+        const model = modelOf(document);
+        expect(model.blockIds).toEqual(["a", "b", "c"]);
+        // The move is the first of the two rows the third column holds.
+        expect(model.lanes[0].marks).toEqual([{ column: 2, at: 0.25 }]);
+        expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["Normal", "Normal", "Normal"]);
+    });
+
+    it("names backgrounds and music by their assets, and gives rows after the last line a column", () => {
         const document = documentOf([
             block("bg", "action", { action: "setBackground", assetId: "room" }),
             block("bgm", "action", { action: "audio", operation: "setBgm", assetId: "theme" }),
@@ -133,29 +150,29 @@ describe("buildStageTimelineModel", () => {
             block("bgm-off", "action", { action: "audio", operation: "setBgm" }),
         ], ["bg", "bgm", "a", "bgm-off"]);
         const model = modelOf(document);
+        expect(model.blockIds).toEqual(["a", "bgm-off"]);
         expect(model.lanes.map(lane => lane.kind)).toEqual(["background", "music"]);
-        expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["asset:room", "asset:room", "asset:room", "asset:room"]);
+        expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["asset:room", "asset:room"]);
         expect(model.lanes[0].cells[0].image).toBe("room");
-        expect(model.lanes[1].cells[1].image).toBeNull();
-        expect(model.lanes[1].cells.map(cell => cell.present)).toEqual([false, true, true, false]);
-        expect(model.lanes[1].cells[1].label).toBe("asset:theme");
+        expect(model.lanes[1].cells.map(cell => cell.present)).toEqual([true, false]);
+        expect(model.lanes[1].cells[0].label).toBe("asset:theme");
+        expect(model.lanes[1].cells[0].image).toBeNull();
     });
 
-    it("spans a looping sound and marks a one-shot only where it starts", () => {
+    it("spans a looping sound and hears a one-shot in the column that starts it", () => {
         const document = documentOf([
             block("rain", "action", { action: "audio", operation: "playSound", objectName: "rain", assetId: "rain-clip", loop: true }),
-            block("bang", "action", { action: "audio", operation: "playSound", objectName: "bang", assetId: "bang-clip" }),
             say("a"),
+            block("bang", "action", { action: "audio", operation: "playSound", objectName: "bang", assetId: "bang-clip" }),
+            say("b"),
+            say("c"),
             block("rain-off", "action", { action: "audio", operation: "stopSound", objectName: "rain", target: { kind: "audio", name: "rain" } }),
-        ], ["rain", "bang", "a", "rain-off"]);
+        ], ["rain", "a", "bang", "b", "c", "rain-off"]);
         const model = modelOf(document);
         const rain = model.lanes.find(lane => lane.id === "sound:rain")!;
         const bang = model.lanes.find(lane => lane.id === "sound:bang")!;
         expect(rain.cells.map(cell => cell.present)).toEqual([true, true, true, false]);
         expect(bang.cells.map(cell => cell.present)).toEqual([false, true, false, false]);
-        // A one-shot's silence still points at the row that started it; a loop's at the row that stopped it.
-        expect(bang.cells[2].since).toBe(1);
-        expect(rain.cells[3].since).toBe(3);
     });
 
     it("draws the camera only while it is away from its neutral pose", () => {
@@ -166,12 +183,13 @@ describe("buildStageTimelineModel", () => {
         ], ["push", "a", "reset"]);
         const model = modelOf(document);
         const camera = model.lanes.find(lane => lane.kind === "camera")!;
-        expect(camera.cells.map(cell => cell.present)).toEqual([true, true, false]);
+        expect(camera.cells.map(cell => cell.present)).toEqual([true, false]);
         expect(camera.cells[0].label).toBe("1.5×");
-        expect(model.timings[0]).toEqual({ durationMs: 1200, source: "action" });
+        // A column lasts as long as all its rows, and is timed like its line.
+        expect(model.timings[0]).toEqual({ durationMs: 1200 + estimateReadingMs("Text"), source: "estimate" });
     });
 
-    it("times a voiced line by its take, an unvoiced one by its words, and an instant row as nothing", () => {
+    it("times a voiced line by its take and an unvoiced one by its words", () => {
         const document = documentOf([
             block("voiced", "nodeAction", { action: "dialogue", characterId: "alice", text: { textId: "voiced-text", value: "Hi", role: "dialogue" } }),
             say("plain", "今天也结束了"),
@@ -179,12 +197,11 @@ describe("buildStageTimelineModel", () => {
             block("menu", "nodeAction", { action: "choice" }, null, []),
         ], ["voiced", "plain", "in", "menu"]);
         const model = modelOf(document);
-        expect(model.timings.map(timing => timing.source)).toEqual(["voice", "estimate", "instant", "choice"]);
-        // The dialogue strip carries what a column's row says, and nothing for the rest.
-        expect(model.lines).toEqual(["Hi", "今天也结束了", null, null]);
+        expect(model.timings.map(timing => timing.source)).toEqual(["voice", "estimate", "action"]);
         expect(model.timings[0].durationMs).toBe(2400);
         expect(model.timings[1].durationMs).toBe(estimateReadingMs("今天也结束了"));
-        expect(model.timings[2].durationMs).toBe(0);
+        expect(model.lines).toEqual(["Hi", "今天也结束了", null]);
+        expect(model.choices.map(choice => [choice.column, choice.at])).toEqual([[2, 0.75]]);
     });
 });
 
@@ -192,6 +209,16 @@ describe("timeline helpers", () => {
     it("estimates full-width text slower than Latin letters", () => {
         expect(estimateReadingMs("今天")).toBeGreaterThan(estimateReadingMs("ab"));
         expect(estimateReadingMs("a b")).toBe(estimateReadingMs("ab"));
+    });
+
+    it("splits rows into a column per line", () => {
+        expect(groupRowsByLine([false, true, false, false, true, false])).toEqual([
+            { start: 0, end: 1, anchor: 1, line: true },
+            { start: 2, end: 4, anchor: 4, line: true },
+            { start: 5, end: 5, anchor: 5, line: false },
+        ]);
+        // No lines at all: a column per row.
+        expect(groupRowsByLine([false, false]).map(group => group.anchor)).toEqual([0, 1]);
     });
 
     it("lays columns out equally or by time, never narrower than the minimum", () => {

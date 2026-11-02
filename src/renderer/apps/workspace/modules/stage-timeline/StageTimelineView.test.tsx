@@ -76,27 +76,28 @@ function renderView(cursorColumn: number) {
 afterEach(cleanup);
 
 describe("StageTimelineView", () => {
-    it("names a lane per object and labels each span", () => {
-        const { model } = renderView(2);
-        expect(model.blockIds).toEqual(["bg", "in", "a", "menu", "stay", "b"]);
-        // Columns carry the editor's own row numbers: the options take numbers but run no column.
-        expect(model.lineNumbers).toEqual([1, 2, 3, 4, 6, 8]);
+    it("gives every line a column and labels each block", () => {
+        const { model } = renderView(0);
+        expect(model.blockIds).toEqual(["a", "stay", "b"]);
+        // Columns carry the editor's own row numbers.
+        expect(model.lineNumbers).toEqual([3, 6, 8]);
         expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
         expect(screen.getByText("Normal")).toBeTruthy();
         expect(screen.getByText("Picture room")).toBeTruthy();
         // The dialogue strip says what each line says.
         expect(screen.getAllByText("Line").length).toBe(3);
         expect(screen.getByText("Dialogue")).toBeTruthy();
-        // The header reads the cursor's row by the editor's number.
+        // The header reads the cursor's line by the editor's number.
         expect(screen.getByText(/Row 3/)).toBeTruthy();
     });
 
-    it("moves the editor to a column's row", () => {
-        const { view, onStepTo } = renderView(2);
+    it("moves the editor to a column's line", () => {
+        const { view, onStepTo } = renderView(0);
         const hitAreas = view.container.querySelectorAll<HTMLDivElement>("div.z-10");
+        expect(hitAreas.length).toBe(3);
         fireEvent.mouseDown(hitAreas[0], { button: 0 });
-        expect(onStepTo).toHaveBeenLastCalledWith("bg");
-        fireEvent.mouseDown(hitAreas[5], { button: 0 });
+        expect(onStepTo).toHaveBeenLastCalledWith("a");
+        fireEvent.mouseDown(hitAreas[2], { button: 0 });
         expect(onStepTo).toHaveBeenLastCalledWith("b");
     });
 

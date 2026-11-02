@@ -400,11 +400,12 @@ function lanePieces(lane: StageTimelineLane): { start: number; end: number; labe
             return;
         }
         const previous = pieces[pieces.length - 1];
-        if (previous && previous.end === index - 1 && !cell.changed) {
+        const touching = previous !== undefined && previous.end === index - 1;
+        if (touching && previous.label === cell.label) {
             previous.end = index;
             return;
         }
-        pieces.push({ start: index, end: index, label: cell.label, opens: !(previous && previous.end === index - 1) });
+        pieces.push({ start: index, end: index, label: cell.label, opens: !touching });
     });
     return pieces;
 }
@@ -490,21 +491,21 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
                 />,
             );
         }
-        if (!opens) {
-            // On the bar's top edge (`top-1`), clear of the name centred in the bar.
-            labels.push(
-                <span
-                    key={`${piece.start}-mark`}
-                    className="absolute h-2 w-2 border border-fg-muted bg-surface"
-                    style={{ left: left - 4, top: 0, transform: "rotate(45deg)" }}
-                />,
-            );
-        }
     });
+    // A row that changed the lane but kept its name, at its place in its column, on the bar's top
+    // edge (`top-1`) clear of the name centred in the bar.
+    const marks = lane.marks.map((mark, index) => (
+        <span
+            key={`mark-${index}`}
+            className="absolute h-2 w-2 border border-fg-muted bg-surface"
+            style={{ left: columns[mark.column].x + mark.at * columns[mark.column].width - 4, top: 0, transform: "rotate(45deg)" }}
+        />
+    ));
     return (
         <div className="relative border-b border-edge-subtle" style={{ height }}>
             {nodes}
             {labels}
+            {marks}
         </div>
     );
 }
@@ -571,10 +572,7 @@ function Ruler({ model, columns, layout, zoom }: {
             });
         }
         // A menu's branch button sits on the ruler; a label under it would show only its last digit.
-        const buttons = model.choices
-            .map(choice => model.blockIds.indexOf(choice.choiceBlockId))
-            .filter(index => index >= 0)
-            .map(index => columns[index].x + Math.max(0, (columns[index].width - 24) / 2));
+        const buttons = model.choices.map(choice => choiceButtonLeft(columns[choice.column], choice.at));
         return result.filter(label => !buttons.some(x => label.x + 3 < x + 24 && label.x + 3 + RULER_LABEL_GAP_PX * 0.75 > x));
     }, [columns, layout, model.blockIds, model.choices, model.lineNumbers, model.timings, zoom]);
 
@@ -603,6 +601,12 @@ function Ruler({ model, columns, layout, zoom }: {
             })}
         </div>
     );
+}
+
+/** A menu's branch button, centred on the menu's place in its column and kept inside the column. */
+function choiceButtonLeft(column: StageTimelineColumn, at: number): number {
+    const centre = column.x + at * column.width;
+    return Math.min(Math.max(column.x, centre - 12), column.x + Math.max(0, column.width - 24));
 }
 
 function niceStep(minimum: number, steps: readonly number[]): number {
@@ -643,11 +647,10 @@ function ChoiceMarks({ scene, model, columns, onPick }: {
     return (
         <>
             {model.choices.map(choice => {
-                const index = model.blockIds.indexOf(choice.choiceBlockId);
-                if (index < 0 || choice.optionBlockIds.length < 2) {
+                if (choice.optionBlockIds.length < 2) {
                     return null;
                 }
-                const column = columns[index];
+                const column = columns[choice.column];
                 return (
                     <ToolbarButton
                         key={choice.choiceBlockId}
@@ -655,7 +658,7 @@ function ChoiceMarks({ scene, model, columns, onPick }: {
                         aria-label={t("story.timeline.chooseBranch")}
                         data-tip={t("story.timeline.chooseBranch")}
                         className="absolute top-0 z-20 bg-surface text-fg-muted"
-                        style={{ left: column.x + Math.max(0, (column.width - 24) / 2) }}
+                        style={{ left: choiceButtonLeft(column, choice.at) }}
                         onClick={event => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setMenu({ choiceId: choice.choiceBlockId, x: rect.left, y: rect.bottom + 2 });

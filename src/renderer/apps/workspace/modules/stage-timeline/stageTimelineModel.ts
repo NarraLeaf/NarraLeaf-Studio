@@ -1,6 +1,11 @@
 /**
  * The stage timeline's model: a scene's walk turned into lanes, cells and column widths.
  *
+ * A column is a line: every row of dialogue or narration has one, and the rows that only act on the
+ * stage (a character entering, a background changing) have none of their own. They belong to the
+ * line after them - they set the stage that line is read on - and show as a mark on the lane they
+ * changed, inside that line's column. Rows after the last line take one column of their own.
+ *
  * Pure on purpose. The walk ({@link walkStoryStageTimeline}) says what is on the stage after every
  * row; everything here only reads those frames, so the rules for "where does a lane start", "which
  * row set this" and "how wide is this column" are all testable without a workspace.
@@ -35,6 +40,13 @@ export type StageTimelineCell = {
     changed: boolean;
 };
 
+/** A row that changed a lane without changing its name: a move, a zoom, an effect. */
+export type StageTimelineMark = {
+    column: number;
+    /** Where in the column, 0 to 1: the row's place among the rows the column holds. */
+    at: number;
+};
+
 export type StageTimelineSprite = { characterId: string; poseId?: string; tags?: Record<string, string> };
 
 export type StageTimelineLane = {
@@ -44,6 +56,7 @@ export type StageTimelineLane = {
     /** The character a character lane belongs to, for its colour. */
     characterId?: string;
     cells: StageTimelineCell[];
+    marks: StageTimelineMark[];
 };
 
 /** Where a column's length comes from. */
@@ -63,7 +76,11 @@ export type StageTimelineModel = {
     lines: (string | null)[];
     lanes: StageTimelineLane[];
     timings: StageTimelineTiming[];
-    choices: StageTimelineWalk["choices"];
+    /** Each menu the walk passed, placed in its column the way a mark is. */
+    choices: (StageTimelineWalk["choices"][number] & { column: number; at: number })[];
+    /** Every row the walk ran, in play order, and the column each one belongs to. */
+    rowBlockIds: StoryBlockId[];
+    rowColumns: number[];
 };
 
 /** What the model needs to put names on things; supplied by the panel, which has the services. */
@@ -89,23 +106,104 @@ export function buildStageTimelineModel(input: {
 }): StageTimelineModel {
     const { walk, scene, names } = input;
     const frames = walk.frames;
-    const lanes: StageTimelineLane[] = [
+    const rowLanes = [
         backgroundLane(frames, names),
         ...displayableLanes(frames, names),
         ...vfxLanes(frames, scene, names),
         cameraLane(frames),
         musicLane(frames, scene, names),
         ...soundLanes(frames, scene, names),
-    ].filter((lane): lane is StageTimelineLane => lane !== null && lane.cells.some(cell => cell.present));
-    const order = sceneBlockOrder(scene);
-    return {
-        blockIds: frames.map(frame => frame.blockId),
-        lineNumbers: frames.map(frame => (order.get(frame.blockId) ?? 0) + 1),
-        lines: frames.map(frame => spokenText(scene.blocks[frame.blockId])),
-        lanes,
-        timings: frames.map(frame => stageTimelineTiming(scene.blocks[frame.blockId], names)),
-        choices: walk.choices,
+    ];
+    const groups = groupRowsByLine(frames.map(frame => spokenText(scene.blocks[frame.blockId]) !== null));
+    const rowColumns: number[] = [];
+    groups.forEach((group, column) => {
+        for (let row = group.start; row <= group.end; row += 1) {
+            rowColumns[row] = column;
+        }
+    });
+    const placeOf = (row: number) => {
+        const group = groups[rowColumns[row]];
+        return { column: rowColumns[row], at: (row - group.start + 0.5) / (group.end - group.start + 1) };
     };
+    const lanes = rowLanes
+        .map(lane => toColumns(lane, groups, rowColumns, placeOf))
+        .filter(lane => lane.cells.some(cell => cell.present));
+    const order = sceneBlockOrder(scene);
+    const rowTimings = frames.map(frame => stageTimelineTiming(scene.blocks[frame.blockId], names));
+    const anchors = groups.map(group => frames[group.anchor].blockId);
+    return {
+        blockIds: anchors,
+        lineNumbers: anchors.map(blockId => (order.get(blockId) ?? 0) + 1),
+        lines: anchors.map(blockId => spokenText(scene.blocks[blockId])),
+        lanes,
+        timings: groups.map(group => columnTiming(rowTimings.slice(group.start, group.end + 1), rowTimings[group.anchor], group.line)),
+        choices: walk.choices.flatMap(choice => {
+            const row = frames.findIndex(frame => frame.blockId === choice.choiceBlockId);
+            return row < 0 ? [] : [{ ...choice, ...placeOf(row) }];
+        }),
+        rowBlockIds: frames.map(frame => frame.blockId),
+        rowColumns,
+    };
+}
+
+type RowGroup = { start: number; end: number; anchor: number; line: boolean };
+
+/**
+ * Split the rows into columns: each line closes a column holding it and the rows since the line
+ * before it; rows after the last line make one more. A scene with no lines at all keeps a column
+ * per row, so it still reads as a sequence.
+ */
+export function groupRowsByLine(isLine: readonly boolean[]): RowGroup[] {
+    if (!isLine.includes(true)) {
+        return isLine.map((_, row) => ({ start: row, end: row, anchor: row, line: false }));
+    }
+    const groups: RowGroup[] = [];
+    let start = 0;
+    isLine.forEach((line, row) => {
+        if (line) {
+            groups.push({ start, end: row, anchor: row, line: true });
+            start = row + 1;
+        }
+    });
+    if (start < isLine.length) {
+        groups.push({ start, end: isLine.length - 1, anchor: start, line: false });
+    }
+    return groups;
+}
+
+/**
+ * A lane read by column. A column shows the lane as it stands once its last row has run - the stage
+ * its line is read on. A one-shot sound is the exception: it is heard if any row in the column
+ * starts it. A row that changed the lane but kept its name leaves a mark; a change of name shows as
+ * the next column's block instead.
+ */
+function toColumns(
+    lane: StageTimelineLane,
+    groups: readonly RowGroup[],
+    rowColumns: readonly number[],
+    placeOf: (row: number) => StageTimelineMark,
+): StageTimelineLane {
+    const cells = groups.map(group => {
+        const rows = lane.cells.slice(group.start, group.end + 1);
+        const last = rows[rows.length - 1];
+        const heard = lane.kind === "sound" ? [...rows].reverse().find(cell => cell.present) : undefined;
+        const cell = heard ?? last;
+        return { ...cell, present: Boolean(heard) || last.present, since: rowColumns[cell.since] ?? 0, changed: false };
+    });
+    const marks = lane.kind === "sound" ? [] : lane.cells.flatMap((cell, row) => {
+        const previous = lane.cells[row - 1];
+        return cell.changed && previous?.present && cell.label === previous.label ? [placeOf(row)] : [];
+    });
+    return { ...lane, cells, marks };
+}
+
+/** A column lasts as long as all its rows; it is timed like its line when it has one. */
+function columnTiming(rows: readonly StageTimelineTiming[], anchor: StageTimelineTiming, line: boolean): StageTimelineTiming {
+    const durationMs = rows.reduce((sum, row) => sum + row.durationMs, 0);
+    if (line) {
+        return { durationMs, source: anchor.source };
+    }
+    return durationMs > 0 ? { durationMs, source: "action" } : { durationMs: 0, source: "instant" };
 }
 
 type FoldedState = { label: string | null; key: string; image?: string | null; sprite?: StageTimelineSprite | null };
@@ -149,6 +247,7 @@ function backgroundLane(frames: readonly StageTimelineFrame[], names: StageTimel
         id: "background",
         kind: "background",
         name: "",
+        marks: [],
         cells: foldCells(frames.length, index => {
             const background = frames[index].background;
             if (!background) {
@@ -190,12 +289,13 @@ function displayableLanes(frames: readonly StageTimelineFrame[], names: StageTim
             };
         });
         const lane: StageTimelineLane = characterId
-            ? { id: `d:${key}`, kind: "character", name: names.character(characterId) ?? last.objectName, characterId, cells }
+            ? { id: `d:${key}`, kind: "character", name: names.character(characterId) ?? last.objectName, characterId, cells, marks: [] }
             : {
                 id: `d:${key}`,
                 kind: last.kind === "text" ? "text" : "image",
                 name: authoredNameOrNull(last.objectName) ?? sourceName(last.source, names) ?? last.objectName,
                 cells,
+                marks: [],
             };
         (characterId ? characters : others).push(lane);
     }
@@ -264,6 +364,7 @@ function vfxLanes(frames: readonly StageTimelineFrame[], scene: StoryScene, name
         id: `vfx:${record.objectName}`,
         kind: "vfx" as const,
         name: authoredNameOrNull(record.objectName) ?? rowAssetName(scene.blocks[record.sourceBlockId], names) ?? record.objectName,
+        marks: [],
         cells: foldCells(frames.length, index => {
             const current = frames[index].vfx.find(candidate => candidate.objectName === record.objectName);
             return current?.showing ? { label: null, key: "" } : null;
@@ -276,6 +377,7 @@ function cameraLane(frames: readonly StageTimelineFrame[]): StageTimelineLane {
         id: "camera",
         kind: "camera",
         name: "",
+        marks: [],
         cells: foldCells(frames.length, index => {
             const camera = frames[index].camera;
             if (!camera || isNeutralCamera(camera.props, camera.effects)) {
@@ -314,6 +416,7 @@ function musicLane(frames: readonly StageTimelineFrame[], scene: StoryScene, nam
         id: "music",
         kind: "music",
         name: "",
+        marks: [],
         cells: foldCells(frames.length, index => {
             const music = frames[index].music;
             if (!music || !music.playing || music.paused) {
@@ -341,7 +444,8 @@ function soundLanes(frames: readonly StageTimelineFrame[], scene: StoryScene, na
             id: `sound:${handle.objectName}`,
             kind: "sound" as const,
             name: authoredNameOrNull(handle.objectName) ?? label ?? handle.objectName,
-            cells: foldCells(frames.length, index => {
+            marks: [],
+        cells: foldCells(frames.length, index => {
                 if (loops) {
                     const current = frames[index].sounds.find(candidate => candidate.objectName === handle.objectName);
                     return current?.playing && !current.paused ? { label, key: "" } : null;

@@ -342,10 +342,10 @@ export const help = {
         stageTimeline: {
             title: "Stage timeline",
             body:
-                "The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per object, one column per row.\n"
+                "The stage timeline lists the stage at every line of the current scene, in the order the lines run: one lane per object, one column per line of dialogue or narration.\n"
                 + "\n"
                 + "- Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.\n"
-                + "- A bar means the object is on stage. A diamond marks a change while it is on stage, such as a new expression or a move.\n"
+                + "- A bar means the object is on stage, and a new expression or picture starts a new block. Rows that only act on the stage take no column of their own: they belong to the line after them and show as a diamond on the object they change, such as a move or a zoom.\n"
                 + "- Clicking a column moves the editor and the preview to that row. Columns and lanes stretch to fill the panel when it is made wider or taller.\n"
                 + "- In Equal width every row has the same width. In By duration a line takes the length of its voice take, a line without a take is estimated from its length, and a command takes the length of its transition or movement.\n"
                 + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
