@@ -5,7 +5,7 @@
  * Every column is one row that runs, with a hairline between columns. A column is as wide as the
  * layout says - all the same, or as long as the row takes - and a press anywhere in it moves the
  * editor to its row. Columns stretch to fill a wider panel; lanes keep their height, and a taller
- * panel carries the grid on down below them.
+ * panel carries the column lines on down below them.
  *
  * Comments in English per project convention.
  */
@@ -42,11 +42,6 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
 const RULER_LABEL_GAP_PX = 44;
-/** Empty lanes below the real ones: a hairline every lane height, in the lanes' own divider colour. */
-const GRID_FILL: CSSProperties = {
-    backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${LANE_PX - 1}px, var(--nl-edge-subtle) ${LANE_PX - 1}px, var(--nl-edge-subtle) ${LANE_PX}px)`,
-};
-
 /** The scrollbar slot a scroller keeps (`::-webkit-scrollbar` in styles.css). */
 const SCROLLBAR_PX = 8;
 
@@ -79,7 +74,7 @@ export function StageTimelineView(props: {
         [fill, props.columns],
     );
     const totalWidth = columnsWidth(columns);
-    // Lanes keep their height; below them the grid runs on to the bottom of the panel. A track that
+    // Lanes keep their height; below them the column lines run on to the bottom of the panel. A track that
     // scrolls sideways keeps its scrollbar's slot out of that.
     const scrollbar = totalWidth > room.width + 0.5 ? SCROLLBAR_PX : 0;
     const laneHeight = LANE_PX;
@@ -153,7 +148,7 @@ export function StageTimelineView(props: {
                 <div className="flex min-h-full">
                     <div className="flex w-32 shrink-0 flex-col border-r border-edge-subtle">
                         <div style={{ height: RULER_PX }} className="border-b border-edge" />
-                        <div style={{ height: DIALOGUE_PX }} className="flex items-center gap-2 border-b border-edge-subtle px-3 text-fg-muted">
+                        <div style={{ height: DIALOGUE_PX }} className="flex items-center gap-2 px-3 text-fg-muted">
                             <MessageSquareText className="h-3.5 w-3.5 shrink-0" aria-hidden />
                             <span className="min-w-0 truncate">{t("story.timeline.lane.dialogue")}</span>
                         </div>
@@ -163,7 +158,6 @@ export function StageTimelineView(props: {
                                 <span className="min-w-0 truncate">{laneName(lane, t)}</span>
                             </div>
                         ))}
-                        <div className="min-h-0 flex-1" style={GRID_FILL} />
                     </div>
                     <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
                         <div className="relative" style={{ width: totalWidth, height: trackHeight }}>
@@ -187,10 +181,6 @@ export function StageTimelineView(props: {
                                     <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} characters={props.characters} />
                                 ))}
                             </div>
-                            <div
-                                className="pointer-events-none absolute bottom-0 left-0 right-0"
-                                style={{ top: RULER_PX + DIALOGUE_PX + lanesHeight, ...GRID_FILL }}
-                            />
                             {columns.map((column, index) => (
                                 <div
                                     key={index}
@@ -546,7 +536,7 @@ function DialogueStrip({ model, columns }: { model: StageTimelineModel; columns:
         );
     });
     return (
-        <div className="absolute left-0 right-0 border-b border-edge-subtle" style={{ top: RULER_PX, height: DIALOGUE_PX }}>
+        <div className="absolute left-0 right-0" style={{ top: RULER_PX, height: DIALOGUE_PX }}>
             {nodes}
         </div>
     );
