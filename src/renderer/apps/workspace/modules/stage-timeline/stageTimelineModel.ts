@@ -51,6 +51,8 @@ export type StageTimelineTiming = {
 export type StageTimelineModel = {
     /** The row behind each column, in play order. */
     blockIds: StoryBlockId[];
+    /** The number the editor's gutter prints beside each column's row. */
+    lineNumbers: number[];
     lanes: StageTimelineLane[];
     timings: StageTimelineTiming[];
     choices: StageTimelineWalk["choices"];
@@ -60,6 +62,11 @@ export type StageTimelineModel = {
 export type StageTimelineNames = {
     asset: (assetId: string) => string | null;
     character: (characterId: string) => string | null;
+    /**
+     * The name of a pose (preset) or of a tag (layered) a character shows. The rows store ids;
+     * null when the id no longer names anything, which leaves the cell unlabelled.
+     */
+    appearance: (characterId: string, appearanceId: string) => string | null;
     /** Seconds of the take recorded for a line, when there is one. */
     voiceSeconds: (textId: string) => number | undefined;
 };
@@ -82,8 +89,10 @@ export function buildStageTimelineModel(input: {
         musicLane(frames, scene, names),
         ...soundLanes(frames, scene, names),
     ].filter((lane): lane is StageTimelineLane => lane !== null && lane.cells.some(cell => cell.present));
+    const order = sceneBlockOrder(scene);
     return {
         blockIds: frames.map(frame => frame.blockId),
+        lineNumbers: frames.map(frame => (order.get(frame.blockId) ?? 0) + 1),
         lanes,
         timings: frames.map(frame => stageTimelineTiming(scene.blocks[frame.blockId], names)),
         choices: walk.choices,
@@ -97,7 +106,9 @@ export function buildStageTimelineModel(input: {
 function foldCells(
     count: number,
     state: (index: number) => { label: string | null; key: string } | null,
+    options: { leavingSetsSince?: boolean } = {},
 ): StageTimelineCell[] {
+    const leavingSetsSince = options.leavingSetsSince ?? true;
     const cells: StageTimelineCell[] = [];
     let since = 0;
     let previous: { label: string | null; key: string } | null = null;
@@ -106,7 +117,7 @@ function foldCells(
         const entered = current !== null && previous === null;
         const changed = current !== null && previous !== null && current.key !== previous.key;
         const left = current === null && previous !== null;
-        if (entered || changed || left) {
+        if (entered || changed || (left && leavingSetsSince)) {
             since = index;
         }
         cells.push({ present: current !== null, label: current?.label ?? null, since, changed });
@@ -187,10 +198,17 @@ function displayableLabel(source: StageSnapshotImageSource | undefined, text: st
         return null;
     }
     if (source.type === "character") {
-        if (source.pose) {
-            return source.pose;
+        const characterId = source.characterId;
+        if (!characterId) {
+            return null;
         }
-        const tags = Object.values(source.tags ?? {}).filter((value): value is string => typeof value === "string" && value.length > 0);
+        if (source.pose) {
+            return names.appearance(characterId, source.pose);
+        }
+        const tags = Object.values(source.tags ?? {})
+            .filter((value): value is string => typeof value === "string" && value.length > 0)
+            .map(tagId => names.appearance(characterId, tagId))
+            .filter((name): name is string => name !== null);
         return tags.length > 0 ? tags.join(" · ") : null;
     }
     return sourceName(source, names);
@@ -299,7 +317,9 @@ function soundLanes(frames: readonly StageTimelineFrame[], scene: StoryScene, na
                     && block.payload.operation === "playSound" && soundStageObjectName(block.payload) === handle.objectName;
                 // Keyed by column so two starts in a row read as two marks rather than one span.
                 return starts ? { label, key: String(index) } : null;
-            }),
+                // A one-shot ends by itself, so the row after it did not stop it: silence after a
+                // start still points at that start.
+            }, { leavingSetsSince: loops }),
         };
     });
 }

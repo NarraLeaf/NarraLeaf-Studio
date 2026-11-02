@@ -44,6 +44,7 @@ function documentOf(blocks: StoryBlock[], rootBlockIds: string[]): StoryDocument
 const NAMES: StageTimelineNames = {
     asset: assetId => `asset:${assetId}`,
     character: characterId => (characterId === "alice" ? "Alice" : null),
+    appearance: (_characterId, appearanceId) => ({ normal: "Normal", smile: "Smile" })[appearanceId] ?? null,
     voiceSeconds: textId => (textId === "voiced-text" ? 2.4 : undefined),
 };
 
@@ -114,10 +115,11 @@ describe("buildStageTimelineModel", () => {
         expect(model.lanes.map(lane => [lane.kind, lane.name])).toEqual([["character", "Alice"]]);
         const cells = model.lanes[0].cells;
         expect(cells.map(cell => cell.present)).toEqual([false, true, true, true, false, false]);
-        expect(cells.map(cell => cell.label)).toEqual([null, "normal", "normal", "smile", null, null]);
+        expect(cells.map(cell => cell.label)).toEqual([null, "Normal", "Normal", "Smile", null, null]);
         expect(cells.map(cell => cell.changed)).toEqual([false, false, false, true, false, false]);
         // Each state points at the row that brought it about.
         expect(cells.map(cell => cell.since)).toEqual([0, 1, 1, 3, 4, 4]);
+        expect(model.lineNumbers).toEqual([1, 2, 3, 4, 5, 6]);
     });
 
     it("names backgrounds and music by their assets, and drops lanes that never appear", () => {
@@ -146,6 +148,9 @@ describe("buildStageTimelineModel", () => {
         const bang = model.lanes.find(lane => lane.id === "sound:bang")!;
         expect(rain.cells.map(cell => cell.present)).toEqual([true, true, true, false]);
         expect(bang.cells.map(cell => cell.present)).toEqual([false, true, false, false]);
+        // A one-shot's silence still points at the row that started it; a loop's at the row that stopped it.
+        expect(bang.cells[2].since).toBe(1);
+        expect(rain.cells[3].since).toBe(3);
     });
 
     it("draws the camera only while it is away from its neutral pose", () => {

@@ -1031,7 +1031,7 @@ export const story = {
         filteredEmptyClear: "显示全部",
         snapshotsPanel: "场景快照",
     },
-    // 底栏「舞台时间轴」面板。一列是一行会执行的剧本，「第 n 步」按列计数，不是编辑器里的行号
+    // 底栏「舞台时间轴」面板。一列是一行会执行的剧本，「第 n 行」与编辑器左侧的行号一致
     timeline: {
         empty: "打开故事场景以查看舞台时间轴",
         emptyScene: "该场景没有会执行的行",
@@ -1039,7 +1039,7 @@ export const story = {
             equal: "等长",
             timed: "按时长",
         },
-        step: "第 {index} 步",
+        row: "第 {index} 行",
         seconds: "{seconds} 秒",
         source: {
             voice: "配音",

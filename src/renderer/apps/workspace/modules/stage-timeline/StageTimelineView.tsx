@@ -1,6 +1,6 @@
 /**
  * The stage timeline's drawing: lane names on the left, the ruler and lanes in the middle (scrolling
- * sideways), and on the right what each lane holds at the cursor and the step that set it.
+ * sideways), and on the right what each lane holds at the cursor and the row that set it.
  *
  * Every column is one row that runs, with a hairline between columns. A column is as wide as the
  * layout says - all the same, or as long as the row takes - and a press anywhere in it moves the
@@ -103,7 +103,7 @@ export function StageTimelineView(props: {
                 <span className="flex-1" />
                 {cursorTiming ? (
                     <span className="shrink-0 text-fg-subtle">
-                        {t("story.timeline.step", { index: cursorColumn + 1 })}
+                        {t("story.timeline.row", { index: model.lineNumbers[cursorColumn] })}
                         {" · "}
                         {describeTiming(cursorTiming, t)}
                     </span>
@@ -116,75 +116,80 @@ export function StageTimelineView(props: {
                     className="w-28 shrink-0"
                 />
             </PanelHeader>
-            <div className="flex min-h-0 flex-1 overflow-y-auto">
-                <div className="w-32 shrink-0 border-r border-edge-subtle">
-                    <div style={{ height: RULER_PX }} className="border-b border-edge" />
-                    {model.lanes.map(lane => (
-                        <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3 text-fg-muted">
-                            <LaneMark lane={lane} paint={paints.get(lane.id)} />
-                            <span className="min-w-0 truncate">{laneName(lane, t)}</span>
-                        </div>
-                    ))}
-                </div>
-                <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-                    <div className="relative" style={{ width: totalWidth, height: RULER_PX + lanesHeight }}>
-                        {columns.map((column, index) => (
-                            <div
-                                key={index}
-                                className="pointer-events-none absolute top-0 bottom-0 border-l border-edge-subtle"
-                                style={{ left: column.x }}
-                            />
-                        ))}
-                        {columns[cursorColumn] ? (
-                            <div
-                                className="pointer-events-none absolute top-0 bottom-0 border-l border-primary bg-primary/15"
-                                style={{ left: columns[cursorColumn].x, width: columns[cursorColumn].width }}
-                            />
-                        ) : null}
-                        <Ruler model={model} columns={columns} layout={layout} zoom={zoom} />
-                        <div className="absolute left-0 right-0" style={{ top: RULER_PX }}>
-                            {model.lanes.map(lane => (
-                                <LaneTrack key={lane.id} lane={lane} columns={columns} paint={paints.get(lane.id)} />
-                            ))}
-                        </div>
-                        {columns.map((column, index) => (
-                            <div
-                                key={index}
-                                className="absolute top-0 bottom-0 z-10 hover:bg-fill-subtle"
-                                style={{ left: column.x, width: column.width }}
-                                onMouseDown={event => {
-                                    if (event.button === 0) {
-                                        onStepTo(model.blockIds[index]);
-                                    }
-                                }}
-                            />
-                        ))}
-                        <ChoiceMarks scene={scene} model={model} columns={columns} onPick={props.onPick} />
-                    </div>
-                </div>
-                <div className="w-56 shrink-0 border-l border-edge-subtle">
-                    <div style={{ height: RULER_PX }} className="border-b border-edge" />
-                    {model.lanes.map(lane => {
-                        const cell = lane.cells[cursorColumn];
-                        return (
-                            <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3">
-                                {cell ? (
-                                    <>
-                                        <span className={cn("min-w-0 flex-1 truncate", cell.present ? "text-fg" : "text-fg-subtle")}>
-                                            {cellState(lane, cell.present, cell.label, t)}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            className="shrink-0 cursor-default rounded-md px-1 text-fg-subtle hover:bg-fill hover:text-fg"
-                                            onClick={() => onStepTo(model.blockIds[cell.since])}
-                                        >
-                                            {t("story.timeline.step", { index: cell.since + 1 })}
-                                        </button>
-                                    </>
-                                ) : null}
+            {/* The three columns scroll down together. They sit in a row of their own so the row is as
+                tall as its lanes: a scroller that is itself the row would squeeze the track to the
+                visible height and clip the lanes below it. */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex min-h-full">
+                    <div className="w-32 shrink-0 border-r border-edge-subtle">
+                        <div style={{ height: RULER_PX }} className="border-b border-edge" />
+                        {model.lanes.map(lane => (
+                            <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3 text-fg-muted">
+                                <LaneMark lane={lane} paint={paints.get(lane.id)} />
+                                <span className="min-w-0 truncate">{laneName(lane, t)}</span>
                             </div>
-                        );
-                    })}
+                        ))}
+                    </div>
+                    <div ref={trackRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+                        <div className="relative" style={{ width: totalWidth, height: RULER_PX + lanesHeight }}>
+                            {columns.map((column, index) => (
+                                <div
+                                    key={index}
+                                    className="pointer-events-none absolute top-0 bottom-0 border-l border-edge-subtle"
+                                    style={{ left: column.x }}
+                                />
+                            ))}
+                            {columns[cursorColumn] ? (
+                                <div
+                                    className="pointer-events-none absolute top-0 bottom-0 border-l border-primary bg-primary/15"
+                                    style={{ left: columns[cursorColumn].x, width: columns[cursorColumn].width }}
+                                />
+                            ) : null}
+                            <Ruler model={model} columns={columns} layout={layout} zoom={zoom} />
+                            <div className="absolute left-0 right-0" style={{ top: RULER_PX }}>
+                                {model.lanes.map(lane => (
+                                    <LaneTrack key={lane.id} lane={lane} columns={columns} paint={paints.get(lane.id)} />
+                                ))}
+                            </div>
+                            {columns.map((column, index) => (
+                                <div
+                                    key={index}
+                                    className="absolute top-0 bottom-0 z-10 hover:bg-fill-subtle"
+                                    style={{ left: column.x, width: column.width }}
+                                    onMouseDown={event => {
+                                        if (event.button === 0) {
+                                            onStepTo(model.blockIds[index]);
+                                        }
+                                    }}
+                                />
+                            ))}
+                            <ChoiceMarks scene={scene} model={model} columns={columns} onPick={props.onPick} />
+                        </div>
+                    </div>
+                    <div className="w-56 shrink-0 border-l border-edge-subtle">
+                        <div style={{ height: RULER_PX }} className="border-b border-edge" />
+                        {model.lanes.map(lane => {
+                            const cell = lane.cells[cursorColumn];
+                            return (
+                                <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3">
+                                    {cell ? (
+                                        <>
+                                            <span className={cn("min-w-0 flex-1 truncate", cell.present ? "text-fg" : "text-fg-subtle")}>
+                                                {cellState(lane, cell.present, cell.label, t)}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="shrink-0 cursor-default rounded-md px-1 text-fg-subtle hover:bg-fill hover:text-fg"
+                                                onClick={() => onStepTo(model.blockIds[cell.since])}
+                                            >
+                                                {t("story.timeline.row", { index: model.lineNumbers[cell.since] })}
+                                            </button>
+                                        </>
+                                    ) : null}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>
@@ -349,24 +354,29 @@ function Ruler({ model, columns, layout, zoom }: {
             const width = columns[0]?.width ?? 1;
             const every = niceStep(RULER_LABEL_GAP_PX / width, [1, 2, 5, 10, 20, 50, 100, 200, 500]);
             for (let index = 0; index < columns.length; index += every) {
-                result.push({ x: columns[index].x, text: String(index + 1) });
+                result.push({ x: columns[index].x, text: String(model.lineNumbers[index]) });
             }
-            return result;
+        } else {
+            const everySeconds = niceStep(RULER_LABEL_GAP_PX / (STAGE_TIMELINE_SECOND_PX * zoom), [1, 2, 5, 10, 15, 30, 60, 120, 300]);
+            let elapsed = 0;
+            let next = 0;
+            model.timings.forEach((timing, index) => {
+                const end = elapsed + timing.durationMs;
+                while (next * 1000 <= end && (timing.durationMs > 0 || next * 1000 === elapsed)) {
+                    const fraction = timing.durationMs > 0 ? (next * 1000 - elapsed) / timing.durationMs : 0;
+                    result.push({ x: columns[index].x + fraction * columns[index].width, text: formatClock(next) });
+                    next += everySeconds;
+                }
+                elapsed = end;
+            });
         }
-        const everySeconds = niceStep(RULER_LABEL_GAP_PX / (STAGE_TIMELINE_SECOND_PX * zoom), [1, 2, 5, 10, 15, 30, 60, 120, 300]);
-        let elapsed = 0;
-        let next = 0;
-        model.timings.forEach((timing, index) => {
-            const end = elapsed + timing.durationMs;
-            while (next * 1000 <= end && (timing.durationMs > 0 || next * 1000 === elapsed)) {
-                const fraction = timing.durationMs > 0 ? (next * 1000 - elapsed) / timing.durationMs : 0;
-                result.push({ x: columns[index].x + fraction * columns[index].width, text: formatClock(next) });
-                next += everySeconds;
-            }
-            elapsed = end;
-        });
-        return result;
-    }, [columns, layout, model.timings, zoom]);
+        // A menu's branch button sits on the ruler; a label under it would show only its last digit.
+        const buttons = model.choices
+            .map(choice => model.blockIds.indexOf(choice.choiceBlockId))
+            .filter(index => index >= 0)
+            .map(index => columns[index].x + Math.max(0, (columns[index].width - 24) / 2));
+        return result.filter(label => !buttons.some(x => label.x + 3 < x + 24 && label.x + 3 + RULER_LABEL_GAP_PX * 0.75 > x));
+    }, [columns, layout, model.blockIds, model.choices, model.lineNumbers, model.timings, zoom]);
 
     return (
         <div className="absolute left-0 right-0 top-0 border-b border-edge" style={{ height: RULER_PX }}>

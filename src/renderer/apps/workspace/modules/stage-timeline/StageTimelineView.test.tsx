@@ -50,7 +50,7 @@ function renderView(cursorColumn: number) {
     const model = buildStageTimelineModel({
         walk,
         scene,
-        names: { asset: id => `Picture ${id}`, character: () => "Alice", voiceSeconds: () => undefined },
+        names: { asset: id => `Picture ${id}`, character: () => "Alice", appearance: () => "Normal", voiceSeconds: () => undefined },
     });
     const onStepTo = vi.fn();
     const onPick = vi.fn();
@@ -78,15 +78,17 @@ describe("StageTimelineView", () => {
     it("names a lane per object and reads each lane's state at the cursor", () => {
         const { model } = renderView(2);
         expect(model.blockIds).toEqual(["bg", "in", "a", "menu", "stay", "b"]);
+        // Columns carry the editor's own row numbers: the options take numbers but run no column.
+        expect(model.lineNumbers).toEqual([1, 2, 3, 4, 6, 8]);
         expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
-        // The state column: Alice's pose at column 3, set at step 2.
-        expect(screen.getAllByText("normal").length).toBeGreaterThan(0);
-        expect(screen.getByRole("button", { name: "Step 2" })).toBeTruthy();
+        // The state column: Alice's pose at column 3, set on row 2.
+        expect(screen.getAllByText("Normal").length).toBeGreaterThan(0);
+        expect(screen.getByRole("button", { name: "Row 2" })).toBeTruthy();
     });
 
-    it("moves the editor to a column's row, and to the step that set a state", () => {
+    it("moves the editor to a column's row, and to the row that set a state", () => {
         const { view, onStepTo } = renderView(2);
-        fireEvent.click(screen.getByRole("button", { name: "Step 1" }));
+        fireEvent.click(screen.getByRole("button", { name: "Row 1" }));
         expect(onStepTo).toHaveBeenLastCalledWith("bg");
         const hitAreas = view.container.querySelectorAll<HTMLDivElement>("div.z-10");
         fireEvent.mouseDown(hitAreas[5], { button: 0 });

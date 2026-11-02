@@ -1081,7 +1081,7 @@ export const story = {
             equal: "等幅",
             timed: "所要時間",
         },
-        step: "ステップ {index}",
+        row: "{index} 行目",
         seconds: "{seconds} 秒",
         source: {
             voice: "ボイス",

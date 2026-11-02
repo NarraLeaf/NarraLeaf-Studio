@@ -194,6 +194,15 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
                 return null;
             },
             character: characterId => characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? null,
+            appearance: (characterId, appearanceId) => {
+                const appearance = characters.find(character => character.profile.getId() === characterId)?.profile.appearance;
+                if (!appearance) {
+                    return null;
+                }
+                return appearance.getPose(appearanceId)?.name
+                    ?? appearance.getAxes().flatMap(axis => axis.tags).find(tag => tag.id === appearanceId)?.name
+                    ?? null;
+            },
             voiceSeconds: textId => voice?.units[textId]?.duration,
         };
         return { names, characters };

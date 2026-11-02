@@ -1198,7 +1198,7 @@ export const story = {
             equal: "Equal width",
             timed: "By duration",
         },
-        step: "Step {index}",
+        row: "Row {index}",
         seconds: "{seconds} s",
         source: {
             voice: "Voice",
