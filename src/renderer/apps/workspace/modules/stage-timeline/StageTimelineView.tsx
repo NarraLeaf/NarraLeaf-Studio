@@ -305,21 +305,26 @@ function BlockContent(props: {
     const character = cell.sprite ? props.characters.find(candidate => candidate.profile.getId() === cell.sprite?.characterId) : undefined;
     return (
         <span
-            className="pointer-events-none absolute top-1 bottom-1 overflow-hidden rounded-l-md text-2xs"
+            className="pointer-events-none absolute top-1 bottom-1 text-2xs"
             style={{ left: props.left, width: props.width }}
         >
-            {character ? (
-                <CharacterBackdrop
-                    lane={lane}
-                    character={character}
-                    sprite={cell.sprite!}
-                    label={props.label}
-                    height={props.height}
-                    width={props.width}
-                />
-            ) : (
-                <ImageBackdrop lane={lane} assetId={cell.image} label={props.label} height={props.height} width={props.width} />
-            )}
+            {/* Hangs at the left edge of the view while the block runs on past it, and is pushed off
+                only by the block's own end - so a long block scrolled into keeps saying what it is.
+                Nothing between this and the track may clip, or it sticks to that instead. */}
+            <span className="sticky left-0 flex h-full w-fit max-w-full items-center">
+                {character ? (
+                    <CharacterBackdrop
+                        lane={lane}
+                        character={character}
+                        sprite={cell.sprite!}
+                        label={props.label}
+                        height={props.height}
+                        width={props.width}
+                    />
+                ) : (
+                    <ImageBackdrop lane={lane} assetId={cell.image} label={props.label} height={props.height} width={props.width} />
+                )}
+            </span>
         </span>
     );
 }
@@ -564,7 +569,8 @@ function DialogueStrip({ model, columns }: { model: StageTimelineModel; columns:
                 className="absolute inset-y-0 flex items-center px-1.5 text-2xs text-fg-muted"
                 style={{ left, width: right - left }}
             >
-                <span className="truncate">{line}</span>
+                {/* Hangs at the left edge of the view while its line runs on past it. */}
+                <span className="sticky left-1.5 min-w-0 truncate">{line}</span>
             </span>,
         );
     });
