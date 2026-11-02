@@ -8,8 +8,8 @@ import { buildStageTimelineModel, stageTimelineColumns } from "./stageTimelineMo
 import { StageTimelineView } from "./StageTimelineView";
 
 /**
- * The drawing, against a real walk: a lane per object, a column per row, the state column reading
- * the cursor's column, and a press on a column or on a state's step moving the editor.
+ * The drawing, against a real walk: a lane per object, a column per row, and a press on a column
+ * moving the editor.
  */
 
 function block(id: string, kind: StoryBlock["kind"], payload: unknown, parentId: string | null = null, childrenIds: string[] = []): StoryBlock {
@@ -75,22 +75,23 @@ function renderView(cursorColumn: number) {
 afterEach(cleanup);
 
 describe("StageTimelineView", () => {
-    it("names a lane per object and reads each lane's state at the cursor", () => {
+    it("names a lane per object and labels each span", () => {
         const { model } = renderView(2);
         expect(model.blockIds).toEqual(["bg", "in", "a", "menu", "stay", "b"]);
         // Columns carry the editor's own row numbers: the options take numbers but run no column.
         expect(model.lineNumbers).toEqual([1, 2, 3, 4, 6, 8]);
         expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
-        // The state column: Alice's pose at column 3, set on row 2.
-        expect(screen.getAllByText("Normal").length).toBeGreaterThan(0);
-        expect(screen.getByRole("button", { name: "Row 2" })).toBeTruthy();
+        expect(screen.getByText("Normal")).toBeTruthy();
+        expect(screen.getByText("Picture room")).toBeTruthy();
+        // The header reads the cursor's row by the editor's number.
+        expect(screen.getByText(/Row 3/)).toBeTruthy();
     });
 
-    it("moves the editor to a column's row, and to the row that set a state", () => {
+    it("moves the editor to a column's row", () => {
         const { view, onStepTo } = renderView(2);
-        fireEvent.click(screen.getByRole("button", { name: "Row 1" }));
-        expect(onStepTo).toHaveBeenLastCalledWith("bg");
         const hitAreas = view.container.querySelectorAll<HTMLDivElement>("div.z-10");
+        fireEvent.mouseDown(hitAreas[0], { button: 0 });
+        expect(onStepTo).toHaveBeenLastCalledWith("bg");
         fireEvent.mouseDown(hitAreas[5], { button: 0 });
         expect(onStepTo).toHaveBeenLastCalledWith("b");
     });

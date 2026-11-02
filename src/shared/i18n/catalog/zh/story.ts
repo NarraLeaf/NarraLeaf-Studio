@@ -1052,12 +1052,6 @@ export const story = {
             camera: "镜头",
             music: "音乐",
         },
-        state: {
-            present: "在场",
-            absent: "不在场",
-            playing: "播放中",
-            silent: "未播放",
-        },
         chooseBranch: "选择分支",
         untitledOption: "未命名选项",
     },

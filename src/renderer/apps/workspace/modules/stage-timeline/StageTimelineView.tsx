@@ -1,15 +1,16 @@
 /**
- * The stage timeline's drawing: lane names on the left, the ruler and lanes in the middle (scrolling
- * sideways), and on the right what each lane holds at the cursor and the row that set it.
+ * The stage timeline's drawing: lane names on the left, the ruler and lanes beside them, scrolling
+ * sideways.
  *
  * Every column is one row that runs, with a hairline between columns. A column is as wide as the
  * layout says - all the same, or as long as the row takes - and a press anywhere in it moves the
- * editor to its row.
+ * editor to its row. The track never leaves room unused: columns stretch to fill a wider panel and
+ * lanes grow to fill a taller one.
  *
  * Comments in English per project convention.
  */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Check, GitBranch, Image, ImagePlay, Music, Sparkles, Type, Video, Volume2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -20,7 +21,6 @@ import {
     STAGE_TIMELINE_SECOND_PX,
     type StageTimelineColumn,
     type StageTimelineLane,
-    type StageTimelineLaneKind,
     type StageTimelineLayoutMode,
     type StageTimelineModel,
     type StageTimelineTiming,
@@ -34,8 +34,8 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** The closest two ruler labels are allowed to sit. */
 const RULER_LABEL_GAP_PX = 44;
-
-const AUDIO_KINDS: ReadonlySet<StageTimelineLaneKind> = new Set(["music", "sound"]);
+/** The scrollbar slot a scroller keeps (`::-webkit-scrollbar` in styles.css). */
+const SCROLLBAR_PX = 8;
 
 export function StageTimelineView(props: {
     scene: StoryScene;
@@ -50,11 +50,27 @@ export function StageTimelineView(props: {
     onStepTo: (blockId: StoryBlockId) => void;
     onPick: (choiceId: StoryBlockId, optionId: StoryBlockId) => void;
 }) {
-    const { scene, model, columns, cursorColumn, layout, zoom, onZoomChange, paints, onStepTo } = props;
+    const { scene, model, cursorColumn, layout, zoom, onZoomChange, paints, onStepTo } = props;
     const { t } = useTranslation();
     const trackRef = useRef<HTMLDivElement | null>(null);
-    const totalWidth = columns.length > 0 ? columns[columns.length - 1].x + columns[columns.length - 1].width : 0;
-    const lanesHeight = model.lanes.length * LANE_PX;
+    const scrollerRef = useRef<HTMLDivElement | null>(null);
+    const room = useRoom(trackRef, scrollerRef);
+
+    // Columns narrower in total than the track stretch, in proportion, to fill it.
+    const baseWidth = columnsWidth(props.columns);
+    const fill = baseWidth > 0 && room.width > baseWidth ? room.width / baseWidth : 1;
+    const columns = useMemo(
+        () => (fill === 1 ? props.columns : props.columns.map(column => ({ x: column.x * fill, width: column.width * fill }))),
+        [fill, props.columns],
+    );
+    const totalWidth = columnsWidth(columns);
+    // Lanes share the height below the ruler, never shorter than their own row height. A track that
+    // scrolls sideways gives its scrollbar's slot back first.
+    const scrollbar = totalWidth > room.width + 0.5 ? SCROLLBAR_PX : 0;
+    const laneHeight = model.lanes.length > 0
+        ? Math.max(LANE_PX, Math.floor((room.height - RULER_PX - scrollbar) / model.lanes.length))
+        : LANE_PX;
+    const lanesHeight = model.lanes.length * laneHeight;
 
     // Ctrl/Cmd + wheel zooms the track, as it zooms the stage preview. A native listener: React's
     // wheel handler is passive and cannot keep the page from scrolling.
@@ -116,15 +132,15 @@ export function StageTimelineView(props: {
                     className="w-28 shrink-0"
                 />
             </PanelHeader>
-            {/* The three columns scroll down together. They sit in a row of their own so the row is as
-                tall as its lanes: a scroller that is itself the row would squeeze the track to the
-                visible height and clip the lanes below it. */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            {/* The names and the track scroll down together. They sit in a row of their own so the row
+                is as tall as its lanes: a scroller that is itself the row would squeeze the track to
+                the visible height and clip the lanes below it. */}
+            <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto">
                 <div className="flex min-h-full">
                     <div className="w-32 shrink-0 border-r border-edge-subtle">
                         <div style={{ height: RULER_PX }} className="border-b border-edge" />
                         {model.lanes.map(lane => (
-                            <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3 text-fg-muted">
+                            <div key={lane.id} style={{ height: laneHeight }} className="flex items-center gap-2 px-3 text-fg-muted">
                                 <LaneMark lane={lane} paint={paints.get(lane.id)} />
                                 <span className="min-w-0 truncate">{laneName(lane, t)}</span>
                             </div>
@@ -145,10 +161,10 @@ export function StageTimelineView(props: {
                                     style={{ left: columns[cursorColumn].x, width: columns[cursorColumn].width }}
                                 />
                             ) : null}
-                            <Ruler model={model} columns={columns} layout={layout} zoom={zoom} />
+                            <Ruler model={model} columns={columns} layout={layout} zoom={zoom * fill} />
                             <div className="absolute left-0 right-0" style={{ top: RULER_PX }}>
                                 {model.lanes.map(lane => (
-                                    <LaneTrack key={lane.id} lane={lane} columns={columns} paint={paints.get(lane.id)} />
+                                    <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} />
                                 ))}
                             </div>
                             {columns.map((column, index) => (
@@ -165,30 +181,6 @@ export function StageTimelineView(props: {
                             ))}
                             <ChoiceMarks scene={scene} model={model} columns={columns} onPick={props.onPick} />
                         </div>
-                    </div>
-                    <div className="w-56 shrink-0 border-l border-edge-subtle">
-                        <div style={{ height: RULER_PX }} className="border-b border-edge" />
-                        {model.lanes.map(lane => {
-                            const cell = lane.cells[cursorColumn];
-                            return (
-                                <div key={lane.id} style={{ height: LANE_PX }} className="flex items-center gap-2 px-3">
-                                    {cell ? (
-                                        <>
-                                            <span className={cn("min-w-0 flex-1 truncate", cell.present ? "text-fg" : "text-fg-subtle")}>
-                                                {cellState(lane, cell.present, cell.label, t)}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                className="shrink-0 cursor-default rounded-md px-1 text-fg-subtle hover:bg-fill hover:text-fg"
-                                                onClick={() => onStepTo(model.blockIds[cell.since])}
-                                            >
-                                                {t("story.timeline.row", { index: model.lineNumbers[cell.since] })}
-                                            </button>
-                                        </>
-                                    ) : null}
-                                </div>
-                            );
-                        })}
                     </div>
                 </div>
             </div>
@@ -230,13 +222,6 @@ function laneName(lane: StageTimelineLane, t: Translate): string {
     }
 }
 
-function cellState(lane: StageTimelineLane, present: boolean, label: string | null, t: Translate): string {
-    if (present) {
-        return label ?? t(AUDIO_KINDS.has(lane.kind) ? "story.timeline.state.playing" : "story.timeline.state.present");
-    }
-    return t(AUDIO_KINDS.has(lane.kind) ? "story.timeline.state.silent" : "story.timeline.state.absent");
-}
-
 function LaneMark({ lane, paint }: { lane: StageTimelineLane; paint?: StageTimelineLanePaint }) {
     if (lane.kind === "character") {
         return (
@@ -275,29 +260,35 @@ function lanePieces(lane: StageTimelineLane): { start: number; end: number; labe
     return pieces;
 }
 
-function LaneTrack({ lane, columns, paint }: {
+function LaneTrack({ lane, columns, height, paint }: {
     lane: StageTimelineLane;
     columns: readonly StageTimelineColumn[];
+    height: number;
     paint?: StageTimelineLanePaint;
 }) {
     const pieces = useMemo(() => lanePieces(lane), [lane]);
-    const audio = AUDIO_KINDS.has(lane.kind);
+    const middle = height / 2;
     const nodes: ReactNode[] = [];
-    pieces.forEach(piece => {
+    pieces.forEach((piece, index) => {
+        // A change that keeps the name (a move, a new zoom) is told by its mark; the bar names a state
+        // only where the name changes, so a span reads as one word rather than the same word repeated.
+        const named = piece.opens || piece.label !== pieces[index - 1]?.label;
         const left = columns[piece.start].x;
         const right = columns[piece.end].x + columns[piece.end].width;
         // Pieces of one span touch; only the span's own ends are inset, so a change reads as a mark
         // on one bar rather than as two bars.
         const inset = piece.opens ? 1 : 0;
-        const closes = piece.end + 1 >= lane.cells.length || !lane.cells[piece.end + 1].present || lane.cells[piece.end + 1].changed;
+        // A change inside a span is a mark on the bar, not the bar's end: only the column the lane
+        // leaves (or the last column) closes it.
+        const closes = piece.end + 1 >= lane.cells.length || !lane.cells[piece.end + 1].present;
         const width = Math.max(2, right - left - inset - (closes ? 1 : 0));
-        if (audio) {
+        if (lane.kind === "sound") {
             nodes.push(
                 <div key={`${piece.start}`} className="absolute" style={{ left: left + inset, width, top: 0, bottom: 0 }}>
-                    {piece.opens && piece.label ? (
+                    {named && piece.label ? (
                         <span className="absolute left-0.5 top-0.5 max-w-full truncate text-2xs text-fg-subtle">{piece.label}</span>
                     ) : null}
-                    <span className={cn("absolute bottom-2 left-0 right-0 h-1 rounded-full", lane.kind === "music" ? "bg-primary" : "bg-fg-subtle")} />
+                    <span className="absolute bottom-2 left-0 right-0 h-1 rounded-full bg-fg-subtle" />
                 </div>,
             );
             return;
@@ -310,7 +301,7 @@ function LaneTrack({ lane, columns, paint }: {
                     "absolute top-1 bottom-1 flex items-center overflow-hidden border px-1.5 text-2xs",
                     piece.opens ? "rounded-l-md" : "border-l-0",
                     closes ? "rounded-r-md" : "border-r-0",
-                    character ? paint.className : "border-edge-strong bg-fill",
+                    character ? paint.className : lane.kind === "music" ? "border-primary/60 bg-primary/20" : "border-edge-strong bg-fill",
                 )}
                 style={{
                     left: left + inset,
@@ -322,7 +313,7 @@ function LaneTrack({ lane, columns, paint }: {
                     } : {}),
                 }}
             >
-                <span className="truncate">{piece.label}</span>
+                {named ? <span className="truncate">{piece.label}</span> : null}
             </div>,
         );
         if (!piece.opens) {
@@ -330,13 +321,13 @@ function LaneTrack({ lane, columns, paint }: {
                 <span
                     key={`${piece.start}-mark`}
                     className="absolute h-2 w-2 border border-fg-muted bg-surface"
-                    style={{ left: left - 4, top: LANE_PX / 2 - 4, transform: "rotate(45deg)" }}
+                    style={{ left: left - 4, top: middle - 4, transform: "rotate(45deg)" }}
                 />,
             );
         }
     });
     return (
-        <div className="relative border-b border-edge-subtle" style={{ height: LANE_PX }}>
+        <div className="relative border-b border-edge-subtle" style={{ height }}>
             {nodes}
         </div>
     );
@@ -470,4 +461,37 @@ function ChoiceMarks({ scene, model, columns, onPick }: {
             ) : null}
         </>
     );
+}
+
+function columnsWidth(columns: readonly StageTimelineColumn[]): number {
+    const last = columns[columns.length - 1];
+    return last ? last.x + last.width : 0;
+}
+
+/** The track's width and the scroller's height, kept current as the panel is resized. */
+function useRoom(
+    trackRef: RefObject<HTMLDivElement | null>,
+    scrollerRef: RefObject<HTMLDivElement | null>,
+): { width: number; height: number } {
+    const [room, setRoom] = useState({ width: 0, height: 0 });
+    useEffect(() => {
+        const track = trackRef.current;
+        const scroller = scrollerRef.current;
+        if (!track || !scroller) {
+            return;
+        }
+        const measure = () => {
+            const next = { width: track.clientWidth, height: scroller.clientHeight };
+            setRoom(current => (current.width === next.width && current.height === next.height ? current : next));
+        };
+        measure();
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const observer = new ResizeObserver(measure);
+        observer.observe(track);
+        observer.observe(scroller);
+        return () => observer.disconnect();
+    }, [trackRef, scrollerRef]);
+    return room;
 }

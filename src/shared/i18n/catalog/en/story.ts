@@ -1211,12 +1211,6 @@ export const story = {
             camera: "Camera",
             music: "Music",
         },
-        state: {
-            present: "On stage",
-            absent: "Off stage",
-            playing: "Playing",
-            silent: "Not playing",
-        },
         chooseBranch: "Choose a branch",
         untitledOption: "Untitled option",
     },

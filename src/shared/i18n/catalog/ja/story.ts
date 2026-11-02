@@ -1094,12 +1094,6 @@ export const story = {
             camera: "カメラ",
             music: "BGM",
         },
-        state: {
-            present: "登場中",
-            absent: "退場",
-            playing: "再生中",
-            silent: "停止",
-        },
         chooseBranch: "分岐を選択",
         untitledOption: "無題の選択肢",
     },
