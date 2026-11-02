@@ -25,11 +25,17 @@ export type StageTimelineCell = {
     present: boolean;
     /** What the lane shows here: a pose, a picture, a track. Null when there is nothing to name. */
     label: string | null;
+    /** The picture behind that state, for a preview beside its name. Null when it has none. */
+    image: string | null;
+    /** For a character: the look it shows, which the preview composes. Null for anything else. */
+    sprite: StageTimelineSprite | null;
     /** The column whose row put the lane in this state - the row a click on the cell goes to. */
     since: number;
     /** This column's row changed the lane while it was already present. */
     changed: boolean;
 };
+
+export type StageTimelineSprite = { characterId: string; poseId?: string; tags?: Record<string, string> };
 
 export type StageTimelineLane = {
     id: string;
@@ -99,19 +105,21 @@ export function buildStageTimelineModel(input: {
     };
 }
 
+type FoldedState = { label: string | null; key: string; image?: string | null; sprite?: StageTimelineSprite | null };
+
 /**
  * Fold one lane's per-column states into cells. `state` answers what the lane is at a column - null
  * when absent - plus a key that changes exactly when the row changed it.
  */
 function foldCells(
     count: number,
-    state: (index: number) => { label: string | null; key: string } | null,
+    state: (index: number) => FoldedState | null,
     options: { leavingSetsSince?: boolean } = {},
 ): StageTimelineCell[] {
     const leavingSetsSince = options.leavingSetsSince ?? true;
     const cells: StageTimelineCell[] = [];
     let since = 0;
-    let previous: { label: string | null; key: string } | null = null;
+    let previous: FoldedState | null = null;
     for (let index = 0; index < count; index += 1) {
         const current = state(index);
         const entered = current !== null && previous === null;
@@ -120,7 +128,14 @@ function foldCells(
         if (entered || changed || (left && leavingSetsSince)) {
             since = index;
         }
-        cells.push({ present: current !== null, label: current?.label ?? null, since, changed });
+        cells.push({
+            present: current !== null,
+            label: current?.label ?? null,
+            image: current?.image ?? null,
+            sprite: current?.sprite ?? null,
+            since,
+            changed,
+        });
         previous = current;
     }
     return cells;
@@ -137,7 +152,7 @@ function backgroundLane(frames: readonly StageTimelineFrame[], names: StageTimel
                 return null;
             }
             const label = background.assetId ? names.asset(background.assetId) : background.color ?? null;
-            return { label, key: JSON.stringify(background) };
+            return { label, key: JSON.stringify(background), image: background.assetId ?? null };
         }),
     };
 }
@@ -164,7 +179,12 @@ function displayableLanes(frames: readonly StageTimelineFrame[], names: StageTim
             if (!record || !record.visible) {
                 return null;
             }
-            return { label: displayableLabel(record.source, record.text, names), key: record.signature };
+            return {
+                label: displayableLabel(record.source, record.text, names),
+                key: record.signature,
+                image: record.source?.type === "asset" ? record.source.assetId : null,
+                sprite: spriteOf(record.source),
+            };
         });
         const lane: StageTimelineLane = characterId
             ? { id: `d:${key}`, kind: "character", name: names.character(characterId) ?? last.objectName, characterId, cells }
@@ -212,6 +232,17 @@ function displayableLabel(source: StageSnapshotImageSource | undefined, text: st
         return tags.length > 0 ? tags.join(" · ") : null;
     }
     return sourceName(source, names);
+}
+
+function spriteOf(source: StageSnapshotImageSource | undefined): StageTimelineSprite | null {
+    if (source?.type !== "character" || !source.characterId) {
+        return null;
+    }
+    return {
+        characterId: source.characterId,
+        ...(source.pose ? { poseId: source.pose } : {}),
+        ...(source.tags ? { tags: source.tags } : {}),
+    };
 }
 
 function sourceName(source: StageSnapshotImageSource | undefined, names: StageTimelineNames): string | null {

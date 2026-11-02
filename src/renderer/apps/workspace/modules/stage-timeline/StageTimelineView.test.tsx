@@ -65,6 +65,7 @@ function renderView(cursorColumn: number) {
             zoom={1}
             onZoomChange={() => undefined}
             paints={new Map()}
+            characters={[]}
             onStepTo={onStepTo}
             onPick={onPick}
         />,

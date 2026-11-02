@@ -127,6 +127,7 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
             zoom={zoom}
             onZoomChange={setZoom}
             paints={paints}
+            characters={names.characters}
             onStepTo={stepTo}
             onPick={pick}
         />

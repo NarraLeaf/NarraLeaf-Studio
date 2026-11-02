@@ -11,18 +11,24 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Check, GitBranch, Image, ImagePlay, Music, Sparkles, Type, Video, Volume2 } from "lucide-react";
+import { Check, GitBranch, Image, ImagePlay, Music, Sparkles, Type, User, Video, Volume2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
+import { useCharacterAvatar } from "../story/scene-editor/storyCharacterFace";
+import type { Character } from "@/lib/workspace/services/character/Character";
 import { ContextMenu, PanelHeader, Select, type ContextMenuDef } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
 import {
     STAGE_TIMELINE_SECOND_PX,
+    type StageTimelineCell,
     type StageTimelineColumn,
     type StageTimelineLane,
     type StageTimelineLayoutMode,
     type StageTimelineModel,
+    type StageTimelineSprite,
     type StageTimelineTiming,
 } from "./stageTimelineModel";
 
@@ -47,6 +53,8 @@ export function StageTimelineView(props: {
     zoom: number;
     onZoomChange: (zoom: number) => void;
     paints: ReadonlyMap<string, StageTimelineLanePaint>;
+    /** The cast, for composing a character's look into its blocks' previews. */
+    characters: readonly Character[];
     onStepTo: (blockId: StoryBlockId) => void;
     onPick: (choiceId: StoryBlockId, optionId: StoryBlockId) => void;
 }) {
@@ -164,7 +172,7 @@ export function StageTimelineView(props: {
                             <Ruler model={model} columns={columns} layout={layout} zoom={zoom * fill} />
                             <div className="absolute left-0 right-0" style={{ top: RULER_PX }}>
                                 {model.lanes.map(lane => (
-                                    <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} />
+                                    <LaneTrack key={lane.id} lane={lane} columns={columns} height={laneHeight} paint={paints.get(lane.id)} characters={props.characters} />
                                 ))}
                             </div>
                             {columns.map((column, index) => (
@@ -222,6 +230,63 @@ function laneName(lane: StageTimelineLane, t: Translate): string {
     }
 }
 
+const LANE_ICONS = {
+    background: Image,
+    character: User,
+    image: ImagePlay,
+    text: Type,
+    vfx: Sparkles,
+    camera: Video,
+    music: Music,
+    sound: Volume2,
+} as const;
+
+/**
+ * What stands before a name on a block: the picture behind the state when it has one - a
+ * character's face in the look she shows, a background or image as it is - and the lane's icon when
+ * it has none (a track, a camera, a colour) or while the picture loads.
+ */
+function BlockPreview({ lane, cell, characters }: {
+    lane: StageTimelineLane;
+    cell: StageTimelineCell | null;
+    characters: readonly Character[];
+}) {
+    const character = cell?.sprite ? characters.find(candidate => candidate.profile.getId() === cell.sprite?.characterId) : undefined;
+    if (cell?.sprite && character) {
+        return <SpritePreview lane={lane} character={character} sprite={cell.sprite} />;
+    }
+    return <ImagePreview lane={lane} assetId={cell?.image ?? null} />;
+}
+
+/** The face the row's gutter shows for the same look: the pose's or the profile's frame on the sprite. */
+function SpritePreview({ lane, character, sprite }: { lane: StageTimelineLane; character: Character; sprite: StageTimelineSprite }) {
+    const { url, frame, showingSprite } = useCharacterAvatar(character, { pose: sprite.poseId, tags: sprite.tags, resolveVariant: true });
+    if (!url) {
+        return <LaneIcon lane={lane} />;
+    }
+    return showingSprite ? (
+        <span className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
+            <HeadThumbnail url={url} alt="" frame={frame} className="h-full w-full" iconClassName="h-2 w-2" />
+        </span>
+    ) : (
+        <PreviewPicture url={url} />
+    );
+}
+
+function ImagePreview({ lane, assetId }: { lane: StageTimelineLane; assetId: string | null }) {
+    const { url } = useAssetObjectUrl(assetId);
+    return url ? <PreviewPicture url={url} /> : <LaneIcon lane={lane} />;
+}
+
+function PreviewPicture({ url }: { url: string }) {
+    return <img src={url} alt="" draggable={false} className="h-4 w-4 shrink-0 rounded-sm object-cover" />;
+}
+
+function LaneIcon({ lane }: { lane: StageTimelineLane }) {
+    const Icon = LANE_ICONS[lane.kind];
+    return <Icon className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />;
+}
+
 function LaneMark({ lane, paint }: { lane: StageTimelineLane; paint?: StageTimelineLanePaint }) {
     if (lane.kind === "character") {
         return (
@@ -231,15 +296,7 @@ function LaneMark({ lane, paint }: { lane: StageTimelineLane; paint?: StageTimel
             />
         );
     }
-    const Icon = {
-        background: Image,
-        image: ImagePlay,
-        text: Type,
-        vfx: Sparkles,
-        camera: Video,
-        music: Music,
-        sound: Volume2,
-    }[lane.kind];
+    const Icon = LANE_ICONS[lane.kind];
     return <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />;
 }
 
@@ -260,11 +317,12 @@ function lanePieces(lane: StageTimelineLane): { start: number; end: number; labe
     return pieces;
 }
 
-function LaneTrack({ lane, columns, height, paint }: {
+function LaneTrack({ lane, columns, height, paint, characters }: {
     lane: StageTimelineLane;
     columns: readonly StageTimelineColumn[];
     height: number;
     paint?: StageTimelineLanePaint;
+    characters: readonly Character[];
 }) {
     const pieces = useMemo(() => lanePieces(lane), [lane]);
     // A block is one name: it starts where the lane enters or the name changes, and ends where the
@@ -288,7 +346,10 @@ function LaneTrack({ lane, columns, height, paint }: {
             nodes.push(
                 <div key={`${piece.start}`} className="absolute" style={{ left, width, top: 0, bottom: 0 }}>
                     {named && piece.label ? (
-                        <span className="absolute left-0.5 top-0.5 max-w-full truncate text-2xs text-fg-subtle">{piece.label}</span>
+                        <span className="absolute left-0.5 top-0.5 flex max-w-full items-center gap-1 text-2xs text-fg-subtle">
+                            <BlockPreview lane={lane} cell={null} characters={characters} />
+                            <span className="truncate">{piece.label}</span>
+                        </span>
                     ) : null}
                     <span className="absolute bottom-2 left-0 right-0 h-1 rounded-full bg-fg-subtle" />
                 </div>,
@@ -316,7 +377,7 @@ function LaneTrack({ lane, columns, height, paint }: {
                 }}
             />,
         );
-        if (named && piece.label) {
+        if (named) {
             // A name runs on over the pieces after it to the end of its block, so a state that is
             // marked again a column later is still named in full.
             let last = index;
@@ -327,10 +388,11 @@ function LaneTrack({ lane, columns, height, paint }: {
             labels.push(
                 <span
                     key={`${piece.start}-label`}
-                    className="pointer-events-none absolute top-1 bottom-1 flex items-center px-1.5 text-2xs"
+                    className="pointer-events-none absolute top-1 bottom-1 flex items-center gap-1 overflow-hidden px-1.5 text-2xs"
                     style={{ left, width: end - left }}
                 >
-                    <span className="truncate">{piece.label}</span>
+                    <BlockPreview lane={lane} cell={lane.cells[piece.start]} characters={characters} />
+                    {piece.label ? <span className="truncate">{piece.label}</span> : null}
                 </span>,
             );
         }

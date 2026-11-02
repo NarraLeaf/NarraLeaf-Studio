@@ -117,6 +117,9 @@ describe("buildStageTimelineModel", () => {
         expect(cells.map(cell => cell.present)).toEqual([false, true, true, true, false, false]);
         expect(cells.map(cell => cell.label)).toEqual([null, "Normal", "Normal", "Smile", null, null]);
         expect(cells.map(cell => cell.changed)).toEqual([false, false, false, true, false, false]);
+        // Each state carries the picture behind it, for the preview beside its name.
+        expect(cells.map(cell => cell.sprite?.poseId ?? null)).toEqual([null, "normal", "normal", "smile", null, null]);
+        expect(cells[1].sprite?.characterId).toBe("alice");
         // Each state points at the row that brought it about.
         expect(cells.map(cell => cell.since)).toEqual([0, 1, 1, 3, 4, 4]);
         expect(model.lineNumbers).toEqual([1, 2, 3, 4, 5, 6]);
@@ -132,6 +135,8 @@ describe("buildStageTimelineModel", () => {
         const model = modelOf(document);
         expect(model.lanes.map(lane => lane.kind)).toEqual(["background", "music"]);
         expect(model.lanes[0].cells.map(cell => cell.label)).toEqual(["asset:room", "asset:room", "asset:room", "asset:room"]);
+        expect(model.lanes[0].cells[0].image).toBe("room");
+        expect(model.lanes[1].cells[1].image).toBeNull();
         expect(model.lanes[1].cells.map(cell => cell.present)).toEqual([false, true, true, false]);
         expect(model.lanes[1].cells[1].label).toBe("asset:theme");
     });
