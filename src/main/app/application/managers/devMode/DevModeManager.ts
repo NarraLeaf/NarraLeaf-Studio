@@ -19,6 +19,7 @@ import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { readRunLocaleChoice, resolveRunLocale } from "../../utils/runLocale";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
@@ -26,7 +27,7 @@ import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { isProjectAssetPath } from "@shared/devMode/assetRevision";
 import type { LocaleCode } from "@shared/i18n";
-import { getMainLocale } from "../../i18n";
+import { getMainLocale, getMainTranslator } from "../../i18n";
 
 type DevModeSession = {
     id: string;
@@ -649,6 +650,24 @@ export class DevModeManager {
                 compiled: compileResult.artifacts,
             });
             this.emitVerbose(session, `bundle assembly finished in ${Date.now() - started} ms`);
+            // Read per rebuild like the variant: choosing a language in the run menu reloads the
+            // session, and the reload has to be the one that carries it. Checked against the
+            // languages this very bundle carries, so a language removed since it was chosen is
+            // caught by the same assembly that would otherwise have shipped the code to the game.
+            const runLocale = resolveRunLocale(
+                readRunLocaleChoice(this.app.getGlobalState(), session.projectPath),
+                bundle.localization,
+            );
+            if (runLocale.kind === "missing") {
+                const message = getMainTranslator(this.app).t("actions.run.languageMissingRun", { code: runLocale.code });
+                session.status = "error";
+                this.emitWorkspaceConsoleLog(session, { level: "error", source: "Dev Mode", message });
+                this.queueSessionError(session, message);
+                return;
+            }
+            if (runLocale.kind === "pinned") {
+                bundle.runLocale = runLocale.code;
+            }
             this.sendBundle(session, bundle);
             session.status = "running";
             this.emitVerbose(session, "status set to running");

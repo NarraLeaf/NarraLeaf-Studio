@@ -27,6 +27,13 @@ export const actions = {
         runAs: "运行为",
             runWithDlc: "带 DLC 运行",
             dlcCount: "{active} / {total}",
+        // 开发模式运行时显示哪种语言，取代玩家保存的语言与系统语言。仅在项目有两种及以上语言时出现。
+        language: "语言",
+        languageDetail: "开发模式运行时使用的语言",
+        // 默认项：游戏按面向玩家时的方式决定语言。
+        languageAuto: "自动",
+        languageRemoved: "「{name}」已从项目中移除，开发模式语言已改为「自动」",
+        languageMissingRun: "开发模式语言「{code}」不在本项目的语言中。请在运行菜单的「语言」中重新选择",
         // 预览是否按受保护构建的方式存放内容。仅在项目开启资产保护时出现，且默认关闭。
         previewAsShipped: "生产预览",
         previewAsShippedDetail: "预览按玩家收到的受保护形式运行，启动更慢",
