@@ -1074,6 +1074,35 @@ export const story = {
         filteredEmptyClear: "すべて表示",
         snapshotsPanel: "シーンのスナップショット",
     },
+    timeline: {
+        empty: "ストーリーのシーンを開くとステージタイムラインを表示します",
+        emptyScene: "このシーンには実行される行がありません",
+        layout: {
+            equal: "等幅",
+            timed: "所要時間",
+        },
+        step: "ステップ {index}",
+        seconds: "{seconds} 秒",
+        source: {
+            voice: "ボイス",
+            estimate: "推定",
+            choice: "選択待ち",
+            instant: "即時",
+        },
+        lane: {
+            background: "背景",
+            camera: "カメラ",
+            music: "BGM",
+        },
+        state: {
+            present: "登場中",
+            absent: "退場",
+            playing: "再生中",
+            silent: "停止",
+        },
+        chooseBranch: "分岐を選択",
+        untitledOption: "無題の選択肢",
+    },
     preview: {
         label: "プレビュー",
         openPreview: "実況プレビューを開く",

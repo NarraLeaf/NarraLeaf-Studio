@@ -339,6 +339,19 @@ export const help = {
                 + "preview pictures are set in the inspector.\n"
                 + "- The preview is drawn at the size the game draws, so its timing matches playback.",
         },
+        stageTimeline: {
+            title: "Stage timeline",
+            body:
+                "The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per object, one column per row.\n"
+                + "\n"
+                + "- Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.\n"
+                + "- A bar means the object is on stage. A diamond marks a change while it is on stage, such as a new expression or a move.\n"
+                + "- Clicking a column moves the editor and the preview to that row. The right side lists each lane's state at the cursor and the step that set it.\n"
+                + "- In Equal width every row has the same width. In By duration a line takes the length of its voice take, a line without a take is estimated from its length, and a command takes the length of its transition or movement.\n"
+                + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
+                + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
+                + "- Hold Ctrl or Command and scroll to zoom the timeline.",
+        },
         assets: {
             title: "Assets",
             body:

@@ -23,6 +23,7 @@ export const placeholders = {
         problems: "問題",
         agentLog: "エージェントログ",
         storyMotion: "ストーリーモーション",
+        stageTimeline: "ステージタイムライン",
         dashboard: "ダッシュボード",
         audioPreview: "音声プレビュー",
         imagePreview: "画像プレビュー",

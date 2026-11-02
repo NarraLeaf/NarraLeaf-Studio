@@ -348,6 +348,89 @@ export type StoryStageSnapshot = {
 };
 
 /**
+ * One image or text on the stage once a row has run, as the timeline reads it.
+ *
+ * `signature` folds every channel that changes how the object looks - visibility, source, pose,
+ * effects, loop, words - into one string, so "did this row change it" is a string comparison
+ * between two frames rather than a deep walk of two records.
+ */
+export type StageTimelineDisplayable = Pick<StageSnapshotDisplayable, "kind" | "objectName" | "sourceBlockId" | "visible" | "source" | "text"> & {
+    signature: string;
+};
+
+/** The stage once one row on the walked path has run. */
+export type StageTimelineFrame = {
+    blockId: StoryBlockId;
+    background: { assetId?: string; color?: string } | null;
+    /** Images and texts in creation order; the scene's layers are left out. */
+    displayables: StageTimelineDisplayable[];
+    camera: StageSnapshotCamera | null;
+    music: StageSnapshotMusic | null;
+    sounds: (Pick<StageSnapshotSound, "objectName" | "sourceBlockId" | "playing" | "paused">)[];
+    vfx: { objectName: string; sourceBlockId: string; showing: boolean }[];
+};
+
+/** A menu the timeline walk passed, and the option it went down. */
+export type StageTimelineChoice = {
+    choiceBlockId: StoryBlockId;
+    optionBlockIds: StoryBlockId[];
+    takenOptionId: StoryBlockId | null;
+};
+
+export type StageTimelineWalk = {
+    frames: StageTimelineFrame[];
+    choices: StageTimelineChoice[];
+};
+
+/**
+ * Walk a whole scene once and record the stage after every row the walk runs - the stage
+ * timeline's reading of the scene.
+ *
+ * The same walk {@link computeStoryStageSnapshot} makes, run to the end of the scene instead of to
+ * one row, so a column of the timeline and the preview of that row can never disagree about what
+ * is on the stage. Conditions are decided the way the preview decides them. A menu goes down the
+ * option `through` puts on the path, and down its first option when nothing does: a timeline that
+ * stopped at every menu would end at the first one.
+ */
+export function walkStoryStageTimeline(input: {
+    document: StoryDocument;
+    sceneId: string;
+    /** Rows to put on the walked path: the options chosen at each menu, the row being read. */
+    through?: readonly StoryBlockId[];
+    animations?: ReadonlyMap<string, StoryAnimationAsset> | Record<string, StoryAnimationAsset>;
+    savedVariables?: SavedVariableRuntimeTable;
+    persistentVariables?: SavedVariableRuntimeTable;
+    readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
+    characters?: readonly DevModeCharacterSummary[];
+}): StageTimelineWalk {
+    const scene = input.document.scenes[input.sceneId];
+    if (!scene) {
+        return { frames: [], choices: [] };
+    }
+    const animations = input.animations instanceof Map
+        ? input.animations
+        : new Map(Object.entries(input.animations ?? {}));
+    const walker = new SnapshotWalker(
+        scene,
+        null,
+        animations,
+        savedVariableDefsFromView(collectSavedVariableView(input.document, input.savedVariables)),
+        savedVariableDefsFromView(buildMergedVariableView(
+            Object.values(input.persistentVariables ?? {}),
+            Object.values(storyPersistentDefs(input.document)),
+        )),
+        input.readPersistent,
+        new Map((input.characters ?? []).flatMap(character => (
+            character.entranceTransform ? [[character.id, character.entranceTransform] as const] : []
+        ))),
+    );
+    for (const blockId of input.through ?? []) {
+        walker.addToPath(blockId);
+    }
+    return walker.walkTimeline();
+}
+
+/**
  * Lower bound on camera zoom (a zero/negative scale is a broken transform, not a shot). Mirrors the
  * compiler's `MIN_CAMERA_ZOOM`: the pose is pre-posed straight onto the camera, bypassing the
  * `compileCameraAction` clamp, so it must be clamped here too.
@@ -572,6 +655,8 @@ class SnapshotWalker {
     private targetCamera: Record<string, unknown> | null = null;
     private nvl = false;
     private reachedTarget = false;
+    /** Set only by {@link walkTimeline}: the frames and menus a whole-scene walk records. */
+    private timeline: StageTimelineWalk | null = null;
 
     constructor(
         private readonly scene: StoryScene,
@@ -647,6 +732,61 @@ class SnapshotWalker {
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
+    }
+
+    /** See {@link walkStoryStageTimeline}. */
+    walkTimeline(): StageTimelineWalk {
+        const timeline: StageTimelineWalk = { frames: [], choices: [] };
+        this.timeline = timeline;
+        this.scanCompileOrder(this.scene.rootBlockIds);
+        const layers = sceneLayerStack(this.scene);
+        layers.forEach((layer, index) => {
+            if (layer.kind === "custom") {
+                this.ensure("layer", layer.name, layer.id).zIndex = sceneLayerZIndex(layers, index);
+            }
+        });
+        this.visitList(this.scene.rootBlockIds, false);
+        this.timeline = null;
+        return timeline;
+    }
+
+    /** Record the stage as it stands now, once `block` has run. A no-op outside a timeline walk. */
+    private recordFrame(block: StoryBlock): void {
+        if (!this.timeline || this.inert > 0) {
+            return;
+        }
+        const displayables: StageTimelineDisplayable[] = [];
+        for (const key of this.order) {
+            const record = this.displayables.get(key);
+            if (!record || record.kind === "layer") {
+                continue;
+            }
+            displayables.push({
+                kind: record.kind,
+                objectName: record.objectName,
+                ...(record.sourceBlockId ? { sourceBlockId: record.sourceBlockId } : {}),
+                visible: record.visible,
+                ...(record.source ? { source: record.source } : {}),
+                ...(record.text !== undefined ? { text: record.text } : {}),
+                signature: JSON.stringify([record.visible, record.source, record.props, record.effects, record.loop, record.text]),
+            });
+        }
+        this.timeline.frames.push({
+            blockId: block.id,
+            background: this.background ? { ...this.background } : null,
+            displayables,
+            camera: this.camera ? { ...this.camera, props: { ...this.camera.props }, effects: { ...this.camera.effects } } : null,
+            music: this.music ? { ...this.music } : null,
+            sounds: [...this.soundSources].map(([objectName, sourceBlockId]) => {
+                const state = this.soundStates.get(objectName);
+                return { objectName, sourceBlockId, playing: state?.playing ?? false, paused: state?.paused ?? false };
+            }),
+            vfx: [...this.vfx.values()].map(record => ({
+                objectName: record.objectName,
+                sourceBlockId: record.sourceBlockId,
+                showing: record.shownBy !== undefined,
+            })),
+        });
     }
 
     /**
@@ -884,6 +1024,7 @@ class SnapshotWalker {
                 return;
             }
             // narration / dialogue have no stage-state effect before the target.
+            this.recordFrame(block);
             this.visitList(block.childrenIds, insideNvl);
             return;
         }
@@ -894,6 +1035,7 @@ class SnapshotWalker {
                 return;
             }
             this.applyAction(block, block.payload);
+            this.recordFrame(block);
             this.visitList(block.childrenIds, insideNvl);
             return;
         }
@@ -907,6 +1049,11 @@ class SnapshotWalker {
                 this.visitList(block.childrenIds, insideNvl);
                 return;
             }
+            if (this.timeline && (block.payload.control === "ending" || block.payload.control === "quit")) {
+                this.recordFrame(block);
+                this.reachedTarget = true;
+                return;
+            }
             if (block.payload.control === "repeat" && (block.payload.until !== undefined || (block.payload.times ?? 1) !== 1)) {
                 // A conditional loop says the same thing more strongly: how many times it would have
                 // run is not knowable without running it, so the snapshot walks the body exactly once.
@@ -917,6 +1064,12 @@ class SnapshotWalker {
         }
 
         if (block.kind === "jump") {
+            if (this.timeline) {
+                // Play leaves the scene here, so no row after it runs.
+                this.recordFrame(block);
+                this.reachedTarget = true;
+                return;
+            }
             this.diagnostic(block.id, translate("story.preview.diagnostics.sceneJumpIgnored"));
             return;
         }
@@ -926,6 +1079,24 @@ class SnapshotWalker {
     }
 
     private visitChoice(block: Extract<StoryBlock, { kind: "nodeAction" }>, insideNvl: boolean): void {
+        if (this.timeline) {
+            this.recordFrame(block);
+            // A timeline runs past every menu: the option on the path, or else the first one the
+            // compiler keeps, so the rows after the menu are still on it.
+            const options = block.childrenIds
+                .map(childId => this.scene.blocks[childId])
+                .filter((child): child is StoryBlock => Boolean(child) && !child?.disabled);
+            const option = options.find(child => this.pathBlockIds.has(child.id)) ?? options[0];
+            this.timeline.choices.push({
+                choiceBlockId: block.id,
+                optionBlockIds: options.map(child => child.id),
+                takenOptionId: option?.id ?? null,
+            });
+            if (option) {
+                this.visitList(option.childrenIds, insideNvl);
+            }
+            return;
+        }
         if (this.pathBlockIds.has(block.id)) {
             const option = block.childrenIds
                 .map(childId => this.scene.blocks[childId])

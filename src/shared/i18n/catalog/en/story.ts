@@ -1191,6 +1191,35 @@ export const story = {
         filteredEmptyClear: "Show all",
         snapshotsPanel: "Scene Snapshots",
     },
+    timeline: {
+        empty: "Open a story scene to see its stage timeline",
+        emptyScene: "This scene has no rows that run",
+        layout: {
+            equal: "Equal width",
+            timed: "By duration",
+        },
+        step: "Step {index}",
+        seconds: "{seconds} s",
+        source: {
+            voice: "Voice",
+            estimate: "Estimated",
+            choice: "Waits for a choice",
+            instant: "Instant",
+        },
+        lane: {
+            background: "Background",
+            camera: "Camera",
+            music: "Music",
+        },
+        state: {
+            present: "On stage",
+            absent: "Off stage",
+            playing: "Playing",
+            silent: "Not playing",
+        },
+        chooseBranch: "Choose a branch",
+        untitledOption: "Untitled option",
+    },
     preview: {
         label: "Preview",
         openPreview: "Open live preview",

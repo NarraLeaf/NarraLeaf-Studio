@@ -52,6 +52,7 @@ export const HELP_TOPIC_IDS = [
     "storyPaste",
     "sceneSnapshot",
     "storyMotion",
+    "stageTimeline",
     "dictionary",
     "dictionaryMarks",
     "assets",
@@ -271,6 +272,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "story-motion.no-snap",
         ],
         related: ["storyCommands", "characters"],
+    },
+    {
+        id: "stageTimeline",
+        section: "story",
+        related: ["storyScene", "voice", "storyMotion"],
     },
 
     // --- Content --------------------------------------------------------------

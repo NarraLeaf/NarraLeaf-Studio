@@ -22,6 +22,7 @@ import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
+import { stageTimelinePanelModule } from "./stage-timeline";
 import { storyVariablesPanelModule } from "./story-variables";
 import { storySnapshotPanelModule } from "./story-snapshots";
 import { dictionaryPanelModule } from "./dictionary";
@@ -51,6 +52,7 @@ export const builtInPanels: PanelModule[] = [
     localizationPanelModule,
     voicePanelModule,
     storyMotionPanelModule,
+    stageTimelinePanelModule,
     assetsBottomModule,
     propertiesModule,
     storyVariablesPanelModule,
@@ -107,6 +109,7 @@ export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
+export { stageTimelinePanelModule } from "./stage-timeline";
 export { storyVariablesPanelModule } from "./story-variables";
 export { storySnapshotPanelModule } from "./story-snapshots";
 export { dictionaryPanelModule, openDictionaryPanel, DICTIONARY_PANEL_ID } from "./dictionary";
