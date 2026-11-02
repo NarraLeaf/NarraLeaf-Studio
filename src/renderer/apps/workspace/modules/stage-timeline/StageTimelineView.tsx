@@ -28,7 +28,6 @@ import {
     type StageTimelineLane,
     type StageTimelineLayoutMode,
     type StageTimelineModel,
-    type StageTimelineSprite,
     type StageTimelineTiming,
 } from "./stageTimelineModel";
 
@@ -242,44 +241,94 @@ const LANE_ICONS = {
 } as const;
 
 /**
- * What stands before a name on a block: the picture behind the state when it has one - a
- * character's face in the look she shows, a background or image as it is - and the lane's icon when
- * it has none (a track, a camera, a colour) or while the picture loads.
+ * A block's picture and name. A block with a picture has it laid along its left end, fading into the
+ * block's own colour, with the name over the fade: a character's face as the Characters panel shows
+ * it, a background or image as it is. A block with none (a track, a camera pose, a colour) leads its
+ * name with its lane's icon, as it does while the picture loads.
  */
-function BlockPreview({ lane, cell, characters }: {
+function BlockContent(props: {
     lane: StageTimelineLane;
-    cell: StageTimelineCell | null;
+    cell: StageTimelineCell;
+    label: string | null;
     characters: readonly Character[];
+    left: number;
+    width: number;
+    /** The block's inner height, which a picture fills. */
+    height: number;
 }) {
-    const character = cell?.sprite ? characters.find(candidate => candidate.profile.getId() === cell.sprite?.characterId) : undefined;
-    if (cell?.sprite && character) {
-        return <SpritePreview lane={lane} character={character} sprite={cell.sprite} />;
-    }
-    return <ImagePreview lane={lane} assetId={cell?.image ?? null} />;
-}
-
-/** The face the row's gutter shows for the same look: the pose's or the profile's frame on the sprite. */
-function SpritePreview({ lane, character, sprite }: { lane: StageTimelineLane; character: Character; sprite: StageTimelineSprite }) {
-    const { url, frame, showingSprite } = useCharacterAvatar(character, { pose: sprite.poseId, tags: sprite.tags, resolveVariant: true });
-    if (!url) {
-        return <LaneIcon lane={lane} />;
-    }
-    return showingSprite ? (
-        <span className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
-            <HeadThumbnail url={url} alt="" frame={frame} className="h-full w-full" iconClassName="h-2 w-2" />
+    const { lane, cell } = props;
+    const character = cell.sprite ? props.characters.find(candidate => candidate.profile.getId() === cell.sprite?.characterId) : undefined;
+    return (
+        <span
+            className="pointer-events-none absolute top-1 bottom-1 overflow-hidden rounded-l-md text-2xs"
+            style={{ left: props.left, width: props.width }}
+        >
+            {character ? (
+                <CharacterBackdrop lane={lane} character={character} label={props.label} height={props.height} width={props.width} />
+            ) : (
+                <ImageBackdrop lane={lane} assetId={cell.image} label={props.label} height={props.height} width={props.width} />
+            )}
         </span>
-    ) : (
-        <PreviewPicture url={url} />
     );
 }
 
-function ImagePreview({ lane, assetId }: { lane: StageTimelineLane; assetId: string | null }) {
-    const { url } = useAssetObjectUrl(assetId);
-    return url ? <PreviewPicture url={url} /> : <LaneIcon lane={lane} />;
+/** A picture's share of the block: as wide as its shape at the block's height, never past the block. */
+const BACKGROUND_ASPECT = 16 / 9;
+const FADE_MASK = "linear-gradient(to right, black 35%, transparent)";
+
+function Backdrop(props: { width: number; label: string | null; children: ReactNode }) {
+    return (
+        <>
+            <span
+                className="absolute inset-y-px left-px overflow-hidden rounded-l-md"
+                style={{ width: props.width, maskImage: FADE_MASK, WebkitMaskImage: FADE_MASK }}
+            >
+                {props.children}
+            </span>
+            {props.label ? (
+                <span className="relative flex h-full items-center pr-1.5" style={{ paddingLeft: props.width * 0.6 + 6 }}>
+                    <span className="truncate">{props.label}</span>
+                </span>
+            ) : null}
+        </>
+    );
 }
 
-function PreviewPicture({ url }: { url: string }) {
-    return <img src={url} alt="" draggable={false} className="h-4 w-4 shrink-0 rounded-sm object-cover" />;
+function IconLabel({ lane, label }: { lane: StageTimelineLane; label: string | null }) {
+    return (
+        <span className="flex h-full items-center gap-1 px-1.5">
+            <LaneIcon lane={lane} />
+            {label ? <span className="truncate">{label}</span> : null}
+        </span>
+    );
+}
+
+function CharacterBackdrop(props: { lane: StageTimelineLane; character: Character; label: string | null; height: number; width: number }) {
+    // The face the Characters panel shows: the author's avatar, else the head of the default look.
+    const { url, frame, showingSprite } = useCharacterAvatar(props.character, { resolveVariant: true, preferThumbnail: true });
+    if (!url) {
+        return <IconLabel lane={props.lane} label={props.label} />;
+    }
+    const size = Math.min(props.height, props.width);
+    return (
+        <Backdrop width={size} label={props.label}>
+            {showingSprite
+                ? <HeadThumbnail url={url} alt="" frame={frame} className="h-full w-full" iconClassName="h-3 w-3" />
+                : <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />}
+        </Backdrop>
+    );
+}
+
+function ImageBackdrop(props: { lane: StageTimelineLane; assetId: string | null; label: string | null; height: number; width: number }) {
+    const { url } = useAssetObjectUrl(props.assetId);
+    if (!url) {
+        return <IconLabel lane={props.lane} label={props.label} />;
+    }
+    return (
+        <Backdrop width={Math.min(props.height * BACKGROUND_ASPECT, props.width)} label={props.label}>
+            <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />
+        </Backdrop>
+    );
 }
 
 function LaneIcon({ lane }: { lane: StageTimelineLane }) {
@@ -347,7 +396,7 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
                 <div key={`${piece.start}`} className="absolute" style={{ left, width, top: 0, bottom: 0 }}>
                     {named && piece.label ? (
                         <span className="absolute left-0.5 top-0.5 flex max-w-full items-center gap-1 text-2xs text-fg-subtle">
-                            <BlockPreview lane={lane} cell={null} characters={characters} />
+                            <LaneIcon lane={lane} />
                             <span className="truncate">{piece.label}</span>
                         </span>
                     ) : null}
@@ -386,14 +435,16 @@ function LaneTrack({ lane, columns, height, paint, characters }: {
             }
             const end = geometry[last].left + geometry[last].width;
             labels.push(
-                <span
+                <BlockContent
                     key={`${piece.start}-label`}
-                    className="pointer-events-none absolute top-1 bottom-1 flex items-center gap-1 overflow-hidden px-1.5 text-2xs"
-                    style={{ left, width: end - left }}
-                >
-                    <BlockPreview lane={lane} cell={lane.cells[piece.start]} characters={characters} />
-                    {piece.label ? <span className="truncate">{piece.label}</span> : null}
-                </span>,
+                    lane={lane}
+                    cell={lane.cells[piece.start]}
+                    label={piece.label}
+                    characters={characters}
+                    left={left}
+                    width={end - left}
+                    height={height - 8}
+                />,
             );
         }
         if (!opens) {
