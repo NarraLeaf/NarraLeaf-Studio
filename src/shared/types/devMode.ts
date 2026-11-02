@@ -675,6 +675,19 @@ export type DevModeBundle = {
      */
     languageChange?: LanguageChangeConfiguration;
     /**
+     * The language a Dev Mode run is shown in, chosen under Language in the workspace's run menu.
+     *
+     * Takes the place of the player's stored language and of the system-language match for this
+     * run only: the game holds it session-only and never writes it to the player's store, so the
+     * next run without a choice reads exactly what it would have read before. Always one of
+     * {@link localization}'s languages - the main process refuses the run rather than stamp a code
+     * the project does not have (see `runLocale.ts`).
+     *
+     * Absent on every bundle that is not a Dev Mode run - a build, a preview, a test - and on a Dev
+     * Mode run with no choice made, which leaves the language to the game as a player would get it.
+     */
+    runLocale?: string;
+    /**
      * The author's dialogue settings, baked from `.nlproj` `app.dialogue`. Absent on bundles that
      * predate the section, which every consumer reads as the engine's own values.
      */

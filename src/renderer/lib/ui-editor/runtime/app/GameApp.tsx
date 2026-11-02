@@ -222,6 +222,7 @@ import {
     promotePendingLocale,
     resumeAfterLocaleRestart,
 } from "./localeRestart";
+import { applyRunLocalePin, RunLocaleYield } from "./runLocalePin";
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController, type SkipRunController } from "./skipRunController";
 import { createGameStoryInputHost, type GameStoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
@@ -643,10 +644,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return pluginHost.attachRuntime({ scope: core.scopeBridge, bundle });
     }, [bundle, core, pluginHost]);
+    /**
+     * The run-menu language the game has switched away from in this window, if it has.
+     *
+     * A ref rather than state, and on this component rather than on the core: a Dev Mode restart is a
+     * session reload that builds a new core into the same component, and the yield has to outlive it
+     * (see `runLocalePin`).
+     */
+    const runLocaleYieldRef = useRef(new RunLocaleYield());
     // First-launch language pick: when no stored locale is valid for this project,
     // match the system language against the configured locales and persist it.
     // The stored value stays authoritative afterwards (player choice wins).
+    // A Dev Mode run whose language was chosen in the run menu goes before both.
+    const runLocale = bundle.runLocale;
     useEffect(() => {
+        runLocaleYieldRef.current.noteBundle(runLocale);
         const localization = bundle.localization;
         // A project without a source language has no language to pick, only its keys.
         if (!core || !localization || isKeysOnlyLocalization(localization)) {
@@ -668,7 +680,16 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 const stored = await core.scopeBridge.persistenceGetAsync(LOCALE_STORAGE_KEY);
-                if (cancelled || (typeof stored === "string" && localization.locales.some(locale => locale.code === stored))) {
+                if (cancelled) {
+                    return;
+                }
+                // After the stored read rather than before it: that read writes what the store
+                // answered back into this session's copy, and would put the player's language over
+                // the pin. Session-only, so the player's store is never written.
+                if (applyRunLocalePin(core.scopeBridge, runLocale, localization, runLocaleYieldRef.current.yieldedTo())) {
+                    return;
+                }
+                if (typeof stored === "string" && localization.locales.some(locale => locale.code === stored)) {
                     return;
                 }
                 const candidates = typeof navigator !== "undefined"
@@ -688,7 +709,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return () => {
             cancelled = true;
         };
-    }, [core, bundle.localization]);
+    }, [core, bundle.localization, runLocale]);
     // Localized UI text: widget renderers resolve display text through this
     // context and re-render on language changes (persistence subscription).
     const gameLocalizationRuntime = useMemo<GameLocalizationRuntime | null>(() => {
@@ -4157,6 +4178,9 @@ export function GameApp(props: GameAppProps): ReactNode {
      * where most players change it.
      */
     const handleLocaleChanged = useCallback(async (code: string): Promise<void> => {
+        // The game switched language itself, so the run menu's pin steps aside for the rest of this
+        // window - see `runLocalePin`. Before the change is applied, because applying it may reload.
+        runLocaleYieldRef.current.noteGameSwitch(bundle.runLocale);
         await applyLocaleChange({
             isPlaythroughRunning,
             inGame: languageChange.inGame,
@@ -4167,7 +4191,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             restartApplication: host.restartApplication,
             report: reportLocaleRestart,
         }, code);
-    }, [core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
+    }, [bundle.runLocale, core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
 
     /**
      * Put the player back into the run a language change restarted the game out of.
