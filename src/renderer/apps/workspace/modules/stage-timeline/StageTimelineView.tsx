@@ -281,6 +281,7 @@ function laneName(lane: StageTimelineLane, t: Translate): string {
 const LANE_TINTS: Partial<Record<StageTimelineLane["kind"], string>> = {
     background: "border-success/50 bg-success/15",
     music: "border-primary/60 bg-primary/20",
+    sound: "border-warning/50 bg-warning/15",
 };
 
 const LANE_ICONS = {
@@ -322,7 +323,9 @@ function BlockContent(props: {
             {/* Hangs at the left edge of the view while the block runs on past it, and is pushed off
                 only by the block's own end - so a long block scrolled into keeps saying what it is.
                 Nothing between this and the track may clip, or it sticks to that instead. */}
-            <span className="sticky left-0 flex h-full w-fit max-w-full items-center">
+            {/* Clipped on itself: a clip here keeps a short block's name inside it without giving
+                the sticky an ancestor to stick to. */}
+            <span className="sticky left-0 flex h-full w-fit max-w-full items-center overflow-hidden">
                 {props.hanging ? (
                     // Hanging, the name is a reminder of what the block is; the picture stays at the
                     // block's start.
@@ -378,7 +381,7 @@ function Backdrop(props: { width: number; label: string | null; children: ReactN
 
 function IconLabel({ lane, label }: { lane: StageTimelineLane; label: string | null }) {
     return (
-        <span className="flex h-full items-center gap-1 px-1.5">
+        <span className="flex h-full min-w-0 items-center gap-1 px-1.5">
             <LaneIcon lane={lane} />
             {label ? <span className="truncate">{label}</span> : null}
         </span>
@@ -489,20 +492,6 @@ function LaneTrack({ lane, columns, height, paint, characters, scrollLeft }: {
     const labels: ReactNode[] = [];
     pieces.forEach((piece, index) => {
         const { left, width, opens, closes, named } = geometry[index];
-        if (lane.kind === "sound") {
-            nodes.push(
-                <div key={`${piece.start}`} className="absolute" style={{ left, width, top: 0, bottom: 0 }}>
-                    {named && piece.label ? (
-                        <span className="absolute left-0.5 top-0.5 flex max-w-full items-center gap-1 text-2xs text-fg-subtle">
-                            <LaneIcon lane={lane} />
-                            <span className="truncate">{piece.label}</span>
-                        </span>
-                    ) : null}
-                    <span className="absolute bottom-2 left-0 right-0 h-1 rounded-full bg-fg-subtle" />
-                </div>,
-            );
-            return;
-        }
         const character = lane.kind === "character" && paint;
         nodes.push(
             <div
