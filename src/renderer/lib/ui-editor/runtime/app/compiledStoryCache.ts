@@ -118,3 +118,50 @@ export function reuseCompiledStory(
     entry.compiled.story.entry(scene);
     return { ...entry.compiled, scene, sceneId };
 }
+
+/** Owns the compile slot and publishes results only while their bundle is current. */
+export class StoryCompileSession {
+    private bundleId = "";
+    private revision = -1;
+    private generation = 0;
+    private entry: CompiledStoryCacheEntry | null = null;
+
+    public follow(bundle: { bundleId: string; revision: number }): void {
+        if (!this.isCurrent(bundle)) {
+            this.bundleId = bundle.bundleId;
+            this.revision = bundle.revision;
+            this.clear();
+        }
+    }
+
+    public isCurrent(bundle: { bundleId: string; revision: number }): boolean {
+        return this.bundleId === bundle.bundleId && this.revision === bundle.revision;
+    }
+
+    public clear(): void {
+        this.generation += 1;
+        this.entry = null;
+    }
+
+    public async compile(
+        input: CompiledStoryCacheKeyInput,
+        sceneId: string,
+        build: () => Promise<CompiledNlrStory>,
+        report: (diagnostics: CompiledNlrStory["diagnostics"]) => void,
+    ): Promise<CompiledNlrStory> {
+        const generation = this.generation;
+        const current = () => generation === this.generation && this.isCurrent(input);
+        const key = compiledStoryCacheKey(input);
+        const reused = current() ? reuseCompiledStory(this.entry, key, sceneId) : null;
+        if (reused) {
+            report(reused.diagnostics);
+            return reused;
+        }
+        const compiled = await build();
+        if (current()) {
+            if (key) this.entry = { key, compiled };
+            report(compiled.diagnostics);
+        }
+        return compiled;
+    }
+}

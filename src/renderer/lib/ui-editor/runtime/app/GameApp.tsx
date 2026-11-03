@@ -112,11 +112,7 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
-import {
-    compiledStoryCacheKey,
-    reuseCompiledStory,
-    type CompiledStoryCacheEntry,
-} from "@/lib/ui-editor/runtime/app/compiledStoryCache";
+import { StoryCompileSession } from "@/lib/ui-editor/runtime/app/compiledStoryCache";
 import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
@@ -591,6 +587,9 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const currentBundleRef = useRef(bundle);
     currentBundleRef.current = bundle;
+    const compileSessionRef = useRef(new StoryCompileSession());
+    compileSessionRef.current.follow(bundle);
+    useEffect(() => () => { compileSessionRef.current.clear(); }, []);
     /**
      * Whether the bundle a piece of work started under is still the one this app is showing.
      *
@@ -600,7 +599,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * failure it reads as a defect; reported as supersession it reads as what it is.
      */
     const bundleSuperseded = useCallback((revision: number, bundleId: string): boolean => (
-        currentBundleRef.current.bundleId !== bundleId || currentBundleRef.current.revision !== revision
+        !compileSessionRef.current.isCurrent({ bundleId, revision })
     ), []);
     /**
      * A script blueprint that will not run, as an issue the author can read.
@@ -4621,44 +4620,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [saveRecordReads]);
 
     /**
-     * The last compiled story, kept so a second launch of the same one does not rebuild it.
-     *
-     * ## Why this is worth keeping at all
-     *
-     * A compile walks the WHOLE document - every scene, every row - and `sceneId` decides only which
-     * scene the story opens on (`Story.entry`). So a hub-shaped game, where a page launches a scene
-     * and the scene hands the screen back to the page, rebuilt the entire story on every hop.
-     * MEASURED, on a 10,000-line script with 30,000 takes: 450-600ms of pure compute per launch,
-     * before any of the mounting and painting that follows it.
-     *
-     * ## Why re-pointing the entry is sound rather than a shortcut
-     *
-     * `Story.entry(scene)` is a plain assignment, and the work that depends on it happens later:
-     * the player calls `LiveGame.loadStory`, which runs `constructStory()` - scene roots, action
-     * ids, element ids, the static check and the element baseline, all walked from whatever the
-     * entry is at that moment. A reused story with a new entry is therefore stamped exactly as a
-     * fresh compile of that entry would have been.
-     *
-     * `newGame()` then clears the storable, re-seeds every persistent the story declares, and resets
-     * every element reachable from the entry - which is a superset of what the run can reach, since
-     * a scene the run cannot walk to is a scene it cannot show.
-     *
-     * ## What is deliberately NOT cached
-     *
-     * A row-precise launch (`startBlockId` / `snapshotId`) fabricates a synthetic entry scene posed
-     * at the target row, so its output depends on the row and not only on the document. Those always
-     * compile fresh.
-     *
-     * ## One entry, not a map
-     *
-     * A compiled story is a large object graph and holding several is a memory decision nobody
-     * asked for. One slot serves the case this exists for - a hub and the scenes it launches, all in
-     * one story - and a project that alternates between two stories simply recompiles, which is what
-     * it did before.
-     */
-    const compiledStoryCacheRef = useRef<CompiledStoryCacheEntry | null>(null);
-
-    /**
      * The mounted session's preload scheduler, so a later compile can be pointed at it.
      *
      * The scheduler is handed to `new Game()` and lives as long as the session does, while the
@@ -4849,11 +4810,6 @@ export function GameApp(props: GameAppProps): ReactNode {
          * they are about to play must not depend on whether it happened to be compiled already.
          */
         const reportDiagnostics = (diagnostics: readonly NlrStoryCompileDiagnostic[]): void => {
-            const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
-                || currentBundleRef.current.revision !== bundle.revision;
-            if (superseded) {
-                return;
-            }
             for (const diagnostic of diagnostics) {
                 const level = diagnostic.level === "error" ? "error" : "warning";
                 host.log(level, diagnostic.message);
@@ -4869,7 +4825,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         };
 
-        const cacheKey = compiledStoryCacheKey({
+        return compileSessionRef.current.compile({
             bundleId: bundle.bundleId,
             revision: bundle.revision,
             storyId,
@@ -4877,29 +4833,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             voiceLocale: readVoiceLocale(),
             hasCore: Boolean(core),
             rowPrecise: Boolean(launch),
-        });
-        const reused = reuseCompiledStory(compiledStoryCacheRef.current, cacheKey, sceneId);
-        if (reused) {
-            reportDiagnostics(reused.diagnostics);
-            return reused;
-        }
-
-        // Before the walk, not during it: the compiler resolves an asset the moment it reaches one,
-        // and a host that has to ask another window for each answer spends the whole compile waiting
-        // one round trip at a time. Failures inside it are the host's to swallow - it answers by
-        // asset again, which is what every compile did before this existed.
-        await host.prewarmStoryAssetUrls?.();
-        const compiled = await compileStudioStoryToNlr(compileInput);
-        reportDiagnostics(compiled.diagnostics);
-        const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
-            || currentBundleRef.current.revision !== bundle.revision;
-        // Kept only when it can be reused as-is. A superseded compile is not stored: the bundle it
-        // was built from is no longer the one a launch would ask for, so the entry would be dead
-        // weight until the next reload evicted it.
-        if (cacheKey && !superseded) {
-            compiledStoryCacheRef.current = { key: cacheKey, compiled };
-        }
-        return compiled;
+        }, sceneId, async () => {
+            await host.prewarmStoryAssetUrls?.();
+            return compileStudioStoryToNlr(compileInput);
+        }, reportDiagnostics);
     }, [bundle, core, host, readTextLocale, readVoiceLocale]);
 
     /**
@@ -6181,11 +6118,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         lifecycleRef.current.sessionReset();
         appBootFiredRef.current = null;
         gameReadyFiredRef.current = null;
-        // A compiled story is keyed by the bundle it came from, so this one could never be reused
-        // again. Dropped here rather than left to be replaced by the next compile, because a hot
-        // reload the author does not launch after would otherwise hold the whole graph of a document
-        // that no longer exists.
-        compiledStoryCacheRef.current = null;
     }, [bundle.bundleId, bundle.revision]);
 
     /**
