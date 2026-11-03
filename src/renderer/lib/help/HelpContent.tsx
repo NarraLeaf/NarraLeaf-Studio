@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ExternalLink } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
+import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
 import {
@@ -14,7 +15,7 @@ import {
     type FixedInput,
 } from "@/lib/workspace/services/ui/fixedInputCatalog";
 import { parseHelpBody } from "./helpBody";
-import { getHelpTopic, helpBodyKey, helpTitleKey, type HelpTopic, type HelpTopicId } from "./helpTopics";
+import { getHelpTopic, helpBodyKey, helpClipUrl, helpTitleKey, type HelpTopic, type HelpTopicId } from "./helpTopics";
 
 /**
  * One topic, rendered the same way wherever it is shown - the popover, the launcher's reader and the
@@ -53,6 +54,51 @@ const HELP_LINK_CLASS =
     "cursor-pointer text-primary underline-offset-2 transition-opacity hover:underline hover:opacity-80 "
     + "disabled:cursor-default disabled:text-fg-muted disabled:no-underline disabled:opacity-100";
 
+/**
+ * A topic's recording: a few seconds of the skeleton project showing the thing the body describes.
+ *
+ * With Reduce motion on it is the first frame, held: a looping picture beside text is exactly the
+ * motion that setting asks to remove, and the stylesheet cannot stop an animated image the way it
+ * stops a transition. `createImageBitmap` decodes only that frame.
+ *
+ * Every recording is 640 by 400, so the box is sized before the file arrives: the popover measures
+ * itself to stay on screen, and an image that grew it after the measurement would push it off.
+ */
+function HelpClip({ topic }: { topic: HelpTopic }) {
+    const { t, locale } = useTranslation();
+    const reduced = useReduceMotion();
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const url = helpClipUrl(topic.id, locale);
+    const label = t(helpTitleKey(topic.id));
+
+    useEffect(() => {
+        if (!reduced) return;
+        let cancelled = false;
+        void fetch(url)
+            .then(response => response.blob())
+            .then(blob => createImageBitmap(blob))
+            .then(bitmap => {
+                const canvas = canvasRef.current;
+                if (cancelled || !canvas) return bitmap.close();
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+                bitmap.close();
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [reduced, url]);
+
+    const frame = "mb-3 block aspect-[8/5] w-full rounded-md border border-edge-subtle bg-surface-canvas object-contain";
+    return reduced ? (
+        <canvas ref={canvasRef} role="img" aria-label={label} className={frame} />
+    ) : (
+        <img src={url} alt={label} draggable={false} className={frame} />
+    );
+}
+
 export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTopic, className }: HelpContentProps) {
     const { t } = useTranslation();
     const blocks = useMemo(() => parseHelpBody(t(helpBodyKey(topic.id))), [t, topic.id]);
@@ -88,6 +134,7 @@ export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTo
 
     return (
         <div className={cn("text-xs leading-relaxed text-fg-muted", className)}>
+            {topic.clip && <HelpClip topic={topic} />}
             {blocks.map((block, index) =>
                 block.kind === "paragraph" ? (
                     <p key={index} className="mt-2 first:mt-0">

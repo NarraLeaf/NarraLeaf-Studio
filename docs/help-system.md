@@ -187,6 +187,19 @@ Blank line separates paragraphs.
 No headings, no bold, no links, no images inside a body. A topic that needs a heading is two
 topics; use `related` to join them.
 
+A topic may also carry a recording, shown above the body: a few seconds of the skeleton project
+doing what the body describes. It is not part of the body and adds nothing to it, so a topic must
+read the same with the recording missing (Reduce motion shows its first frame only). Recordings
+follow these rules:
+
+- One per recorded interface language: `src/renderer/public/help/en/<id>.webp` and
+  `.../help/zh/<id>.webp`, animated WebP, 640 by 400. Japanese and plugin languages show the
+  English one.
+- Recorded in a project made from the skeleton template, in the same interface language as the
+  folder, with the pointer visible and every edit undone afterwards.
+- Only for what moves: a panel opening, a row being typed, a menu being chosen from. A setting
+  that is one toggle, or a topic about a file on disk, gets none.
+
 ## 7. Adding a topic
 
 1. Write `title` and `body` under `help.topics.<id>` in `src/shared/i18n/catalog/en/help.ts`, then
@@ -196,9 +209,11 @@ topics; use `related` to join them.
    optionally `shortcuts` (keybinding catalog ids, rendered as chords) and `related`.
 3. Tag the surface it describes with `data-help-topic="<id>"` so `F1` finds it. Panel headers can
    pass `helpTopic` instead and get the `?` trigger for free.
+4. Optionally, record it (§6) and set `clip: true` on the entry.
 
 `helpTopics.test.ts` checks that every registered topic has both keys, that every `related` id and
-every `shortcuts` id exists, and that every topic is reachable from a section.
+every `shortcuts` id exists, that every topic is reachable from a section, and that the recordings
+on disk are exactly the topics with `clip: true`, in both languages.
 
 ## 8. Reviewing copy
 
