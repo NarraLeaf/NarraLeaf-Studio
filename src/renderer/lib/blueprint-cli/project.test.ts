@@ -132,7 +132,7 @@ describe("where a .bp file goes", () => {
         const previous = process.cwd();
         process.chdir(root);
         try {
-            expect(resolveBlueprintFile("here.bp", { forWriting: false })).toBe(here);
+            expect(fs.realpathSync(resolveBlueprintFile("here.bp", { forWriting: false }))).toBe(fs.realpathSync(here));
         } finally {
             process.chdir(previous);
         }

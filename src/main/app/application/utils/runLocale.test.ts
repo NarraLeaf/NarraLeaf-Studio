@@ -26,9 +26,14 @@ describe("readRunLocaleChoice", () => {
         expect(readRunLocaleChoice(settings({ [normalizeProjectPath(PROJECT)]: "en" }), PROJECT)).toBe("en");
     });
 
-    it("finds it under either spelling of the path", () => {
+    it.skipIf(process.platform !== "win32")("finds it under either Windows separator spelling", () => {
         const stored = settings({ [normalizeProjectPath("D:\\Games\\Rain")]: "en" });
         expect(readRunLocaleChoice(stored, PROJECT)).toBe("en");
+    });
+
+    it.skipIf(process.platform === "win32")("keeps a POSIX backslash distinct from a separator", () => {
+        const stored = settings({ [normalizeProjectPath("/Games/Rain\\Draft")]: "en" });
+        expect(readRunLocaleChoice(stored, "/Games/Rain/Draft")).toBeNull();
     });
 
     it("answers none for no setting, another project, or a malformed value", () => {
