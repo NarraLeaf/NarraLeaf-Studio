@@ -12,7 +12,7 @@
 - `project/docs/settings.md`：全局设置、Workspace runtime settings、项目 editor settings 的存储边界。
 - `project/docs/dev-mode.md`：Dev Mode window、主进程 DevModeManager、bundle/reload/blueprint runtime。
 - `project/docs/plugin.md`：插件系统设计状态、当前未实现项、已有预留点。
-- `project/docs/develop.md`：通用开发文档；与本文档整理无关。
+- `project/docs/develop.md`：本地开发、验证和构建入口。
 
 ## Workspace 主入口
 
@@ -28,10 +28,10 @@ Workspace 是 Studio 的主要 window，服务由固定 `ServiceRegistry` 驱动
 典型服务获取方式：
 
 ```ts
-const story = context.services.get<StoryService>(Services.Story);
+const story = context.services.get(Services.Story);
 ```
 
-不要手动 `new` service。当前 service 是固定 singleton 集合，初始化由 `WorkspaceProvider` 创建 context 后统一完成。
+服务使用固定 singleton 集合，通过 `ServiceRegistry` 获取。返回类型由 `Services` key 推导；显式类型参数也必须与该 key 匹配。`WorkspaceProvider` 先装配内建控件实现，再统一初始化服务。
 
 ## 当前 Workspace Services
 

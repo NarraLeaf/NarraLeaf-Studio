@@ -16,7 +16,7 @@ Studio/editor 偏好现在只有一套设置存储：Electron `userData/state/gl
 | 应用全局设置              | `getInterface().app.state.*` / `GlobalStateManager`                 | `userData/state/global.json`                                                          |
 | Workspace/editor 设置 | `GlobalSettingsService`                                             | 同一个 `global.json`                                                                     |
 | Settings 窗口设置       | `SettingsApp` + `app.state.getGlobalState/setGlobalState`           | 同一个 `global.json`                                                                     |
-| 项目配置                | `ProjectService` / project wizard / project config helpers          | 项目根 `.nlproj`，legacy fallback 为 `project.json`                                        |
+| 项目配置                | `ProjectService` / project wizard / project config helpers          | 项目根 `.nlproj`                                        |
 | 项目内容设置              | 对应功能 service，例如 `StoryService`、`UIDocumentService`、`UIGraphService` | 项目内功能文件，例如 `editor/story/index.json`、`editor/ui/uidoc.json`、`editor/ui/uigraphs.json` |
 
 
@@ -47,7 +47,7 @@ Workspace/editor 设置：
 项目配置：
 
 `ProjectService`
-→ 读取项目根 `.nlproj`，找不到时 fallback 到 legacy `project.json`
+→ 读取项目根 `.nlproj`
 → 返回 `ProjectConfig`
 
 项目内容设置：
@@ -58,6 +58,8 @@ Workspace/editor 设置：
 
 ## 入口文件
 
+- Renderer read subscriptions：`src/renderer/lib/settings/observeGlobalSettings.ts`、`useGlobalSettings.ts`。先订阅再读取，每个键独立判断初始读取是否已被广播更新。
+- Editable panel preferences：`src/renderer/lib/settings/useGlobalSettingDraft.ts`。草稿独立于已确认值，写入串行；失败保留草稿并提供重试。
 - Renderer global settings wrapper：`src/renderer/lib/workspace/services/GlobalSettingsService.ts`
 - Main global state：`src/main/app/application/managers/storage/globalState.ts`
 - Global state types/defaults：`src/shared/types/state/globalState.ts`
@@ -73,7 +75,7 @@ Workspace/editor 设置：
 
 可以写项目文件的内容：
 
-- 项目身份和元数据：name、identifier、metadata、resolution 等，写 `.nlproj` / legacy `project.json`。
+- 项目身份和元数据：name、identifier、metadata、resolution 等，写 `.nlproj`。
 - 会影响项目运行或导出的内容：story library、story document、UI document、UI graph、asset metadata、scripts。
 - 成品游戏对玩家的行为：`app.autoSave`（自动保存开关 / 间隔 / 保留数量），写 `.nlproj`，由 `bundleAssembler` 烘焙进 bundle 交给游戏运行时。UI 在「项目 → 游戏」。
 - 项目内容内部的业务选择：例如 `editor/story/index.json` 里的 `defaultStoryId`，它是项目 story library 的 convenience 字段。
