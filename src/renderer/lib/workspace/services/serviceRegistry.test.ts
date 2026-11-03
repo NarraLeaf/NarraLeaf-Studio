@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { ServiceRegistry } from "./serviceRegistry";
 import { Services } from "./services";
+import type { StoryService } from "./story/StoryService";
+import type { AssetsService } from "./core/AssetsService";
 
 /**
  * Who comes up when a project opens.
@@ -27,5 +29,15 @@ describe("ServiceRegistry", () => {
 
     it("registers the project dictionary, which the spellchecker is entirely downstream of", () => {
         expect(new ServiceRegistry().get(Services.Dictionary)).toBeDefined();
+    });
+
+    it("derives a service's type from its key and rejects a mismatched explicit type", () => {
+        const registry = new ServiceRegistry();
+        expectTypeOf(registry.get(Services.Story)).toEqualTypeOf<StoryService>();
+        expectTypeOf(registry.get<AssetsService>(Services.Assets)).toEqualTypeOf<AssetsService>();
+        if (false) {
+            // @ts-expect-error The asset key cannot name the story service.
+            registry.get<StoryService>(Services.Assets);
+        }
     });
 });
