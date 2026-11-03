@@ -70,10 +70,6 @@ export const story = {
         storyMismatch: "此文件导出自另一个故事",
         stale: "导出之后该场景已被修改，导入会覆盖这些改动",
         sceneMissing: "该场景已不在此故事中，将被跳过",
-        noUndo: "此次导入无法撤销",
-        noUndoSome: {
-            other: "导入后其中 {count} 个场景无法撤销",
-        },
         planFailed: "无法为导入准备此脚本，未做任何改动",
         importFailed: "导入在「{scene}」处中断：共 {total} 个场景，已写入 {applied} 个，其余保持原样",
         line: "第 {line} 行",

@@ -55,19 +55,9 @@ const NOTHING: NarralangCommitOutcome = { kind: "unavailable", diagnostics: [], 
  *
  * ## The path, and why it is this one
  *
- * `HistoryService.checkpoint` then `StoryService.replaceScene`, which is the shape every other
- * whole-scene write in the project already uses - the row editor's `recordHistory()` before
- * `updateBlock` (`useStorySceneEditorController.ts:865`), and the script importer's checkpoint before
- * `replaceScene` (`useStoryScriptIo.tsx:212`). Going around `StoryService` and writing the document
- * directly would detach four things at once, all of them silently: the unified undo stack, Dev Mode's
- * hot reload, project lint and the search index all hang off `mutateDocument`'s single
- * `documentChanged`.
- *
- * `replaceScene` is the only method that can set `rootBlockIds` and `blocks` together, which a script
- * edit has to - a line moved between two containers is a re-parent, and `updateBlocks` can only
- * rewrite payloads in place. The scene is spread rather than rebuilt so that `runtimeName`, `bgm`,
- * the snapshots and everything else `replaceScene` would take verbatim survive; the reconciler
- * returns the block tree and nothing else, and the block tree is all this may change.
+ * `StoryService.commitSceneReplacement` replaces the block tree and records the edit on the
+ * scene's own undo scope. The same document change feeds Dev Mode reload, project lint and search.
+ * The scene is spread so its runtime name, music, snapshots and other metadata survive the edit.
  *
  * ## One undo step per burst, not per pause
  *
@@ -140,8 +130,7 @@ export function useNarralangCommit(
         }
 
         const storyService = services.get<StoryService>(Services.Story);
-        const historyService = services.get<HistoryService>(Services.History);
-        // Both directions off one pass: the names this commit prints and the names it reads back are
+                // Both directions off one pass: the names this commit prints and the names it reads back are
         // the same list, so a reference the scene can be shown with is one it can be re-read with.
         const { lookups, parseLookups } = narralangReferences(services, state.document);
 
@@ -179,20 +168,19 @@ export function useNarralangCommit(
 
         const storyId = state.document.id;
         const sceneId = state.scene.id;
-        historyService.checkpoint(storySceneHistoryScope(storyId, sceneId), {
+        // Spread rather than rebuilt: the service stores what it is handed, so anything left out
+        // here - `runtimeName`, `bgm`, the scene's snapshots - would be dropped. The block tree is
+        // all a script edit may change, and the name is deliberately not part of it.
+        const committed = storyService.commitSceneReplacement(storyId, sceneId, {
+            ...state.scene,
+            rootBlockIds: result.rootBlockIds,
+            blocks: result.blocks,
+        }, {
             label: { key: "workspace.history.entry.storyEdit" as TranslationKey },
             mergeKey: narralangHistoryMergeKey(sceneId),
             mergeWindowMs: NARRALANG_HISTORY_MERGE_WINDOW_MS,
         });
-        // Spread rather than rebuilt: `replaceScene` stores what it is handed, so anything left out
-        // here - `runtimeName`, `bgm`, the scene's snapshots - would be dropped. The block tree is
-        // all a script edit may change, and the name is deliberately not part of it.
-        storyService.replaceScene(storyId, sceneId, {
-            ...state.scene,
-            rootBlockIds: result.rootBlockIds,
-            blocks: result.blocks,
-        });
-        return { kind: "committed", diagnostics: [], renameIgnored };
+        return { kind: committed ? "committed" : "unavailable", diagnostics: [], renameIgnored };
     }, []);
 
     const breakMerge = useCallback(() => {
