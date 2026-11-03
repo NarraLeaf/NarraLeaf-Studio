@@ -1,16 +1,11 @@
-import type { LucideIcon } from "lucide-react";
-import type { UIElement } from "@shared/types/ui-editor/document";
-import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
-import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
-import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
 import type {
     FieldDefinition,
     PropertyEditorSchema,
     PropertyEditorTab,
     SectionFieldDefinition,
 } from "@/apps/workspace/modules/properties/framework/types";
-import type { InspectorContext, UIInspectorData, UIWidgetDefaultWords, UIWidgetModule } from "./types";
-import { INTERFACE_DEFAULT_WORDS } from "./defaultWords";
+import type { InspectorContext, UIInspectorData, UIWidgetModule } from "./types";
+import { defineWidgetModule, extendWidgetDeclaration, type WidgetDeclarationExtension } from "./declaration";
 
 /**
  * Where an inserted field goes among its new siblings.
@@ -47,20 +42,7 @@ export type WidgetInspectorOverrides = {
 };
 
 /** The parts of a widget module a specialisation may restate; anything omitted is inherited. */
-export type WidgetModuleExtension = {
-    /** Widget type id of the specialisation. */
-    type: string;
-    /** Display name, as a getter so a locale change is picked up like the built-ins do. */
-    displayName: () => string;
-    icon?: LucideIcon;
-    /** Defaults to the specialisation's own entry in the shared logic API table. */
-    logicApi?: WidgetLogicApi;
-    /**
-     * Rewrites the inherited default element. Receives the parent's, already retyped to this
-     * widget type, so a specialisation that only changes a size or a colour patches one field, and
-     * the words a player reads are written in (`UIWidgetModule.createDefaultElement`).
-     */
-    defaultElement?: (inherited: Partial<UIElement>, words: UIWidgetDefaultWords) => Partial<UIElement>;
+export type WidgetModuleExtension = WidgetDeclarationExtension & {
     /** Declarative edits to the inherited inspector. Ignored when `createInspector` is given. */
     inspector?: (context: InspectorContext) => WidgetInspectorOverrides | undefined;
 } & Partial<
@@ -200,14 +182,6 @@ export function applyInspectorOverrides(
     };
 }
 
-function mergeDefaultElement(inherited: Partial<UIElement>, type: string, name: string): Partial<UIElement> {
-    return {
-        ...inherited,
-        type,
-        name,
-    };
-}
-
 /**
  * Builds a widget module that specialises another one.
  *
@@ -221,19 +195,7 @@ function mergeDefaultElement(inherited: Partial<UIElement>, type: string, name: 
  * does not know about.
  */
 export function extendWidgetModule(parent: UIWidgetModule, extension: WidgetModuleExtension): UIWidgetModule {
-    const declaredParent = getWidgetTypeParent(extension.type);
-    if (declaredParent !== parent.type) {
-        console.warn(
-            `[widget-modules] ${extension.type} extends ${parent.type} but WIDGET_TYPE_PARENTS says ${
-                declaredParent ?? "nothing"
-            }`,
-        );
-    }
-
-    const createDefaultElement = (words: UIWidgetDefaultWords = INTERFACE_DEFAULT_WORDS): Partial<UIElement> => {
-        const inherited = mergeDefaultElement(parent.createDefaultElement(words), extension.type, extension.displayName());
-        return extension.defaultElement ? extension.defaultElement(inherited, words) : inherited;
-    };
+    const declaration = extendWidgetDeclaration(parent, extension);
 
     const createInspector = extension.createInspector
         ? extension.createInspector
@@ -253,16 +215,7 @@ export function extendWidgetModule(parent: UIWidgetModule, extension: WidgetModu
               });
           };
 
-    return {
-        type: extension.type,
-        extends: parent.type,
-        logicApi: extension.logicApi ?? getWidgetLogicApi(extension.type),
-        get displayName() {
-            return extension.displayName();
-        },
-        icon: extension.icon ?? parent.icon,
-        createDefaultElement,
-        createDefaultChildElements: extension.createDefaultChildElements ?? parent.createDefaultChildElements,
+    return defineWidgetModule(declaration, {
         render: extension.render ?? parent.render,
         createInspector,
         createDockerBarItems: extension.createDockerBarItems ?? parent.createDockerBarItems,
@@ -274,5 +227,5 @@ export function extendWidgetModule(parent: UIWidgetModule, extension: WidgetModu
         // Deliberately not inherited: node registration is global and idempotent per module, so
         // running the parent's again from every specialisation would re-register the same types.
         registerBlueprintNodes: extension.registerBlueprintNodes,
-    };
+    });
 }

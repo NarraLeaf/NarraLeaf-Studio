@@ -1,5 +1,4 @@
 import { Singleton } from "@shared/utils/singleton";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { IService, WorkspaceContext } from "./services";
 
 /** One service that did not come up, and the error it came up with. See {@link Service.initializeTolerant}. */
@@ -11,8 +10,6 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
     private _initializing: Promise<void> | null = null;
 
     public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
-        await ensureWidgetModulesRegistered();
-
         const pending = new Set<Service>();
 
         const init = async (service: Service): Promise<void> => {
@@ -65,8 +62,6 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
         ctx: WorkspaceContext,
         services: readonly Service[],
     ): Promise<ServiceInitFailure[]> {
-        await ensureWidgetModulesRegistered();
-
         const failures: ServiceInitFailure[] = [];
         const attempted = new Set<Service>();
         const pending = new Set<Service>();

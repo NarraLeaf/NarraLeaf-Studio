@@ -24,7 +24,7 @@ import {
     type UILayout,
 } from "@shared/types/ui-editor/document";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { uiComponentHistoryScope, uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { Services } from "@/lib/workspace/services/services";

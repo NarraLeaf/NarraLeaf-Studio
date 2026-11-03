@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { i18nStore } from "@/lib/i18n";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 

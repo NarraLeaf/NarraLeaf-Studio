@@ -11,7 +11,7 @@ import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { VariableRegistry } from "@shared/types/variables/registry";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { translate } from "@/lib/i18n";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
