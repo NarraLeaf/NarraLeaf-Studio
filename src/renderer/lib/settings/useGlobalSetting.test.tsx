@@ -98,4 +98,13 @@ describe("useGlobalSetting", () => {
         unmount();
         expect(listeners.length).toBe(0);
     });
+
+    it("keeps resolved objects stable until their stored value changes", async () => {
+        stored = "script";
+        const { result, rerender } = renderHook(() => useGlobalSetting("editor.storyRowHighlight", value => ({ value })));
+        await waitFor(() => expect(result.current.value).toBe("script"));
+        const previous = result.current;
+        rerender();
+        expect(result.current).toBe(previous);
+    });
 });
