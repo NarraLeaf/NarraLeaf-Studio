@@ -33,6 +33,7 @@ import {
 } from "../types/plugins";
 import { UI_STRUCT_FIELD_TYPES, type UIStructFieldType } from "../types/ui-editor/struct";
 import { AGENT_PLUGIN_TOOL_NAME_PATTERN, agentPluginToolMcpName } from "../agent/pluginTools";
+import { isRecord } from "@shared/utils/isRecord";
 
 export type PluginManifestValidationResult =
     | { ok: true; manifest: NormalizedPluginManifestV2 }
@@ -1328,10 +1329,6 @@ function readString(record: Record<string, unknown>, key: string): string | null
 
 function readOptionalString(record: Record<string, unknown>, key: keyof PluginManifestV2): string | undefined {
     return readString(record, key) ?? undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function invalid(error: string): PluginManifestValidationResult {

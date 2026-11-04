@@ -1,4 +1,5 @@
 import { fnv1aHex } from "@shared/utils/contentHash";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * The project's app-icon model, shared by the workspace panel that authors it,
@@ -342,10 +343,6 @@ function normalizeBackground(value: unknown, fallback: string | null): string | 
     }
     const trimmed = value.trim().toUpperCase();
     return /^#[0-9A-F]{6}$/.test(trimmed) ? trimmed : fallback;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function basename(path: string): string {

@@ -39,6 +39,7 @@ import { translateLegacyElementIds, type LegacyElementIdTable } from "./legacyEl
 import { translateLegacyActionIds, type ActionIdReading, type LegacyActionIdTable } from "./legacyActionIds";
 import { translate } from "@/lib/i18n";
 import { translateForPlayer } from "@/lib/ui-editor/runtime/localization/playerWords";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** How the story stamped into the save compares with the story now running. */
 export type SaveStoryOrigin =
@@ -329,10 +330,6 @@ export const SAVE_LOAD_NOTICE_DURATION_MS = 6000;
 
 /** The serialized discriminant of a stack entry that must resolve to a live action. */
 const STACK_ITEM_ACTION = "action";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);

@@ -9,6 +9,7 @@ import {
     type UISurfaceId,
 } from "./document";
 import { normalizeOptionalUIPageAnimationSettings, type UIPageAnimationSettings } from "./pageAnimation";
+import { isRecord } from "@shared/utils/isRecord";
 
 export const UI_FRAME_ELEMENT_TYPE = "nl.frame" as const;
 
@@ -29,10 +30,6 @@ export const DEFAULT_UI_FRAME_WIDGET_PROPS: UIFrameWidgetProps = {
     params: {},
     navigationMode: "static",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 export function normalizeUIFrameWidgetProps(raw: unknown): UIFrameWidgetProps {
     const input = isRecord(raw) ? raw : {};

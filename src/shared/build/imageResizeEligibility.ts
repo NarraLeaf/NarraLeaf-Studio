@@ -25,6 +25,7 @@
 
 import type { DevModeBundle } from "@shared/types/devMode";
 import { collectReferencedIds } from "./variantPayload";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** Widget fill modes the box sizes. `tile` repeats the picture at its natural size. */
 const BOX_FILL_MODES: ReadonlySet<string> = new Set(["cover", "contain", "stretch", "crop"]);
@@ -105,8 +106,4 @@ export function findResizableImages(input: {
     // places above left out of it.
     const elsewhere = collectReferencedIds([story, interfaceDocument, uiRest, input.extra ?? []], placed);
     return new Set([...placed].filter(id => !elsewhere.has(id)));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

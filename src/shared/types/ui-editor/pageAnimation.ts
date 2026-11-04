@@ -1,3 +1,5 @@
+import { isRecord } from "@shared/utils/isRecord";
+
 export const UI_PAGE_ANIMATION_PRESETS = ["none", "fade", "slide", "push", "zoom", "pop", "blur"] as const;
 export const UI_PAGE_ANIMATION_DIRECTIONS = ["auto", "left", "right", "up", "down", "angle"] as const;
 
@@ -61,10 +63,6 @@ export const DEFAULT_UI_PAGE_ANIMATION_SETTINGS: UIPageAnimationSettings = {
     exitWaitsForChildren: true,
     exitBlocking: true,
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function oneOf<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
     return typeof value === "string" && (options as readonly string[]).includes(value) ? (value as T) : fallback;

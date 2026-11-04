@@ -33,6 +33,7 @@ import type { UIWidgetDefaultWords, UIWidgetModule } from "@/lib/ui-editor/widge
 
 import { COMPACT_DEFAULTS_FLAG, COMPACT_WITHOUT_KEYWORD } from "./ast";
 import { printValue } from "../../blueprint-cli/dsl/values";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The prop that holds an element's appearance variants. */
 const APPEARANCE_PROP = "appearance";
@@ -317,10 +318,6 @@ export function expandAppearanceGroups(type: string, props: Record<string, unkno
 
 function clone<T>(value: T): T {
     return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function hasExactlyKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {

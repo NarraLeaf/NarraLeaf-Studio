@@ -16,6 +16,7 @@
  */
 
 import { normalizeBundlePath, type ModelBundleFormat } from "./modelBundle";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * The model families the wizard can be pointed at.
@@ -328,10 +329,6 @@ export function resolveModelReference(baseDir: string, raw: string): string | nu
 }
 
 // ==================== internals ====================
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Accumulates references while de-duplicating by (path, role).
