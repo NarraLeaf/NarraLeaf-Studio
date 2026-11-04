@@ -8,10 +8,11 @@ Dev Mode 是独立 window，用于从项目磁盘数据组装 bundle 并运行 U
 - Workspace 通过 `DevModeService` 调用 main IPC：launch、stop、reload、getStatus。
 - Main `DevModeManager` 维护单个 session，负责窗口创建/关闭、状态、bundle revision、watcher、reload debounce。
 - Dev Mode 启动时会读取磁盘上的 `editor/ui/uidoc.json` 和 `editor/ui/uigraphs.json`。
-- TypeScript blueprint 会在主进程编译为 IIFE，挂到 Dev Mode runtime 可访问的 module registry。
+- 项目脚本由主进程 `pipeline/scriptCompiler.ts` 用 esbuild 编译后随 bundle 发送；剧情由 renderer 侧 `GameApp` 通过 `compileStudioStoryToNlr` 编译执行，Dev Mode 与打包游戏共用这条运行时。
 - Dev Mode renderer 可接收 bundle、渲染 surface、执行 blueprint runtime、展示 session error 和 blueprint debug panel。
 - 启动 NarraLeaf 故事时按 slot 注入 Game UI surface：`dialog` → `Game({ dialog })`、`notification` → `Game({ notification })`、`choice` → `Game({ menu })`、`nvl` → `Game({ nvlDialog })`、`onStage` → `<Player>` children（NLR RootLayout 常驻、点击穿透）。缺失的 slot 使用 NarraLeaf 默认组件。
-- 文件 watcher 监听 UI 文档、UI graph、assets content，变更后自动 reload。
+- 剧情可以从场景开头、指定行（`startBlockId`）或变量快照启动；Dev Mode 调试面板提供按行启动。
+- 文件 watcher 监听 UI 文档、UI graph、剧情、本地化、角色、品牌、蓝图元数据、脚本和 assets content，变更后自动 reload；热重载通过 `resume` 带回运行中的场景变量与存档变量。
 
 ## 入口文件
 
@@ -20,31 +21,20 @@ Dev Mode 是独立 window，用于从项目磁盘数据组装 bundle 并运行 U
 - 启动前 flush：`src/renderer/apps/workspace/modules/actions/flushDevModeAssets.ts`
 - Main manager：`src/main/app/application/managers/devMode/DevModeManager.ts`
 - Bundle assembler：`src/main/app/application/managers/devMode/pipeline/bundleAssembler.ts`
-- NLang compiler interface：`src/main/app/application/managers/devMode/compiler/INLangCompiler.ts`
-- Blueprint TS compiler：`src/main/app/application/managers/devMode/compiler/blueprint/compileProjectBlueprintScripts.ts`
+- Script compiler：`src/main/app/application/managers/devMode/pipeline/scriptCompiler.ts`
 - Dev Mode app：`src/renderer/apps/dev-mode/DevModeApp.tsx`
 - Dev Mode content：`src/renderer/apps/dev-mode/components/DevModeContent.tsx`
 - Payload hook：`src/renderer/apps/dev-mode/hooks/useDevModePayload.ts`
-- Runtime hook：`src/renderer/apps/dev-mode/hooks/useDevModeBlueprintRuntime.ts`
+- Story runtime debug：`src/renderer/apps/dev-mode/components/StoryRuntimeDebugPanel.tsx`
+- Shared game runtime：`src/renderer/lib/ui-editor/runtime/app/GameApp.tsx`
 - Blueprint runtime：`src/renderer/lib/ui-editor/blueprint-runtime/`
 - Shared protocol：`src/shared/types/devMode.ts`、`src/shared/types/ipcEvents.ts`
 
 ## 运行边界
 
-- 默认入口是 surface entry；当前主要服务 UI preview/runtime。
 - Dev Mode 从磁盘读 bundle，因此 Workspace 内 UIDocument/UIGraph dirty 状态需要在 launch/reload 前保存。
 - Workspace preview 使用内存文档；Dev Mode 使用主进程 bundle，两者数据来源不同。
 - Main Surface 和 Stage Surface link 语义应以 `UIDocument` / runtime root 解析实现为准。
-- 当前 `NullNLangCompiler` 是可插拔编译接口的占位；真实 story/nlang 编译链未接入。
-
-## 已知缺口
-
-- Story runtime execution 和从剧情行启动未接入。
-- nlang 编译仍是空实现接口。
-- 运行时状态快照、reload 后剧情状态回滚未实现。
-- 多入口选择 UI 不完整。
-- Dev Mode 当前 watcher 主要覆盖 UI/Blueprint/asset content，不代表全项目热更新。
-- 完整 player/game workflow 还没有落地；当前重点是 UI surface 与 blueprint runtime。
 
 ## 修改建议
 

@@ -14,7 +14,6 @@ import { DevModeAgentErrorCode, type DevModeAgentAction, type DevModeAgentResult
 import { DevModeAgentError, driveDevModeWindow } from "./devModeAgentDrive";
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
-import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
@@ -120,11 +119,9 @@ export class DevModeManager {
     private readonly operations = new Map<string, Promise<DevModeStatus>>();
     /** In-flight snapshot removal per project. See {@link discardSnapshot} for why it must be shared. */
     private readonly snapshotDiscards = new Map<string, Promise<void>>();
-    private readonly compiler: INLangCompiler;
     private readonly bundleSource: DevModeBundleSource;
 
-    constructor(private readonly app: App, compiler?: INLangCompiler, bundleSource?: DevModeBundleSource) {
-        this.compiler = compiler ?? new NullNLangCompiler();
+    constructor(private readonly app: App, bundleSource?: DevModeBundleSource) {
         this.bundleSource = bundleSource ?? devModeDiskBundleSource;
     }
 
@@ -597,30 +594,11 @@ export class DevModeManager {
         this.emitVerbose(session, `status set to ${session.status}`);
 
         try {
-            let started = Date.now();
-            this.emitVerbose(session, "nlang compile started");
-            // `sourcePath`, not `projectPath`, for all three stages below — that is the whole of it.
-            // The compile path is path-driven end to end, so running a past revision is a matter of
-            // which directory it reads - see `revisionLaunchSource.ts`.
-            const compileResult = await this.compiler.compile({ projectPath: session.sourcePath });
-            if (!compileResult.ok) {
-                const detail = (compileResult.errors ?? []).join("\n") || "nlang compile failed";
-                session.status = "error";
-                this.app.logger.error("[DevMode] nlang compile failed", compileResult.errors ?? []);
-                this.emitWorkspaceConsoleLog(session, {
-                    level: "error",
-                    source: "Dev Mode",
-                    message: `nlang compile failed:\n${detail}`,
-                });
-                // The window heads this with its own "session failed to start", in the author's
-                // language; an English label in front of the detail would only say it again.
-                this.queueSessionError(session, detail);
-                return;
-            }
-            this.emitVerbose(session, `nlang compile finished in ${Date.now() - started} ms`);
-
+            // `sourcePath`, not `projectPath`, for the stages below: the bundle is path-driven end to
+            // end, so running a past revision is a matter of which directory it reads - see
+            // `revisionLaunchSource.ts`.
             session.revision += 1;
-            started = Date.now();
+            let started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
@@ -647,7 +625,6 @@ export class DevModeManager {
                     source: "Dev Mode",
                     message,
                 }),
-                compiled: compileResult.artifacts,
             });
             this.emitVerbose(session, `bundle assembly finished in ${Date.now() - started} ms`);
             // Read per rebuild like the variant: choosing a language in the run menu reloads the

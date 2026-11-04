@@ -163,7 +163,7 @@ beforeAll(async () => {
 beforeAll(() => {
     compiled = [];
     launchedWindows = [];
-    devMode = new DevModeManager(fakeApp(), undefined, recordingBundleSource);
+    devMode = new DevModeManager(fakeApp(), recordingBundleSource);
 });
 
 afterEach(async () => {

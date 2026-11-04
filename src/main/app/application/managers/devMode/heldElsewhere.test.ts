@@ -96,7 +96,7 @@ beforeEach(() => {
     compiled = [];
     launchedWindows = [];
     heldElsewhere = null;
-    devMode = new DevModeManager(fakeApp(), undefined, recordingBundleSource);
+    devMode = new DevModeManager(fakeApp(), recordingBundleSource);
 });
 
 afterEach(async () => {

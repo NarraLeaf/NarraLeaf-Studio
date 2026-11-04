@@ -118,7 +118,6 @@ export type DevModeBundleLoadContext = {
      * the axis exists to withhold.
      */
     onAssetSetCollapse?: () => void;
-    compiled?: Record<string, unknown>;
     /**
      * Where the author's compiled scripts are written, and how each file is named to the host that
      * will import it.
