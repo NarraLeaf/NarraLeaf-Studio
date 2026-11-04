@@ -43,11 +43,9 @@ export const dialogs = {
         placeholder: "Enter email address…",
         invalid: "Please enter a valid email address",
     },
-    // Imperative DialogService fallbacks (confirm/alert/quick-pick/input via translate()).
+    // Imperative DialogService fallbacks (confirm/alert via translate()).
     service: {
         alertTitle: "Alert",
-        selectTitle: "Select an item",
-        inputTitle: "Input",
     },
     // Nouns interpolated into rename/create titles. Unknown item types fall back
     // to the raw string the caller passed.

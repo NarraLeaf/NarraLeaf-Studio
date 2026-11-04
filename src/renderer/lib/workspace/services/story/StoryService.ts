@@ -2664,14 +2664,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
-    public canImportStoryPackage(): false {
-        return false;
-    }
-
-    public canExportStoryPackage(): false {
-        return false;
-    }
-
     private mutateLibrary(mutator: (index: StoryLibraryIndex) => void): void {
         const index = this.getLibraryIndex();
         mutator(index);

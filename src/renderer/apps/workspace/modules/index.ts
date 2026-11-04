@@ -14,7 +14,6 @@ export type {
 // Built-in modules registry
 export {
     builtInPanels,
-    builtInEditors,
     builtInActions,
     builtInActionGroups,
     assetsModule,

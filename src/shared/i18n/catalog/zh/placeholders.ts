@@ -1,14 +1,6 @@
 import type { LocaleNamespace } from "../types";
 
 export const placeholders = {
-    story: {
-        title: "故事",
-        description: "章节、场景及剧情结构将显示于此",
-    },
-    localization: {
-        title: "本地化",
-        description: "翻译表及语言资产将在此处管理",
-    },
     moduleTitles: {
         welcome: "欢迎",
         project: "项目",
@@ -23,11 +15,6 @@ export const placeholders = {
         agentLog: "Agent 日志",
         storyMotion: "故事动效",
         dashboard: "仪表盘",
-        audioPreview: "音频预览",
-        imagePreview: "图片预览",
-        videoPreview: "视频预览",
-        fontPreview: "字体预览",
-        jsonPreview: "JSON 预览",
         search: "搜索",
         keybindings: "快捷键",
         history: "历史",

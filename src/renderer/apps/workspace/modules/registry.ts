@@ -7,17 +7,9 @@
 import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
-import { welcomeModule } from "./welcome";
-import { helpModule } from "./help";
-import { aboutModule } from "./about";
 import { globalActions, globalActionGroups } from "./actions";
-import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
-import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
-import { videoPreviewModule } from "./assets/editors/videoPreviewModule";
-import { fontPreviewModule } from "./assets/editors/fontPreviewModule";
-import { jsonPreviewModule } from "./assets/editors/jsonPreviewModule";
 import { charactersModule } from "./characters";
-import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
+import { PanelModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
@@ -31,8 +23,6 @@ import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
 import { pluginsPanelModule } from "./plugins";
-import { testReportModule } from "./testing";
-import { buildReportModule } from "./build-report";
 import { problemsPanelModule } from "./lint";
 import { agentLogPanelModule } from "./agent";
 
@@ -61,23 +51,6 @@ export const builtInPanels: PanelModule[] = [
     consoleModule,
     problemsPanelModule,
     agentLogPanelModule,
-];
-
-/**
- * Built-in editor modules
- * All editors that should be registered on workspace startup
- */
-export const builtInEditors: EditorModule[] = [
-    welcomeModule,
-    helpModule,
-    aboutModule,
-    imagePreviewModule,
-    audioPreviewModule,
-    videoPreviewModule,
-    fontPreviewModule,
-    jsonPreviewModule,
-    testReportModule,
-    buildReportModule,
 ];
 
 /**

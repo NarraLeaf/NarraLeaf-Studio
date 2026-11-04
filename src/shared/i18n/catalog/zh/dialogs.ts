@@ -44,8 +44,6 @@ export const dialogs = {
     },
     service: {
         alertTitle: "提示",
-        selectTitle: "选择一项",
-        inputTitle: "输入",
     },
     noun: {
         item: "项目",

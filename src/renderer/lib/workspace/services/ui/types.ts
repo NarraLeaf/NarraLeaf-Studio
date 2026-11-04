@@ -232,41 +232,6 @@ export interface Dialog {
 }
 
 /**
- * Quick pick item
- */
-export interface QuickPickItem<T = any> {
-    id: string;
-    label: string;
-    description?: string;
-    detail?: string;
-    icon?: ReactNode;
-    data?: T;
-}
-
-/**
- * Quick pick options
- */
-export interface QuickPickOptions {
-    title?: string;
-    placeholder?: string;
-    matchOnDescription?: boolean;
-    matchOnDetail?: boolean;
-    canSelectMany?: boolean;
-}
-
-/**
- * Input box options
- */
-export interface InputBoxOptions {
-    title?: string;
-    prompt?: string;
-    placeholder?: string;
-    value?: string;
-    password?: boolean;
-    validateInput?: (value: string) => string | undefined;
-}
-
-/**
  * Progress options
  */
 export interface ProgressOptions {
