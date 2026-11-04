@@ -698,8 +698,13 @@ describe("parseMainCommandLine", () => {
             const variant = parseMainCommandLine([
                 "NarraLeaf-Studio.exe", "--test", "demo", "--test-id=walkthrough", "--test-variant", "Demo",
             ]).check;
+            const parsed = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test", "demo", "--test-id=walkthrough", "--test-variant", "Demo",
+            ]);
             expect(variant.variant).toBeNull();
             expect(variant.error).toBe("--test-variant takes its value after an equals sign: write --test-variant=Demo");
+            // The refused value is not also a path to open.
+            expect(parsed.openPaths).not.toContain("Demo");
 
             expect(test("--test-dlc", "Voice pack").error)
                 .toBe('--test-dlc takes its value after an equals sign: write --test-dlc="Voice pack"');
@@ -793,9 +798,11 @@ describe("parseMainCommandLine", () => {
             expect(check.plugins).toEqual([]);
             expect(check.error).toBe('--lint-plugin takes its value after an equals sign: write --lint-plugin="Quick Save"');
 
-            const build = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo", "--build-plugin", "Gallery"]).build;
+            const parsed = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo", "--build-plugin", "Gallery"]);
+            const build = parsed.build;
             expect(build.plugins).toEqual([]);
             expect(build.error).toBe("--build-plugin takes its value after an equals sign: write --build-plugin=Gallery");
+            expect(parsed.openPaths).not.toContain("Gallery");
         });
 
         it("refuse a missing value", () => {
