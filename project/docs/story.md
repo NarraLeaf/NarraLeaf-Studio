@@ -10,10 +10,9 @@
 - 已有 Scene editor，可按 block tree 渲染行，支持 inline 文本、插入、选择、多选、缩进、拖拽排序、折叠、删除、局部 undo/redo、clipboard、action creator、inspector。
 - 已有 Story asset lock：背景、角色 asset、音频、dialogue voice asset 等引用会注册资产锁。
 - Plugin actions 同时接入 Action Creator 与 slash chooser；`useStoryPluginActionCommands` 跟随注册变更。
-- `canImportStoryPackage()` 和 `canExportStoryPackage()` 存在，但当前固定返回 `false`。
-- Story Action 快速编辑器（双击 action 行展开的紧凑 inline card）已覆盖绝大多数 action：dialogue、narration、choice/menu（choiceOption 支持 hiddenWhen/disabledWhen 条件）、setBackground（含 transition）、character、audio、image、text、layer、video、displayable（含 mask/clip/filter/darken/circleReveal/circleClose/wipe 视觉特效）、camera（含镜头效果）、nvl、setVariable、wait、control、jump、code、note。
+- Story Action 快速编辑器（双击 action 行展开的紧凑 inline card）已覆盖绝大多数 action：dialogue、narration、choice/menu（choiceOption 支持 hiddenWhen/disabledWhen 条件）、setBackground（含 transition）、character、audio、image、text、layer、video、displayable（含 mask/clip/filter/darken/circleReveal/circleClose/wipe 视觉特效）、camera（含镜头效果）、nvl、setVariable、wait、control、jump、note。
 - Transform 编辑支持 Preset ↔ Motion 双模式；Motion 模式使用 `MotionSelector`（仿项目资产选择器 + 鼠标 hover 实时动画预览），绑定 Story Motion 动画资产。
-- Transition 编辑是预设驱动的类型化字段：dissolve / fadeIn(startPos) / maskCircle(center/from/to) / maskWipe(direction/reverse)，与编译器 `createTransition` 消费的 `props` 对齐。
+- Transition 编辑是预设驱动的类型化字段，可选种类由 `STORY_TRANSITION_KINDS`（`src/shared/types/story/document.ts`）定义，字段与编译器 `createTransition` 消费的 `props` 对齐。
 - Dialogue/narration/choice/note 支持富文本：`StoryTextSegment.rich`（bold/italic/color/ruby/cps/fontSize 标记 + 内联 Pause），编辑行上方有一个会话级共享（不落盘）的浮动富文本工具条。`value` 始终是纯文本投影，向后兼容。
 - Story 编译器已实现：`compileStudioStoryToNlr`（`src/renderer/lib/ui-editor/runtime/game/storyCompiler.ts`）把 scene 编译成 narraleaf-react 运行时对象，接入 `GameApp`，可在 Dev Mode preview 中真机运行（含 transition、motion transform、富文本 Sentence/Word/Pause、displayable 特效等）。
 
@@ -46,7 +45,6 @@
 - Block tree 是真相；Scene editor 只投影成 rows。
 - 文本段落使用 `StoryTextSegment.textId`。编辑文本时不要随意重建 `textId`，否则会破坏本地化、配音和版本比较的稳定引用。
 - `note` 是 Studio-only action；不要把它当 runtime block。
-- `code` 是逃生口类型，inspector 支持源码编辑，但 action creator 的默认命令列表没有暴露它。
 
 ## Scene Editor 行为要点
 
@@ -72,7 +70,7 @@
 - `.story` 是 `project/app/story.js` 使用的工具格式，查询和编辑先读 `project/app/story.md`。
 - 普通作者使用行编辑器与现有文本导入导出流程。
 - NarraLang 的脚本视图、解析和回写属于开发 checkout 的实验能力，入口统一由 `narralangUiEnabled` 控制，启用参数为 `--experimental --x-narralang`。打包版 Studio 拒绝实验模式。
-- Story package import/export 的 capability 方法固定返回 `false`；这与整个项目的 `.nlspkg` 导入导出是不同功能。
+- 单个故事没有独立的打包导入导出；项目整体的 `.nlspkg` 导入导出是另一项功能。
 
 ## 修改建议
 

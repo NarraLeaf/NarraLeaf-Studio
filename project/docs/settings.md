@@ -192,8 +192,9 @@ GitCode 整仓镜像取代了它。
 ## 缓存
 
 `src/main/app/application/managers/storage/cacheInventory.ts` 是**唯一**知道 Studio 在磁盘上留了
-什么的地方。六个桶（electron-builder 缓存、插件构建依赖、Chromium 缓存、插件图标、PSD 导入
-残留、日志），都保证「删掉只损失时间，不损失工作」。`backgrounds/`、`dev-mode-saves/`、
+什么的地方。桶的完整列表是 `src/shared/types/cacheInventory.ts` 的 `CACHE_BUCKET_IDS`（插件图标、模板海报、拼写词典、
+优化图片、压缩媒体、构建依赖、工具链、Puppet 运行时、electron-builder 缓存、浏览器缓存、PSD 导入残留、
+载荷读取器、日志），都保证「删掉只损失时间，不损失工作」。`backgrounds/`、`dev-mode-saves/`、
 `plugins/`、`authorization/`、`signing/`、`state/` **不是缓存**，不在里面。
 
 ## 快速验证
@@ -201,5 +202,5 @@ GitCode 整仓镜像取代了它。
 - 修改 workspace layout / editor session / UI editor 状态后，确认 `global.json` 更新。
 - 重开 Studio 后，确认这些状态从 `global.json` 恢复。
 - 修改项目配置或项目内容后，确认对应项目文件更新，而不是 `global.json`。
-- `rg -n "ProjectSettings|projectSettings|runtime_settings|appUserSettings|userSettings" src` 不应出现结果。
+- `rg -n "runtime_settings|appUserSettings|\buserSettings\b" src` 不应出现结果；这些是已移除的旧存储名。`ProjectSettings` / `projectSettings` 是现行的项目设置分区与引用种类名，不在此列。
 
