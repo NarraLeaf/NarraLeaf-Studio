@@ -1698,45 +1698,13 @@ async function buildLaunchEntryScene(params: {
 
     // The scene's layers first so images/texts can bind to them, pre-posed as the target row left them.
     buildSceneLayers(ctx, preposed);
-    const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
-    for (const record of preposed) {
-        if (record.kind === "layer") {
-            continue;
-        }
-        const layer = resolveLayerForRef(ctx, record.layer);
-        const id = sceneElementStaticId(ctx, record.kind, normalizeObjectName(record.objectName));
-        if (record.kind === "image") {
-            const src = await resolveSnapshotImageSource(ctx, record);
-            const image = getImage(ctx, record.objectName, {
-                autoFit: record.autoFit ?? false,
-                layer,
-                src: src ?? undefined,
-                initialProps: snapshotPoseProps(record),
-            });
-            // A pre-posed character is on stage before any row of its own runs, so its portrait has
-            // to be registered here too - otherwise a row-precise launch shows the speaker with no
-            // avatar until they next enter or change expression.
-            if (record.source?.type === "character") {
-                await bindCharacterPortrait(ctx, record.source.characterId, image);
-            }
-            registrations.push({ element: image, layer, id });
-        } else {
-            const text = getText(ctx, record.objectName, {
-                text: record.text ?? "",
-                fontSize: record.fontSize,
-                fontColor: record.fontColor,
-                layer,
-                initialProps: snapshotPoseProps(record),
-            });
-            registrations.push({ element: text, layer, id });
-        }
-    }
+    const registrations = await prePoseSnapshotElements(ctx, preposed);
     // Registered by hand rather than reached by a row, so story construction never names these: an
     // element no action calls keeps whatever id it had. They take their own stable names now rather
     // than a counter's, which is both unique (the engine keys their React nodes by it) and the name
     // a save written in this launch carries for them.
     registrations.forEach(registration => {
-        DevTools.setElementId(registration.element as any, registration.id);
+        DevTools.setElementId(registration.element as any, sceneElementStaticId(ctx, registration.kind, registration.key));
     });
 
     const statements: NlrStatement[] = [];
@@ -2021,38 +1989,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
 
     // The scene's layers first so images/texts can bind to them, pre-posed as the row left them.
     buildSceneLayers(ctx, snapshot.displayables);
-    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
-    for (const record of snapshot.displayables) {
-        if (record.kind === "layer") {
-            continue;
-        }
-        const layer = resolveLayerForRef(ctx, record.layer);
-        if (record.kind === "image") {
-            const src = await resolveSnapshotImageSource(ctx, record);
-            const image = getImage(ctx, record.objectName, {
-                autoFit: record.autoFit ?? false,
-                layer,
-                src: src ?? undefined,
-                initialProps: snapshotPoseProps(record),
-            });
-            // A pre-posed character is on stage before any row of its own runs, so its portrait has
-            // to be registered here too - otherwise a row-precise launch shows the speaker with no
-            // avatar until they next enter or change expression.
-            if (record.source?.type === "character") {
-                await bindCharacterPortrait(ctx, record.source.characterId, image);
-            }
-            registrations.push({ element: image, layer });
-        } else {
-            const text = getText(ctx, record.objectName, {
-                text: record.text ?? "",
-                fontSize: record.fontSize,
-                fontColor: record.fontColor,
-                layer,
-                initialProps: snapshotPoseProps(record),
-            });
-            registrations.push({ element: text, layer });
-        }
-    }
+    const registrations = await prePoseSnapshotElements(ctx, snapshot.displayables);
     // Injected elements sit outside the action tree, so story construction never assigns them
     // ids - give each a unique one or they collide as React keys on the stage.
     registrations.forEach((registration, index) => {
@@ -2223,6 +2160,84 @@ async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlayback
         );
     }
     return statements;
+}
+
+/** One element a snapshot pre-poses, with the stage key and element kind its static id is built from. */
+type PrePosedElement = {
+    element: Image | Text | Puppet;
+    layer: Layer | undefined;
+    kind: "image" | "text" | "puppet";
+    key: string;
+};
+
+/**
+ * Build every image, text and puppet a stage snapshot records, at its settled pose.
+ *
+ * Shared by the row-precise launch and the stage preview, which differ only in the ids they give the
+ * result. The caller builds the scene's layers first so each element can bind to its own.
+ *
+ * The snapshot files every character as an image record, but a puppet character is a different
+ * element class. It is posed as its own box, so the rows after the target address it and no
+ * stand-in image is drawn beside it.
+ */
+async function prePoseSnapshotElements(
+    ctx: SceneCompileContext,
+    records: readonly StageSnapshotDisplayable[],
+): Promise<PrePosedElement[]> {
+    const posed: PrePosedElement[] = [];
+    for (const record of records) {
+        if (record.kind === "layer") {
+            continue;
+        }
+        const layer = resolveLayerForRef(ctx, record.layer);
+        const key = normalizeObjectName(record.objectName);
+        const source = record.kind === "image" && record.source?.type === "character" ? record.source : null;
+        const appearance = source?.characterId ? ctx.characterSummaries.get(source.characterId)?.appearance : undefined;
+        if (source && appearance?.kind === "puppet") {
+            const puppet = await getPuppetElement(
+                ctx,
+                record.objectName,
+                characterNameById(ctx, source.characterId),
+                appearance,
+                record.sourceBlockId ?? record.objectName,
+                characterEntranceDefaults(ctx, source.characterId),
+                snapshotPoseProps(record),
+            );
+            if (puppet) {
+                if (layer) {
+                    puppet.useLayer(layer);
+                }
+                posed.push({ element: puppet, layer, kind: "puppet", key });
+            }
+            continue;
+        }
+        if (record.kind === "image") {
+            const src = await resolveSnapshotImageSource(ctx, record);
+            const image = getImage(ctx, record.objectName, {
+                autoFit: record.autoFit ?? false,
+                layer,
+                src: src ?? undefined,
+                initialProps: snapshotPoseProps(record),
+            });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise the speaker shows no avatar until they next
+            // enter or change expression.
+            if (source) {
+                await bindCharacterPortrait(ctx, source.characterId, image);
+            }
+            posed.push({ element: image, layer, kind: "image", key });
+        } else {
+            const text = getText(ctx, record.objectName, {
+                text: record.text ?? "",
+                fontSize: record.fontSize,
+                fontColor: record.fontColor,
+                layer,
+                initialProps: snapshotPoseProps(record),
+            });
+            posed.push({ element: text, layer, kind: "text", key });
+        }
+    }
+    return posed;
 }
 
 /** Constructor-config pose: settled props with visibility folded into opacity. */
@@ -4206,15 +4221,10 @@ async function compileCharacterPuppetAction(
     // loaded its model and set a motion on an element that is never shown - a row that costs the
     // whole backend and produces no scene, reported by nothing.
     //
-    // A row-precise launch is the one place a puppet arrives without an `enter` row of its own, and
-    // it arrives wearing the wrong class: the stage snapshot has no notion of a puppet and files
-    // every character as an image record, so the replay pre-poses this character as an `Image` and
-    // the box is never restored. An `Image` under a puppet character's key can have come from
-    // nowhere else - a compile of the rows sends a puppet character here on every operation and
-    // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    // A row-precise launch pre-poses the box itself (see `buildLaunchEntryScene`), so the rows after
+    // the target find it here like any other entered puppet.
     const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
-    const preposed = stagedCharacterElement(ctx, name) instanceof Image;
-    const puppet = declaresStageObject(payload) || preposed
+    const puppet = declaresStageObject(payload)
         ? await getPuppetElement(ctx, name, characterDiagnosticName(ctx, payload), appearance, block.id, entranceDefaults)
         : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
@@ -4288,6 +4298,8 @@ async function getPuppetElement(
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
     blockId: string,
     entranceDefaults: StoryTransformProps | undefined,
+    /** The pose a row-precise launch restores the box in, laid over the entrance defaults. */
+    initialProps?: Record<string, unknown>,
 ): Promise<Puppet | null> {
     const key = normalizeObjectName(objectName);
     const existing = ctx.puppets.get(key);
@@ -4333,6 +4345,7 @@ async function getPuppetElement(
         // `reset()`. The box a backend draws into is scaled and placed exactly as an image is, so a
         // puppet character is her own size on the same terms.
         ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
+        ...(initialProps ?? {}),
     });
     setStableElementId(ctx.elementIdBindings, puppet, sceneElementStaticId(ctx, "puppet", key));
     ctx.puppets.set(key, puppet);
