@@ -8,6 +8,9 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
     private ctx: WorkspaceContext | null = null;
     private _initialized = false;
     private _initializing: Promise<void> | null = null;
+    /** When this service finished coming up, against every other: the order teardown reverses. */
+    private _initializedAt = 0;
+    private static initSequence = 0;
 
     public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
         const pending = new Set<Service>();
@@ -102,8 +105,17 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
         return failures;
     }
 
+    /**
+     * Tear every service down, the last to come up first.
+     *
+     * Initialization brings a service's dependencies up before it, so the reverse of that order
+     * disposes a service while everything it depends on is still up. A dispose that flushes a
+     * document or purges an undo entry reaches its dependencies through the context, and finds them.
+     * A service that never came up has nothing to dispose and keeps its registry position.
+     */
     public static async disposeAll(ctx: WorkspaceContext): Promise<void> {
-        for (const service of ctx.services.getAll()) {
+        const services = [...ctx.services.getAll()].sort((a, b) => b._initializedAt - a._initializedAt);
+        for (const service of services) {
             try {
                 await service.teardown(ctx);
             } catch (error) {
@@ -205,6 +217,7 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
         try {
             await this.init(ctx, depend);
             this._initialized = true;
+            this._initializedAt = ++Service.initSequence;
         } catch (error) {
             try {
                 await this.dispose(ctx);
