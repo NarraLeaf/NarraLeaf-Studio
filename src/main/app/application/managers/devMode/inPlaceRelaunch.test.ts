@@ -124,7 +124,7 @@ beforeEach(() => {
     fs.writeFileSync(path.join(root, "project.json"), JSON.stringify({ name: "in-place" }));
     compiled = [];
     launchedWindows = [];
-    devMode = new DevModeManager(fakeApp(), undefined, recordingBundleSource);
+    devMode = new DevModeManager(fakeApp(), recordingBundleSource);
 });
 
 afterEach(async () => {

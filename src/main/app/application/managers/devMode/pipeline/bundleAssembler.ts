@@ -363,7 +363,6 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         preferences,
         brand,
         fonts,
-        compiled: context.compiled,
         meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
 }

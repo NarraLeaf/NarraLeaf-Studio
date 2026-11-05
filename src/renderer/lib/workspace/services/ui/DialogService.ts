@@ -2,7 +2,7 @@ import React, { ReactNode } from "react";
 import { UIStore } from "./UIStore";
 import { FocusManager } from "./FocusManager";
 import { FocusArea } from "./types";
-import { Dialog, DialogButton, QuickPickItem, QuickPickOptions, InputBoxOptions } from "./types";
+import { Dialog, DialogButton } from "./types";
 import { translate } from "@/lib/i18n";
 import type { HelpTopicId } from "@/lib/help";
 
@@ -14,7 +14,6 @@ export class DialogService {
     private store: UIStore;
     private focusManager: FocusManager;
     private nextId = 1;
-    private dialogResolvers: Map<string, (result: any) => void> = new Map();
 
     constructor(store: UIStore, focusManager: FocusManager) {
         this.store = store;
@@ -199,61 +198,10 @@ export class DialogService {
     }
 
     /**
-     * Show a quick pick dialog (like VSCode's quick pick)
-     */
-    public async showQuickPick<T = any>(
-        items: QuickPickItem<T>[],
-        options?: QuickPickOptions
-    ): Promise<QuickPickItem<T> | QuickPickItem<T>[] | undefined> {
-        // This would need a custom QuickPick component
-        // For now, return a promise that will be resolved by the component
-        return new Promise<QuickPickItem<T> | QuickPickItem<T>[] | undefined>(resolve => {
-            const id = `quickpick-${this.nextId++}`;
-            this.dialogResolvers.set(id, resolve);
-            
-            // Create a dialog with QuickPick component
-            // The component will call resolveDialog when selection is made
-            this.createDialog({
-                title: options?.title ?? translate("dialogs.service.selectTitle"),
-                content: null, // QuickPick component would go here
-                closable: true,
-                width: 600,
-                onClose: () => {
-                    this.resolveDialog(id, undefined);
-                },
-            });
-        });
-    }
-
-    /**
-     * Show an input box dialog
-     */
-    public async showInputBox(options?: InputBoxOptions): Promise<string | undefined> {
-        // This would need a custom InputBox component
-        return new Promise<string | undefined>(resolve => {
-            const id = `inputbox-${this.nextId++}`;
-            this.dialogResolvers.set(id, resolve);
-            
-            // Create a dialog with InputBox component
-            this.createDialog({
-                title: options?.title ?? translate("dialogs.service.inputTitle"),
-                content: null, // InputBox component would go here
-                closable: true,
-                width: 500,
-                onClose: () => {
-                    this.resolveDialog(id, undefined);
-                },
-            });
-        });
-    }
-
-    /**
      * Close a dialog
      */
     public close(id: string): void {
         this.store.closeDialog(id);
-        // Clean up resolver if exists
-        this.dialogResolvers.delete(id);
 
         // Restore previous focus from stack
         this.focusManager.restorePreviousFocus();
@@ -281,18 +229,6 @@ export class DialogService {
         const activeId = this.store.getActiveDialogId();
         if (!activeId) return undefined;
         return this.store.getDialogs().find(d => d.id === activeId);
-    }
-
-    /**
-     * Resolve a dialog with a result (used by dialog components)
-     */
-    public resolveDialog<T = any>(id: string, result: T): void {
-        const resolver = this.dialogResolvers.get(id);
-        if (resolver) {
-            resolver(result);
-            this.dialogResolvers.delete(id);
-        }
-        this.close(id);
     }
 
     /**

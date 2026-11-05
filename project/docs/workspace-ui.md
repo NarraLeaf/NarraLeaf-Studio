@@ -10,7 +10,7 @@
 - Workspace layout 已有 left/right sidebar、bottom panel、main editor area、action bar、dialog overlay、notification container。
 - Editor 主路径是 group-aware `editorLayout`，支持打开、关闭、聚焦、批量关闭 tab。
 - `workspaceEditorSession.ts` / `useWorkspaceEditorSession.ts` 负责保存和恢复可序列化 editor tabs。
-- Dialog 支持 confirm、alert、自定义 dialog；QuickPick/InputBox API 仍是 placeholder。
+- Dialog 支持 confirm、alert 和自定义 content dialog。
 
 ## 入口文件
 
@@ -35,16 +35,16 @@
 - `UIStore` 是 Workspace UI 状态真源，保存 notifications、panels、panel visibility、dialogs、actions、action groups、selection、editor layout。
 - `RegistryProvider` 通过 hooks 订阅 `UIStore`，并提供 React 组件更方便使用的 register/open/close API。
 - 新增 panel/action/actionGroup 时可走 module registration；运行时扩展也应最终进入 `UIStore`。
-- `UIStore.editorTabs` / `activeEditorTabId` 是旧 flat tab 状态；当前 Workspace 主要看 `editorLayout`。
+- Editor tab 状态只存在于 `editorLayout` 的 group 中；`getEditorTabs()` 从各 group 收集。
 
 ## Editor Tab 机制
 
 - 当前主路径是 `UIStore.openEditorTabInGroup()`、`closeEditorTabInGroup()`、`setActiveEditorTabInGroup()`。
-- `UIService.editor.open()` 已路由到 group-aware API，但 `EditorService.close()`、`getAll()` 等仍读写旧 flat tab 状态；处理当前 Workspace tab 时优先使用 Registry 或 `UIStore` 的 group-aware API。
+- `UIService.editor.open()`、`closeEditorTab()`、`setActiveEditorTab()` 都路由到 group-aware API。
 - Tab 定义使用 `EditorTabDefinition`，通常包含 `id`、`title`、`component`、`payload`、`closable`、`modified` 等。
 - Workspace 已有 VS Code 风格的 editor quick switch：`Ctrl+Tab` / `Ctrl+Shift+Tab` 在所有 group-aware editor tabs 间按运行时 MRU 顺序切换，按住 `Ctrl` 显示列表，松开 `Ctrl` 激活高亮项，`Esc` 取消；该状态不持久化。
 - 新增可恢复 tab 时必须补 `workspaceEditorSession.ts` 的 serialize/restore 逻辑。
-- 当前 session restore 主要支持 root 为单一 editor group 的布局；不要假设 split layout 已完整持久化。
+- Session restore 恢复 split 结构、比例和每个 pane 的焦点 tab。
 
 ## Focus 与 Keybinding
 
@@ -59,9 +59,8 @@
 
 - `DialogService.confirm()` 和 `alert()` 已可用。
 - `DialogService.show()` / `showAndWait()` 可用于自定义 React content。
-- `showQuickPick()` 和 `showInputBox()` 目前只创建空 content dialog，没有真实 QuickPick/InputBox 组件。
 - Notification 走 `NotificationService`，UI 容器在 `src/renderer/apps/workspace/components/ui/NotificationContainer.tsx`。
-- `StatusBarService` 有 store/API，但 Workspace layout 中没有完整 status bar UI；不要把 status bar item 当作可见能力。
+- `StatusBarService` 的条目由 Workspace layout 底部的 `StatusBar` 渲染。
 
 ## Panel 与 PanelState
 
@@ -76,19 +75,10 @@
 - `UIService` 监听 `AssetsService` 删除/更新事件：删除选中资产时清空 selection，并关闭相关 preview tab；更新选中资产时浅拷贝刷新 selection。
 - 功能模块自己的编辑态仍应保留在对应 service 或组件状态中，不要把复杂 domain state 塞到全局 selection。
 
-## 已知缺口
-
-- QuickPick/InputBox 没有真实 UI。
-- Status bar UI 未完整挂载。
-- Welcome tab 自动打开逻辑仍被注释。
-- 部分 placeholder module 仍存在，例如 Localization。
-- 旧 flat editor tab API 仍保留，容易和当前 group-aware layout 混淆。
-- Split editor layout 的 session restore 不完整。
-
 ## 修改建议
 
 - 新增 Workspace tab：先定义稳定 tab id 和 payload，再补 session serialize/restore。
 - 新增全局快捷键：优先通过 action/actionGroup shortcut 或 `KeybindingService.registerMany()`，并设置正确 `when` / `allowInEditable`。
-- 新增 editor tab 切换行为：使用 group-aware `editorLayout` 和 Registry 的 `setActiveEditorTab(tabId, groupId)`；不要回退到旧 flat `activeEditorTabId`。
-- 新增 dialog：简单确认用 confirm/alert，复杂 UI 用 custom content；不要调用 QuickPick/InputBox 后假设已有真实选择器。
+- 新增 editor tab 切换行为：使用 group-aware `editorLayout` 和 Registry 的 `setActiveEditorTab(tabId, groupId)`。
+- 新增 dialog：简单确认用 confirm/alert，复杂 UI 用 `show()` / `showAndWait()` 传入 custom content。
 - 改 panel 状态：可恢复的 panel 私有 UI 状态放 `PanelStateService`，持久业务数据放对应 domain service。

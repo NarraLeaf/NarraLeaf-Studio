@@ -790,6 +790,5 @@ export type DevModeBundle = {
      */
     fonts?: ProjectFontEntry[];
     scripts?: Record<string, unknown>;
-    compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;
 };
