@@ -1,6 +1,9 @@
+import { resolveBuildTargets, isDesktopTarget, isMobileTarget, type GameBuildMobileTarget } from "./buildTargets";
+export { isDesktopTarget, isMobileTarget, type GameBuildMobileTarget } from "./buildTargets";
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
+import os from "os";
 import { existsSync } from "fs";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
@@ -11,43 +14,7 @@ import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import { electronBuilderCacheRoot } from "../storage/cacheInventory";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
-import {
-    assetCompressionDidSomething,
-    currentGameBuildPlatform,
-    deriveAndroidVersionCode,
-    deriveGameAppId,
-    deriveIosBundleVersion,
-    GAME_BUILD_FORMATS_BY_PLATFORM,
-    gameBuildArtifactBaseName,
-    hostBuildLimitsSentence,
-    hostCanBuildFormat,
-    hostCanBuildTarget,
-    hostPackagesWithoutPlatformTools,
-    iosAppDirectoryName,
-    isDesktopBuildPlatform,
-    isMobileBuildPlatform,
-    mobileExportFileName,
-    normalizeAndroidPackageName,
-    normalizeGameBuildArch,
-    normalizeIosBundleId,
-    webExportDirName,
-    webExportZipName,
-    type AssetCompressionReport,
-    type AssetCompressionTrackReport,
-    type BuildPreflightFinding,
-    type GameBuildArch,
-    type GameBuildDesktopPlatform,
-    type GameBuildFormat,
-    type GameBuildMobilePlatform,
-    type GameBuildPlatform,
-    type GameBuildRequest,
-    type GameBuildStateSnapshot,
-    type GameBuildTarget,
-    type GamePatchExportRequest,
-    type GameBuildRunKind,
-    type LastGameBuildRun,
-    type ShippedAssetReport,
-} from "@shared/types/gameBuild";
+import { assetCompressionDidSomething, currentGameBuildPlatform, deriveAndroidVersionCode, deriveGameAppId, deriveIosBundleVersion, gameBuildArtifactBaseName, hostBuildLimitsSentence, hostCanBuildFormat, hostCanBuildTarget, hostPackagesWithoutPlatformTools, iosAppDirectoryName, isDesktopBuildPlatform, mobileExportFileName, normalizeAndroidPackageName, normalizeGameBuildArch, normalizeIosBundleId, webExportDirName, webExportZipName, type AssetCompressionReport, type AssetCompressionTrackReport, type BuildPreflightFinding, type GameBuildArch, type GameBuildDesktopPlatform, type GameBuildFormat, type GameBuildMobilePlatform, type GameBuildPlatform, type GameBuildRequest, type GameBuildStateSnapshot, type GameBuildTarget, type GamePatchExportRequest, type GameBuildRunKind, type LastGameBuildRun, type ShippedAssetReport } from "@shared/types/gameBuild";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 import {
     readAssetCompressionConfiguration,
@@ -56,15 +23,7 @@ import {
     resolveVideoCompression,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
-import {
-    SIGNING_CREDENTIAL_MATERIAL_FIELDS,
-    SIGNING_CREDENTIAL_PLATFORM,
-    SIGNING_CREDENTIAL_SECRET_FIELDS,
-    signingNotarizes,
-    type ResolvedAppleNotarization,
-    type ResolvedSigningMaterial,
-    type SigningPlatform,
-} from "@shared/types/signing";
+import { SIGNING_CREDENTIAL_PLATFORM, SIGNING_CREDENTIAL_SECRET_FIELDS, signingNotarizes, type ResolvedAppleNotarization, type ResolvedSigningMaterial, type SigningPlatform } from "@shared/types/signing";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -94,6 +53,9 @@ import {
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages } from "./optimizeAssetImages";
+import { findResizableImages } from "@shared/build/imageResizeEligibility";
+import { assembleDevModeBundleFromProjectPath } from "../devMode/pipeline/bundleAssembler";
+import { readPublishedPluginData } from "../pluginRuntimeData";
 import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -669,13 +631,12 @@ export class GameBuildManager {
         const variant = resolveAppTag(appTagDocument.tags, request.appTagId);
         const overrides = variant.overrides;
         const hostPlatform = currentGameBuildPlatform();
-        const targets = normalizeTargets(request.targets);
+        const { targets, desktopTargets, mobileTargets } = resolveBuildTargets(request.targets);
         const findings: BuildPreflightFinding[] = [];
 
         if (targets.length === 0) {
             findings.push({ code: "no-targets", severity: "error", section: "targets" });
         }
-        const desktopTargets = targets.filter(isDesktopTarget);
         for (const target of desktopTargets) {
             if (!hostCanBuildTarget(hostPlatform, target.platform)) {
                 findings.push({
@@ -709,7 +670,6 @@ export class GameBuildManager {
             });
         }
 
-        const mobileTargets = targets.filter(isMobileTarget);
         // Every identity check below judges what this build will actually carry, which is the
         // selected variant's value where it states one. Checking the project's value instead would
         // clear a build whose variant sets an unusable version, and flag one whose variant fixes it.
@@ -1276,7 +1236,7 @@ export class GameBuildManager {
         // would read as changed against the build being patched, and the patch
         // would carry the author's whole art library back to a player who already
         // has it - under the extension the pack no longer names.
-        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig, pluginSelection.selected);
         this.ensureNotCancelled(session);
 
         /**
@@ -2011,28 +1971,13 @@ export class GameBuildManager {
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         const hostPlatform = currentGameBuildPlatform();
-        const targets = normalizeTargets(request.targets);
+        const { targets, desktopTargets, mobileTargets, webTarget, webFormats, unknownTargets } = resolveBuildTargets(request.targets);
         if (targets.length === 0) {
             throw new Error("No build targets selected");
         }
-        const desktopTargets = targets.filter(isDesktopTarget);
-        const mobileTargets = targets.filter(isMobileTarget);
-        // A platform outside the union (malformed non-UI payload) must also
-        // fail loudly: with the explicit partitions above it would otherwise
-        // fall into none of them and the build would "succeed" with zero
-        // artifacts - worse than the TypeError the old desktop fall-through
-        // produced.
-        const unknownTargets = targets.filter(target =>
-            !isDesktopBuildPlatform(target.platform)
-            && !isMobileBuildPlatform(target.platform)
-            && target.platform !== "web");
         if (unknownTargets.length > 0) {
             throw new Error(`Unknown build platform(s): ${unknownTargets.map(t => String(t.platform)).join(", ")}`);
         }
-        const webTarget = targets.find(target => target.platform === "web");
-        const webFormats = webTarget
-            ? webTarget.formats.filter(format => GAME_BUILD_FORMATS_BY_PLATFORM.web.includes(format))
-            : [];
         if (webTarget && webFormats.length === 0) {
             throw new Error("The web target has no usable format (expected zip or dir)");
         }
@@ -2121,7 +2066,7 @@ export class GameBuildManager {
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // Before either compile, so both carry the same bytes for an asset and a
         // protected pack is optimized like an unprotected one. See optimizeAssets.
-        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig, pluginSelection.selected);
         this.ensureNotCancelled(session);
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
@@ -3738,9 +3683,14 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         projectConfig: ProjectConfigData | null,
+        runtimePlugins: RuntimePluginPackSelection["selected"],
     ): Promise<Record<string, OptimizedAssetFile>> {
         const config = this.assetCompressionConfig(projectConfig);
-        const images = await this.optimizeImages(session, projectPath, config);
+        // Only a size cap needs to know how an image is drawn, and working it out assembles the story.
+        const resizableImageIds = resolveImageCompression(config).maxDimension !== null
+            ? await this.findResizableImages(session, projectPath, runtimePlugins)
+            : undefined;
+        const images = await this.optimizeImages(session, projectPath, config, resizableImageIds);
         const media = await this.compressMedia(session, projectPath, config);
         // Two passes, two counts, one after the other: each reads its own half of the library and
         // neither knows the other's length before it runs, so the readout fills twice rather than
@@ -3755,6 +3705,50 @@ export class GameBuildManager {
         // zeroes and inviting an author to work out what went wrong.
         session.assetCompression = assetCompressionDidSomething(compression) ? compression : null;
         return { ...images.files, ...media.files };
+    }
+
+    /**
+     * The images the size cap may shrink: every place they are used draws them at a size their
+     * pixels do not decide (`findResizableImages`).
+     *
+     * Read from the story as the release edition assembles it with every DLC carried - the most any
+     * package of this project draws - and the published data of the plugins it ships. Any edition
+     * draws a subset of that, so an image resizable here is resizable in each of them.
+     *
+     * Never fatal, and never optimistic: a story that cannot be assembled here will refuse the
+     * compile with its own words a moment later, and until then every image keeps its size.
+     */
+    private async findResizableImages(
+        session: BuildSession,
+        projectPath: string,
+        runtimePlugins: RuntimePluginPackSelection["selected"],
+    ): Promise<Set<string>> {
+        // The author's scripts are bundled as part of assembling, and that output is nobody's here.
+        const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "nls-image-uses-"));
+        try {
+            const bundle = await assembleDevModeBundleFromProjectPath({
+                projectPath,
+                bundleId: crypto.randomUUID(),
+                revision: 1,
+                scriptOutput: { directory: scratch, toUrl: filePath => path.basename(filePath) },
+            });
+            const pluginData = await Promise.all(runtimePlugins.map(plugin => readPublishedPluginData({
+                projectPath,
+                manifest: plugin.manifest,
+            })));
+            return findResizableImages({ bundle, extra: pluginData });
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not work out which images are drawn at a size their pixels do not decide, "
+                    + "so the maximum image size shrinks none of them: "
+                    + (error instanceof Error ? error.message : String(error)),
+            });
+            return new Set();
+        } finally {
+            await fs.rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+        }
     }
 
     /**
@@ -3827,6 +3821,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         config: AssetCompressionConfiguration,
+        resizableImageIds: ReadonlySet<string> | undefined,
     ): Promise<AssetPassOutcome> {
         try {
             const result = await optimizeProjectImages({
@@ -3834,6 +3829,7 @@ export class GameBuildManager {
                 cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
                 openCodec: pages => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"), { pages }),
+                ...(resizableImageIds ? { resizableImageIds } : {}),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
                 onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
@@ -3852,6 +3848,17 @@ export class GameBuildManager {
                     message: `running image compression on ${result.converted} image(s)...`,
                 });
             }
+            if (result.keptAtSize > 0) {
+                const more = result.keptAtSize - result.keptAtSizeNames.length;
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `${result.keptAtSize} image(s) over the maximum image size keep their size, `
+                        + "because they are drawn at their own pixels, as character sprites are: "
+                        + result.keptAtSizeNames.map(name => `"${name}"`).join(", ")
+                        + (more > 0 ? ` and ${more} more` : ""),
+                });
+            }
             return {
                 files: result.images,
                 track: {
@@ -3860,6 +3867,7 @@ export class GameBuildManager {
                     compressed: result.converted,
                     beforeBytes: result.beforeBytes,
                     afterBytes: result.afterBytes,
+                    ...(result.keptAtSize > 0 ? { keptAtSize: result.keptAtSize } : {}),
                 },
             };
         } catch (error) {
@@ -4253,22 +4261,6 @@ function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
 }
 
-type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };
-
-export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
-    // Must be the shared exhaustive test, not `platform !== "web"`: this is a
-    // type predicate, whose body TypeScript never checks - the old form
-    // silently routed mobile targets into the electron-builder path when the
-    // platform union grew.
-    return isDesktopBuildPlatform(target.platform);
-}
-
-export type GameBuildMobileTarget = GameBuildTarget & { platform: GameBuildMobilePlatform };
-
-export function isMobileTarget(target: GameBuildTarget): target is GameBuildMobileTarget {
-    return isMobileBuildPlatform(target.platform);
-}
-
 /**
  * What the repack writes for the Android target, keyed by format. A selection
  * rather than two jobs: both packages come out of one pass over one payload,
@@ -4309,19 +4301,6 @@ export function androidLacksPlayPackage(targets: GameBuildTarget[]): boolean {
         return false;
     }
     return android.formats.includes("apk") && !android.formats.includes("aab");
-}
-
-function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {
-    if (!Array.isArray(targets)) {
-        return [];
-    }
-    return targets
-        .map(target => ({
-            platform: target.platform,
-            formats: [...new Set(target.formats)],
-            ...(target.arch ? { arch: target.arch } : {}),
-        }))
-        .filter(target => target.formats.length > 0);
 }
 
 /**

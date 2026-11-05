@@ -105,7 +105,9 @@ export type NarralangParseReason =
     /** Expression source that does not resolve. The tree is kept so the row can be repaired. */
     | "badExpression"
     /** A `layer` declaration: a scene's layers are part of the scene, and a script line cannot add one. */
-    | "layerDeclaration";
+    | "layerDeclaration"
+    /** A lead word the dialect no longer reads and refuses rather than folding into the text. */
+    | "retiredLead";
 
 export type NarralangDiagnostic = {
     /** 1-based, so it can be handed to an editor unchanged. */
@@ -922,6 +924,12 @@ function parseProse(state: ParseState, node: LineNode, parentVerb: NarralangVerb
     if (parentVerb === "choice") {
         const source = node.bodyInBlock;
         const tokens = tokenizeNarralangLine(source, state.dialect);
+        // Reported and then read on as usual: the diagnostic alone refuses the buffer, and reading on
+        // keeps whatever else is wrong with the line visible in the same pass.
+        const retired = firstLeadToken(tokens, state.dialect.verbs.choiceOption.retiredLeads ?? []);
+        if (retired !== null) {
+            report(state, node, lineOffset, "retiredLead", undefined, tokens[retired].start);
+        }
         const optionSlots = state.dialect.verbs.choiceOption.slots;
         const leading = optionSlots.filter((slot) => slot.lead !== undefined);
         const cut = firstLeadToken(tokens, leading.map((slot) => slot.lead ?? ""));

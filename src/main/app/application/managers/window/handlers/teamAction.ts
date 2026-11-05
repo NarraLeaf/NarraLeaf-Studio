@@ -29,10 +29,12 @@
  * The sixth is {@link TeamTransferHandler}, and it is here because a file is the one thing
  * a call cannot carry - see the note on `IPCEventType.teamTransfer`. It is also the only
  * one of the six that reads a path, so it has a second thing to check: a path it is given
- * must be inside the project this window has open, which is the same boundary every other
- * file the window touches is held to.
+ * must be inside the asset content store of the project this window has open - narrower than
+ * the boundary every other file the window touches is held to, because the path is worked out
+ * from what another machine said.
  */
 import path from "node:path";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
@@ -157,10 +159,15 @@ export class TeamUnsubscribeHandler extends IPCHandler<IPCEventType.teamUnsubscr
  *
  * ⚠ **The path is checked here rather than trusted.** Every other file this window reaches
  * goes through a grant that holds it to the project it has open; this one does not, because
- * the reading and the writing happen in the main process. So the same boundary is applied
- * by hand: a source or a destination outside the window's own project is refused, and a
- * window with no project - a launcher, a wizard - has no project to be inside and is
- * refused everything.
+ * the reading and the writing happen in the main process. So a boundary is applied by hand,
+ * and it is narrower than the project: a source or a destination outside the project's asset
+ * content store is refused, and a window with no project - a launcher, a wizard - has no
+ * store to be inside and is refused everything.
+ *
+ * ⚠ **The store, not the project.** The destination of a collect is worked out from a message
+ * another Studio sent, so "inside the project" let a peer put a file anywhere in it - over a
+ * script, a puppet runtime the editor imports, or the repository's own config. Team only ever
+ * moves asset payloads, and those live under `assets/content` and nowhere else.
  *
  * And the server is held to the rule every other Team request is: bytes go to or come from a
  * server for a project that uses the sign-in held there. `status` names no server - it reads what
@@ -184,12 +191,12 @@ export class TeamTransferHandler extends IPCHandler<IPCEventType.teamTransfer> {
                 requireTeamReach(window, request.remoteOrigin, { op: "transfer" });
             }
             const named = fileNamedBy(request);
-            if (named !== null && !withinProject(window, named)) {
+            if (named !== null && !(await withinAssetContent(window, named))) {
                 return {
                     ok: false,
                     problem: {
                         kind: "unavailable",
-                        detail: "that file is not in the project this window has open",
+                        detail: "that file is not an asset of the project this window has open",
                     },
                 } satisfies TeamTransferOutcome;
             }
@@ -210,25 +217,57 @@ export function fileNamedBy(request: TeamTransferRequest): string | null {
 }
 
 /**
- * Whether a path is inside a project directory.
+ * Whether a path names a file below a project's asset content store (`assets/content`).
  *
  * ⚠ **Resolved on both sides before comparing, and compared at a separator.** `…/lantern-house`
- * must not read as inside `…/lantern`, and `…/lantern/../secrets` must not read as inside it
- * either - this is the only check standing between a window and a file the main process would
- * otherwise happily read or write on its behalf.
+ * must not read as inside `…/lantern`, and `…/content/../../scripts` must not read as inside the
+ * store either - this is the only check standing between a window and a file the main process
+ * would otherwise happily read or write on its behalf.
  *
- * Undefined for a window with no project: a launcher has no project to be inside, so nothing is.
+ * ⚠ **And compared again through the links on disk.** A project is a folder somebody else may
+ * have made, and a link inside it - the store itself, a shard directory, or the file - would take
+ * the read or the write wherever it points while the path still spells the store. So the part of
+ * each path that exists is resolved to where it really is before the second comparison; the part
+ * that does not exist yet is created fresh by the transfer and cannot be a link.
+ *
+ * The store itself is not a file in it. Undefined for a window with no project: a launcher has no
+ * store to be inside, so nothing is.
  */
-export function fileIsInProject(projectPath: string | undefined, file: string): boolean {
+export async function fileIsInAssetContent(projectPath: string | undefined, file: string): Promise<boolean> {
     if (projectPath === undefined || projectPath === "") {
         return false;
     }
-    const root = path.resolve(projectPath);
-    const resolved = path.resolve(file);
-    return resolved === root || resolved.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+    const store = path.resolve(projectPath, "assets", "content");
+    if (!isStrictlyBelow(store, path.resolve(file))) {
+        return false;
+    }
+    const [realStore, realFile] = await Promise.all([realpathOfExisting(store), realpathOfExisting(file)]);
+    return isStrictlyBelow(realStore, realFile);
 }
 
-function withinProject(window: AppWindow, file: string): boolean {
+function isStrictlyBelow(directory: string, file: string): boolean {
+    return file.startsWith(directory.endsWith(path.sep) ? directory : directory + path.sep);
+}
+
+/** A path with its longest existing prefix replaced by where that prefix really is. */
+async function realpathOfExisting(target: string): Promise<string> {
+    let existing = path.resolve(target);
+    const rest: string[] = [];
+    for (;;) {
+        try {
+            return path.join(await fs.realpath(existing), ...rest);
+        } catch {
+            const parent = path.dirname(existing);
+            if (parent === existing) {
+                return path.resolve(target);
+            }
+            rest.unshift(path.basename(existing));
+            existing = parent;
+        }
+    }
+}
+
+async function withinAssetContent(window: AppWindow, file: string): Promise<boolean> {
     const props = window.getProps() as { projectPath?: string } | undefined;
-    return fileIsInProject(props?.projectPath, file);
+    return fileIsInAssetContent(props?.projectPath, file);
 }

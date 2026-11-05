@@ -7,7 +7,10 @@ interface AccordionContextValue {
     openItems: Set<string>;
     toggleItem: (id: string) => void;
     focusedItemId: string | null;
-    setFocusedItem: (id: string | null) => void;
+    /** `fromKeyboard` shows the focused header's tint; a pointer moves the focus without it. */
+    setFocusedItem: (id: string | null, fromKeyboard?: boolean) => void;
+    /** Whether the focused header is drawn as focused: only while the keyboard is walking the list. */
+    focusVisible: boolean;
     isActive: boolean; // Whether the accordion is currently focused/active
     disableAnimation: boolean;
 }
@@ -70,6 +73,14 @@ export function Accordion({
         new Set(defaultOpen)
     );
     const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
+    /**
+     * Whether the focused header is tinted. The focused item is the arrow keys' cursor, and a click
+     * on a header moves it there so the keys carry on from where the author clicked - but a tint
+     * left on a header the pointer has long since left reads as a selection, and nothing cleared it.
+     * So the cursor is drawn only while the keyboard is moving it, and hidden again on a click or
+     * when the focus leaves the accordion.
+     */
+    const [focusVisible, setFocusVisible] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Determine if we're in controlled mode
@@ -100,8 +111,9 @@ export function Accordion({
     const toggleItemRef = useRef(toggleItem);
     toggleItemRef.current = toggleItem;
 
-    const handleSetFocusedItem = (id: string | null) => {
+    const handleSetFocusedItem = (id: string | null, fromKeyboard = false) => {
         setFocusedItemId(id);
+        setFocusVisible(fromKeyboard && id !== null);
         onItemFocus?.(id);
     };
 
@@ -135,20 +147,21 @@ export function Accordion({
                     e.preventDefault();
                     {
                         const nextIndex = (currentIndex + 1) % itemIds.length;
-                        handleSetFocusedItem(itemIds[nextIndex]);
+                        handleSetFocusedItem(itemIds[nextIndex], true);
                     }
                     break;
                 case "ArrowUp":
                     e.preventDefault();
                     {
                         const prevIndex = currentIndex <= 0 ? itemIds.length - 1 : currentIndex - 1;
-                        handleSetFocusedItem(itemIds[prevIndex]);
+                        handleSetFocusedItem(itemIds[prevIndex], true);
                     }
                     break;
                 case "Enter":
                 case " ":
                     if (!focusedItemId) return;
                     e.preventDefault();
+                    setFocusVisible(true);
                     toggleItemRef.current(focusedItemId);
                     break;
             }
@@ -165,11 +178,22 @@ export function Accordion({
                 toggleItem,
                 focusedItemId,
                 setFocusedItem: handleSetFocusedItem,
+                focusVisible,
                 isActive,
                 disableAnimation,
             }}
         >
-            <div ref={containerRef} data-accordion-root="" className={cn(className)}>
+            <div
+                ref={containerRef}
+                data-accordion-root=""
+                className={cn(className)}
+                onBlur={(event) => {
+                    const next = event.relatedTarget;
+                    if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+                        setFocusVisible(false);
+                    }
+                }}
+            >
                 {children}
             </div>
         </AccordionContext.Provider>
@@ -228,7 +252,7 @@ export function AccordionItem({
     level = 0,
 }: AccordionItemProps) {
     const context = useAccordionContext();
-    const { openItems, toggleItem, focusedItemId, setFocusedItem } = context;
+    const { openItems, toggleItem, focusedItemId, setFocusedItem, focusVisible } = context;
     const isActive = context.isActive ?? true;
     const disableAnimation = context.disableAnimation;
     const isOpen = openItems.has(id);
@@ -368,7 +392,7 @@ export function AccordionItem({
                     className={cn(
                         "w-full flex items-center group transition-colors duration-200",
                         !disabled && "hover:bg-fill",
-                        isFocused && !disabled && focusable && "bg-primary/20",
+                        isFocused && focusVisible && !disabled && focusable && "bg-primary/20",
                         headerClassName,
                         headerProps?.className,
                     )}

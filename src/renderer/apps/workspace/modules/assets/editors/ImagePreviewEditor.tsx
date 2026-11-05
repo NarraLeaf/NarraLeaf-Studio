@@ -13,6 +13,8 @@ import { useTranslation } from "@/lib/i18n";
 import { useKeybindings, whenFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useShortcutLabels } from "../../../hooks/useShortcutLabels";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { useFollowedAsset } from "./useFollowedAsset";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import {
     ImagePixelPreview,
     type ImagePixelPreviewControls,
@@ -148,18 +150,21 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
     const { context } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const controlsRef = useRef<ImagePixelPreviewControls | null>(null);
-    const imageUrl = useRef<string | null>(null);
-    const asset = payload?.asset;
+    // The record as the library holds it now, so a replaced file is read again (see the hook).
+    const asset = useFollowedAsset(payload?.asset);
     const [state, setState] = useState<{
         imageData: AssetData<AssetType.Image> | null;
         loading: boolean;
         failure: AssetReadFailure | null;
         url: string | null;
+        /** The asset `url` was read from. */
+        assetId: string | null;
     }>({
         imageData: null,
         loading: true,
         failure: null,
         url: null,
+        assetId: null,
     });
     const notice = useAssetReadNotice(asset?.id, state.failure);
 
@@ -281,7 +286,9 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         let cancelled = false;
 
         const loadImage = async () => {
-            setState(prev => ({ ...prev, loading: true, failure: null }));
+            // A re-read after the file was replaced keeps the picture it has until the new one is in,
+            // rather than blanking the tab to a spinner. Another asset starts from the spinner.
+            setState(prev => ({ ...prev, loading: prev.url === null || prev.assetId !== asset.id, failure: null }));
 
             try {
                 const assetsService = context.services.get<AssetsService>(Services.Assets);
@@ -298,20 +305,18 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                         loading: false,
                         failure: { code: result.code },
                         url: null,
+                        assetId: asset.id,
                     });
                     return;
                 }
 
                 const blob = new Blob([new Uint8Array(result.data.data)]);
-                if (imageUrl.current) {
-                    URL.revokeObjectURL(imageUrl.current);
-                }
-                imageUrl.current = URL.createObjectURL(blob);
                 setState({
                     imageData: result.data,
                     loading: false,
                     failure: null,
-                    url: imageUrl.current,
+                    url: URL.createObjectURL(blob),
+                    assetId: asset.id,
                 });
             } catch (err) {
                 if (cancelled) {
@@ -323,6 +328,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                     loading: false,
                     failure: {},
                     url: null,
+                    assetId: asset.id,
                 });
             }
         };
@@ -331,40 +337,47 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
 
         return () => {
             cancelled = true;
-            if (imageUrl.current) {
-                URL.revokeObjectURL(imageUrl.current);
-                imageUrl.current = null;
+        };
+        // Keyed on the bytes, not on the record object: a replacement keeps the id and moves the hash.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [context, asset?.id, asset?.hash]);
+
+    // Each object URL is let go once the picture drawn from it has been replaced, or the tab closes.
+    useEffect(() => {
+        const url = state.url;
+        return () => {
+            if (url) {
+                URL.revokeObjectURL(url);
             }
         };
-    }, [context, asset]);
-
-    if (state.loading) {
-        return <LoadingState />;
-    }
-
-    if (notice) {
-        return <ErrorState error={notice} />;
-    }
-
-    if (!state.imageData || !state.url) {
-        return null;
-    }
+    }, [state.url]);
 
     const renderToolbar = (controls: ImagePixelPreviewControls): ReactNode => (
         <PreviewToolbar imageData={state.imageData!} controls={controls} />
     );
 
     return (
-        <ImagePixelPreview
-            src={state.url}
-            alt={asset?.name}
-            initialSize={{
-                width: state.imageData.metadata.width,
-                height: state.imageData.metadata.height,
-            }}
-            resetKey={asset?.id ?? state.url}
-            controlsRef={controlsRef}
-            renderToolbar={renderToolbar}
-        />
+        <>
+            {/* The picture's own steps - Replace File…, a conversion - are on the project's stack, and
+                the preview is where the author looks at what they did. */}
+            <EditorProjectUndoKeybindings tabId={tabId} />
+            {state.loading ? (
+                <LoadingState />
+            ) : notice ? (
+                <ErrorState error={notice} />
+            ) : !state.imageData || !state.url ? null : (
+                <ImagePixelPreview
+                    src={state.url}
+                    alt={asset?.name}
+                    initialSize={{
+                        width: state.imageData.metadata.width,
+                        height: state.imageData.metadata.height,
+                    }}
+                    resetKey={asset?.id ?? state.url}
+                    controlsRef={controlsRef}
+                    renderToolbar={renderToolbar}
+                />
+            )}
+        </>
     );
 }

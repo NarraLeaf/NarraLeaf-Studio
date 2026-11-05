@@ -204,6 +204,7 @@ export class LocalAssetsManager {
     public async writeAssetContentFromPath<T extends AssetType>(
         asset: Asset<T, AssetSource.Local>,
         sourcePath: string,
+        options?: { ownBytes?: boolean },
     ): Promise<RefusableStatus<AssetContentDigest>> {
         if (!isValidAssetStorageId(asset.id)) {
             return { success: false, error: `Invalid asset id: ${asset.id}` };
@@ -219,14 +220,19 @@ export class LocalAssetsManager {
         }
 
         // Same gate imports pass: a file whose magic bytes say "not an image" must not become the
-        // contents of an image asset, where every consumer would then fail to decode it.
-        const formatValidation = await this.validateFileFormat(asset.type, sourcePath);
-        if (!formatValidation.success) {
-            return {
-                success: false,
-                error: formatValidation.error || "File format validation failed",
-                refusal: formatValidation.refusal,
-            };
+        // contents of an image asset, where every consumer would then fail to decode it. Not for
+        // `ownBytes` - this asset's own earlier bytes, put back by an undo from the copy kept in the
+        // project's undo trash - which were the asset's contents already, and whose copy is named
+        // after a record that may have no extension to check.
+        if (!options?.ownBytes) {
+            const formatValidation = await this.validateFileFormat(asset.type, sourcePath);
+            if (!formatValidation.success) {
+                return {
+                    success: false,
+                    error: formatValidation.error || "File format validation failed",
+                    refusal: formatValidation.refusal,
+                };
+            }
         }
 
         const destPath = this.getLocalAssetPath(asset.id);

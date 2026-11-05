@@ -111,6 +111,7 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     // lock or a wait beside the other rows that decide when the story moves on.
     rumble: "scene",
     input: "flow",
+    page: "flow",
     variable: "data",
     declaration: "data",
     blueprint: "utils",

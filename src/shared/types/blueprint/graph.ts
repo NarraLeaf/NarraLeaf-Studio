@@ -133,6 +133,16 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.even
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED = "blueprint.event.head.windowFocusChanged" as const;
 /**
+ * Entry for one saved variable of the running playthrough taking a new value - written by a story
+ * line (`/set`, a `/page` row's answer, a wait's result) or by another screen's `Set Saved Var`.
+ *
+ * What a screen showing story state used to poll for with a Delay loop. Not fired for a save being
+ * loaded or a new game: every variable changes at once then, and a screen re-reads on its own init.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED = "blueprint.event.head.savedVariableChanged" as const;
+/** The same for one persistent (app-level) variable. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED = "blueprint.event.head.persistentVariableChanged" as const;
+/**
  * Entry for an application window close request (the user asked to close the window: native close
  * box, OS shortcut, etc.). The close is held open while the dispatch runs and then proceeds; the
  * dispatch shares one event control, and running `Keep Window Open`
@@ -213,6 +223,8 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED,
 ]);
 
 /**
@@ -568,6 +580,16 @@ function matchesDispatchPayload(
     }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION) {
         return matchesInputActionDispatch(node, eventPayload);
+    }
+    // A variable head names the one it watches, by the same param `Get Saved Var` / `Get Persistent`
+    // name it with; one naming none watches nothing, as an unconfigured preference head does.
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_SAVED_VARIABLE_CHANGED) {
+        const selected = String(node.params?.savedVariableId ?? "").trim();
+        return selected !== "" && selected === String(eventPayload?.variableId ?? "");
+    }
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PERSISTENT_VARIABLE_CHANGED) {
+        const selected = String(node.params?.persistentVariableId ?? "").trim();
+        return selected !== "" && selected === String(eventPayload?.variableId ?? "");
     }
     return true;
 }
@@ -1391,6 +1413,13 @@ export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as cons
 export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
 export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
 export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
+/**
+ * The music of the page the graph runs on, for as long as that page is open - a music room playing
+ * the row the player pressed. Not a sound with a handle: the page's music hands over and comes back
+ * as pages come and go, exactly as the page inspector's Music setting does (see `pageMusic.ts`).
+ */
+export const BLUEPRINT_NODE_TYPE_SOUND_PLAY_PAGE_MUSIC = "blueprint.sound.playPageMusic" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_STOP_PAGE_MUSIC = "blueprint.sound.stopPageMusic" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;

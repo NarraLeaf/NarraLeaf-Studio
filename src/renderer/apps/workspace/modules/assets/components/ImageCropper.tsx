@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import { AlertCircle, Crop, RefreshCw, X } from "lucide-react";
 import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
+import { placeAnchoredPanelX } from "@/lib/components/layout/anchoredPanelPlacement";
 import { useTranslation } from "@/lib/i18n";
 
 type CropRect = {
@@ -367,7 +368,8 @@ export function ImageCropper({
                 const shouldOpenDown = availableBelow >= maxPanelHeight || availableBelow >= availableAbove;
                 let top = shouldOpenDown ? rect.bottom + 8 : rect.top - maxPanelHeight - 8;
                 top = clampValue(top, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - maxPanelHeight));
-                const left = clampValue(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
+                // Beside its column, as the pickers are: from the right dock it grows to the left.
+                const left = placeAnchoredPanelX(rect, width, viewportWidth);
                 setAnchorStyle({ top, left, width });
             } else {
                 const width = defaultWidth;

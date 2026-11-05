@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SpriteCompositor, spriteCompositeKey } from "./spriteCompositor";
+import { occludedLayers, SpriteCompositor, spriteCompositeKey } from "./spriteCompositor";
 
 /** The drawing is injected, so the cache and keys can be exercised without a canvas. */
 function build(options?: { limit?: number; sizes?: Record<string, [number, number]> }) {
@@ -97,5 +97,27 @@ describe("SpriteCompositor", () => {
         expect(render).toHaveBeenCalledTimes(2);
         await compositor.composite("c1|pose:a", ["x"]);
         expect(render).toHaveBeenCalledTimes(3);
+    });
+});
+
+describe("occludedLayers", () => {
+    // Four cells; `v` paints, `o` is solid, `.` is empty.
+    const sample = (pattern: string) => ({
+        visible: [...pattern].map(cell => cell !== "."),
+        opaque: [...pattern].map(cell => cell === "o"),
+    });
+
+    it("reports a layer whose every painted cell is solid in a layer above", () => {
+        expect(occludedLayers([sample("vv.."), sample("oo..")])).toEqual([true, false]);
+        expect(occludedLayers([sample("vv.."), sample("o...")])).toEqual([false, false]);
+    });
+
+    it("does not report a layer too small to paint any cell", () => {
+        // The calm mouth: a thin stroke that averages away on the grid. It was called hidden.
+        expect(occludedLayers([sample("oooo"), sample("...."), sample("v...")])).toEqual([false, false, false]);
+    });
+
+    it("skips a layer that draws nothing under the current tags", () => {
+        expect(occludedLayers([sample("v..."), null, sample("o...")])).toEqual([true, false, false]);
     });
 });

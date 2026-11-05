@@ -7,6 +7,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import { getCommandSpec } from "./commands/registry";
 import { projectStoryCommandLine, type StoryCommandLineLookups } from "./storyCommandLine";
 import { storyCommandLineParts } from "./StoryCommandLineView";
+import { rewritesRowInPlace } from "./storySceneBlockUtils";
 
 /**
  * The row reads back as the line that made it.
@@ -740,6 +741,22 @@ describe("projectStoryCommandLine", () => {
         }
     });
 
+    /**
+     * Edit as text (F2): the row opens as its line, and committing it unchanged must hand back the row
+     * it came from - the same payload, built into a block the row can take in place, so the row keeps
+     * its id and its disabled flag. A line edited into a container takes the row's place instead.
+     */
+    it("a row opened as its line commits back into the same row", () => {
+        for (const source of ["/char Alice smile t=fade d=0.4", "/bg forest_day t=fade d=0.5", "/vfx intro name=petals"]) {
+            const row = build(source);
+            const line = projectStoryCommandLine(row, LOOKUPS);
+            const again = build(line!.source);
+            expect(rewritesRowInPlace(row, again), source).toBe(true);
+            expect(comparable(again), source).toEqual(comparable(row));
+        }
+        expect(rewritesRowInPlace(build("/char Alice smile"), build("/parallel"))).toBe(false);
+    });
+
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
         for (const source of [
@@ -755,6 +772,20 @@ describe("projectStoryCommandLine", () => {
             expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
     });
+
+    it("does not repeat a unit its key already names — ja printed 「秒=0.6秒」", () => {
+        i18nStore.setLocale("ja");
+        const row = build("/hide Alice out=fade d=0.6");
+        const line = projectStoryCommandLine(row, LOOKUPS)!.source;
+        expect(line).toContain("秒=0.6");
+        expect(line).not.toContain("秒=0.6秒");
+        expect(comparable(build(line))).toEqual(comparable(row));
+        // zh and en keep the unit: their keys do not name it.
+        i18nStore.setLocale("zh");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("=0.6秒");
+        i18nStore.setLocale("en");
+        expect(projectStoryCommandLine(build("/hide Alice out=fade d=0.6"), LOOKUPS)!.source).toContain("d=0.6s");
+    });
 });
 
 /**
@@ -766,6 +797,42 @@ describe("projectStoryCommandLine", () => {
  * compiler had already moved on. Its own describe because it needs a scene with declarations in it,
  * which the fixture above deliberately does not have.
  */
+describe("projectStoryCommandLine — a layered character's look", () => {
+    /**
+     * A `/char` row changes the axes it names and nothing else, and its value is one tag. Picking a
+     * tag of ANOTHER axis on that value merged it in beside the first, so the row went from
+     * 「@外观 美绪 笑」 to holding two tags - and a row with two prints no value at all: 「@外观 美绪」.
+     */
+    const options = [
+        { id: "smile", name: "笑", axisId: "face" },
+        { id: "calm", name: "平静", axisId: "face" },
+        { id: "navy", name: "蓝卫衣", axisId: "outfit" },
+    ];
+    const lookups: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        character: id => (id === "c3" ? { id: "c3", name: "Mio" } : LOOKUPS.character(id)),
+        appearanceName: (characterId, refId) => (characterId === "c3" ? options.find(option => option.id === refId)?.name ?? null : null),
+        appearanceOptions: characterId => (characterId === "c3" ? options : []),
+    };
+    const row = (tags: Record<string, string>) => ({
+        id: "r", parentId: null, childrenIds: [], kind: "action",
+        payload: { action: "character", operation: "expression", characterId: "c3", tags },
+    }) as unknown as StoryBlock;
+
+    it("replaces the one tag it holds, whichever axis the new one is on", () => {
+        const block = row({ face: "smile" });
+        const line = projectStoryCommandLine(block, lookups)!;
+        expect(line.source).toBe("/char Mio 笑");
+        const look = line.edits.find(entry => entry.value === "smile")!;
+        const picked = look.apply("navy") as Extract<StoryBlock, { kind: "action" }>["payload"];
+        expect(picked).toMatchObject({ action: "character" });
+        expect((picked as { tags?: unknown }).tags).toEqual({ outfit: "navy" });
+        expect(projectStoryCommandLine({ ...block, payload: picked } as StoryBlock, lookups)!.source).toBe("/char Mio 蓝卫衣");
+        // The same axis is a replacement too, as it always was.
+        expect(look.apply("calm")).toMatchObject({ tags: { face: "calm" } });
+    });
+});
+
 describe("projectStoryCommandLine — after a rename", () => {
     const DECLARED_SCENE = {
         id: "s1",

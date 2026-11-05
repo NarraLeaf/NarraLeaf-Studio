@@ -10,12 +10,19 @@ import type { Translator } from "@shared/i18n";
 export type ReplaceAssetContentOutcome = "replaced" | "cancelled" | "failed";
 
 /**
- * "Point this asset at a different file" — pick, confirm, swap.
+ * "Point this asset at a different file" — pick, swap.
  *
  * Lives outside both call sites because the asset panel's context menu and the properties inspector
- * are the two entry points and they must not drift: the confirm's button hierarchy is the only thing
- * telling the author the swap cannot be undone (there is no asset history), so a second copy of this
- * flow is a second chance to lose it.
+ * are the two entry points and they must not drift.
+ *
+ * The swap is one step on the project's stack ({@link AssetsService.replaceAssetContentUndoably}):
+ * Ctrl+Z writes the old file back. So picking the file is the whole decision, and nothing asks again.
+ * The asset's current bytes are copied aside before anything is written over them; when that copy
+ * cannot be made, nothing is written and the alert says why.
+ *
+ * Inside a live session there is no such step - the room's undo cannot take a replacement back - and
+ * the confirm comes back, with Cancel as the primary button and the keyboard default: the button
+ * hierarchy is what says the swap is final there.
  *
  * The file picker is filtered to the asset's own type, and {@link AssetsService.replaceAssetContent}
  * re-checks the magic bytes — an author who renames a zip to `.png` still cannot smuggle it in.
@@ -45,17 +52,22 @@ export async function runReplaceAssetContentFlow(
         return "cancelled";
     }
 
-    const confirmed = await uiService.showDestructiveConfirm(
-        t("assets.replace.confirmTitle", { name: asset.name }),
-        undefined,
-        t("assets.replace.confirmAction"),
-    );
-    if (!confirmed) {
-        return "cancelled";
+    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    if (assetsService.sharedLive) {
+        const confirmed = await uiService.showDestructiveConfirm(
+            t("assets.replace.confirmTitle", { name: asset.name }),
+            undefined,
+            t("assets.replace.confirmAction"),
+        );
+        if (!confirmed) {
+            return "cancelled";
+        }
     }
 
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
-    const result = await assetsService.replaceAssetContent(asset, sourcePath);
+    const result = await assetsService.replaceAssetContentUndoably(asset, sourcePath, {
+        key: "assets.history.replaceContent",
+        params: { name: asset.name },
+    });
     if (!result.success) {
         // Why, in the author's terms: the same refusals an import words. The service's own `error` is
         // English and names both the picked file and the asset's storage path, so it goes to the log -

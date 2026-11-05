@@ -74,13 +74,22 @@ export const wizard = {
             name: "Empty",
             description: "Project structure only",
         },
+        // The sample content a template lets the author leave out. The screens always come in; this
+        // lists only the parts the template declares.
+        parts: {
+            label: "Sample content",
+            helper: "Unticked parts are left out of the new project. The screens always come in.",
+            all: "All",
+            none: "No sample content",
+        },
     },
     project: {
         name: "Project Name",
         namePlaceholder: "Project name",
         appIdPlaceholder: "App identifier",
-        appIdHelper: "Lowercase letters, digits and hyphens, or a reverse-domain id such as com.studio.game. Cannot be changed after creation.",
+        appIdHelper: "Identifies the released game on the player's device. Lowercase letters, digits and hyphens, or a reverse-domain ID such as com.studio.game. Cannot be changed after the project is created.",
         appIdRequired: "App ID is required",
+        appIdInUse: "Already used by the project “{name}” on this machine",
         appIdInvalid: "App ID can only contain lowercase letters, numbers and hyphens, with dots only between the parts of a reverse-domain id such as com.studio.game",
         locationPlaceholder: "Project location",
         browseLocation: "Choose folder",

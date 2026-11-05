@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     clampStoryPreviewFloatRect,
     createDefaultStoryPreviewFloatRect,
+    insetStoryPreviewFloatAnchor,
     migrateEditorBodyStoryPreviewFloatRect,
     moveStoryPreviewFloatRect,
     resizeStoryPreviewFloatRect,
@@ -71,6 +72,18 @@ describe("floating preview geometry", () => {
             width: 420,
             height: 300,
         });
+    });
+
+    it("opens beside the rows' action column, not over the ▶ of the bottom rows", () => {
+        const editorBody = { x: 371, y: 82, width: 660, height: 756 };
+        // The column of each row's insert, delete and ▶ reaches 90px in from the rows' right edge.
+        const actionsLeft = 371 + 660 - 90;
+        const rect = createDefaultStoryPreviewFloatRect(AREA, insetStoryPreviewFloatAnchor(editorBody, 90));
+        expect(rect.x + rect.width).toBeLessThanOrEqual(actionsLeft - STORY_PREVIEW_FLOAT_MARGIN);
+        expect(rect).toEqual({ x: actionsLeft - 420 - STORY_PREVIEW_FLOAT_MARGIN, y: 82 + 756 - 300 - STORY_PREVIEW_FLOAT_MARGIN, width: 420, height: 300 });
+        // No rows laid out, or an inset as wide as the editor: the editor's own corner, as before.
+        expect(insetStoryPreviewFloatAnchor(editorBody, null)).toBe(editorBody);
+        expect(insetStoryPreviewFloatAnchor(editorBody, 660)).toBe(editorBody);
     });
 
     it("opens at the top-right corner of an editor whose subject sits low", () => {

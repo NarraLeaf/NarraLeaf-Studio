@@ -1,3 +1,4 @@
+import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
 import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
@@ -103,7 +104,7 @@ import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
-import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { characterRowAppearances, describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
@@ -121,7 +122,7 @@ import {
     puppetDescriptionRequestFor,
     usePuppetDescription,
 } from "@/lib/workspace/hooks/usePuppetDescription";
-import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import { puppetChoiceOptions, puppetNameOption } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { CameraActionEditor } from "./CameraActionEditor";
 import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
@@ -518,6 +519,7 @@ const textOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "hide", label: t("common.hide") },
     { value: "setFontSize", label: t("storyInspector.textOperation.setFontSize") },
     { value: "setFontColor", label: t("storyInspector.textOperation.setFontColor") },
+    { value: "setFont", label: t("storyInspector.textOperation.setFont") },
 ];
 
 // `transform` is intentionally omitted: transforming a layer goes through the unified
@@ -1087,6 +1089,59 @@ function InputActionEditor(props: {
     );
 }
 
+/**
+ * A `/page` row: the page it opens and the variable its answer goes into.
+ *
+ * Every variable is offered, whatever its type: the page's result is converted to the variable's own
+ * type when it is written (`coerceStoryPageResult`). A page this project no longer has stays
+ * selectable, for the reason `QuitFields` gives.
+ */
+function PageActionEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: Extract<StoryActionPayload, { action: "page" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { payload, onChange } = props;
+    const surfaces = useProjectSurfaces();
+    const variables = useStoryVariableOptions(props.document, props.sceneId);
+    const selected = payload.surfaceId;
+    const pageOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.control.quitPageUnset") },
+        // Pages only: a Game UI is drawn in its slot and cannot be opened over the story.
+        ...surfaces.filter(surface => surface.kind !== "stageSurface").map(surface => ({ value: surface.id, label: surface.name })),
+        ...(selected && !surfaces.some(surface => surface.id === selected && surface.kind !== "stageSurface") ? [{ value: selected, label: selected }] : []),
+    ];
+    // Keyed by scope and id together, as the input rows' are: two scopes may hold the same id-shaped word.
+    const resultOptions: SelectOption[] = [
+        { value: "", label: t("storyInspector.input.noResult") },
+        ...(["scene", "saved", "persistent"] as const).flatMap(scope => variables[scope]
+            .map(option => ({ value: `${scope}:${option.id}`, label: option.name }))),
+    ];
+    const resultValue = payload.resultTarget ? `${payload.resultTarget.scope}:${payload.resultTarget.variableId}` : "";
+    const setResult = (next: string) => {
+        const split = next.indexOf(":");
+        if (split < 0) {
+            onChange({ ...payload, resultTarget: undefined });
+            return;
+        }
+        onChange({ ...payload, resultTarget: makeVariableRef(next.slice(0, split) as StoryVariableScope, next.slice(split + 1)) });
+    };
+    return (
+        <div className="flex max-w-sm flex-col gap-3">
+            <SelectField
+                label={t("storyInspector.control.pagePage")}
+                options={pageOptions}
+                value={selected}
+                onChange={next => onChange({ ...payload, surfaceId: String(next) })}
+            />
+            <SelectField label={t("storyInspector.input.result")} options={resultOptions} value={resultValue} onChange={next => setResult(String(next))} />
+            <div className="text-2xs text-fg-subtle">{t("storyInspector.control.pageHint")}</div>
+        </div>
+    );
+}
+
 function StoryActionBlueprintEditor(props: {
     payload: Extract<StoryActionPayload, { action: "blueprint" }>;
     onChange: (payload: StoryBlock["payload"]) => void;
@@ -1182,6 +1237,7 @@ function ActionPayloadFields(props: {
                 payload={payload}
                 storyId={props.document.id}
                 sceneId={props.sceneId}
+                scene={props.document.scenes[props.sceneId]}
                 blockId={props.block.id}
                 storyName={props.document.name}
                 characters={props.characters}
@@ -1210,6 +1266,9 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "input") {
         return <InputActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "page") {
+        return <PageActionEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (
@@ -1297,6 +1356,7 @@ function ActionPayloadFields(props: {
                         sceneId={props.sceneId}
                         blockId={props.block.id}
                         target={payload.target}
+                        characters={props.characters}
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
@@ -1342,6 +1402,28 @@ function ActionPayloadFields(props: {
                     />
                     <NumberField label={t("storyInspector.text.fontSize")} value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
                     <ColorTextField label={t("storyInspector.text.fontColor")} value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
+                    {/* The outline is read by the combined op alone, so it is offered there and nowhere else. */}
+                    {payload.operation === "setFont" ? (
+                        <>
+                            <NumberField
+                                label={t("storyInspector.text.outlineWidth")}
+                                value={payload.outline === null ? 0 : payload.outline?.width}
+                                onChange={width => props.onChange({
+                                    ...payload,
+                                    outline: width === undefined
+                                        ? undefined
+                                        : width > 0
+                                            ? { width: Math.min(width, STORY_TEXT_OUTLINE_MAX_WIDTH), color: payload.outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR }
+                                            : null,
+                                })}
+                            />
+                            <ColorTextField
+                                label={t("storyInspector.text.outlineColor")}
+                                value={payload.outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR}
+                                onChange={color => props.onChange({ ...payload, outline: { width: payload.outline?.width ?? 1, color } })}
+                            />
+                        </>
+                    ) : null}
                 </div>
                 {payload.operation === "create" || payload.operation === "setText" ? (
                     <LabeledTextarea label={t("storyInspector.text.text")} className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />
@@ -1554,6 +1636,15 @@ const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly A
     seekSound: ["name", "seekTime"],
 };
 
+/**
+ * What an audio row uses for a field it leaves empty - the compiler's answers, shown greyed in the
+ * empty box so the row reads as what it plays rather than as blanks. A fade left empty is a hard cut
+ * (`rowFadeMs`), a volume the clip's full level (`resolveAudioTrackPlayback`), a rate normal speed and
+ * a seek the start. Shown, never stored: the row keeps "not set", and an author who types a value
+ * replaces it.
+ */
+export const AUDIO_ROW_DEFAULTS = Object.freeze({ fadeMs: 0, volume: 1, rate: 1, seekMs: 0 });
+
 /** The bus an operation falls back to - the same split the compiler applies (`setBgm` is music). */
 function audioRowFallbackChannel(operation: AudioActionPayload["operation"]): AudioTrackChannel {
     return operation === "setBgm" ? "bgm" : "sound";
@@ -1634,7 +1725,7 @@ function resolveAudioRowTrack(
  * the row that no field on screen can show. See {@link audioBusStatusLine}. Values only, one line,
  * no labels.
  */
-function AudioActionEditor(props: {
+export function AudioActionEditor(props: {
     payload: AudioActionPayload;
     scene: StoryScene | null;
     blockId: StoryBlockId;
@@ -1695,6 +1786,7 @@ function AudioActionEditor(props: {
                     <SecondsField
                         label={t("storyInspector.audio.fade")}
                         value={payload.fadeMs}
+                        placeholderMs={AUDIO_ROW_DEFAULTS.fadeMs}
                         onChange={fadeMs => props.onChange({ ...payload, fadeMs: fadeMs === undefined ? undefined : Math.max(0, fadeMs) })}
                     />
                 ) : null}
@@ -1702,6 +1794,7 @@ function AudioActionEditor(props: {
                     <SecondsField
                         label={t("storyInspector.audio.seekTime")}
                         value={payload.timeMs}
+                        placeholderMs={AUDIO_ROW_DEFAULTS.seekMs}
                         onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
                     />
                 ) : null}
@@ -1709,6 +1802,7 @@ function AudioActionEditor(props: {
                     <NumberField
                         label={t("storyInspector.audio.volume")}
                         value={payload.volume}
+                        placeholder={AUDIO_ROW_DEFAULTS.volume}
                         // Clamped on commit: a gain node takes 0..1, and an authored 3 used to be
                         // stored, shown back, and silently floored by the engine. Nothing in the mixer
                         // amplifies either - a bus attenuates - so 1 is the loudest a clip can be.
@@ -1719,6 +1813,7 @@ function AudioActionEditor(props: {
                     <NumberField
                         label={t("storyInspector.audio.rate")}
                         value={payload.rate}
+                        placeholder={AUDIO_ROW_DEFAULTS.rate}
                         onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
                     />
                 ) : null}
@@ -2117,7 +2212,7 @@ function PuppetChannelControl(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     // Memoised on the puppet's individual fields: the appearance object is mutable and keeps the same
     // reference across an edit, so depending on it alone would never re-ask.
     const request = useMemo(
@@ -2137,7 +2232,11 @@ function PuppetChannelControl(props: {
     // re-exported model shows the author what went missing instead of silently rewriting the row.
     const names = puppetChoiceOptions(available ?? [], props.value || null);
     const options: SelectOption[] | undefined = names.length > 0
-        ? [{ value: "", label: placeholder }, ...names.map(name => ({ value: name, label: name }))]
+        ? [
+            { value: "", label: placeholder },
+            // A motion is named by its file where Studio could read one, with the stored name beside it.
+            ...names.map(name => puppetNameOption(name, props.channel === "motion" ? description?.motionLabels : undefined)),
+        ]
         : undefined;
 
     /** The state the preview is put in: the character's resting pose with this row's channel applied. */
@@ -2258,7 +2357,7 @@ function PuppetParamRows(props: {
 }) {
     const { t } = useTranslation();
     const appearance = props.character.profile.appearance;
-    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const puppet = appearance.getPuppet();
     const request = useMemo(
         () => puppetDescriptionRequestFor(appearance),
         [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
@@ -2370,10 +2469,13 @@ function PuppetParamRows(props: {
 
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
 
-function CharacterActionEditor(props: {
+/** Exported for `storyPuppetRowInspector.test`, which renders the character rows on their own. */
+export function CharacterActionEditor(props: {
     payload: CharacterActionPayload;
     storyId: string;
     sceneId: StorySceneId;
+    /** The row's scene, for the look already on stage before it. */
+    scene?: StoryScene;
     blockId: string;
     storyName: string;
     characters: Character[];
@@ -2436,7 +2538,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.character.puppetParams")}>
                         <PuppetParamRows
                             character={selectedCharacter}
@@ -2468,7 +2570,7 @@ function CharacterActionEditor(props: {
                         onChange={updateCharacter}
                     />
                 </FieldGrid>
-                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                     <Section title={t("storyInspector.section.appearance")}>
                         <PuppetChannelControl
                             character={selectedCharacter}
@@ -2542,12 +2644,29 @@ function CharacterActionEditor(props: {
                         character={selectedCharacter}
                         pose={payload.pose}
                         tags={payload.tags}
+                        baseTags={payload.operation === "expression" && props.scene
+                            ? characterRowAppearances(props.scene).get(props.blockId)?.before?.tags
+                            : undefined}
                         onChange={next => onChange({ ...payload, pose: next.pose, tags: next.tags })}
                     />
                 </Section>
             ) : (
                 <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
             )}
+            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
+                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
+                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
+                its transform preset. So the transition editor is only meaningful for `expression`.
+                It comes before the transform: a change of look is what the row is for, and its
+                transition is the setting reached for with it - below the transform it sat under the
+                panel's fold. */}
+            {payload.operation === "expression" ? (
+                <TransitionEditor
+                    value={payload.transition}
+                    context="expression"
+                    onChange={transition => onChange({ ...payload, transition })}
+                />
+            ) : null}
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
@@ -2565,17 +2684,6 @@ function CharacterActionEditor(props: {
                 storyName={props.storyName}
                 onChange={transform => onChange({ ...payload, transform })}
             />
-            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
-                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
-                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
-                its transform preset. So the transition editor is only meaningful for `expression`. */}
-            {payload.operation === "expression" ? (
-                <TransitionEditor
-                    value={payload.transition}
-                    context="expression"
-                    onChange={transition => onChange({ ...payload, transition })}
-                />
-            ) : null}
             <Disclosure title={t("storyInspector.advanced")}>
                 <div className="max-w-sm">
                     <AssetField
@@ -3839,7 +3947,8 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                 <button
                     type="button"
                     className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                    title={t("storyInspector.voice.openTable")}
+                    data-tip={t("storyInspector.voice.openTable")}
+                    aria-label={t("storyInspector.voice.openTable")}
                     onClick={voice.openVoiceTable}
                 >
                     <ExternalLink className="h-3.5 w-3.5" />

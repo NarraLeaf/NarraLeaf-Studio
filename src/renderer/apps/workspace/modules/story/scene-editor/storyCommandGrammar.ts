@@ -338,6 +338,13 @@ export type StoryCommandParam = {
      * consumed. `/vol 0.5` fills the volume, `/vol piano 0.5` fills both.
      */
     skippable?: boolean;
+    /**
+     * What the slot does, in one English sentence, for the readers that cannot see the editor: the
+     * story CLI's `commands <token>` and the agent's `story_command`. Only for a slot whose type does
+     * not say it - `into=` is "a variable", and what goes into it is the part an agent has to know.
+     * Never shown in the editor, which has the inspector and the manual for this.
+     */
+    about?: string;
 };
 
 export type StoryCommandDef = {

@@ -48,6 +48,12 @@ export function CharacterAppearancePicker(props: {
     character: Character;
     pose: string | undefined;
     tags: StoryCharacterTagSelection | undefined;
+    /**
+     * The tags already on stage before this row, for a row that changes only the axes it names: the
+     * preview draws them under the row's own, so it shows what the player sees after the row rather
+     * than every other axis at its default.
+     */
+    baseTags?: StoryCharacterTagSelection;
     onChange: (next: { pose: string | undefined; tags: StoryCharacterTagSelection | undefined }) => void;
 }) {
     const { t } = useTranslation();
@@ -95,7 +101,7 @@ export function CharacterAppearancePicker(props: {
         <div className="flex flex-col gap-2 rounded-lg border border-edge bg-fill-subtle p-2">
             {/* What the row will actually put on stage. A stack has no single file to thumbnail, and
                 a column of tag names does not tell an author whether the combination reads. */}
-            <StackPreview character={props.character} tags={props.tags} />
+            <StackPreview character={props.character} tags={props.baseTags ? { ...props.baseTags, ...props.tags } : props.tags} />
             <div className="flex min-w-0 flex-1 flex-col gap-2">
             {axes.map(axis => {
                 const chosen = props.tags?.[axis.id];

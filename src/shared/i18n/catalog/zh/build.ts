@@ -388,6 +388,8 @@ export const build = {
         compressionImages: "已压缩的图像",
         compressionMedia: "已压缩的音频与视频",
         compressionMetadata: "已移除元数据的文件",
+        compressionKeptAtSize: "保持原尺寸的图像",
+        compressionKeptAtSizeHint: "按原始像素显示",
         includedTitle: "已打包的资产",
         includedEmpty: "本次运行没有打包任何资产",
         excludedTitle: "未打包的资产",

@@ -18,14 +18,14 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { AutoSaveConfiguration, AutoSaveEntry } from "@shared/types/saves";
-import { AutoSaveScheduler, type AutoSaveLogLevel } from "./autoSaveScheduler";
+import { AutoSaveScheduler, type AutoSaveLogLevel, type AutoSaveWriteReason } from "./autoSaveScheduler";
 
 export type UseAutoSaveOptions = {
     config: AutoSaveConfiguration;
     /** True while a playthrough is running and can be serialized. */
     isPlaying: () => boolean;
-    /** Write one autosave into the given reserved id. */
-    write: (id: string) => Promise<void>;
+    /** Write one autosave into the given reserved id; `reason` says whether the timer or the author asked. */
+    write: (id: string, reason: AutoSaveWriteReason) => Promise<void>;
     /** Every reserved autosave currently stored, in any order. */
     listStored: () => Promise<AutoSaveEntry[]>;
     /** Story play head; every call marks the playthrough as worth re-saving. */
@@ -46,7 +46,7 @@ export function useAutoSave(options: UseAutoSaveOptions): AutoSaveRuntime {
         () => new AutoSaveScheduler({
             getConfig: () => latest.current.config,
             isPlaying: () => latest.current.isPlaying(),
-            write: id => latest.current.write(id),
+            write: (id, reason) => latest.current.write(id, reason),
             listStored: () => latest.current.listStored(),
             log: (level, message) => latest.current.log(level, message),
         }),

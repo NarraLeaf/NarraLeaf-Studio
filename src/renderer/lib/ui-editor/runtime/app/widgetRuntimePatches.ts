@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import {
+    isWidgetPatchUnchanged,
     mergeWidgetPatch,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -19,12 +20,16 @@ import {
  */
 export type WidgetPatchesByScope = Record<string, Record<string, DevModeWidgetRuntimePatch>>;
 
+/** The table with one write laid over it, or `current` itself when the write changes nothing. */
 export function mergeWidgetRuntimePatch(
     current: WidgetPatchesByScope,
     runtimeScopeId: string,
     elementId: string,
     patch: DevModeWidgetRuntimePatch,
 ): WidgetPatchesByScope {
+    if (isWidgetPatchUnchanged(current[runtimeScopeId]?.[elementId], patch)) {
+        return current;
+    }
     return {
         ...current,
         [runtimeScopeId]: {
@@ -47,6 +52,9 @@ export function applyWidgetRuntimePatch(input: {
         input.elementId,
         input.patch,
     );
+    if (next === input.widgetPatchesByScopeRef.current) {
+        return;
+    }
     input.widgetPatchesByScopeRef.current = next;
     input.setWidgetPatchesByScope(next);
 }

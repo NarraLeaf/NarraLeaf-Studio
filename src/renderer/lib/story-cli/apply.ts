@@ -22,10 +22,11 @@
  * ## What it never touches
  *
  * The scene's own metadata - its snapshots, its launch entries - and everything outside the scene.
- * The file's rows replace the rows; nothing else about the document moves. The two settings a file
- * CAN state, the background and the music the scene opens on, change only when the file states
- * them (`#background`, `#music`; see `dsl/sceneSettings.ts`), and one the file leaves out is named
- * in the summary as kept, because it is still on screen before the first row. A scene RENAME is
+ * The file's rows replace the rows; nothing else about the document moves. The settings a file
+ * CAN state, the background and the music the scene opens on and its description, change only when
+ * the file states them (`#background`, `#music`, `#description`; see `dsl/sceneSettings.ts`). A
+ * background or music the file leaves out is named in the summary as kept, because it is still on
+ * screen before the first row; a description is not, because it never is. A scene RENAME is
  * reported rather than applied, because renaming a scene is a document-wide act (every jump that
  * names it, the scene list, the version history's idea of what moved) and this writes one field.
  *
@@ -52,10 +53,10 @@ export type ApplySummary = {
     settingsKept: { setting: SceneSettingName; value: string }[];
 };
 
-export type SceneSettingName = "background" | "music";
+export type SceneSettingName = "background" | "music" | "description";
 export type SceneSettingChange = { setting: SceneSettingName; from: string | null; to: string | null };
 
-/** The scene's two settings by name, before and after, and which ones the file stated. */
+/** The scene's settings by name, before and after, and which ones the file stated. */
 export type SceneSettingsComparison = {
     before: Record<SceneSettingName, string | null>;
     after: Record<SceneSettingName, string | null>;
@@ -95,11 +96,12 @@ export function summariseApply(
             background: (existing.defaultBackgroundAssetId ?? null) !== (next.defaultBackgroundAssetId ?? null),
             // By value, as `withMusic` decides it: key order is the scene panel's or the reader's.
             music: !sameValue(existing.bgm ?? null, next.bgm ?? null),
+            description: (existing.description ?? "") !== (next.description ?? ""),
         };
-        for (const setting of ["background", "music"] as const) {
+        for (const setting of ["background", "music", "description"] as const) {
             if (changedSettings[setting]) {
                 settingsChanged.push({ setting, from: settings.before[setting], to: settings.after[setting] });
-            } else if (!settings.stated[setting] && settings.after[setting] !== null) {
+            } else if (setting !== "description" && !settings.stated[setting] && settings.after[setting] !== null) {
                 settingsKept.push({ setting, value: settings.after[setting]! });
             }
         }
@@ -191,12 +193,16 @@ export function formatApplySummary(summary: ApplySummary, written: boolean): str
             lines.push(`  ... and ${summary.removed.length - 20} more`);
         }
     }
-    const label = (setting: SceneSettingName) => (setting === "background" ? "opening background" : "opening music");
+    const label = (setting: SceneSettingName) => (setting === "background" ? "opening background" : setting === "music" ? "opening music" : "description");
     const shown = (value: string | null) => (value === null ? "none" : `"${value}"`);
     for (const change of summary.settingsChanged) {
+        // A description can hold line breaks; JSON keeps it to the one line.
+        const show = change.setting === "description"
+            ? (value: string | null) => (value === null ? "none" : JSON.stringify(value))
+            : shown;
         lines.push(
             "",
-            `Scene setting: ${label(change.setting)} ${shown(change.from)} -> ${shown(change.to)}`
+            `Scene setting: ${label(change.setting)} ${show(change.from)} -> ${show(change.to)}`
                 + `${written ? "." : " when applied."}`,
         );
     }

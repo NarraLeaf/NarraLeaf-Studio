@@ -3,8 +3,9 @@ import { translate } from "@/lib/i18n";
 import { PanelModule } from "../types";
 import { PanelPosition } from "../../registry/types";
 import { SearchPanel } from "./SearchPanel";
+import { SEARCH_PANEL_ID } from "./searchPanelId";
 
-export const SEARCH_PANEL_ID = "narraleaf-studio:search";
+export { SEARCH_PANEL_ID };
 
 export const searchPanelModule: PanelModule = {
     metadata: {

@@ -59,7 +59,8 @@ export function useAssetLibraryRevision(): number {
         const unsubs: (() => void)[] = [];
         if (services.assets) {
             const events = services.assets.getEvents();
-            unsubs.push(events.on("updated", bump), events.on("deleted", bump));
+            // Folders too: the story command line files asset names under them.
+            unsubs.push(events.on("updated", bump), events.on("deleted", bump), events.on("groupsUpdated", bump));
         }
         if (services.sets) {
             unsubs.push(services.sets.onSetsChanged(bump));

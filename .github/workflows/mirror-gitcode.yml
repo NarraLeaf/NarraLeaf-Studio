@@ -13,6 +13,14 @@ name: Mirror to GitCode
 # copy failed or never happened (Actions > Mirror to GitCode > Run workflow). Re-running skips the
 # files already there.
 #
+# How fast the copy goes depends on the hour in Beijing, not on anything here or on the runner's
+# region. The copies that took under a minute ran at 02:32 and 04:23 Beijing time (1.4.5, 1.6.0:
+# 14-15 MB/s a connection). The ones that crawled ran between noon and 01:45 (1.4.4, 1.5.0, 1.6.1:
+# 10-300 KB/s), where an installer is hours from done and GitCode cut several of those uploads off
+# with a 502. So the copy also runs every night in the fast hours, for the latest release: one
+# cut in the daytime is on GitCode by the next morning, with nobody re-running anything. For a
+# release already copied, that run finds every file there and stops.
+#
 # The token is a GitCode personal access token with read/write on Projects and Repository, stored
 # as the GITCODE_TOKEN repository secret. It expires; a run that fails with 401 needs a new one.
 on:
@@ -30,22 +38,27 @@ on:
         description: "Release tag to copy, e.g. v1.4.4"
         required: true
         type: string
+  # 19:37 UTC is 03:37 in Beijing. Scheduled runs use this file as it is on the default branch.
+  schedule:
+    - cron: "37 19 * * *"
 
 permissions:
   contents: read
 
+# A scheduled run has no tag until it asks GitHub for the latest release, so it only queues behind
+# other scheduled runs. Overlapping a copy of the same tag still going from release.yml costs
+# bandwidth and nothing else: both upload the same bytes, and each puts the feeds up last.
 concurrency:
-  group: mirror-gitcode-${{ inputs.tag }}
+  group: mirror-gitcode-${{ inputs.tag || 'latest' }}
   cancel-in-progress: false
 
 jobs:
   mirror:
-    name: mirror ${{ inputs.tag }}
+    name: mirror ${{ inputs.tag || 'latest release' }}
     runs-on: ubuntu-latest
-    # A few hundred megabytes cross the Pacific into GitCode's storage at a couple of hundred
-    # kilobytes a second per connection: the first copy, of 1.4.4, did not finish one 316 MB file in
-    # half an hour. The script uploads side by side and drops stalled connections; this is the room
-    # left for a slow day.
+    # The room left for a copy in the slow hours. At 20-30 KB/s even this is not enough for an
+    # installer (1.6.1's ran out with its .exe never up, two attempts cut off by a 502), and the
+    # nightly run finishes what is left. The script uploads side by side and drops stalled connections.
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
@@ -56,20 +69,45 @@ jobs:
         with:
           node-version: "22"
 
+      # A scheduled run copies GitHub's latest release, the one the updater and the download page
+      # offer. The nightly prerelease is never it.
+      - name: Pick the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo "$REPO" --json tagName --jq .tagName)
+          fi
+          echo "Copying $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       # The same set release.yml attaches, read back from the published release so a re-run copies
       # exactly what GitHub serves.
       - name: Download the release's files
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$TAG" --repo "$REPO" --dir release-files \
             -p '*.exe' -p '*.dmg' -p '*.zip' -p '*.blockmap' -p 'latest*.yml'
           ls -la release-files
 
+      # BBR in place of the kernel's default, CUBIC, for the upload's connections. A congested route
+      # drops packets, and CUBIC slows down for every loss; BBR paces by the bandwidth it measures.
+      # Whether that is enough to win back a daytime copy, the progress lines of the next one will
+      # show - the nightly run does not depend on it. A runner without the module keeps the default.
+      - name: Use BBR for the upload
+        run: |
+          sudo modprobe tcp_bbr && sudo sysctl -w net.ipv4.tcp_congestion_control=bbr \
+            || echo "::warning::BBR is not available; the upload uses $(sysctl -n net.ipv4.tcp_congestion_control)"
+
       - name: Copy them to GitCode
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: node .github/scripts/mirror-release-to-gitcode.mjs --tag "$TAG" --from release-files

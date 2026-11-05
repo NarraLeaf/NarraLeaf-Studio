@@ -40,11 +40,14 @@ import {
 } from "@shared/types/dictionary";
 import { useRegistry } from "@/apps/workspace/registry";
 import {
+    findInStoryDocument,
     findingsByTerm,
+    replaceStoryFindings,
     scanProjectForVariants,
     variantNeedles,
     type DictionaryFinding,
 } from "@/lib/workspace/services/dictionary/dictionaryScan";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { jumpToSearchTarget } from "../search/searchJump";
 import type { PanelComponentProps } from "../types";
 import type { DictionaryPanelPayload } from "./openDictionaryPanel";
@@ -228,6 +231,10 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
         () => (context && isInitialized ? context.services.get<DictionaryService>(Services.Dictionary) : null),
         [context, isInitialized],
     );
+    const storyService = useMemo<StoryService | null>(
+        () => (context && isInitialized ? context.services.get<StoryService>(Services.Story) : null),
+        [context, isInitialized],
+    );
 
     const [entries, setEntries] = useState<ProjectDictionaryEntry[]>([]);
     const [options, setOptions] = useState<ProjectDictionaryOptions>(DEFAULT_DICTIONARY_OPTIONS);
@@ -246,6 +253,8 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
      * answer over the first.
      */
     const scanRef = useRef(0);
+    /** Whether a check is reading the project right now: a story edited meanwhile restarts it. */
+    const scanningRef = useRef(false);
 
     useEffect(() => {
         if (!service) {
@@ -263,7 +272,16 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
             }
         };
         read();
-        return service.onEntriesChanged(read);
+        // A check answers for the dictionary it was run against. Editing one term does not tell us
+        // anything about another's occurrences, but it does mean the list on screen is about a
+        // dictionary that no longer exists - so it is dropped rather than left to be read as current.
+        return service.onEntriesChanged(() => {
+            read();
+            scanRef.current += 1;
+            scanningRef.current = false;
+            setScanning(null);
+            setFindings(null);
+        });
     }, [service]);
 
     // A right click on a mark in a story row hands the term over. The token is what makes asking
@@ -332,11 +350,10 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
         scanRef.current += 1;
     }, []);
 
-    // A check answers for the dictionary it was run against. Editing one term does not tell us
-    // anything about another's occurrences, but it does mean the list on screen is about a
-    // dictionary that no longer exists - so it is dropped rather than left to be read as current.
+    // A check answers for the project of the service it was run against.
     useEffect(() => {
         scanRef.current += 1;
+        scanningRef.current = false;
         setScanning(null);
         setFindings(null);
     }, [service]);
@@ -355,6 +372,7 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
         }
         setFindings(null);
         setScanning({ done: 0, total: 0 });
+        scanningRef.current = true;
         void scanProjectForVariants(context, needles, {
             shouldContinue: () => scanRef.current === generation,
             onProgress: progress => {
@@ -366,12 +384,39 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
             if (scanRef.current !== generation) {
                 return;
             }
+            scanningRef.current = false;
             setScanning(null);
             // A partial answer is thrown away rather than shown: "nothing found" and "nothing found
             // in the half I read" are the same sentence on screen and not the same fact.
             setFindings(result.complete ? result.findings : null);
         });
     }, [context, service]);
+
+    // The answer follows the text. A row edited after the check - by hand, or by a project replace
+    // that fixed the very spelling listed - kept its finding and its term's 「N 行」 until the check was
+    // run again. The story that changed is read again on its own; a check still reading the project
+    // starts over, since it may already have read that story.
+    useEffect(() => {
+        if (!storyService || !service) {
+            return;
+        }
+        return storyService.onDocumentChanged(event => {
+            if (scanningRef.current) {
+                check();
+                return;
+            }
+            setFindings(current => {
+                if (!current) {
+                    return current;
+                }
+                try {
+                    return replaceStoryFindings(current, event.storyId, findInStoryDocument(event.document, variantNeedles(service.listEntries())));
+                } catch {
+                    return null;
+                }
+            });
+        });
+    }, [check, service, storyService]);
 
     const byTerm = useMemo(() => findingsByTerm(findings ?? []), [findings]);
 

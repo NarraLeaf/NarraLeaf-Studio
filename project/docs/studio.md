@@ -12,7 +12,7 @@
 - `project/docs/settings.md`：全局设置、Workspace runtime settings、项目 editor settings 的存储边界。
 - `project/docs/dev-mode.md`：Dev Mode window、主进程 DevModeManager、bundle/reload/blueprint runtime。
 - `project/docs/plugin.md`：插件系统设计状态、当前未实现项、已有预留点。
-- `project/docs/develop.md`：通用开发文档；与本文档整理无关。
+- `project/docs/develop.md`：本地开发、验证和构建入口。
 
 ## Workspace 主入口
 
@@ -28,12 +28,16 @@ Workspace 是 Studio 的主要 window，服务由固定 `ServiceRegistry` 驱动
 典型服务获取方式：
 
 ```ts
-const story = context.services.get<StoryService>(Services.Story);
+const story = context.services.get(Services.Story);
 ```
 
-不要手动 `new` service。当前 service 是固定 singleton 集合，初始化由 `WorkspaceProvider` 创建 context 后统一完成。
+服务使用固定 singleton 集合，通过 `ServiceRegistry` 获取。返回类型由 `Services` key 推导；显式类型参数也必须与该 key 匹配。`WorkspaceProvider` 先装配内建控件实现，再统一初始化服务。
+
+初始化先拉起每个服务声明的依赖；关闭时 `Service.disposeAll` 按完成初始化的逆序释放，所以一个服务的 `dispose` 运行时，它依赖的服务仍然可用。撤销历史在释放时运行每个条目的 disposer。
 
 ## 当前 Workspace Services
+
+下表列出各功能区最常用的入口服务。完整清单以 `serviceRegistry.ts` 为准。
 
 | Service | 入口文件 | 何时先读 |
 | --- | --- | --- |
@@ -61,7 +65,7 @@ const story = context.services.get<StoryService>(Services.Story);
 ## Agent 阅读规则
 
 - 先用本文判断功能归属，再进入对应功能文档和代码入口。
-- `services.ts` 只是接口索引，很多 UI 直接使用具体 service class 的扩展方法；查行为时必须读实现文件。
+- `services.ts` 定义 `Services` key 与接口索引；注册表的返回类型由具体 service class 推导，很多 UI 直接使用这些类的扩展方法。查行为时读实现文件。
 - 区分三类状态：持久文档状态、项目 editor/session 状态、纯 UI 临时状态。不要把 selection、draft、collapse、viewport 等编辑态随意写进文档模型。
 - 新增 workspace tab 时默认检查 `workspaceEditorSession.ts` / `useWorkspaceEditorSession.ts` 是否需要 session restore。
 - Story 任务以 `StoryService` 和 `src/shared/types/story/` 为持久化真相；Scene editor 的 UI 状态不要反向污染 `StoryDocument`。

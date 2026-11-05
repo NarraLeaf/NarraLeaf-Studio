@@ -1,5 +1,5 @@
 /**
- * The scene's own settings, as header directives: `#background` and `#music`.
+ * The scene's own settings, as header directives: `#background`, `#music` and `#description`.
  *
  * A scene carries two things no row does - the background it opens on
  * (`StoryScene.defaultBackgroundAssetId`) and the music it opens with (`StoryScene.bgm`). The engine
@@ -8,12 +8,19 @@
  * scene kept opening on the skeleton's classroom for a beat before the file's own `/bg` row - in a
  * train game - with nothing in `story show` to say where the picture came from.
  *
+ * The description is the note the scene panel shows under the scene's name. The game never shows it;
+ * it is in the header so an agent that writes a scene can also say what the scene is for, in the same
+ * call and the same step of undo.
+ *
  * ## The grammar
  *
  *     #background <image>          the image by name ('quoted' when it has spaces), or by id
  *     #background none             the scene opens on no background of its own
  *     #music <audio> [track=<audio track>] [vol=0.8] [fade=1.2s] [loop=false]
  *     #music none
+ *     #description <text>          the rest of the line, as written
+ *     #description "<JSON string>" for text a line cannot hold as it is: line breaks, leading spaces
+ *     #description none
  *
  * `#music` says its settings the way a `/bgm` row says the same four, in the row's order: `vol=`, and
  * `fade=` in seconds with the unit (`projectStoryCommandLine` prints rows; the formatting below is the
@@ -24,7 +31,7 @@
  *
  * A key left out of `#music` is left out of the record, which is what lets the track's own defaults
  * answer - the same rule the scene panel follows. A bare `none` clears; `'none'` in quotes is an asset
- * that happens to be called that.
+ * that happens to be called that, and a description that says "none" is printed in quotes too.
  *
  * Both count only in the header: before the first row, at the start of the line. Further down, or
  * indented, a `#background` / `#music` line is the comment every unknown `#` line has always been,
@@ -32,11 +39,13 @@
  *
  * ## A directive the file leaves out changes nothing
  *
- * Unlike rows, which a file lists in full. `story show` always writes both, so a file printed and
- * edited carries them; a file written from nothing that does not say them leaves the scene's
+ * Unlike rows, which a file lists in full. `story show` always writes `#background` and `#music`, so
+ * a file printed and edited carries them; a file written from nothing that does not say them leaves the scene's
  * settings as they are - and `apply` says that it did, naming what the scene still opens on. The
  * opposite rule would let any file made before these directives existed silently strip a scene's
- * music.
+ * music. `#description` is written only for a scene that has one: it is never on screen, so a file
+ * that leaves it out has nothing to warn about, and every scene printing `#description none` would be
+ * a line of noise in each file.
  *
  * Comments in English per project convention.
  */
@@ -49,6 +58,7 @@ import { sameValue } from "./equal";
 
 export const DIRECTIVE_BACKGROUND = "#background";
 export const DIRECTIVE_MUSIC = "#music";
+export const DIRECTIVE_DESCRIPTION = "#description";
 /** What a directive says to clear its setting. */
 export const SETTING_NONE = "none";
 
@@ -58,6 +68,7 @@ export type SceneSettingDirective = { value: string; line: number };
 export type SceneSettingsAst = {
     background?: SceneSettingDirective;
     music?: SceneSettingDirective;
+    description?: SceneSettingDirective;
     /** The `#layer` lines, nearest layer first; see `sceneLayers.ts`. */
     layers?: SceneSettingDirective[];
 };
@@ -164,14 +175,18 @@ function resolveName(raw: string, entries: readonly StoryCommandNamedRef[]): Sto
     return matches.length > 1 ? "ambiguous" : matches[0];
 }
 
-/** What the scene opens on, by name - for `apply`'s summary and `story targets`. Null when nothing. */
+/**
+ * What the scene opens on, by name, and its description - for `apply`'s summary and `story targets`.
+ * Null when nothing.
+ */
 export function describeSceneSettings(
     scene: StoryScene,
     lookups: SceneSettingsLookups,
-): { background: string | null; music: string | null } {
+): { background: string | null; music: string | null; description: string | null } {
     return {
         background: scene.defaultBackgroundAssetId ? nameFor(scene.defaultBackgroundAssetId, lookups.images) : null,
         music: scene.bgm?.assetId ? nameFor(scene.bgm.assetId, lookups.audio) : null,
+        description: scene.description ? scene.description : null,
     };
 }
 
@@ -179,12 +194,31 @@ export function describeSceneSettings(
 // Print
 // ---------------------------------------------------------------------------
 
-/** The two directive lines for `scene`, always both: see the note on leaving one out. */
+/**
+ * The directive lines for `scene`: `#background` and `#music` always, `#description` when it has one.
+ * See the note on leaving one out.
+ */
 export function printSceneSettings(scene: StoryScene, lookups: SceneSettingsLookups): string[] {
     const background = scene.defaultBackgroundAssetId
         ? quoteIfNeeded(nameFor(scene.defaultBackgroundAssetId, lookups.images))
         : SETTING_NONE;
-    return [`${DIRECTIVE_BACKGROUND} ${background}`, `${DIRECTIVE_MUSIC} ${printMusic(scene.bgm, lookups)}`];
+    const lines = [`${DIRECTIVE_BACKGROUND} ${background}`, `${DIRECTIVE_MUSIC} ${printMusic(scene.bgm, lookups)}`];
+    if (scene.description) {
+        lines.push(`${DIRECTIVE_DESCRIPTION} ${printDescription(scene.description)}`);
+    }
+    return lines;
+}
+
+/**
+ * The text as it is when the reader would take it back unchanged; in JSON quotes when it would not -
+ * a line break, space at either end, a leading quote the reader would strip, or the word that clears.
+ */
+function printDescription(text: string): string {
+    const plain = !/[\r\n]/.test(text)
+        && text === text.trim()
+        && !/^['"]/.test(text)
+        && text.toLowerCase() !== SETTING_NONE;
+    return plain ? text : JSON.stringify(text);
 }
 
 function printMusic(bgm: StorySceneBgm | undefined, lookups: SceneSettingsLookups): string {
@@ -238,6 +272,12 @@ export function applySceneSettings(
             next = withMusic(next, music);
         }
     }
+    if (settings.description) {
+        const description = readDescription(settings.description, diagnostics);
+        if (description !== undefined) {
+            next = withDescription(next, description);
+        }
+    }
     return { scene: next, diagnostics };
 }
 
@@ -257,6 +297,57 @@ function withMusic(scene: StoryScene, bgm: StorySceneBgm | null): StoryScene {
     }
     const { bgm: _cleared, ...rest } = scene;
     return bgm ? { ...rest, bgm } : rest;
+}
+
+function withDescription(scene: StoryScene, text: string | null): StoryScene {
+    // An empty description and none are the same thing; a scene the panel left at "" is not changed.
+    if ((scene.description ?? "") === (text ?? "")) {
+        return scene;
+    }
+    const { description: _cleared, ...rest } = scene;
+    return text ? { ...rest, description: text } : rest;
+}
+
+/**
+ * The description, null for `none`, undefined when the directive was refused. Plain text is the rest
+ * of the line; `"..."` is a JSON string, which is how a description with line breaks is printed;
+ * `'...'` is taken off as quotes, the way the other directives quote a name.
+ */
+function readDescription(directive: SceneSettingDirective, diagnostics: StoryFileDiagnostic[]): string | null | undefined {
+    const value = directive.value.trim();
+    if (value.toLowerCase() === SETTING_NONE) {
+        return null;
+    }
+    if (value === "") {
+        diagnostics.push(errorAt(
+            "file.bad_setting",
+            `${DIRECTIVE_DESCRIPTION} takes the description as the rest of the line, or "${SETTING_NONE}" to clear it.`,
+            directive.line,
+        ));
+        return undefined;
+    }
+    if (value.startsWith("\"")) {
+        let text: unknown = undefined;
+        try {
+            text = JSON.parse(value);
+        } catch {
+            // Reported below.
+        }
+        if (typeof text !== "string") {
+            diagnostics.push(errorAt(
+                "file.bad_setting",
+                `${DIRECTIVE_DESCRIPTION} starting with a double quote is read as one JSON string ("line one\\nline two"), `
+                    + "and this one does not close or has text after it. Write the text without quotes if it fits on the line.",
+                directive.line,
+            ));
+            return undefined;
+        }
+        return text === "" ? null : text;
+    }
+    if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+        return value.slice(1, -1) === "" ? null : value.slice(1, -1);
+    }
+    return value;
 }
 
 /** The image id, null for `none`, undefined when the directive was refused. */

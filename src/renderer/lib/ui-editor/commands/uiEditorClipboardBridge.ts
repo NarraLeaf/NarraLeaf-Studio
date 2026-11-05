@@ -1,23 +1,14 @@
+import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import { getInterface } from "@/lib/app/bridge";
 import { translateN } from "@/lib/i18n";
-import {
-    buildAssetTransferEntries,
-    createTransferredAssetPort,
-    findLibraryAsset,
-    importTransferredAssets,
-    type TransferredAssetPort,
-} from "@/lib/workspace/services/assets/assetTransferImport";
+import { buildAssetTransferEntries, createTransferredAssetPort, importTransferredAssets, type TransferredAssetPort } from "@/lib/workspace/services/assets/assetTransferImport";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
-import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
-import type { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
-import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { createCatalogAssetPinResolver } from "@/lib/workspace/services/ui-editor/blueprint/catalogAssetPins";
 import type { BlueprintAssetPinResolver } from "@/lib/workspace/services/references/referenceModel";
-import type { Service } from "@/lib/workspace/services/Service";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -97,17 +88,17 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
         return null;
     }
     const services = context.services;
-    const get = <T extends Service>(key: Services): T | null => {
+    const get = <K extends Services>(key: K): WorkspaceServiceMap[K] | null => {
         try {
-            return services.get<T>(key);
+            return services.get(key);
         } catch {
             return null;
         }
     };
-    const freezeService = get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
-    const projectService = get<ProjectService>(Services.Project);
-    const catalog = get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-    const localization = get<LocalizationService>(Services.Localization);
+    const freezeService = get(Services.WorkspaceFreeze);
+    const projectService = get(Services.Project);
+    const catalog = get(Services.BlueprintNodeCatalog);
+    const localization = get(Services.Localization);
     let projectName = "";
     let projectIdentifier = "";
     try {
@@ -122,10 +113,10 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
         projectPath: context.project.getConfig().projectPath ?? "",
         projectName,
         projectIdentifier,
-        assetsService: get<AssetsService>(Services.Assets),
-        fileSystemService: get<FileSystemService>(Services.FileSystem),
-        uiService: get<UIService>(Services.UI),
-        uuidService: get<UuidService>(Services.Uuid),
+        assetsService: get(Services.Assets),
+        fileSystemService: get(Services.FileSystem),
+        uiService: get(Services.UI),
+        uuidService: get(Services.Uuid),
         isFrozen: () => freezeService?.isFrozen() ?? false,
         resolveAssetPins: createCatalogAssetPinResolver(catalog),
         carryTextKeys: names => carryTextKeys(localization, names),

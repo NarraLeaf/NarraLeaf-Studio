@@ -238,6 +238,13 @@ export type LiveGameUiCallbackDeps = {
      */
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
     /**
+     * The asset behind the avatar URL the engine recorded on a backlog line - the face the line was
+     * shown with - or null for a URL this build did not compile. Read lazily like
+     * `resolveSpeakerAvatar`. A line with a recorded face shows it; a line without one (recorded by
+     * an older engine, or a URL this build does not know) falls back to `resolveSpeakerAvatar`.
+     */
+    resolveRecordedAvatar?: (url: string) => BlueprintImageAsset | null;
+    /**
      * The name a player reads for a speaker the engine recorded by name: the character's name in the
      * game's language. Read lazily like `resolveSpeakerAvatar`, and absent on a host that shows the
      * story in the words it is written in (the story preview), where the recorded name is shown.
@@ -340,10 +347,12 @@ function liveGameHistoryControls(liveGame: LiveGame): {
  * ahead of it - because an entry is the same entry whichever side of the head it sits on, and a
  * backlog screen binds both lists to one item template.
  *
- * The avatar is resolved here rather than read off the entry: the engine records the speaker's name
- * and nothing about their picture, and the name it records is the source name - the same one
+ * The avatar is the one the line was shown with, when the engine recorded it (`avatar` on the
+ * entry, the URL its dialog resolved when the line was reached): the speaker's face at that line,
+ * which is not her face now. An entry without one - recorded by an older engine - falls back to the
+ * speaker's default picture, resolved by the source name the engine records, the same one
  * `resolveSpeakerCharacterId` joins the character table on for the live line. A host with no table
- * to join against passes no resolver, and every row reads as having no picture, which is what a
+ * to join against passes no resolvers, and every row reads as having no picture, which is what a
  * backlog showed before this field existed.
  *
  * The speaker is handed out the way the name plate shows it, in the game's language; the avatar is
@@ -354,6 +363,7 @@ function toBlueprintHistoryEntries(
     resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
     displaySpeakerName?: (recordedName: string) => string,
     canReplayVoice?: (unitId: string) => boolean,
+    resolveRecordedAvatar?: (url: string) => BlueprintImageAsset | null,
 ): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
@@ -370,12 +380,20 @@ function toBlueprintHistoryEntries(
         // The replayable handle. Present from engine 0.24.0 on; an entry from an older save simply
         // has none, and a backlog replay button hides itself for that line.
         const voiceId = !isMenu && element.voiceId != null ? String(element.voiceId) : null;
+        // `null` recorded is a line shown with no avatar; absent, or a URL this build does not know,
+        // is a line whose face was not recorded.
+        const recorded = isMenu ? undefined : element.avatar;
+        const recordedAvatar = recorded === null
+            ? null
+            : typeof recorded === "string" ? resolveRecordedAvatar?.(recorded) ?? undefined : undefined;
         return [{
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
             text,
             character: character ? displaySpeakerName?.(character) ?? character : null,
-            avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
+            avatar: character
+                ? recordedAvatar !== undefined ? recordedAvatar : resolveSpeakerAvatar?.(character) ?? null
+                : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
             voiceId,
             hasVoice: voiceId !== null && canReplayVoice?.(voiceId) === true,
@@ -453,6 +471,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         currentDialogNametagRef,
         dialogClickTargets,
         resolveSpeakerAvatar,
+        resolveRecordedAvatar,
         displaySpeakerName,
         canReplayVoice,
         detachedPreferences,
@@ -515,7 +534,13 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar, displaySpeakerName, canReplayVoice);
+            return toBlueprintHistoryEntries(
+                getLiveGame()?.getHistory?.(),
+                resolveSpeakerAvatar,
+                displaySpeakerName,
+                canReplayVoice,
+                resolveRecordedAvatar,
+            );
         },
 
         onGetFuture: (): BlueprintGameHistoryEntry[] => {
@@ -526,6 +551,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                 resolveSpeakerAvatar,
                 displaySpeakerName,
                 canReplayVoice,
+                resolveRecordedAvatar,
             );
         },
 

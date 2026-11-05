@@ -9,6 +9,7 @@ import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction"
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIElementNavigation, UISurfaceNavigation } from "./navigation";
 import type { UIPageAnimationSettings } from "./pageAnimation";
+import type { UIPageMusicSetting } from "./pageMusic";
 import { getUISliderChildSlot } from "./slider";
 import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
@@ -223,6 +224,12 @@ export type UISurfaceSettings = {
      * a scaled Surface keep showing the colour, so the two settings are not alternatives.
      */
     backgroundImage?: UISurfaceBackgroundImage;
+    /**
+     * What a page does to the music while it is the page on screen: play this, or silence. Absent
+     * keeps whatever is playing (see `pageMusic.ts`). Read for pages only: a Game UI is drawn over
+     * the running scene, whose own music is what plays there.
+     */
+    music?: UIPageMusicSetting;
     pageAnimation?: UIPageAnimationSettings;
     /** Where the focus starts when this Surface opens, and whether it is put there. See `navigation.ts`. */
     navigation?: UISurfaceNavigation;

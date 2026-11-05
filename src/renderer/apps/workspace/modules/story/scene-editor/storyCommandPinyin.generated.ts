@@ -54,6 +54,7 @@ export const STORY_COMMAND_PINYIN: Record<string, { full: string; initials: stri
     cut: { full: "jieduan", initials: "jd" },
     ending: { full: "jieju", initials: "jj" },
     quit: { full: "tuichudaoyemian", initials: "tcdym" },
+    page: { full: "dakaiyemian", initials: "dkym" },
     rumble: { full: "zhendong", initials: "zd" },
     input: { full: "shurusuoding", initials: "srsd" },
     waitInput: { full: "dengdaishuru", initials: "ddsr" },

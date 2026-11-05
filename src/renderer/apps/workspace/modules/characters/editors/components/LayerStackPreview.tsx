@@ -72,6 +72,12 @@ export function LayerStackPreview(props: {
     /** Drawn over the stack — the portrait crop box, which has to sit on the picture it frames. */
     overlay?: React.ReactNode;
     toolbar?: React.ReactNode;
+    /**
+     * What the picture area says while nothing is drawn. A layered character's empty stack and a
+     * pose with no image are fixed in different places, and both used to ask for a variant to be
+     * selected - one that, in an empty editor, does not exist. Omit for the layered wording.
+     */
+    emptyLabel?: string;
 }) {
     const { t } = useTranslation();
     const drawn = props.layers.filter(layer => layer.assetId);
@@ -96,7 +102,7 @@ export function LayerStackPreview(props: {
             <div className="relative flex-1 overflow-hidden bg-surface">
                 {drawn.length === 0 ? (
                     <div className="grid h-full place-items-center text-sm text-fg-subtle">
-                        {t("characters.preview.placeholder")}
+                        {props.emptyLabel ?? t("characters.preview.emptyLayered")}
                     </div>
                 ) : (
                     <>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatVoiceFilename, matchKeyForFilename, VOICE_NAME_TOKENS } from "./voiceNaming";
+import { formatVoiceFilename, matchKeyForFilename, matchKeyForVoiceName, VOICE_NAME_TOKENS } from "./voiceNaming";
 
 const PATTERN = "{scene}_{index}_{character}";
 
@@ -58,6 +58,20 @@ describe("matchKeyForFilename", () => {
 
     it("still reduces a name with nothing but punctuation to an empty key", () => {
         expect(matchKeyForFilename("---.wav")).toBe("");
+    });
+
+    it("drops only an audio extension, so a dot inside the name stays", () => {
+        expect(matchKeyForFilename("Walktogether_005_Ms.Hara.wav")).toBe("walktogether005mshara");
+        expect(matchKeyForFilename("Walktogether_005_Ms.Hara")).toBe("walktogether005mshara");
+        expect(matchKeyForFilename("take.FLAC")).toBe("take");
+    });
+});
+
+describe("matchKeyForVoiceName", () => {
+    it("drops nothing from an expected name, which never has an extension", () => {
+        const expected = formatVoiceFilename(PATTERN, tokens({ scene: "Walk together", index: 5, character: "Ms. Hara" }));
+        expect(expected).toBe("Walktogether_005_Ms.Hara");
+        expect(matchKeyForVoiceName(expected)).toBe(matchKeyForFilename(`${expected}.wav`));
     });
 });
 

@@ -65,6 +65,20 @@ export function characterAvatarAxisIds(appearance: CharacterAppearanceSummary | 
 }
 
 /**
+ * What the avatar of a look is drawn from: the look's tags on the avatar axes, every other axis left
+ * to its default - which is what the bake draws ({@link characterAvatarTargets} enumerates exactly
+ * those selections). Handing the editor's avatar box the whole look drew the outfit an avatar does
+ * not vary with, so the box showed a picture the game never would.
+ */
+export function characterAvatarSelection(
+    appearance: CharacterAppearanceSummary | undefined,
+    tags: Readonly<Record<string, string>>,
+): { tags: Record<string, string> } {
+    const axisIds = new Set(characterAvatarAxisIds(appearance));
+    return { tags: Object.fromEntries(Object.entries(tags).filter(([axisId]) => axisIds.has(axisId))) };
+}
+
+/**
  * The avatar key of one differential.
  *
  * Tag ids are **sorted** into the key. The insertion order of a tag map is an accident of which row
@@ -222,4 +236,18 @@ export function resolveDefaultCharacterAvatarAssetId(
         return null;
     }
     return resolveCharacterAvatarAssetId(character, characterAvatarKey(character.appearance, {}));
+}
+
+/**
+ * The avatar a character's line shows while she has no portrait on stage: the profile's default
+ * avatar, or when it has none, her default look's ({@link resolveDefaultCharacterAvatarAssetId}).
+ *
+ * What the game's dialogue box shows off stage (`storyCompiler`'s `offStage`), and so what the story
+ * editor's row pictures for such a line: one answer for the two, or the row names a face the game
+ * does not show.
+ */
+export function resolveOffStageCharacterAvatarAssetId(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+): string | null {
+    return character?.defaultAvatarAssetId?.trim() || resolveDefaultCharacterAvatarAssetId(character);
 }

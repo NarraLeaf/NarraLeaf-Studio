@@ -4,6 +4,12 @@ import { formatStageSize, parseStageSize } from "@shared/types/stageSize";
 import { NARRALEAF_TEAM } from "@shared/constants/servers";
 import { ProjectData, ProjectTemplate, PublishTarget } from "../types";
 
+/** The parts of the template that do come in, as one line in the author's language. */
+function keptPartsSummary(template: ProjectTemplate, leaveOut: readonly string[], locale: string, none: string): string {
+    const kept = template.parts.filter(part => !leaveOut.includes(part.id)).map(part => part.name);
+    return kept.length > 0 ? new Intl.ListFormat(locale, { type: "conjunction" }).format(kept) : none;
+}
+
 interface ReviewStepProps {
     projectData: ProjectData;
     /** The template entry the author picked, when the list has finished loading. */
@@ -22,7 +28,7 @@ interface ReviewStepProps {
  * to catch mistakes into a page that is skimmed.
  */
 export function ReviewStep({ projectData, template, publishTo = null }: ReviewStepProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const stageSize = parseStageSize(projectData.resolution);
     const templateName = template
         ? (template.nameKey ? t(template.nameKey) : template.name)
@@ -30,6 +36,13 @@ export function ReviewStep({ projectData, template, publishTo = null }: ReviewSt
 
     const rows: { label: string; value: string }[] = [
         { label: t("wizard.review.template"), value: templateName },
+        // Only when something was left out: a template taken whole is what the template row says.
+        ...(template && projectData.leaveOutParts.length > 0
+            ? [{
+                label: t("wizard.template.parts.label"),
+                value: keptPartsSummary(template, projectData.leaveOutParts, locale, t("wizard.template.parts.none")),
+            }]
+            : []),
         { label: t("wizard.project.name"), value: projectData.name },
         { label: t("wizard.fields.appId"), value: projectData.appId },
         { label: t("wizard.fields.stageSize"), value: stageSize ? formatStageSize(stageSize) : "" },

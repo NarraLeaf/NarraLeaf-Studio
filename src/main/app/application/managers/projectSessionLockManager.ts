@@ -66,6 +66,13 @@ export interface ProjectSessionLockManagerOptions {
      * writing. Called once per takeover.
      */
     onTakenOver?: (projectPath: string, holder: ProjectSessionHolder) => void;
+    /**
+     * Called when this session gives a project up, after the lock on disk has been confirmed as its
+     * own and before it is removed - the last moment the project is still this Studio's, so whatever
+     * runs here cannot race the next Studio's open. Not called for a lock that was taken over: the
+     * project is somebody else's by then. Must not throw; it is awaited and then ignored.
+     */
+    onRelease?: (projectPath: string) => Promise<void>;
 }
 
 /** How long a takeover waits before reading back what it wrote. */
@@ -140,6 +147,7 @@ export class ProjectSessionLockManager {
     private readonly staleConfirmMs: number;
     private readonly sleep: (ms: number) => Promise<void>;
     private readonly onTakenOver: ((projectPath: string, holder: ProjectSessionHolder) => void) | null;
+    private readonly onRelease: ((projectPath: string) => Promise<void>) | null;
     private heartbeatTimer: NodeJS.Timeout | null = null;
     /** One acquisition per project at a time, so two callers cannot both write a claim. */
     private readonly claims = new Map<string, Promise<ProjectSessionLockOutcome>>();
@@ -153,6 +161,7 @@ export class ProjectSessionLockManager {
         this.staleConfirmMs = options.staleConfirmMs ?? this.heartbeatMs;
         this.sleep = options.sleep ?? defaultSleep;
         this.onTakenOver = options.onTakenOver ?? null;
+        this.onRelease = options.onRelease ?? null;
         this.identity = {
             pid: options.pid ?? process.pid,
             hostname: options.hostname ?? os.hostname(),
@@ -248,6 +257,9 @@ export class ProjectSessionLockManager {
             if (onDisk !== null && !this.isOwnRecord(onDisk)) {
                 return;
             }
+            await this.onRelease?.(held.projectPath).catch(error => {
+                this.logger.warn("[Project] Could not finish giving up", held.projectPath, error);
+            });
             await fs.rm(held.lockPath, { force: true });
         } catch (error) {
             this.logger.warn("[Project] Could not release the session lock on", held.projectPath, error);

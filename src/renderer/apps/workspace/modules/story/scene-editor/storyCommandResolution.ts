@@ -19,6 +19,7 @@ import {
 import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
 import { matchEnumOptionLocalized } from "./commands/localizedEnums";
+import { matchReservedTargetName } from "./commands/reservedTargetNames";
 import { numberValueOfLocalized } from "./commands/localizedUnits";
 import type {
     StoryCommandContext,
@@ -119,7 +120,7 @@ export function parseLiteral(raw: string): StoryLiteralValue {
 
 
 /** The character an owner param resolved to, whether it came through a `character` or a `target` slot. */
-function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
+export function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
     if (owner?.kind === "character") {
         return owner.characterId;
     }
@@ -208,6 +209,14 @@ function resolveTarget(
     }
     if (matches.length === 1) {
         return { value: { kind: "target", target: matches[0] } };
+    }
+
+    // A reserved word's name in the command language (镜头 for `camera`). After the stage rather than
+    // with the words themselves: an author can name a picture 背景, and a name they gave something
+    // must keep meaning that thing. The row then prints the word, as if it had been typed.
+    const named = matchReservedTargetName(type.reserved ?? [], value);
+    if (named) {
+        return { value: { kind: "target", target: { type: "reserved", name: named } } };
     }
 
     // Nothing on stage answers, so a verb that can make its own subject looks in the library. After

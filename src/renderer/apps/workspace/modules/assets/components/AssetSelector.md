@@ -121,7 +121,9 @@ export interface AssetSelectorVirtualGroup {
 
 ## 布局与定位
 
-- **有 `anchorRef.current`**：面板贴在锚点下方或上方（视视口空间），`width` clamp 到 320–480。
+- **有 `anchorRef.current`**：位置由 `@/lib/components/layout/anchoredPanelPlacement` 计算，`width` clamp 到 320–480。
+  - 锚点在窗口右半边且面板比锚点宽时，面板右缘对齐锚点右缘、向左展开（右侧停靠栏打开的选择器不会盖住右侧栏）。
+  - 打开时按最大高度选定上方或下方，关闭前不再改变；下方顶边固定、随内容向下增高；上方取固定高度，底边止于锚点上方，永不盖住锚点所在的行。
 - **无锚点**：面板 `mt-12 mx-auto`，宽度 420。
 - 最大高度约 **560px**，列表区域可滚动。
 - `resize` / `scroll` / `ResizeObserver` 会触发重算位置。

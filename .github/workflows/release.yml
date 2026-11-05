@@ -24,8 +24,11 @@ name: Release
 # Macs — see GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts.
 #
 # Once published, the release's files are copied to GitCode (the `gitcode` job below), which is
-# where mainland China downloads Studio from. A failed copy leaves the GitHub release as it is; run
-# "Mirror to GitCode" by hand for the tag once whatever stopped it is fixed.
+# where mainland China downloads Studio from. A failed copy leaves the GitHub release as it is. In
+# Beijing's daytime the copy is usually too slow to finish (the job is then cancelled at its time
+# limit); mirror-gitcode.yml runs again in the small hours there and finishes the latest release. For
+# an older tag, or a copy that failed for some other reason, run "Mirror to GitCode" by hand once
+# whatever stopped it is fixed.
 #
 # Nothing here is code-signed, so every installer is unsigned and the OS will
 # quarantine it on first launch — the same caveat as the nightly builds.

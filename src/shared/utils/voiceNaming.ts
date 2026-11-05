@@ -90,14 +90,45 @@ export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): s
 }
 
 /**
- * Reduce a filename to a stable match key: the basename, extension dropped,
- * NFKC-normalised, lower-cased, and stripped to Unicode letters and digits.
- * Applied to both a line's expected filename and an imported audio file's name
- * so spaces/underscores/dashes, full-width punctuation, decomposed CJK, and
- * folder layout never affect matching.
+ * The extensions a take can arrive with, lower-case and without the dot: what the voice import's
+ * file picker offers, and the other audio formats a booth commonly hands back.
+ */
+export const VOICE_AUDIO_EXTENSIONS: readonly string[] = [
+    "mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba",
+    "webm", "aif", "aiff", "wma", "caf",
+];
+
+const AUDIO_EXTENSION = new RegExp(`\\.(?:${VOICE_AUDIO_EXTENSIONS.join("|")})$`, "i");
+
+/** The last path segment, NFKC-normalised, lower-cased, and stripped to Unicode letters and digits. */
+function reduceToMatchKey(name: string): string {
+    const base = name.replace(/\\+/g, "/").split("/").pop() ?? name;
+    return base.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
+}
+
+/**
+ * Reduce a line's expected name - {@link formatVoiceFilename}'s answer, which has no extension -
+ * to the key a file is matched against.
+ *
+ * Nothing is dropped from it: a dot in an expected name is part of a name. A speaker called
+ * `Ms. Hara` gives `…_Ms.Hara`, and reading `.Hara` as an extension made the line expect
+ * `…_ms` and match no file at all.
+ */
+export function matchKeyForVoiceName(name: string): string {
+    return reduceToMatchKey(name);
+}
+
+/**
+ * Reduce a file name, or an audio asset's library name, to a stable match key: the basename with a
+ * known audio extension dropped ({@link VOICE_AUDIO_EXTENSIONS}), NFKC-normalised, lower-cased, and
+ * stripped to Unicode letters and digits, so spaces/underscores/dashes, full-width punctuation,
+ * decomposed CJK and folder layout never affect matching. Compared against
+ * {@link matchKeyForVoiceName} of the line's expected name.
+ *
+ * Only an audio extension is dropped. Any other dot is part of the name, which is what lets
+ * `…_Ms.Hara.wav` match the line `…_Ms.Hara`.
  */
 export function matchKeyForFilename(filename: string): string {
     const base = filename.replace(/\\+/g, "/").split("/").pop() ?? filename;
-    const withoutExt = base.replace(/\.[^.]+$/, "");
-    return withoutExt.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
+    return reduceToMatchKey(base.replace(AUDIO_EXTENSION, ""));
 }

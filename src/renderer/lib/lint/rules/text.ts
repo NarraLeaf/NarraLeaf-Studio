@@ -1,5 +1,7 @@
 import type { LintFinding, LintRule, LintRuleOptions } from "../types";
 import type { LintContext } from "../context";
+import { inlineTextEffectRegistry } from "../../plugins/inlineTextEffectRegistry";
+import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import {
     measureSegmentWidth,
     type LintTextCountMode,
@@ -84,6 +86,41 @@ function runEmpty(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * A live line with text set in an inline effect that no loaded plugin provides.
+ *
+ * The game draws such a run as plain text, and the build refuses to ship a project whose effects'
+ * plugin it cannot package, so this is where the author finds which line it is. One finding per line
+ * and effect, naming the effect: its id says which plugin is missing.
+ *
+ * Stands down when no widget is registered at all, the reading `ui/unknown-widget` makes of the same
+ * state: that is not a workspace, and nothing would be loaded to provide any effect.
+ */
+function runUnknownEffect(ctx: LintContext): LintFinding[] {
+    if (widgetModuleRegistry.list().length === 0) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const ref of listLiveTextSegments(ctx)) {
+        const reported = new Set<string>();
+        for (const run of ref.segment.rich ?? []) {
+            const id = "marks" in run ? run.marks?.effect?.id : undefined;
+            if (!id || reported.has(id) || inlineTextEffectRegistry.get(id)) {
+                continue;
+            }
+            reported.add(id);
+            findings.push({
+                ruleId: "text/unknown-effect",
+                messageKey: "lint.rule.textUnknownEffect.message",
+                messageParams: { effect: id },
+                location: storyLocation(ref),
+                target: storyBlockTarget(ref),
+            });
+        }
+    }
+    return findings;
+}
+
 export const TEXT_LINT_RULES: readonly LintRule[] = [
     {
         id: "text/overlong",
@@ -106,5 +143,13 @@ export const TEXT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "textEmpty",
         run: ctx => runEmpty(ctx),
+    },
+    {
+        id: "text/unknown-effect",
+        category: "text",
+        // An error, like `ui/unknown-widget`: the build cannot package what draws the run.
+        defaultSeverity: "error",
+        slug: "textUnknownEffect",
+        run: ctx => runUnknownEffect(ctx),
     },
 ];

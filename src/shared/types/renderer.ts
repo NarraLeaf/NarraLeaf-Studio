@@ -58,6 +58,7 @@ import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
 } from "./blueprint/screenshot";
+import type { StageCaptureRequest } from "../utils/stageCapture";
 import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -289,6 +290,12 @@ export interface RendererPreloadedInterface {
      * waiting for the author to trust it. Answered for the wizard window only.
      */
     registerCreatedProject(projectPath: string): Promise<RequestStatus<{ recorded: boolean }>>;
+    /**
+     * The app IDs the projects on this machine already use, with each project's name, for a new
+     * project's ID to be kept apart from. `folders` adds folders this window may read. Answered for
+     * the wizard window only.
+     */
+    listLocalAppIds(folders: string[]): Promise<RequestStatus<{ projects: { appId: string; key: string; projectName: string }[] }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
@@ -766,6 +773,11 @@ export interface RendererPreloadedInterface {
         openScreenshotsFolder(
             projectRef: DevModeSaveProjectRef,
         ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
+        /**
+         * Read this window's stage back from the compositor for a save's picture: a JPEG data URL,
+         * or null when the window gave no frame. See `@shared/utils/stageCapture`.
+         */
+        captureStage(request: StageCaptureRequest): Promise<RequestStatus<{ picture: string | null }>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         /**
          * Workspace: ask the project's running Dev Mode game to capture itself or advance, for an
@@ -1520,7 +1532,7 @@ export interface RendererPreloadedInterface {
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
         /** `locale` picks the template's own copy of its content written in that language, if it has one. */
-        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string }>>;
+        scaffold(templateId: string, projectPath: string, locale?: string, leaveOut?: string[]): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string; leftOut: string[] }>>;
         /** A template's interface documents, to bring a page out of it into an open project. */
         readInterface(templateId: string, locale?: string): Promise<RequestStatus<ProjectTemplateInterfaceContent>>;
         /** A template's own asset files, by id. An id the template does not ship is left out. */
@@ -1610,8 +1622,25 @@ export interface RendererPreloadedInterface {
     privileged: RendererPrivilegedBootstrapInterface;
 }
 
+/**
+ * What the page's global holds: not the bridge, but the one way to take it.
+ *
+ * ⚠ **Plugin code shares the page's realm**, so anything on the global is plugin code's too, and
+ * Electron defines the exposed property so it cannot be deleted. The bridge used to sit there in
+ * full: a plugin whose manifest asked for nothing could list, read, write and delete every file the
+ * window could reach, all through calls main had no way to tell from Studio's own. Now Studio's
+ * bootstrap (`renderer/lib/app/bridge.ts`) takes it once, before the page has loaded anything but
+ * Studio, and hardens this before the first plugin module is imported - after which the global
+ * answers nothing at all, and a plugin has the facade its permissions were checked against.
+ */
+export interface RendererGlobalBridge {
+    acquire(): RendererPreloadedInterface;
+    harden(): void;
+    isHardened(): boolean;
+}
+
 declare global {
     interface Window {
-        [RendererInterfaceKey]: RendererPreloadedInterface;
+        [RendererInterfaceKey]: RendererGlobalBridge;
     }
 }

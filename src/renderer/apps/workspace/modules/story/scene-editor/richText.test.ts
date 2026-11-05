@@ -242,6 +242,17 @@ describe("richText type marks", () => {
         expect(rangeTextMark(runs, 0, 6, "emphasis")).toBeUndefined();
     });
 
+    it("compares effects by value, so two runs set in the same effect share it", () => {
+        const runs: StoryRichRun[] = [
+            { text: "ab", marks: { effect: { id: "acme.fx.shake", params: { intensity: 4 } } } },
+            { text: "cd", marks: { bold: true, effect: { id: "acme.fx.shake", params: { intensity: 4 } } } },
+            { text: "ef", marks: { effect: { id: "acme.fx.shake" } } },
+        ];
+        expect(rangeTextMark(runs, 0, 4, "effect")).toEqual({ id: "acme.fx.shake", params: { intensity: 4 } });
+        expect(rangeTextMark(runs, 0, 6, "effect")).toBeUndefined();
+        expect(cleanMarks({ effect: { id: "" } })).toBeUndefined();
+    });
+
     it("lets a collapsed caret address the run it is standing in, but only a marked one", () => {
         const runs: StoryRichRun[] = [
             { text: "plain" },

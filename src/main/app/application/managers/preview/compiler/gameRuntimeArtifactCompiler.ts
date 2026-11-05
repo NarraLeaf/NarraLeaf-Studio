@@ -36,6 +36,7 @@ import {
     restrictCharacterUnits,
     restrictRecordToAssetIds,
 } from "@shared/build/variantPayload";
+import { withoutLibraryTables } from "@shared/build/imageResizeEligibility";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { resolveLaunchEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
@@ -1579,16 +1580,7 @@ async function planShippedAssets(
     const cast = planShippedCharacters(bundle, pluginData, onNotice);
     const assetNames = cast.bundle.storyLibrary?.assetNames ?? {};
     const clips = cast.bundle.audio?.clips ?? {};
-    const swept = {
-        bundle: {
-            ...cast.bundle,
-            ...(cast.bundle.storyLibrary
-                ? { storyLibrary: { ...cast.bundle.storyLibrary, assetNames: {} } }
-                : {}),
-            ...(cast.bundle.audio ? { audio: { ...cast.bundle.audio, clips: {} } } : {}),
-        },
-        pluginData,
-    };
+    const swept = { bundle: withoutLibraryTables(cast.bundle), pluginData };
     const include = collectReferencedAssetIds(swept, libraryAssetIds);
     return {
         bundle: {

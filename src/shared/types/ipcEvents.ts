@@ -7,6 +7,7 @@ import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuic
 import type { AgentClientId, AgentClientSetupInfo, AgentSkillInstallResult } from "../agent/clients";
 import type { AgentPluginToolDescriptor } from "../agent/pluginTools";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
+import type { StageCaptureRequest } from "../utils/stageCapture";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -252,6 +253,7 @@ export enum IPCEventType {
     projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     projectWizardCreated = "projectWizard.created",
+    projectWizardListAppIds = "projectWizard.listAppIds",
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
@@ -346,6 +348,7 @@ export enum IPCEventType {
     devModeWindowFocusChanged = "devMode.window.focusChanged",
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
+    devModeStageCapture = "devMode.stage.capture",
     devModeWindowCloseRequested = "devMode.window.closeRequested",
     devModeAgentControl = "devMode.agent.control",
     devModeAgentDrive = "devMode.agent.drive",
@@ -2206,6 +2209,24 @@ export type IPCProjectWizardEvents = {
             recorded: boolean;
         };
     };
+    /**
+     * The app IDs the projects on this machine already use, for the wizard to keep a new one apart.
+     *
+     * Answered for the wizard window only. Always covers the projects Studio knows - the recent list
+     * and the trust ledger - and the projects folder; `folders` adds folders this window was granted
+     * to read (the one the author picked), whose projects are listed too. Names and IDs only: the
+     * wizard names the project an ID belongs to, and needs nothing about where it is.
+     */
+    [IPCEventType.projectWizardListAppIds]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            folders: string[];
+        };
+        response: {
+            projects: { appId: string; key: string; projectName: string }[];
+        };
+    };
 };
 
 export type IPCWorkspaceEvents = {
@@ -3126,6 +3147,17 @@ export type IPCDevModeEvents = {
             projectRef: DevModeSaveProjectRef;
         },
         response: BlueprintOpenScreenshotsResult;
+    };
+    /**
+     * Read the Dev Mode window's stage back from the compositor, for a save's picture - see
+     * `@shared/utils/stageCapture`. Nothing is written: the picture goes back to the page, which
+     * puts it in the save. Null when the window gave no frame, and the page then draws its own.
+     */
+    [IPCEventType.devModeStageCapture]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: StageCaptureRequest,
+        response: { picture: string | null };
     };
     /**
      * Asks the Dev Mode renderer whether the window may close, giving its blueprints a chance to
@@ -4170,6 +4202,11 @@ export type IPCUITemplateEvents = {
              * the base one, so what opens is a project authored in it rather than a translated one.
              */
             locale?: string;
+            /**
+             * Ids of the template's parts the author unticked (`@shared/project/templateParts`).
+             * What they require goes with them; `leftOut` in the answer is the closed set.
+             */
+            leaveOut?: string[];
         },
         // `locales` are the language codes the scaffolded project ends up with a translation file
         // for; the creator registers them, because the registry lives in the `.nlproj` it is about
@@ -4182,6 +4219,7 @@ export type IPCUITemplateEvents = {
             locales: string[];
             dependencies: string[];
             contentLocale?: string;
+            leftOut: string[];
         };
     };
     // Read one bundled template's interface documents, to bring a page out of it into an open

@@ -133,6 +133,9 @@ export const onboarding = {
         expectation: "Every setting asked for here is in Settings. F1 opens help for whatever is under the cursor.",
         /** The one button under it, which opens the manual on narraleaf.com in a browser. */
         docs: "Open the documentation",
+        /** The two follow links beside it. */
+        bilibili: "Follow us on Bilibili",
+        youtube: "Follow us on YouTube",
     },
     /**
      * The dialog behind Skip.

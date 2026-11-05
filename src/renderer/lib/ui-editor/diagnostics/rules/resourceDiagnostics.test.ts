@@ -197,3 +197,26 @@ describe("collectResourceDiagnostics", () => {
             .not.toContain("res:puppet-context-budget");
     });
 });
+
+describe("a container's image fill", () => {
+    const container = (props: Record<string, unknown>): UIElement => ({
+        id: "plate",
+        type: "nl.container",
+        name: "Plate",
+        parentId: null,
+        childrenIds: [],
+        layout: { x: 0, y: 0, width: 100, height: 100, opacity: 1, visible: true },
+        props,
+    });
+
+    it("warns when the fill is an image and there is no imageFill at all", () => {
+        expect(collectResourceDiagnostics([container({ fillType: "image" })])).toEqual([
+            expect.objectContaining({ id: "res:container-image:plate", severity: "warning" }),
+        ]);
+    });
+
+    it("says nothing for a picture or a hidden fill", () => {
+        expect(collectResourceDiagnostics([container({ fillType: "image", imageFill: { mode: "cover", assetId: "a" } })])).toEqual([]);
+        expect(collectResourceDiagnostics([container({ fillType: "image", fillVisible: false })])).toEqual([]);
+    });
+});

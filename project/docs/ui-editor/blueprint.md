@@ -152,8 +152,8 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 A blueprint is not just a node list. The main concepts are:
 
 - **Owner**: where the blueprint belongs. Supported owner kinds are `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`, and `storyAction`.
-- **Program kind**: currently graph-based visual programs and script modules are represented separately.
-- **Graph kind**: each graph declares semantic rules through `event`, `function`, or `macro`.
+- **Layers**: a blueprint is a container of layers (`graphs`). Each layer says for itself whether it is a node graph or a script file; there is no blueprint-level program kind.
+- **Graph kind**: each graph declares semantic rules through `event`, `function`, or `macro`. Authors create `event` graphs; `function` and `macro` remain readable document shapes that nothing in the workspace creates. Reusable logic is written with the Fn head and Call Fn nodes.
 - **Members**: blueprint-owned variables, fields, and function signatures.
 - **Bindings**: data connections between blueprint fields and UI/widget properties.
 - **Graph IR**: persisted nodes and edges, including node `params`, `meta`, and editor layout.
@@ -170,7 +170,7 @@ The variable creation UI includes `JSON` with default `{}` and `Array` with defa
 
 ## Blueprint Value
 
-Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, `nl.frame` -> `props.params`, and `nl.slider` -> `props.value`.
+Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. `valueTargetsFor` in `BlueprintValueRuntimeStore.ts` resolves the targets: the text site of every widget whose site accepts a value binding (`uiTextSiteOf`, such as `nl.text` text and `nl.button` labels), plus `nl.image` -> `imageFill.assetId`, `nl.frame` -> `params`, `nl.slider` -> `value` and `nl.switch` -> `checked`. A specialised widget type resolves its parent's targets.
 
 Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. On mount, the value runtime executes the available value head (`init` or `flush`), records Element/property reads made while resolving data pins, and reruns the binding when those recorded Same-Surface element properties change. Host global state changes refresh all started value bindings so pure host reads such as Game `Get Nametag`, `Is In Game`, and preference getters can update without remounting; entry-scoped reads such as `Is Game Overlay` are evaluated from the current Surface instance when that scope mounts or flushes. Evaluation is serialized per binding so an in-flight run is followed by at most one latest pending rerun.
 
@@ -178,7 +178,7 @@ If a value graph does not execute `returnValue`, the runtime keeps the previous 
 
 When a Blueprint Value belongs to an element repeated by an `nl.list` item template, evaluation receives the current `listItemScope` and an item-specific `instanceKey`. Pure List item context nodes (`Get List Item Props`, `Index`, `Count`, `Key`) read that scope, and each repeated item keeps a separate runtime value even though the source element id is the same.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` and `On Flush` event heads, non-latent flow, graph comments, pure Data/Math/List nodes, local variable reads/writes, Element literals, pure Element-targeted Text/Displayable/Slider reads, pure Page reads such as `Get Page Props`, `Get Page Param`, `Is Surface Exiting`, `Is Surface Entering`, and `Is Surface Transitioning`, pure Game reads such as `Get Nametag`, `Is In Game`, `Is Game Overlay`, and Game Preference getters, and the pure Localization read `Translation Key Text`. A binding that reads the player's language - `Translation Key Text`, a per-language asset on a node, or `Get Text` / `Get Current Language` / `Get Save Metadata` inside a Fn it calls - records it under `GAME_LOCALE_STATE_KEY` (the persistence key the language is stored under), so a language switch re-runs it on the frame key-bound labels change. Global state reads/writes and mutable Surface state writes are not part of the core catalog; `Var` declarations, widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` and `On Flush` event heads, non-latent flow, graph comments, pure Data/Math/List nodes, local variable reads/writes, Element literals, pure Element-targeted Text/Displayable/Slider reads, pure Page reads such as `Get Page Props`, `Get Page Param`, `Is Surface Exiting`, `Is Surface Entering`, and `Is Surface Transitioning`, pure Game reads such as `Get Nametag`, `Is In Game`, `Is Game Overlay`, and Game Preference getters, the pure Localization read `Translation Key Text`, and the variable reads `Get Saved Var` and `Get Persistent` (the latter latent, like `Call Fn`; both record the read, so a write re-runs the binding). A binding that reads the player's language - `Translation Key Text`, a per-language asset on a node, or `Get Text` / `Get Current Language` / `Get Save Metadata` inside a Fn it calls - records it under `GAME_LOCALE_STATE_KEY` (the persistence key the language is stored under), so a language switch re-runs it on the frame key-bound labels change. Global state reads/writes and mutable Surface state writes are not part of the core catalog; `Var` declarations, widget mutations, navigation, saved and Persistent variable writes, broadcasts and other latent nodes are blocked for `widgetValue` owners. `valueGraphAdmission.test.ts` lists every pure built-in that admission refuses, with the reason, so a node in a new category fails that test until it is admitted or listed.
 
 That restriction is a **review of the built-in catalogue**, and it governs built-in node types only. A node the host did not define is admitted by its own declaration instead — `allowInBlueprintValueGraph: true` on the node definition — because there is no way to review a plugin's node the same way: `isPure` on one is the plugin's own word, and no category list could ever have it on it. What constrains a declared plugin node is what the value runtime already does to it. It is executed like any other node; its capability-gated domains are absent while the editor previews the binding; a graph that never reaches `Return Value` leaves the binding on whatever it resolved last; and — the sharpest of them — the runtime reruns a binding from the Element and property reads it recorded while resolving data pins, which cannot see what a plugin node read. A binding built on a plugin node therefore refreshes on the host's dependencies, never on the plugin's.
 
@@ -239,7 +239,7 @@ export const exampleNode: BlueprintNodeDef = {
 | --- | --- |
 | `keywords` | Extra search terms in the add-node palette. |
 | `hideInPalette` | Keep the node registered for old graphs/runtime but hide it from new graph authoring. |
-| `isLatent` | Marks async/latent execution. Latent or effectful nodes are filtered out of function graphs. |
+| `isLatent` | Marks async/latent execution. Latent nodes are kept out of Blueprint Value graphs unless admission names them (`Call Fn`, `Get Persistent`). |
 | `dynamicInputPins` | Enables user-added variadic data input pins. |
 | `inspectorParams` | Node-level configuration edited in the inspector/card. |
 | `scope` | Restricts palette availability by owner kind or widget element type. |
@@ -499,7 +499,7 @@ return { nextPort: "next", outputValues: { value: await api.localization.getLoca
 
 **Plugin nodes take the other route, and have to.** A plugin cannot add itself to a whitelist that lives in the host, and in a shipped game its nodes have no pin catalogue at all — a runtime plugin entry registers `type` / `displayName` / `execute` and nothing else, so nothing there can even recognise the pin as an output. A node type the host did not define therefore resolves its data outputs straight from what it published, keyed by that node's own id and its own port (`resolveNonBuiltInNodeOutput`). Built-in types are excluded from that path on purpose: if they were not, an unregistered built-in would resolve anyway and the sweep above would pass whether or not anyone had registered it. `blueprintNodeRegistry.markBuiltIn()`, called from `registerCoreBlueprintNodes()`, is what draws the line — which also means a built-in that somehow misses that call would silently take the plugin path.
 
-**The sweep only covers exec nodes.** A *pure* node never publishes `outputValues` — every one of its pins is computed inside `resolveSelfOutput` — so it needs the same two registrations (the per-type whitelist branch and a `portId ===` arm in the family resolver) with no automatic guard behind it. Write the pin assertion yourself, through `resolveDataPinValue` rather than through `executeGraph`: a pure node's `execute()` is not on the data path, so an executor-based test passes while every real consumer reads `undefined`.
+**Pure nodes are swept too, but only for readability.** A *pure* node never publishes `outputValues` — every one of its pins is computed inside `resolveSelfOutput` — so it needs the same two registrations (the per-type whitelist branch and a `portId ===` arm in the family resolver). The second half of `graphParamResolvers.test.ts` resolves every pure node's output pins against a stub host and fails on `undefined`, so a missing branch is caught. It does not check that the value is right: write that assertion yourself, through `resolveDataPinValue` rather than through `executeGraph`, because a pure node's `execute()` is not on the data path.
 
 One more trap for pure getters in a shared family: the family resolvers match on **bare port ids** across every node type routed to them. `resolveGameNodeOutput` answers `avatar` with the *speaker's* avatar for any game node that reaches it, which is why `Get Character` names its pins `characterColor` / `characterAvatar` and is dispatched ahead of that function rather than folded into it.
 
@@ -599,8 +599,12 @@ Owner-level keyboard events (`On Key Down` / `On Key Up` and `Any Key Down` / `A
 6. Add the node definition to an appropriate file under `src/renderer/lib/ui-editor/blueprint-nodes/built-in/`.
 7. Export it from that file if tests or other modules need direct access.
 8. Add it to `allBuiltinBlueprintNodes` in `built-in/index.ts` when it should appear in the core catalog.
-9. Add or update tests.
-10. If it is a widget event head, update `widgetLogic.ts` and the event-head dispatch mapping in shared graph code.
+9. Register data output pins in `resolveSelfOutput` (`built-in/graphParamResolvers.ts`): exec nodes for their published outputs, pure nodes for the value they compute. `graphParamResolvers.test.ts` fails on a pin that reads `undefined`.
+10. Add the pins to the shared semantics table in `src/shared/blueprint/blueprintPinSemantics.ts`; `blueprintPinSemantics.test.ts` fails on a missing entry.
+11. Add the node's display strings to the maps in `blueprint-nodes/blueprintNodeI18n.ts` and to all three catalogues (en, zh, ja). A new category also needs an entry in its category map and a `blueprint.category.*` key.
+12. Decide whether a Blueprint Value graph may use it. Admission for built-ins is `isBlueprintNodeAllowedInBlueprintValueGraph`; a pure node it refuses must be listed with a reason in `valueGraphAdmission.test.ts`.
+13. Add or update tests. `builtinNodeRegistration.test.ts` fails on a node that is exported but not spread into `allBuiltinBlueprintNodes`.
+14. If it is a widget event head, update `widgetLogic.ts` and the event-head dispatch mapping in shared graph code.
 
 ## Example: add a simple exec node
 
@@ -697,7 +701,7 @@ When adding or changing nodes, test the following:
 - Pins have unique ids.
 - Optional input pins render as inactive when unwired and return to normal pin styling when wired.
 - Inline literals are only enabled on supported data input pins.
-- Function graphs only show pure, non-latent nodes.
+- Blueprint Value graphs admit the node, or `valueGraphAdmission.test.ts` names it with a reason.
 - Runtime `execute` returns the expected `nextPort`.
 - Pure data nodes are resolvable through data-pin evaluation when consumed.
 - Host API nodes fail clearly when the host API is unavailable.

@@ -46,7 +46,7 @@ import {
     TeamTransferHandler,
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
-import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
+import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler, ProjectWizardListAppIdsHandler } from "./handlers/projectWizardAction";
 import { ProjectWizardCreatedHandler } from "./handlers/projectWizardCreatedAction";
 import {
     ProjectWizardSelectPackageHandler,
@@ -78,6 +78,7 @@ import {
     DevModeWindowFocusGetHandler,
     DevModeProcessMemoryHandler,
     DevModeScreenshotSaveHandler,
+    DevModeStageCaptureHandler,
     DevModeAgentControlHandler,
     DevModeScreenshotOpenFolderHandler,
     DevModeWindowScaleOptionsHandler,
@@ -290,6 +291,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectWizardSelectDirectoryHandler(),
         new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
+        new ProjectWizardListAppIdsHandler(),
         new ProjectWizardCreatedHandler(),
 
         // Workspace handlers
@@ -354,6 +356,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeScreenshotSaveHandler(),
         new DevModeAgentControlHandler(),
         new DevModeScreenshotOpenFolderHandler(),
+        new DevModeStageCaptureHandler(),
         new DevModeWindowScaleOptionsHandler(),
         new DevModeWindowSetStageSizeHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),

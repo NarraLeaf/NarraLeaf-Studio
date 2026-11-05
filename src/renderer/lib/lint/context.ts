@@ -1,3 +1,4 @@
+import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
 import type { StoryDocument } from "@shared/types/story";
@@ -65,13 +66,28 @@ export type LintAssetEntry = {
     tags: readonly string[];
 };
 
-export type LintCharacterEntry = { id: string; name: string; assetIds: readonly string[] };
+export type LintCharacterEntry = {
+    id: string;
+    name: string;
+    assetIds: readonly string[];
+    /**
+     * A layered character's axes in their order, each with its tags' names - what a typed story row
+     * can name a look by. Absent for every other kind, and where nothing read the appearance.
+     */
+    axes?: readonly { name: string; tags: readonly string[] }[];
+};
 
 /** A display name declared in both the project registry and a story declaration row. */
 export type PersistentNameCollision = MergedPersistentNameCollision;
 
 export type LintImageProbe =
-    | { ok: true; width: number; height: number }
+    | {
+        ok: true;
+        width: number;
+        height: number;
+        /** What an APNG declares about its frames and loops; absent or null for a still image. */
+        animation?: PngAnimation | null;
+    }
     | { ok: false; reason: string };
 
 /**
@@ -137,6 +153,11 @@ export type LintLocalizationContext = {
 
 export type LintVoiceContext = {
     voicedLocales: readonly string[];
+    /**
+     * Each voice language's display name, as the Voice panel lists it - what a message names the
+     * language by. A code missing here is named by the code.
+     */
+    voicedLocaleNames?: ReadonlyMap<string, string>;
     documents: ReadonlyMap<string, VoiceDocument>;
     /**
      * Project setting: whether choice options are lines an actor records.

@@ -43,6 +43,22 @@ export const characters = {
         createCharacter: "create character {name}",
         editCharacter: "edit character {name}",
         deleteGroup: "delete group {name}",
+        autoFrameAvatars: "auto-frame dialog avatars of {name}",
+    },
+    // Framing dialog avatars on the head the detector model finds. Only ever on request: the
+    // panel's button, the button beside a portrait's framing, and the agent tool.
+    autoFrame: {
+        all: "Auto-frame all dialog avatars",
+        one: "Auto-frame avatar",
+        running: "Auto-framing dialog avatars",
+        consoleChannel: "Avatars",
+        consoleChannelDescription: "Dialog avatars framed on a detected head",
+        started: "Detecting heads to frame dialog avatars",
+        summary: "Framed {framed} · No head found {noHead} · Kept existing framing {kept}",
+        noHeadLine: "{name}: no head found in {looks}",
+        nothingToDo: "No dialog avatars to frame",
+        noHead: "No head found",
+        failed: "Auto-framing failed: {message}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,
     // including the accent — it is what every surface identifies them by from their first line.
@@ -64,6 +80,16 @@ export const characters = {
         colorReset: "Compute from the name",
     },
     editor: {
+        sequenceTitle: "Frame sequence",
+        sequenceImport: "Import PNG frames",
+        sequenceFps: "Frames per second",
+        sequenceLoop: "Loop",
+        sequenceStatic: "Use first frame only",
+        sequenceMoveUp: "Move frame up",
+        sequenceMoveDown: "Move frame down",
+        sequencePngOnly: "All frames must be PNG images.",
+        sequenceSizeMismatch: "All frames must have the same dimensions.",
+
         // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
         // and comes from the runtime registry rather than from here.
         kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },
@@ -100,6 +126,8 @@ export const characters = {
             // The guided state a puppet character starts in. Until a runtime and a model are both
             // there, the state fields below them cannot mean anything, so they are not shown.
             setupTitle: "Two things to set up",
+            // Once one of the two is in place, the heading names the one that is left.
+            setupTitleOne: "Left to set up: {item}",
             stepRuntime: "Drawing runtime",
             stepModel: "Model",
             runtimeInstalled: "Installed",
@@ -268,6 +296,7 @@ export const characters = {
         thumbnail: "Thumbnail",
         preview: "Preview",
         defaultAvatar: "Default dialog avatar",
+        defaultAvatarRuntimeHint: "A character drawn by a runtime has no generated avatar. Dialogue shows this one.",
         // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
         // offered - the engine refuses a voice clip anywhere else.
         voiceTrack: "Voice track",
@@ -285,6 +314,13 @@ export const characters = {
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",
+        // Other spellings of the name a story line's speaker binds to this character by.
+        aliases: "Aliases",
+        aliasesTip: "A story line whose speaker is written as an alias belongs to this character. The game still shows the character's name.",
+        addAliasPlaceholder: "Add alias…",
+        aliasIsName: "\"{alias}\" is this character's name.",
+        aliasTakenByName: "\"{alias}\" is the name of {names}. Lines spoken as \"{alias}\" belong to {names}.",
+        aliasShared: "\"{alias}\" is also an alias of {names}. Lines spoken as \"{alias}\" cannot be assigned to one character.",
         namePlaceholder: "Character name",
         descriptionPlaceholder: "Character description…",
         tags: "Tags",
@@ -311,7 +347,9 @@ export const characters = {
         variant: "Variant: {name}",
         loading: "Loading preview…",
         failed: "Preview failed",
-        placeholder: "Select a variant with an image to preview",
+        // What the preview says while it draws nothing, per kind of character.
+        emptyLayered: "Add a layer with an image, or import a PSD, to preview",
+        emptyPreset: "Set an image for this pose to preview",
         noSize: "No size",
         noMetadata: "No metadata",
         zoomOut: "Zoom Out",
@@ -319,7 +357,7 @@ export const characters = {
         resetView: "Reset View",
         alt: "Variant preview",
         setPortrait: "Portrait framing",
-        resetPortrait: "Frame automatically",
+        resetPortrait: "Clear framing",
         portraitTitle: "Portrait framing",
         // A switch label, so it names the state rather than describing the click. "Look" rather than
         // "pose" because both kinds have one: a pose for a preset character, a tag combination for a

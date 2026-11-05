@@ -4,7 +4,7 @@ import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { parseCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
 import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
-import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, INSTANT_TRANSFORM_MS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 /**
  * **The camera's six lens channels, from the line an author types to the props the engine is handed.**
@@ -125,11 +125,11 @@ describe("a camera row hands its lens channels to the engine", () => {
         expect(transforms.map(step => step.props.shutter)).toEqual([1, 1, 0]);
     });
 
-    it("emits the falloff geometry, which cuts, in its own zero-duration statement", async () => {
+    it("emits the falloff geometry, which cuts, in its own instant statement", async () => {
         const transforms = await transformsOf("/transform camera vignetteInner=30 vignetteOuter=70");
         expect(transforms).toHaveLength(1);
         expect(transforms[0].props).toEqual({ vignetteInner: "30%", vignetteOuter: "70%" });
-        expect(transforms[0].options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(transforms[0].options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
     });
 
     it("emits the lens colours, which cut for the same reason a mask image does", async () => {
@@ -150,7 +150,7 @@ describe("a camera row hands its lens channels to the engine", () => {
         const transforms = await transformsOf("/transform camera vignette=0.6 vignetteInner=30 vignetteOuter=70 d=1");
         expect(transforms).toHaveLength(2);
         expect(transforms[0].props).toEqual({ vignetteInner: "30%", vignetteOuter: "70%" });
-        expect(transforms[0].options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(transforms[0].options).toEqual(expect.objectContaining({ duration: INSTANT_TRANSFORM_MS }));
         expect(transforms[1].props).toEqual({ vignette: 0.6 });
         expect(transforms[1].options).toEqual(expect.objectContaining({ duration: 1000 }));
     });

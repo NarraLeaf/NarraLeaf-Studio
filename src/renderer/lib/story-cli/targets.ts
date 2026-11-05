@@ -110,7 +110,7 @@ function sectionsOf(context: StoryCommandContext): Section[] {
         { title: "audio tracks", hint: "track= on a sound command", values: names(context.audioTracks) },
         { title: "variables", hint: "/set, /inc, /if", values: names(context.variables) },
         { title: "scenes", hint: "/jump", values: names(context.scenes) },
-        { title: "pages", hint: "/quit, an ending's page", values: names(context.surfaces) },
+        { title: "pages", hint: "/quit, /page, an ending's page", values: names(context.surfaces) },
         { title: "input actions", hint: "/waitinput, /hold, /mash", values: names(context.inputActions) },
         { title: "build variants", hint: "/cut", values: names(context.appTags) },
         { title: "value blueprints", hint: "callable from an expression", values: names(context.valueBlueprints) },

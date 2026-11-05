@@ -350,6 +350,15 @@ export class ProjectTrustManager {
             .sort((a, b) => (b.trustedAt ?? "").localeCompare(a.trustedAt ?? ""));
     }
 
+    /**
+     * Every project the ledger has met, trusted or not, as its path was spelled - which is every
+     * project this Studio has opened, created or been handed. For telling a new project's app ID
+     * apart from theirs; it says nothing about trust.
+     */
+    public listKnownPaths(): string[] {
+        return Object.values(this.table()).map(record => record.displayPath || record.path);
+    }
+
     /** Every project still waiting for a decision, newest first. */
     public listDistrusted(): ProjectTrustRecord[] {
         return Object.values(this.table())

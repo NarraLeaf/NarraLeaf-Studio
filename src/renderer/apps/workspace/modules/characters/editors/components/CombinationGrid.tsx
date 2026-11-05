@@ -115,7 +115,7 @@ export function CombinationGrid(props: {
             <div className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 overflow-y-auto p-3">
                 {combinations.length === 0 ? (
                     <div className="col-span-full grid place-items-center p-6 text-sm text-fg-subtle">
-                        {t("characters.preview.placeholder")}
+                        {t("characters.preview.emptyLayered")}
                     </div>
                 ) : combinations.map(combination => (
                     <Cell

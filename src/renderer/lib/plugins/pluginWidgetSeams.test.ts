@@ -177,6 +177,8 @@ describe("a plugin widget's declared events", () => {
             "onBroadcast",
             "windowFullscreenChanged",
             "windowFocusChanged",
+            "savedVariableChanged",
+            "persistentVariableChanged",
         ]);
         expect(isBlueprintEventDispatchHeadType(RATED_HEAD)).toBe(true);
 

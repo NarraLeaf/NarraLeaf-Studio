@@ -257,3 +257,40 @@ describe("HistoryService", () => {
         expect(history.peekUndo(doc.id)?.key).toBe("workspace.history.entry.storyEdit");
     });
 });
+
+describe("HistoryService - stacks nobody has registered", () => {
+    let history: HistoryService;
+
+    beforeEach(() => {
+        frozen = null;
+        history = new HistoryService();
+        history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
+    });
+
+    /** An editor opened, edited and closed: one step left on a stack nothing registers any more. */
+    function openEditAndClose(id: string) {
+        const doc = createDocumentScope(history, id);
+        history.checkpoint(id, { label: LABEL });
+        doc.state.text = `${id}-edited`;
+        doc.dispose();
+    }
+
+    it("keeps the eight most recent ones and drops the rest, oldest first", () => {
+        for (let i = 0; i < 10; i++) {
+            openEditAndClose(`scene-${i}`);
+        }
+        const kept = history.describe().map(entry => entry.scopeId);
+        expect(kept).not.toContain("scene-0");
+        expect(kept).not.toContain("scene-1");
+        expect(kept).toContain("scene-2");
+        expect(kept).toContain("scene-9");
+    });
+
+    it("never drops the project's stack, however many editors are closed after it", () => {
+        history.pushCommand("project", { label: LABEL, undo: () => {}, redo: () => {} });
+        for (let i = 0; i < 12; i++) {
+            openEditAndClose(`scene-${i}`);
+        }
+        expect(history.canUndo("project")).toBe(true);
+    });
+});

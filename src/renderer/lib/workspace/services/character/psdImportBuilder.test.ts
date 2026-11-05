@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PsdLayerNode } from "@shared/types/psdImport";
 import { flattenLeaves, planImport, toBakeTargets } from "@shared/utils/psdLayerPlan";
 import { CharacterAppearance, emptyAppearance } from "./CharacterAppearance";
-import { applyPsdPlan, nameBakeTargets, summarisePlan } from "./psdImportBuilder";
+import { applyPsdPlan, nameBakeTargets, psdRefreshTargets, summarisePlan } from "./psdImportBuilder";
 
 function leaf(name: string, path: string[], extra: Partial<PsdLayerNode> = {}): PsdLayerNode {
     return {
@@ -70,11 +70,12 @@ describe("applyPsdPlan", () => {
         const axis = appearance.getAxes()[0];
         const moodLayer = appearance.getLayers()[1];
 
-        expect(slots).toContainEqual({ path: ["Body"], layerId: appearance.getLayers()[0].id });
+        expect(slots).toContainEqual({ path: ["Body"], layerId: appearance.getLayers()[0].id, assetId: "asset:Body" });
         expect(slots).toContainEqual({
             path: ["Mood", "Happy"],
             layerId: moodLayer.id,
             tagId: axis.tags[0].id,
+            assetId: "asset:Mood/Happy",
         });
     });
 });
@@ -162,5 +163,66 @@ describe("nameBakeTargets", () => {
     it("falls back to a usable prefix when the character has no name yet", () => {
         const plan = planOf();
         expect(nameBakeTargets(toBakeTargets(plan), plan, "  ")[0].name).toBe("character_Body");
+    });
+});
+
+/**
+ * Which images a re-import writes its layers into rather than importing a second file beside them.
+ * Two imports of a six-layer sheet used to leave twelve images in the library, the first six linked
+ * to nothing.
+ */
+describe("psdRefreshTargets", () => {
+    const BAKE_NAMES = new Map([["Body", "Alice_Body"], ["Mood/Happy", "Alice_Mood_Happy"], ["Mood/Angry", "Alice_Mood_Angry"]]);
+    const noNames = () => null;
+
+    function imported(): CharacterAppearance {
+        const appearance = layered();
+        const slots = applyPsdPlan(appearance, planOf(), assets());
+        appearance.setPsdFingerprint({ fileName: "sheet.psd", width: 4, height: 4, slots, importedAt: 1 });
+        return appearance;
+    }
+
+    it("answers the image the last import put in each slot", () => {
+        expect(psdRefreshTargets(imported(), planOf(), BAKE_NAMES, noNames)).toEqual(new Map([
+            ["Body", "asset:Body"],
+            ["Mood/Happy", "asset:Mood/Happy"],
+            ["Mood/Angry", "asset:Mood/Angry"],
+        ]));
+    });
+
+    it("leaves out a slot the author has pointed at an image of their own, and a layer new to the sheet", () => {
+        const appearance = imported();
+        appearance.setLayerAsset(appearance.getLayers()[0].id, "their-own");
+        const grown = sheet();
+        (grown[1].children as PsdLayerNode[]).push(leaf("Sad", ["Mood", "Sad"]));
+
+        const targets = psdRefreshTargets(appearance, planOf(grown), BAKE_NAMES, noNames);
+        expect(targets.has("Body")).toBe(false);
+        expect(targets.has("Mood/Sad")).toBe(false);
+        expect(targets.get("Mood/Happy")).toBe("asset:Mood/Happy");
+    });
+
+    it("recognises an older import's images by the name the library gave them", () => {
+        // A fingerprint written before it recorded the images: slots with no asset id.
+        const appearance = imported();
+        const fingerprint = appearance.getPsdFingerprint()!;
+        appearance.setPsdFingerprint({ ...fingerprint, slots: fingerprint.slots.map(({ assetId: _dropped, ...slot }) => slot) });
+        const names: Record<string, string> = {
+            "asset:Body": "Alice_Body.png",
+            "asset:Mood/Happy": "Alice_Mood_Happy-1.png",
+            "asset:Mood/Angry": "Angry, drawn by hand.png",
+        };
+
+        const targets = psdRefreshTargets(appearance, planOf(), BAKE_NAMES, id => names[id] ?? null);
+        expect(targets).toEqual(new Map([["Body", "asset:Body"], ["Mood/Happy", "asset:Mood/Happy"]]));
+
+        // An import once numbered its files, and the library named the images after them.
+        names["asset:Mood/Angry"] = "002-Alice_Mood_Angry.png";
+        expect(psdRefreshTargets(appearance, planOf(), BAKE_NAMES, id => names[id] ?? null).get("Mood/Angry"))
+            .toBe("asset:Mood/Angry");
+    });
+
+    it("answers nothing for a first import", () => {
+        expect(psdRefreshTargets(layered(), planOf(), BAKE_NAMES, noNames).size).toBe(0);
     });
 });

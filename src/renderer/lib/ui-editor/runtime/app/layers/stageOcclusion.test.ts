@@ -5,7 +5,7 @@
  * stage does not change.
  */
 import { describe, expect, it } from "vitest";
-import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage, isStageSlotConcealedByPage } from "./stageOcclusion";
+import { actionHoldsForVideo, isPageEntryDrawn, isStageCovered, isStageCoveredByPage, isStageSlotConcealedByPage, isStageSlotConcealedByVideo } from "./stageOcclusion";
 
 /** The page lane after a game took the screen: everything that was open is hidden. */
 function runningGame(entryKeys: readonly string[]) {
@@ -178,5 +178,28 @@ describe("isStageSlotConcealedByPage", () => {
 
     it("leaves a notification, which is the game telling the player something", () => {
         expect(isStageSlotConcealedByPage("notification")).toBe(false);
+    });
+});
+
+describe("the Game UI while the story holds on a clip", () => {
+    // The quick menu's seven buttons were drawn across the opening movie the story was waiting out.
+    it("takes the on-stage controls and the dialogue slots off, and leaves a notification", () => {
+        for (const slot of ["dialog", "nvl", "choice", "onStage"] as const) {
+            expect(isStageSlotConcealedByVideo(slot), slot).toBe(true);
+        }
+        expect(isStageSlotConcealedByVideo("notification")).toBe(false);
+    });
+
+    it("is held only by an action of a play the story waits out", () => {
+        const bindings = [
+            { staticId: "a-play", pause: { kind: "video" } },
+            { staticId: "a-wait", pause: { kind: "timed" } },
+            { staticId: "a-line" },
+        ];
+        expect(actionHoldsForVideo(bindings, "a-play")).toBe(true);
+        expect(actionHoldsForVideo(bindings, "a-wait")).toBe(false);
+        expect(actionHoldsForVideo(bindings, "a-line")).toBe(false);
+        expect(actionHoldsForVideo(bindings, null)).toBe(false);
+        expect(actionHoldsForVideo(undefined, "a-play")).toBe(false);
     });
 });

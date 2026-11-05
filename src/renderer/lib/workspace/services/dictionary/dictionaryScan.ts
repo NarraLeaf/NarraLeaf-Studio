@@ -129,6 +129,22 @@ export function findInStoryDocument(
 }
 
 /**
+ * `findings` with one story's entries replaced by `fresh` - what a check's answer becomes when that
+ * story changes after it. The story keeps its place in the list (it was read in that order), or
+ * goes last if it had none.
+ */
+export function replaceStoryFindings(
+    findings: readonly DictionaryFinding[],
+    storyId: string,
+    fresh: readonly DictionaryFinding[],
+): DictionaryFinding[] {
+    const first = findings.findIndex(finding => finding.target.storyId === storyId);
+    const rest = findings.filter(finding => finding.target.storyId !== storyId);
+    const at = first < 0 ? rest.length : first;
+    return [...rest.slice(0, at), ...fresh, ...rest.slice(at)];
+}
+
+/**
  * Read the whole project.
  *
  * One story at a time, yielding between them, because this runs on the renderer's own thread and a

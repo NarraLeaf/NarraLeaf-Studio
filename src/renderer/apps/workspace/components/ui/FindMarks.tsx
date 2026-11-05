@@ -43,17 +43,32 @@ const ACTIVE_MARK_CLASS = "rounded-sm bg-primary/45 text-inherit";
  * to - and there is nothing to do with the third occurrence inside one of them. So every hit in the
  * row the cursor is on wears the strong wash, and every hit everywhere else wears the quiet one.
  */
-export function markedFragments(text: string, matcher: CompiledMatcher | null, active = false): ReactNode {
+export function markedFragments(
+    text: string,
+    matcher: CompiledMatcher | null,
+    active = false,
+    /**
+     * Only this part of `text`, for a string drawn in two boxes (a file name cut in the middle).
+     * The hits are still found in the whole string, so one that crosses the cut is marked on both
+     * sides of it rather than missed.
+     */
+    slice?: { start: number; end: number },
+): ReactNode {
+    const start = slice ? Math.max(0, slice.start) : 0;
+    const end = slice ? Math.min(text.length, slice.end) : text.length;
+    const shown = text.slice(start, end);
     if (!matcher || !text) {
-        return text;
+        return shown;
     }
-    const ranges = matcher.findRanges(text);
+    const ranges = matcher.findRanges(text)
+        .map(range => ({ start: Math.max(range.start, start), end: Math.min(range.end, end) }))
+        .filter(range => range.end > range.start);
     if (ranges.length === 0) {
-        return text;
+        return shown;
     }
     const className = active ? ACTIVE_MARK_CLASS : MARK_CLASS;
     const parts: ReactNode[] = [];
-    let cursor = 0;
+    let cursor = start;
     ranges.forEach((range, index) => {
         if (range.start > cursor) {
             parts.push(text.slice(cursor, range.start));
@@ -65,8 +80,8 @@ export function markedFragments(text: string, matcher: CompiledMatcher | null, a
         );
         cursor = range.end;
     });
-    if (cursor < text.length) {
-        parts.push(text.slice(cursor));
+    if (cursor < end) {
+        parts.push(text.slice(cursor, end));
     }
     return parts;
 }

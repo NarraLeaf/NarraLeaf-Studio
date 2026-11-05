@@ -71,6 +71,13 @@ export type AssetImageOptimizationResult = {
      * {@link afterBytes}, so counting it here too would report it twice.
      */
     metadataBytes: number;
+    /**
+     * Images over the size cap that kept their size, because something draws them at their own
+     * pixels (see {@link AssetImageOptimizationInput.resizableImageIds}), and the names of the
+     * first few, in library order, for the build console.
+     */
+    keptAtSize: number;
+    keptAtSizeNames: string[];
 };
 
 export type AssetImageOptimizationLog = (level: "info" | "warning", message: string) => void;
@@ -89,6 +96,12 @@ export type AssetImageOptimizationInput = {
      * hand it at once, so it can open that many pages to encode them in.
      */
     openCodec: (pages: number) => Promise<WebImageCodec>;
+    /**
+     * The images the size cap may shrink: those drawn only at a size their pixels do not decide
+     * (`findResizableImages`). Every other image keeps its size and is still compressed. Absent
+     * when no cap is set, which shrinks nothing either way.
+     */
+    resizableImageIds?: ReadonlySet<string>;
     log: AssetImageOptimizationLog;
     cancelled?: () => boolean;
     /**
@@ -161,6 +174,9 @@ const CACHE_VERSION = 2;
 /** How many "verification failed" warnings are worth printing before they stop being news. */
 const MAX_VERIFICATION_WARNINGS = 3;
 
+/** How many images kept at their size the build console names before it only counts them. */
+const KEPT_AT_SIZE_NAMES = 5;
+
 /**
  * How long an unused entry is kept.
  *
@@ -192,7 +208,12 @@ export async function optimizeProjectImages(
         afterBytes: 0,
         stripped: 0,
         metadataBytes: 0,
+        keptAtSize: 0,
+        keptAtSizeNames: [],
     };
+    const sizeCap = resolveImageCompression(input.config).maxDimension;
+    /** Over the cap and kept at their size; named in library order once every lane is done. */
+    const heldAtSize = new Set<string>();
     const lanes = Math.max(1, Math.floor(input.lanes ?? resolveBuildLanes("NLS_BUILD_IMAGE_LANES", IMAGE_LANE_CEILING)));
     // The promise rather than the codec, so that lanes reaching their first encode together share
     // one opening instead of each starting a codec of its own. A holder rather than a plain local:
@@ -267,7 +288,14 @@ export async function optimizeProjectImages(
             // step has nothing to add and no business failing the build first.
             return;
         }
-        const plan = planAssetImageTranscode({ manifestKey: id, assetType: "image", bytes }, input.config);
+        const resizable = input.resizableImageIds?.has(id) ?? false;
+        const plan = planAssetImageTranscode({ manifestKey: id, assetType: "image", bytes, resizable }, input.config);
+        if (plan.action === "lossy" && !resizable && sizeCap !== null) {
+            const dimensions = readImageDimensions(bytes);
+            if (dimensions && Math.max(dimensions.width, dimensions.height) > sizeCap) {
+                heldAtSize.add(id);
+            }
+        }
         if (plan.action === "skip") {
             await stripOnly(id, bytes);
             return;
@@ -412,6 +440,12 @@ export async function optimizeProjectImages(
         const image = chosen.get(item.id);
         if (image) {
             result.images[item.id] = image;
+        }
+        if (heldAtSize.has(item.id)) {
+            result.keptAtSize += 1;
+            if (result.keptAtSizeNames.length < KEPT_AT_SIZE_NAMES) {
+                result.keptAtSizeNames.push(item.name);
+            }
         }
     }
     await pruneCache(input.cacheDir);

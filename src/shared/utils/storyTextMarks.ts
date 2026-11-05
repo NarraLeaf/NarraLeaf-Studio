@@ -1,4 +1,4 @@
-import type { StoryTextEmphasis, StoryTextMarks } from "@shared/types/story";
+import type { StoryTextEffect, StoryTextEffectParamValue, StoryTextEmphasis, StoryTextMarks } from "@shared/types/story";
 
 /**
  * The emphasis marks a run can carry, in the order the toolbar offers them.
@@ -84,5 +84,37 @@ export function storyMarksToWordConfig(marks: StoryTextMarks): Record<string, un
     // wins in the engine, so a document carrying the legacy mark keeps the size it was written at.
     if (typeof marks.fontSizeStep === "number") config.fontScale = fontScaleForStep(marks.fontSizeStep);
     if (marks.emphasis) config.emphasis = storyEmphasisToWordConfig(marks.emphasis);
+    // The engine resolves the id against the renderers the plugin's runtime entry registered, and
+    // draws plain text when there is none, so a missing plugin costs the effect and nothing else.
+    if (marks.effect) {
+        config.render = marks.effect.id;
+        config.data = { ...marks.effect.params };
+    }
     return config;
+}
+
+/**
+ * An effect in the one shape a document stores, or `undefined` when there is none.
+ *
+ * Parameters are kept only when they are finite numbers, strings or booleans, and are sorted by key:
+ * two runs carrying the same effect must compare equal as JSON, which is how adjacent runs merge.
+ */
+export function cleanStoryTextEffect(effect: unknown): StoryTextEffect | undefined {
+    if (!effect || typeof effect !== "object") {
+        return undefined;
+    }
+    const { id, params } = effect as { id?: unknown; params?: unknown };
+    if (typeof id !== "string" || !id.trim()) {
+        return undefined;
+    }
+    const kept: Record<string, StoryTextEffectParamValue> = {};
+    if (params && typeof params === "object") {
+        for (const key of Object.keys(params).sort()) {
+            const value = (params as Record<string, unknown>)[key];
+            if ((typeof value === "number" && Number.isFinite(value)) || typeof value === "string" || typeof value === "boolean") {
+                kept[key] = value;
+            }
+        }
+    }
+    return Object.keys(kept).length > 0 ? { id: id.trim(), params: kept } : { id: id.trim() };
 }

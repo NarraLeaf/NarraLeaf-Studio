@@ -20,6 +20,9 @@ export const assets = {
     history: {
         deleteAsset: "{name} の削除",
         deleteGroup: "フォルダ {name} の削除",
+        replaceContent: "{name} の差し替え",
+        convert: "{name} の変換",
+        restoreFailed: "「{name}」を復元できなかった",
     },
     delete: {
         inUseTitle: "これらのアセットはまだ使われている",
@@ -78,6 +81,10 @@ export const assets = {
         confirmAction: "差し替える",
         failedTitle: "アセットの中身を差し替えられなかった",
         remoteUnsupported: "リモートアセットには差し替える手元のファイルがない",
+        notKept: "「{name}」を差し替えられなかった",
+        reason: {
+            notKept: "現在のファイルのコピーを保存できなかった",
+        },
     },
     /** 種類ごとのラベル。`AssetType` の値をキーにする。1 つの種類を名指しする場所で使う。 */
     types: {
@@ -323,7 +330,7 @@ export const assets = {
         familyNoRuntime: "ここではランタイムを入れない。描画ランタイムはキャラクター側で指定する",
         family: {
             live2d: "Live2D Cubism",
-            live2dHint: ".model3.json、または Cubism 2 の model.json を含むフォルダ",
+            live2dHint: ".model3.json を含むフォルダ（Cubism 3 以降）",
             spine: "Spine",
             spineHint: ".skel か .json のスケルトンを .atlas と並べて含むフォルダ",
         },
@@ -350,7 +357,7 @@ export const assets = {
             other: "モデル {count} 体を読み込む",
         },
         /** 行が最初から外れている理由と、それでもチェックしてよいこと。 */
-        blockedHint: "ファイルの欠けたモデルは最初から外してある。チェックすればそのまま読み込む",
+        blockedHint: "赤く示したモデルは最初から外してある。チェックすればそのまま読み込む",
         problemCount: {
             other: "問題 {count} 件",
         },
@@ -361,6 +368,7 @@ export const assets = {
             atlasMissing: "スケルトンの隣にアトラスがない。{path} を想定していた",
             atlasEmpty: "{path} が画像を 1 つも指していない",
             nestedModel: "別のモデル {path} を含んでおり、このフォルダはそれも連れてくる",
+            cubism2: "{path} は Cubism 2 のモデル。Live2D Cubism のランタイムが描画するのは Cubism 3 以降のモデルのみ",
         },
         /** 欠けているファイルの呼び方。文の途中で読まれる。 */
         role: {

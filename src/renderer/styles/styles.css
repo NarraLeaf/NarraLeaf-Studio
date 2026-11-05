@@ -1548,6 +1548,18 @@ input[type="radio"]:focus {
 }
 
 /*
+ * A run carrying an inline effect. The effect is drawn only in the game, so the editor marks the
+ * span with a dotted underline in the accent and keeps the characters still. An underline is
+ * decoration, not a box: it adds nothing to the row's height and moves no glyph.
+ */
+.story-rt-effect {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: rgb(var(--nl-primary) / 0.7);
+    text-underline-offset: 0.2em;
+}
+
+/*
  * A text label's marked runs, drawn by the engine's own word renderer.
  *
  * The engine sets each word `display: inline-block`, which is right for a line being typed out:

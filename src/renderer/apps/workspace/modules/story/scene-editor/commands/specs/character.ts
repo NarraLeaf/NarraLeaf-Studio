@@ -351,6 +351,7 @@ export const show = defineStoryCommand({
         "/show Alice",
         "/show Alice smile pos=left",
         "/show Alice pos=0.25,0.5 xoffset=-40",
+        "/show Alice smile pos=left opacity=0.6",
         "/show night name=sky pos=center in=fade d=0.5",
     ],
     // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
@@ -362,7 +363,9 @@ export const show = defineStoryCommand({
         // worked straight away - one verb with a boundary nothing on screen drew. A clip is the one
         // thing it refuses: a story video comes on with `/play`, which reveals and runs it together.
         target: targetParam(SHOW_ACCEPTS, { core: true, assets: ["image"], namedBy: "name", refuses: ["video"] }),
-        form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
+        // 表情 is what a zh or ja author typed for this key while the slot was named 表情; it keeps
+        // parsing now that the slot is named 外观 / 見た目, as every look - a pose, a tag - is one.
+        form: { hint: "form", aliases: ["表情"], type: { kind: "characterForm", dependsOn: "target" }, positional: true },
         // What the element this row creates is called on stage, for the rows that address it later.
         // Only meaningful on the library form - `validate` refuses it on anything already on stage,
         // which is a thing that has a name of its own already - and omitting it is the ordinary case:
@@ -379,15 +382,26 @@ export const show = defineStoryCommand({
         // because the direction is what the verb already decided.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
         d: secondsParam(),
-        // The two knobs an ambience overlay can carry for one showing. They are not a general
-        // `/show` vocabulary: on anything else the pose is a transform, which `at=` and `/transform`
-        // already say properly, so a row that puts them on another subject is refused below rather
-        // than writing fields nothing reads.
-        opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
-        rate: { hint: "rate", type: { kind: "number", min: 0 } },
+        // The opacity the subject comes on at. On a character, a picture, a text or a layer it is the
+        // `opacity` of the entrance's own bag - the value the reveal ends at, beside `pos=` and `in=`
+        // rather than instead of them. On an ambience overlay it is that showing's strength, a field
+        // of the `vfx` payload. Either way the subject arrives at it, never at 1 and then down.
+        opacity: {
+            hint: "opacity",
+            type: { kind: "number", min: 0, max: 1 },
+            about: "The opacity the subject appears at (0 to 1). Works with pos= and in=; on an ambience overlay it is this showing's strength.",
+        },
+        // A playback speed belongs to an ambience overlay alone - nothing else on stage has a clip to
+        // run - so a row that puts it on another subject is refused below rather than writing a field
+        // nothing reads.
+        rate: {
+            hint: "rate",
+            type: { kind: "number", min: 0 },
+            about: "Ambience overlays only: the playback speed of this showing.",
+        },
     },
     deriveArgs: deriveShownObjectName(),
-    build: (args, ctx) => buildShowHide("show", args, ctx),
+    build: (args, ctx) => withEntranceOpacity(buildShowHide("show", args, ctx), asNumber(args.opacity)),
     validate: (args, ctx) => [
         ...validateTransitionForTarget("show", args, ctx),
         ...validateFormTarget(args, ctx),
@@ -417,28 +431,46 @@ export function validateNameTarget(
 }
 
 /**
- * `opacity=` / `rate=` on a `/show` whose subject is not an ambience overlay.
+ * `opacity=` on a `/show`, written onto the entrance's bag.
  *
- * Both write fields that live on the `vfx` payload and nowhere else, so on any other subject they
+ * Every subject but an ambience overlay comes on through a transform, and the bag's `opacity` is the
+ * value the reveal ends at - so the line states the entrance's destination the way `pos=` does, and
+ * `in=fade opacity=0.4` fades up to 0.4. Applied after the reveal word, because a word REPLACES the
+ * channels it owns (`fade` writes an opacity of 1) and the explicit number is the more specific
+ * instruction. An overlay's row carries the value on its own payload already, so it passes through.
+ */
+function withEntranceOpacity(block: StoryBlock, opacity: number | undefined): StoryBlock {
+    if (opacity === undefined || block.kind !== "action") {
+        return block;
+    }
+    const payload = block.payload;
+    if (payload.action !== "character" && payload.action !== "image" && payload.action !== "text" && payload.action !== "displayable") {
+        return block;
+    }
+    const transform = payload.transform ?? {};
+    return { ...block, payload: { ...payload, transform: { ...transform, to: { ...(transform.to ?? {}), opacity } } } } as StoryBlock;
+}
+
+/**
+ * `rate=` on a `/show` whose subject is not an ambience overlay.
+ *
+ * It writes a field that lives on the `vfx` payload and nowhere else, so on any other subject it
  * would be typed, accepted, stored and read by nothing - the silent failure this layer exists to
  * refuse. The message names the KEY rather than the subject, because the subject is not the mistake.
+ *
+ * `opacity=` used to be refused here too, while the catalogue listed it for every subject. It is now
+ * the entrance's opacity on everything else - see {@link withEntranceOpacity}.
  */
 function validateOverlayOnlyParams(
-    args: { readonly target?: StoryCommandValue; readonly opacity?: StoryCommandValue; readonly rate?: StoryCommandValue },
+    args: { readonly target?: StoryCommandValue; readonly rate?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {
     const target = asTarget(args.target);
     if (target && target.type === "stageObject" && target.objectKind === "vfx") {
         return [];
     }
-    const issues: StoryCommandResolutionIssue[] = [];
-    for (const key of ["opacity", "rate"] as const) {
-        const span = args[key] === undefined ? undefined : ctx.spanOf(key);
-        if (span) {
-            issues.push({ code: "unsupportedParam", span, key, kind: showHideSubjectWord(target) });
-        }
-    }
-    return issues;
+    const span = args.rate === undefined ? undefined : ctx.spanOf("rate");
+    return span ? [{ code: "unsupportedParam", span, key: "rate", kind: showHideSubjectWord(target) }] : [];
 }
 
 /** What an `unsupportedParam` on `/show` calls the subject - the word the author sees in the report. */
@@ -534,6 +566,8 @@ export const face = defineStoryCommand({
         // it, having nothing to offer), and its name is stored verbatim because there is no id.
         form: {
             hint: "form",
+            // The slot's zh and ja name before it was 外观 / 見た目; see `/show`'s `form`.
+            aliases: ["表情"],
             type: [
                 { kind: "characterForm", dependsOn: "character" },
                 { kind: "puppetName", channel: "expression", dependsOn: "character" },
@@ -624,6 +658,7 @@ function validatePuppetCharacter(
 export const motion = defineStoryCommand({
     id: "motion",
     token: "motion",
+    runtimeDrawnOnly: true,
     aliases: ["anim"],
     category: "character",
     icon: PersonStanding,
@@ -639,6 +674,7 @@ export const motion = defineStoryCommand({
 export const skin = defineStoryCommand({
     id: "skin",
     token: "skin",
+    runtimeDrawnOnly: true,
     aliases: ["costume"],
     category: "character",
     icon: Shirt,
@@ -670,6 +706,7 @@ export const skin = defineStoryCommand({
 export const param = defineStoryCommand({
     id: "param",
     token: "param",
+    runtimeDrawnOnly: true,
     category: "character",
     icon: SlidersHorizontal,
     examples: ["/param Doll ParamAngleX 12"],

@@ -1,6 +1,7 @@
 import { resolveLocalizedText } from "./localizedText";
 import { matchSystemLocale } from "./localization";
 import { isStageSizeUsable, type StageSize } from "./stageSize";
+import type { ProjectTemplatePart } from "../project/templateParts";
 
 /**
  * A project template that ships inside Studio (`resources/templates/<id>/`).
@@ -56,6 +57,11 @@ export type ProjectTemplateDescriptor = {
      * author looking at a page of unknown nodes.
      */
     dependencies?: string[];
+    /**
+     * The parts of the content an author may leave out of the project, in the order they are offered
+     * (`@shared/project/templateParts`). Absent means the template is copied whole.
+     */
+    parts?: ProjectTemplatePart[];
 };
 
 /**

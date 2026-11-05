@@ -115,6 +115,31 @@ export const properties = {
         chooseClick: "Choose click sound",
         missing: "Missing sound",
     },
+    music: {
+        // The Music section of the page inspector and of the scene inspector: an element sound's
+        // playback options, plus loop and fade.
+        title: "Music",
+        none: "No music",
+        // A page's music row with no clip in it (it keeps what is playing), and the choice beside it.
+        keep: "Keep current music",
+        silent: "No music",
+        choosePage: "Choose page music",
+        chooseScene: "Choose scene music",
+        missing: "Missing music",
+        loop: "Loop",
+        fade: "Fade",
+        // The folded line's parts after "Volume {volume} · {track}". `{start}` is where playback
+        // begins, `{from}` where each repeat begins.
+        loops: "Loops",
+        loopRegion: "Loops {from}s to {to}s",
+        loopToEnd: "Loops {from}s to the end",
+        introLoopRegion: "Plays from {start}s, loops {from}s to {to}s",
+        introLoopToEnd: "Plays from {start}s, loops {from}s to the end",
+        once: "Plays once",
+        onceFrom: "Plays once from {from}s",
+        onceRegion: "Plays once {from}s to {to}s",
+        fadeSummary: "Fade {seconds}s",
+    },
     linkedComponent: {
         missing: "Missing component",
         info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",
@@ -284,6 +309,9 @@ export const properties = {
         descriptionPlaceholder: "Enter description…",
         info: {
             dimensions: "Dimensions",
+            animation: "Animation",
+            animationLoops: "{frames} frames, loops forever",
+            animationPlays: "{frames} frames, plays {plays} ×",
             format: "Format",
             size: "Size",
             hash: "Hash",

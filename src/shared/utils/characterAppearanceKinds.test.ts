@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import {
     CHARACTER_APPEARANCE_KINDS,
@@ -76,5 +78,63 @@ describe("character appearance kinds", () => {
     it("names a runtime for every puppet kind except the custom one", () => {
         const named = new Set(listKnownPuppetRuntimes().map(runtime => runtime.id as string));
         expect(PUPPET_APPEARANCE_KINDS.filter(kind => !named.has(kind))).toEqual(["puppet"]);
+    });
+});
+
+/**
+ * Nothing asks a character "are you a puppet?" by comparing its kind to the string `"puppet"`.
+ *
+ * `getKind()` answers `live2d` or `spine` for the two runtimes Studio knows by name, and `puppet`
+ * only for a runtime the author wrote. A comparison with the one literal therefore reads as the
+ * puppet check and quietly leaves out every Live2D and Spine character. It shipped that way in five
+ * places at once: the scene editor never asked a Live2D model for its motions, so `/motion` offered
+ * none, and the inspector told the author her character was drawn by Studio. Ask
+ * `isPuppetAppearanceKind(getKind())`, or `getPuppet()` when the declaration itself is wanted.
+ *
+ * Only `getKind()` is watched. A summary's `kind` (`DevModeCharacterSummary`) really is `"puppet"`
+ * for all three - `characterSummaries` collapses them on purpose - so comparing that one is right.
+ */
+describe("puppet kind checks", () => {
+    const SRC = path.resolve(__dirname, "../..");
+    const COMPARES_KIND_TO_PUPPET = /getKind\(\)\s*[!=]==?\s*["'`]puppet["'`]|["'`]puppet["'`]\s*[!=]==?\s*[\w.?]*getKind\(\)/;
+
+    function sources(dir: string, out: string[] = []): string[] {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name !== "node_modules" && entry.name !== "dist") {
+                    sources(full, out);
+                }
+            } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+                out.push(full);
+            }
+        }
+        return out;
+    }
+
+    function withoutComments(source: string): string {
+        return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    }
+
+    it("never compares an appearance kind to the literal \"puppet\"", () => {
+        const files = sources(SRC);
+        // A walk that found nothing would pass by looking at nothing.
+        expect(files.length).toBeGreaterThan(1000);
+        const offenders = files
+            .filter(file => COMPARES_KIND_TO_PUPPET.test(withoutComments(fs.readFileSync(file, "utf-8"))))
+            .map(file => path.relative(SRC, file).replaceAll(path.sep, "/"));
+        expect(offenders).toEqual([]);
+    });
+
+    it("would catch the shapes it is there for", () => {
+        for (const line of [
+            `character.profile.appearance.getKind() === "puppet"`,
+            `appearance.getKind() !== 'puppet'`,
+            `"puppet" === appearance?.getKind()`,
+        ]) {
+            expect(COMPARES_KIND_TO_PUPPET.test(line)).toBe(true);
+        }
+        expect(COMPARES_KIND_TO_PUPPET.test(`isPuppetAppearanceKind(appearance.getKind())`)).toBe(false);
+        expect(COMPARES_KIND_TO_PUPPET.test(`summary.appearance.kind === "puppet"`)).toBe(false);
     });
 });

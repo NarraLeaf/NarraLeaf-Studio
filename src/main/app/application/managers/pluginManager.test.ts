@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginManager } from "./pluginManager";
+import { PluginPermissionManager } from "./pluginPermissionManager";
 
 vi.mock("@shared/utils/persistentState", () => {
     const stores = new Map<string, Record<string, any>>();
@@ -173,6 +174,32 @@ describe("PluginManager", () => {
         const [plugin] = await rescanned.listPlugins();
 
         expect(plugin).toMatchObject({ status: "enabled", grantedManifestVersion: "1.1.0" });
+    });
+
+    // The privileged gate keys grants by the running version, so an inherited grant has to be
+    // re-issued under the new one or the plugin shows as enabled and is refused every call.
+    it("lets an updated plugin use the capabilities its inherited grant covers", async () => {
+        const permissions = new PluginPermissionManager(tempDir);
+        const manager = new PluginManager(tempDir, permissions);
+        await manager.installFromDirectory(sourceDir);
+        const request = await manager.buildInstallRequest("acme.sample-plugin");
+        const grant = permissions.grantPermission(request, {
+            requestId: request.requestId,
+            approved: true,
+            persistence: "permanent",
+        });
+        await manager.approvePlugin("acme.sample-plugin", grant);
+        expect(permissions.isPluginCapabilityAllowed("acme.sample-plugin", "1.0.0", "bash.execute")).toBe(true);
+
+        await writePluginPackage(sourceDir, "1.1.0");
+        await manager.installFromDirectory(sourceDir);
+        expect(permissions.isPluginCapabilityAllowed("acme.sample-plugin", "1.1.0", "bash.execute")).toBe(true);
+
+        await writePluginPackage(path.join(tempDir, "plugins", "acme.sample-plugin"), "1.2.0");
+        const rescanned = new PluginManager(tempDir, permissions);
+        const [plugin] = await rescanned.listPlugins();
+        expect(plugin).toMatchObject({ status: "enabled", grantedManifestVersion: "1.2.0" });
+        expect(permissions.isPluginCapabilityAllowed("acme.sample-plugin", "1.2.0", "bash.execute")).toBe(true);
     });
 
     it("requires authorization again when a new version widens permissions", async () => {

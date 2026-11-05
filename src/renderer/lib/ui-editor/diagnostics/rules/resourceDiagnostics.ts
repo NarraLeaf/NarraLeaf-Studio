@@ -9,6 +9,7 @@ import { getPuppetProps } from "@/lib/ui-editor/widget-modules/builtin/puppet/he
 import { SURFACE_PUPPET_CONTEXT_BUDGET } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
 import {
     buttonResolvedVisualToRectangleLike,
+    resolveContainerRectangleLike,
     resolveImageRectangleLike,
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
@@ -123,11 +124,17 @@ export function collectResourceDiagnostics(
                 drawablePuppets += 1;
             }
         }
-        if (el.type === "nl.container") {
-            const p = getRectangleLikeProps(el);
-            if (p.fillType === "image") {
+        if (el.type === "nl.container" && !el.valueBindings?.[IMAGE_ASSET_BINDING_PATH]) {
+            // As the page draws it at rest - the appearance's rows over the flat props - and with no
+            // imageFill at all counted as missing: a container told to fill with an image and given
+            // none paints no picture, and what shows is the white it was made with.
+            const rawAppearance = (el.props as { appearance?: unknown } | undefined)?.appearance;
+            const p = isAppearanceModel(rawAppearance)
+                ? resolveContainerRectangleLike(el, rawAppearance, { variantOverrideId: null, signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS })
+                : getRectangleLikeProps(el);
+            if (p.fillType === "image" && p.fillVisible !== false) {
                 const fill = normalizeImageFill(p);
-                if (imageFillMissingAsset(fill)) {
+                if ((!fill || imageFillMissingAsset(fill)) && !p.backgroundImage?.trim()) {
                     out.push({
                         id: `res:container-image:${el.id}`,
                         severity: "warning",

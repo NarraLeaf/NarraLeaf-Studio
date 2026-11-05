@@ -164,7 +164,7 @@ export function resolveAsset(ctx: WorkspaceContext, ref: string, type: AssetType
     if (byId) {
         return byId;
     }
-    const named = pool.filter(asset => asset.name === ref || stripExtension(asset.name) === ref);
+    const named = assetsNamed(pool, ref);
     if (named.length > 1) {
         throw refuse("invalid_args", `${named.length} ${type} assets are called "${ref}".`, "Name the asset by id (assets_list).");
     }
@@ -177,4 +177,46 @@ export function resolveAsset(ctx: WorkspaceContext, ref: string, type: AssetType
 export function stripExtension(name: string): string {
     const dot = name.lastIndexOf(".");
     return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/**
+ * What follows a name's last dot when it is a file extension, else undefined.
+ *
+ * Only letters and digits, at most five, and at least one letter: `mp3`, `m4a`, `ogg`. A recording
+ * named `316.5` or `316.5-2` (Ren'Py numbers takes that way) has a dot that is part of the name, and
+ * cutting at it would make `voice_316.5-2` a `voice_316` with the extension `5-2`.
+ */
+export function fileExtensionOf(name: string): string | undefined {
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0) {
+        return undefined;
+    }
+    const ext = name.slice(dot + 1);
+    return /^(?=.*[a-z])[a-z0-9]{1,5}$/i.test(ext) ? ext : undefined;
+}
+
+/** `name` without its file extension (see {@link fileExtensionOf}); unchanged when it has none. */
+export function withoutFileExtension(name: string): string {
+    const ext = fileExtensionOf(name);
+    return ext === undefined ? name : name.slice(0, name.length - ext.length - 1);
+}
+
+/**
+ * The assets an agent's `ref` names by name, most literal reading first: the library names equal to
+ * `ref` as written, dots and all; failing that, the names that are `ref` plus a file extension
+ * (`bgm.ogg` for `bgm`); failing that, the names `ref` is with its extension dropped (`bgm` for
+ * `bgm.ogg`). A later reading never joins an earlier one, so `voice_316.5` cannot be made ambiguous
+ * by a `voice_316.5.ogg` beside it, nor `voice_316.5-2` lost by being read as `voice_316` + `.5-2`.
+ */
+export function assetsNamed<A extends { name: string }>(pool: readonly A[], ref: string): A[] {
+    const exact = pool.filter(asset => asset.name === ref);
+    if (exact.length > 0) {
+        return exact;
+    }
+    const extended = pool.filter(asset => fileExtensionOf(asset.name) !== undefined && withoutFileExtension(asset.name) === ref);
+    if (extended.length > 0) {
+        return extended;
+    }
+    const bare = withoutFileExtension(ref);
+    return bare === ref ? [] : pool.filter(asset => asset.name === bare);
 }

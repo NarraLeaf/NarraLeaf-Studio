@@ -1,0 +1,2 @@
+# The model is bytes: no line-ending conversion, no text diff.
+*.onnx binary

@@ -171,6 +171,11 @@ export type NetworkConfiguration = {
      * migrated from - see {@link normalizeNetworkConfiguration}.
      */
     allowHttp: boolean;
+    /**
+     * Stored and carried through normalisation, and named in the version-control diff, but read by
+     * nothing that runs: no setting shows them and neither the build nor Dev Mode consults them. The
+     * network reach of a game is decided by {@link policy} and its allowlist alone.
+     */
     allowRemoteResource: boolean;
     allowRemoteScript: boolean;
     /**

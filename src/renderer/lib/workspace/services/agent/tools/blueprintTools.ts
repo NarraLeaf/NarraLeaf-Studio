@@ -109,8 +109,10 @@ export const blueprintList: AgentToolHandler = async (args, { ctx }) => {
     const query = readOptionalString(args, "query");
     // Most owners hold an empty blueprint (a widget gets one when its graph is first opened), so an
     // unfiltered list leaves them out; a query lists every match, empty or not.
-    const result = blueprintListCommand(liveBlueprintDocument(ctx), { search: query, withGraphs: !query });
-    const text = commandText(result).replace(" (--with-graphs).", query ? "." : "; pass `query` to list the empty ones too.");
+    const all = args.all === true;
+    const result = blueprintListCommand(liveBlueprintDocument(ctx), { search: query, withGraphs: !query && !all });
+    const text = commandText(result).replace(" (--with-graphs).", query || all ? "." : "; pass `all: true` (or a `query`) to list the empty ones too.");
+
     return answer(capText(text, "Pass `query` to narrow it."));
 };
 

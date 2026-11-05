@@ -37,6 +37,7 @@ import {
 } from "../agentCall";
 import { AGENT_HISTORY_LABEL, assetsService, listAssets, resolveAsset, resolveComponent, resolveSurface, resolveSurfaceOrComponent } from "../agentLookups";
 import { applyUiPatch, readUiPatchOps, type UIPatchTarget } from "../uiPatch";
+import { countNodes } from "@/lib/blueprint-cli/core";
 import { listUiSubtree, resolveUiElementRef, uiElementPath, type UIElementPool } from "../uiElementRefs";
 import { designRectFromClientRects, drawnBounds, planScreenshot, type ClientBox, type DrawnBox, type ScreenshotRect } from "../screenshotGeometry";
 import { blobToDataUrl, rasterizeElement } from "../domRaster";
@@ -127,11 +128,31 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
     follow.describeCall(request.callId, name);
     assertUiRevision(ctx, target, baseRevision);
 
+    // Blueprints that hold nodes, before the patch: deleting an element takes its blueprints with it,
+    // and an agent that is not told so goes looking for them afterwards.
+    const blueprintsBefore = dryRun ? null : wiredBlueprints(ctx);
     const outcome = applyUiPatch(uidoc, target, ops, AGENT_HISTORY_LABEL, { dryRun });
+    const applied = ops.length - outcome.skipped.length;
+    // Said in the sentence, not only in the JSON: "Applied 25" when one of them did nothing is the
+    // count an agent believes.
+    const skippedLine = outcome.skipped.length > 0
+        ? ` Skipped ${outcome.skipped.length} that would change nothing: ${outcome.skipped.map(item => `ops[${item.op}] (${item.kind}) ${item.reason}`).join("; ")}.`
+        : "";
+    const warningLine = outcome.warnings.length > 0 ? ` Warning: ${outcome.warnings.join("; ")}.` : "";
+    const notes = {
+        ...(outcome.skipped.length > 0 ? { skipped: outcome.skipped } : {}),
+        ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
+    };
     if (dryRun) {
         return answerJson(
-            { revision: uiContentRevision(ctx, target), dryRun: true, wouldCreate: outcome.created, wouldDelete: outcome.deleted },
-            `All ${ops.length} operation(s) on "${name}" check out and each changes something. Nothing was written; send the same call without dryRun to apply it.`,
+            { revision: uiContentRevision(ctx, target), dryRun: true, wouldCreate: outcome.created, wouldDelete: outcome.deleted, ...notes },
+            `${applied} of ${ops.length} operation(s) on "${name}" check out and change something.${skippedLine}${warningLine} Nothing was written; send the same call without dryRun to apply it.`,
+        );
+    }
+    if (applied === 0) {
+        return answerJson(
+            { revision: uiContentRevision(ctx, target), created: [], deleted: [], ...notes },
+            `Nothing changed on "${name}": every operation would leave it as it is, so no undo step was recorded.${skippedLine}`,
         );
     }
     follow.noteWrite(target.kind === "surface"
@@ -139,14 +160,36 @@ export const uiPatch: AgentToolHandler = async (args, { ctx, request, follow }) 
         : { kind: "component", componentId: target.componentId, name, elementIds: outcome.touched });
 
     const createdContainer = outcome.created.some(item => item.type === "nl.container" || item.type === "nl.image");
+    const blueprintsAfter = wiredBlueprints(ctx);
+    const deletedBlueprints = [...(blueprintsBefore ?? new Map()).entries()]
+        .filter(([id]) => !blueprintsAfter.has(id))
+        .map(([id, blueprintName]) => ({ id, name: blueprintName }));
     return answerJson(
-        { revision: uiContentRevision(ctx, target), created: outcome.created, deleted: outcome.deleted },
-        `Applied ${ops.length} operation(s) to "${name}" as one undo step.`
+        {
+            revision: uiContentRevision(ctx, target),
+            created: outcome.created,
+            deleted: outcome.deleted,
+            ...(deletedBlueprints.length > 0 ? { deletedBlueprints } : {}),
+            ...notes,
+        },
+        `Applied ${applied} operation(s) to "${name}" as one undo step.${skippedLine}${warningLine}`
+            + (deletedBlueprints.length > 0
+                ? ` The deleted elements took ${deletedBlueprints.length} blueprint(s) with them: ${deletedBlueprints.map(item => `"${item.name}"`).join(", ")}.`
+                : "")
+
             + (createdContainer
                 ? " New containers and images start with a white fill: set `appearance` props (copy them from a transparent element via ui_show) or the fill will cover what is behind it."
                 : ""),
     );
 };
+
+/** Id to name of every blueprint that holds at least one node. */
+function wiredBlueprints(ctx: WorkspaceContext): Map<string, string> {
+    const document = ctx.services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+    return new Map(Object.values(document.blueprints ?? {})
+        .filter(blueprint => countNodes(blueprint) > 0)
+        .map(blueprint => [blueprint.id, blueprint.name]));
+}
 
 // ── ui_screenshot ────────────────────────────────────────────────────────────────────────────────
 

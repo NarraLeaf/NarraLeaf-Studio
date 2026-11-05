@@ -911,3 +911,130 @@ describe("pixel offsets in a story file", () => {
         expect(fresh.diagnostics.map(diagnostic => diagnostic.code)).toContain("compile.positionOutOfRange");
     });
 });
+
+/**
+ * The two conditions an option carries, written as `[hide if …]` and `[disable if …]` at the end of
+ * its line.
+ *
+ * Without them the format could not write a menu that offers only what is left - three errands done
+ * in any order - and an agent had to spell one menu per state instead. A condition the line cannot
+ * spell (a blueprint) is not written and is not lost: it stays on the row while the words change.
+ */
+describe("conditions on a choice option", () => {
+    function setup() {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        return { data, document, scene };
+    }
+
+    function options(scene: StoryScene) {
+        const [menu] = scene.rootBlockIds;
+        return scene.blocks[menu].childrenIds.map(id => {
+            const block = scene.blocks[id];
+            if (block.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+                throw new Error(`row ${id} is not an option`);
+            }
+            return block.payload;
+        });
+    }
+
+    it("builds each clause as the condition it names, and the menu reads back unchanged", () => {
+        const { data, document, scene } = setup();
+        const compiled = compileBody(data, document, scene, [
+            "/menu Where now?",
+            "  - Library [hide if Honest]",
+            "    Narra: Books.",
+            "  - Roof [disable if Location == \"roof\"]",
+            "  - Clubroom [hide if visited('Last light') && Honest] [disable if !Honest]",
+            "  - Go [now if you like] and wait",
+            "  - Say \\[hide if x]",
+        ]);
+        expect(compiled.diagnostics).toEqual([]);
+        const applied = compiled.scene!;
+        const [library, roof, clubroom, words, escaped] = options(applied);
+
+        expect(library.hiddenWhen).toMatchObject({ kind: "variable", operator: "isTrue" });
+        expect(library.disabledWhen).toBeUndefined();
+        expect(roof.disabledWhen).toMatchObject({ kind: "variable", operator: "equals", value: "roof" });
+        expect(clubroom.hiddenWhen?.kind).toBe("expression");
+        expect(clubroom.disabledWhen).toMatchObject({ kind: "variable", operator: "isFalse" });
+        expect(words.text.value).toBe("Go [now if you like] and wait");
+        expect(words.hiddenWhen).toBeUndefined();
+        expect(escaped.text.value).toBe("Say [hide if x]");
+        expect(escaped.hiddenWhen).toBeUndefined();
+
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: applied } };
+        const back = roundTrip(data, appliedDocument, applied);
+        expect(back.printed.text).not.toContain(OPAQUE_PREFIX);
+        expect(back.printed.text).toContain("- Library [hide if Honest]");
+        expect(back.printed.text).toContain("- Clubroom [hide if ");
+        expect(back.printed.text).toContain("[disable if !Honest]");
+        expect(back.printed.text).toContain("- Say \\[hide if x]");
+        expect(back.compiled.diagnostics).toEqual([]);
+        for (const [id, block] of Object.entries(applied.blocks)) {
+            expect(JSON.stringify(back.compiled.scene!.blocks[id]), `row ${id}`).toBe(JSON.stringify(block));
+        }
+    });
+
+    it("clears a condition whose clause is taken off the line", () => {
+        const { data, document, scene } = setup();
+        const first = compileBody(data, document, scene, ["/menu Where now?", "  - Library [hide if Honest]"]);
+        expect(first.diagnostics).toEqual([]);
+        const applied = first.scene!;
+        const [menu] = applied.rootBlockIds;
+        const [option] = applied.blocks[menu].childrenIds;
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: applied } };
+
+        const second = compileBody(data, appliedDocument, applied, [
+            `/menu Where now?  ⟦${menu}⟧`,
+            `  - Library  ⟦${option}⟧`,
+        ]);
+        expect(second.diagnostics).toEqual([]);
+        const [payload] = options(second.scene!);
+        expect(payload.text.textId).toBe(options(applied)[0].text.textId);
+        expect(payload.hiddenWhen).toBeUndefined();
+    });
+
+    it("keeps a blueprint condition, which no line can spell, while the words change", () => {
+        const { data, document, scene } = setup();
+        const first = compileBody(data, document, scene, ["/menu Where now?", "  - Library"]);
+        const applied = first.scene!;
+        const [menu] = applied.rootBlockIds;
+        const [option] = applied.blocks[menu].childrenIds;
+        const stored = applied.blocks[option];
+        const withBlueprint = {
+            ...applied,
+            blocks: {
+                ...applied.blocks,
+                [option]: {
+                    ...stored,
+                    payload: { ...stored.payload, hiddenWhen: { kind: "blueprint", blueprintId: "bp-1" } },
+                } as StoryBlock,
+            },
+        };
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: withBlueprint } };
+
+        const printed = roundTrip(data, appliedDocument, withBlueprint).printed.text;
+        expect(printed).toContain("- Library  ⟦");
+        expect(printed).not.toContain("[hide if");
+
+        const edited = compileBody(data, appliedDocument, withBlueprint, [
+            `/menu Where now?  ⟦${menu}⟧`,
+            `  - The library [disable if Honest]  ⟦${option}⟧`,
+        ]);
+        expect(edited.diagnostics).toEqual([]);
+        const [payload] = options(edited.scene!);
+        expect(payload.text.value).toBe("The library");
+        expect(payload.hiddenWhen).toEqual({ kind: "blueprint", blueprintId: "bp-1" });
+        expect(payload.disabledWhen).toMatchObject({ kind: "variable", operator: "isTrue" });
+    });
+
+    it("refuses a clause it does not know rather than reading it as words", () => {
+        const { data, document, scene } = setup();
+        const compiled = compileBody(data, document, scene, ["/menu Where now?", "  - Library [show if Honest]"]);
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.code)).toContain("compile.bad_option_clause");
+    });
+});

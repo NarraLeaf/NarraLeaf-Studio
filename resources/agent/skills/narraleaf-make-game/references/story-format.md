@@ -51,6 +51,10 @@ Aoi: It is. I just don't know how to start.
   classroom` and the like): write `#background none` (or your own picture) and `#music none` in your
   source, or that picture shows for a beat before your first `/bg` - in the game the player sees.
   `story_targets {query}` lists, under "scene settings", which scenes open on which picture.
+- `#description <text>` is the scene's description: the note Studio shows under the scene's name, never
+  shown in the game. Header-only, the rest of the line; a JSON string (`#description "Line one\nline
+  two"`) for text with line breaks. `story_show` prints it only for a scene that has one; leaving it out
+  keeps it, `#description none` clears it.
 - `#layer` lines are the **scene's layers**, also header-only: one line per layer, nearest first.
   `#layer displayableLayer` is the base layer - where everything not placed on another layer stands, at
   distance 1 - and `#layer hills distance=3` is a layer three times as far, which moves a third as much
@@ -128,6 +132,8 @@ those you deliberately keep.
   `pos=` on the row, its `in=` is dropped without a word. To fade in, leave `pos=` off
   (`/show Aoi smile in=fade d=0.4`), or `/show` first and `/transform` after; a picture can also be
   declared in place (`/image <asset> name=<name> pos=…`) and revealed with `/show <name> in=fade`.
+  `opacity=` is not a preset: `/show Aoi smile pos=left opacity=0.6` places her and brings her on at
+  that opacity (Studio 1.6.3 and earlier listed `opacity=` but refused it).
 - **Backgrounds**: `/bg <image> t=<transition> d=<seconds>`; also a colour, `/bg #000000`. A background
   covers the stage whatever the picture's size.
 - **Other pictures** (a CG over the background, a letter, a flashback frame): `/show <image asset>
@@ -141,7 +147,13 @@ those you deliberately keep.
   `/vfx snow name=snow` then `/show snow` (and `/hide snow` to stop it). `story_command <token>`
   prints these pairs under "together".
 - Do not create the same name twice in one scene (`story/stage-object-duplicate`): change the picture
-  of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`.
+  of an existing one with `/swap <name> <asset>`, bring it back with `/show <name>`. `/swap`'s `t=` /
+  `d=` crossfade pictures only; a text object's words change at once - to fade them, `/hide <text>
+  out=fade`, `/swap`, then `/show <text> in=fade`.
+- **Text objects** take their look from `/font`, any of size, colour and outline on one row:
+  `/font title 48 color=#ffffff outline=1 outlineColor=#332e3e` (`outline=0` removes it). The outline
+  lives on the text's filter, so a later `/transform` filter or `look=` on the same text replaces it.
+  Studio 1.6.3 and earlier: one value per `/font` row and no outline.
 - **Video**: `/play <video asset> name=<name>` plays it to the end and clears it away (`wait=false`,
   `hide=false`, `muted` change that). `/show` refuses videos.
 - **Camera**: `/transform camera zoom=1.1 d=2 ease=easeOut`.
@@ -180,13 +192,32 @@ those you deliberately keep.
   `/stop <name> fade=0.5`. The music is the reserved name `bgm`: `/stop bgm fade=1`, `/vol bgm 0.5`,
   `/pause bgm` and `/resume bgm`. `music` is not a name - it only works if a row created something
   called that.
-- `track=` names an audio track from `audio_tracks_list` (Music, SFX, Voice, or custom ones).
+- `track=` names an audio track as `audio_tracks_list` names it. A new project names its three
+  built-in tracks in the story's language (Music, SFX and Voice in English; 音乐, 音效 and 语音 in
+  Chinese; 音楽, 効果音 and ボイス in Japanese), plus any custom ones.
 
 ## Branching and flow
 
 - **Choice:** `/menu Question text` then `- option` lines, each with its rows indented under it. A
   menu with no options, or an option with no words, is refused (`story/empty-choice`); an option with
   no rows simply carries on after the menu, as does every option that does not jump away.
+- **Conditional options:** end an option line with `[hide if <expression>]` to hide it while the
+  expression is true, `[disable if <expression>]` to show it greyed out, or both. A clause left off
+  clears that condition (`story_show` prints the ones the option has). A menu that offers only what
+  is left - three errands done in any order - is one menu in a loop, each errand its own scene that
+  comes back:
+  ```
+  /repeat 3
+    /menu Where next?
+      - Library [hide if done_library]
+        /jump Library return
+      - Rooftop [hide if done_rooftop]
+        /jump Rooftop return
+      - Clubroom [hide if done_clubroom]
+        /jump Clubroom return
+  ```
+  Each errand scene sets its own flag (`/set done_library true`) and appends to a string variable
+  when the order matters (`/set order order + "L"`), which `/if` reads after the loop.
 - **Condition, short form:** `/if <expression>` with the rows to run indented under it. It reads back
   in the long form below (a bare `/if` and one `? <expression>`); for an else, write the long form - a
   `?` line directly under a short `/if` is refused (`compile.short_if_branch`). Studio 1.6.1 and
@@ -212,9 +243,23 @@ those you deliberately keep.
 - **Endings:** `/ending Name of the ending` records the ending, ends the playthrough and takes the
   player to the build's ending page. Rows after it never run. Names must be unique across the story.
 - **Leave to a page without an ending:** `/quit Title` (any page from `story_targets`).
+- **Open a page and come back:** `/page Phone into=reply` opens a page over the story (a phone, a map,
+  a letter), holds the story until the page closes, then goes on from the next row. The page closes
+  itself with `Close This Layer`, and what it closes with is written into `into=` (any variable; the
+  value is converted to the variable's type, and a page closed with nothing - Back included - leaves it
+  as it was). The page also writes variables itself while it is open (`Set Saved Var`), so `/if` after
+  the row reads both. The page is modal: the quick menu under it does not answer until it closes.
+  The row passes the page no parameters, so the page's own `param`s take their defaults; give a page
+  what it starts with as those defaults, or have its `init` blueprint read saved variables.
+
 - **Loops:** `/repeat 3`, `/until <expression>`, `/break` - rare in a VN.
 - **Together:** rows run one after another; rows indented under `/parallel` start at once, and the row
-  after it waits for all of them - two characters crossing the stage together.
+  after it waits for all of them - two characters crossing the stage together. Rows on **one** object
+  inside a `/parallel` run in order, not at once (lint `story/parallel-same-target` points them out):
+  give a character one change per `/parallel`, or put its changes before or after the block. In
+  Studio 1.6.3 and earlier two transitions on one character in one `/parallel` never finished and the
+  story stopped there without an error; an instant `/transform` (no `d=`) followed by an animated one
+  on the same property could also leave the second undone - write `d=0.01` on the first there.
 - `/wait 1.5` pauses; `/wait click` waits for a click.
 
 ## Variables and expressions
@@ -286,6 +331,26 @@ Apply the blueprint first, then the scene (`dryRun: true` on both). From then on
 the row as `» Blueprint Grant: reached the lighthouse  ⟦3b9f6a21⟧` - keep that line and its `#data`
 entry as they are; to change what it does, `blueprint_show` / `blueprint_apply` its blueprint. One
 blueprint per row: copy the pattern with new UUIDs for the next one.
+
+## An achievement row
+
+With the Steam Achievements plugin loaded, an achievement is unlocked by a plugin row of its own, on
+the line where it is earned - no blueprint needed. In Studio the author types the plugin's
+`unlock` command with the name; the `.story` text has no spelling for a plugin row (a typed line
+is `compile.unknownCommand`), so write it as a `»` row with its payload in
+`#data` (one fresh UUID; the anchor is its first 8 characters):
+
+```
+Aki: We made it to the top.
+» Unlock  ⟦5c2e9d10⟧
+
+#data
+{"5c2e9d10":{"id":"5c2e9d10-4b7a-4c1e-9f2d-8a3b6c5d4e70","parentId":null,"childrenIds":[],"kind":"action","payload":{"action":"plugin","pluginId":"narraleaf.steam-achievements","actionId":"narraleaf.steam-achievements.story.unlock","params":{"achievementId":"ACH_LIGHTHOUSE"}}}}
+```
+
+`achievementId` is the API Name exactly as `narraleaf_steam_achievements__list` prints it (declare it
+first). `dryRun: true`, then check `story_show` prints the row under the plugin's label naming the
+achievement; a name the catalog lacks is kept, and the row's inspector lists it as missing.
 
 ## Rules that cause refusals or broken games
 

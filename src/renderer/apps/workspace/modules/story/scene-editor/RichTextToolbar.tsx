@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ALargeSmall, Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Superscript, Type } from "lucide-react";
+import { ALargeSmall, Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Sparkles, Superscript, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -10,6 +10,8 @@ import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
 import { TypePopover } from "./TypePopover";
+import { EffectPopover } from "./EffectPopover";
+import { useInlineTextEffects } from "@/lib/plugins/inlineTextEffectRegistry";
 import type { ActiveMarks, RichTextInputHandle, RubyTarget, TypeTarget } from "./RichTextInput";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
@@ -69,6 +71,43 @@ function scrollClipRect(el: HTMLElement): DOMRect | null {
     return null;
 }
 
+/** Clear air between the end of the row above's line and the strip laid past it. */
+const ROW_ABOVE_GAP = 8;
+
+/**
+ * Where the line of the row above `row` ends, in viewport x, or null when there is no row there.
+ *
+ * The row above is whichever row is drawn just over `row`'s top edge at the line's first character,
+ * so a nested row, a dialogue head and a command row all answer alike. Its line is its text: the
+ * nametag, the words, a command's head and values. Its trailing controls are not (they are marked
+ * `data-story-row-trailing` in `StorySceneEditorRows`), nor is any picture, which never ends a line.
+ */
+function lineEndOfRowAbove(row: HTMLElement, x: number, rowTop: number, band: number): number | null {
+    const doc = row.ownerDocument;
+    const above = doc.elementsFromPoint(x + 1, rowTop - 2)
+        .map(element => element.closest<HTMLElement>("[data-story-row-block-id]"))
+        .find((candidate): candidate is HTMLElement => candidate !== null && candidate !== row && !candidate.contains(row));
+    if (!above) {
+        return null;
+    }
+    const walker = doc.createTreeWalker(above, NodeFilter.SHOW_TEXT);
+    const range = doc.createRange();
+    let end: number | null = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent?.trim() || node.parentElement?.closest("[data-story-row-trailing]")) {
+            continue;
+        }
+        range.selectNodeContents(node);
+        for (const rect of Array.from(range.getClientRects())) {
+            // Only the line the strip would lie over: a paragraph's earlier lines are out of its reach.
+            if (rect.width > 0 && rect.bottom > rowTop - band) {
+                end = end === null ? rect.right : Math.max(end, rect.right);
+            }
+        }
+    }
+    return end;
+}
+
 /** The strip's top-left corner, in viewport coordinates. */
 export type RichTextToolbarPlacement = { top: number; left: number };
 
@@ -89,12 +128,9 @@ export type RichTextToolbarPlacement = { top: number; left: number };
  * twice per edit, and holding still is worth more than any placement it would buy. Nothing below is
  * allowed to walk that back.
  *
- * **Distance.** The tools belong beside the words they act on. The strip is left-aligned with the
- * text column, so it begins exactly where the line begins and the eye finds it without leaving the
- * sentence; and it rests directly on the row's top edge, which leaves the line's own padding of
- * clear air between the strip and the glyphs it is above. A placement parked in the row's trailing
- * space satisfies every containment rule and fails this one: on a short line it is hundreds of
- * pixels from the caret, and both the eye and the hand pay that distance twice for every mark.
+ * **Distance.** The tools belong beside the words they act on. The strip rests directly on the row's
+ * top edge, which leaves the line's own padding of clear air between the strip and the glyphs it is
+ * above, and it begins at the line's first character unless the row above holds that place (below).
  *
  * Anchoring horizontally to the caret instead would be nearer still on a long line, and is rejected:
  * a strip that slides while the author types puts its controls somewhere new on every keystroke, and
@@ -102,13 +138,17 @@ export type RichTextToolbarPlacement = { top: number; left: number };
  * a landmark that does not move, and the expanded strip spans far enough along the line to sit over
  * most carets anyway.
  *
- * What that costs is the row ABOVE, whose opening words the strip covers - accepted, deliberately,
- * as the smaller price. Three things keep the bill down: the strip stops short of the column's right
- * edge, so that row's own controls stay clickable; it is shorter than a row, so it reaches exactly
- * one of them; and the form a row opens with is the collapsed chip, five characters wide.
+ * **The row above.** Resting on the row's top edge, the strip lies over the lower part of the row
+ * above, and at the line's first character that is exactly where that row says what it is - a
+ * speaker's nametag, a command's head (`@外观`). Covering those cost the author the one word that
+ * tells the row above apart, so the strip starts past the end of that row's line (`clearOfAbove`)
+ * whenever the column has room for it there, and covers nothing of it. A row above whose line runs
+ * to the column's end leaves no such room; the strip then ends at the column's edge as before, over
+ * that row's last words, never its first. It still stops short of the column's right edge, so that
+ * row's own controls stay clickable, and it is shorter than a row, so it reaches only one row.
  *
  * When the pane has no room above - the top row, or a row scrolled against the top edge - the strip
- * goes immediately beneath the row instead. Same distance, same alignment, other side.
+ * goes immediately beneath the row instead, at the line's first character.
  *
  * `null` when the row has been scrolled far enough out of the pane that there is less of it left
  * than the strip is tall, or when neither band fits inside the pane. Pinning the strip to the pane's
@@ -123,6 +163,11 @@ export function richTextToolbarPlacement(input: {
     textLeft: number;
     /** The right edge of that column. Past it are the row's own controls, which stay clickable. */
     columnRight: number;
+    /**
+     * Where the line of the row above ends, plus a gap: the strip above the row starts no further left
+     * than this, so it covers nothing of that row. Null when there is no row above to keep clear of.
+     */
+    clearOfAbove?: number | null;
     paneTop: number;
     paneBottom: number;
     paneLeft: number;
@@ -137,10 +182,11 @@ export function richTextToolbarPlacement(input: {
     // The line's first character, given up only as far as it must be: enough to keep the strip off
     // the row's controls, and then enough to keep it on screen. Both clamps only ever move it left,
     // so the strip can end short of the column but never past it.
-    const left = Math.max(input.paneLeft, Math.min(input.textLeft, input.columnRight - input.width));
+    const clamp = (x: number) => Math.max(input.paneLeft, Math.min(x, input.columnRight - input.width));
+    const left = clamp(input.textLeft);
     const above = input.rowTop - input.height;
     if (above >= input.paneTop) {
-        return { top: above, left };
+        return { top: above, left: clamp(Math.max(input.textLeft, input.clearOfAbove ?? input.textLeft)) };
     }
     const below = input.rowBottom;
     if (below + input.height <= input.paneBottom) {
@@ -244,6 +290,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      */
     const [typePanel, setTypePanel] = useState<{ top: number; left: number; bottom: number; target: TypeTarget } | null>(null);
     const typeBtnRef = useRef<HTMLButtonElement | null>(null);
+    /** The effects panel's anchor and characters, captured at open time like the type panel's. */
+    const [effectPanel, setEffectPanel] = useState<{ top: number; left: number; bottom: number; target: TypeTarget } | null>(null);
+    const effectBtnRef = useRef<HTMLButtonElement | null>(null);
+    /**
+     * The inline effects the loaded plugins contribute. The control is drawn only when there is at
+     * least one: without a plugin offering an effect it would open an empty panel.
+     */
+    const effects = useInlineTextEffects();
     const active = props.active ?? { bold: false, italic: false, canRuby: false, hasSelection: false };
     /**
      * What the type panel can act on: a selection, or a run that already carries one of its marks.
@@ -255,6 +309,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         || active.emphasis !== undefined
         || active.fontSizeStep !== undefined
         || active.cps !== undefined;
+    /** What the effects panel can act on, by the type panel's rule. */
+    const canEffect = Boolean(effectPanel) || active.hasSelection || active.effect !== undefined;
     const recent = useRecentColors();
     // Quick swatches favour the author's recently used colors, padded with defaults so the strip
     // always stays full and stable-width.
@@ -322,11 +378,13 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             // a constant that drifted from the rendered box would leave a gap, or sink the strip
             // into the words it is supposed to sit above.
             const size = box.getBoundingClientRect();
+            const aboveEnd = lineEndOfRowAbove(row, column.left, rowRect.top, size.height);
             setPos(richTextToolbarPlacement({
                 rowTop: rowRect.top,
                 rowBottom: rowRect.bottom,
                 textLeft: column.left,
                 columnRight: column.right,
+                clearOfAbove: aboveEnd === null ? null : aboveEnd + ROW_ABOVE_GAP,
                 paneTop: clip ? clip.top : 0,
                 paneBottom: clip ? clip.bottom : globalThis.window.innerHeight,
                 paneLeft: clip ? clip.left : 0,
@@ -526,6 +584,30 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         props.editor.current?.focus();
     };
 
+    const openEffect = () => {
+        const target = props.editor.current?.getEffectTarget();
+        if (!target) {
+            return;
+        }
+        const rect = effectBtnRef.current?.getBoundingClientRect();
+        if (props.commitGuard) {
+            props.commitGuard.current = true;
+        }
+        setEffectPanel({
+            top: rect?.top ?? 120,
+            left: rect?.left ?? 120,
+            bottom: rect?.bottom ?? 140,
+            target,
+        });
+    };
+    const closeEffect = () => {
+        if (props.commitGuard) {
+            props.commitGuard.current = false;
+        }
+        setEffectPanel(null);
+        props.editor.current?.focus();
+    };
+
     const applyColor = (color: string) => {
         props.editor.current?.setColor(color);
         addRecentColor(color);
@@ -667,6 +749,30 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             >
                 <ALargeSmall className="h-3.5 w-3.5" />
             </button>
+            {effects.length > 0 ? (
+                // NOT wrapped in `keepKeyboard`, for the type panel's reason.
+                <button
+                    ref={effectBtnRef}
+                    type="button"
+                    className={!canEffect ? BTN_INERT : effectPanel || active.effect ? BTN_ACTIVE : BTN}
+                    aria-disabled={!canEffect}
+                    aria-expanded={Boolean(effectPanel)}
+                    onClick={() => {
+                        if (!canEffect) {
+                            return;
+                        }
+                        if (effectPanel) {
+                            closeEffect();
+                            return;
+                        }
+                        openEffect();
+                    }}
+                    data-tip={canEffect ? t("story.richText.effects") : t("story.richText.effectsHint")}
+                    aria-label={canEffect ? t("story.richText.effects") : t("story.richText.effectsHint")}
+                >
+                    <Sparkles className="h-3.5 w-3.5" />
+                </button>
+            ) : null}
             <div className="mx-0.5 h-4 w-px bg-fill" />
             {swatches.map(color => {
                 const isActive = activeKey !== null && colorKey(color) === activeKey;
@@ -781,6 +887,16 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     target={typePanel.target}
                     onSet={(mark, value, target) => props.editor.current?.setTypeMark(mark, value, target)}
                     onClose={() => closeType()}
+                />
+            ) : null}
+            {pos && effectPanel ? (
+                <EffectPopover
+                    anchor={effectPanel}
+                    anchorRef={effectBtnRef}
+                    target={effectPanel.target}
+                    effects={effects}
+                    onSet={(value, target) => props.editor.current?.setTypeMark("effect", value, target)}
+                    onClose={() => closeEffect()}
                 />
             ) : null}
             {pos && ruby ? (

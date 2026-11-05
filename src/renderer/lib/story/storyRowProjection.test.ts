@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { commandI18nStore, i18nStore, translate, translateCommand } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import {
@@ -504,5 +505,61 @@ describe("a jump to a scene that is gone", () => {
 
         expect(sentence).not.toContain(goneId);
         expect(sentence).toContain("unknown scene");
+    });
+});
+
+describe("the subject line of a staging row, in zh", () => {
+    /**
+     * What the inspector's header and the row list say about a row. Each of these read wrong in a
+     * Chinese project: an English unit, the command's own noun where the verb goes, and an English
+     * placeholder where the character's name belongs.
+     */
+    it("writes a wait in seconds as the rest of the interface does", () => {
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(action({ action: "wait", mode: "duration", durationMs: 1000 }), bare)).toBe("等待 1 秒");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(action({ action: "wait", mode: "duration", durationMs: 1000 }), bare)).toBe("Wait 1s");
+    });
+
+    it("says what a create row does, not the command's noun twice", () => {
+        const vfx = action({ action: "vfx", operation: "create", objectName: "樱花" });
+        const text = action({ action: "text", operation: "create", objectName: "title" });
+        i18nStore.setLocale("zh");
+        expect(describeStoryBlock(vfx, bare)).toBe("创建 氛围特效 樱花");
+        i18nStore.setLocale("ja");
+        expect(describeStoryBlock(vfx, bare)).toBe("環境演出 樱花 を作成");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(text, bare)).toBe("Create text title");
+        // Every other operation still reads as its own command.
+        expect(describeStoryBlock(action({ action: "vfx", operation: "show", objectName: "rain" }), bare)).toBe("Show ambience rain");
+    });
+
+    it("calls a camera reset by the verb its line is written with", () => {
+        // The line says 重置 (`/reset camera`); the subject and the inspector said 复位.
+        const reset = action({ action: "camera", operation: "reset" });
+        for (const [locale, subject] of [["zh", "重置镜头"], ["en", "Reset camera"], ["ja", "カメラをリセット"]] as const) {
+            i18nStore.setLocale(locale);
+            expect(describeStoryBlock(reset, bare), locale).toBe(subject);
+            const verb = translateCommand("story.command.reset.label" as TranslationKey);
+            expect(subject.toLowerCase(), locale).toContain(verb.toLowerCase());
+            expect(translate("storyInspector.cameraOperation.reset" as TranslationKey).toLowerCase(), locale).toContain(verb.toLowerCase());
+        }
+    });
+
+    it("names a transform's subject as the author knows it", () => {
+        const enter = action({ action: "character", operation: "enter", characterId: "c1" }, "enter");
+        const scene = {
+            id: "s1", name: "Scene", runtimeName: "scene", rootBlockIds: ["enter"], blocks: { enter },
+        } as unknown as StoryScene;
+        const lookups: StoryRowLookups = { ...withCharacters({ c1: "Narra" }), scene };
+        const walk = action({ action: "displayable", operation: "transform", target: { kind: "character", name: "c1", label: "Character", sourceBlockId: "enter" } });
+        i18nStore.setLocale("zh");
+        // Walked on without a typed stage name: her cast name, not the placeholder "Character".
+        expect(describeStoryBlock(walk, lookups)).toBe("变换 Narra");
+        // A built-in in the interface's language, not its stored English label.
+        const camera = action({ action: "displayable", operation: "transform", target: { builtin: "background", kind: "image", name: "Scene background", label: "Scene background" } });
+        expect(describeStoryBlock(camera, lookups)).toBe("变换 背景");
+        i18nStore.setLocale("en");
+        expect(describeStoryBlock(camera, lookups)).toBe("Transform Scene background");
     });
 });

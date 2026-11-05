@@ -10,11 +10,12 @@
  */
 
 import type { PluginManifestLocalized, PluginStatus } from "./plugins";
+import { isRecord } from "@shared/utils/isRecord";
 
 export const PROJECT_DEPENDENCY_SCHEMA_VERSION = 1;
 
 /** The extension points a project can depend on a plugin through. */
-export type DependencyKind = "blueprintNode" | "widget" | "storage" | "storyAction";
+export type DependencyKind = "blueprintNode" | "widget" | "storage" | "storyAction" | "inlineTextEffect";
 
 export interface ProjectPluginDependency {
     /** Namespaced plugin id, e.g. `narraleaf.gallery`. */
@@ -114,7 +115,7 @@ export function normalizeProjectDependencyTable(value: unknown): ProjectDependen
     return { schemaVersion, plugins };
 }
 
-const DEPENDENCY_KINDS: DependencyKind[] = ["blueprintNode", "widget", "storage", "storyAction"];
+const DEPENDENCY_KINDS: DependencyKind[] = ["blueprintNode", "widget", "storage", "storyAction", "inlineTextEffect"];
 
 function normalizeDependency(value: unknown): ProjectPluginDependency | null {
     if (!isRecord(value)) {
@@ -148,8 +149,4 @@ function normalizeDependency(value: unknown): ProjectPluginDependency | null {
         ...(typeof value.publisher === "string" && value.publisher.trim() ? { publisher: value.publisher.trim() } : {}),
         usedBy,
     };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

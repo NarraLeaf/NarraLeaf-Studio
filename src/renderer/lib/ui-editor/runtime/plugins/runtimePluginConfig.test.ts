@@ -49,6 +49,7 @@ async function writePlugin(
         contributes: {
             blueprintNodes: [],
             widgets: [],
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

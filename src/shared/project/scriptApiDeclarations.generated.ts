@@ -338,6 +338,13 @@ declare module "@narraleaf/script" {
     	 */
     	fontSizeStep?: number;
     	emphasis?: StoryTextEmphasis;
+    	/** An inline effect a plugin contributes, such as shaking text. */
+    	effect?: StoryTextEffect;
+    };
+    type StoryTextEffectParamValue = number | string | boolean;
+    type StoryTextEffect = {
+    	id: string;
+    	params?: Record<string, StoryTextEffectParamValue>;
     };
     type SaveRecordTimes = {
     	/** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
@@ -1356,6 +1363,14 @@ declare module "@narraleaf/script" {
     		seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
     		isPlaying: (handle: BlueprintSoundHandle) => boolean;
     		/**
+    		 * Set the music of the page the calling graph runs on, for as long as that page is open:
+    		 * Play Page Music and Stop Page Music. What the page inspector's Music setting says, changed
+    		 * at run time - it hands over and comes back with the page exactly as that does
+    		 * (\`runtime/app/pageMusic.ts\`). While a game holds the screen the story decides the music,
+    		 * and the request changes nothing; the node says so in the debug log.
+    		 */
+    		setPageMusic: (request: BlueprintPageMusicRequest) => Promise<void>;
+    		/**
     		 * The volume a **host-owned** media element (the \`nl.video\` widget's \`<video>\`) must be set
     		 * to so it obeys the same mixer everything else does.
     		 *
@@ -1480,6 +1495,22 @@ declare module "@narraleaf/script" {
     	devtools: {
     		log: (level: string, message: string) => void;
     	};
+    };
+    type BlueprintPageMusicRequest = {
+    	kind: "play";
+    	assetId: string;
+    	/** Absent or null: the Music track. */
+    	audioTrackId?: string | null;
+    	/** 0..1; absent is 1. */
+    	volume?: number;
+    	/** Absent: the track's own loop default. */
+    	loop?: boolean;
+    	/** How it comes in, and how it leaves when it hands over. Milliseconds. */
+    	fadeMs?: number;
+    } | {
+    	kind: "stop";
+    	/** How the music playing leaves. Absent: with its own fade. Milliseconds. */
+    	fadeMs?: number;
     };
     type BlueprintSoundPlayInput = {
     	assetId: string;
@@ -1630,6 +1661,13 @@ declare module "@narraleaf/script" {
     	};
     	/** Dispatch a widget private event slot (for example \`init\` or \`mouseClick\`) on the owner-local blueprint. */
     	dispatchElementBlueprintEvent: (elementId: string, eventName: string, payload?: Record<string, unknown>, options?: UIHostAdapterElementEventOptions) => Promise<void>;
+    	/**
+    	 * Run the \`flush\` events queued so far now, instead of on the next frame; resolves when they
+    	 * have run. For a beat whose flush has to land in the frame that shows it - see
+    	 * \`StageSlotSurfaceRuntime.flushSlotElements\`. Optional because a host that queues nothing has
+    	 * nothing to run.
+    	 */
+    	drainPendingFlushes?: () => Promise<void>;
     	/**
     	 * Whether a press on this element is handled by the element itself: its own blueprint has a
     	 * Mouse Click head, or an On Element Click head names it.
@@ -1843,6 +1881,12 @@ declare module "@narraleaf/script" {
     	readonly windowFocusChanged: {
     		readonly isFocused: "boolean";
     	};
+    	readonly savedVariableChanged: {
+    		readonly value: "unknown";
+    	};
+    	readonly persistentVariableChanged: {
+    		readonly value: "unknown";
+    	};
     	readonly keyDown: {
     		readonly key: "string";
     		readonly altKey: "boolean";
@@ -2046,6 +2090,8 @@ declare module "@narraleaf/script" {
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"windowCloseRequested",
     		"action"
     	];
@@ -2063,6 +2109,8 @@ declare module "@narraleaf/script" {
     		"preferenceChanged",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"windowCloseRequested",
     		"action",
     		"broadcast",
@@ -2086,6 +2134,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2114,6 +2164,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2142,6 +2194,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2170,6 +2224,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2198,6 +2254,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2225,6 +2283,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2253,6 +2313,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2273,6 +2335,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2292,6 +2356,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2322,6 +2388,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2344,6 +2412,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2361,6 +2431,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2389,6 +2461,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2411,6 +2485,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2433,6 +2509,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2455,6 +2533,8 @@ declare module "@narraleaf/script" {
     		"gamepadButtonUp",
     		"fullscreenChanged",
     		"windowFocusChanged",
+    		"savedVariableChanged",
+    		"persistentVariableChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2486,6 +2566,8 @@ declare module "@narraleaf/script" {
     	"gamepadButtonUp",
     	"fullscreenChanged",
     	"windowFocusChanged",
+    	"savedVariableChanged",
+    	"persistentVariableChanged",
     	"broadcast",
     	"elementClick",
     	"elementFlush"

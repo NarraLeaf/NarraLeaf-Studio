@@ -46,8 +46,6 @@ export const dialogs = {
     // 命令的に呼び出す DialogService の既定タイトル（confirm／alert／quick-pick／input）
     service: {
         alertTitle: "アラート",
-        selectTitle: "項目を選択",
-        inputTitle: "入力",
     },
     // 名前変更や作成のタイトルに差し込む名詞。未知の種別は呼び出し側が渡した文字列のまま出る。
     noun: {

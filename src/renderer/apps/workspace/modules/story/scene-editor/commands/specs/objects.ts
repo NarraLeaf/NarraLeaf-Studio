@@ -1,5 +1,6 @@
 import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryBlock, StoryTextOutline } from "@shared/types/story";
+import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { addSceneLayer, sceneLayerNameProblem, sceneLayerStack } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
@@ -165,6 +166,9 @@ export const layer = defineStoryCommand({
     },
 });
 
+/** What `/swap`'s transition slots say in the catalogue: they are an image swap's alone. */
+const SWAP_IMAGE_ONLY = "Image targets only. A text swap changes the words at once; to fade it, write /hide <text> out=fade, then /swap, then /show <text> in=fade.";
+
 export const swap = defineStoryCommand({
     id: "swap",
     token: "swap",
@@ -184,9 +188,12 @@ export const swap = defineStoryCommand({
         // Before the content and not after it, the rule `/text`'s `name=` already lives under: the
         // content is greedy, so it takes the rest of the line and nothing may follow it. On a text
         // target there is no source to swap and nothing reads them; `validate` says so.
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") } },
-        d: secondsParam(),
-        hold: holdParam(),
+        //
+        // The catalogue says so per slot (`about`), because the grammar cannot: it lists every slot the
+        // command has, and an agent reading `t=` there had no way to know a text target refuses it.
+        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") }, about: SWAP_IMAGE_ONLY },
+        d: { ...secondsParam(), about: SWAP_IMAGE_ONLY },
+        hold: { ...holdParam(), about: SWAP_IMAGE_ONLY },
         // Typed by the target: an image's new content is an image asset, a text's is its new words.
         content: { hint: "content", type: { kind: "content", dependsOn: "target", allowSets: true }, positional: true, greedy: true, core: true },
     },
@@ -406,17 +413,37 @@ export const front = defineStoryCommand({
     },
 });
 
+/**
+ * `/font` - a text object's size, colour and outline, any of them, on one row.
+ *
+ * A line that names one value builds the single op it always did (`setFontSize` / `setFontColor`), so
+ * the rows those wrote keep reading back unchanged. Anything more - two values, or an outline at all -
+ * builds `setFont`, which sets whichever fields it carries and leaves the rest of the text alone.
+ *
+ * The outline is Ren'Py's `outlines [(1, "#332e3e", 0, 0)]`: `outline=1 outlineColor=#332e3e`. A width
+ * alone draws in black; a colour alone draws one pixel wide; `outline=0` takes an outline away.
+ */
 export const font = defineStoryCommand({
     id: "font",
     token: "font",
     aliases: ["txtfont"],
     category: "text",
     icon: ALargeSmall,
-    examples: ["/font title 24", "/font title color=#ffcc00"],
+    examples: ["/font title 24", "/font title color=#ffcc00", "/font title 48 color=#ffffff outline=1 outlineColor=#332e3e"],
     params: {
         target: targetParam(["text"], { core: true }),
         size: { hint: "size", type: { kind: "number", min: 1 }, positional: true },
         color: { hint: "color", type: { kind: "color" } },
+        outline: {
+            hint: "outline",
+            type: { kind: "number", min: 0, max: STORY_TEXT_OUTLINE_MAX_WIDTH },
+            about: "Outline width round the glyphs, in design pixels; 0 removes the outline. Drawn on the text's filter channel, so a later /transform filter or look replaces it.",
+        },
+        outlineColor: {
+            hint: "outlineColor",
+            type: { kind: "color" },
+            about: "Outline colour. Without outline= it draws a 1 px outline; outline= without it draws in black.",
+        },
     },
     build(args, ctx) {
         const block = createBlockForCommand("textFont", ctx.generateId);
@@ -429,11 +456,17 @@ export const font = defineStoryCommand({
             payload.objectName = target.name;
             payload.target = displayableTargetRef(target);
         }
-        // One block runs one op: a size sets the size, otherwise a colour sets the colour. Both at
-        // once is a `conflictingParams` fault (below) until the combined op lands with schema v6.
         const size = asNumber(args.size);
         const color = asColor(args.color);
-        if (size !== undefined) {
+        const outline = fontOutlineOf(asNumber(args.outline), asColor(args.outlineColor));
+        if (outline !== undefined || (size !== undefined && color !== undefined)) {
+            payload.operation = "setFont";
+            // The seed's 32 is a single-op default; the combined op states only what the line does.
+            delete payload.fontSize;
+            if (size !== undefined) payload.fontSize = size;
+            if (color !== undefined) payload.fontColor = color;
+            if (outline !== undefined) payload.outline = outline;
+        } else if (size !== undefined) {
             payload.operation = "setFontSize";
             payload.fontSize = size;
         } else if (color !== undefined) {
@@ -442,13 +475,20 @@ export const font = defineStoryCommand({
         }
         return { ...block, payload };
     },
-    validate(args, ctx: StoryCommandValidateContext): StoryCommandResolutionIssue[] {
-        if (asNumber(args.size) === undefined || asColor(args.color) === undefined) {
-            return [];
-        }
-        const span = ctx.spanOf("color");
-        return span ? [{ code: "conflictingParams", span, keys: ["size", "color"] }] : [];
-    },
 });
+
+/**
+ * The outline a `/font` line states, or `undefined` when it names none. `outline=0` is `null` - take
+ * the outline away - and is what the row stores for it, so it prints back as the same `outline=0`.
+ */
+function fontOutlineOf(width: number | undefined, color: string | undefined): StoryTextOutline | null | undefined {
+    if (width === undefined && color === undefined) {
+        return undefined;
+    }
+    if (width === 0) {
+        return null;
+    }
+    return { width: width ?? 1, color: color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR };
+}
 
 export const OBJECT_COMMANDS = [image, text, layer, swap, play, front, font];

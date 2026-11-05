@@ -11,6 +11,7 @@ import type { CharacterAvatarTarget } from "@shared/utils/characterAvatar";
 import type { PortraitCrop } from "@/lib/workspace/services/character/types";
 import { bakeCharacterAvatars, type AvatarBakeIO, type AvatarBakeReport } from "./avatarBake";
 import { createAvatarRenderer } from "./avatarRenderer";
+import { inheritedPosePortrait, measurePosePictures } from "@/lib/workspace/services/character/poseFraming";
 import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
 import { isDeferredWriteAllowed } from "@/apps/workspace/components/ui/freezeGuard";
 
@@ -26,7 +27,8 @@ export function shouldBakeCharacterAvatars(enabled: boolean, frozen: boolean): b
 }
 
 /**
- * Which framing a differential is baked with: **entry → pose → profile**.
+ * Which framing a differential is baked with: **entry → pose → profile → inherited**, and the
+ * automatic head crop when none of them answers.
  *
  * The entry's crop is the specific one — it is written against a single avatar key, which is the
  * only address a `layered` character has for one tag combination. Without it at the head of the
@@ -43,8 +45,14 @@ export function resolveAvatarBakePortrait(input: {
     entry?: PortraitCrop | null;
     pose?: PortraitCrop | null;
     profile?: PortraitCrop | null;
+    /**
+     * A `preset` pose framed by nothing above it takes the framing of a pose whose picture is the same
+     * size (`inheritedPosePortrait`): the same picture with another face, so the face is in the same
+     * place. Last, because the three above are the author's word about this picture.
+     */
+    inherited?: PortraitCrop | null;
 }): PortraitCrop | undefined {
-    return input.entry ?? input.pose ?? input.profile ?? undefined;
+    return input.entry ?? input.pose ?? input.profile ?? input.inherited ?? undefined;
 }
 
 /**
@@ -236,7 +244,85 @@ export function useCharacterAvatarBake(enabled: boolean): {
     return { rebake, running: state.running, summary: state.summary };
 }
 
-/** One pass over the whole cast. Only {@link useCharacterAvatarBake}'s `rebake` calls it. */
+/**
+ * Bring every avatar up to date before Dev Mode, Preview or a build reads the project, unless a bake
+ * pass has already run on the cast as it stands. Returns whether it ran one.
+ *
+ * The panel's open-bake and the edit-driven bake both need the character panel or editor to have
+ * been mounted, and an author who never opens either never gets one: a bake made by an older rule
+ * (a different framing, a different recipe) went on showing in Dev Mode and shipping in builds. A
+ * pass over a cast whose avatars are current only reads, so this is a re-bake of exactly the stale
+ * ones. Once per set of inputs: a launch after the panel baked, or after a previous launch did, does
+ * no work at all. Nothing while frozen - it writes, and a past version is not the author's to write.
+ *
+ * `bake` is the pass itself, injected for the test; production passes {@link bakeAll}.
+ */
+export async function bakeStaleAvatarsBeforeLaunch(input: {
+    characters: Pick<CharacterService, "listCharacter">;
+    frozen: boolean;
+    bake: () => Promise<void>;
+}): Promise<boolean> {
+    if (!isDeferredWriteAllowed(input.frozen)) {
+        return false;
+    }
+    if (runningBake) {
+        await runningBake;
+    }
+    const inputs = avatarBakeInputs(input.characters.listCharacter());
+    if (inputs === bakedInputs) {
+        return false;
+    }
+    // This pass covers whatever an edit still owed.
+    cancelOwedBake();
+    bakedInputs = inputs;
+    runningBake = input.bake()
+        .catch(error => {
+            // A pass that did not finish has not made anything current; the next launch tries again.
+            bakedInputs = null;
+            throw error;
+        })
+        .finally(() => {
+            runningBake = null;
+        });
+    await runningBake;
+    return true;
+}
+
+/** Forget every bake this window ran, for tests that start from a fresh window. */
+export function resetAvatarBakeStateForTests(): void {
+    cancelOwedBake();
+    runningBake = null;
+    bakedInputs = null;
+    bakeState = { running: false, summary: null };
+}
+
+/**
+ * Register {@link bakeStaleAvatarsBeforeLaunch} as derived work for the cast's flush, for the life of
+ * the workspace - which is what Dev Mode (a row's ▶ included), Preview and a build wait on before
+ * they read the project. Mounted once, by the workspace itself, so it does not depend on any
+ * character surface ever having been opened. Nothing runs when the project opens.
+ */
+export function useAvatarBakeBeforeLaunch(): void {
+    const { context, isInitialized } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
+    const frozenRef = useRef(frozen);
+    frozenRef.current = frozen;
+    useEffect(() => {
+        if (!context || !isInitialized) {
+            return;
+        }
+        const characters = context.services.get<CharacterService>(Services.Character);
+        return characters.registerPendingDerivedWork(async () => {
+            await bakeStaleAvatarsBeforeLaunch({
+                characters,
+                frozen: frozenRef.current,
+                bake: () => bakeAll(context),
+            });
+        });
+    }, [context, isInitialized]);
+}
+
+/** One pass over the whole cast. {@link useCharacterAvatarBake}'s `rebake` and the pre-launch pass call it. */
 async function bakeAll(context: WorkspaceContext): Promise<void> {
     setBakeState({ running: true, summary: bakeState.summary });
     const byCharacter: Record<string, AvatarBakeReport> = {};
@@ -276,6 +362,9 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                 continue;
             }
             const appearance = profile.appearance;
+            // Read only where an inherited framing could apply: a preset character with a framed pose.
+            const poses = appearance.getKind() === "preset" ? appearance.getPoses() : [];
+            const poseSizes = poses.some(pose => pose.portrait) ? await measurePosePictures(assets, poses) : {};
             const report = await bakeCharacterAvatars(io, render, {
                 characterId: summary.id,
                 appearance: {
@@ -293,6 +382,14 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                             ? appearance.getPose(target.selection.poseId)?.portrait
                             : undefined,
                         profile: profile.getPortrait(),
+                        inherited: target.selection.poseId
+                            ? inheritedPosePortrait({
+                                poses,
+                                defaultPoseId: appearance.getDefaultPoseId(),
+                                poseId: target.selection.poseId,
+                                sizeOf: assetId => poseSizes[assetId],
+                            })
+                            : undefined,
                     }),
                 },
             });

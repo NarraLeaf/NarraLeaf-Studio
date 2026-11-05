@@ -11,6 +11,7 @@ import { BUILD_CONSOLE_SOURCE } from "@/lib/workspace/services/core/BuildService
 import { LINT_CONSOLE_CHANNEL, LINT_CONSOLE_SOURCE } from "@/lib/workspace/services/core/LintService";
 import { TEST_CONSOLE_CHANNEL, TEST_CONSOLE_SOURCE } from "@/lib/testing/TestRunService";
 import { STORY_CONSOLE_CHANNEL } from "../story/scene-editor/preview/storyPreviewConsole";
+import { AVATAR_CONSOLE_CHANNEL, AVATAR_CONSOLE_SOURCE } from "@/lib/workspace/services/character/avatarAutoFrame";
 import { consoleChannelDescription, consoleChannelLabel, consoleSourceLabel } from "./consoleChannelText";
 
 /**
@@ -23,6 +24,7 @@ const STUDIO_CHANNELS: ConsoleChannelDefinition[] = [
     STORY_CONSOLE_CHANNEL,
     { id: LINT_CONSOLE_CHANNEL, label: "Lint", description: "Project lint sweeps and their findings" },
     { id: TEST_CONSOLE_CHANNEL, label: "Test", description: "Test runs and their verdicts" },
+    { id: AVATAR_CONSOLE_CHANNEL, label: "Avatars", description: "Dialog avatars framed on a detected head" },
 ];
 
 const zh = createTranslator("zh").t as (key: TranslationKey) => string;
@@ -62,6 +64,7 @@ describe("the part a console line says it came from", () => {
         BLUEPRINT_CONSOLE_SOURCE,
         BLUEPRINT_LOG_CONSOLE_SOURCE,
         DEV_MODE_CONSOLE_SOURCE,
+        AVATAR_CONSOLE_SOURCE,
     ];
 
     it.each(STUDIO_SOURCES)("names %s in the interface language", source => {

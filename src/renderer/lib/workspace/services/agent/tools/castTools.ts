@@ -25,7 +25,6 @@ import type { StoryLiteralValue, StoryTransformProps } from "@shared/types/story
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import { AssetType } from "../../assets/assetTypes";
-import type { Asset, AssetSource } from "../../assets/types";
 import { Services, type WorkspaceContext } from "../../services";
 import type { CharacterService } from "../../core/CharacterService";
 import { Character } from "../../character/Character";
@@ -34,7 +33,6 @@ import type { TranslationKey } from "@shared/i18n";
 import type { VariableRegistryService } from "../../variables/VariableRegistryService";
 import type { AudioTrackService } from "../../audio/AudioTrackService";
 import type { AssetsService } from "../../core/AssetsService";
-import type { ProjectService } from "../../core/ProjectService";
 import { VARIABLE_PANEL_HISTORY_SCOPE_ID, type LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import {
     answerJson,
@@ -47,40 +45,13 @@ import {
 import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
-import { opaqueImageWarning, readImageAlpha, type ImageAlphaFacts } from "../imageAlpha";
-import { drawnBoxAtCenter, stageSizeOf, standingEntrance, type PixelSize } from "../spriteStage";
+import { opaqueImageWarning } from "../imageAlpha";
+import { drawnBoxAtCenter, standingEntrance, type PixelSize } from "../spriteStage";
+import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
 import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
 import { liveBlueprintDocument, loadAllStories, uiDocumentService } from "./textFormat";
-
-/** The project's design resolution: the stage every sprite position is a share of. */
-export function stageSize(ctx: WorkspaceContext): PixelSize {
-    return stageSizeOf(ctx.services.get<ProjectService>(Services.Project).getProjectConfig().metadata?.resolution);
-}
-
-export type ImageFacts = { name: string; size: PixelSize | null; header: ImageAlphaFacts };
-
-/**
- * An image asset's pixel size and whether it can be transparent, from its bytes. Null when the asset
- * is gone or will not read - a pose that cannot be measured is reported without a box, never refused.
- */
-export async function readImageFacts(ctx: WorkspaceContext, assetId: string): Promise<ImageFacts | null> {
-    const assets = assetsService(ctx);
-    const asset = assets.getAssets()[AssetType.Image]?.[assetId] as Asset<AssetType, AssetSource> | undefined;
-    if (!asset) {
-        return null;
-    }
-    const fetched = await assets.fetch(asset).catch(() => null);
-    const data = fetched && fetched.success ? (fetched.data as { data?: unknown; metadata?: { width?: number; height?: number } } | undefined) : undefined;
-    if (!data || !(data.data instanceof Uint8Array)) {
-        return null;
-    }
-    const facts = readImageAlpha(data.data);
-    const width = data.metadata?.width || facts.width;
-    const height = data.metadata?.height || facts.height;
-    return { name: asset.name, size: width && height ? { width, height } : null, header: facts };
-}
 
 /**
  * One character as the cast tools report it.
@@ -91,8 +62,15 @@ export async function readImageFacts(ctx: WorkspaceContext, assetId: string): Pr
  * read-only, because a Live2D or Spine model is set up in Studio (the runtime is the author's own
  * licensed copy, which Studio may neither ship nor fetch).
  */
-export function describeCharacter(character: Character, assets: AssetsService, stage: PixelSize, sprite: PixelSize | null) {
+export function describeCharacter(
+    character: Character,
+    assets: AssetsService,
+    stage: PixelSize,
+    sprite: PixelSize | null,
+    cast?: Pick<CharacterService, "getGroup">,
+) {
     const profile = character.profile;
+    const groupId = profile.getGroupId();
     const appearance = profile.appearance;
     const images = assets.getAssets()[AssetType.Image] ?? {};
     const entranceTransform = profile.getEntranceTransform();
@@ -127,6 +105,9 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         name: profile.getName(),
         nicknames: [...profile.getNicknames()],
         nameColor: profile.getColor() ?? null,
+        // The cast group the Characters panel files it under; null = ungrouped.
+        group: groupId ? cast?.getGroup(groupId)?.name ?? null : null,
+        groupId: groupId ?? null,
         kind,
         ...looks,
         ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
@@ -137,23 +118,6 @@ export function describeCharacter(character: Character, assets: AssetsService, s
         spriteSize: sprite,
         drawnAtCenter: sprite ? drawnBoxAtCenter(sprite, entranceTransform, stage) : null,
     };
-}
-
-/**
- * The default look's pixel size: a preset's default pose, a layered character's canvas (every layer
- * is drawn at it), a puppet's stage box when one is set. Null when it cannot be known.
- */
-export async function defaultSpriteSize(ctx: WorkspaceContext, character: Character): Promise<PixelSize | null> {
-    const appearance = character.profile.appearance;
-    const stored = appearance.toJSON();
-    if (stored.kind === "layered") {
-        return stored.canvas ? { ...stored.canvas } : null;
-    }
-    if (isPuppetAppearance(stored)) {
-        return stored.size ? { ...stored.size } : null;
-    }
-    const assetId = appearance.resolvePoseAssetId(undefined);
-    return assetId ? (await readImageFacts(ctx, assetId))?.size ?? null : null;
 }
 
 /** A character by id or exact name; `null` when there is none, a refusal when the name is ambiguous. */
@@ -229,10 +193,40 @@ export const charactersList: AgentToolHandler = async (_args, { ctx }) => {
     const stage = stageSize(ctx);
     const characters = [];
     for (const character of cast.listCharacter()) {
-        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character)));
+        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast));
     }
-    return answerJson({ stage, characters });
+    // In the Characters panel's order; every character names its group by `group` / `groupId`.
+    const groups = cast.listGroups().map(group => ({
+        id: group.id,
+        name: group.name,
+        members: cast.listCharactersByGroup(group.id).length,
+    }));
+    return answerJson({ stage, groups, characters });
 };
+
+/**
+ * The cast group `ref` names: by id, then by exact name (trimmed). `create` when no group has that
+ * name, so "file her under NPC" works on a project that has no NPC group yet. A name two groups share
+ * is refused rather than resolved to the first, as everywhere else an agent names something.
+ */
+export function resolveCharacterGroup(
+    cast: Pick<CharacterService, "listGroups" | "getGroup">,
+    ref: string,
+): { kind: "existing"; id: string; name: string } | { kind: "create"; name: string } {
+    const byId = cast.getGroup(ref);
+    if (byId) {
+        return { kind: "existing", id: byId.id, name: byId.name };
+    }
+    const name = ref.trim();
+    if (!name) {
+        throw refuse("invalid_args", "`group` must name a group (its name or id), or be null to take the character out of its group.");
+    }
+    const named = cast.listGroups().filter(group => group.name.trim() === name);
+    if (named.length > 1) {
+        throw refuse("invalid_args", `${named.length} character groups are called "${name}".`, "Name the group by id (characters_list lists `groups`).");
+    }
+    return named[0] ? { kind: "existing", id: named[0].id, name: named[0].name } : { kind: "create", name };
+}
 
 type PoseInput = { name: string; asset: string };
 
@@ -361,6 +355,10 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
     const avatarArgs = readAvatarArgs(args);
+    if (args.group !== undefined && args.group !== null && typeof args.group !== "string") {
+        throw refuse("invalid_args", "`group` must be a group's name or id, or null to take the character out of its group.");
+    }
+    const groupArg = args.group as string | null | undefined;
     if (!id && !name) {
         throw refuse("invalid_args", "Give the character's `id` (to update one) or `name`.");
     }
@@ -387,6 +385,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     };
 
     const cast = ctx.services.get<CharacterService>(Services.Character);
+    const groupTarget = typeof groupArg === "string" ? resolveCharacterGroup(cast, groupArg) : groupArg;
     let character: Character | null = id ? cast.getCharacter(id) ?? null : null;
     if (id && !character) {
         throw refuse("not_found", `No character with id ${id}.`, "Call characters_list for the ids.");
@@ -482,15 +481,28 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
 
     // Reading the stories and measuring the poses took a while; the author may have paused meanwhile.
     assertAgentMayStillWrite({ ctx, request, follow });
+    // A group the call names but the project lacks is made now, after every check has passed, so a
+    // refused call leaves no empty group behind. Making a group is not a step of undo - it is not in
+    // the Characters panel either - so undoing the call puts the character back and leaves the group.
+    let groupNote = "";
+    if (groupTarget === null) {
+        profile.setGroupId(undefined);
+    } else if (groupTarget?.kind === "existing") {
+        profile.setGroupId(groupTarget.id);
+    } else if (groupTarget?.kind === "create") {
+        profile.setGroupId(cast.createGroup(groupTarget.name).id);
+        groupNote = ` Created the character group "${groupTarget.name}" (undo leaves the group, empty).`;
+    }
     const changed = commitRecord(cast, draft.toJSON() as StoredCharacter, created);
     const current = cast.getCharacter(profile.getId()) ?? draft;
     return answerJson(
         {
             created,
-            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite),
+            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast),
+            ...(groupTarget?.kind === "create" ? { createdGroup: groupTarget.name } : {}),
             ...(warnings.length > 0 ? { warnings } : {}),
         },
-        `${created ? "Created" : changed ? "Updated" : "Nothing to change on"} character "${current.profile.getName()}".${entranceNote}`
+        `${created ? "Created" : changed ? "Updated" : "Nothing to change on"} character "${current.profile.getName()}".${entranceNote}${groupNote}`
             + `${changed ? " One step of undo in Studio." : ""}${warnings.length > 0 ? ` ${warnings.length} warning(s).` : ""}`,
     );
 };
@@ -652,7 +664,10 @@ export const variableUpsert: AgentToolHandler = async (args, { ctx, request, fol
         return answerJson({ created: true, variable: describeVariable(stored) }, `Created ${scope} variable "${stored.name}". One step of undo in Studio.`);
     }
 
-    const target = entry;
+    // A copy, not the registry's own record: the registry mutates that record in place, so after the
+    // update below it already holds the new type and name, and every "did the type change" question
+    // asked of it answers no. That is how a retype went by without the warning this tool promises.
+    const target = { ...entry };
     if (scopeArg && target.scope !== scopeArg) {
         throw refuse("unavailable", `"${target.name}" is a ${target.scope} variable.`, "A variable cannot move between saved and persistent; create a new one and delete this one (variable_delete).");
     }

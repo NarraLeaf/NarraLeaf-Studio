@@ -222,6 +222,11 @@ export type DefaultChildElementResult = {
  * - Docker bar items when selected
  * - Docker bar creation button appearance
  */
+export type UIWidgetDeclaration = Pick<UIWidgetModule,
+    | "type" | "extends" | "logicApi" | "acceptsChildren" | "partSlots" | "textSites"
+    | "displayName" | "icon" | "createDefaultElement" | "createDefaultChildElements" | "listEditorStates"
+>;
+
 export interface UIWidgetModule {
     /** Unique type identifier (e.g. "nl.container") */
     readonly type: string;

@@ -48,6 +48,7 @@ async function loadBadgePlugin(
     const contributes = {
         blueprintNodes: [],
         widgets: [type],
+        inlineTextEffects: [],
         tests: [],
         reservedSaveIds: [],
         runtimeData: [],

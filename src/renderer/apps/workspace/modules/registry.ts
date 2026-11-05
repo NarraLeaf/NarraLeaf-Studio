@@ -7,21 +7,14 @@
 import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
-import { welcomeModule } from "./welcome";
-import { helpModule } from "./help";
-import { aboutModule } from "./about";
 import { globalActions, globalActionGroups } from "./actions";
-import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
-import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
-import { videoPreviewModule } from "./assets/editors/videoPreviewModule";
-import { fontPreviewModule } from "./assets/editors/fontPreviewModule";
-import { jsonPreviewModule } from "./assets/editors/jsonPreviewModule";
 import { charactersModule } from "./characters";
-import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
+import { PanelModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
+import { stageTimelinePanelModule } from "./stage-timeline";
 import { storyVariablesPanelModule } from "./story-variables";
 import { storySnapshotPanelModule } from "./story-snapshots";
 import { dictionaryPanelModule } from "./dictionary";
@@ -31,8 +24,6 @@ import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
 import { pluginsPanelModule } from "./plugins";
-import { testReportModule } from "./testing";
-import { buildReportModule } from "./build-report";
 import { problemsPanelModule } from "./lint";
 import { agentLogPanelModule } from "./agent";
 
@@ -51,6 +42,7 @@ export const builtInPanels: PanelModule[] = [
     localizationPanelModule,
     voicePanelModule,
     storyMotionPanelModule,
+    stageTimelinePanelModule,
     assetsBottomModule,
     propertiesModule,
     storyVariablesPanelModule,
@@ -61,23 +53,6 @@ export const builtInPanels: PanelModule[] = [
     consoleModule,
     problemsPanelModule,
     agentLogPanelModule,
-];
-
-/**
- * Built-in editor modules
- * All editors that should be registered on workspace startup
- */
-export const builtInEditors: EditorModule[] = [
-    welcomeModule,
-    helpModule,
-    aboutModule,
-    imagePreviewModule,
-    audioPreviewModule,
-    videoPreviewModule,
-    fontPreviewModule,
-    jsonPreviewModule,
-    testReportModule,
-    buildReportModule,
 ];
 
 /**
@@ -107,6 +82,7 @@ export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
+export { stageTimelinePanelModule } from "./stage-timeline";
 export { storyVariablesPanelModule } from "./story-variables";
 export { storySnapshotPanelModule } from "./story-snapshots";
 export { dictionaryPanelModule, openDictionaryPanel, DICTIONARY_PANEL_ID } from "./dictionary";

@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
@@ -10,6 +12,7 @@ import { FIXED_INPUT_CATALOG } from "../workspace/services/ui/fixedInputCatalog"
 import { parseHelpBody } from "./helpBody";
 import {
     ALL_HELP_TOPICS,
+    HELP_CLIP_LOCALES,
     HELP_SECTIONS,
     HELP_TOPIC_IDS,
     HELP_TOPICS,
@@ -39,7 +42,19 @@ const catalogIds = new Set([
 ]);
 const registeredIds = new Set<string>(HELP_TOPICS.map(topic => topic.id));
 
+const CLIP_DIR = join(__dirname, "../../public/help");
+
 describe("help topic registry", () => {
+    it("ships a recording in every recorded language for exactly the topics that declare one", () => {
+        const flagged = HELP_TOPICS.filter(topic => topic.clip).map(topic => topic.id).sort();
+        for (const locale of HELP_CLIP_LOCALES) {
+            const files = readdirSync(join(CLIP_DIR, locale))
+                .filter(name => name.endsWith(".webp"))
+                .map(name => name.slice(0, -".webp".length));
+            expect(files.sort(), `recordings in public/help/${locale}`).toEqual(flagged);
+        }
+    });
+
     it("registers exactly the declared ids, once each", () => {
         expect(HELP_TOPICS.map(topic => topic.id).sort()).toEqual([...HELP_TOPIC_IDS].sort());
         expect(registeredIds.size).toBe(HELP_TOPICS.length);
@@ -157,6 +172,26 @@ describe("help topic content", () => {
                 .toEqual([]);
         });
     }
+});
+
+describe("help that states what the product does", () => {
+    // The paste wizard keeps only the answers an author changed (`StoryPasteWizardModal`); the help
+    // said every name's answer was kept.
+    it("says the paste wizard remembers the answers that were changed", () => {
+        const phrase = { en: "changed", zh: "改选过", ja: "変更した" } as const;
+        for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys], ["ja", jaKeys]] as const) {
+            expect(keys.get(helpBodyKey("storyPaste")), locale).toContain(phrase[locale]);
+        }
+    });
+
+    // The character editor has the avatar switch on every axis, all on; the help described one axis.
+    it("names the avatar switch each axis has", () => {
+        for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys], ["ja", jaKeys]] as const) {
+            const toggle = keys.get("characters.editor.avatarAxis");
+            expect(toggle, locale).toBeTruthy();
+            expect(keys.get(helpBodyKey("appearances")), locale).toContain(toggle!);
+        }
+    });
 });
 
 describe("help body parser", () => {

@@ -192,6 +192,33 @@ describe("getCommandLineReason", () => {
     });
 
     /**
+     * A look is a pose on a drawn character and a tag on a layered one, and the refusal called every
+     * one of them an expression: 「美绪 没有名为「蓝」的表情」 for an outfit tag.
+     */
+    it("calls a character's look an appearance, whatever kind it is", () => {
+        const reason = getCommandLineReason("/show Alice frown", CONTEXT);
+        expect(reason?.key).toBe("storyExpr.reason.unknownForm" as TranslationKey);
+        const expected = {
+            en: "Alice has no appearance named \"frown\".",
+            zh: "Alice 没有名为「frown」的外观",
+            ja: "Alice に \"frown\" という見た目はない",
+        } as const;
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const { t } = createTranslator(locale);
+            expect(t(reason!.key, storyCommandReasonParams(reason!, t)), locale).toBe(expected[locale]);
+            expect(t("story.paramHint.form" as TranslationKey), locale).toBe({ en: "Appearance", zh: "外观", ja: "見た目" }[locale]);
+        }
+        // The slot's old name still reads as its key.
+        i18nStore.setLocale("zh");
+        try {
+            expect(getCommandLineReason("/显示 Alice 表情=smile", CONTEXT)).toBeNull();
+            expect(getCommandLineReason("/显示 Alice 外观=smile", CONTEXT)).toBeNull();
+        } finally {
+            i18nStore.setLocale("en");
+        }
+    });
+
+    /**
      * The command word's rule, applied to the name after it: a word at the end of the line with
      * nothing after it is still being typed, and a space is the decision. `/show N` used to say
      * "Nothing on stage is named N" while the candidate list was already offering Narra.
@@ -211,6 +238,57 @@ describe("getCommandLineReason", () => {
         expect(typing("/bg twin")).toBe("storyExpr.reason.ambiguousName");
         // A committed line (a draft row's reason) is reported whatever its end looks like.
         expect(getCommandLineReason("/show Zoe", CONTEXT)?.key).toBe("storyExpr.reason.unknownTarget");
+    });
+
+    it("waits for a value or a key being typed at the end of the line", () => {
+        // 「「淡」不适用于此位置」 sat under the slot while 淡 was on its way to 淡入 and the menu
+        // was already lighting it; `t` the same, on its way to `t=`.
+        const typing = (source: string) => getCommandLineReason(source, CONTEXT, { typing: true })?.key ?? null;
+        expect(typing("/bg forest t=fa")).toBeNull();
+        expect(typing("/char Alice smile t")).toBeNull();
+        // A space after it is the decision, and a committed line is reported.
+        expect(typing("/bg forest t=fa ")).toBe("storyExpr.reason.badValue");
+        expect(typing("/char Alice smile t ")).toBe("storyExpr.reason.extraPositional");
+        expect(getCommandLineReason("/bg forest t=fa", CONTEXT)?.key).toBe("storyExpr.reason.badValue");
+        // Whatever else the line says still shows while the last word is typed.
+        expect(typing("/bg nowhere t=fa")).toBe("storyExpr.reason.unknownAssetOrSet");
+        i18nStore.setLocale("zh");
+        try {
+            expect(typing("/外观 Alice smile 转场=淡")).toBeNull();
+        } finally {
+            i18nStore.setLocale("en");
+        }
+    });
+
+    /**
+     * `/char` on a Live2D model with no expressions offered an empty list and, on Enter, said only
+     * that the slot was empty. Its model was asked and listed none, so the line says that.
+     */
+    it("says a model has no expressions where an appearance is still to be named", () => {
+        const withModels: StoryCommandContext = {
+            ...CONTEXT,
+            characters: [...CONTEXT.characters, { id: "c2", name: "Hiyori" }, { id: "c3", name: "Mao" }, { id: "c4", name: "Rice" }],
+            puppetCharacterIds: ["c2", "c3", "c4"],
+            puppetByCharacterId: {
+                c2: { motions: ["Idle_0"], expressions: [], skins: [], params: [] },
+                c3: { motions: [], expressions: ["smile"], skins: [], params: [] },
+                // c4's model has not answered.
+            },
+        };
+        const typing = (source: string) => getCommandLineReason(source, withModels, { typing: true });
+        const reason = getCommandLineReason("/char Hiyori", withModels);
+        expect(reason?.key).toBe("storyExpr.reason.puppetNoExpressions");
+        expect(reason?.params).toEqual({ value: "Hiyori" });
+        // In the slot, once the name is finished.
+        expect(typing("/char Hiyori ")?.key).toBe("storyExpr.reason.puppetNoExpressions");
+        expect(typing("/char Hiyori")).toBeNull();
+        // A name typed into it is the author's to vouch for, and is checked once committed.
+        expect(getCommandLineReason("/char Hiyori smile", withModels)).toBeNull();
+        // A model that has expressions, or one that has not answered, says nothing of the kind.
+        expect(getCommandLineReason("/char Mao", withModels)).toBeNull();
+        expect(getCommandLineReason("/char Rice", withModels)).toBeNull();
+        // `/motion` names no core slot: a bare one means "back to rest".
+        expect(getCommandLineReason("/motion Hiyori", withModels)).toBeNull();
     });
 });
 

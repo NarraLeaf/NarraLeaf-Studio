@@ -451,6 +451,8 @@ export const build = {
         compressionImages: "Images compressed",
         compressionMedia: "Audio and video compressed",
         compressionMetadata: "Metadata removed",
+        compressionKeptAtSize: "Kept at full size",
+        compressionKeptAtSizeHint: "Drawn at their own pixels",
         includedTitle: "Assets carried",
         includedEmpty: "This run carried no assets.",
         excludedTitle: "Assets left out",

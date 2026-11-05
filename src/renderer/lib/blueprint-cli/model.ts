@@ -56,6 +56,15 @@ export function applyBlueprintsToDocument(
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>,
 ): ApplyResult {
     const result: ApplyResult = { added: [], replaced: [] };
+    // One owner, one blueprint. The compiler writes a blueprint under the id its owner already holds
+    // (`settleBlueprintId`); a record pointing a slot away from another blueprint would leave that
+    // one unreachable and the document invalid, so it is refused before anything is written.
+    for (const [ownerKey, record] of Object.entries(ownerRecords)) {
+        const held = document.ownerRecords[ownerKey]?.blueprintId;
+        if (held && held !== record.blueprintId && document.blueprints[held]) {
+            throw new Error(`${ownerKey} already holds blueprint "${held}"; writing "${record.blueprintId}" beside it would leave "${held}" unreachable.`);
+        }
+    }
     for (const blueprint of blueprints) {
         if (document.blueprints[blueprint.id]) {
             result.replaced.push(blueprint.name);

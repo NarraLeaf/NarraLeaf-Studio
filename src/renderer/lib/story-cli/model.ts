@@ -195,7 +195,7 @@ export function buildStoryProjectContext(docs: StoryProjectDocuments = {}): Proj
         blueprintDocument: docs.blueprintDocument ?? null,
         audioTracks: (docs.audioTracks ?? []).map(track => ({ id: track.id, name: track.name })),
         appTags: (docs.appTags ?? []).map(tag => ({ id: tag.id, name: tag.name })),
-        surfaces: (ui?.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
+        surfaces: (ui?.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name, kind: surface.kind })),
         inputActions: Object.values(ui?.actions ?? {}).map(action => ({ id: action.id, name: action.name })),
         assetSets: (docs.assetSets ?? []).map(set => ({ ...set })),
     };

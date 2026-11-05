@@ -37,6 +37,26 @@ describe("authorizeActorFileSystemRequest", () => {
         });
     });
 
+    it("refuses a plugin path that steps up a directory, before any grant is consulted", async () => {
+        // `granted/link/../x` resolves to `granted/x` for every check, while the system walks it
+        // through the link and up from wherever the link points.
+        const window = createWindow(WindowAppType.Launcher, {
+            protectedPath: false,
+            windowAllowed: true,
+            pluginAllowed: true,
+        });
+
+        for (const escaping of ["/Users/test/granted/link/../x", "C:\\granted\\link\\..\\x"]) {
+            await expect(authorizeActorFileSystemRequest(
+                window,
+                { kind: "plugin", pluginId: "studio.test.desktop-file" },
+                escaping,
+                "read",
+            )).resolves.toMatchObject({ allowed: false });
+        }
+        expect(window.app.pluginPermissionManager.isPluginFileSystemAllowed).not.toHaveBeenCalled();
+    });
+
     it("denies protected storage paths before checking plugin grants", async () => {
         const window = createWindow(WindowAppType.Launcher, {
             protectedPath: true,

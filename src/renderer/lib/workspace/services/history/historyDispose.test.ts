@@ -60,6 +60,14 @@ describe("history entry disposal", () => {
         expect(disposed).toEqual(["a"]);
     });
 
+    it("disposes every entry when the workspace that could undo them closes", () => {
+        push("a");
+        push("b");
+        history.undo("project");
+        history.dispose({ project: {} as never, services: {} as never, commandLineRun: false });
+        expect(disposed.sort()).toEqual(["a", "b"]);
+    });
+
     it("disposes an entry that was never recorded because a restore was in progress", () => {
         const state = { value: 0 };
         history.registerScope<number>({
@@ -77,6 +85,21 @@ describe("history entry disposal", () => {
         state.value = 1;
         history.undo("doc");
         expect(disposed).toEqual(["during-restore"]);
+    });
+
+    it("disposes the entries of a stack dropped because nothing has used it for a while", () => {
+        history.pushCommand("scene-0", {
+            label: LABEL,
+            undo: () => {},
+            redo: () => {},
+            dispose: () => void disposed.push("scene-0"),
+        });
+        // Nine more closed editors push the oldest unregistered stack past the retention cap.
+        for (let i = 1; i <= 9; i++) {
+            history.registerScope({ id: `scene-${i}`, label: LABEL, capture: () => i, apply: () => {} })();
+        }
+        expect(history.describe().map(entry => entry.scopeId)).not.toContain("scene-0");
+        expect(disposed).toEqual(["scene-0"]);
     });
 
     it("does not dispose an entry that is merely undone", () => {

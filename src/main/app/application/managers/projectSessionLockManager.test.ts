@@ -14,6 +14,7 @@ import {
     type ProjectSessionLockRecord,
 } from "../projectSessionLock";
 import { ProjectSessionLockManager } from "./projectSessionLockManager";
+import { emptyUndoTrash } from "../utils/undoTrash";
 
 const roots: string[] = [];
 
@@ -66,6 +67,7 @@ interface HarnessOptions {
     /** Stands in for the wait before a silent live claim is taken; resolves at once by default. */
     sleep?: (ms: number) => Promise<void>;
     onTakenOver?: (projectPath: string, holder: ProjectSessionHolder) => void;
+    onRelease?: (projectPath: string) => Promise<void>;
 }
 
 function manager(options: HarnessOptions = {}) {
@@ -81,6 +83,7 @@ function manager(options: HarnessOptions = {}) {
         takeoverSettleMs: 0,
         sleep: options.sleep ?? (async () => undefined),
         onTakenOver: options.onTakenOver,
+        onRelease: options.onRelease,
     });
 }
 
@@ -267,6 +270,35 @@ describe("ProjectSessionLockManager", () => {
 
         // Deleting it here would have handed the project to a third Studio while a second edits it.
         expect((await readLock(project))?.pid).toBe(9001);
+        locks.dispose();
+    });
+
+    it("empties the project's undo trash when it gives the project up", async () => {
+        const project = await scratchProject();
+        const trash = path.join(project, ".nlstudio", "trash");
+        await fs.mkdir(trash, { recursive: true });
+        await fs.writeFile(path.join(trash, "asset-1-1.png"), "old pixels");
+        const locks = manager({ onRelease: projectPath => emptyUndoTrash(projectPath, { warn: vi.fn() }) });
+        await locks.acquire(project);
+
+        await locks.release(project);
+
+        await expect(fs.stat(trash)).rejects.toThrow();
+        expect(await readLock(project)).toBeNull();
+    });
+
+    it("leaves the trash of a project another Studio has taken over alone", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const released = vi.fn(async () => undefined);
+        const locks = manager({ now: time.now, onRelease: released });
+        await locks.acquire(project);
+
+        await writeLock(project, otherSession(time.now()));
+        await locks.release(project);
+
+        // The project is the other Studio's by now, and so are the undo steps that trash serves.
+        expect(released).not.toHaveBeenCalled();
         locks.dispose();
     });
 

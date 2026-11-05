@@ -154,33 +154,6 @@ export function applyStoryScriptScenes(
     return { applied };
 }
 
-/**
- * How much of an import the author would be able to undo afterwards, and how much of it they would not.
- * The count travels with the verdict because "some of this cannot be undone" is only useful with a
- * number attached.
- */
-export type StoryScriptUndoState = {
-    coverage: "all" | "partial" | "none";
-    /** Scenes with no open editor to take the write back. */
-    unundoable: number;
-};
-
-/**
- * Undo is per open scene editor, so an import that spans scenes can be undoable in part. Answering
- * that with `every` (as this did) tells an author with two of three scenes open that none of it can be
- * taken back, which is both false and the kind of false that stops them importing at all.
- */
-export function storyScriptUndoCoverage(
-    scenes: StoryScriptScenePlan[],
-    canUndo: (sceneId: string) => boolean,
-): StoryScriptUndoState {
-    const unundoable = scenes.filter(scene => !canUndo(scene.sceneId)).length;
-    if (unundoable === 0) {
-        return { coverage: "all", unundoable };
-    }
-    return { coverage: unundoable === scenes.length ? "none" : "partial", unundoable };
-}
-
 /** Whether anything at all is worth showing the author beyond the counts. */
 export function planHasWarnings(plan: StoryScriptImportPlan): boolean {
     return !plan.storyMatches

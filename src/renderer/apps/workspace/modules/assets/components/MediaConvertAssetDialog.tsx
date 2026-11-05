@@ -12,6 +12,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { MediaSupportService } from "@/lib/workspace/services/media/MediaSupportService";
 import type { MediaAssetSupportRecord } from "@/lib/workspace/services/media/mediaAssetSupport";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { describeReplaceNotKept } from "@/lib/workspace/assets/importFailure";
 import { mediaConvertTargetExtension } from "@shared/types/mediaConvert";
 import {
     MEDIA_CONVERT_POLL_MS,
@@ -24,18 +25,20 @@ import {
  *
  * The import dialog's counterpart, and deliberately **not** a second copy of it: the transcoding
  * loop is the same `runMediaConversion`, the same `MediaConvertManager` behind it, and the swap at
- * the end is `AssetsService.replaceAssetContent`, which every other "point this asset at different
- * bytes" path already goes through. What is different is only what happens either side of the
- * conversion. An import produces a new asset from a file the author is holding; this replaces the
+ * the end is `AssetsService.replaceAssetContentUndoably`, the path Replace File… takes too. What is
+ * different is only what happens either side of the conversion. An import produces a new asset from
+ * a file the author is holding; this replaces the
  * bytes of one that already exists, keeping its id - so every story row, widget and blueprint pin
  * that referenced it keeps working, with no relinking to do and none possible to get wrong.
  *
- * `replaceAssetContent` also renames the record: an `intro.avi` that becomes WebM ends up called
+ * The replace also renames the record: an `intro.avi` that becomes WebM ends up called
  * `intro.webm`, because the extension is what the packer writes into the shipped filename and the
  * iOS shell picks its MIME type from.
  *
- * There is no asset history, so this cannot be undone. The single primary button and the sentence
- * above it are what say so; a warning paragraph would say it worse.
+ * The conversion is one step of undo on the project's stack: Ctrl+Z writes the original file back,
+ * under its own name and extension, and the mark comes back with it on the next scan. The original's
+ * bytes are copied aside before the converted file is written over them; when that copy cannot be
+ * made, nothing is written and the dialog says why.
  */
 
 type Phase = "idle" | "converting" | "replacing" | "failed" | "stopped" | "unavailable";
@@ -62,6 +65,8 @@ export function MediaConvertAssetDialog({
 
     const [phase, setPhase] = useState<Phase>("idle");
     const [fraction, setFraction] = useState<number | null>(null);
+    /** Why the converted file was not put in place, when the library said; replaces the bare "failed". */
+    const [failure, setFailure] = useState<string | null>(null);
     const runRef = useRef<{ stopped: boolean; jobId: string | null }>({ stopped: false, jobId: null });
 
     const bridge = useMemo<MediaConvertBridge>(() => ({
@@ -84,6 +89,7 @@ export function MediaConvertAssetDialog({
         }
         setPhase("converting");
         setFraction(null);
+        setFailure(null);
         runRef.current = { stopped: false, jobId: null };
 
         // One scratch directory per run, under `.nlstudio/`, which is the only tree this window may
@@ -137,9 +143,14 @@ export function MediaConvertAssetDialog({
 
         setPhase("replacing");
         const assets = context.services.get<AssetsService>(Services.Assets);
-        const replaced = await assets.replaceAssetContent(asset, outcome.outputPath);
+        const replaced = await assets.replaceAssetContentUndoably(asset, outcome.outputPath, {
+            key: "assets.history.convert",
+            params: { name: asset.name },
+        });
         await cleanUp();
         if (!replaced.success) {
+            console.warn("[assets] could not put the converted file in place", replaced.error);
+            setFailure(replaced.refusal ? describeReplaceNotKept(asset.name, replaced.refusal, t) : null);
             setPhase("failed");
             return;
         }
@@ -152,7 +163,7 @@ export function MediaConvertAssetDialog({
             // cosmetic problem; the bytes are already correct.
         }
         onConverted();
-    }, [asset, bridge, context, onConverted, phase, record]);
+    }, [asset, bridge, context, onConverted, phase, record, t]);
 
     const stop = useCallback(() => {
         runRef.current.stopped = true;
@@ -221,7 +232,9 @@ export function MediaConvertAssetDialog({
                                     ? (fraction === null ? "" : `${Math.round(fraction * 100)}%`)
                                     : phase === "replacing"
                                         ? t("assets.support.replacing")
-                                        : t(STATE_LABEL[phase])}
+                                        : phase === "failed" && failure
+                                            ? failure
+                                            : t(STATE_LABEL[phase])}
                             </span>
                         </div>
                         {phase === "converting" && fraction === null ? (

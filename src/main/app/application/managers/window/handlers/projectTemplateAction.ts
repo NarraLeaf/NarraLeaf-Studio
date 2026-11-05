@@ -90,6 +90,7 @@ export class ProjectTemplateScaffoldHandler extends IPCHandler<IPCEventType.proj
             data.templateId,
             await requireWindowProjectOrWriteGrant(window, data.projectPath),
             data.locale,
+            Array.isArray(data.leaveOut) ? data.leaveOut.filter((id): id is string => typeof id === "string") : [],
         ));
         if (scaffolded.success && scaffolded.data) {
             await switchOnBuiltInDependencies(window, scaffolded.data.dependencies);

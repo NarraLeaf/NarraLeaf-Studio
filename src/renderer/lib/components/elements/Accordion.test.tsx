@@ -102,3 +102,43 @@ describe("AccordionItem height", () => {
         expect(heightBoxOf("c").style.height).toBe(before.c);
     });
 });
+
+describe("AccordionItem focus tint", () => {
+    /** The header row that carries the tint: the clicked button's parent. */
+    const headerOf = (id: string) => screen.getByRole("button", { name: id }).parentElement!;
+    const tinted = (id: string) => headerOf(id).className.split(/\s+/).includes("bg-primary/20");
+
+    it("leaves no tint on a header after a click", () => {
+        render(<Sections initialOpen={["a", "b", "c"]} />);
+        const button = screen.getByRole("button", { name: "a" });
+        button.focus();
+        fireEvent.click(button);
+        expect(tinted("a")).toBe(false);
+    });
+
+    it("tints the header the arrow keys move to, and only that one", () => {
+        render(<Sections initialOpen={[]} />);
+        const button = screen.getByRole("button", { name: "a" });
+        button.focus();
+        fireEvent.click(button);
+        fireEvent.keyDown(button, { key: "ArrowDown" });
+        expect(tinted("b")).toBe(true);
+        expect(tinted("a")).toBe(false);
+    });
+
+    it("drops the tint when the focus leaves the accordion", () => {
+        render(
+            <>
+                <Sections initialOpen={[]} />
+                <button type="button">outside</button>
+            </>,
+        );
+        const button = screen.getByRole("button", { name: "a" });
+        button.focus();
+        fireEvent.keyDown(button, { key: "ArrowDown" });
+        expect(tinted("a")).toBe(true);
+        const outside = screen.getByRole("button", { name: "outside" });
+        fireEvent.blur(button, { relatedTarget: outside });
+        expect(tinted("a")).toBe(false);
+    });
+});

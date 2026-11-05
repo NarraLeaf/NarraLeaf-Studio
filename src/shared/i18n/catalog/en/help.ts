@@ -127,6 +127,10 @@ export const help = {
                 + "- Interface text is searched in the project's source language. Selecting it opens the page or "
                 + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
+                + "- Undo in the Search panel takes back its last replace in every scene that replace changed. A scene "
+                + "edited after the replace keeps it, and a notice names the scene. Undo in a scene takes back the "
+                + "replace in that scene alone.\n"
+                + "- In the search and replace boxes, Undo applies to that box's own text.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
         },
@@ -175,6 +179,8 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
+                + "- F2, or Edit as text in a row's menu, opens a command row as its command line with the caret at the end. "
+                + "Enter commits the line as a newly typed one; Escape leaves the row unchanged.\n"
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
                 + "- On an empty row, a ・, ／ or ＃ confirmed from an input method becomes / or #. Escape straight after restores the character.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
@@ -270,8 +276,8 @@ export const help = {
                 + "- Each name found maps to one of four answers: an existing character, New character, Name only, "
                 + "or Not a speaker. A Name only row carries the name and no character. A Not a speaker line "
                 + "becomes narration exactly as pasted.\n"
-                + "- The answer chosen for a name is remembered by the project and used again the next time that "
-                + "name is pasted.\n"
+                + "- An answer changed for a name is remembered by the project and used again the next time that "
+                + "name is pasted. A name left as recognised is recognised again.\n"
                 + "- Confirming adds the rows below the current line as one undo step.",
         },
         sceneSnapshot: {
@@ -332,6 +338,19 @@ export const help = {
                 + "- In the bottom panel, double-click a motion to open its editor. Its name, repeats and "
                 + "preview pictures are set in the inspector.\n"
                 + "- The preview is drawn at the size the game draws, so its timing matches playback.",
+        },
+        stageTimeline: {
+            title: "Stage timeline",
+            body:
+                "The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per object, one column per row. The ruler numbers only the rows of dialogue and narration.\n"
+                + "\n"
+                + "- Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.\n"
+                + "- A bar means the object is on stage, and a new expression or picture starts a new block. A change that keeps the name, such as a move or a zoom, shows as a diamond on the object it changes.\n"
+                + "- Clicking a column moves the editor and the preview to that row. Columns and lanes stretch to fill the panel when it is made wider or taller.\n"
+                + "- Each line is as wide as its words, and a row that only acts on the stage keeps a narrow width. The slider at the top zooms the timeline, and Show all row numbers numbers every row on the ruler.\n"
+                + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
+                + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
+                + "- Hold Ctrl or Command and scroll to zoom the timeline.",
         },
         assets: {
             title: "Assets",
@@ -422,7 +441,7 @@ export const help = {
                 "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
-                + "- The portrait beside dialogue is generated from an appearance.\n"
+                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.\n"
                 + "- A character can speak without being on stage.",
         },
         appearances: {
@@ -434,11 +453,13 @@ export const help = {
                 + "- Preset sprites: one finished image per pose.\n"
                 + "- Layered sprite: layers switched by tags on axes, so a costume and an expression change "
                 + "independently.\n"
-                + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
+                + "- Drawn by a runtime: a model drawn by Live2D Cubism, Spine or a custom runtime installed in this project. Story rows set its state with Motion, Appearance, Skin and Parameter; a motion loops until another row changes it and cannot be set to play once.\n"
                 + "\n"
-                + "The dialog avatar is generated from the drawn result, and can follow one axis so it changes "
-                + "with the character. Where no differential gives one, dialogue shows the Default dialog avatar "
-                + "from the character's properties.",
+                + "For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; "
+                + "an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar "
+                + "from the character's properties.\n"
+                + "\n"
+                + "A character drawn by a runtime has no generated avatar. Dialogue shows its Default dialog avatar, or none when it is not set.",
         },
         puppetRuntimes: {
             title: "Model runtimes",
@@ -499,16 +520,18 @@ export const help = {
         voice: {
             title: "Voice-over",
             body:
-                "A voice language holds one clip per spoken line. The panel lists the voice languages with how "
+                "A voice language holds one clip per line of narration and dialogue. The panel lists the voice languages with how "
                 + "much of the story each covers, and opening one shows its voice table.\n"
                 + "\n"
                 + "- Studio imports existing clips. It does not record.\n"
                 + "- Import audio takes several files at once, and links each file whose name follows the "
                 + "Recording filename pattern to its line.\n"
                 + "- Export recording script writes the lines to record as a spreadsheet file for the person "
-                + "recording them.\n"
+                + "recording them. It lists each line's file name, speaker, scene, text, status and note; the last "
+                + "column, Line ID, is what Import recording script uses to bring notes and statuses back to "
+                + "their lines, and is not to be edited.\n"
                 + "- A line whose text changed after its clip was assigned is marked Outdated, and Export pickup "
-                + "script writes only those lines.\n"
+                + "script writes only those lines. When the pickups are imported, their files can replace the old takes' files.\n"
                 + "- Choice options become lines to record only while Voice choice options is on.",
         },
         localization: {
@@ -674,6 +697,28 @@ export const help = {
                 + "keyboard or a gamepad. A widget's Focus and Blur heads run when the focus arrives on it and when "
                 + "it leaves.",
         },
+        pageMusic: {
+            title: "Page music",
+            body:
+                "The Music section of a page's properties decides what music plays while the page is on screen.\n"
+                + "\n"
+                + "- With no music chosen, the row reads Keep current music, and the page changes nothing. "
+                + "Whatever was playing when the page opened goes on playing.\n"
+                + "- With music chosen, the page plays it. If the same music is already playing on the same track, it "
+                + "carries on without a break. Otherwise the music playing fades out over its own fade and the new "
+                + "music fades in over the page's.\n"
+                + "- No music, beside Choose page music, plays nothing while the page is on screen. Clear goes back "
+                + "to keeping the current music.\n"
+                + "\n"
+                + "Going back to a page underneath brings that page's music back. A page opened with Replace Page "
+                + "that keeps the current music goes on playing the music of the page it replaced.\n"
+                + "\n"
+                + "The Play Page Music and Stop Page Music blueprint nodes change a page's music while it is open, "
+                + "for example to the track pressed in a music room.\n"
+                + "\n"
+                + "While a game is running, the story decides the music. The page's music fades out when a game "
+                + "starts or a save is loaded, and pages opened during the game play no page music of their own.",
+        },
         focusNavigationSettings: {
             title: "Navigation settings",
             body:
@@ -801,8 +846,8 @@ export const help = {
                 + "- Text and button labels choose between Direct, Translation key and Blueprint Value. The other "
                 + "properties have a Blueprint Value button.\n"
                 + "- Open Blueprint Value edits the graph, and a Return Value node hands back the result.\n"
-                + "- A Blueprint Value reads the variables of its page and of App logic, and saved variables, "
-                + "directly. Other variables are read through Call Fn.\n"
+                + "- A Blueprint Value reads the variables of its page and of App logic, and saved and persistent "
+                + "variables, directly. Other variables are read through Call Fn.\n"
                 + "- When a variable the Blueprint Value read is written, the widget shows the new value.\n"
                 + "- Translation Key Text gives a translation key's text in the player's language, and Format fills "
                 + "values into it. When the player changes language, the widget shows the new language.\n"

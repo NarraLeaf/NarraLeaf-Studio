@@ -95,6 +95,7 @@ const SHOUTED: NarralangDialect = {
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
             { mark: "emphasis", tag: "MARK", arg: "raw" },
+            { mark: "effect", tag: "FX", arg: "effect" },
         ],
     },
     verbs: {

@@ -161,8 +161,8 @@ but get ids of their own, so find those pages by name (`ui_surfaces`).
   the menu column. Keep the menu to Start, Continue, Load, Config, Extra, Quit. If the game has no
   gallery content, hide the Extra button (`ui_patch` `set` with `{"layout.visible": false}`) rather
   than deleting it, so its blueprint is not left without an element; close the gap in the column.
-  Screenshot at full size. (`ui_patch` refuses a key the widget does not know and an edit that
-  changes nothing, so "Applied" means it changed.)
+  Screenshot at full size. (`ui_patch` refuses a key the widget does not know and skips an edit
+  that changes nothing, listing it under `skipped`, so "Applied N" counts real changes.)
 - **Dialogue** (Game UI, slot `dialog`): the band at the bottom, the nametag plate and rule, the
   sentence box, the avatar. Match the band's height to three lines of text plus the name; keep the
   quick menu clear of it. The nametag rule hides itself when nobody speaks (narration, a choice on
@@ -267,6 +267,115 @@ event "Step aside while there is no line"
 A box of your own whose panel is a picture inside the container can hide that picture with Visible
 instead, the way the first layer shows the mark. Do not put this on the Choice page: a blueprint
 reaches only the elements of its own page (`blueprint-format`).
+
+## Pitfalls met in real builds
+
+- **A button drawn from the game's own art** is an `nl.button` with `fillType: "image"`, the label
+  emptied (`localizationKey: null`, `label: ""`), and an `appearance` whose `imageFill` group has one
+  row per state: no condition (normal), `hovered`, `focused` (same picture as hover, so pads and
+  keyboards see it) and `active` (pressed). A toggle that stays lit (fullscreen on/off, a page tab) gets
+  a second variant `selected` with the lit picture - the skeleton's toggles switch variants, so keep
+  the variant ids `default` and `selected`.
+- **Outlined text** (light text over busy art) is an `effectTextShadow` row with offset 0, blur 0 and
+  `spread` as the outline width - set it through the text's `appearance`, because the row, not the flat
+  prop, is what draws.
+- **Name colours.** The skeleton colours the nametag with the speaker's colour on every line through a
+  blueprint layer on the nametag; a fixed colour you set on the text is overwritten. If every name
+  should look the same, remove that layer (`blueprint_show` the nametag's blueprints, `blueprint_remove`
+  the colouring one) or give every character the same `nameColor`.
+- **Game menus over the stage.** Save, Load, Config and Log open over the running game; a page whose
+  `backgroundColor` setting is opaque hides it. Make it `transparent` (`ui_patch` `setting` op) when
+  the design shows the game behind a frame.
+- **A page that looks different with saved state** (a title that changes once the game is cleared, a
+  button locked until then) keeps every look on the page and switches with a blueprint that reads the
+  persistent variable (`Get Persistent` -> `If` -> `Set Element Property visible / x`). Start it from
+  the page's own blueprint with `blueprint.event.head.surfaceInit`, or from the root container's
+  `Init`; the page's own blueprint refuses a plain `Init`.
+- **The choice list does not recentre by count.** It sits where you put it; with menus of different
+  lengths, place it for the most common count and check the longest.
+- **A list has one gap.** `itemGap` spaces items both ways in a wrapping grid; for a larger gap between
+  rows than between columns, make the row template taller than its picture.
+- **One template, every row.** A list draws every row from one template, and its events do not hand
+  you a row to restyle, so rows cannot each carry a different picture (a confirm dialog's "Yes" and
+  "No" drawn as two different images). Give such buttons words on a shared plate, or place fixed
+  buttons instead of the list.
+- **A transparent box still takes clicks.** An `nl.container` with no fill and nothing drawn in it
+  still catches every press inside its box, so whatever lies under it - lower in the tree - is dead to
+  the player. The usual way in: placing a page by copying the original art's screen coordinates and
+  wrapping each panel or row in a 1920x1080 container so the children's numbers stay absolute. It looks
+  right in the editor and in screenshots; it only shows when a press is tried. Size every container to
+  its children (the bounding box of the visible ones, then move the children by the same offset - the
+  page looks identical), or put absolutely placed elements straight under the page's root container.
+  A hidden container takes no clicks, so the trap often springs later, when a blueprint starts showing
+  a panel that used to be hidden (two tabs' panels on screen at once).
+- **Ids you choose work in blueprints.** `add` with an `id` such as `title-locked-extra` is a stable
+  target for `Element` nodes. When you replace an element a blueprint points at, point the blueprint at
+  the new one in the same pass: lint reports the dangling reference as `blueprint/element-ref-missing`.
+
+## A phone chat (a page the story opens)
+
+A text conversation in the middle of a scene - the phone buzzes, the player reads, picks a reply,
+and the story goes on knowing what they said. Four pieces; check each node with `blueprint_node`.
+
+**1. The page** (`ui_apply`, `kind=appSurface`, `backgroundColor = transparent` so the scene shows
+round the phone, a dimming `nl.container` over the whole screen, the phone body on top):
+
+- A struct for one message: `struct chatMsg` with `field id: string`, `field text: string`,
+  `field them: boolean`, `field me: boolean`. A `struct` block stands at the top level of the file,
+  beside the `surface` (not inside it); `param` lines go inside the `surface`, before its root.
+- A page param holding the opening messages as its default:
+  `param messages messages type=list struct=chatMsg = [{"id":"o1","text":"在吗？","them":true,"me":false}]`.
+  `/page` passes no parameters, so the default is what the page opens with; a different opening per
+  scene is a different page, or an `init` blueprint that reads a saved variable.
+- The history: an `nl.list` with `itemsBinding = {"kind":"pageProp","key":"messages"}`,
+  `itemStructId = chatMsg`, `itemKeyFieldId = id`. Its row template is one `nl.container` with
+  `extra.listSlot = itemTemplate` holding **two** bubbles, left and right, each with
+  `bind layout.visible = field them` / `field me` and a text inside with `bind text = field text`.
+  A row cannot take its colour or side from a field any other way: the two-bubble switch is the
+  pattern. Bubbles are a fixed size; size them for the longest line.
+- The replies: a second `nl.list` (struct `chatReply`: `id`, `text`, the answer `reply`, a `score`,
+  a `tag`, a `round`), its rows containers with `navigation.focusable = always` so a pad or the
+  keyboard can pick one - and give that container a look for `{"conditions":{"focused":true}}`
+  (an appearance row, as hover looks are written; `ui-format`), or the player cannot see which reply
+  the focus is on.
+- A "put the phone down" `nl.button`, `layout.visible = false` until the last round.
+
+**2. The replies' blueprint** (on the reply list, `widgetMain`). The list nodes come twice: the
+`blueprint.list.*` ones act on the list whose blueprint they are in, the `blueprint.element.list.*`
+ones on the list an `Element` node points at - use those for the history.
+
+- `blueprint.event.head.init` -> `blueprint.list.setItems` with round one's replies (a blueprint
+  var of type array).
+- `blueprint.event.head.itemClick` -> `blueprint.data.memo` the item -> read its fields with
+  `blueprint.data.jsonGet` (Get JSON Field, `path = text`) -> `blueprint.data.jsonMakeObject` a
+  `chatMsg` (`them=false`, `me=true`) -> `blueprint.element.list.appendItem` on the history ->
+  `blueprint.element.list.scrollToBottom` -> `blueprint.flow.delay` 0.8 -> the answer as a
+  `chatMsg` with `them=true` -> append -> scroll.
+- Record what was chosen with `blueprint.saved.set`. A field read out of the item is JSON: put
+  `blueprint.data.toFloat` before adding a score, `To String` before a `Concat`. Branch on `round`:
+  the next round's replies, or hide the list and show the button.
+
+**3. Closing**: the button's `Mouse Click` -> `Close This Layer` with a `result` (say `true`).
+
+**4. The story**:
+
+```
+The phone buzzes on the desk.
+/page 手机 into=看完聊天
+/if 好感 >= 3
+  I keep smiling at the screen.
+```
+
+The story waits on the `/page` row until the page closes; `into=` gets the result (Back - Esc -
+closes it with none, and the variable keeps its default, which is how "put it down without
+answering" reads). The saved variables the replies set are there for every `/if` after it.
+
+A page opened over the story covers what is under it: a quick-menu element (an affection meter,
+say) sitting where the phone is drawn is hidden while it is open.
+
+**Check it**: `playtest_click` a reply row by `index`; the answer names the words the history
+gained and the variables that changed. `playtest_variables` shows them all.
+`ui_screenshot` the page with its `items` sample to judge the bubbles before playing.
 
 ## Templates instead
 

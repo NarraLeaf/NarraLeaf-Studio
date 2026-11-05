@@ -11,7 +11,7 @@
  * that the whole line's edges need protecting once the runs are joined.
  */
 
-import type { StoryTextMarks } from "@shared/types/story";
+import type { StoryTextEffect, StoryTextMarks } from "@shared/types/story";
 
 import type { NarralangDialect } from "./narralangDialect";
 import type { NarralangText, NarralangTextRun } from "./narralangShape";
@@ -45,11 +45,28 @@ function wrapMarks(inner: string, marks: StoryTextMarks | undefined, dialect: Na
         // does. A number never can.
         const argument = spec.arg === "number"
             ? narralangNumber(Number(value))
-            : spec.arg === "raw" ? narralangTagArgument(String(value), dialect) : null;
+            : spec.arg === "raw" ? narralangTagArgument(String(value), dialect)
+                : spec.arg === "effect" ? printEffectArgument(value as StoryTextEffect, dialect) : null;
         const open = argument === null ? tag(dialect, spec.tag) : tag(dialect, `${spec.tag} ${argument}`);
         out = `${open}${out}${tag(dialect, `${dialect.text.closeSigil}${spec.tag}`)}`;
     }
     return out;
+}
+
+/**
+ * An inline effect as a tag argument: the id, then each parameter as `key=value`, keys in order.
+ * A string value goes out under the same quote-when-needed rule as any other raw argument.
+ */
+function printEffectArgument(effect: StoryTextEffect, dialect: NarralangDialect): string {
+    const words = [narralangTagArgument(effect.id, dialect)];
+    for (const key of Object.keys(effect.params ?? {}).sort()) {
+        const value = effect.params![key];
+        const printed = typeof value === "number" ? narralangNumber(value)
+            : typeof value === "boolean" ? String(value)
+                : narralangTagArgument(value, dialect);
+        words.push(`${key}=${printed}`);
+    }
+    return words.join(" ");
 }
 
 /** A resolved segment as one line of text. */

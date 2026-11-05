@@ -22,6 +22,7 @@
  * Comments in English per project convention.
  */
 
+import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { nextUnusedVariableName } from "@shared/variables/variableRegistryModel";
@@ -50,14 +51,7 @@ import {
 import { findWidgetModule } from "@/lib/ui-cli/catalog";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { Services, type WorkspaceContext } from "../../services";
-import type { Service } from "../../Service";
-import type { AssetsService } from "../../core/AssetsService";
-import type { ProjectService } from "../../core/ProjectService";
-import type { UIService } from "../../core/UIService";
-import type { BrandService } from "../../brand/BrandService";
 import type { SaveSchemaService } from "../../saves/SaveSchemaService";
-import type { StoryService } from "../../story/StoryService";
-import type { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { IMPORT_PLACEMENT_FROM_SOURCE } from "../../ui-editor/UIDocumentService";
 import { createCatalogAssetPinResolver } from "../../ui-editor/blueprint/catalogAssetPins";
 import { findLibraryAsset } from "../../assets/assetTransferImport";
@@ -67,9 +61,9 @@ import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { AGENT_HISTORY_LABEL } from "../agentLookups";
 import { liveBlueprintDocument, uiDocumentService } from "./textFormat";
 
-function optionalService<T extends Service>(ctx: WorkspaceContext, key: Services): T | null {
+function optionalService<K extends Services>(ctx: WorkspaceContext, key: K): WorkspaceServiceMap[K] | null {
     try {
-        return ctx.services.get<T>(key);
+        return ctx.services.get(key);
     } catch {
         return null;
     }
@@ -139,7 +133,7 @@ function saveFieldsToAdopt(raw: unknown, plan: StandardScreensPlan, project: Sav
 
 /** What the workspace can run: the node catalogue (plugins included) and the widget registry. */
 function projectCapabilities(ctx: WorkspaceContext) {
-    const catalog = optionalService<BlueprintNodeCatalogService>(ctx, Services.BlueprintNodeCatalog);
+    const catalog = optionalService(ctx, Services.BlueprintNodeCatalog);
     return {
         catalog,
         knowsNode: (type: string) => Boolean(catalog?.get(type) ?? blueprintNodeRegistry.get(type)),
@@ -153,8 +147,8 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
     // Named in the author's language: the call is about no one page, and the log shows no ids.
     follow.describeCall(request.callId, translate("workspace.agent.log.target.standardScreens"));
     const uidoc = uiDocumentService(ctx);
-    const project = ctx.services.get<ProjectService>(Services.Project);
-    const stories = ctx.services.get<StoryService>(Services.Story);
+    const project = ctx.services.get(Services.Project);
+    const stories = ctx.services.get(Services.Story);
 
     const locale = contentLocale(project);
     const read = await getInterface().projectTemplates.readInterface(STARTER_TITLE_PAGE_TEMPLATE_ID, locale);
@@ -241,8 +235,8 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
         : entryMoves && currentEntry && entryIsBlank ? [currentEntry] : [];
     const skippedSlots: string[] = replace ? [] : occupied.map(surface => surface.mount.slotId);
 
-    const variables = variablesToAdopt(content.variables, plan, optionalService<VariableRegistryService>(ctx, Services.VariableRegistry));
-    const saveFields = saveFieldsToAdopt(content.saveSchema, plan, optionalService<SaveSchemaService>(ctx, Services.SaveSchema));
+    const variables = variablesToAdopt(content.variables, plan, optionalService(ctx, Services.VariableRegistry));
+    const saveFields = saveFieldsToAdopt(content.saveSchema, plan, optionalService(ctx, Services.SaveSchema));
     const arriving = plan.document.surfaces.filter(surface => !(surface.kind === "stageSurface" && skippedSlots.includes(surface.mount.slotId)));
     const summary = {
         pages: arriving.filter(surface => surface.kind === "appSurface").map(surface => surface.name),
@@ -276,7 +270,7 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
 
     // Everything the interface names that is not an interface record goes in first, under the ids
     // the template gave it, so the import finds each one already resolving.
-    const assets = ctx.services.get<AssetsService>(Services.Assets);
+    const assets = ctx.services.get(Services.Assets);
     const missingFiles = () => plan.assetIds.filter(assetId => !findLibraryAsset(assets.getAssets(), assetId)).length;
     const filesBefore = missingFiles();
     // Reading the template and finding Start's target awaited; the author may have paused meanwhile.
@@ -289,7 +283,7 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
         kept.push(`${filesAdded} of the template's files were added to the asset library`);
     }
     assertStillWriting();
-    const brand = optionalService<BrandService>(ctx, Services.Brand);
+    const brand = optionalService(ctx, Services.Brand);
     const paletteAdded = brand
         ? brand.adoptColors(brandColorsToAdopt(
             plan.brandColorIds,
@@ -298,14 +292,14 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
         ))
         : 0;
     if (variables.length > 0) {
-        ctx.services.get<VariableRegistryService>(Services.VariableRegistry).applyRegistryMutation(registry => {
+        ctx.services.get(Services.VariableRegistry).applyRegistryMutation(registry => {
             for (const entry of variables) {
                 registry.entries[entry.id] = entry;
             }
         });
     }
     if (saveFields.length > 0) {
-        const saves = ctx.services.get<SaveSchemaService>(Services.SaveSchema);
+        const saves = ctx.services.get(Services.SaveSchema);
         const schema = saves.getSchema();
         saves.replaceSchema({ ...schema, fields: { ...schema.fields, ...Object.fromEntries(saveFields.map(field => [field.id, field])) } });
     }
@@ -319,7 +313,7 @@ export const uiInstallStandardScreens: AgentToolHandler = async (args, { ctx, re
         entrySourceSurfaceId: entryMoves ? plan.entrySurfaceId ?? undefined : undefined,
         label: AGENT_HISTORY_LABEL,
     });
-    const ui = optionalService<UIService>(ctx, Services.UI);
+    const ui = optionalService(ctx, Services.UI);
     if (ui) {
         for (const surface of result.removedSurfaces) {
             closeSurfaceTabs(ui, surface.id);

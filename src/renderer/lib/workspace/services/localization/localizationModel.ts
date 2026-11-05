@@ -57,6 +57,12 @@ export type StoryTranslationRow = {
     role: StoryTextSegment["role"];
     /** Speaking character id for dialogue rows (context for translators). */
     characterId?: string;
+    /**
+     * The bare name a dialogue row speaks under when no character profile backs it (`#name` on the
+     * story row) - a speaker in its own right, not a missing one. Whatever has to say who speaks
+     * reads this when `characterId` names nobody, so a temp speaker is not reported as narration.
+     */
+    speakerName?: string;
     /** Translator-facing source text; interpolations appear as `{n}`. What the unit is hashed against. */
     sourceText: string;
     /**
@@ -111,6 +117,8 @@ type TranslatableSegment = {
      */
     role: StoryTextSegment["role"];
     characterId?: string;
+    /** Non-empty bare speaker name, when the row has one instead of a character. */
+    speakerName?: string;
 };
 
 /** Pull the translatable segment out of a block, if any (notes are editor-only). */
@@ -123,7 +131,14 @@ function getTranslatableSegment(block: StoryBlock): TranslatableSegment | null {
         return { segment: payload.text, role: "narration" };
     }
     if (payload.action === "dialogue") {
-        return { segment: payload.text, role: "dialogue", characterId: payload.characterId };
+        // A blank bare name is no name: it carries nothing a reader or a file name could use.
+        const speakerName = payload.speakerName?.trim();
+        return {
+            segment: payload.text,
+            role: "dialogue",
+            characterId: payload.characterId,
+            ...(speakerName ? { speakerName } : {}),
+        };
     }
     if (payload.action === "choice") {
         return payload.prompt ? { segment: payload.prompt, role: "choicePrompt" } : null;
@@ -159,6 +174,7 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
                         blockId: block.id,
                         role: translatable.role,
                         ...(translatable.characterId ? { characterId: translatable.characterId } : {}),
+                        ...(translatable.speakerName ? { speakerName: translatable.speakerName } : {}),
                         sourceText,
                         // Only when there is something to tag. A line with no styling has one
                         // serialization, and carrying a second copy of it would put run tags in front

@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden, useFloatingLayer } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, UserRoundPlus } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, UserRoundPlus, Users } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
@@ -56,9 +56,11 @@ import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCu
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
-import type { StoryCommandValue } from "./storyCommandValues";
+import type { StoryCommandFolder, StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
+import { groupSpeakerCandidates, type SpeakerPickerEntry } from "./speakerCandidateGroups";
+import { NO_CHARACTER_GROUPS } from "./useCharacterGroupNames";
 import { RichTextInput, type ActiveMarks, type DictionaryClickInfo, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
 import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
 import { useStorySpellcheck } from "./useStorySpellcheck";
@@ -112,6 +114,7 @@ import { RowProblemMark } from "./RowProblemMark";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { usePointerHighlight, type MenuPointer } from "./storyMenuPointer";
 
 /**
  * One story row's data.
@@ -652,19 +655,19 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         that is about the words rather than about the container: hearing this line
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
                     ) : containerInfo && rowProblems.length > 0 ? (
                         // A choice or a condition header: no voice to hear, but the checks can still
                         // have something to say about it (a choice with no options, a cut point).
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
                     {containerInfo ? null : (
-                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                        <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {/* Mounted only on the rows that are cut points, unlike the two beside it:
                                 a component that answers "not me" still costs a translation
                                 subscription on every row of the screenful. */}
@@ -677,6 +680,9 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     )}
                     <div
                         aria-hidden={!showRowActions}
+                        // The row's controls, not its line: the rich-text strip of the row below
+                        // measures where this row's words end without them (`RichTextToolbar`).
+                        data-story-row-trailing=""
                         // Who the cluster is showing for. In a narrow group it floats over the words
                         // (`.nl-story-row-actions`), and there it shows for the pointer only.
                         data-shown-for={hovered || actionsFocused ? "pointer" : active ? "active" : undefined}
@@ -2226,6 +2232,9 @@ export function InsertRow(props: {
      * slot object on every keystroke cannot invalidate the lists memoized against it.
      */
     const scopeName = props.mode.slot.characterScope?.name ?? null;
+    // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
+    const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
+    const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
@@ -2241,9 +2250,13 @@ export function InsertRow(props: {
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ];
-            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery, abbreviations);
+            return searchActionCommands(
+                scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
+                chooserQuery,
+                abbreviations,
+            );
         },
-        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
+        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2256,9 +2269,9 @@ export function InsertRow(props: {
                 buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
                 props.commandContext,
             );
-            return scopeName === null ? groups : characterScopedSidebarGroups(groups);
+            return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [ct, pluginCommands, props.commandContext, scopeName],
+        [ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the
@@ -2271,8 +2284,9 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
+    const groupedCharacters = useGroupedSpeakerCandidates(characterOptions, chooserQuery);
     const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands, abbreviations);
-    const characterMenu = useCharacterPickerState(characterOptions);
+    const characterMenu = useCharacterPickerState(groupedCharacters.stops);
     const textStyle = useStoryEditorTextStyle();
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
@@ -2294,8 +2308,14 @@ export function InsertRow(props: {
         () => argMenuOffer(cursor, props.commandContext, resolvedArgs),
         [ct, cursor, props.commandContext, resolvedArgs],
     );
+    // Assets are filed under their folders and characters under their cast groups, as submenus while
+    // nothing is typed at this slot. Typed, the matches are one list, each with where it is filed.
+    const { characterGroupNames, groupSubmenus } = useStoryCommandLineContext();
+    const argQuery = "query" in cursor ? cursor.query : "";
+    const argSubmenus = Boolean(groupSubmenus) && argQuery.trim() === "";
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         return argOffer.candidates.map((candidate, index) => {
+            const folders = candidateFolders(candidate, props.characters, characterGroupNames);
             return {
                 // Values are not unique on their own — two assets may share a name.
                 key: `${index}:${candidate.value}`,
@@ -2321,13 +2341,17 @@ export function InsertRow(props: {
                 mark: candidate.mark,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
                 ...(candidate.free ? { free: true as const } : {}),
+                ...(folders ? { folders } : {}),
             };
-        });
-    }, [argOffer, ct, t]);
+        }).map(item => !argSubmenus && item.folders && !item.detail
+            // One list: where each name is filed rides beside it, so two names alike can be told apart.
+            ? { ...item, detail: item.folders.map(folder => folder.name).join(" / ") }
+            : item);
+    }, [argOffer, argSubmenus, characterGroupNames, ct, props.characters, t]);
     // The candidates decide the highlight along with the cursor: an untyped slot, a slot whose best
     // offer is the author's own text, and every expression slot all have to leave Enter meaning
     // "submit". See `defaultHighlights`, and `argMenuOffer` for why the expression case is deliberate.
-    const argMenu = useStoryCandidateMenuState(argItems, argOffer.autoHighlight);
+    const argMenu = useStoryCandidateMenuState(argItems, argOffer.autoHighlight, argSubmenus);
 
     // The argument menu owns the slot whenever the caret is past the command name and `argMenuOffer`
     // says there is something to show.
@@ -2545,7 +2569,13 @@ export function InsertRow(props: {
                                 }
                                 return;
                             }
-                            chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
+                            // A committed row opened as its line (F2, Edit as text) is given back by
+                            // the first press while no menu is on screen: there is no candidate rung
+                            // to take first, and a press that changed nothing visible looked dead.
+                            const menuShown = argMenuOpen || actionMenuOpen || chooser === "character";
+                            chooser === "none" || (props.mode.slot.rewritesRow && !menuShown)
+                                ? props.onDiscardSlot()
+                                : props.onDismissChooser();
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -2565,6 +2595,20 @@ export function InsertRow(props: {
                                 return;
                             }
                         }
+                        // The one exception to the rule below: → into a cast group's column in the
+                        // speaker picker, ← back out of it. Groups are stops only while nothing is typed
+                        // after the `#`, so there is no text for the caret to cross when these fire.
+                        if (chooser === "character" && (event.key === "ArrowRight" ? characterMenu.enterGroup() : event.key === "ArrowLeft" && characterMenu.leaveGroup())) {
+                            event.preventDefault();
+                            return;
+                        }
+                        // Likewise a folder in the argument menu. → only goes in while a folder is
+                        // highlighted, and folders are listed only while nothing is typed at the slot;
+                        // ← only comes back out of a column the keyboard went into.
+                        if (argMenuOpen && (event.key === "ArrowRight" ? argMenu.enter() : event.key === "ArrowLeft" && argMenu.leave())) {
+                            event.preventDefault();
+                            return;
+                        }
                         // ←/→ are never the menu's: they belong to the caret in the line being typed,
                         // in EVERY chooser. The command menu's category column is a mouse-driven
                         // filter for that reason — a column that took the arrows would cost `@shwo`
@@ -2576,6 +2620,10 @@ export function InsertRow(props: {
                             if (argMenuOpen) {
                                 // No highlight is the answer at a `k=` position: Enter falls through and
                                 // submits the line instead of grabbing `t=`.
+                                // On a folder, the highlight goes into it rather than choosing.
+                                if (argMenu.onFolder) {
+                                    return argMenu.enter();
+                                }
                                 if (!argMenu.activeItem) {
                                     return false;
                                 }
@@ -2591,6 +2639,10 @@ export function InsertRow(props: {
                                 return true;
                             }
                             if (chooser === "character") {
+                                // On a group, the highlight moves into its column rather than choosing.
+                                if (!characterMenu.activeCharacter && characterMenu.enterGroup()) {
+                                    return true;
+                                }
                                 const candidate = characterMenu.activeCharacter;
                                 if (!candidate) {
                                     return false;
@@ -2610,8 +2662,8 @@ export function InsertRow(props: {
                             // Tab advances *within* the row. With nothing highlighted — a `k=` position,
                             // where Enter submits instead — it still takes the first candidate, which is
                             // what walks the caret on to the next argument.
-                            if (argMenuOpen && argItems.length > 0) {
-                                takeArgCandidate(argItems[0]);
+                            if (argMenuOpen && argMenu.firstItem) {
+                                takeArgCandidate(argMenu.firstItem);
                             }
                             return;
                         }
@@ -2655,9 +2707,10 @@ export function InsertRow(props: {
                 ) : null}
                 {argMenuOpen ? (
                     <StoryCommandCandidateMenu
-                        items={argItems}
-                        activeKey={argMenu.activeItem?.key ?? null}
-                        onHighlight={argMenu.selectItem}
+                        columns={argMenu.columns}
+                        trail={argMenu.trail}
+                        onHighlight={argMenu.select}
+                        onEnterFolder={argMenu.enterFolder}
                         onChoose={takeArgCandidate}
                         onCancel={props.onDismissChooser}
                         frame={menuFrame}
@@ -2666,9 +2719,13 @@ export function InsertRow(props: {
                 ) : null}
                 {chooser === "character" ? (
                     <CharacterPicker
-                        characters={characterOptions}
-                        activeCharacterId={characterMenu.activeCharacter?.key ?? null}
+                        entries={groupedCharacters.entries}
+                        activeKey={characterMenu.activeStop?.key ?? null}
+                        openGroup={characterMenu.openGroup}
+                        activeMemberKey={characterMenu.activeMember?.key ?? null}
                         onHighlight={characterMenu.selectCharacter}
+                        onHighlightMember={characterMenu.selectMember}
+                        onEnterGroup={characterMenu.enterGroup}
                         onChoose={candidate => candidate.kind === "character"
                             ? props.onChooseCharacter(candidate.character.profile.getId())
                             : props.onChooseTempSpeaker(candidate.name)}
@@ -2679,6 +2736,28 @@ export function InsertRow(props: {
             </div>
         </div>
     );
+}
+
+/**
+ * Where an argument candidate is filed: an asset's folders, carried on the candidate from the
+ * context, or a character's cast group, looked up here because the cast groups are the row context's
+ * (and absent when the author asked for one flat list of characters).
+ */
+function candidateFolders(
+    candidate: StoryCommandCandidate,
+    characters: readonly Character[],
+    groupNames: ReadonlyMap<string, string> | undefined,
+): readonly StoryCommandFolder[] | undefined {
+    if (candidate.folders) {
+        return candidate.folders;
+    }
+    if (candidate.mark?.kind !== "character" || !candidate.mark.characterId || !groupNames) {
+        return undefined;
+    }
+    const characterId = candidate.mark.characterId;
+    const groupId = characters.find(character => character.profile.getId() === characterId)?.profile.getGroupId();
+    const name = groupId ? groupNames.get(groupId) : undefined;
+    return groupId && name ? [{ id: groupId, name, kind: "cast" }] : undefined;
 }
 
 /**
@@ -2995,7 +3074,8 @@ function ActionCommandMenuRow(props: {
     active: boolean;
     starred: boolean;
     abbreviations: readonly string[];
-    onHighlight: (key: string) => void;
+    /** The menu's pointer; the row reports its `mousemove` to it. See `usePointerHighlight`. */
+    pointer: MenuPointer;
     onChoose: (commandId: string) => void;
     onToggleStarred: (commandId: string) => void;
 }) {
@@ -3006,7 +3086,7 @@ function ActionCommandMenuRow(props: {
     const Icon = command.icon;
     const starLabel = props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred");
     return (
-        <div className="relative" onMouseEnter={() => props.onHighlight(props.stop.key)}>
+        <div className="relative" onMouseMove={event => props.pointer.move(props.stop.key, event)}>
             <button
                 type="button"
                 role="option"
@@ -3016,7 +3096,7 @@ function ActionCommandMenuRow(props: {
                     // Room for the star is kept on every row, so a label does not re-truncate under
                     // the pointer when the star comes up beside it.
                     "flex w-full items-center gap-2 rounded-md py-2 pl-2 pr-9 text-left transition-colors",
-                    props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                    props.active ? "bg-primary/15 text-fg" : props.pointer.live ? "hover:bg-fill" : "",
                 ].join(" ")}
                 onMouseDown={() => props.onChoose(command.id)}
             >
@@ -3032,8 +3112,9 @@ function ActionCommandMenuRow(props: {
                     <button
                         type="button"
                         className={[
-                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-fill-strong",
-                            props.starred ? "text-warning" : "text-fg-subtle hover:text-warning",
+                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
+                            props.starred ? "text-warning" : "text-fg-subtle",
+                            props.pointer.live ? "hover:bg-fill-strong hover:text-warning" : "",
                         ].join(" ")}
                         data-tip={starLabel}
                         aria-label={starLabel}
@@ -3120,6 +3201,7 @@ function ActionCommandMenu(props: {
     // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
     const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    const pointer = usePointerHighlight(props.onHighlight);
     // The scope header wears 角色's own glyph and hue — the same pair its category chip and every
     // committed character row wear, so a narrowed menu still says which subject it is narrowed to.
     const scopeCategory = getCommandCategory("character");
@@ -3172,7 +3254,12 @@ function ActionCommandMenu(props: {
                 // height, so a top-left line of text sits alone against a tall empty box and reads as
                 // a list that failed to draw rather than as the answer "there is nothing here".
                 <div className="flex h-full items-center justify-center">
-                    <button type="button" className="rounded-md px-3 py-2 text-center text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                    <button
+                        type="button"
+                        className={["rounded-md px-3 py-2 text-center text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                        onMouseMove={event => pointer.move(null, event)}
+                        onMouseDown={props.onCancel}
+                    >
                         {t("story.actionCreator.noActions")}
                     </button>
                 </div>
@@ -3185,7 +3272,7 @@ function ActionCommandMenu(props: {
                         active={stop.key === props.activeKey}
                         starred={props.starredIds.has(stop.command.id)}
                         abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                        onHighlight={props.onHighlight}
+                        pointer={pointer}
                         onChoose={props.onChoose}
                         onToggleStarred={props.onToggleStarred}
                     />
@@ -3207,7 +3294,7 @@ function ActionCommandMenu(props: {
                                 active={stop.key === props.activeKey}
                                 starred
                                 abbreviations={abbreviationsOf(stop.command.id, props.abbreviations)}
-                                onHighlight={props.onHighlight}
+                                pointer={pointer}
                                 onChoose={props.onChoose}
                                 onToggleStarred={props.onToggleStarred}
                             />
@@ -3241,7 +3328,7 @@ function ActionCommandMenu(props: {
                                         active={key === props.activeKey}
                                         starred={props.starredIds.has(command.id)}
                                         abbreviations={abbreviationsOf(command.id, props.abbreviations)}
-                                        onHighlight={props.onHighlight}
+                                        pointer={pointer}
                                         onChoose={props.onChoose}
                                         onToggleStarred={props.onToggleStarred}
                                     />
@@ -3273,7 +3360,7 @@ function ActionCommandMenu(props: {
                         <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
                         <span className="truncate">{props.scopeLabel}</span>
                     </div>
-                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2">
+                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2" {...pointer.listProps}>
                         {rows}
                     </div>
                 </div>
@@ -3312,7 +3399,7 @@ function ActionCommandMenu(props: {
                 {/* Both columns open at the same height — `pt-3` here and on the categories, and no
                     gap above the first section header, so a browse, a ranked list and the category
                     column all start on one line. */}
-                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3">
+                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3" {...pointer.listProps}>
                     {rows}
                 </div>
             </div>
@@ -3322,42 +3409,186 @@ function ActionCommandMenu(props: {
     );
 }
 
-function useCharacterPickerState(candidates: SpeakerCandidate[]) {
-    const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
-    const activeCharacter = candidates.find(candidate => candidate.key === activeCharacterId) ?? candidates[0] ?? null;
+/** One place the picker's highlight can rest in the list: a candidate, or a whole cast group. */
+type SpeakerPickerStop =
+    | { key: string; kind: "candidate"; candidate: SpeakerCandidate }
+    | { key: string; kind: "group"; groupId: string; members: SpeakerCandidate[] };
+
+/** A group's stop key. The prefix keeps it clear of a character id and of a bare name's `name:` key. */
+const speakerGroupStopKey = (groupId: string) => `group:${groupId}`;
+
+/** The column of a group's members, beside the list: its width, and the gap between the two. */
+const SPEAKER_GROUP_COLUMN_WIDTH_PX = 240;
+const SPEAKER_GROUP_COLUMN_GAP_PX = 4;
+
+/**
+ * The picker's list, filed under the cast groups - the stops the keys walk and the lines drawn.
+ *
+ * What to file under comes from the row context, which has resolved it once for the whole editor tab
+ * (the groups themselves, and the `editor.characterListGrouping` preference that says whether to use
+ * them). Nothing is filed where the context carries none: outside a workspace, in a project with no
+ * cast groups, and when the author asked for one flat list of every character - three different
+ * reasons for the same, correct, answer.
+ *
+ * With `editor.groupSubmenus` on, each group is one stop whose members open in a column
+ * beside the list. A typed query lists every match under its group's name instead: the author has
+ * said who they want, and a column to open would stand between them and the name.
+ */
+function useGroupedSpeakerCandidates(candidates: SpeakerCandidate[], query: string) {
+    const { characterGroupNames, groupSubmenus } = useStoryCommandLineContext();
+    const groupNames = characterGroupNames ?? NO_CHARACTER_GROUPS;
+    const searching = query.trim().length > 0;
+    const layout = groupSubmenus && !searching ? "submenus" : "inline";
+    const entries = useMemo(
+        () => groupSpeakerCandidates(candidates, groupNames, layout).entries,
+        [candidates, groupNames, layout],
+    );
+    const stops = useMemo(
+        () => entries.flatMap((entry): SpeakerPickerStop[] => {
+            if (entry.kind === "candidate") {
+                return [{ key: entry.candidate.key, kind: "candidate", candidate: entry.candidate }];
+            }
+            if (entry.kind === "group") {
+                return [{ key: speakerGroupStopKey(entry.groupId), kind: "group", groupId: entry.groupId, members: entry.members }];
+            }
+            return [];
+        }),
+        [entries],
+    );
+    return { entries, stops };
+}
+
+/**
+ * The highlight over the picker: a stop in the list, and, when that stop is a group, possibly one of
+ * its members in the column beside it.
+ *
+ * It opens on the first candidate rather than the first stop, even when a group is listed above it:
+ * `#` then Enter has always taken the first speaker, and a group that took the highlight first would
+ * turn that into opening a column.
+ */
+function useCharacterPickerState(stops: SpeakerPickerStop[]) {
+    const [activeKey, setActiveKey] = useState<string | null>(null);
+    /** The member highlighted in the open group's column; null while the highlight is in the list. */
+    const [memberKey, setMemberKey] = useState<string | null>(null);
+    const firstStop = stops.find(stop => stop.kind === "candidate") ?? stops[0] ?? null;
+    const activeStop = stops.find(stop => stop.key === activeKey) ?? firstStop;
+    const openGroup = activeStop?.kind === "group" ? activeStop : null;
+    const activeMember = openGroup?.members.find(member => member.key === memberKey) ?? null;
 
     useEffect(() => {
-        if (candidates.length === 0) {
-            setActiveCharacterId(null);
+        if (stops.length === 0) {
+            setActiveKey(null);
             return;
         }
-        setActiveCharacterId(current => candidates.some(candidate => candidate.key === current) ? current : candidates[0].key);
-    }, [candidates]);
+        const first = stops.find(stop => stop.kind === "candidate") ?? stops[0];
+        setActiveKey(current => stops.some(stop => stop.key === current) ? current : first.key);
+    }, [stops]);
 
-    const selectCharacter = (characterId: string) => {
-        setActiveCharacterId(characterId);
+    const selectCharacter = (key: string) => {
+        setActiveKey(key);
+        setMemberKey(null);
+    };
+
+    const selectMember = (key: string) => {
+        setMemberKey(key);
     };
 
     const moveCharacter = (direction: -1 | 1) => {
-        if (candidates.length === 0) {
+        if (openGroup && activeMember) {
+            const members = openGroup.members;
+            const index = members.findIndex(member => member.key === activeMember.key);
+            setMemberKey(members[(index + direction + members.length) % members.length].key);
             return;
         }
-        const currentIndex = Math.max(0, candidates.findIndex(candidate => candidate.key === activeCharacter?.key));
-        const nextIndex = (currentIndex + direction + candidates.length) % candidates.length;
-        setActiveCharacterId(candidates[nextIndex].key);
+        if (stops.length === 0) {
+            return;
+        }
+        const currentIndex = Math.max(0, stops.findIndex(stop => stop.key === activeStop?.key));
+        const nextIndex = (currentIndex + direction + stops.length) % stops.length;
+        setActiveKey(stops[nextIndex].key);
+        setMemberKey(null);
+    };
+
+    /** Move into a group's column, on its first member. Without an id, the group the list is on. */
+    const enterGroup = (groupId?: string): boolean => {
+        const group = groupId === undefined
+            ? openGroup
+            : stops.find((stop): stop is Extract<SpeakerPickerStop, { kind: "group" }> => stop.kind === "group" && stop.groupId === groupId) ?? null;
+        if (!group || group.members.length === 0) {
+            return false;
+        }
+        setActiveKey(group.key);
+        setMemberKey(group.members[0].key);
+        return true;
+    };
+
+    /** Back from the column to its group in the list. False when the highlight is already there. */
+    const leaveGroup = (): boolean => {
+        if (!activeMember) {
+            return false;
+        }
+        setMemberKey(null);
+        return true;
     };
 
     return {
-        activeCharacter,
+        activeStop,
+        openGroup,
+        activeMember,
+        activeCharacter: activeMember ?? (activeStop?.kind === "candidate" ? activeStop.candidate : null),
         selectCharacter,
+        selectMember,
         moveCharacter,
+        enterGroup,
+        leaveGroup,
     };
 }
 
+/** One speaker in the picker, in the list or in a group's column. */
+function SpeakerCandidateRow(props: {
+    candidate: SpeakerCandidate;
+    active: boolean;
+    pointer: MenuPointer;
+    onChoose: (candidate: SpeakerCandidate) => void;
+}) {
+    const { t } = useTranslation();
+    const { candidate, pointer } = props;
+    return (
+        <button
+            type="button"
+            role="option"
+            aria-selected={props.active}
+            data-character-id={candidate.key}
+            className={[
+                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                props.active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
+            ].join(" ")}
+            onMouseMove={event => pointer.move(candidate.key, event)}
+            onMouseDown={() => props.onChoose(candidate)}
+        >
+            {/* A real character shows their face, exactly as the argument menu does in this same
+                slot — the two are meant to read as one menu following the caret. A temp speaker is a
+                name with nobody behind it: it keeps the outline glyph and a tag, so picking one is
+                never mistaken for picking a character. */}
+            <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
+            <span className="truncate text-sm text-fg">{candidate.name}</span>
+            {candidate.kind === "temp" ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
+        </button>
+    );
+}
+
 function CharacterPicker(props: {
-    characters: SpeakerCandidate[];
-    activeCharacterId: string | null;
-    onHighlight: (candidateKey: string) => void;
+    /** What the list draws, groups and labels included (see `groupSpeakerCandidates`). */
+    entries: SpeakerPickerEntry<SpeakerCandidate>[];
+    /** The highlighted stop in the list: a candidate's key, or a group's (`speakerGroupStopKey`). */
+    activeKey: string | null;
+    /** The group whose members are shown in the column beside the list. */
+    openGroup: { groupId: string; members: SpeakerCandidate[] } | null;
+    /** The member highlighted in that column; null while the highlight is in the list. */
+    activeMemberKey: string | null;
+    onHighlight: (key: string) => void;
+    onHighlightMember: (key: string) => void;
+    onEnterGroup: (groupId: string) => void;
     onChoose: (candidate: SpeakerCandidate) => void;
     onClear: () => void;
     frame: AnchoredMenuFrame;
@@ -3365,6 +3596,7 @@ function CharacterPicker(props: {
      * The portalled panel, handed back so an owner's light-dismiss can recognise it. It is not inside
      * the anchor any more, and a check that only knows the anchor closes the menu on the very
      * pointerdown that starts a pick — the item unmounts before its `mousedown` can choose anything.
+     * The group column is inside it, so a press there is a press on the picker.
      */
     panelRef?: RefObject<HTMLDivElement | null>;
     /** Rendered as a trailing action when the typed name is not already a character. */
@@ -3382,88 +3614,196 @@ function CharacterPicker(props: {
     createDisabledReason?: string;
 }) {
     const { t } = useTranslation();
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
+    const columnRef = useRef<HTMLDivElement | null>(null);
+    const pointer = usePointerHighlight(props.onHighlight);
+    const columnPointer = usePointerHighlight(props.onHighlightMember);
+    const openGroupId = props.openGroup?.groupId ?? null;
+    const memberCount = props.openGroup?.members.length ?? 0;
+    /**
+     * Where the column sits: level with its group's row, on whichever side of the list has room.
+     * Measured, because the row moves with the list's scroll and the side depends on the window.
+     */
+    const [column, setColumn] = useState<{ top: number; side: "right" | "left" }>({ top: 0, side: "right" });
+    const [listScroll, setListScroll] = useState(0);
 
     useEffect(() => {
-        if (!props.activeCharacterId) {
+        if (!props.activeKey) {
             return;
         }
         window.requestAnimationFrame(() => {
-            const root = listRef.current;
-            const activeItem = root?.querySelector(`[data-character-id="${props.activeCharacterId}"]`);
+            const activeItem = listRef.current?.querySelector(`[data-character-id="${props.activeKey}"]`);
             activeItem?.scrollIntoView({ block: "nearest" });
         });
-    }, [props.activeCharacterId]);
+    }, [props.activeKey]);
+
+    useEffect(() => {
+        if (!props.activeMemberKey) {
+            return;
+        }
+        window.requestAnimationFrame(() => {
+            const activeItem = columnRef.current?.querySelector(`[data-character-id="${props.activeMemberKey}"]`);
+            activeItem?.scrollIntoView({ block: "nearest" });
+        });
+    }, [props.activeMemberKey]);
+
+    useLayoutEffect(() => {
+        const root = rootRef.current;
+        const panel = columnRef.current;
+        const row = openGroupId ? listRef.current?.querySelector(`[data-character-id="${speakerGroupStopKey(openGroupId)}"]`) : null;
+        if (!root || !panel || !row) {
+            return;
+        }
+        const rootRect = root.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const height = panel.getBoundingClientRect().height;
+        const margin = 8;
+        // The column's first member level with the group's row: back by the column's own border and
+        // padding, which the list's rows sit inside as well.
+        let top = rowRect.top - rootRect.top - 5;
+        top = Math.min(top, window.innerHeight - margin - height - rootRect.top);
+        top = Math.max(top, margin - rootRect.top);
+        const roomRight = window.innerWidth - rootRect.right - SPEAKER_GROUP_COLUMN_GAP_PX - margin;
+        const side = roomRight >= SPEAKER_GROUP_COLUMN_WIDTH_PX || roomRight >= rootRect.left ? "right" : "left";
+        setColumn(current => current.top === top && current.side === side ? current : { top, side });
+    }, [openGroupId, memberCount, listScroll, props.frame]);
 
     return createPortal(
         <div
             ref={node => {
-                listRef.current = node;
+                rootRef.current = node;
                 if (props.panelRef) {
                     props.panelRef.current = node;
                 }
             }}
-            className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+            className="z-[70]"
             style={props.frame.style}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
-            {props.characters.length === 0 ? (
-                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
-                    {t("story.rows.noCharacterFound")}
-                </button>
-            ) : (
-                props.characters.map(candidate => {
-                    const active = candidate.key === props.activeCharacterId;
-                    const temp = candidate.kind === "temp";
-                    return (
-                        <button
-                            key={candidate.key}
-                            type="button"
-                            role="option"
-                            aria-selected={active}
-                            data-character-id={candidate.key}
-                            className={[
-                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
-                            ].join(" ")}
-                            onMouseEnter={() => props.onHighlight(candidate.key)}
-                            onMouseDown={() => props.onChoose(candidate)}
-                        >
-                            {/* A real character shows their face, exactly as the argument menu does in
-                                this same slot — the two are meant to read as one menu following the
-                                caret. A temp speaker is a name with nobody behind it: it keeps the
-                                outline glyph and a tag, so picking one is never mistaken for picking a
-                                character. */}
-                            <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
-                            <span className="truncate text-sm text-fg">{candidate.name}</span>
-                            {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
-                        </button>
-                    );
-                })
-            )}
-            {props.createLabel ? (
-                <>
-                    <div className="my-1 h-px bg-edge" />
+            <div
+                ref={listRef}
+                className="nl-no-scrollbar max-h-72 w-[320px] max-w-full overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+                {...pointer.listProps}
+                onScroll={event => {
+                    pointer.listProps.onScroll();
+                    setListScroll(event.currentTarget.scrollTop);
+                }}
+            >
+                {props.entries.length === 0 ? (
                     <button
                         type="button"
-                        className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                            props.createDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-fill",
-                        )}
-                        disabled={props.createDisabled}
-                        // `data-tip` rather than `title`, like every other reason a freeze puts on a
-                        // control: a disabled button receives no pointer events at all, and Studio's
-                        // tooltip resolves this one by hit-testing the pointer instead.
-                        data-tip={props.createDisabledReason}
-                        onMouseDown={props.onCreate}
+                        className={["w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted", pointer.live ? "hover:bg-fill" : ""].join(" ")}
+                        onMouseMove={event => pointer.move(null, event)}
+                        onMouseDown={props.onClear}
                     >
-                        <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="truncate text-sm text-fg">{props.createLabel}</span>
+                        {t("story.rows.noCharacterFound")}
                     </button>
-                </>
+                ) : (
+                    props.entries.map(entry => {
+                        if (entry.kind === "label") {
+                            // The group's name over its members, drawn on the way past rather than
+                            // offered: a label is not a speaker, so the keys never land on it.
+                            return (
+                                <div key={speakerGroupStopKey(entry.groupId)} className="flex items-center gap-2 px-2 pb-1 pt-2 text-2xs text-fg-muted">
+                                    <Users className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{entry.name}</span>
+                                </div>
+                            );
+                        }
+                        if (entry.kind === "group") {
+                            const key = speakerGroupStopKey(entry.groupId);
+                            const active = key === props.activeKey;
+                            // A whole group as one entry, the size of a speaker's row. Highlighting it
+                            // shows its members in the column beside the list; → or Enter moves into
+                            // that column. While the highlight is in the column, the group keeps a
+                            // quieter tint, so the path from the list to the column stays visible.
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    aria-haspopup="listbox"
+                                    aria-expanded={active}
+                                    data-character-id={key}
+                                    className={cn(
+                                        "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                                        active ? (props.activeMemberKey ? "bg-fill" : "bg-primary/15") : pointer.live && "hover:bg-fill",
+                                    )}
+                                    onMouseMove={event => pointer.move(key, event)}
+                                    onMouseDown={() => props.onEnterGroup(entry.groupId)}
+                                >
+                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                                        <Users className="h-4 w-4 text-fg-subtle" />
+                                    </span>
+                                    <span className="truncate text-sm text-fg">{entry.name}</span>
+                                    <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{entry.members.length}</span>
+                                    <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                                </button>
+                            );
+                        }
+                        return (
+                            <SpeakerCandidateRow
+                                key={entry.candidate.key}
+                                candidate={entry.candidate}
+                                active={entry.candidate.key === props.activeKey}
+                                pointer={pointer}
+                                onChoose={props.onChoose}
+                            />
+                        );
+                    })
+                )}
+                {props.createLabel ? (
+                    <>
+                        <div className="my-1 h-px bg-edge" />
+                        <button
+                            type="button"
+                            className={cn(
+                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                                props.createDisabled ? "cursor-not-allowed opacity-50" : pointer.live && "hover:bg-fill",
+                            )}
+                            disabled={props.createDisabled}
+                            // Not a highlight stop, but the same pointer: it scrolls under a resting
+                            // pointer like the rows above it, and is tinted only once the pointer moves.
+                            onMouseMove={event => pointer.move(null, event)}
+                            // `data-tip` rather than `title`, like every other reason a freeze puts on a
+                            // control: a disabled button receives no pointer events at all, and Studio's
+                            // tooltip resolves this one by hit-testing the pointer instead.
+                            data-tip={props.createDisabledReason}
+                            onMouseDown={props.onCreate}
+                        >
+                            <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="truncate text-sm text-fg">{props.createLabel}</span>
+                        </button>
+                    </>
+                ) : null}
+            </div>
+            {props.openGroup ? (
+                <div
+                    ref={columnRef}
+                    role="listbox"
+                    className="nl-no-scrollbar absolute max-h-72 overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+                    style={{
+                        top: column.top,
+                        width: SPEAKER_GROUP_COLUMN_WIDTH_PX,
+                        ...(column.side === "right"
+                            ? { left: `calc(100% + ${SPEAKER_GROUP_COLUMN_GAP_PX}px)` }
+                            : { right: `calc(100% + ${SPEAKER_GROUP_COLUMN_GAP_PX}px)` }),
+                    }}
+                    {...columnPointer.listProps}
+                >
+                    {props.openGroup.members.map(member => (
+                        <SpeakerCandidateRow
+                            key={member.key}
+                            candidate={member}
+                            active={member.key === props.activeMemberKey}
+                            pointer={columnPointer}
+                            onChoose={props.onChoose}
+                        />
+                    ))}
+                </div>
             ) : null}
         </div>,
         globalThis.document.body,
@@ -3560,7 +3900,8 @@ export function CharacterSelectTrigger(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
     );
-    const picker = useCharacterPickerState(candidates);
+    const grouped = useGroupedSpeakerCandidates(candidates, draft);
+    const picker = useCharacterPickerState(grouped.stops);
     /**
      * The nametag is a reference too — and the only one a dialogue row has, since the words below it
      * are prose rather than a command line.
@@ -3614,6 +3955,10 @@ export function CharacterSelectTrigger(props: {
 
     /** Enter with nothing highlighted still has to mean something: keep whatever was typed. */
     const commitDraft = () => {
+        // On a group, the highlight moves into its column rather than committing.
+        if (!picker.activeCharacter && picker.enterGroup()) {
+            return;
+        }
         const highlighted = picker.activeCharacter;
         if (highlighted) {
             choose(highlighted);
@@ -3769,6 +4114,12 @@ export function CharacterSelectTrigger(props: {
                         picker.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
                         return;
                     }
+                    // → into a cast group's column, ← back out. Groups are listed only while the
+                    // field is empty, so the caret has nothing to move across when these fire.
+                    if (event.key === "ArrowRight" ? picker.enterGroup() : event.key === "ArrowLeft" && picker.leaveGroup()) {
+                        event.preventDefault();
+                        return;
+                    }
                     // Same contract as the `#` slot: the highlight is what Tab and Enter both take.
                     if (event.key === "Tab" || event.key === "Enter") {
                         event.preventDefault();
@@ -3782,9 +4133,13 @@ export function CharacterSelectTrigger(props: {
                 }}
             />
             <CharacterPicker
-                characters={candidates}
-                activeCharacterId={picker.activeCharacter?.key ?? null}
+                entries={grouped.entries}
+                activeKey={picker.activeStop?.key ?? null}
+                openGroup={picker.openGroup}
+                activeMemberKey={picker.activeMember?.key ?? null}
                 onHighlight={picker.selectCharacter}
+                onHighlightMember={picker.selectMember}
+                onEnterGroup={picker.enterGroup}
                 onChoose={choose}
                 onClear={() => {
                     props.onChoose(null);

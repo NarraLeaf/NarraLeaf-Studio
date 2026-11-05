@@ -29,7 +29,7 @@ so does a `--category` value that is not one of the ones there are.
 ## Finding a command
 
 ```sh
-node project/app/story.js commands                 # all 57, by category
+node project/app/story.js commands                 # all 58, by category
 node project/app/story.js commands sound           # search token, id, params, examples
 node project/app/story.js commands --category flow
 node project/app/story.js commands --limit 0     # the first 60 otherwise
@@ -115,7 +115,11 @@ Narra: You're late.  ⟦51d4f8dc⟧
   is a one-off speaker.
 - **plain text** - narration, which is any line that is none of the others.
 - **`// text`** - a note.
-- **`- text`** - a choice option, under a `/menu` row.
+- **`- text`** - a choice option, under a `/menu` row. It may end with
+  `[hide if <expression>]` and `[disable if <expression>]` - the option is hidden,
+  or shown but greyed out, while the expression is true. A clause left off clears
+  that condition; one held in a blueprint has no spelling and stays on the row.
+  Write `\[` for a bracket in the words that would otherwise read as a clause.
 - **`? expression`** or **`? else`** - a branch of the `/if` above it. The first
   is the `/if`'s own condition and every later one an else-if, so the order of the
   lines is what says which; `? else` comes last.
@@ -180,6 +184,24 @@ keeps opening on its old picture for a beat before the first `/bg` row until the
 says `#background none` (or names the new picture). `targets` lists every scene setting
 under "scene settings", which is where an image the linter counts as used, and no row
 names, is used.
+
+### `#description` is the scene's description
+
+The note Studio's scene panel shows under the scene's name. The game never shows it; it is
+in the header so a file that writes a scene can also say what the scene is for.
+
+```
+#description After class, the two of them alone
+#description "Two lines:\nthe second one"     a JSON string, for text with line breaks
+#description none
+```
+
+The value is the rest of the line. One that starts with a double quote is read as a JSON
+string, which is how `show` prints a description with line breaks, space at either end,
+a leading quote or the word `none`; single quotes round the whole value are taken off.
+`show` writes the line only for a scene that has a description. Like the other settings,
+it counts only in the header, a file without the line keeps the description, and
+`#description none` clears it.
 
 ### `#layer` lines are the scene's layers
 
@@ -367,7 +389,8 @@ Six things to know before using it:
   `--write`.
 - **Scene settings change only when the header states them.** `#background` and
   `#music` left out of a file are kept, and `apply` names what the scene still opens
-  with; `#background none` / `#music none` clear them. `#layer` lines are the same:
+  with; `#background none` / `#music none` clear them. `#description` is the same,
+  and `#description none` clears it. `#layer` lines are the same:
   none leaves the layers alone, any state all of them.
 - **A project's own errors do not block it.** One bad row in another chapter used
   to mean nothing could be written anywhere.

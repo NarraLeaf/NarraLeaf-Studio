@@ -4,7 +4,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 
 /** One page of the project's interface, as a picker needs it. */
-export type ProjectSurfaceRef = { id: string; name: string };
+export type ProjectSurfaceRef = { id: string; name: string; kind?: string };
 
 /**
  * The project's pages, live.
@@ -32,7 +32,7 @@ export function useProjectSurfaces(): ProjectSurfaceRef[] {
             return;
         }
         const read = (): ProjectSurfaceRef[] =>
-            (service.getDocument().surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name }));
+            (service.getDocument().surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name, kind: surface.kind }));
         setSurfaces(read());
         return service.onDocumentChanged(() => setSurfaces(read()));
     }, [service]);

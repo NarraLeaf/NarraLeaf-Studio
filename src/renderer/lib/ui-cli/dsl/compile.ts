@@ -664,7 +664,11 @@ class CompileContext {
             ...(elementKeys.animation !== undefined ? { animation: elementKeys.animation as never } : {}),
             ...(Object.keys(extra).length > 0 ? { extra } : {}),
             ...(elementKeys.assetVariants !== undefined ? { assetVariants: elementKeys.assetVariants as never } : {}),
+            // Pad and keyboard navigation (`navigation.focusable = always` on a container a click head
+            // makes a control, `navigation.region = …` on a group) - the placement's own field.
+            ...(elementKeys.navigation !== undefined ? { navigation: elementKeys.navigation as never } : {}),
         };
+
         context.elements[id] = element;
 
         const childPrefix = [...context.pathPrefix, label];

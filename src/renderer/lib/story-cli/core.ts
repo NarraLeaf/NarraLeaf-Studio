@@ -332,7 +332,7 @@ export async function storyApplyCommand(
         {
             before: describeSceneSettings(existing, existingContext),
             after: describeSceneSettings(check.scene, existingContext),
-            stated: check.settingsStated ?? { background: false, music: false },
+            stated: check.settingsStated ?? { background: false, music: false, description: false },
         },
     );
 

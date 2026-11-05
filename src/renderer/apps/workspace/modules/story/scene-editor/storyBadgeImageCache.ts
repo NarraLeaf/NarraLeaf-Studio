@@ -9,6 +9,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType as AssetTypeEnum } from "@/lib/workspace/services/assets/assetTypes";
 import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { characterAvatarBakePath, parseCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /**
  * Where an image's bytes come from. A character's differential sprite is a *project* asset (the
@@ -32,7 +33,12 @@ import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRe
 export type BadgeImageSource =
     | { kind: "project"; asset: Asset<AssetType.Image> }
     | { kind: "thumbnail"; asset: Asset<AssetType.Image> | Asset<AssetType.Video> }
-    | { kind: "editor"; fileId: string };
+    | { kind: "editor"; fileId: string }
+    /**
+     * A baked character avatar: a file the project derives (`resources/characters/avatars/…`),
+     * addressed by its synthetic id because it is deliberately not a library asset.
+     */
+    | { kind: "bakedAvatar"; assetId: string };
 
 /**
  * One shared object URL per asset. `refs` counts the mounted rows subscribed to it; `disposed` guards
@@ -60,7 +66,10 @@ const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
 
 function sourceKey(source: BadgeImageSource): string {
-    return source.kind === "editor" ? `editor:${source.fileId}` : `${source.kind}:${source.asset.id}`;
+    if (source.kind === "editor") {
+        return `editor:${source.fileId}`;
+    }
+    return source.kind === "bakedAvatar" ? `baked:${source.assetId}` : `${source.kind}:${source.asset.id}`;
 }
 
 function emit(key: string): void {
@@ -323,6 +332,7 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
             assets: context.services.get<AssetsService>(Services.Assets),
             serviceAssets: context.services.get<ServiceAssetsService>(Services.ServiceAssets),
             fileSystem: context.services.get<FileSystemService>(Services.FileSystem),
+            resolveProjectPath: (relative: string) => context.project.resolve(relative),
         };
     }, [context, isInitialized]);
 
@@ -346,6 +356,14 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
         if (source.kind === "editor") {
             const result = await services.serviceAssets.readRaw(source.fileId);
             return result.ok ? result.data : null;
+        }
+        if (source.kind === "bakedAvatar") {
+            const parsed = parseCharacterAvatarAssetId(source.assetId);
+            if (!parsed) {
+                return null;
+            }
+            const raw = await services.fileSystem.readRaw(services.resolveProjectPath(characterAvatarBakePath(parsed.characterId, parsed.key)));
+            return raw.ok && raw.data && raw.data.byteLength > 0 ? raw.data : null;
         }
         if (source.kind === "thumbnail") {
             const path = await services.assets.getThumbnailPath(source.asset);

@@ -24,6 +24,7 @@ import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHi
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
 import { isProjectLockedError, isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 import { CommandLineRunHost } from "./CommandLineRunHost";
+import { useAvatarBakeBeforeLaunch } from "./modules/characters/useCharacterAvatarBake";
 
 /**
  * Main workspace application component
@@ -47,6 +48,9 @@ function WorkspaceContent() {
     useFileMenu();
     useMenuActionHandler();
     useNativeMenuSync();
+    // Stale dialog avatars are re-baked before Dev Mode, Preview or a build reads the project,
+    // whether or not the character panel was ever opened.
+    useAvatarBakeBeforeLaunch();
 
     return (
         <>

@@ -232,6 +232,30 @@ describe("the .ui text format", () => {
         expect(compiled.surfaces[0].surface).toEqual(surface);
     });
 
+    it("leaves out a key held as undefined, which a saved page does not have, rather than writing the word back as a string", () => {
+        // An element made in this session holds `layout.rotation: undefined` until the page is saved.
+        // Printed as `layout.rotation = undefined`, it read back as the string "undefined".
+        const document = loadSkeleton();
+        const surface = document.surfaces[0];
+        const target = document.elements[document.elements[surface.rootElementId].childrenIds[0]];
+        // What the element is without the keys held as undefined - its record as saved.
+        const saved = structuredClone(target);
+        target.layout = { ...target.layout, rotation: undefined };
+        target.props = { ...(target.props ?? {}), unsetProp: undefined };
+        target.style = { ...(target.style ?? {}), color: undefined };
+        target.extra = { ...(target.extra ?? {}), unsetExtra: undefined };
+
+        for (const compact of [false, true]) {
+            const text = printUiDocument(document, { surfaceIds: [surface.id], includeSharedTables: false, compact });
+            expect(text, compact ? "short form" : "long form").not.toMatch(/= undefined\b/);
+            const compiled = compileUiFile(parseUiFile(text), { existing: document });
+            const copy = structuredClone(document);
+            applyCompiled(copy, compiled);
+            expect(copy.elements[target.id].layout.rotation, compact ? "short form" : "long form").toBeUndefined();
+            expect(JSON.parse(JSON.stringify(copy.elements[target.id])), compact ? "short form" : "long form").toEqual(saved);
+        }
+    });
+
     it("carries a label's marks through, spelled the same way on a button as on a text label", () => {
         const runs = [{ text: "山田", marks: { ruby: "やまだ" } }, { text: "さん", marks: { bold: true } }];
         const source = [

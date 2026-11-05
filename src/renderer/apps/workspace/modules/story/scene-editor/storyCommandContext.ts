@@ -18,7 +18,7 @@ import { listDisplayableTargetsInScene } from "../../story-motion/storyMotionPre
 import { segmentPlainText } from "./storyFindReplace";
 import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVideoClips } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
-import type { StoryPuppetVocabulary } from "./storyCommandValues";
+import type { StoryCommandFolder, StoryPuppetVocabulary } from "./storyCommandValues";
 import { storedFarPositions } from "./commands/transformVocabulary";
 
 /**
@@ -29,8 +29,37 @@ import { storedFarPositions } from "./commands/transformVocabulary";
  * reads this same context, which is what stops the two from disagreeing about what a name means.
  */
 
-function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommandNamedRef[] {
-    return Object.values(assets?.[type] ?? {}).map(asset => ({ id: asset.id, name: asset.name }));
+/** An asset folder as the context reads it: the group record's id, name and parent. */
+export type StoryCommandAssetFolderInput = { id: string; name: string; parentGroupId?: string };
+
+/**
+ * The asset library's names of one type, each with the folders it is filed under.
+ *
+ * Ordered by where the folder sits in `folders` (the asset browser's own order), unfiled names
+ * first, so a menu that draws folders in the order it meets them draws them in the browser's.
+ */
+function assetRefs(assets: AssetsMap | undefined, type: AssetType, folders: readonly StoryCommandAssetFolderInput[]): StoryCommandNamedRef[] {
+    const byId = new Map(folders.map((folder, index) => [folder.id, { folder, index }]));
+    const chainOf = (groupId: string | undefined): StoryCommandFolder[] => {
+        const chain: StoryCommandFolder[] = [];
+        const seen = new Set<string>();
+        for (let id = groupId; id && byId.has(id) && !seen.has(id); id = byId.get(id)!.folder.parentGroupId) {
+            seen.add(id);
+            const { folder } = byId.get(id)!;
+            chain.unshift({ id: folder.id, name: folder.name });
+        }
+        return chain;
+    };
+    return Object.values(assets?.[type] ?? {})
+        .map(asset => {
+            const chain = chainOf(asset.groupId);
+            return {
+                ref: { id: asset.id, name: asset.name, ...(chain.length > 0 ? { folders: chain } : {}) },
+                order: asset.groupId && byId.has(asset.groupId) ? byId.get(asset.groupId)!.index : -1,
+            };
+        })
+        .sort((a, b) => a.order - b.order)
+        .map(entry => entry.ref);
 }
 
 /**
@@ -316,8 +345,29 @@ export function valueBlueprintRefs(document: BlueprintDocument | null | undefine
     return refs;
 }
 
+/**
+ * The characters an author-supplied runtime draws, in cast order: every puppet kind, not only the
+ * one spelled `puppet`.
+ *
+ * One answer for the two places that ask. The scene editor asks it to decide whose models to
+ * describe, and the command context asks it to decide who may take `/motion` and `/skin` - and when
+ * the first asked `getKind() === "puppet"` on its own, a Live2D or Spine character was a puppet to
+ * the command line and never had its model described, so `/motion` offered nothing to pick.
+ */
+export function listPuppetCharacterIds(characters: readonly Pick<Character, "profile">[]): string[] {
+    return characters
+        .filter(character => isPuppetAppearanceKind(character.profile.appearance.getKind()))
+        .map(character => character.profile.getId());
+}
+
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
+    /**
+     * The asset browser's folders, in its order, across the categories a command line can name (image
+     * and media). Only the candidate menu uses them, to file names the way the browser does; omitted,
+     * every name is offered unfiled.
+     */
+    assetFolders?: readonly StoryCommandAssetFolderInput[];
     /**
      * The project's asset sets. Omitted where no project is open, which names none.
      *
@@ -372,7 +422,8 @@ export function buildStoryCommandContext(input: {
      * page name as unknown - the honest answer when the list could not be read at all, and the same
      * bargain the audio tracks above take.
      */
-    surfaces?: readonly { id: string; name: string }[];
+    /** `kind` keeps the Game UIs (`stageSurface`) out: a story row opens or quits to a page, never to a slot surface. */
+    surfaces?: readonly { id: string; name: string; kind?: string }[];
     /**
      * The project's input actions. Omitted where no project is open, which leaves the waiting
      * commands reporting every action name as unknown - the same bargain the pages above take.
@@ -387,12 +438,19 @@ export function buildStoryCommandContext(input: {
     // what it is doing are named by the model its backend loaded. So it contributes no appearance
     // refs at all, and instead lands here - which is what lets `/face` keep one slot for all three
     // appearance kinds and `/motion` / `/skin` refuse the two Studio draws itself.
-    const puppetCharacterIds: string[] = [];
+    const puppetCharacterIds = listPuppetCharacterIds(input.characters);
+    const characterLayerAssetIds = new Set<string>();
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
         const appearance = character.profile.appearance;
-        if (isPuppetAppearanceKind(appearance.getKind())) {
-            puppetCharacterIds.push(id);
+        if (appearance.getKind() === "layered") {
+            for (const layer of appearance.getLayers()) {
+                for (const assetId of [layer.assetId, ...Object.values(layer.options ?? {})]) {
+                    if (assetId) {
+                        characterLayerAssetIds.add(assetId);
+                    }
+                }
+            }
         }
         appearanceByCharacterId[id] = appearance.getKind() === "preset"
             ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
@@ -405,9 +463,10 @@ export function buildStoryCommandContext(input: {
     });
 
     return {
-        images: assetRefs(input.assets, AssetType.Image),
-        audio: assetRefs(input.assets, AssetType.Audio),
-        videos: assetRefs(input.assets, AssetType.Video),
+        images: assetRefs(input.assets, AssetType.Image, input.assetFolders ?? []),
+        characterLayerAssetIds: [...characterLayerAssetIds],
+        audio: assetRefs(input.assets, AssetType.Audio, input.assetFolders ?? []),
+        videos: assetRefs(input.assets, AssetType.Video, input.assetFolders ?? []),
         assetSets: (input.assetSets ?? []).map(set => ({
             id: set.id,
             name: set.name,
@@ -436,7 +495,9 @@ export function buildStoryCommandContext(input: {
         // What lets a row that already holds a far-out pair have its own line committed again.
         storedFarPositions: storedFarPositions(input.scene),
         appTags: appTagRefs(input.appTags),
-        surfaces: (input.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
+        surfaces: (input.surfaces ?? [])
+            .filter(surface => surface.kind !== "stageSurface")
+            .map(surface => ({ id: surface.id, name: surface.name })),
         inputActions: (input.inputActions ?? []).map(action => ({ id: action.id, name: action.name })),
         variables: variableEntries(
             input.document,

@@ -1,3 +1,5 @@
+import { indexStoryVoiceUnits, type StoryVoiceIndex } from "./storyVoiceIndex";
+import { storyTextOutlineFilter } from "@shared/story/textOutline";
 import {
     BlurDissolve,
     Character,
@@ -45,6 +47,8 @@ import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
+    resolveDefaultCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -82,6 +86,7 @@ import type {
     StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import {
     BGM_STAGE_OBJECT_NAME,
@@ -90,6 +95,7 @@ import {
     collectStoryExpressionVariables,
     declaresStageObject,
     displayableStageRefName,
+    groupSameMotionTarget,
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
     storyVisitedRefId,
@@ -139,6 +145,7 @@ import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, resolveStoryGroupRunMode, type StoryAssetVariants } from "@shared/types/story";
 import { isStoryInputWaitPayload, resolveStoryRumble, type StoryInputActionPayload } from "@shared/types/story";
 import type { StoryInputHost } from "@/lib/ui-editor/runtime/input/storyInputHost";
+import { coerceStoryPageResult, type StoryPageHost } from "./storyPageRow";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -201,6 +208,7 @@ import {
 } from "./storyCompilePass";
 import { getStoryPluginAction } from "./storyPluginActions";
 import { createStoryAwaitedAction } from "./storyAwaitedAction";
+import { waitForPuppetModel } from "./puppetEntranceWait";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -405,14 +413,14 @@ async function buildVoiceMapsByLocale(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
-    /** The story being compiled, whose lines a failed take is reported against. */
-    document: StoryDocument;
+    /** Text owners in this story, for locating a failed voice clip. */
+    voiceIndex: StoryVoiceIndex;
 }): Promise<Record<string, Record<string, string>>> {
     const byLocale: Record<string, Record<string, string>> = {};
     // The voice tables are the project's, every story's lines in one. A take that does not resolve is
     // reported under the line that speaks it, and only for lines of this story: another story's line
     // is reported when that story is played, where the report can say which line it is.
-    const rowByUnit = rowByTextId(input.document);
+    const rowByUnit = input.voiceIndex.rowByUnit;
     const languageName = (code: string): string =>
         authoredNameOrNull(input.voice.voicedLocales.find(entry => entry.code === code)?.displayName) ?? code;
     for (const [locale, table] of Object.entries(input.voice.tables)) {
@@ -490,77 +498,6 @@ function voiceConfigForLine(ctx: SceneCompileContext, textId: string): { voiceId
     return ctx.voicedUnitIds?.has(textId) ? { voiceId: textId } : undefined;
 }
 
-/** Which character speaks each voice unit, so a take can be routed to that character's bus. */
-/**
- * The row that owns each localizable text of a document - a voice unit is keyed by its line's text id,
- * and a failed take is reported under the line that speaks it.
- */
-function rowByTextId(document: StoryDocument): Map<string, string> {
-    const rows = new Map<string, string>();
-    for (const scene of Object.values(document.scenes ?? {})) {
-        for (const block of Object.values(scene.blocks ?? {})) {
-            const payload = block.payload as { text?: { textId?: unknown }; prompt?: { textId?: unknown } } | undefined;
-            for (const textId of [payload?.text?.textId, payload?.prompt?.textId]) {
-                if (typeof textId === "string" && textId && !rows.has(textId)) {
-                    rows.set(textId, block.id);
-                }
-            }
-        }
-    }
-    return rows;
-}
-
-function speakerByTextId(document: StoryDocument): Map<string, string> {
-    const speakers = new Map<string, string>();
-    for (const scene of Object.values(document.scenes ?? {})) {
-        for (const block of Object.values(scene.blocks ?? {})) {
-            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
-                continue;
-            }
-            const characterId = block.payload.characterId?.trim();
-            const textId = block.payload.text?.textId;
-            if (characterId && textId) {
-                speakers.set(textId, characterId);
-            }
-        }
-    }
-    return speakers;
-}
-
-/**
- * The voice unit ids each scene's own rows speak, keyed by scene id.
- *
- * Voice ids are global, so the obvious table is one global table - and that is what this used to
- * hand every scene. But the engine COPIES the config a `Scene` is constructed with, so one global
- * table meant every scene held its own copy of every take in the project: `scenes x takes` entries
- * built on every compile and kept for as long as the story is loaded. MEASURED: the same 10,000-line
- * story with 30,000 takes compiled in 607ms split into 40 scenes and 976ms split into 200 - the
- * whole difference being copies of a table 199 of those scenes never read from.
- *
- * A scene only ever resolves the ids its own lines carry (`getVoice` is asked by the line, and a
- * line belongs to the scene that holds it), so each scene is given exactly those. The total copied
- * is then the number of takes, once - linear in the script rather than in script x scenes.
- */
-function voiceUnitIdsByScene(document: StoryDocument): Map<string, Set<string>> {
-    const byScene = new Map<string, Set<string>>();
-    for (const scene of Object.values(document.scenes ?? {})) {
-        const ids = new Set<string>();
-        for (const block of Object.values(scene.blocks ?? {})) {
-            if (block.kind !== "nodeAction") {
-                continue;
-            }
-            const textId = block.payload.action === "dialogue" || block.payload.action === "narration"
-                ? block.payload.text?.textId
-                : undefined;
-            if (textId) {
-                ids.add(textId);
-            }
-        }
-        byScene.set(scene.id, ids);
-    }
-    return byScene;
-}
-
 /**
  * The engine's `Scene.voices` table, with each take routed to its speaker's bus.
  *
@@ -577,7 +514,7 @@ function buildSceneVoices(input: {
     voiceIdMap: Record<string, string>;
     busIdByUnit: ReadonlyMap<string, string>;
     audioTracks: readonly ProjectAudioTrack[];
-    /** Only these units, or every unit in the map when absent. See {@link voiceUnitIdsByScene}. */
+    /** Only these units, or every unit in the map when absent. See {@link indexStoryVoiceUnits}. */
     unitIds?: ReadonlySet<string>;
     /** The volume of each take its gain turns down, by unit id. See {@link buildVoiceVolumesByLocale}. */
     volumeByUnit?: Readonly<Record<string, number>>;
@@ -620,12 +557,12 @@ function buildSceneVoices(input: {
  * shared by every language's table and by the replay path.
  */
 function voiceBusIdByUnit(input: {
-    document: StoryDocument;
+    voiceIndex: StoryVoiceIndex;
     characters: ReadonlyMap<string, DevModeCharacterSummary>;
     audioTracks: readonly ProjectAudioTrack[];
 }): Map<string, string> {
     const busIds = new Map<string, string>();
-    for (const [unitId, characterId] of speakerByTextId(input.document)) {
+    for (const [unitId, characterId] of input.voiceIndex.speakerByUnit) {
         const requested = input.characters.get(characterId)?.voiceTrackId;
         busIds.set(unitId, resolveVoiceBusId(input.audioTracks, requested));
     }
@@ -971,6 +908,8 @@ type SceneCompileContext = {
     onQuitToPage?: (surfaceId: string) => void;
     /** The player's hands, for the `input` rows; see {@link CompileInput.storyInput}. */
     storyInput?: StoryInputHost;
+    /** The layer stack, for the `/page` rows; see {@link CompileInput.storyPages}. */
+    storyPages?: StoryPageHost;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -1236,6 +1175,15 @@ type CompileInput = {
      * preview that never settles.
      */
     storyInput?: StoryInputHost;
+    /**
+     * What a `/page` row asks of the running game: open a page over the stage and wait for it to
+     * close.
+     *
+     * Absent for the same callers `storyInput` is absent for, and their `/page` rows compile to
+     * nothing: a build sweep has no screen to draw a page on, and a scene preview that stopped on a
+     * page would be a preview that never settles.
+     */
+    storyPages?: StoryPageHost;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1362,8 +1310,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         return next;
     };
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
+    const voiceIndex = indexStoryVoiceUnits(input.document);
     const voiceUrlsByLocale = input.voice
-        ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics, document: input.document })
+        ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics, voiceIndex })
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const voiceVolumesByLocale = input.voice ? buildVoiceVolumesByLocale(input.voice, input.audioClips) : undefined;
@@ -1379,6 +1328,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        voiceIndex,
         voiceUrlsByLocale,
         voiceVolumesByLocale,
         activeVoiceLocale: input.voice?.getVoiceLocale() ?? "",
@@ -1447,6 +1397,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
             storyInput: input.storyInput,
+            storyPages: input.storyPages,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1703,6 +1654,7 @@ async function buildLaunchEntryScene(params: {
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
         storyInput: input.storyInput,
+        storyPages: input.storyPages,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1746,45 +1698,13 @@ async function buildLaunchEntryScene(params: {
 
     // The scene's layers first so images/texts can bind to them, pre-posed as the target row left them.
     buildSceneLayers(ctx, preposed);
-    const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
-    for (const record of preposed) {
-        if (record.kind === "layer") {
-            continue;
-        }
-        const layer = resolveLayerForRef(ctx, record.layer);
-        const id = sceneElementStaticId(ctx, record.kind, normalizeObjectName(record.objectName));
-        if (record.kind === "image") {
-            const src = await resolveSnapshotImageSource(ctx, record);
-            const image = getImage(ctx, record.objectName, {
-                autoFit: record.autoFit ?? false,
-                layer,
-                src: src ?? undefined,
-                initialProps: snapshotPoseProps(record),
-            });
-            // A pre-posed character is on stage before any row of its own runs, so its portrait has
-            // to be registered here too - otherwise a row-precise launch shows the speaker with no
-            // avatar until they next enter or change expression.
-            if (record.source?.type === "character") {
-                await bindCharacterPortrait(ctx, record.source.characterId, image);
-            }
-            registrations.push({ element: image, layer, id });
-        } else {
-            const text = getText(ctx, record.objectName, {
-                text: record.text ?? "",
-                fontSize: record.fontSize,
-                fontColor: record.fontColor,
-                layer,
-                initialProps: snapshotPoseProps(record),
-            });
-            registrations.push({ element: text, layer, id });
-        }
-    }
+    const registrations = await prePoseSnapshotElements(ctx, preposed);
     // Registered by hand rather than reached by a row, so story construction never names these: an
     // element no action calls keeps whatever id it had. They take their own stable names now rather
     // than a counter's, which is both unique (the engine keys their React nodes by it) and the name
     // a save written in this launch carries for them.
     registrations.forEach(registration => {
-        DevTools.setElementId(registration.element as any, registration.id);
+        DevTools.setElementId(registration.element as any, sceneElementStaticId(ctx, registration.kind, registration.key));
     });
 
     const statements: NlrStatement[] = [];
@@ -2069,38 +1989,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
 
     // The scene's layers first so images/texts can bind to them, pre-posed as the row left them.
     buildSceneLayers(ctx, snapshot.displayables);
-    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
-    for (const record of snapshot.displayables) {
-        if (record.kind === "layer") {
-            continue;
-        }
-        const layer = resolveLayerForRef(ctx, record.layer);
-        if (record.kind === "image") {
-            const src = await resolveSnapshotImageSource(ctx, record);
-            const image = getImage(ctx, record.objectName, {
-                autoFit: record.autoFit ?? false,
-                layer,
-                src: src ?? undefined,
-                initialProps: snapshotPoseProps(record),
-            });
-            // A pre-posed character is on stage before any row of its own runs, so its portrait has
-            // to be registered here too - otherwise a row-precise launch shows the speaker with no
-            // avatar until they next enter or change expression.
-            if (record.source?.type === "character") {
-                await bindCharacterPortrait(ctx, record.source.characterId, image);
-            }
-            registrations.push({ element: image, layer });
-        } else {
-            const text = getText(ctx, record.objectName, {
-                text: record.text ?? "",
-                fontSize: record.fontSize,
-                fontColor: record.fontColor,
-                layer,
-                initialProps: snapshotPoseProps(record),
-            });
-            registrations.push({ element: text, layer });
-        }
-    }
+    const registrations = await prePoseSnapshotElements(ctx, snapshot.displayables);
     // Injected elements sit outside the action tree, so story construction never assigns them
     // ids - give each a unique one or they collide as React keys on the stage.
     registrations.forEach((registration, index) => {
@@ -2273,6 +2162,84 @@ async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlayback
     return statements;
 }
 
+/** One element a snapshot pre-poses, with the stage key and element kind its static id is built from. */
+type PrePosedElement = {
+    element: Image | Text | Puppet;
+    layer: Layer | undefined;
+    kind: "image" | "text" | "puppet";
+    key: string;
+};
+
+/**
+ * Build every image, text and puppet a stage snapshot records, at its settled pose.
+ *
+ * Shared by the row-precise launch and the stage preview, which differ only in the ids they give the
+ * result. The caller builds the scene's layers first so each element can bind to its own.
+ *
+ * The snapshot files every character as an image record, but a puppet character is a different
+ * element class. It is posed as its own box, so the rows after the target address it and no
+ * stand-in image is drawn beside it.
+ */
+async function prePoseSnapshotElements(
+    ctx: SceneCompileContext,
+    records: readonly StageSnapshotDisplayable[],
+): Promise<PrePosedElement[]> {
+    const posed: PrePosedElement[] = [];
+    for (const record of records) {
+        if (record.kind === "layer") {
+            continue;
+        }
+        const layer = resolveLayerForRef(ctx, record.layer);
+        const key = normalizeObjectName(record.objectName);
+        const source = record.kind === "image" && record.source?.type === "character" ? record.source : null;
+        const appearance = source?.characterId ? ctx.characterSummaries.get(source.characterId)?.appearance : undefined;
+        if (source && appearance?.kind === "puppet") {
+            const puppet = await getPuppetElement(
+                ctx,
+                record.objectName,
+                characterNameById(ctx, source.characterId),
+                appearance,
+                record.sourceBlockId ?? record.objectName,
+                characterEntranceDefaults(ctx, source.characterId),
+                snapshotPoseProps(record),
+            );
+            if (puppet) {
+                if (layer) {
+                    puppet.useLayer(layer);
+                }
+                posed.push({ element: puppet, layer, kind: "puppet", key });
+            }
+            continue;
+        }
+        if (record.kind === "image") {
+            const src = await resolveSnapshotImageSource(ctx, record);
+            const image = getImage(ctx, record.objectName, {
+                autoFit: record.autoFit ?? false,
+                layer,
+                src: src ?? undefined,
+                initialProps: snapshotPoseProps(record),
+            });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise the speaker shows no avatar until they next
+            // enter or change expression.
+            if (source) {
+                await bindCharacterPortrait(ctx, source.characterId, image);
+            }
+            posed.push({ element: image, layer, kind: "image", key });
+        } else {
+            const text = getText(ctx, record.objectName, {
+                text: record.text ?? "",
+                fontSize: record.fontSize,
+                fontColor: record.fontColor,
+                layer,
+                initialProps: snapshotPoseProps(record),
+            });
+            posed.push({ element: text, layer, kind: "text", key });
+        }
+    }
+    return posed;
+}
+
 /** Constructor-config pose: settled props with visibility folded into opacity. */
 function snapshotPoseProps(record: StageSnapshotDisplayable): Record<string, unknown> {
     const props = { ...record.props };
@@ -2316,10 +2283,10 @@ async function resolveSnapshotImageSource(
     return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
 
-/** Re-apply a snapshot record's residual effects as instant (duration 0) statements. */
+/** Re-apply a snapshot record's residual effects as instant statements (see `INSTANT_TRANSFORM_MS`). */
 async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, effects: StageSnapshotEffects): Promise<NlrStatement[]> {
     const statements: NlrStatement[] = [];
-    const instant = { duration: 0 };
+    const instant = instantTransformOptions();
     if (effects.mask === "clear" && typeof element.clearMask === "function") {
         statements.push(element.clearMask(instant));
     } else if (effects.mask && effects.mask !== "clear" && typeof element.mask === "function") {
@@ -2344,7 +2311,8 @@ async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, ef
     return statements;
 }
 
-async function createNlrScenes(input: {
+async function createNlrScenes(options: {
+    voiceIndex?: StoryVoiceIndex;
     document: StoryDocument;
     /** For the sets a scene's own two asset fields may name. Absent in a project with no languages. */
     localization?: SceneLocalizationResolver;
@@ -2385,6 +2353,7 @@ async function createNlrScenes(input: {
     /** Construct one more scene that speaks a document scene's lines; see {@link ExtraSceneVoices}. */
     constructSpeakingScene: ExtraSceneVoices;
 }> {
+    const { voiceIndex: providedVoiceIndex, ...input } = options;
     const scenes: Record<string, Scene> = {};
 
     /**
@@ -2400,15 +2369,16 @@ async function createNlrScenes(input: {
      * collected after construction and they are all rewritten together.
      *
      * That copy is also why the tables are cut per scene rather than shared: see
-     * {@link voiceUnitIdsByScene}. Each scene is handed only the units its own lines speak, so what
+     * {@link indexStoryVoiceUnits}. Each scene is handed only the units its own lines speak, so what
      * the engine copies is the script's takes once rather than once per scene.
      */
+    const voiceIndex = providedVoiceIndex ?? indexStoryVoiceUnits(input.document);
     const busIdByUnit = voiceBusIdByUnit({
-        document: input.document,
+        voiceIndex,
         characters: input.characters,
         audioTracks: input.audioTracks,
     });
-    const unitIdsByScene = voiceUnitIdsByScene(input.document);
+    const unitIdsByScene = voiceIndex.unitsByScene;
     const urlsByLocale = input.voiceUrlsByLocale ?? {};
     /**
      * Per language, per scene: only that scene's takes - built the first time that language is
@@ -3178,6 +3148,13 @@ async function compilePreviewTargetOwnStatements(
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
         }
+        if (block.payload.action === "vfx") {
+            // The preview draws no overlay (the walk that poses its stage says the same), so it has
+            // none registered: compiling the row looked the overlay up, found nothing, and reported
+            // 「樱花」 as not on stage - a fault in the author's scene that is not there.
+            diagnostic(ctx, "warning", block.id, say("story.preview.diagnostics.ambienceSkipped"));
+            return [];
+        }
         return compileStoryAction(ctx, block);
     }
     if (block.kind === "control") {
@@ -3761,8 +3738,87 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileInputAction(ctx, block, payload);
     }
 
+    if (payload.action === "page") {
+        return compilePageAction(ctx, block, payload);
+    }
+
     return [];
 }
+
+/**
+ * A `/page` row: open a page over the stage, hold the story until it closes, and write what it closed
+ * with into the row's variable.
+ *
+ * An awaited action, so the story waits on the row exactly as it waits on a `/waitinput`: a skip
+ * stops at it, and a save taken while the page is open replays the row on load - which opens the page
+ * afresh, since layers are not part of a save. Rolling back past the row (or a load, which aborts it
+ * the same way) takes the page down itself: the page is opened with no owning scope, so nothing else
+ * would, and a page left standing over a story that has moved on is the orphan the layer stack exists
+ * to prevent. The answer is written only when the row was not abandoned.
+ *
+ * With no host, or no page, the row compiles to nothing - as `/quit` does; a page that is missing is
+ * `story/page-missing`'s to report, in the editor rather than on the player's screen.
+ */
+function compilePageAction(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "action" }>,
+    payload: Extract<StoryActionPayload, { action: "page" }>,
+): NlrStatement[] {
+    const host = ctx.storyPages;
+    const surfaceId = payload.surfaceId.trim();
+    if (!host || !surfaceId) {
+        return [];
+    }
+    // Resolved now, so a deleted variable is the diagnostic every other write reports. The page still
+    // opens: it is the row's point, and the write is what "skipped" means in that diagnostic.
+    const target = payload.resultTarget;
+    const slot = target ? resolveVariableSlot(ctx, target, block.id) : null;
+    const valueType = target ? variableValueType(ctx, target) : null;
+    const persistence = ctx.persistence;
+    return [recordStatement(ctx, createStoryAwaitedAction({
+        run: async (scriptCtx, signal) => {
+            const handle = host.open(surfaceId);
+            if (!handle) {
+                return;
+            }
+            const onAbort = () => host.close(handle);
+            signal.addEventListener("abort", onAbort, { once: true });
+            let result: unknown;
+            try {
+                result = await host.wait(handle);
+            } finally {
+                signal.removeEventListener("abort", onAbort);
+            }
+            if (signal.aborted || !slot || !valueType) {
+                return;
+            }
+            const value = coerceStoryPageResult(result, valueType);
+            if (value === undefined) {
+                return;
+            }
+            if (slot.kind === "host") {
+                void persistence?.set(slot.key, value);
+                return;
+            }
+            scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, value as any);
+        },
+    }), block)];
+}
+
+/** The declared type of the variable a row writes, or `null` when no declaration answers to it. */
+function variableValueType(ctx: SceneCompileContext, ref: StoryVariableRef): StoryVariableValueType | null {
+    if (ref.scope === "scene") {
+        return ctx.sceneVariables[ref.variableId]?.valueType ?? null;
+    }
+    if (ref.scope === "saved") {
+        return ctx.savedVariables[ref.variableId]?.valueType ?? null;
+    }
+    // The persistent arm is keyed by storage key, the table by entry id (see `VariableRegistryEntry`).
+    return Object.values(ctx.persistentVariables).find(entry => entry.storageKey === ref.variableId)?.valueType
+        ?? ctx.persistentVariables[ref.variableId]?.valueType
+        ?? null;
+}
+
 
 /**
  * An `input` row: the player's hands rather than the stage.
@@ -4165,15 +4221,10 @@ async function compileCharacterPuppetAction(
     // loaded its model and set a motion on an element that is never shown - a row that costs the
     // whole backend and produces no scene, reported by nothing.
     //
-    // A row-precise launch is the one place a puppet arrives without an `enter` row of its own, and
-    // it arrives wearing the wrong class: the stage snapshot has no notion of a puppet and files
-    // every character as an image record, so the replay pre-poses this character as an `Image` and
-    // the box is never restored. An `Image` under a puppet character's key can have come from
-    // nowhere else - a compile of the rows sends a puppet character here on every operation and
-    // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    // A row-precise launch pre-poses the box itself (see `buildLaunchEntryScene`), so the rows after
+    // the target find it here like any other entered puppet.
     const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
-    const preposed = stagedCharacterElement(ctx, name) instanceof Image;
-    const puppet = declaresStageObject(payload) || preposed
+    const puppet = declaresStageObject(payload)
         ? await getPuppetElement(ctx, name, characterDiagnosticName(ctx, payload), appearance, block.id, entranceDefaults)
         : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
@@ -4210,7 +4261,20 @@ async function compileCharacterPuppetAction(
             ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
             : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
-    return chain ? [recordStatement(ctx, chain, block)] : [];
+    if (!chain) {
+        return [];
+    }
+    if (payload.operation !== "enter") {
+        return [recordStatement(ctx, chain, block)];
+    }
+    // The model has been loading since the scene put the box on stage; the entrance waits for it to
+    // be drawn, or the box fades in empty and the character appears after the fade is over. See
+    // `puppetEntranceWait.ts`.
+    // Recorded after the entrance although it runs before it, so the entrance keeps the action id it
+    // has always had: a save that names it still finds it.
+    const shown = recordStatement(ctx, chain, block);
+    const awaitModel = createStoryAwaitedAction({ run: (_scriptCtx, signal) => waitForPuppetModel(puppet, signal) });
+    return [recordStatement(ctx, awaitModel, block), shown];
 }
 
 /**
@@ -4234,6 +4298,8 @@ async function getPuppetElement(
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
     blockId: string,
     entranceDefaults: StoryTransformProps | undefined,
+    /** The pose a row-precise launch restores the box in, laid over the entrance defaults. */
+    initialProps?: Record<string, unknown>,
 ): Promise<Puppet | null> {
     const key = normalizeObjectName(objectName);
     const existing = ctx.puppets.get(key);
@@ -4279,6 +4345,7 @@ async function getPuppetElement(
         // `reset()`. The box a backend draws into is scaled and placed exactly as an image is, so a
         // puppet character is her own size on the same terms.
         ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
+        ...(initialProps ?? {}),
     });
     setStableElementId(ctx.elementIdBindings, puppet, sceneElementStaticId(ctx, "puppet", key));
     ctx.puppets.set(key, puppet);
@@ -4840,11 +4907,19 @@ async function compileTextAction(
     if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
-    if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
+    // `setFont` sets whichever of the three it states, so one row can carry a size, a colour and an
+    // outline together; the two single ops keep reading the one field they always did.
+    const combined = payload.operation === "setFont";
+    if (payload.operation === "setFontSize" || ((payload.operation === "create" || combined) && payload.fontSize !== undefined)) {
         statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
-    if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
+    if (payload.operation === "setFontColor" || ((payload.operation === "create" || combined) && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
+    }
+    // The outline is drawn on the text's `filter` channel (see `storyTextOutlineFilter`), set as a
+    // cut: there is no halfway between two outlines worth easing through.
+    if ((payload.operation === "create" || combined) && payload.outline !== undefined) {
+        statements.push(recordStatement(ctx, text.transform(buildTransform({ filter: storyTextOutlineFilter(payload.outline) }, undefined)) as any, block));
     }
     // Declares, like `/image` create: the words, the size, the colour and the pose, all without
     // showing anything. See there.
@@ -5491,18 +5566,58 @@ async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: rea
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         const block = ctx.scene.blocks[blockId];
-        const compiled = await compileBlock(ctx, blockId);
-        if (compiled.length > 0 && isReturnableJump(block)) {
-            // Recorded against the jump's own row, after the actions that row already emitted. An
-            // action id is numbered within its row alone, so the wrapper takes the next number in
-            // that row's own run and no other row's ids move.
-            statements.push(recordStatement(ctx, Control.do(compiled as any), block));
-        } else {
-            statements.push(...compiled);
-        }
+        statements.push(...await compileUnchainedRow(ctx, blockId));
         // The same stop `compileBlockList` makes: nothing written after an `/ending` row plays.
         if (endsPlayback(block)) {
             break;
+        }
+    }
+    return statements;
+}
+
+/** One row of an unchained body, a returnable jump wrapped as its own run - see above. */
+async function compileUnchainedRow(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
+    const block = ctx.scene.blocks[blockId];
+    const compiled = await compileBlock(ctx, blockId);
+    if (compiled.length > 0 && isReturnableJump(block)) {
+        // Recorded against the jump's own row, after the actions that row already emitted. An
+        // action id is numbered within its row alone, so the wrapper takes the next number in
+        // that row's own run and no other row's ids move.
+        return [recordStatement(ctx, Control.do(compiled as any), block)];
+    }
+    return compiled;
+}
+
+/**
+ * The body of a parallel group or a race: one branch per row, except that rows animating the same
+ * stage element share ONE branch and run in order inside it (`groupSameMotionTarget`).
+ *
+ * An element carries one transform and one transition at a time. Two branches handed to the engine
+ * on one element do not both happen: the second takes the element over, and a transition taken over
+ * that way never completes - so `Control.all` waits on it for ever. That was the story stopping dead
+ * with the dialogue box gone and nothing in the console, for two `/char` rows with `t=` on one
+ * layered character inside a `/parallel`. Running them in order is what the engine can do, and lint
+ * tells the author (`story/parallel-same-target`).
+ *
+ * The shared branch is recorded against its first row, after that row's own actions, the way a
+ * returnable jump's wrapper is - so no other row's action ids move.
+ */
+async function compileParallelGroupBody(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
+    const live = blockIds.filter(id => ctx.scene.blocks[id]);
+    const endIndex = live.findIndex(id => endsPlayback(ctx.scene.blocks[id]));
+    const playable = endIndex >= 0 ? live.slice(0, endIndex + 1) : live;
+    const statements: NlrStatement[] = [];
+    for (const group of groupSameMotionTarget(ctx.scene, playable)) {
+        if (group.length === 1) {
+            statements.push(...await compileUnchainedRow(ctx, group[0]));
+            continue;
+        }
+        const run: NlrStatement[] = [];
+        for (const blockId of group) {
+            run.push(...await compileUnchainedRow(ctx, blockId));
+        }
+        if (run.length > 0) {
+            statements.push(recordStatement(ctx, Control.do(run as any), ctx.scene.blocks[group[0]]));
         }
     }
     return statements;
@@ -5515,9 +5630,11 @@ async function compileControlGroup(ctx: SceneCompileContext, block: Extract<Stor
     // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
     // a stale `mode` on a repeat row never reaches the call.
     const unchainedBody = payload.control === "repeat" || mode === "all" || mode === "allAsync" || mode === "any";
-    const children = unchainedBody
+    const children = payload.control === "repeat"
         ? await compileUnchainedGroupBody(ctx, block.childrenIds)
-        : await compileBlockList(ctx, block.childrenIds);
+        : unchainedBody
+            ? await compileParallelGroupBody(ctx, block.childrenIds)
+            : await compileBlockList(ctx, block.childrenIds);
     // `until` selects the conditional form. A group that carries one is never a counted repeat, even
     // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
     // has to be true.
@@ -6231,9 +6348,42 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
     };
 }
 
+/**
+ * The shortest duration Studio ever hands the engine for a transform: one millisecond, which no one
+ * can see, instead of zero.
+ *
+ * **A zero-duration transform poisons the next one on the same channel.** The engine passes the
+ * duration straight to `motion`, whose instant path writes the element's style but leaves its own
+ * record of the channel at the value it held before. The next animated transform reads that stale
+ * record as its starting point, and when its target is the value the channel had before the instant
+ * row - the ordinary "dim her, then bring her back" pair, `opacity=0.3` then `opacity=1 d=0.5` - it
+ * sees nothing to animate and settles without writing a frame. The element stays where the instant
+ * row put it for the rest of the scene, and nothing reports anything. It is not about opacity: a
+ * snap to `pos=0.2` followed by `pos=0.5 d=0.5` from centre is swallowed the same way, and so is a
+ * zoom. Measured in Electron against the real engine (narraleaf-react 1.5.0, motion 11.18).
+ *
+ * Any positive duration takes `motion` through a real animation, which updates that record when it
+ * finishes; one millisecond is the floor that does so while still landing on the next frame. So
+ * every duration this compiler emits for a transform, a show and a hide goes through
+ * {@link transformDurationMs} - including the literal "instant" ones, which are exactly the rows
+ * that did the poisoning.
+ */
+export const INSTANT_TRANSFORM_MS = 1;
+
+/** A row's duration as the engine is handed it - never zero, see {@link INSTANT_TRANSFORM_MS}. */
+export function transformDurationMs(durationMs: number | undefined): number {
+    const value = typeof durationMs === "number" && Number.isFinite(durationMs) ? durationMs : 0;
+    return Math.max(INSTANT_TRANSFORM_MS, value);
+}
+
+/** The options of a transform that lands at once: as instant as the engine can be made to be. */
+function instantTransformOptions(): { duration: number } {
+    return { duration: INSTANT_TRANSFORM_MS };
+}
+
 /** The engine's `Partial<CommonTransformProps>` - what every chained call and every Transform takes. */
 function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
-    const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
+    const options: Record<string, unknown> = { duration: transformDurationMs(timing?.durationMs) };
     if (timing?.easing) {
         options.ease = parseStoryEasing(timing.easing);
     }
@@ -6464,7 +6614,7 @@ async function emitCutProps(
     ctx: SceneCompileContext,
     blockId: string,
 ): Promise<any> {
-    const instant = { duration: 0 };
+    const instant = instantTransformOptions();
     let next = chain;
     if (cut.maskAssetId !== undefined) {
         if (cut.maskAssetId === null) {
@@ -6611,7 +6761,14 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
-        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
+        // A bag that states its own opacity (`/show sign opacity=0.5 in=fade`) is the reveal itself:
+        // the eased half brings the element from hidden to that opacity together with the pose. Going
+        // through the instant show first put it at full opacity for a frame and then faded it DOWN to
+        // the value the row asked for - a flash on every half-visible reveal.
+        if (transform?.to?.opacity !== undefined) {
+            return await emitTransformProps(target, transform, ctx, blockId);
+        }
+        const visible = target.show({ ...instantTransformOptions(), ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
@@ -6619,7 +6776,7 @@ async function compileDisplayableOperation(
             return target.hide(transformOptions(timing));
         }
         const posed = await emitTransformProps(target, transform, ctx, blockId);
-        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
+        return (posed ?? target).hide({ ...instantTransformOptions(), ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;
@@ -7303,6 +7460,14 @@ async function resolveCharacterImageUrl(
     }
     const appearance = ctx.characterSummaries.get(characterId)?.appearance;
     const entry = resolvePoseEntry(appearance, pose);
+    if (entry?.sequence) {
+        const frames = await Promise.all(entry.sequence.frameAssetIds.map(id => resolveAsset(ctx, id, "image", blockId)));
+        if (frames.some(frame => !frame)) return null;
+        const urls = frames as string[];
+        for (const url of urls) ctx.nlrScene.preloadImage(url);
+        const data = { id: `${characterId}:${entry.id}`, frames: urls, fps: entry.sequence.fps, loop: entry.sequence.loop };
+        return `${urls[0]}#nls-sequence=${encodeURIComponent(JSON.stringify(data))}`;
+    }
     return entry?.assetId
         ? resolveAsset(ctx, entry.assetId, "image", blockId, {
             variants: entry.assetVariants,
@@ -7398,6 +7563,13 @@ type CompiledCharacterAvatars = {
     poseByUrl: Map<string, string>;
     /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
     fallback: string | null;
+    /**
+     * Shown while the character speaks with no portrait on stage: the profile's default avatar, or
+     * when it has none, her default look's - the picture the backlog and `Get Character` show for the
+     * same line ({@link resolveDefaultCharacterAvatarAssetId}). The box used to fall to the profile
+     * field alone, and stay empty for every character who only ever had baked avatars.
+     */
+    offStage: string | null;
 };
 
 async function compileCharacterAvatars(
@@ -7443,7 +7615,9 @@ async function compileCharacterAvatars(
 
     if (summary.appearance.kind === "preset") {
         for (const pose of summary.appearance.poses) {
-            const url = pose.assetId
+            const url = pose.sequence
+                ? await resolveCharacterImageUrl(ctx, summary.id, pose.id, blockId)
+                : pose.assetId
                 ? await resolveAsset(ctx, pose.assetId, "image", blockId, {
                     variants: pose.assetVariants,
                     owner: poseOwner(ctx, summary.id, pose),
@@ -7467,7 +7641,14 @@ async function compileCharacterAvatars(
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
     }
-    return { byKey, poseByUrl, fallback };
+    const defaultLookAssetId = fallback ? null : resolveDefaultCharacterAvatarAssetId(summary);
+    const defaultLook = defaultLookAssetId
+        ? await resolveAsset(ctx, defaultLookAssetId, "image", blockId, { owner: avatarOwner })
+        : null;
+    if (defaultLook && defaultLookAssetId) {
+        ctx.avatarAssetIdByUrl.set(defaultLook, defaultLookAssetId);
+    }
+    return { byKey, poseByUrl, fallback, offStage: fallback ?? defaultLook };
 }
 
 /**
@@ -7482,6 +7663,10 @@ function resolveCompiledAvatar(
     avatars: CompiledCharacterAvatars,
     context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
 ): string | null {
+    // No portrait on stage: the engine reports neither a src nor tags.
+    if (!context.currentSrc && !(context.tags?.length)) {
+        return avatars.offStage;
+    }
     const key = summary.appearance.kind === "layered"
         ? characterAvatarKeyFromTags(summary.appearance, context.tags)
         : context.currentSrc
@@ -7569,7 +7754,9 @@ async function bindOffstageDefaultAvatars(params: {
         // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
         // resolves to no summary either. Both fall out here.
         const summary = params.characterSummaries.get(key);
-        const assetId = summary?.defaultAvatarAssetId?.trim();
+        // The profile's avatar, or her default look's when it has none: the picture the backlog and
+        // `Get Character` show for the same line.
+        const assetId = resolveOffStageCharacterAvatarAssetId(summary) || undefined;
         if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }

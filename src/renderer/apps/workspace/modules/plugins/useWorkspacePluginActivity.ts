@@ -1,7 +1,6 @@
+import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import type { Service } from "@/lib/workspace/services/Service";
-import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { workspacePluginSession, type WorkspacePluginActivity } from "@/lib/plugins/workspacePluginSession";
 import type { PluginListItem } from "@shared/types/plugins";
 import { useWorkspace } from "../../context";
@@ -68,12 +67,12 @@ const NO_SUPPRESSION: ReadonlySet<string> = new Set<string>();
  * failed to initialize. Asking for one that is not there must return "no answer", not throw inside
  * a panel body.
  */
-function serviceOrNull<T extends Service>(ctx: WorkspaceContext | null, service: Services): T | null {
+function serviceOrNull<K extends Services>(ctx: WorkspaceContext | null, service: K): WorkspaceServiceMap[K] | null {
     if (!ctx) {
         return null;
     }
     try {
-        return ctx.services.get<T>(service) ?? null;
+        return ctx.services.get(service) ?? null;
     } catch {
         return null;
     }
@@ -94,7 +93,7 @@ export function useWorkspacePluginActivity(): WorkspacePluginActivityState {
     );
 
     const dependencies = useMemo(
-        () => serviceOrNull<ProjectDependencyService>(context, Services.ProjectDependency),
+        () => serviceOrNull(context, Services.ProjectDependency),
         [context],
     );
 

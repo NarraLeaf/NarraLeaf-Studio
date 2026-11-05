@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTranslator, type LocaleCode } from "@shared/i18n";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { getSpeakerCandidates } from "./StorySceneEditorRows";
 import { Character } from "@/lib/workspace/services/character/Character";
@@ -54,5 +55,18 @@ describe("getSpeakerCandidates", () => {
     it("filters both kinds by the query", () => {
         const candidates = getSpeakerCandidates([alice, bob], temps("Carol"), "bo");
         expect(candidates.map(candidate => candidate.name)).toEqual(["Bob", "bo"]);
+    });
+});
+
+describe("the words for a speaker who is only a name", () => {
+    // The paste wizard, the speaker picker and the row menu name the same choice; ja had 名前だけ in
+    // the first two and 名前のみ in the third.
+    it("are one word in every locale", () => {
+        for (const locale of ["en", "zh", "ja"] as LocaleCode[]) {
+            const t = createTranslator(locale).t;
+            const word = t("story.rows.tempSpeaker").toLowerCase();
+            expect(t("story.paste.target.tempSpeaker").toLowerCase(), locale).toBe(word);
+            expect(t("story.rowMenu.speakerNameOnly", { name: "X" }).toLowerCase(), locale).toContain(word);
+        }
     });
 });

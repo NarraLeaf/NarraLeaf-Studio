@@ -4,7 +4,7 @@
       "sourceText": "Auto forward delay"
     },
     "config.bgm": {
-      "sourceText": "BGM"
+      "sourceText": "Music"
     },
     "config.categorySound": {
       "sourceText": "Sound"
@@ -49,7 +49,7 @@
       "sourceText": "Read only"
     },
     "config.soundEffects": {
-      "sourceText": "Sound effects"
+      "sourceText": "SFX"
     },
     "config.textSpeed": {
       "sourceText": "Text speed"
@@ -138,6 +138,9 @@
     "load.title": {
       "sourceText": "Load"
     },
+    "log.replayVoice": {
+      "sourceText": "Replay voice"
+    },
     "log.title": {
       "sourceText": "Log"
     },
@@ -157,7 +160,7 @@
       "sourceText": "Save"
     },
     "menu.settings": {
-      "sourceText": "Settings"
+      "sourceText": "Config"
     },
     "menu.start": {
       "sourceText": "Start"

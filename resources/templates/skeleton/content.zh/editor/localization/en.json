@@ -153,9 +153,9 @@
       "target": "Auto forward delay"
     },
     "key:config.bgm": {
-      "sourceHash": "fnv1a:f5afac07",
+      "sourceHash": "fnv1a:ba3ee816",
       "status": "translated",
-      "target": "BGM"
+      "target": "Music"
     },
     "key:config.categorySound": {
       "sourceHash": "fnv1a:40e77494",
@@ -183,7 +183,7 @@
       "target": "On"
     },
     "key:config.masterVolume": {
-      "sourceHash": "fnv1a:14562f0c",
+      "sourceHash": "fnv1a:ce70910c",
       "status": "translated",
       "target": "Master volume"
     },
@@ -230,7 +230,7 @@
     "key:config.soundEffects": {
       "sourceHash": "fnv1a:b266367e",
       "status": "translated",
-      "target": "Sound effects"
+      "target": "SFX"
     },
     "key:config.textSpeed": {
       "sourceHash": "fnv1a:f7b6ea16",
@@ -377,6 +377,11 @@
       "status": "translated",
       "target": "Load"
     },
+    "key:log.replayVoice": {
+      "sourceHash": "fnv1a:736862cf",
+      "status": "translated",
+      "target": "Replay voice"
+    },
     "key:log.title": {
       "sourceHash": "fnv1a:2c9d9f0e",
       "status": "translated",
@@ -410,7 +415,7 @@
     "key:menu.settings": {
       "sourceHash": "fnv1a:f3c259dd",
       "status": "translated",
-      "target": "Settings"
+      "target": "Config"
     },
     "key:menu.start": {
       "sourceHash": "fnv1a:22696cbc",

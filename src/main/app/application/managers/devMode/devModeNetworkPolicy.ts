@@ -71,7 +71,7 @@ export type PreviewNetworkPolicy = {
 class DevModeNetworkPolicyManager {
     private readonly installedSessions = new WeakSet<Session>();
     private readonly policies = new Map<number, PreviewNetworkPolicy>();
-    private readonly distrusted = new Set<number>();
+    private readonly confined = new Set<number>();
 
     /**
      * Register (or refresh) the policy for a Dev Mode window and ensure the
@@ -89,7 +89,13 @@ class DevModeNetworkPolicyManager {
     }
 
     /**
-     * Cut a window off from the network because the project it is open on is not trusted.
+     * Cut a window off from the network for as long as it is open.
+     *
+     * Every workspace window gets this, whatever its project's trust: Studio's renderer never
+     * fetches anything remote itself - the main process does, and checks what comes back - and a
+     * workspace page also runs plugin code, which shares its realm. A request leaving the page is
+     * therefore never Studio's, and the one thing it could be is a plugin carrying the project
+     * somewhere.
      *
      * Lives on this manager rather than in a hook of its own, and that is a correctness point
      * rather than tidiness: Electron keeps **one** `onBeforeRequest` listener per session, so a
@@ -97,17 +103,17 @@ class DevModeNetworkPolicyManager {
      * thing it exists to narrow. Everything that wants to cancel a request on this session has to
      * come through here.
      *
-     * Whole-window rather than per-request-kind: a distrusted project must not reach the network at
-     * all, and the two are asked as one question by {@link isBlocked}.
+     * Whole-window rather than per-request-kind: such a window must not reach the network at all,
+     * and the two are asked as one question by {@link isBlocked}.
      */
-    public blockDistrusted(webContentsId: number): void {
-        this.distrusted.add(webContentsId);
+    public confine(webContentsId: number): void {
+        this.confined.add(webContentsId);
         this.install(electronSession.defaultSession);
     }
 
-    /** The window is gone, or its project has since been trusted and it reloaded. */
-    public releaseDistrusted(webContentsId: number): void {
-        this.distrusted.delete(webContentsId);
+    /** The window is gone. */
+    public releaseConfined(webContentsId: number): void {
+        this.confined.delete(webContentsId);
     }
 
     /** A preview confined to the app protocol: no remote request of any kind leaves it. */
@@ -115,7 +121,7 @@ class DevModeNetworkPolicyManager {
         if (webContentsId === undefined) {
             return false;
         }
-        if (this.distrusted.has(webContentsId)) {
+        if (this.confined.has(webContentsId)) {
             return true;
         }
         const policy = this.policies.get(webContentsId);

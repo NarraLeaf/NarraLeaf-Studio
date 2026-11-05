@@ -24,7 +24,23 @@ export type StoryCommandSpan = { start: number; end: number };
  * offered: a seeded audio track is offered by the interface word for it and still answers to the
  * stored English name an older line was typed with.
  */
-export type StoryCommandNamedRef = { id: string; name: string; aliases?: readonly string[] };
+export type StoryCommandNamedRef = {
+    id: string;
+    name: string;
+    aliases?: readonly string[];
+    /**
+     * Where the author filed it, outermost first: an asset's folders in the asset browser. Absent for
+     * anything not filed, and for every kind of name that has no filing at all. Only the candidate
+     * menu reads it - resolving a name never depends on where it is filed.
+     */
+    folders?: readonly StoryCommandFolder[];
+};
+
+/**
+ * One level of a name's filing. `kind` picks the glyph: an asset folder, or a cast group (which the
+ * candidate menu files character names under the same way).
+ */
+export type StoryCommandFolder = { id: string; name: string; kind?: "folder" | "cast" };
 
 /**
  * A named appearance of one character. `axisId` is present exactly when the character is layered,
@@ -255,6 +271,13 @@ export type StoryCommandContext = {
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
     /**
+     * The pictures a layered character is drawn from - each layer's image under every tag. They are
+     * ordinary image assets, and still resolve wherever a row names one, but a slot that offers the
+     * library as things to put on stage leaves them out: a single layer of 美绪 is not a picture an
+     * author means to show. Omitted, nothing is left out.
+     */
+    characterLayerAssetIds?: readonly string[];
+    /**
      * The characters a runtime draws (`puppet` appearance) - the ones whose motion / expression / skin
      * are named by the model rather than enumerated in the project.
      *
@@ -317,6 +340,11 @@ export type StoryCommandVideoClips =
  */
 export type StoryPuppetVocabulary = {
     motions: readonly string[];
+    /**
+     * What to call a motion in a list, keyed by its name, where Studio could read more than the name:
+     * a Live2D motion's file (`PuppetDescriptionService`). The name is still what a row stores.
+     */
+    motionLabels?: Readonly<Record<string, string>>;
     expressions: readonly string[];
     skins: readonly string[];
     params: readonly StoryPuppetParamSpec[];

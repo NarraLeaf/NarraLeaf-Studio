@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { Input } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
@@ -9,6 +9,8 @@ import type { TranslationKey } from "@shared/i18n";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { planPastedRows, speakerMemoryKey, splitPastedText } from "@/lib/story/paste/storyPasteModel";
 import { useCreateCharacterFreeze } from "./storySceneReadOnly";
+import { characterIdentity } from "./StoryRowGutter";
+import { characterSpeakerIdentity, storySpeakerPaint } from "./storySpeakerIdentity";
 import type {
     PastePlan,
     PastePlanRow,
@@ -375,7 +377,7 @@ export function StoryPasteWizardModal(props: {
                     so this mirrors the editor's own columns - name, then words. */}
                 <div className="flex flex-col gap-0.5 rounded-md border border-edge bg-surface-sunken px-2 py-1.5">
                     {plan.rows.slice(0, PREVIEW_ROWS).map((row, index) => (
-                        <PreviewRow key={index} row={row} characterNames={characterNames} />
+                        <PreviewRow key={index} row={row} characterNames={characterNames} characters={props.characters} />
                     ))}
                     {plan.rows.length > PREVIEW_ROWS ? (
                         <span className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -388,7 +390,7 @@ export function StoryPasteWizardModal(props: {
     );
 }
 
-function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, string> }) {
+function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, string>; characters: Character[] }) {
     const { t } = useTranslation();
     const { row } = props;
     if (row.kind === "narration") {
@@ -402,16 +404,23 @@ function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, stri
     const name = row.characterId
         ? props.characterNames.get(row.characterId) ?? row.characterId
         : row.pendingCharacterName ?? row.speakerName ?? "";
+    // Each name in the colour its rows will wear, from the resolvers the rows' own nametags use: an
+    // existing character in her colour, a name with no character (or one about to become one) in the
+    // hue its name gives it. One colour for every name said nothing about who is who.
+    const identity = row.characterId
+        ? characterIdentity(row.characterId, props.characters)
+        : name ? characterSpeakerIdentity(name, { hasPortrait: false }) : null;
+    const paint = identity ? storySpeakerPaint(identity.paint) : null;
     return (
         <div className="flex items-baseline gap-2 text-xs">
             <span
-                className={[
-                    "w-[104px] shrink-0 truncate text-right font-medium",
-                    row.pendingCharacterName ? "text-success" : "text-primary",
-                ].join(" ")}
+                className={["flex w-[104px] shrink-0 items-baseline justify-end gap-0.5 truncate text-right font-medium", paint?.className ?? ""].join(" ")}
+                style={paint ? { ...paint.style, color: "var(--nl-speaker-name)" } : undefined}
+                data-paste-preview-speaker={name}
                 data-tip={row.pendingCharacterName ? t("story.paste.willBeCreated") : undefined}
             >
-                {name}
+                {row.pendingCharacterName ? <Plus className="h-2.5 w-2.5 shrink-0 self-center text-success" aria-hidden /> : null}
+                <span className="truncate">{name}</span>
             </span>
             <span className="min-w-0 flex-1 truncate text-fg">{row.text}</span>
         </div>

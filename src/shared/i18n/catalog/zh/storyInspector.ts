@@ -258,10 +258,10 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        reset: "复位镜头",
+        reset: "重置镜头",
     },
 
-    cameraResetHint: "复位机位、色调与镜头效果。",
+    cameraResetHint: "重置机位、色调与镜头效果。",
 
     cameraLook: {
         memory: "回忆",
@@ -279,7 +279,7 @@ export const storyInspector = {
     },
 
     cameraLookHint: {
-        channel: "后添加的色调会覆盖舞台压暗。复位镜头会清除色调。",
+        channel: "后添加的色调会覆盖舞台压暗。重置镜头会清除色调。",
         monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
         hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
     },
@@ -364,6 +364,7 @@ export const storyInspector = {
         setText: "设置文本",
         setFontSize: "设置字号",
         setFontColor: "设置字体颜色",
+        setFont: "设置字体",
     },
     layerOperation: {
         setZIndex: "设置层级",
@@ -446,6 +447,8 @@ export const storyInspector = {
         textName: "文本名称",
         fontSize: "字号",
         fontColor: "字体颜色",
+        outlineWidth: "描边宽度",
+        outlineColor: "描边颜色",
         text: "文本",
     },
     layer: {
@@ -567,6 +570,8 @@ export const storyInspector = {
         quitPage: "结束后显示的页面",
         quitPageUnset: "未设置",
         quitHint: "本次游玩在此行结束，随后显示该页面，不记录结局。",
+        pagePage: "页面",
+        pageHint: "页面在剧情上方打开，剧情会等到页面用「关闭本叠加页面」关闭自己后再继续。关闭时返回的结果按变量类型写入结果变量；没有返回结果时变量保持原值",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },

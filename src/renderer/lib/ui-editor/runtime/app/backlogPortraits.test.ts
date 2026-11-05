@@ -129,3 +129,45 @@ describe("the picture on a backlog row", () => {
         expect(read[0]?.avatar).toBeNull();
     });
 });
+
+/**
+ * The face a line was shown with, which the engine records on the entry when the line is reached.
+ * Resolving the speaker again when the backlog opens answered with her default look whatever she
+ * wore at the line - the face the stage has by then, at best, never the face of that line.
+ */
+describe("the picture on a backlog row, when the line recorded its face", () => {
+    const SMILE_URL = "app://fs/narra-smile-avatar";
+    const recordedEntry = (avatar: string | null | undefined): unknown => ({
+        token: "t1",
+        element: { type: "say", text: "Morning.", voice: null, voiceId: null, character: "Narra", ...(avatar !== undefined ? { avatar } : {}) },
+    });
+
+    function read(entry: unknown) {
+        const liveGame = { getHistory: () => [entry] } as unknown as LiveGame;
+        return rows(createLiveGameUiCallbacks({
+            requireLiveGame: () => liveGame,
+            getLiveGame: () => liveGame,
+            choiceMenus: createChoiceMenus(),
+            currentDialogNametagRef: { current: null },
+            dialogClickTargets: createDialogClickTargets(),
+            resolveSpeakerAvatar: sourceName => toBlueprintImageAsset(
+                resolveDefaultCharacterAvatarAssetId(CHARACTERS.find(entry => entry.name === sourceName)),
+            ),
+            resolveRecordedAvatar: url => url === SMILE_URL ? toBlueprintImageAsset("character-avatar:char-narra:smile") : null,
+        }).onGetHistory())[0];
+    }
+
+    it("is the face the line was shown with, not her default look", () => {
+        expect(read(recordedEntry(SMILE_URL))?.avatar).toEqual({ kind: "imageAsset", assetId: "character-avatar:char-narra:smile" });
+    });
+
+    it("is nothing for a line shown with no face", () => {
+        expect(read(recordedEntry(null))?.avatar).toBeNull();
+    });
+
+    it("is her default look for a line recorded without a face, or with one this build does not know", () => {
+        const fallback = { kind: "imageAsset", assetId: "character-avatar:char-narra:p1" };
+        expect(read(recordedEntry(undefined))?.avatar).toEqual(fallback);
+        expect(read(recordedEntry("app://fs/from-another-build"))?.avatar).toEqual(fallback);
+    });
+});

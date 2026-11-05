@@ -1,13 +1,5 @@
-/** `placeholders` - empty-state copy for not-yet-implemented workspace panels. */
+/** `placeholders` - static panel and editor module titles. */
 export const placeholders = {
-    story: {
-        title: "Story",
-        description: "Chapters, scenes, and story structure will appear here.",
-    },
-    localization: {
-        title: "Localization",
-        description: "Translation tables and language assets will be managed here.",
-    },
     // Static panel/editor module titles registered at load time (see each module's index).
     moduleTitles: {
         welcome: "Welcome",
@@ -22,12 +14,8 @@ export const placeholders = {
         problems: "Problems",
         agentLog: "Agent Log",
         storyMotion: "Story Motion",
+        stageTimeline: "Stage timeline",
         dashboard: "Dashboard",
-        audioPreview: "Audio Preview",
-        imagePreview: "Image Preview",
-        videoPreview: "Video Preview",
-        fontPreview: "Font Preview",
-        jsonPreview: "JSON Preview",
         search: "Search",
         keybindings: "Keyboard Shortcuts",
         history: "History",

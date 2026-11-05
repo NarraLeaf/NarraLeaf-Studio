@@ -1,6 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RendererInterfaceKey } from "@shared/types/constants";
 
+/** The preload's global as the page sees it: the bridge behind a once-only `acquire`. */
+function globalBridgeFor(api: object) {
+    let hardened = false;
+    return {
+        acquire: vi.fn(() => {
+            if (hardened) {
+                throw new Error("The renderer bridge has already been hardened");
+            }
+            return api;
+        }),
+        harden: vi.fn(() => {
+            hardened = true;
+        }),
+        isHardened: vi.fn(() => hardened),
+    };
+}
+
 describe("renderer bridge hardening", () => {
     beforeEach(() => {
         vi.resetModules();
@@ -25,7 +42,7 @@ describe("renderer bridge hardening", () => {
                 isHardened: vi.fn(() => false),
             },
         };
-        vi.stubGlobal("window", { [RendererInterfaceKey]: api });
+        vi.stubGlobal("window", { [RendererInterfaceKey]: globalBridgeFor(api) });
 
         const bridge = await import("./bridge");
 
@@ -46,7 +63,7 @@ describe("renderer bridge hardening", () => {
             privileged: { acquire: vi.fn(() => ({})), harden: vi.fn(), isHardened: vi.fn(() => false) },
             agentBridge: { acquire: vi.fn(() => agentRuntime), harden: vi.fn(), isHardened: vi.fn(() => false) },
         };
-        vi.stubGlobal("window", { [RendererInterfaceKey]: api });
+        vi.stubGlobal("window", { [RendererInterfaceKey]: globalBridgeFor(api) });
 
         const bridge = await import("./bridge");
 
@@ -60,5 +77,27 @@ describe("renderer bridge hardening", () => {
         expect(api.agentBridge.harden).toHaveBeenCalledOnce();
         expect(bridge.getAgentBridgeInterface()).toBe(agentRuntime);
         expect(api.agentBridge.acquire).toHaveBeenCalledOnce();
+    });
+
+    it("closes the global itself, so code that loads later cannot take the bridge from it", async () => {
+        // ⚠ The property Electron defines cannot be deleted, so the global stays reachable: what
+        // has to be true is that asking it for the bridge after hardening gets nothing.
+        const api = {
+            privileged: { acquire: vi.fn(() => ({})), harden: vi.fn(), isHardened: vi.fn(() => false) },
+            agentBridge: { acquire: vi.fn(() => ({})), harden: vi.fn(), isHardened: vi.fn(() => false) },
+        };
+        const global = globalBridgeFor(api);
+        const undeletable = {};
+        Object.defineProperty(undeletable, RendererInterfaceKey, { value: global, configurable: false });
+        vi.stubGlobal("window", undeletable);
+
+        const bridge = await import("./bridge");
+        bridge.initializeRendererBridge();
+        bridge.hardenRendererBridge();
+
+        expect(global.harden).toHaveBeenCalledOnce();
+        expect((window as any)[RendererInterfaceKey]).toBe(global);
+        expect(() => (window as any)[RendererInterfaceKey].acquire()).toThrow(/hardened/);
+        expect(global.acquire).toHaveBeenCalledTimes(2);
     });
 });

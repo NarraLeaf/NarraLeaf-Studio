@@ -60,6 +60,8 @@ const DELIBERATELY_OUT: Record<string, string> = {
     "blueprint.event.head.anyGamepadButtonUp": "gamepad input is not addressed to a widget",
     "blueprint.event.head.fullscreenChanged": "a window event, not a widget one",
     "blueprint.event.head.windowFocusChanged": "a window event, not a widget one",
+    "blueprint.event.head.savedVariableChanged": "story state, not a widget event; the component excludes ambient events",
+    "blueprint.event.head.persistentVariableChanged": "story state, not a widget event; the component excludes ambient events",
     "blueprint.page.getProps": "a component definition has no page",
     "blueprint.page.isSurfaceEntering": "a component definition has no page",
     "blueprint.page.isSurfaceExiting": "a component definition has no page",

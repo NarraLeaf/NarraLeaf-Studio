@@ -70,9 +70,10 @@ NarraLeaf-Skills/
    CLI, Cursor or Other): Studio shows its connection configuration - the address
    (`http://127.0.0.1:<PORT>/mcp`, usually port 47219) and the access token, already filled in - with
    a copy button, says where it goes, and installs this skill for it. The *Agent* menu's **Copy
-   connection configuration** offers the same configurations. If another program holds that port,
-   Studio moves to a nearby one, keeps it from then on and says so on the settings page; copy the
-   configuration again for agents you set up before.
+   connection configuration** offers the same configurations. **Endpoint port** on the same page
+   changes the port; copy the configuration again afterwards for agents you set up before. If another
+   program holds the port, or the system reserved it, the endpoint does not start, and the settings
+   page and the *Agent* menu say so; pick another port there.
 
 The server listens only on your own computer (127.0.0.1) and refuses any request without the token.
 Treat the token like a password; you can regenerate it in the same settings page.
@@ -112,8 +113,9 @@ may change anything at all.
 #### Claude Desktop
 
 Claude Desktop's configuration file starts local programs, and Studio can be that program: started
-with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open
-(starting Studio first if it is not running). In Studio, *Copy connection configuration -> Claude
+with `--mcp-stdio`, it opens no window and forwards the connection to the Studio you have open.
+Connecting does not start Studio - Claude Desktop connects whenever it starts - but the agent's
+first tool call does, when Studio is not running. In Studio, *Copy connection configuration -> Claude
 Desktop* gives the entry with the path to Studio filled in; merge it, or
 `mcp-configs/claude-desktop.json` with `<STUDIO_EXECUTABLE>` replaced, into
 `claude_desktop_config.json` (*Settings -> Developer -> Edit Config*) and restart Claude Desktop.

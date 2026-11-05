@@ -1,3 +1,4 @@
+import { STORY_TEXT_OUTLINE_DEFAULT_COLOR } from "@shared/story/textOutline";
 import type {
     StoryActionableTargetRef,
     StoryActionPayload,
@@ -548,8 +549,9 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         }
         const param = def ? findParam(def, entry.param) : null;
         source += " ";
-        if (!entry.positional) {
-            source += `${def && param ? localizedParamKey(def, param) : entry.param}=`;
+        const key = entry.positional ? null : def && param ? localizedParamKey(def, param) : entry.param;
+        if (key !== null) {
+            source += `${key}=`;
         }
         const start = source.length;
         if (entry.ornament) {
@@ -559,7 +561,10 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         // Only a NUMBER takes the unit — `/wait click` fills the same slot as `/wait 2` and must not
         // come back as `clicks`. It rides INSIDE the edit span: a click on `1s` opens the editor a
         // click on `1` would, and a span stopping short of it would leave a dead half-token beside it.
-        source += entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        const unit = entry.enum || !NUMERIC.test(entry.value) ? "" : unitOf(param);
+        // A key that already names the unit is not followed by it again: ja's duration key is 秒, and
+        // the row printed 「秒=0.6秒」. The bare number reads back the same.
+        source += unit && key !== null && key.endsWith(unit) ? "" : unit;
         const control = entry.apply ? controlFor(param, entry) : null;
         if (control && entry.apply) {
             edits.push({ span: { start, end: source.length }, control, value: entry.editValue ?? entry.value, apply: entry.apply });
@@ -874,6 +879,24 @@ function revealWord(transform: StoryTransformRef | undefined, direction: "reveal
 }
 
 /**
+ * `/show opacity=` — the opacity an entrance ends at, printed only when it is not the full 1 every
+ * reveal ends at anyway.
+ *
+ * A stated opacity also makes {@link revealWord} read the bag as `fade` (the channel is the one
+ * `fade` writes), and the word is kept beside the number: `in=fade` clears the other reveal channels
+ * before the opacity lands, so dropping it would print a line that builds a different row.
+ */
+function entranceOpacityArg<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(payload: P): Arg | null {
+    const opacity = payload.transform?.to?.opacity;
+    if (opacity === undefined || opacity === 1) {
+        return null;
+    }
+    return arg("opacity", numberValue(opacity), {
+        apply: next => patchTransformRef(payload, { ...(payload.transform ?? {}), to: { ...(payload.transform?.to ?? {}), opacity: Number(next) } }),
+    });
+}
+
+/**
  * A whole-screen `rule=` — the picture a rule transition plays in the order of.
  *
  * Printed only when the row actually holds one, so every other transition's line is unchanged. The
@@ -980,13 +1003,17 @@ function appearanceChoice(
     return {
         choices: options.map(option => ({ value: option.id, label: option.name })),
         ...(current ? { editValue: current } : {}),
-        // A layered character keeps one tag per axis and an expression changes only the axes it names,
-        // so the pick MERGES; a preset character has one pose and it is replaced.
+        // A preset character has one pose and it is replaced. A layered row whose slot holds one tag
+        // (a `/face`, changing the axes it names) has it replaced too, whichever axis the new tag is
+        // on: merging put a second tag beside the first, and a row holding two prints no value. A row
+        // holding the whole look (an entrance, every axis resolved) changes the one axis picked.
         apply: next => {
             const axisId = options.find(option => option.id === next)?.axisId;
-            return axisId
-                ? { ...payload, tags: { ...payload.tags, [axisId]: next } }
-                : { ...payload, pose: next };
+            if (!axisId) {
+                return { ...payload, pose: next };
+            }
+            const held = payload.tags ?? {};
+            return { ...payload, tags: Object.keys(held).length <= 1 ? { [axisId]: next } : { ...held, [axisId]: next } };
         },
     };
 }
@@ -1046,7 +1073,7 @@ function characterSentence(
         case "enter":
             return {
                 commandId,
-                args: [positional("target", name, who), form, ...placement, reveal("reveal"), duration],
+                args: [positional("target", name, who), form, ...placement, reveal("reveal"), entranceOpacityArg(payload), duration],
             };
         case "exit":
             return { commandId, args: [positional("target", name, who), reveal("conceal"), duration] };
@@ -1221,12 +1248,17 @@ function imageSentence(
     if (revealCreates(payload)) {
         return {
             commandId,
-            args: [positional("target", asset, swapAsset), arg("name", name), ...placement, reveal("reveal"), duration],
+            args: [positional("target", asset, swapAsset), arg("name", name), ...placement, reveal("reveal"), entranceOpacityArg(payload), duration],
         };
     }
     return {
         commandId,
-        args: [positional("target", name, object), reveal(payload.operation === "show" ? "reveal" : "conceal"), duration],
+        args: [
+            positional("target", name, object),
+            reveal(payload.operation === "show" ? "reveal" : "conceal"),
+            payload.operation === "show" ? entranceOpacityArg(payload) : null,
+            duration,
+        ],
     };
 }
 
@@ -1264,6 +1296,28 @@ function textSentence(
                 commandId,
                 args: [positional("target", name, object), arg("color", payload.fontColor, { apply: next => ({ ...payload, fontColor: next }) })],
             };
+        case "setFont": {
+            // Whichever of the three the row states, in the order the line takes them. `outline=0` is
+            // the stored `null`, so a row that takes an outline away reads back as the line that did.
+            const outline = payload.outline;
+            return {
+                commandId,
+                args: [
+                    positional("target", name, object),
+                    positional("size", payload.fontSize === undefined ? undefined : numberValue(payload.fontSize), { apply: next => ({ ...payload, fontSize: Number(next) }) }),
+                    arg("color", payload.fontColor, { apply: next => ({ ...payload, fontColor: next }) }),
+                    arg("outline", outline === undefined ? undefined : outline === null ? "0" : numberValue(outline.width), {
+                        apply: next => ({
+                            ...payload,
+                            outline: Number(next) > 0 ? { width: Number(next), color: outline?.color ?? STORY_TEXT_OUTLINE_DEFAULT_COLOR } : null,
+                        }),
+                    }),
+                    arg("outlineColor", outline ? outline.color : undefined, {
+                        apply: next => ({ ...payload, outline: { width: outline?.width ?? 1, color: next } }),
+                    }),
+                ],
+            };
+        }
         case "show":
         case "hide": {
             const direction = payload.operation === "show" ? "reveal" : "conceal";
@@ -1275,6 +1329,7 @@ function textSentence(
                         enum: true,
                         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
                     }),
+                    direction === "reveal" ? entranceOpacityArg(payload) : null,
                     arg("d", seconds(payload.transform?.durationMs), { apply: next => patchTransform(payload, { durationMs: msOf(next) }) }),
                 ],
             };
@@ -1567,6 +1622,7 @@ function displayableSentence(
                 enum: true,
                 apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
             }),
+            direction === "reveal" ? entranceOpacityArg(payload) : null,
             arg("d", seconds(payload.transform?.durationMs), {
                 apply: next => patchTransform(payload, { durationMs: msOf(next) }),
             }),
@@ -1783,6 +1839,24 @@ function actionSentence(
             };
         case "input":
             return inputSentence(payload, lookups, commandId);
+        case "page": {
+            // The page by name, as `/quit` prints its own - blank when no page answers to the id, so
+            // the line reads as the page-less row it now is and `story/page-missing` says why.
+            const pages = lookups.commandContext?.surfaces ?? [];
+            const name = pages.find(page => page.id === payload.surfaceId)?.name ?? "";
+            return {
+                commandId,
+                args: [
+                    positional("page", name, pages.length === 0 ? {} : {
+                        choices: pages.map(page => ({ value: page.id, label: page.name })),
+                        ...(payload.surfaceId ? { editValue: payload.surfaceId } : {}),
+                        apply: next => ({ ...payload, surfaceId: next }),
+                    }),
+                    arg("into", payload.resultTarget ? variableRefShortLabel(payload.resultTarget, lookups) : undefined),
+                ],
+            };
+        }
+
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.

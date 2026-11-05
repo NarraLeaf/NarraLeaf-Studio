@@ -713,8 +713,9 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         });
 
         win.on("closed", () => {
-            // A window that was `destroy()`ed rather than closed never ran the handler above, so
-            // both of these have to be repeated here. Both are idempotent.
+            // A window that was `destroy()`ed rather than closed never ran the handler above, nor
+            // did one whose page called `window.close()`, so both of these have to be repeated
+            // here. Both are idempotent. `emitClosed` repeats the `close` event for the same reason.
             this.releaseIndependentChildren();
             this.resolveCloseResult();
 
@@ -724,7 +725,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
                 }
             });
 
-            this.getEvents().emit("closed", this);
+            this.getEvents().emitClosed(this);
             this.getApp().windowManager.emitWindowClosed(this);
             this.getApp().windowManager.unregisterWindow(this);
         });

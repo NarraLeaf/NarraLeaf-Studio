@@ -112,6 +112,7 @@ Verify each with `blueprint_node` - pins and fields change.
 | `blueprint.localization.getText` | Get Text | A translation key's text in the player's language. |
 | `blueprint.saved.get` / `.set` | Get / Set Saved Var | A `saved` variable. |
 | `blueprint.persistent.get` / `.set` | Get / Set Persistent | A `persistent` variable (endings seen, unlocks). |
+| `blueprint.event.head.savedVariableChanged` / `persistentVariableChanged` | On Saved Var Changed / On Persistent Changed | Head: that variable took a new value (`savedVariableId` / `persistentVariableId` field, `value` output) - from a story line, another screen or a `/page` answer. Use it instead of a Delay loop polling a variable. Not fired for a load or a new game. |
 | `blueprint.game.getEndings` / `isEndingReached` | Endings | What the player has reached. |
 | `blueprint.element.ref` | Element | Points at an element (`surfaceId`, `elementId`, `elementType`). |
 | `blueprint.element.displayable.setProperty` | Set Element Property | Show / hide (Property: Visible) and other props. |

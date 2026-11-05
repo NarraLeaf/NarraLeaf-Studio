@@ -8,7 +8,7 @@ import type {
     StoryScriptImportPlan,
     StoryScriptSceneStats,
 } from "@/lib/story/script/storyScriptTypes";
-import { applicableScenePlans, type StoryScriptUndoState } from "./storyScriptIo";
+import { applicableScenePlans } from "./storyScriptIo";
 
 const ROW = "flex items-start gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const NOTE = "flex items-start gap-1.5 px-1 text-2xs";
@@ -61,8 +61,6 @@ function Diagnostic(props: { diagnostic: StoryScriptDiagnostic }) {
 export function StoryScriptImportModal(props: {
     plan: StoryScriptImportPlan | null;
     busy: boolean;
-    /** Undo is per open scene editor, so a multi-scene import can be undoable in part. */
-    undo: StoryScriptUndoState;
     onClose: () => void;
     onImport: () => void;
 }) {
@@ -79,14 +77,7 @@ export function StoryScriptImportModal(props: {
             size="lg"
             closeOnOverlayClick={!props.busy}
             footer={
-                <div className="flex w-full items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-2xs text-warning">
-                        {applicable.length === 0 || props.undo.coverage === "all"
-                            ? ""
-                            : props.undo.coverage === "none"
-                                ? t("story.script.noUndo")
-                                : tn("story.script.noUndoSome", props.undo.unundoable)}
-                    </span>
+                <div className="flex w-full items-center justify-end gap-2">
                     <button
                         type="button"
                         className={dialogFooterButtonClass({ variant: "secondary", disabled: props.busy })}

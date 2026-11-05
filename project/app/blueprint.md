@@ -52,6 +52,7 @@ blueprint.sound.play
   category   Sound
   graphs     event, macro
   traits     effectful, async (not allowed in function graphs)
+  owners     globalMain, surfaceMain, widgetMain, componentWidgetMain (not in storyAction: it needs the full host API, which a story row does not have)
   keywords   sound, audio, play, music, bgm, sfx, voice, clip, track, fade
 
   inputs

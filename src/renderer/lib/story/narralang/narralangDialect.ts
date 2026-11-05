@@ -71,13 +71,25 @@ export type NarralangVerbSyntax = {
      */
     readonly keyword: string;
     readonly slots: readonly NarralangSlotSyntax[];
+    /**
+     * Lead words this verb once read and no longer does, refused with a diagnostic rather than read.
+     *
+     * Dropping a lead from the table is not enough on its own: on a prose-shaped verb the words would
+     * quietly become part of the text, and the line would commit as something its author never wrote.
+     * Listed only when the old word cannot simply be read as an alias, because it meant something the
+     * new one does not.
+     */
+    readonly retiredLeads?: readonly string[];
 };
 
 export type NarralangMarkSyntax = {
     readonly mark: keyof StoryTextMarks;
     readonly tag: string;
-    /** How the mark's argument prints; absent when the tag takes none. */
-    readonly arg?: "raw" | "number";
+    /**
+     * How the mark's argument prints; absent when the tag takes none. `effect` is an inline effect's
+     * id followed by its parameters as `key=value` words.
+     */
+    readonly arg?: "raw" | "number" | "effect";
 };
 
 export type NarralangTextSyntax = {
@@ -219,6 +231,8 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         // The vocabulary NarraLeaf's own `Sentence` markup uses, so an author who has written a
         // dialogue line in the engine reads this without a second table to learn.
         marks: [
+            // Outermost: an effect draws the whole run, whatever else is set on its characters.
+            { mark: "effect", tag: "fx", arg: "effect" },
             { mark: "bold", tag: "b" },
             { mark: "italic", tag: "i" },
             { mark: "color", tag: "color", arg: "raw" },
@@ -254,9 +268,17 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             keyword: "",
             slots: [
                 { slot: "text", value: "text" },
-                { slot: "showIf", lead: "show if", value: "expression" },
-                { slot: "enableIf", lead: "enable if", value: "expression" },
+                // Named for what the stored condition does: the option is hidden (or greyed out) WHILE
+                // the expression is true. That is `hiddenWhen` / `disabledWhen`, the inspector's
+                // "Hidden when", and the `.story` format's `[hide if …]` - one meaning in every surface.
+                { slot: "hideIf", lead: "hide if", value: "expression" },
+                { slot: "disableIf", lead: "disable if", value: "expression" },
             ],
+            // These leads printed the same stored conditions under the opposite words, so `show if
+            // trust > 0` hid the option once trust was positive. A line still using them cannot be
+            // read either way without flipping somebody's intent - an exported line meant the stored
+            // condition, a hand-written one meant the words - so it is refused until it is rewritten.
+            retiredLeads: ["show if", "enable if"],
         },
 
         // --- Scene ---------------------------------------------------------------------------------

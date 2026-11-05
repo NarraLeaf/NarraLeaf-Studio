@@ -30,6 +30,7 @@ import {
     normalizeStoryDocument,
     normalizeStoryLibraryIndex,
     promoteTempSpeaker,
+    promoteTempSpeakerEdits,
     rebindSpeakersInBlocks,
     setRowsSpeakerName,
     STORY_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -781,6 +782,26 @@ describe("temp speakers", () => {
         }
         // Bob is a different speaker and must not be swept up.
         expect(collectTempSpeakers(document)).toEqual([{ name: "Bob", blockIds: ["b"] }]);
+    });
+
+    it("can say the rebinding as edits, so it is written, saved and undone like any edit", () => {
+        // 「创建角色」 rewrote the matching rows in place: no revision, no save, and an undo that
+        // took back only the row the character was made from.
+        const document = documentWith([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { speakerName: "Bob" }),
+            dialogue("c", { speakerName: "Alice" }),
+            dialogue("d", { characterId: "char-existing", speakerName: "Alice" }),
+        ]);
+        const scene = Object.values(document.scenes)[0];
+
+        const edits = promoteTempSpeakerEdits(document, "Alice", "char-new");
+
+        expect(edits.map(entry => [entry.sceneId, entry.blockId])).toEqual([[scene.id, "a"], [scene.id, "c"]]);
+        expect(edits.every(entry => (entry.payload as Record<string, unknown>).characterId === "char-new"
+            && (entry.payload as Record<string, unknown>).speakerName === undefined)).toBe(true);
+        // Nothing in the document moved: the caller writes them.
+        expect((scene.blocks["a"].payload as Record<string, unknown>).speakerName).toBe("Alice");
     });
 
     it("does not touch lines already bound to a character", () => {

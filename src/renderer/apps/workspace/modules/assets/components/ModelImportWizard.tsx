@@ -17,7 +17,7 @@ import {
 import { MODEL_FAMILIES, type ModelFamily } from "@shared/utils/modelImportScan";
 import type { TranslationKey } from "@shared/i18n";
 import { AlertTriangle, CheckCircle2, FolderOpen, Info, Loader2 } from "lucide-react";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** What the wizard hands back: one directory per asset, and which file inside it is the entry. */
 export interface ModelImportSelection {
@@ -64,6 +64,17 @@ export function ModelImportWizard(props: {
     onClose: () => void;
     /** Called with the folders to import, in list order. The wizard closes itself first. */
     onImport: (selection: ModelImportSelection[]) => void;
+    /**
+     * Open on this kind's folder picker rather than on the kind step - for a host that already knows
+     * it, such as a character whose runtime says which models it draws.
+     */
+    family?: ModelFamily;
+    /**
+     * Tick a folder's model when it holds exactly one, whatever the scan says about it - for a host
+     * that asked for one model, where an unticked row would be a second question. Its problems are
+     * still listed under it.
+     */
+    tickLoneModel?: boolean;
 }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
@@ -117,12 +128,13 @@ export function ModelImportWizard(props: {
         // Everything clean starts ticked; anything with a blocking problem starts unticked but
         // stays in the list, because the listing this was judged against can be short in ways the
         // scan cannot see and an author who knows better must not be left with a dialog full of no.
-        setChecked(new Set(outcome.models
-            .filter(model => !model.problems.some(isBlockingModelProblem))
-            .map(model => model.rootPath)));
+        const ticked = props.tickLoneModel && outcome.models.length === 1
+            ? outcome.models
+            : outcome.models.filter(model => !model.problems.some(isBlockingModelProblem));
+        setChecked(new Set(ticked.map(model => model.rootPath)));
         setEntries({});
         setPhase({ step: "results", family, root, models: outcome.models });
-    }, [context, t]);
+    }, [context, props.tickLoneModel, t]);
 
     const pickFolder = useCallback(async (family: ModelFamily) => {
         // Single-select: the folder is the thing being searched, and two of them would only make
@@ -138,6 +150,24 @@ export function ModelImportWizard(props: {
         setPhase({ step: "folder", family });
         await pickFolder(family);
     }, [pickFolder]);
+
+    // A host that names the kind skips the kind step: the dialog opens on the folder picker, once
+    // per opening. Back still returns to the kind step, for a model of the other kind.
+    const presetFamily = props.family;
+    const openedRef = useRef(false);
+    useEffect(() => {
+        if (!props.visible) {
+            openedRef.current = false;
+            return;
+        }
+        if (openedRef.current) {
+            return;
+        }
+        openedRef.current = true;
+        if (presetFamily) {
+            void chooseFamily(presetFamily);
+        }
+    }, [chooseFamily, presetFamily, props.visible]);
 
     const models = phase.step === "results" ? phase.models : [];
     const selected = useMemo(
@@ -192,6 +222,8 @@ export function ModelImportWizard(props: {
                 return t("assets.modelImport.problem.atlasEmpty", { path: problem.path });
             case "nestedModel":
                 return t("assets.modelImport.problem.nestedModel", { path: problem.path });
+            case "cubism2":
+                return t("assets.modelImport.problem.cubism2", { path: problem.path });
         }
     }, [t]);
 
@@ -407,7 +439,7 @@ export function ModelImportWizard(props: {
                         </button>
                     )}
                     <button
-                        className={dialogFooterButtonClass({ variant: "secondary" })}
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: phase.step === "scanning" })}
                         disabled={phase.step === "scanning"}
                         onClick={close}
                     >

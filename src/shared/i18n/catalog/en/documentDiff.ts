@@ -221,9 +221,8 @@ export const documentDiff = {
          * Words for the fields the character editor shows but never labels.
          *
          * Every other field the comparison reports is answered with the key the panel the author
-         * edits it in already uses - see `CHARACTER_FIELD_NAME_KEY`. These six have no such key to
-         * borrow: the cast list prints a character's nicknames under their name with no caption,
-         * group membership is set by moving a row rather than by filling a field, and the canvas,
+         * edits it in already uses - see `CHARACTER_FIELD_NAME_KEY`. These five have no such key to
+         * borrow: group membership is set by moving a row rather than by filling a field, and the canvas,
          * the avatar axes, the PSD a stack was imported from and the state a puppet rests in are
          * each reached through a button or a bare control. So each is named from the vocabulary
          * those controls already use ("Set canvas", "Avatar varies with this axis", "Import PSD")
@@ -238,7 +237,6 @@ export const documentDiff = {
          * which is the only name anyone able to reach them has.
          */
         fields: {
-            nicknames: "Nicknames",
             group: "Group",
             canvas: "Canvas",
             avatarAxes: "Avatar axes",

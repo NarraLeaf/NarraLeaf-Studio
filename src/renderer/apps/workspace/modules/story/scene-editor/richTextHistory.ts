@@ -11,6 +11,8 @@ import type { StoryRichRun } from "@shared/types/story";
  * re-render: the runs.
  *
  * Pure by construction - no DOM, no time source of its own. The caller snapshots and passes `now`.
+ * Nothing in it reads a snapshot, so a plain text field keeps its own stack with the same rules
+ * (`useTextFieldUndo`) by giving it a snapshot type of its own.
  */
 
 export type RichTextSelection = { start: number; end: number };
@@ -32,9 +34,9 @@ export const RICH_TEXT_COALESCE_IDLE_MS = 600;
 
 const DEFAULT_LIMIT = 200;
 
-export class RichTextHistory {
-    private entries: RichTextSnapshot[] = [];
-    private redoEntries: RichTextSnapshot[] = [];
+export class RichTextHistory<S = RichTextSnapshot> {
+    private entries: S[] = [];
+    private redoEntries: S[] = [];
     private lastKind: RichTextEditKind | null = null;
     private lastAt = 0;
 
@@ -70,7 +72,7 @@ export class RichTextHistory {
      * on the keystrokes that actually open a new undo entry - one in a burst, rather than all of them.
      * A thunk that returns null (the field has gone away) records nothing.
      */
-    record(before: RichTextSnapshot | (() => RichTextSnapshot | null), options: RichTextRecordOptions): void {
+    record(before: S | (() => S | null), options: RichTextRecordOptions): void {
         this.redoEntries = [];
         const contiguous =
             this.entries.length > 0 &&
@@ -79,7 +81,7 @@ export class RichTextHistory {
             !options.boundary &&
             options.now - this.lastAt < RICH_TEXT_COALESCE_IDLE_MS;
         if (!contiguous) {
-            const snapshot = typeof before === "function" ? before() : before;
+            const snapshot = typeof before === "function" ? (before as () => S | null)() : before;
             if (snapshot) {
                 this.entries.push(snapshot);
                 if (this.entries.length > this.limit) {
@@ -92,7 +94,7 @@ export class RichTextHistory {
     }
 
     /** The state to restore, or null when this row has nothing left - the caller then falls through to story history. */
-    undo(current: RichTextSnapshot): RichTextSnapshot | null {
+    undo(current: S): S | null {
         const previous = this.entries.pop();
         if (!previous) {
             return null;
@@ -104,7 +106,7 @@ export class RichTextHistory {
         return previous;
     }
 
-    redo(current: RichTextSnapshot): RichTextSnapshot | null {
+    redo(current: S): S | null {
         const next = this.redoEntries.pop();
         if (!next) {
             return null;

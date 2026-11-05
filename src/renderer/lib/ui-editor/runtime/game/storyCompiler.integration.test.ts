@@ -3413,6 +3413,43 @@ describe("dialog avatars", () => {
         expect(compiled.avatarAssetIdByUrl.get("nlr://asset-avatar-default")).toBe("asset-avatar-default");
     });
 
+    // With no profile avatar, the dialogue box stayed empty for a speaker off stage while the backlog
+    // and `Get Character` showed her default look's avatar for the same line. Both now answer alike.
+    it("gives an off-stage speaker with no profile avatar her default look's avatar", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }, { id: "pose-smile", name: "Smile", assetId: "asset-smile" }],
+                defaultPoseId: "pose-neutral",
+                avatars: {
+                    "pose-neutral": { overrideAssetId: "asset-avatar-neutral" },
+                    "pose-smile": { overrideAssetId: "asset-avatar-smile" },
+                },
+            },
+        };
+        const neverShown = await compileStudioStoryToNlr({
+            document: baseDocument(sayBlock("char-alice"), ["say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(resolveAvatar(neverShown, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+
+        const staged = await compileStudioStoryToNlr({
+            document: baseDocument({ ...enterBlock("char-alice"), ...sayBlock("char-alice") }, ["enter", "say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        // On stage the live look decides; off it, the default look.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-smile" })).toBe("nlr://asset-avatar-smile");
+        expect(resolveAvatar(staged, "char-alice", {})).toBe("nlr://asset-avatar-neutral");
+        // A src the appearance does not know is still not guessed at.
+        expect(resolveAvatar(staged, "char-alice", { currentSrc: "nlr://asset-stranger" })).toBeNull();
+    });
+
     // The other half of the same fix, and the one that must not regress: a character that IS staged
     // keeps the resolver reading the engine's live `Image`. A flat url would freeze the avatar at
     // compile time and break undo / load / skip, which is exactly what Studio must not mirror.
@@ -3791,6 +3828,41 @@ describe("puppet characters", () => {
             size: { width: 900, height: 1200 },
             options: { scale: 0.5 },
         });
+    });
+
+    /**
+     * The scene mounts the box and starts the model loading at its top; nothing waited for the load
+     * to end, so an entrance near the top faded an empty box in and the model popped in after it.
+     */
+    it("waits for the model before the entrance, and keeps the entrance's action id", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+        const bindings = compiled.actionIdBindings.filter(binding => binding.blockId === "row");
+        const wait = bindings.find(binding => (binding.action as unknown as { type: string }).type === "service:action");
+        expect(wait).toBeDefined();
+        // The entrance's own actions keep the ids they had before the wait existed: the wait is last.
+        expect(bindings.indexOf(wait!)).toBe(bindings.length - 1);
+        expect(bindings[0].staticId.endsWith(":0")).toBe(true);
+        expect((bindings[0].action as unknown as { type: string }).type).not.toBe("service:action");
+
+        const puppet = compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll") as unknown as { _setStatus(status: string): void };
+        puppet._setStatus("loading");
+        const fakeGameState = {
+            game: { getLiveGame: () => ({ getStorable: () => ({ getNamespace: () => ({}) }) }) },
+            logger: { warn: () => undefined },
+            events: { on: () => ({ cancel: () => undefined }) },
+        };
+        const awaitable = (wait!.action as unknown as { executeAction(...args: unknown[]): { isSettled(): boolean } })
+            .executeAction(fakeGameState, {});
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(awaitable.isSettled()).toBe(false);
+        puppet._setStatus("ready");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(awaitable.isSettled()).toBe(true);
     });
 
     it("resolves an entry override against the bundle the asset resolved to", async () => {
@@ -5535,6 +5607,29 @@ describe("stage object references", () => {
             expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
             expect(compiledRows(compiled)).toContain("motion");
             expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
+        });
+
+        /** The pre-posed stand-in is replaced by the box, not shown beside it. */
+        it("leaves no image behind for the puppet a row-precise launch restores", async () => {
+            const blocks = {
+                enter: characterRow("enter", "enter", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+            };
+            const document = baseDocument(blocks, Object.keys(blocks));
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                characters: [DOLL],
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId: "motion",
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "motion" }),
+                },
+            });
+
+            const launchIds = compiled.elementIdBindings.filter(id => id.startsWith("nl:launch:"));
+            expect(launchIds.filter(id => id.includes(":puppet:"))).toHaveLength(1);
+            expect(launchIds.filter(id => id.includes(":image:"))).toEqual([]);
         });
 
         /**

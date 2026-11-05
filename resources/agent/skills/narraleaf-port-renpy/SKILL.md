@@ -69,9 +69,14 @@ network like any program they install. Reading the scripts as text is safe; runn
 - `agent_status`. Writes must be on. Call `request_folder_access` once for the Ren'Py `game` folder
   and your working folder (converted media lands there), with a one-line reason. "Pending" means the
   author has not answered yet: carry on with work that needs no import and retry every minute.
-- **The project.** Start from a project made from the **skeleton** template: its pages are already
-  wired to saving, loading, settings and the backlog, and you restyle them to look like the Ren'Py
-  screens. If the author already opened a project made from the empty template, run
+- **The project.** Start from a project made with `project_create {template: "skeleton", leaveOut:
+  ["story", "characters", "files"]}`: the skeleton's pages, already wired to saving, loading,
+  settings and the backlog, with one empty scene that the title's Start begins at, and no sample
+  story, characters, backgrounds, music or sprite to delete. You restyle the pages to look like the
+  Ren'Py screens and write the story into that scene (rename it; add the others beside it). If the
+  author already opened a project made from the whole `skeleton`, keep it: delete its sample characters and files before you import, and write every
+  scene's `#background` (`none` for black), since a reused demo scene otherwise opens on its demo
+  picture. If the author already opened a project made from the empty template, run
   `ui_install_standard_screens {dryRun:true}`, show the author what it adds, then run it. Do not
   rebuild save, load or settings logic by hand from store templates - they are layouts only.
 - Resolution: the skeleton is laid out for 1920x1080 only, so the project is 1920x1080. Read the
@@ -145,6 +150,9 @@ that byte-identical files are imported once (the second name points at the first
   computed (`references/positions-and-atl.md` → "Sprites"). Verify one with a screenshot.
 - Name colours, name-box styles and per-character text styles come from the `Character(...)`
   arguments.
+- After each character has its sprites, run `character_avatars_autoframe` for it (required; see
+  `narraleaf-make-game` step 4). Ren'Py side images, where the game has them, go on `avatars`
+  instead - they are the original's own avatars.
 
 ## Step 5 - Variables
 
@@ -183,11 +191,25 @@ parts you still compute are in `references/interface.md`. Per screen:
 4. `ui_screenshot` it and compare side by side; then check it **in the running game**
    (`playtest_screenshot`), because the editor render and the game can differ.
 
+A screen that changes with saved state (a title that looks different once the game is cleared, a
+locked gallery button) has one look per state: capture each, and switch between them with a
+blueprint that reads the persistent variable when the page opens.
+
 ## Step 8 - Behaviour
 
 Wire what the Ren'Py screens do with blueprints (`narraleaf-make-game` chapter *blueprint format*):
 navigation, confirm prompts, preferences, the gallery's locks, quick-menu actions. Test buttons with
 `playtest_click` / `playtest_key`, not by reading the graph.
+
+**Port the behaviour, not only the look.** Ren'Py games routinely have controls the skeleton has no
+counterpart for: extra preferences (voice continuing into the next line, per-channel mutes, a reset),
+save pages, a replay-voice button, a "jump back to this line" in the history, a music room with its
+own player. The skeleton is not the limit (`narraleaf-make-game`, step 6, "Beyond the skeleton"): for
+each one, search `blueprint_nodes` for what it needs, then build the control and wire it - a page or
+component of your own, a variable for its state, a blueprint on its events. Pages of slots come from
+a page variable and the slot component's params. Only what still has no way after that search goes
+into the hand-over as a difference, with what you searched and tried; a control the Ren'Py game had
+is never dropped silently, and none is left looking live but doing nothing.
 
 ## Step 9 - Gallery, replay, achievements, extras
 

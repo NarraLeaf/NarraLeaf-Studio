@@ -7,7 +7,8 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
-import { i18nStore } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -236,7 +237,7 @@ describe("generic verbs", () => {
         });
     });
 
-    it("/show carries an opacity and a rate for an overlay, and refuses them anywhere else", () => {
+    it("/show carries an opacity anywhere, and a rate for an overlay alone", () => {
         // This showing's own values, not the overlay's: they ride the show row and never touch the
         // row that declares the overlay.
         expect(build("/show petals d=0.5 opacity=0.4 rate=2")).toMatchObject({
@@ -244,8 +245,14 @@ describe("generic verbs", () => {
         });
         // Nothing else has a field for either, so a row that types them elsewhere is reported rather
         // than storing numbers the compile does not read.
-        expect(issuesOf("/show hero opacity=0.4")).toEqual(["unsupportedParam"]);
         expect(issuesOf("/show Alice rate=2")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show hero rate=2")).toEqual(["unsupportedParam"]);
+        // `opacity=` is every other subject's entrance opacity: the value its reveal ends at.
+        expect(issuesOf("/show hero opacity=0.4")).toEqual([]);
+        expect(build("/show hero opacity=0.4")).toMatchObject({ payload: { action: "image", transform: { to: { opacity: 0.4 } } } });
+        expect(build("/show Alice pos=0.5,0.5 yoffset=-451 opacity=0")).toMatchObject({
+            payload: { action: "character", operation: "enter", transform: { to: { opacity: 0, position: { xalign: 0.5, yalign: 0.5, yoffset: -451 } } } },
+        });
         // On the way out there is nothing to say - a fade out ends at zero, with the clip stopped -
         // so `/hide` does not take either word at all, rather than taking one and ignoring it.
         expect(commandLineIssues("/hide petals opacity=0.4")).toEqual(["unknownParam"]);
@@ -606,10 +613,16 @@ describe("media objects", () => {
         });
     });
 
-    it("/font sets one thing per block and faults on both", () => {
+    it("/font keeps the single ops for one value and combines the rest into setFont", () => {
         expect(build("/font title 48")).toMatchObject({ payload: { operation: "setFontSize", fontSize: 48, objectName: "title" } });
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
-        expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
+        expect(issuesOf("/font title 48 color=#ff0000")).toEqual([]);
+        expect(build("/font title 48 color=#ff0000")).toMatchObject({ payload: { operation: "setFont", fontSize: 48, fontColor: "#ff0000" } });
+        expect(build("/font title outline=1 outlineColor=#332e3e")).toMatchObject({
+            payload: { operation: "setFont", outline: { width: 1, color: "#332e3e" } },
+        });
+        expect(build("/font title outline=0").payload).toMatchObject({ operation: "setFont", outline: null });
+        expect(build("/font title outline=0").payload).not.toHaveProperty("fontSize");
     });
 
     it("/front raises one displayable, and states nothing else", () => {
@@ -1197,6 +1210,44 @@ describe("logic and effects", () => {
         expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
+    it("says in the menu that a declaring command needs a /show", () => {
+        // `/image`, `/text` and `/vfx` put nothing on screen; the author learns that from the command
+        // menu's one line or not at all. `/vfx` was the one whose line did not say it.
+        const declaring = listCommandSpecs().filter(spec => spec.sequence?.lines[0]?.startsWith(`/${spec.token} `)
+            && spec.sequence.lines.some(line => line.startsWith("/show ")));
+        expect(declaring.map(spec => spec.id).sort()).toEqual(["image", "text", "vfx"]);
+        for (const locale of ["en", "zh", "ja"] as const) {
+            i18nStore.setLocale(locale);
+            try {
+                for (const spec of declaring) {
+                    expect(translate(`story.command.${spec.id}.detail` as TranslationKey), `${locale} ${spec.id}`).toContain("/show");
+                }
+            } finally {
+                i18nStore.setLocale("en");
+            }
+        }
+    });
+
+    it("names an unnamed overlay or text in the words the author writes", () => {
+        // The weather word the author typed is the name they will address it by: a zh 樱花 overlay
+        // was named `sakura`, and the next `/show 樱花` found nothing. A `/text` with no name is 文本.
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/氛围特效 樱花")).toMatchObject({ payload: { action: "vfx", objectName: "樱花", seed: { seed: "sakura" } } });
+            expect(build("/文本 欢迎")).toMatchObject({ payload: { action: "text", objectName: "文本", text: "欢迎" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        i18nStore.setLocale("ja");
+        try {
+            expect(build("/テキスト ようこそ")).toMatchObject({ payload: { action: "text", objectName: "テキスト" } });
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/vfx sakura")).toMatchObject({ payload: { action: "vfx", objectName: "sakura" } });
+        expect(build("/text Hello")).toMatchObject({ payload: { action: "text", objectName: "text" } });
+    });
+
     it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
@@ -1208,8 +1259,9 @@ describe("logic and effects", () => {
         // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
         // duration would be a number the compile does not read.
         expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
-        // Blend mode decides whether the material reads at all, so the create row opens the inspector.
-        expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+        // The row is complete as typed, so its commit leaves a new line under it like every other
+        // command's; with 属性 closed, opening the inspector instead showed nothing at all.
+        expect(opensInspectorAfterCommit(getCommandSpec("vfx"), build("/vfx intro"))).toBe(false);
     });
 
     it("/vfx takes a weather word as its source, and the word names the row", () => {
@@ -1357,6 +1409,15 @@ describe("input commands", () => {
 
     it("/rumble refuses a motor outside 0..1", () => {
         expect(commandLineIssues("/rumble custom left=2")).not.toEqual([]);
+    });
+
+    it("/page names its page by id and writes its result into any variable", () => {
+        expect(build("/page Map into=gold")).toMatchObject({
+            kind: "action",
+            payload: { action: "page", surfaceId: "u1", resultTarget: { scope: "scene", variableId: "var_gold" } },
+        });
+        expect((build("/page Title") as { payload: object }).payload).toEqual({ action: "page", surfaceId: "u2" });
+        expect(build("/popup Map")).toMatchObject({ payload: { action: "page", surfaceId: "u1" } });
     });
 
     it("/input lock and unlock", () => {

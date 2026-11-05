@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 
 interface JsonPreviewPayload {
     asset: Asset<AssetType.JSON>;
@@ -25,7 +26,19 @@ const PRETTY_PRINT_LIMIT = 1_000_000;
  * format Studio can open" rather than in the parser's English; the importer rejects them before
  * they can get this far, so that is a file changed on disk since.
  */
-export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewPayload>) {
+export function JsonPreviewEditor(props: EditorComponentProps<JsonPreviewPayload>) {
+    return (
+        <>
+            {/* The file's own steps - Replace File…, a conversion - are on the project's stack, and the
+                preview is where the author looks at what they did. Mounted ahead of every state the
+                body can be in, so the key works while the file is still loading or failed to read. */}
+            <EditorProjectUndoKeybindings tabId={props.tabId} />
+            <JsonPreviewBody {...props} />
+        </>
+    );
+}
+
+function JsonPreviewBody({ payload }: EditorComponentProps<JsonPreviewPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const asset = payload?.asset;

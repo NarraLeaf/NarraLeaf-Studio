@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVoiceCsv, serializeVoiceCsv, type VoiceCsvRow } from "./voiceCsv";
+import { normalizeVoiceCsvStatus, parseVoiceCsv, serializeVoiceCsv, type VoiceCsvRow } from "./voiceCsv";
 import { formatVoiceFilename, matchKeyForFilename } from "./voiceNaming";
 import { serializeCsv, readCsvTable } from "./csv";
 
@@ -11,11 +11,40 @@ describe("voice CSV round-trip", () => {
 
     it("serializes with a stable header and parses back by column name", () => {
         const csv = serializeVoiceCsv(rows);
-        expect(csv.split("\r\n")[0]).toBe("filename,unit_id,character,scene,line,status,note");
+        // The people reading it get words, and the id comes last, named as the one machine column.
+        expect(csv.split("\r\n")[0]).toBe("File name,Speaker,Scene,Line,Status,Note,Line ID");
+        expect(csv.split("\r\n")[1]).toBe("Rooftop_001_Aoi,Aoi,Rooftop,We should go.,Voiced,soft,t-d1");
         const parsed = parseVoiceCsv(csv);
         expect(parsed.problems).toEqual([]);
         // Each row read back knows where it sat, as a spreadsheet numbers it: the header is row 1.
         expect(parsed.rows).toEqual(rows.map((row, index) => ({ ...row, row: index + 2 })));
+    });
+
+    it("writes the headers and status words in the language asked for, and reads them back from any", () => {
+        const zh = serializeVoiceCsv(rows, "zh");
+        expect(zh.split("\r\n")[0]).toBe("文件名,说话人,场景,文本,状态,备注,行 ID");
+        expect(zh.split("\r\n")[1]).toBe("Rooftop_001_Aoi,Aoi,Rooftop,We should go.,已配音,soft,t-d1");
+        for (const locale of ["zh", "ja", "en"] as const) {
+            const parsed = parseVoiceCsv(serializeVoiceCsv(rows, locale));
+            expect(parsed.problems).toEqual([]);
+            expect(parsed.rows.map(row => [row.unitId, row.status, row.note])).toEqual([
+                ["t-d1", "linked", "soft"],
+                ["t-n1", "approved", ""],
+            ]);
+        }
+        expect(normalizeVoiceCsvStatus("已审听")).toBe("approved");
+        expect(normalizeVoiceCsvStatus("承認済み")).toBe("approved");
+        expect(normalizeVoiceCsvStatus("待更新")).toBe("stale");
+    });
+
+    it("still reads a script written with the old English ids", () => {
+        const old = serializeCsv(
+            ["filename", "unit_id", "character", "scene", "line", "status", "note"],
+            [["Rooftop_001_Aoi", "t-d1", "Aoi", "Rooftop", "We should go.", "approved", "keep"]],
+        );
+        const parsed = parseVoiceCsv("﻿" + old);
+        expect(parsed.problems).toEqual([]);
+        expect(parsed.rows[0]).toMatchObject({ filename: "Rooftop_001_Aoi", unitId: "t-d1", status: "approved", note: "keep" });
     });
 
     it("survives a UTF-8 BOM and reordered/extra columns", () => {

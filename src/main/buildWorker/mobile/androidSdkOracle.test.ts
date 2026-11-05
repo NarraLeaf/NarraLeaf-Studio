@@ -137,7 +137,9 @@ describe("the Android SDK oracle's availability", () => {
     });
 });
 
-describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
+// Every case repacks the real template and starts a JVM tool cold, which takes
+// longer than vitest's default five seconds on a busy runner.
+describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", { timeout: 60_000 }, () => {
     it("passes apksigner verification at the template's minSdk", async () => {
         const apk = await buildApk();
         // The authoritative answer to "will Android install this?": apksigner

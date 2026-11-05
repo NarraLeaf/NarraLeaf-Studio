@@ -216,6 +216,18 @@ export const settings = {
                 command: "コマンドを強調",
             },
         },
+        characterListGrouping: {
+            label: "キャラクター一覧",
+            description: "キャラクターを選ぶときの一覧の並べ方",
+            options: {
+                grouped: "グループごとに表示",
+                all: "すべてのキャラクターを表示",
+            },
+        },
+        groupSubmenus: {
+            label: "グループをサブメニューで表示",
+            description: "候補メニューで、キャラクターグループとアセットのフォルダを一項目にまとめ、中身を隣の列に表示する",
+        },
         dictionaries: {
             label: "スペル辞書",
         },
@@ -482,6 +494,13 @@ export const settings = {
         allowWritesHint: "オフの間、エージェントはプロジェクトを読み取れるが、変更はすべて拒否される",
         fullAccess: "エージェントにフルアクセスを許可",
         fullAccessHint: "エージェントがプロジェクトを変更し、確認なしで任意のフォルダーを読み取れる（Studio 自身のフォルダー、ホームフォルダー全体、ドライブのルートを除く）",
+        enableSetByLaunch: "開発モードでは起動引数 --agent で決まる",
+        port: "エンドポイントのポート",
+        portSetByLaunch: "開発モードでは起動引数 --agent-port で決まる",
+        portHint: "変更はすぐに反映される。それ以前に設定したクライアントには、接続設定をコピーし直す",
+        portInvalid: "{min} から {max} までのポート番号を指定する",
+        portInUse: "ポート {port} は他のプログラムが使用している",
+        portReserved: "ポート {port} はシステムによって予約されている",
         endpoint: "エンドポイントのアドレス",
         running: "待ち受け中",
         portMoved: "エンドポイントのポートが {port} に変わった。それ以前に設定したクライアントには、接続設定をコピーし直す",

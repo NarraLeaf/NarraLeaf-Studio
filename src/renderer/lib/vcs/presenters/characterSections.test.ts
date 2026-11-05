@@ -181,13 +181,13 @@ describe("nameCharacterFields", () => {
 
     it("names a field the panel draws without ever labelling", () => {
         const [row] = nameCharacterFields(
-            [leaf(["characters", "c-alice", "nicknames"], "documentDiff.characters.profileField", {
-                field: "nicknames",
+            [leaf(["characters", "c-alice", "groupId"], "documentDiff.characters.profileField", {
+                field: "groupId",
             })],
             t,
         );
 
-        expect(row.label.params?.field).toBe("<documentDiff.characters.fields.nicknames>");
+        expect(row.label.params?.field).toBe("<documentDiff.characters.fields.group>");
     });
 
     it("leaves a field Studio has no surface for exactly as the document stores it", () => {

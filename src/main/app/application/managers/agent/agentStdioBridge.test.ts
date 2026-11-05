@@ -8,6 +8,8 @@ import {
     runAgentStdioBridge,
     type AgentStdioBridgeIo,
 } from "./agentStdioBridge";
+import { AGENT_TOOLS } from "@shared/agent/tools";
+import { AGENT_MCP_PROMPTS, agentGuideResources, agentInitializeResult, describeTool } from "./agentMcpServer";
 
 const TOKEN = "t".repeat(43);
 const URL_A = "http://127.0.0.1:47219/mcp";
@@ -101,6 +103,7 @@ async function run(
             clock += ms;
         },
         now: () => clock,
+        version: () => "9.9.9",
         ...overrides,
     };
     await runAgentStdioBridge(io);
@@ -231,6 +234,7 @@ describe("runAgentStdioBridge", () => {
             launchStudio: null,
             sleep: async () => undefined,
             now: () => 0,
+            version: () => "9.9.9",
         });
         await done;
         expect(byId(out, 2).result.session).toBe("session-1");
@@ -273,6 +277,25 @@ describe("runAgentStdioBridge", () => {
         expect(studio.fetchImpl).not.toHaveBeenCalled();
     });
 
+    it("in development, starts Studio for a tool call whatever the profile's switch says", async () => {
+        // A development Studio serves agents by its command line, which the bridge's launch sets;
+        // its profile's switch may say off and is not what decides.
+        const studio = fakeStudio({ up: false });
+        let url: string | null = null;
+        const launchStudio = vi.fn(() => {
+            studio.state.up = true;
+            url = URL_A;
+        });
+        const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agent_status" } })), {
+            fetch: studio.fetchImpl as unknown as typeof fetch,
+            settings: () => ({ enabled: false, token: TOKEN, url }),
+            launchStudio,
+            accessFollowsLaunch: true,
+        });
+        expect(launchStudio).toHaveBeenCalledTimes(1);
+        expect(byId(out, 1).result.echo).toBe("tools/call");
+    });
+
     it("treats a missing settings file as agent access never switched on", async () => {
         const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })), {
             settings: () => null,
@@ -280,7 +303,31 @@ describe("runAgentStdioBridge", () => {
         expect(out[0].error.code).toBe(AGENT_BRIDGE_DISABLED_CODE);
     });
 
-    it("starts Studio when nothing is serving, and forwards once the endpoint answers", async () => {
+    it("answers what a client asks to connect itself while Studio is not running, and starts nothing", async () => {
+        // A client connects to every server it is configured with when it starts; that alone must
+        // not open Studio.
+        const studio = fakeStudio({ up: false });
+        const launchStudio = vi.fn();
+        const { out } = await run(chunks(
+            line({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: "Claude Code" } } }),
+            line({ jsonrpc: "2.0", method: "notifications/initialized" }),
+            line({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+            line({ jsonrpc: "2.0", id: 3, method: "resources/list" }),
+            line({ jsonrpc: "2.0", id: 4, method: "prompts/list" }),
+            line({ jsonrpc: "2.0", id: 5, method: "ping" }),
+        ), { fetch: studio.fetchImpl as unknown as typeof fetch, launchStudio });
+        expect(launchStudio).not.toHaveBeenCalled();
+        expect(studio.state.posted).toEqual([]);
+        expect(out).toHaveLength(5);
+        // The answers Studio itself gives, less what only its open projects add.
+        expect(byId(out, 1).result).toEqual(agentInitializeResult({ protocolVersion: "2025-06-18" }, "9.9.9"));
+        expect(byId(out, 2).result.tools).toEqual(AGENT_TOOLS.map(describeTool));
+        expect(byId(out, 3).result.resources).toEqual(agentGuideResources());
+        expect(byId(out, 4).result.prompts).toEqual(AGENT_MCP_PROMPTS);
+        expect(byId(out, 5).result).toEqual({});
+    });
+
+    it("starts Studio at the first tool call, gives it the client's initialize, and says the tool list changed", async () => {
         const studio = fakeStudio({ up: false });
         let url: string | null = null;
         const launchStudio = vi.fn(() => {
@@ -288,17 +335,55 @@ describe("runAgentStdioBridge", () => {
             studio.state.up = true;
             url = URL_A;
         });
-        const { out } = await run(chunks(
-            line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
-            line({ jsonrpc: "2.0", id: 2, method: "ping" }),
-        ), {
+        const lines: any[] = [];
+        let wake: (() => void) | null = null;
+        const answered = async (count: number) => {
+            while (lines.filter(entry => "id" in entry).length < count) {
+                await new Promise<void>(resolve => { wake = resolve; });
+            }
+        };
+        async function* input() {
+            yield line({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "Claude Code" } } });
+            yield line({ jsonrpc: "2.0", method: "notifications/initialized" });
+            yield line({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+            await answered(2);
+            expect(launchStudio).not.toHaveBeenCalled();
+            yield line({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "agent_status", arguments: {} } });
+        }
+        await run(input(), {
             fetch: studio.fetchImpl as unknown as typeof fetch,
             settings: () => ({ enabled: true, token: TOKEN, url }),
             launchStudio,
+            writeLine: text => {
+                lines.push(JSON.parse(text));
+                wake?.();
+            },
         });
         expect(launchStudio).toHaveBeenCalledTimes(1);
-        expect(byId(out, 1).result).toBeDefined();
-        expect(byId(out, 2).result).toBeDefined();
+        // Studio heard the client's own initialize, then the call, in that session.
+        const methods = studio.state.posted.filter(post => post.method === "POST").map(post => (post.body as any)?.method);
+        expect(methods).toEqual(["ping", "initialize", "notifications/initialized", "tools/call"]);
+        expect((studio.state.posted.find(post => (post.body as any)?.method === "initialize")!.body as any).params.clientInfo.name).toBe("Claude Code");
+        expect(byId(lines, 3).result).toEqual({ echo: "tools/call", session: "session-1" });
+        // The list the client had came from the bridge, without plugin tools: it is told to ask again,
+        // before the answer that needed Studio.
+        const changed = lines.findIndex(entry => entry.method === "notifications/tools/list_changed");
+        expect(changed).toBeGreaterThan(-1);
+        expect(changed).toBeLessThan(lines.findIndex(entry => entry.id === 3));
+        expect(lines.some(entry => entry.id === "narraleaf-bridge-reinitialize")).toBe(false);
+    });
+
+    it("forwards what a client asks to connect to a Studio that is already running", async () => {
+        const studio = fakeStudio();
+        const launchStudio = vi.fn();
+        const { out } = await run(chunks(
+            line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+            line({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+        ), { fetch: studio.fetchImpl as unknown as typeof fetch, launchStudio });
+        expect(launchStudio).not.toHaveBeenCalled();
+        expect(byId(out, 1).result.serverInfo.name).toBe("narraleaf-studio");
+        expect(byId(out, 2).result.echo).toBe("tools/list");
+        expect(out.some(entry => entry.method === "notifications/tools/list_changed")).toBe(false);
     });
 
     it("gives up after the startup timeout, launches only once, and then only looks", async () => {
@@ -310,10 +395,10 @@ describe("runAgentStdioBridge", () => {
         const firstAnswer = new Promise<void>(resolve => { answered = resolve; });
         let sleepsBeforeSecond = -1;
         async function* input() {
-            yield line({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+            yield line({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agent_status" } });
             await firstAnswer;
             sleepsBeforeSecond = sleep.mock.calls.length;
-            yield line({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+            yield line({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "agent_status" } });
         }
         await run(input(), {
             writeLine: text => {
@@ -339,16 +424,17 @@ describe("runAgentStdioBridge", () => {
         expect(sleep.mock.calls.length).toBe(sleepsBeforeSecond);
     });
 
-    it("says Studio is not running, without waiting, when it may not start one", async () => {
+    it("says Studio is not running, without waiting, when a tool is called and it may not start one", async () => {
         const studio = fakeStudio({ up: false });
         const sleep = vi.fn(async () => undefined);
-        const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 7, method: "tools/list" })), {
+        const { out } = await run(chunks(line({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "agent_status" } })), {
             fetch: studio.fetchImpl as unknown as typeof fetch,
             launchStudio: null,
             sleep,
         });
         expect(out[0]).toMatchObject({ id: 7, error: { code: AGENT_BRIDGE_UNAVAILABLE_CODE } });
         expect(out[0].error.message).toContain("not running");
+        expect(out[0].error.message).toContain("try again");
         expect(sleep).not.toHaveBeenCalled();
     });
 
@@ -379,6 +465,7 @@ describe("runAgentStdioBridge", () => {
             launchStudio: null,
             sleep: async () => undefined,
             now: () => 0,
+            version: () => "9.9.9",
         });
         expect(byId(out, 2).result.echo).toBe("tools/list");
         // The client's initialize was replayed to the new Studio, and its session used.
@@ -504,6 +591,7 @@ describe("runAgentStdioBridge against the real endpoint", () => {
                 launchStudio: null,
                 sleep: async () => undefined,
                 now: () => 0,
+                version: () => "9.9.9",
             });
             expect(out).toHaveLength(3);
             expect(byId(out, 1).result.serverInfo).toBeDefined();

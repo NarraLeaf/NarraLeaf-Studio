@@ -62,7 +62,7 @@ export function AgentStep({ client, onClientChange }: AgentStepProps) {
                 <SwitchRow
                     label={t("settings.agent.enable")}
                     checked={quick?.enabled === true}
-                    disabled={busy || !quick}
+                    disabled={busy || !quick || quick.setByLaunch}
                     onChange={next => void toggle({ enabled: next })}
                 />
                 {/* Full access turns writes on by itself; while it is on the switch shows that and

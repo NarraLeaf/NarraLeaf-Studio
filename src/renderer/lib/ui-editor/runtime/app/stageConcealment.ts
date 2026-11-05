@@ -38,3 +38,15 @@ export const StageCoveredContext = createContext(false);
 export function useStageCovered(): boolean {
     return useContext(StageCoveredContext);
 }
+
+/**
+ * Whether the story is holding on a clip it waits out - a `/play` that runs to its end, or until the
+ * player cuts it short. See `isStageSlotConcealedByVideo` for what the Game UI does then.
+ *
+ * `false` by default, for the same reason as the two answers above.
+ */
+export const StageHeldByVideoContext = createContext(false);
+
+export function useStageHeldByVideo(): boolean {
+    return useContext(StageHeldByVideoContext);
+}

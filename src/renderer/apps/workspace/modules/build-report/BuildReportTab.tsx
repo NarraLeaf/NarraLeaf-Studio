@@ -301,6 +301,13 @@ function CompressionSection({ report }: { report: AssetCompressionReport }) {
                     value={formatNumber(strippedFiles)}
                     hint={hint(strippedBytes)}
                 />
+                {report.images.keptAtSize ? (
+                    <StatTile
+                        label={t("build.report.compressionKeptAtSize")}
+                        value={formatNumber(report.images.keptAtSize)}
+                        hint={t("build.report.compressionKeptAtSizeHint")}
+                    />
+                ) : null}
             </div>
         </DashboardSection>
     );

@@ -58,8 +58,7 @@ import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
-import type { PuppetDescription } from "narraleaf-react";
-import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
+import type { DescribedPuppet, PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
 import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
@@ -230,15 +229,12 @@ enum Services {
     UIEditorFontFace = "uiEditorFontFace",
     /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
     BlueprintNodeCatalog = "blueprintNodeCatalog",
-    // Storage = "storage",
     /** Command palette registry + aggregator (actions, menus, keybindings) */
     Command = "command",
     /** Global project search index (story text, variable names, UI text keys, blueprint node titles) */
     Search = "search",
     /** Asset reverse-lookup index: which stories, blueprints, widgets and takes use a given asset */
     Reference = "reference",
-    // Logger = "logger",
-    // Editor = "editor",
     Story = "story",
     Character = "character",
     Assets = "assets",
@@ -272,13 +268,6 @@ enum Services {
     SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
-    // Texture = "texture",
-    // Audio = "audio",
-    // Video = "video",
-    // Font = "font",
-    // Runtime = "runtime",
-    // Build = "build",
-    // Debug = "debug",
     Localization = "localization",
     Voice = "voice",
     /** Repository state for this project: availability, status snapshot, history */
@@ -381,19 +370,11 @@ interface IPanelStateService extends IService {
     replacePanelState<T extends Record<string, any>>(panelId: string, next: T): void;
 }
 
-interface IStorageService extends IService {
-    get<T extends Record<string, any>>(namespace: string, name: string): Promise<FsRequestResult<T>>
-    set<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
-}
-
 /**
  * Command palette registry + aggregator. The concrete {@link CommandService} exposes
  * `register`/`unregister`/`getRegistered` (mirroring the keybinding service) and `collect`, which
  * converges toolbar actions, menu groups, and described keybindings into one runnable list.
  */
-interface ICommandService extends IService { }
-
-interface ILoggerService extends IService { }
 
 interface IUIService extends IService {
     showConfirm(message: string, detail?: string): Promise<boolean>;
@@ -1187,7 +1168,6 @@ interface IConsoleService extends IService {
 }
 
 // Editor Services
-interface IEditorService extends IService { }
 
 type StoryPluginActionCreateInput = {
     generateId: () => string;
@@ -1296,7 +1276,8 @@ interface IStoryService extends IService {
     ): StoryBlock;
     updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void;
     deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void;
-    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void;
+    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): boolean;
+    commitSceneReplacement(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene, historyEntry: import("./history/HistoryService").HistoryPushRequest): boolean;
     moveBlock(
         storyId: StoryId,
         sceneId: StorySceneId,
@@ -1308,8 +1289,6 @@ interface IStoryService extends IService {
         sceneId: StorySceneId,
         moves: { blockIds: StoryBlockId[]; target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null } }[],
     ): void;
-    canImportStoryPackage(): false;
-    canExportStoryPackage(): false;
 }
 
 /**
@@ -1393,9 +1372,9 @@ interface IPuppetDescriptionService extends IService {
     describe(request: PuppetDescriptionRequest, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
-    peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    peek(request: PuppetDescriptionRequest): DescribedPuppet | null;
     /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
-    peekCharacter(characterId: string): PuppetDescription | null;
+    peekCharacter(characterId: string): DescribedPuppet | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
 }
@@ -1443,16 +1422,7 @@ interface IServiceAssetsService extends IService {
     deleteFile(fileId: string): Promise<FsRequestResult<void>>;
 }
 
-interface ITextureService extends IService { }
-
-interface IAudioService extends IService { }
-
-interface IVideoService extends IService { }
-
-interface IFontService extends IService { }
-
 // Runtime Services
-interface IRuntimeService extends IService { }
 
 interface IPreviewService extends IService {
     getStatus(): PreviewStatus;
@@ -1520,8 +1490,6 @@ interface ITestRunService extends IService {
     listRuns(): TestRunRecord[];
     onChanged(listener: () => void): () => void;
 }
-
-interface IDebugService extends IService { }
 
 // Helper Services
 
@@ -1745,9 +1713,6 @@ interface IRecoveryService extends IService {
     onChanged(listener: () => void): () => void;
 }
 
-// Plugin Services
-interface IPluginService extends IService { }
-
 interface IProjectDependencyService extends IService {
     getResolution(): ProjectDependencyResolution | null;
     getSuppressedPluginIds(): string[];
@@ -1761,12 +1726,12 @@ interface IProjectDependencyService extends IService {
 }
 
 export {
-    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService, ILintService,
-    IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
-    IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
-    IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
-    IWorkspaceReloadService, IVideoService,
+    IAssetService, IBlueprintNodeCatalogService, IBuildService, ILintService,
+    IFileSystemService, ILocalizationService,
+    IGlobalSettingsService, IPreviewService, IProjectService,
+    IService, IServiceAssetsService, IPanelStateService, IStoryService,
+    IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
+    IWorkspaceReloadService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,

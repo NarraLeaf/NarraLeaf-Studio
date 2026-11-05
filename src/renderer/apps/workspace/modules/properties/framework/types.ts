@@ -333,6 +333,17 @@ export interface TagsFieldDefinition<TData = any> extends BaseFieldDefinition<TD
      * that are not drawn, and removing a chip removes exactly the tag it stands for.
      */
     formatTag?: (data: TData, tag: string) => string | null;
+    /**
+     * Why a stored tag will not do what it is there for, or null when it will. A tag with an issue
+     * is drawn in the warning tone and the sentence is printed under the field. It is still stored:
+     * the field warns rather than refusing, because the fix may be on another record.
+     */
+    tagIssue?: (data: TData, tag: string) => string | null;
+    /**
+     * A tag the field drops instead of adding, as it drops a repeat. Absent: only repeats are
+     * dropped.
+     */
+    rejectTag?: (data: TData, tag: string) => boolean;
 }
 
 /**

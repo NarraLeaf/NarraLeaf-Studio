@@ -98,6 +98,12 @@ export type InsertSlot = {
      */
     replaceBlockId?: StoryBlockId;
     /**
+     * The row under `replaceBlockId` is a committed command row opened as its line ("edit as text",
+     * see `storyRowLineEdit`), not a draft. The commit then keeps that row's block when the line still
+     * builds the same kind of row (`rewritesRowInPlace`), so it stays the row it was.
+     */
+    rewritesRow?: true;
+    /**
      * The slot only offers what can be done to ONE character — set when the action trigger was typed
      * into the empty dialogue row a speaker's Enter had just opened (see `startCharacterActionSlot`).
      *

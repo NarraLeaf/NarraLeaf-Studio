@@ -111,12 +111,18 @@ and keyboard do, so every button you wired can be exercised, not just looked at:
   `Enter` or `Space` presses the focused one, `Escape` goes back or dismisses a layer, `Tab` /
   `{key:"Tab", shift:true}` steps through controls. `rightClick`, `wheelUp` and `wheelDown` are the
   pointer gestures that aim at no element (by default right click opens the menu and wheel up the
-  backlog).
+  backlog). `ctrl`, `alt`, `meta` hold a modifier; `{key:"Control", holdMs:2000}` holds a key down
+  (skip, a long press).
+- `playtest_variables` lists the saved and persistent variables as the running game holds them -
+  what the story and the screens have written so far, which `variables_list` cannot tell you.
 
 Each answer says what was done, what changed - pages and layers that opened or closed (`now showing
-"Load"`), a story starting, the line on screen - and which surfaces are on screen now. "Nothing
-visible changed" means the element does not answer that press, or changed something not on screen
-(a setting): check with `playtest_screenshot` and `console_read {channel:"blueprint"}`.
+"Load"`), a story starting, the line on screen, the words on an open page (a chat message appended),
+variables that took a new value - and which surfaces are on screen now. An answer waits for the
+blueprints the act started (a Delay, a Wait For Layer) to finish, up to about 8 s, and says so when
+one is still running. "Nothing visible changed" means the element does not answer that press, or
+changed something not on screen (a setting): check with `playtest_screenshot` and
+`console_read {channel:"blueprint"}`.
 
 Verifying a button, the recipe:
 
@@ -130,6 +136,14 @@ Verifying a button, the recipe:
 5. Back out with `playtest_key {key:"Escape"}` or the page's own Back button, and check the answer
    says the page closed.
 6. For hover looks, `playtest_hover {element}` then `playtest_screenshot`.
+
+**Sweep the page after every structural change.** When you have added, resized, re-parented or
+reordered elements, or a blueprint now shows or hides a panel, open the page in the game and
+`playtest_click` every control on it, one by one - each button, each slider, each toggle, the page's
+own Back and Title. A press that is refused names what covers the control (a transparent full-screen
+container is the usual culprit); a press that lands but says "Nothing visible changed" on a control
+that should visibly react needs a `playtest_screenshot` to tell. Do not sign off a page because its
+screenshot looks right: a covered page looks exactly like a working one.
 
 A save slot: start a scene, read on a few lines, open the save page (the quick-menu Save button, or
 `playtest_key {key:"rightClick"}` for the menu), `playtest_click {element:"<slot>", index:1}`, then
@@ -164,6 +178,23 @@ What to look for in each screenshot:
 - [ ] placeholders where you expect them and nowhere else.
 
 Write a one-line verdict per screenshot in the chat; fix and replay what fails.
+
+### Playing every route to its end
+
+Spot checks miss what only a whole playthrough shows - a row the story never gets past, an ending that
+does not return to the title. For a game longer than a few scenes, drive each route from your working
+folder with a small script: `playtest_start {scene}`, then `playtest_advance {steps: 50}` in a loop,
+answering each menu with that route's option (`playtest_advance {choice}`), until the answer names an
+ending; keep each answer's first line in a log. Run it in the background and watch the log rather than
+your context. Then:
+
+- "No line came up within 10 s" with no line and no menu on screen means the story is stuck on the
+  rows after the last line it named: read them, simplify (one change per object inside a `/parallel`,
+  a `d=` on an instant `/transform` followed by another), re-apply and run that stretch again.
+- `playtest_start {scene, row}` resumes a long route near where it stopped instead of from the top.
+- After the ending, check what it was meant to change: `playtest_variables` for the flags it set,
+  then `playtest_screenshot` of the title for anything that should look different now.
+- `console_read` lines carry UTC times: compare them with when your run started before blaming it.
 
 ## 4. Console
 

@@ -35,6 +35,12 @@ export const HistoryScopeKind = {
      * hold them.
      */
     Project: "project",
+    /**
+     * The Search panel's replaces, one step each, for Ctrl+Z in that panel. A replace is recorded in
+     * every scene it touched as well; a step here takes back those scene steps together. See
+     * `HistoryService.pushGroup`.
+     */
+    SearchReplace: "search-replace",
 } as const;
 
 export type HistoryScopeKind = typeof HistoryScopeKind[keyof typeof HistoryScopeKind];
@@ -84,6 +90,11 @@ export function blueprintHistoryScope(blueprintId: string): HistoryScopeId {
 /** The single project-wide stack. Takes no arguments - one window, one project, one stack. */
 export function projectHistoryScope(): HistoryScopeId {
     return HistoryScopeKind.Project;
+}
+
+/** The Search panel's stack of replaces. One per window, like the project's. */
+export function searchReplaceHistoryScope(): HistoryScopeId {
+    return HistoryScopeKind.SearchReplace;
 }
 
 export function isHistoryScopeOf(scopeId: HistoryScopeId, kind: HistoryScopeKind): boolean {

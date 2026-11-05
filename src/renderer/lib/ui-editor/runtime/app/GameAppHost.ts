@@ -25,6 +25,7 @@ import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import type { AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
+import type { StageCaptureRequest } from "@shared/utils/stageCapture";
 import type { GameBootProgress } from "./bootTiming";
 import type { SaveLoadOutcome } from "./saveLoad";
 
@@ -451,6 +452,17 @@ export type GameAppHost = {
      * reports the platform has no screenshots rather than throwing.
      */
     saveScreenshot?: () => Promise<BlueprintScreenshotResult>;
+    /**
+     * A save's picture of the stage, read back from the compositor by the process that owns the
+     * window: a JPEG data URL fitted to `maxEdge`, or null when no frame could be had.
+     *
+     * Every desktop shell supplies it, because the page can picture its stage only by cloning and
+     * re-rasterising it - most of a second of the main thread per picture in a full-size game, a
+     * stall the player sees each time an auto-save takes one (see `@shared/utils/stageCapture`).
+     * The web export omits it and the game draws its own picture, as it always did; so does a
+     * desktop shell whose window answered null.
+     */
+    captureStage?: (request: StageCaptureRequest) => Promise<string | null>;
     /** Open the folder those go in, for the same shells and omitted by the same ones. */
     openScreenshotsFolder?: () => Promise<BlueprintOpenScreenshotsResult>;
     /**

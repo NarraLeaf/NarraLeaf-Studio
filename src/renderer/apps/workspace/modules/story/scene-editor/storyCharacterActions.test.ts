@@ -52,6 +52,18 @@ describe("storyCharacterActions — which verbs a speaker's line may insert", ()
         expect(scoped).toEqual(["face", "front", "motion", "param", "rename", "reset", "say", "skin", "transform"].sort());
     });
 
+    it("offers a model's motions, skins and parameters only for a character a runtime draws", () => {
+        // Narra and 美绪 are drawn by Studio: `/motion`, `/skin` and `/param` were offered in their
+        // menu and then refused by their own rows.
+        const drawn = new Set(characterScopedActions(specPaletteCommands(), { drawnByRuntime: false }).map(command => command.id));
+        expect(drawn.has("motion") || drawn.has("skin") || drawn.has("param")).toBe(false);
+        expect(drawn.has("face")).toBe(true);
+        const puppet = new Set(characterScopedActions(specPaletteCommands(), { drawnByRuntime: true }).map(command => command.id));
+        expect(["motion", "skin", "param"].every(id => puppet.has(id))).toBe(true);
+        const groups = characterScopedSidebarGroups(buildSpecSidebarGroups([], command => command), { drawnByRuntime: false });
+        expect(groups.flatMap(entry => entry.commands.map(command => command.id))).not.toContain("motion");
+    });
+
     it("leaves the staging pair out — the speaker of the line is already on stage", () => {
         const scoped = new Set(characterScopedActions(specPaletteCommands()).map(command => command.id));
         expect(scoped.has("show")).toBe(false);

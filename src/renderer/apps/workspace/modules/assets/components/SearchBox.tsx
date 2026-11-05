@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useEffect, forwardRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, forwardRef } from "react";
 import { Search, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { CONTROL_HEIGHT_CLASS, type ControlSize } from "@/lib/components/elements/controlSize";
-import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { compositionHandlers, isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 interface SearchBoxProps {
     value: string;
@@ -68,14 +68,47 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
         const { t } = useTranslation();
         const [isFocused, setIsFocused] = useState(false);
         const resolvedPlaceholder = placeholder ?? t("common.search");
+        // The field shows a draft of its own while an input method is composing: the half-typed pinyin
+        // or kana is not the query, and searching for it lit and emptied every list the box filters
+        // on each keystroke. The owner hears the text once the composition commits. Outside a
+        // composition the draft is the owner's value, so a parent clearing or setting the query wins.
+        const [draft, setDraft] = useState(value);
+        const composingRef = useRef(false);
+        useEffect(() => {
+            if (!composingRef.current) {
+                setDraft(value);
+            }
+        }, [value]);
+
+        const publish = useCallback((next: string) => {
+            setDraft(next);
+            if (!composingRef.current) {
+                onChange(next);
+            }
+        }, [onChange]);
 
         const handleClear = useCallback(() => {
-            onChange("");
-        }, [onChange]);
+            publish("");
+        }, [publish]);
 
         const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-            onChange(e.target.value);
-        }, [onChange]);
+            publish(e.target.value);
+        }, [publish]);
+
+        const ownCompositionStart = inputProps?.onCompositionStart;
+        const ownCompositionEnd = inputProps?.onCompositionEnd;
+        const handleCompositionStart = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
+            composingRef.current = true;
+            compositionHandlers.onCompositionStart();
+            ownCompositionStart?.(e);
+        }, [ownCompositionStart]);
+
+        const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
+            composingRef.current = false;
+            compositionHandlers.onCompositionEnd();
+            publish(e.currentTarget.value);
+            ownCompositionEnd?.(e);
+        }, [ownCompositionEnd, publish]);
 
         const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
             if (isImeKeyEvent(e)) {
@@ -104,8 +137,10 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                     {...inputProps}
                     ref={inputRef ?? ref as React.Ref<HTMLInputElement>}
                     type="text"
-                    value={value}
+                    value={draft}
                     onChange={handleInputChange}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
                     onKeyDown={handleKeyDown}
@@ -138,8 +173,10 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                         {...inputProps}
                         ref={inputRef}
                         type="text"
-                        value={value}
+                        value={draft}
                         onChange={handleInputChange}
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
                         onFocus={handleInputFocus}
                         onBlur={handleInputBlur}
                         onKeyDown={handleKeyDown}
@@ -149,7 +186,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                             TEXT_CLASS[size],
                         )}
                     />
-                    {value && (
+                    {draft && (
                         <button
                             type="button"
                             onClick={handleClear}

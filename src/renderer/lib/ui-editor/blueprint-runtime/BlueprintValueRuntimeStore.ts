@@ -28,6 +28,7 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
 import { stateWriteReaches } from "./blueprintStateWrites";
+import { isRecord } from "@shared/utils/isRecord";
 
 type ActiveBindingInput = {
     key: string;
@@ -139,10 +140,6 @@ function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"])
         return value === true || value === "true" || value === 1;
     }
     return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function stringifyDependencyValue(value: unknown): string {

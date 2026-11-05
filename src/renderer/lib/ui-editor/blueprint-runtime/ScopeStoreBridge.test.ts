@@ -104,6 +104,37 @@ describe("ScopeStoreBridge persistence", () => {
         await vi.waitFor(() => expect(writes).toEqual([]));
     });
 
+    it("keeps a session-only value over the store when the store is read again", async () => {
+        // Every story boot re-reads the store into the cache. The session-only value is the only
+        // copy there is, so a re-read that replaced it put the game back in the stored language.
+        const { adapter } = adapterSpy({
+            getAll: async () => ({ "nls.locale": "ja", other: 1 }),
+            getValue: async key => (key === "nls.locale" ? "ja" : undefined),
+        });
+        const bridge = await bridgeWith(adapter);
+        bridge.persistenceSetSessionOnly("nls.locale", "en");
+
+        await bridge.reloadPersistenceSnapshot();
+        expect(bridge.persistenceGet("nls.locale")).toBe("en");
+        expect(bridge.persistenceGet("other")).toBe(1);
+
+        // Asking the store directly answers the store, without evicting the session's value.
+        expect(await bridge.persistenceGetAsync("nls.locale")).toBe("ja");
+        expect(bridge.persistenceGet("nls.locale")).toBe("en");
+    });
+
+    it("lets a durable write replace a session-only value for good", async () => {
+        const { adapter } = adapterSpy({ getAll: async () => ({ "nls.locale": "zh" }) });
+        const bridge = await bridgeWith(adapter);
+        bridge.persistenceSetSessionOnly("nls.locale", "en");
+
+        await bridge.persistenceSet("nls.locale", "ja");
+        await bridge.reloadPersistenceSnapshot();
+        // The fake store does not keep writes, so what comes back is its own value - not the
+        // session-only one, which the durable write retired.
+        expect(bridge.persistenceGet("nls.locale")).toBe("zh");
+    });
+
     it("forgets what the session wrote and reads the declared defaults again on a reset", async () => {
         const bridge = new ScopeStoreBridge({ persistentDefaults: { place: "", clears: 0 } });
         await bridge.persistenceSet("place", "corridor");

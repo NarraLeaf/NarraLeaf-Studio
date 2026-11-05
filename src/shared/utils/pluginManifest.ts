@@ -33,6 +33,7 @@ import {
 } from "../types/plugins";
 import { UI_STRUCT_FIELD_TYPES, type UIStructFieldType } from "../types/ui-editor/struct";
 import { AGENT_PLUGIN_TOOL_NAME_PATTERN, agentPluginToolMcpName } from "../agent/pluginTools";
+import { isRecord } from "@shared/utils/isRecord";
 
 export type PluginManifestValidationResult =
     | { ok: true; manifest: NormalizedPluginManifestV2 }
@@ -288,7 +289,7 @@ function hostnameOf(url: string): string | null {
 }
 
 /** Contribution kinds whose value is an array of `<pluginId>.`-prefixed identifiers. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests", "reservedSaveIds"] as const;
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "inlineTextEffects", "runtimeData", "tests", "reservedSaveIds"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped ones. */
 const CONTRIBUTES_KEYS = [
@@ -356,6 +357,7 @@ export function isPluginBinaryPlatformKey(value: string): boolean {
 const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], string> = {
     blueprintNodes: "blueprint node",
     widgets: "widget",
+    inlineTextEffects: "inline text effect",
     runtimeData: "storage namespace",
     tests: "test",
     reservedSaveIds: "reserved save id",
@@ -368,6 +370,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
     const empty: Required<PluginContributes> = {
         blueprintNodes: [],
         widgets: [],
+        inlineTextEffects: [],
         runtimeData: [],
         tests: [],
         reservedSaveIds: [],
@@ -1326,10 +1329,6 @@ function readString(record: Record<string, unknown>, key: string): string | null
 
 function readOptionalString(record: Record<string, unknown>, key: keyof PluginManifestV2): string | undefined {
     return readString(record, key) ?? undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function invalid(error: string): PluginManifestValidationResult {

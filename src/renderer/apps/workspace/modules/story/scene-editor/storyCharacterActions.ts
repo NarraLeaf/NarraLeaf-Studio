@@ -43,22 +43,34 @@ const STAGING_COMMAND_IDS: ReadonlySet<string> = new Set(["show", "hide"]);
 const STAGING_OPERATIONS: ReadonlySet<string> = new Set(["enter", "exit", "show", "hide"]);
 
 /**
+ * Who the scoped menu is for, as far as the verbs on offer are concerned: whether a runtime draws
+ * them (Live2D, Spine) or Studio does. Omitted, every character verb is offered.
+ */
+export type StoryCharacterScopeKind = { drawnByRuntime: boolean };
+
+/**
  * Whether a palette entry acts on a character who is already on stage.
  *
  * A plugin action has no spec to classify, so its own registration group is all there is to go on -
  * a plugin that files itself under 角色 is taken at its word, exactly as the sidebar takes it.
+ *
+ * With `scope`, a verb only a runtime-drawn character answers to (`/motion`, `/skin`, `/param`) is
+ * left out for one Studio draws: offering it put three rows in her menu that her line then refused.
  */
-export function isCharacterScopedAction(command: PaletteActionCommand): boolean {
+export function isCharacterScopedAction(command: PaletteActionCommand, scope?: StoryCharacterScopeKind): boolean {
     if (STAGING_COMMAND_IDS.has(command.id)) {
         return false;
     }
     const spec = getCommandSpec(command.id);
+    if (spec?.runtimeDrawnOnly && scope && !scope.drawnByRuntime) {
+        return false;
+    }
     return spec ? specGroupIds(spec).includes(CHARACTER_GROUP) : command.group === CHARACTER_GROUP;
 }
 
 /** The character-scoped entries of a palette list, in the order they arrived. */
-export function characterScopedActions(commands: readonly PaletteActionCommand[]): PaletteActionCommand[] {
-    return commands.filter(isCharacterScopedAction);
+export function characterScopedActions(commands: readonly PaletteActionCommand[], scope?: StoryCharacterScopeKind): PaletteActionCommand[] {
+    return commands.filter(command => isCharacterScopedAction(command, scope));
 }
 
 /**
@@ -70,10 +82,11 @@ export function characterScopedActions(commands: readonly PaletteActionCommand[]
  */
 export function characterScopedSidebarGroups(
     groups: readonly StoryCommandSidebarGroup[],
+    scope?: StoryCharacterScopeKind,
 ): readonly StoryCommandSidebarGroup[] {
     return groups
         .filter(entry => entry.group.id === CHARACTER_GROUP)
-        .map(entry => ({ ...entry, commands: entry.commands.filter(isCharacterScopedAction) }))
+        .map(entry => ({ ...entry, commands: entry.commands.filter(command => isCharacterScopedAction(command, scope)) }))
         .filter(entry => entry.commands.length > 0);
 }
 

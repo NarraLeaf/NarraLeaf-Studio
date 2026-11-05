@@ -720,6 +720,37 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(patches.image?.visible).toBe(false);
     });
 
+    it.each([
+        ["a table shared with the host", true],
+        ["a host API's own table", false],
+    ])("a write that leaves the drawing as it is neither reaches the host nor redraws (%s)", async (_label, shared) => {
+        // A quick menu polling the skip state set the indicator's visibility every quarter of a
+        // second whether it had changed or not, and every one of those writes redrew the game.
+        const patches: Record<string, DevModeWidgetRuntimePatch> = {};
+        const onWidgetPatch = vi.fn((elementId: string, patch: DevModeWidgetRuntimePatch) => {
+            patches[elementId] = mergeWidgetPatch(patches[elementId], patch);
+        });
+        const store = new WidgetRuntimeStateStore();
+        const redraws = vi.fn();
+        store.subscribeRuntimePatches(redraws);
+        const hostApi = createHostApi({
+            onWidgetPatch,
+            readWidgetPatches: shared ? () => patches : undefined,
+            widgetRuntimeStore: store,
+        });
+
+        await hostApi.widget.setVisible("image", false);
+        await hostApi.widget.setVisible("image", false);
+        await hostApi.widget.setVisible("image", false);
+        expect(onWidgetPatch).toHaveBeenCalledTimes(1);
+        expect(redraws).toHaveBeenCalledTimes(1);
+
+        await hostApi.widget.setVisible("image", true);
+        expect(onWidgetPatch).toHaveBeenCalledTimes(2);
+        expect(redraws).toHaveBeenCalledTimes(2);
+        expect(hostApi.widget.getCommonProperties("image").visible).toBe(true);
+    });
+
     it("supports Image appearance variant overrides", async () => {
         const store = new WidgetRuntimeStateStore();
         const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });

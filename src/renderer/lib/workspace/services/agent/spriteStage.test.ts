@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnBoxAtCenter, stageSizeOf, standingEntrance } from "./spriteStage";
+import { drawnBoxAtCenter, entranceForFirstArt, stageSizeOf, standingEntrance } from "./spriteStage";
 
 const STAGE = { width: 1920, height: 1080 };
 const SPRITE = { width: 700, height: 1000 };
@@ -37,5 +37,22 @@ describe("sprite stage geometry", () => {
         expect(stageSizeOf({ width: 1280, height: 720 })).toEqual({ width: 1280, height: 720 });
         expect(stageSizeOf("2560x1440")).toEqual({ width: 2560, height: 1440 });
         expect(stageSizeOf(undefined)).toEqual(STAGE);
+    });
+});
+
+describe("a character's first art", () => {
+    // 美绪 from a 1600x1586 PSD came on at her own pixels, 1.6 times Narra, head out of the stage.
+    const MIO = { width: 1600, height: 1586 };
+
+    it("stands her on the floor, scaled to fit the stage", () => {
+        expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: MIO, stage: STAGE })).toEqual(standingEntrance(MIO, STAGE));
+        expect(drawnBoxAtCenter(MIO, entranceForFirstArt({ hadArt: false, current: undefined, sprite: MIO, stage: STAGE }), STAGE).height).toBeLessThanOrEqual(STAGE.height);
+    });
+
+    it("leaves defaults an author set, art being replaced, and art it cannot measure", () => {
+        const set = { zoom: 0.5 };
+        expect(entranceForFirstArt({ hadArt: false, current: set, sprite: MIO, stage: STAGE })).toBeUndefined();
+        expect(entranceForFirstArt({ hadArt: true, current: undefined, sprite: MIO, stage: STAGE })).toBeUndefined();
+        expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: null, stage: STAGE })).toBeUndefined();
     });
 });

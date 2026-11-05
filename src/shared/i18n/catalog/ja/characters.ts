@@ -43,6 +43,20 @@ export const characters = {
         createCharacter: "キャラクター {name} の作成",
         editCharacter: "キャラクター {name} の編集",
         deleteGroup: "グループ {name} の削除",
+        autoFrameAvatars: "{name} のアバターの自動切り抜き",
+    },
+    autoFrame: {
+        all: "すべてのアバターを自動で切り抜く",
+        one: "アバターを自動で切り抜く",
+        running: "アバターを自動で切り抜いています",
+        consoleChannel: "アバター",
+        consoleChannelDescription: "検出した頭部で切り抜いたアバター",
+        started: "頭部を検出してアバターを切り抜いています",
+        summary: "切り抜き {framed} · 頭部なし {noHead} · 既存の切り抜きを維持 {kept}",
+        noHeadLine: "{name}：{looks} で頭部が見つかりません",
+        nothingToDo: "切り抜くアバターはありません",
+        noHead: "頭部が見つかりません",
+        failed: "自動切り抜きに失敗しました：{message}",
     },
     // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。
     // 最初の 1 行から、どの画面もその色でこのキャラクターを見分けるため。
@@ -64,6 +78,16 @@ export const characters = {
         colorReset: "名前から決める",
     },
     editor: {
+        sequenceTitle: "連番フレーム",
+        sequenceImport: "PNG 連番画像を読み込む",
+        sequenceFps: "フレームレート",
+        sequenceLoop: "ループ",
+        sequenceStatic: "先頭フレームのみ使用",
+        sequenceMoveUp: "フレームを上へ移動",
+        sequenceMoveDown: "フレームを下へ移動",
+        sequencePngOnly: "すべてのフレームは PNG 画像である必要があります。",
+        sequenceSizeMismatch: "すべてのフレームの寸法を揃えてください。",
+
         // `live2d` / `spine` の項目は置かない。あれは製品自身の名前で、商標であり、
         // ここではなくランタイムのレジストリから来る。
         kind: { preset: "プリセットの立ち絵", layered: "レイヤー式の立ち絵", puppet: "外部ランタイム" },
@@ -100,6 +124,7 @@ export const characters = {
             // ランタイム式のキャラクターが最初に置かれる案内つきの状態。ランタイムとモデルが
             // 両方そろうまで、その下の状態の項目は意味を持てないので出さない。
             setupTitle: "用意するものが 2 つある",
+            setupTitleOne: "未準備：{item}",
             stepRuntime: "描画ランタイム",
             stepModel: "モデル",
             runtimeInstalled: "インストール済み",
@@ -261,6 +286,7 @@ export const characters = {
         thumbnail: "サムネイル",
         preview: "プレビュー",
         defaultAvatar: "既定のダイアログのアバター",
+        defaultAvatarRuntimeHint: "ランタイムで描くキャラクターにはアバターが作られない。ダイアログにはこのアバターを表示する",
         // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
         // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
         voiceTrack: "ボイスのトラック",
@@ -277,6 +303,12 @@ export const characters = {
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",
+        aliases: "別名",
+        aliasesTip: "話者が別名で書かれた台詞はこのキャラクターのものになります。ゲーム内ではキャラクター名が表示されます",
+        addAliasPlaceholder: "別名を追加…",
+        aliasIsName: "「{alias}」はこのキャラクターの名前と同じです",
+        aliasTakenByName: "「{alias}」は {names} の名前です。話者が「{alias}」の台詞は {names} のものになります",
+        aliasShared: "「{alias}」は {names} の別名でもあります。話者が「{alias}」の台詞はキャラクターを特定できません",
         namePlaceholder: "キャラクター名",
         descriptionPlaceholder: "キャラクターの説明…",
         tags: "タグ",
@@ -303,7 +335,8 @@ export const characters = {
         variant: "バリアント：{name}",
         loading: "プレビューを読み込んでいる…",
         failed: "プレビューに失敗",
-        placeholder: "プレビューするには画像のあるバリアントを選ぶ",
+        emptyLayered: "画像のあるレイヤーを追加するか PSD を読み込むとプレビューを表示する",
+        emptyPreset: "このポーズに画像を設定するとプレビューを表示する",
         noSize: "大きさ不明",
         noMetadata: "メタデータなし",
         zoomOut: "縮小",
@@ -311,7 +344,7 @@ export const characters = {
         resetView: "表示をリセット",
         alt: "バリアントのプレビュー",
         setPortrait: "顔まわりの切り抜き",
-        resetPortrait: "自動で切り抜く",
+        resetPortrait: "切り抜きをクリア",
         portraitTitle: "顔まわりの切り抜き",
         // スイッチのラベルなので、クリックの説明ではなく状態を言う。「ポーズ」ではなく「見た目」
         // なのは、どちらの種類にもそれがあるから。プリセットならポーズ、レイヤー式ならタグの

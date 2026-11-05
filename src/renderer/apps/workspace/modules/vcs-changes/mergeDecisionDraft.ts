@@ -2,6 +2,7 @@ import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import type { VcsMergeSideChoice, VcsMergeState } from "@shared/types/vcs";
 import type { MergeChangeChoices } from "@/lib/vcs/mergeDecisionView";
 import type { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * The choices an author has made in an open merge, kept where closing the window cannot take them.
@@ -109,8 +110,4 @@ export async function clearMergeDecisionDraft(serviceAssets: ServiceAssetsServic
         perChange: {},
         changeChoices: {},
     });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

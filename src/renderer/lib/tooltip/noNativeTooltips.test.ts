@@ -108,7 +108,10 @@ function openingTags(source: string): Array<[string, number, number]> {
             continue;
         }
         tags.push([match[1], attributesStart, end]);
-        i = end + 1;
+        // On from the attributes, not from the end of the tag: a prop can hold JSX of its own
+        // (`toolbar={<><button title=…>`), and resuming past the `>` stepped over every element
+        // written inside one. That is how the character editor's onion-skin button kept its title.
+        i = attributesStart;
     }
     return tags;
 }

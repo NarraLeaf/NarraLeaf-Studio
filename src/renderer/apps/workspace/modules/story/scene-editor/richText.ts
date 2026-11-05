@@ -1,6 +1,6 @@
 import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
-import { clampFontSizeStep, fontScaleForStep, isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
+import { clampFontSizeStep, cleanStoryTextEffect, fontScaleForStep, isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryAppearanceSelection } from "./storyAppearanceLabel";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
@@ -31,6 +31,13 @@ const RUBY_CLASS = "story-rt-ruby";
  * height.
  */
 const EMPHASIS_CLASS = "story-rt-emphasis";
+
+/**
+ * Inline effect class. The effect itself is the plugin's to draw and only runs in the game, so the
+ * editor marks where one applies and leaves the characters still: an animation inside a field being
+ * typed in would move the caret's target under it.
+ */
+const EFFECT_CLASS = "story-rt-effect";
 
 /** Inline reveal-time event chip class (expression switch / SE). */
 const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded-md bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
@@ -175,6 +182,8 @@ export function cleanMarks(marks: StoryTextMarks | undefined): StoryTextMarks | 
     const step = clampFontSizeStep(marks.fontSizeStep);
     if (step !== undefined) out.fontSizeStep = step;
     if (isStoryTextEmphasis(marks.emphasis)) out.emphasis = marks.emphasis;
+    const effect = cleanStoryTextEffect(marks.effect);
+    if (effect) out.effect = effect;
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -273,6 +282,7 @@ function readMarksFromElement(el: HTMLElement): StoryTextMarks | undefined {
     // `font-size` / `text-emphasis` the browser resolves them into.
     if (el.dataset.fontstep) marks.fontSizeStep = Number(el.dataset.fontstep);
     if (el.dataset.emphasis) marks.emphasis = el.dataset.emphasis as StoryTextMarks["emphasis"];
+    if (el.dataset.effect) marks.effect = parseEffectAttribute(el.dataset.effect);
     return cleanMarks(marks);
 }
 
@@ -301,8 +311,21 @@ function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
         span.classList.add(EMPHASIS_CLASS);
     }
     if (typeof marks.cps === "number") span.dataset.cps = String(marks.cps);
+    if (marks.effect) {
+        span.dataset.effect = JSON.stringify(marks.effect);
+        span.classList.add(EFFECT_CLASS);
+    }
     span.textContent = text;
     return span;
+}
+
+/** The effect a span's `data-effect` names, or `undefined` when the attribute is not one. */
+function parseEffectAttribute(value: string): StoryTextMarks["effect"] {
+    try {
+        return cleanStoryTextEffect(JSON.parse(value));
+    } catch {
+        return undefined;
+    }
 }
 
 function createPauseChip(pause: number | true, options: RichRenderOptions): HTMLSpanElement {
@@ -579,11 +602,26 @@ export function rangeTextMark<K extends keyof StoryTextMarks>(
         if (first) {
             shared = value;
             first = false;
-        } else if (value !== shared) {
+        } else if (!sameMarkValue(value, shared)) {
             return undefined;
         }
     }
     return shared;
+}
+
+/**
+ * Whether two runs carry the same value for one mark. An effect is an object, and two runs carrying
+ * the same effect hold equal objects rather than one shared one; `cleanMarks` keeps them in one key
+ * order, so comparing them as JSON is comparing them by value.
+ */
+export function sameMarkValue(a: unknown, b: unknown): boolean {
+    if (a === b) {
+        return true;
+    }
+    if (a && b && typeof a === "object" && typeof b === "object") {
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return false;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
     collectBlueprintDocumentUsage,
     collectInterfaceDocumentUsage,
     collectStoryDocumentUsage,
+    collectStoryTextEffectUsage,
     type TypeOwnership,
 } from "@/lib/plugins/projectPluginUsage";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -61,6 +62,7 @@ export function pluginsReferencedByBundle(
         ...collectBlueprintDocumentUsage(bundle.ui.localBlueprints, byName),
         ...collectInterfaceDocumentUsage(bundle.ui.uidoc, byName),
         ...[...stories].flatMap(document => collectStoryDocumentUsage(document)),
+        ...[...stories].flatMap(document => collectStoryTextEffectUsage(document, byName)),
     ];
     return new Set(usage.map(record => record.pluginId));
 }

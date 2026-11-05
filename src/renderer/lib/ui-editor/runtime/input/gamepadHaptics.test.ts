@@ -116,4 +116,30 @@ describe("stopGamepadRumble", () => {
         expect(actuator.reset).toHaveBeenCalledTimes(1);
         expect(actuator.playEffect).toHaveBeenCalledWith("dual-rumble", expect.objectContaining({ strongMagnitude: 0, weakMagnitude: 0 }));
     });
+
+    it("reads the window's pads when the platform answers with an array-like GamepadList", () => {
+        // Android System WebView, among older Chromium: indexable, has `length`, has no `filter`.
+        const actuator = { playEffect: vi.fn(() => Promise.resolve()), reset: vi.fn(() => Promise.resolve()) };
+        const list = { 0: padOf("standard", actuator), 1: null, length: 2 };
+        vi.stubGlobal("navigator", { getGamepads: () => list });
+        try {
+            expect(() => stopGamepadRumble()).not.toThrow();
+            expect(actuator.reset).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("is silent when the platform throws instead of answering", () => {
+        vi.stubGlobal("navigator", {
+            getGamepads: () => {
+                throw new DOMException("gamepad is not allowed", "SecurityError");
+            },
+        });
+        try {
+            expect(() => stopGamepadRumble()).not.toThrow();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
 });

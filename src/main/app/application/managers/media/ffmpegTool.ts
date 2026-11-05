@@ -128,11 +128,15 @@ export type FfmpegResolveOptions = {
  * adds a `.dev` cache fallback, which is both where a checkout that never ran the staging script
  * can be served from and where someone on an unserved host can drop their own build without
  * touching a tracked path.
+ *
+ * `mainCheckout` is the checkout a development tree is a linked worktree of (see
+ * {@link mainCheckoutOfWorktree}). Its two places are looked in after the tree's own.
  */
 export function ffmpegSearchPaths(
     app: FfmpegResolverApp,
     target: FfmpegHostTarget,
     binary: FfmpegBinaryName,
+    mainCheckout: string | null = null,
 ): string[] {
     const fileName = `${binary}${target.executableSuffix}`;
     const staged = app.resolveResource(path.join("ffmpeg", target.platformKey, fileName));
@@ -142,7 +146,48 @@ export function ffmpegSearchPaths(
     return [
         staged,
         app.resolveResource(path.join("..", ".dev", "cache", "ffmpeg", target.platformKey, fileName)),
+        ...(mainCheckout
+            ? [
+                path.join(mainCheckout, "resources", "ffmpeg", target.platformKey, fileName),
+                path.join(mainCheckout, ".dev", "cache", "ffmpeg", target.platformKey, fileName),
+            ]
+            : []),
     ];
+}
+
+/**
+ * The main checkout a development tree is a linked git worktree of, or null for anything else.
+ *
+ * The staged binaries are not tracked, so a worktree starts without them, and a Studio run from one
+ * converted no media and baked no weather: every `/vfx snow` row in Dev Mode said its weather could
+ * not be produced, and why was a line in the log. A worktree is another working tree of the same
+ * repository, and the binaries its main checkout staged are the ones it would stage itself, so a
+ * development Studio looks there after its own tree.
+ *
+ * A linked worktree's `.git` is a file naming its git dir, whose `commondir` names the repository's
+ * shared git dir; for a repository with a working tree that is the main checkout's `.git`. A main
+ * checkout (whose `.git` is a directory), a submodule (whose git dir has no `commondir`) and a
+ * worktree of a bare repository all answer null.
+ */
+export async function mainCheckoutOfWorktree(root: string): Promise<string | null> {
+    let pointer: string;
+    try {
+        pointer = await fs.readFile(path.join(root, ".git"), "utf8");
+    } catch {
+        return null;
+    }
+    const gitDir = /^gitdir:\s*(.+?)\s*$/m.exec(pointer)?.[1];
+    if (!gitDir) {
+        return null;
+    }
+    const ownGitDir = path.resolve(root, gitDir);
+    let commonDir: string;
+    try {
+        commonDir = path.resolve(ownGitDir, (await fs.readFile(path.join(ownGitDir, "commondir"), "utf8")).trim());
+    } catch {
+        return null;
+    }
+    return path.basename(commonDir) === ".git" ? path.dirname(commonDir) : null;
 }
 
 async function isFile(candidate: string): Promise<boolean> {
@@ -199,7 +244,8 @@ export async function resolveFfmpegBinary(
         };
     }
 
-    const searched = ffmpegSearchPaths(app, target, binary);
+    const mainCheckout = app.isPackaged() ? null : await mainCheckoutOfWorktree(app.resolveResource(".."));
+    const searched = ffmpegSearchPaths(app, target, binary, mainCheckout);
     for (const candidate of searched) {
         if (await isFile(candidate)) {
             return { available: true, path: candidate };

@@ -85,6 +85,43 @@ export type CharacterOpSink = {
     handle(op: LiveCharacterOp): boolean;
 };
 
+type AvatarStampTable = Record<string, { baked?: string } & Record<string, unknown>>;
+
+/**
+ * `record` with each avatar's `baked` stamp taken from `live`: an entry the live character has a
+ * bake for keeps that stamp, and one it has none for has none. An entry only the live character has
+ * comes along as its stamp alone, so the next bake still finds the file it would otherwise leave
+ * behind. Everything the author sets on an entry - its crop, its override - is the record's.
+ */
+function withLiveAvatarStamps(record: StoredCharacter, live: StoredCharacter): StoredCharacter {
+    const next = structuredClone(record);
+    const appearance = next.profile.appearance as { avatars?: AvatarStampTable } | undefined;
+    const liveAvatars = (live.profile.appearance as { avatars?: AvatarStampTable } | undefined)?.avatars ?? {};
+    if (!appearance || (!appearance.avatars && Object.keys(liveAvatars).length === 0)) {
+        return next;
+    }
+    const avatars: AvatarStampTable = { ...(appearance.avatars ?? {}) };
+    for (const [key, entry] of Object.entries(avatars)) {
+        const { baked: _restored, ...authored } = entry;
+        const stamp = liveAvatars[key]?.baked;
+        if (stamp) {
+            avatars[key] = { ...authored, baked: stamp };
+        } else if (Object.keys(authored).length > 0) {
+            avatars[key] = authored;
+        } else {
+            // An entry is dropped once it carries nothing, as the bake itself drops one.
+            delete avatars[key];
+        }
+    }
+    for (const [key, entry] of Object.entries(liveAvatars)) {
+        if (!avatars[key] && entry.baked) {
+            avatars[key] = { baked: entry.baked };
+        }
+    }
+    appearance.avatars = avatars;
+    return next;
+}
+
 export class CharacterService extends Service<CharacterService> implements ICharacterService {
     private readonly characters: Record<string, Character> = {};
     private readonly characterOrder: string[] = [];
@@ -264,23 +301,107 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (this.handedToSink({ op: "update-character", characterId: id, character: after })) {
             return true;
         }
-        const adopt = (next: StoredCharacter) => {
-            const current = this.characters[id];
-            if (!current) {
-                return;
-            }
-            current.adopt(next);
-            this.markDirty();
-            this.emitChange();
-            current.notifySubscribers();
-        };
-        adopt(after);
+        // The caller shaped `after` on a copy of the live record, so its stamps are the live ones but
+        // where it dropped one on purpose - an override replaces its differential's entry, bake and
+        // all, as the character editor writes it. The write lands as written; only the steps that
+        // later restore a record keep the live stamps.
+        this.adoptRecord(id, after, "as-written");
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
-            undo: () => adopt(before),
-            redo: () => adopt(after),
+            undo: () => this.adoptRecord(id, before),
+            redo: () => this.adoptRecord(id, after),
         });
         return true;
+    }
+
+    /**
+     * Leave one step of undo on the project stack for edits a caller has just made to a character in
+     * place, through the setters the editor uses - together with whatever the same gesture did outside
+     * the cast (`library`: the images a PSD import wrote over and the ones it brought in).
+     *
+     * The twin of {@link commitCharacterRecord} for a caller that could not build the record off to
+     * one side first. `before` is the record as it stood when the gesture began; the step restores it
+     * wholesale, which is exact for the same reason it is there.
+     *
+     * ⚠ **What redo brings back is the record as it was when undo ran, not as the gesture left it.**
+     * The character editor's own edits leave no steps, so an author can go on editing after the
+     * gesture; taking it back then also takes back those edits, and redo has to give them back too.
+     * Read at undo time, the record is the honest "after" - the same rule a checkpoint follows.
+     *
+     * Undo writes the record before taking back the library's half, so no frame draws a layer whose
+     * image has just been taken out of the library; when the library's half refuses (a file that could
+     * not be kept aside), the record goes back to what it was and the step stays where it was. Redo
+     * runs the other way round.
+     *
+     * Returns false, and lets `library` go, when no step is left: inside a live session, whose own
+     * undo is the room's (the edits were handed to it as they were made), or when nothing changed.
+     */
+    public recordCharacterEdit(
+        id: string,
+        before: StoredCharacter,
+        label: HistoryLabel,
+        library?: { undo(): Promise<void>; redo(): Promise<void>; dispose(): void; isEmpty(): boolean },
+    ): boolean {
+        const character = this.characters[id];
+        if (this.opSink || !character) {
+            library?.dispose();
+            return false;
+        }
+        const snapshot = () => structuredClone(character.toJSON()) as StoredCharacter;
+        let after = snapshot();
+        if (JSON.stringify(before) === JSON.stringify(after) && (!library || library.isEmpty())) {
+            library?.dispose();
+            return false;
+        }
+        const stored = structuredClone(before);
+        return this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label,
+            undo: async () => {
+                const live = this.characters[id] ? snapshot() : null;
+                this.adoptRecord(id, stored);
+                try {
+                    await library?.undo();
+                } catch (error) {
+                    if (live) {
+                        this.adoptRecord(id, live);
+                    }
+                    throw error;
+                }
+                if (live) {
+                    after = live;
+                }
+            },
+            redo: async () => {
+                await library?.redo();
+                this.adoptRecord(id, after);
+            },
+            dispose: () => library?.dispose(),
+        });
+    }
+
+    /**
+     * Put a whole record onto the live character, and tell everyone holding it. What an undo step
+     * restores.
+     *
+     * ⚠ **The avatars' `baked` stamps stay the live ones.** A stamp says which inputs the avatar file
+     * on disk was rendered from, and a step does not put that file back - so restoring the stamp from
+     * the record would vouch for a file that now shows something else. Seen after a PSD re-import:
+     * the re-bake drew the new art, Ctrl+Z put the old pixels and the old stamp back, the stamp
+     * matched the old pixels, and the dialog avatar went on showing the new art. Kept live, the stamp
+     * no longer matches what the record draws, and the next bake renders it again.
+     *
+     * `"as-written"` is for the one write that is not a restore: a record just built from the live
+     * one, landed by {@link commitCharacterRecord}.
+     */
+    private adoptRecord(id: string, record: StoredCharacter, stamps: "live" | "as-written" = "live"): void {
+        const current = this.characters[id];
+        if (!current) {
+            return;
+        }
+        current.adopt(stamps === "live" ? withLiveAvatarStamps(record, current.toJSON() as StoredCharacter) : record);
+        this.markDirty();
+        this.emitChange();
+        current.notifySubscribers();
     }
 
     /**

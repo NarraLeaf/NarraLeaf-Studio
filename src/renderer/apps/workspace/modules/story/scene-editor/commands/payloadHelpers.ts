@@ -8,7 +8,11 @@ import type {
     StoryTransitionRef,
 } from "@shared/types/story";
 import { ACTIONABLE_BUILTIN_META, BGM_STAGE_OBJECT_NAME, characterStageName, DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n";
+import { translateCommand } from "@/lib/i18n";
+import type { StoryCommandParamType } from "../storyCommandGrammar";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandTargetValue, StoryCommandValue } from "../storyCommandValues";
+import { localizedEnumValue } from "./localizedEnums";
 import { asDurationMs, asEnum, asTarget } from "./spec";
 import { applyPositionToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
@@ -129,22 +133,47 @@ export function clipLeaveDurationMs(
  * `/text` lines become `text` and `text2` rather than colliding. Skipped when the author named it -
  * their choice wins.
  */
-export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetParam: string | null, base: string) {
+export function deriveObjectName(
+    stageKind: StoryCommandStageObjectKind,
+    assetParam: string | null,
+    base: string,
+    /** The word list `assetParam` can name a source from (`/vfx snow`), when it has one. */
+    words?: Extract<StoryCommandParamType, { kind: "enum" }>,
+) {
     return (args: Readonly<Record<string, StoryCommandValue | undefined>>, context: StoryCommandContext): Record<string, StoryCommandValue> => {
         if (args.name) {
             return {};
         }
         const source = assetParam ? args[assetParam] : undefined;
+        const fallback = defaultObjectName(base);
         // A slot may name something other than an asset - `/vfx snow` names a generated source by a
         // word - and the row should still be called after what the author typed rather than after the
         // command. The word IS the name in that case; there is no file to strip an extension from.
+        // It is the word as the command language writes it: a zh author who typed 樱花 addresses the
+        // overlay as 樱花, and naming it `sakura` refused their very next `/show 樱花`.
         const stem = source?.kind === "asset"
-            ? assetBaseName(context, stageKind, source.assetId) ?? base
+            ? assetBaseName(context, stageKind, source.assetId) ?? fallback
             : source?.kind === "enum"
-                ? source.value
-                : base;
+                ? enumWord(words, source.value)
+                : fallback;
         return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
+}
+
+/** `value` as the command language writes it, among `words`; the value itself when there is no list. */
+function enumWord(words: Extract<StoryCommandParamType, { kind: "enum" }> | undefined, value: string): string {
+    const option = words?.options.find(candidate => candidate.value === value);
+    return words && option ? localizedEnumValue(words, option) : value;
+}
+
+/**
+ * The name an unnamed object takes when nothing on the line names it, in the command language where a
+ * word for it exists (`text` is 文本 in zh); `base` otherwise. One token, since a target slot reads one.
+ */
+function defaultObjectName(base: string): string {
+    const key = `story.stage.defaultName.${base}` as TranslationKey;
+    const word = translateCommand(key).trim();
+    return word && word !== key && !/\s/.test(word) ? word : base;
 }
 
 /**

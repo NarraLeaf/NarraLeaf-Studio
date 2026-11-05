@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     clampFontSizeStep,
+    cleanStoryTextEffect,
     fontScaleForStep,
     isStoryTextEmphasis,
     STORY_TEXT_EMPHASIS_VALUES,
@@ -64,5 +65,29 @@ describe("storyTextMarks", () => {
             fontSize: 32,
             fontScale: fontScaleForStep(1),
         });
+    });
+
+    it("names an effect's renderer by its id and hands its parameters over as the word's data", () => {
+        expect(storyMarksToWordConfig({ effect: { id: "acme.fx.shake", params: { intensity: 4 } } })).toEqual({
+            render: "acme.fx.shake",
+            data: { intensity: 4 },
+        });
+        // An effect at its defaults still names its renderer, with nothing in the data.
+        expect(storyMarksToWordConfig({ bold: true, effect: { id: "acme.fx.shake" } })).toEqual({
+            bold: true,
+            render: "acme.fx.shake",
+            data: {},
+        });
+    });
+
+    it("keeps an effect in one stored shape, so equal effects compare equal as JSON", () => {
+        expect(cleanStoryTextEffect({ id: " acme.fx.shake ", params: { speed: 2, intensity: 4 } }))
+            .toEqual({ id: "acme.fx.shake", params: { intensity: 4, speed: 2 } });
+        expect(JSON.stringify(cleanStoryTextEffect({ id: "a.b", params: { z: 1, a: 2 } })))
+            .toBe(JSON.stringify(cleanStoryTextEffect({ id: "a.b", params: { a: 2, z: 1 } })));
+        // Values a parameter cannot hold are dropped, and an effect with nothing left keeps its id.
+        expect(cleanStoryTextEffect({ id: "a.b", params: { bad: Number.NaN, obj: {} } })).toEqual({ id: "a.b" });
+        expect(cleanStoryTextEffect({ id: "" })).toBeUndefined();
+        expect(cleanStoryTextEffect("a.b")).toBeUndefined();
     });
 });

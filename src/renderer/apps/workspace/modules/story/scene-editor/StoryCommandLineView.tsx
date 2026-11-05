@@ -1,9 +1,11 @@
-import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
+import { useGroupSubmenus, useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
+import { useCharacterGroupNames } from "./useCharacterGroupNames";
 import { useCommandTranslation } from "@/lib/i18n";
 import { audioTrackDisplayName } from "@shared/types/audioTrack";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
@@ -14,7 +16,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, toDisplayedCommandLine } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
 import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
-import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
+import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineLookups, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryBlueprintNames } from "./useStoryBlueprintNames";
 import { useStoryMotionNames } from "./useStoryMotionNames";
@@ -100,6 +102,21 @@ export type StoryCommandLineContextValue = {
     blueprintName?: StoryRowLookups["blueprintName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
+    /**
+     * What the speaker picker files its candidates under: the project's cast groups, by id, in the
+     * Characters panel's order.
+     *
+     * Already resolved against `editor.characterListGrouping` — absent when the author asked for one
+     * flat list of every character, which is the same thing a project with no groups has. The picker
+     * asks "what do I file under", not "what did the author choose", and asking it here is what keeps
+     * the preference one read per editor tab rather than one per row behind every nametag.
+     */
+    characterGroupNames?: ReadonlyMap<string, string>;
+    /**
+     * `editor.groupSubmenus`: whether candidate menus draw cast groups and asset folders as submenus.
+     * Carried whatever `editor.characterListGrouping` says, since asset folders do not depend on it.
+     */
+    groupSubmenus?: boolean;
 };
 
 const StoryCommandLineContext = createContext<StoryCommandLineContextValue>({ trigger: ACTION_TRIGGER });
@@ -122,6 +139,11 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     // Read here rather than threaded from the controller: nothing but the rows below this provider
     // wants it, and this is the one place that already resolves per-tab preferences for all of them.
     const hideParamNames = useHideParamNames();
+    // The cast's filing, for the speaker pickers below: the groups themselves, and whether the author
+    // wants them used at all. Read here for the reason the rest of this provider is read here.
+    const characterListGrouping = useCharacterListGrouping();
+    const characterGroupNames = useCharacterGroupNames();
+    const groupSubmenus = useGroupSubmenus();
     const blueprintName = useStoryBlueprintNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
@@ -176,7 +198,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         inputActionName: actionId => commandContext?.inputActions.find(action => action.id === actionId)?.name ?? null,
         blueprintName,
         commandContext,
-    }), [assets, blueprintName, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
+        groupSubmenus,
+        ...(characterListGrouping === "grouped" ? { characterGroupNames } : {}),
+    }), [assets, blueprintName, characterGroupNames, groupSubmenus, characterListGrouping, commandContext, commandT, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 
@@ -407,11 +431,23 @@ export function useStoryCommandLine(
     // Read for its subscription only — see the note above.
     useCommandTranslation();
     const motionName = useStoryMotionNames();
-    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = useStoryCommandLineContext();
+    const context = useStoryCommandLineContext();
     // Deliberately not memoized: this is string building, and every input that could invalidate a memo
     // (an asset rename, a character rename) lives outside the story document, so a dependency array
     // would be a promise this cannot keep. The parse it feeds IS memoized, on the string it produces.
-    return projectStoryCommandLine(block, {
+    return projectStoryCommandLine(block, rowLineLookups(context, motionName, characters, scene, scenes));
+}
+
+/** The lookups a row's line is projected with - one table, so a row and its reader cannot disagree. */
+function rowLineLookups(
+    context: StoryCommandLineContextValue,
+    motionName: ReturnType<typeof useStoryMotionNames>,
+    characters: Character[],
+    scene: StoryScene | undefined,
+    scenes: Record<StorySceneId, StoryScene> | undefined,
+): StoryCommandLineLookups {
+    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = context;
+    return {
         character: characterRowLookup(characters),
         scene,
         scenes,
@@ -422,7 +458,36 @@ export function useStoryCommandLine(
         appearanceOptions,
         commandContext,
         projectVariableName,
+    };
+}
+
+/**
+ * Hand a component above {@link StoryCommandLineProvider} a way to read any row's line as the row
+ * prints it, trigger included (`@外观 Narra 微笑`) - or null when no command line owns the row.
+ *
+ * For "edit as text" (F2, the row menu), which runs in the editor tab: the tab builds the provider, so
+ * it cannot read the provider's lookups itself, and the line has to be the very one the row shows or
+ * the author would be handed text that differs from what they were looking at. Renders nothing.
+ */
+export function StoryCommandLineReader({ readerRef, characters, scene, scenes }: {
+    readerRef: MutableRefObject<((block: StoryBlock) => string | null) | null>;
+    characters: Character[];
+    scene: StoryScene | undefined;
+    scenes: Record<StorySceneId, StoryScene> | undefined;
+}) {
+    useCommandTranslation();
+    const motionName = useStoryMotionNames();
+    const context = useStoryCommandLineContext();
+    useLayoutEffect(() => {
+        readerRef.current = block => {
+            const projection = projectStoryCommandLine(block, rowLineLookups(context, motionName, characters, scene, scenes));
+            return projection ? displayed(projection.source, context.trigger) : null;
+        };
     });
+    useLayoutEffect(() => () => {
+        readerRef.current = null;
+    }, [readerRef]);
+    return null;
 }
 
 /**

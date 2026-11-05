@@ -5,7 +5,7 @@ import {
     type AutoSaveConfiguration,
     type AutoSaveEntry,
 } from "@shared/types/saves";
-import { AutoSaveScheduler } from "./autoSaveScheduler";
+import { AutoSaveScheduler, type AutoSaveWriteReason } from "./autoSaveScheduler";
 
 function entry(slot: number, timestamp: number): AutoSaveEntry {
     return {
@@ -27,6 +27,7 @@ function harness(overrides?: {
     failWrites?: number;
 }) {
     const written: string[] = [];
+    const reasons: AutoSaveWriteReason[] = [];
     const logs: string[] = [];
     let remainingFailures = overrides?.failWrites ?? 0;
     const state = {
@@ -36,17 +37,18 @@ function harness(overrides?: {
     const scheduler = new AutoSaveScheduler({
         getConfig: () => state.config,
         isPlaying: () => state.playing,
-        write: async id => {
+        write: async (id, reason) => {
             if (remainingFailures > 0) {
                 remainingFailures -= 1;
                 throw new Error("disk is on fire");
             }
             written.push(id);
+            reasons.push(reason);
         },
         listStored: async () => overrides?.stored ?? [],
         log: (_level, message) => logs.push(message),
     });
-    return { scheduler, written, logs, state };
+    return { scheduler, written, reasons, logs, state };
 }
 
 describe("AutoSaveScheduler", () => {
@@ -160,6 +162,16 @@ describe("AutoSaveScheduler", () => {
 
         await scheduler.writeNow();
         expect(written).toEqual([autoSaveSlotId(0)]);
+    });
+
+    it("tells the write whether the timer or the author asked for it", async () => {
+        const { scheduler, reasons } = harness();
+
+        scheduler.markStoryAdvanced();
+        await scheduler.tick();
+        await scheduler.writeNow();
+        // A timer write may wait for a quiet moment to take its picture; the author's may not.
+        expect(reasons).toEqual(["scheduled", "requested"]);
     });
 
     it("rejects an explicit write when no game is running", async () => {

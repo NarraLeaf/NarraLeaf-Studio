@@ -603,3 +603,18 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
 export function openFloatingLayerCount(doc: Document): number {
     return layers.filter(layer => layer.doc === doc).length;
 }
+
+/**
+ * Whether the layer whose box is `panel` is the topmost one open in its window: a dialog with no
+ * menu, picker or popover opened above it. A dialog's backdrop asks this when a press lands on it,
+ * because a press there with a picker open above is the press that closes the picker - reading its
+ * click as "close the dialog" too threw away everything typed into it.
+ */
+export function isTopFloatingLayer(panel: HTMLElement | null): boolean {
+    if (!panel) {
+        return true;
+    }
+    const own = layers.filter(layer => layer.doc === panel.ownerDocument);
+    const top = own[own.length - 1];
+    return !top || top.panel() === panel;
+}

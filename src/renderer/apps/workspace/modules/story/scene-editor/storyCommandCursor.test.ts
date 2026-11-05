@@ -260,6 +260,16 @@ describe("getCommandCandidates", () => {
         expect(values("/bg forest_day t=fad|")).toEqual(["fade", "fade-in"]);
     });
 
+    it("puts the word a value spells ahead of words that only contain it", () => {
+        // The first row is the one Enter takes. On a portrait swap `blur` (alias `blurdissolve`) is
+        // listed before `dissolve`, and a typed `dissolve` used to light it and write `t=blur`.
+        expect(values("/char Alice smile t=dissolve|")[0]).toBe("dissolve");
+        expect(values("/char Alice smile t=dissolve|")).toContain("blur");
+        // Words the query begins come before words it occurs inside.
+        expect(values("/char Alice smile t=f|")[0]).toBe("fade");
+        expect(values("/char Alice smile t=f|").indexOf("fan")).toBeLessThan(values("/char Alice smile t=f|").indexOf("wipe"));
+    });
+
     it("offers the remaining param names", () => {
         expect(values("/bg forest_day |")).toEqual(["t", "rule", "d", "hold"]);
         expect(values("/bg forest_day t=fade |")).toEqual(["rule", "d", "hold"]);
@@ -303,6 +313,18 @@ describe("getCommandCandidates", () => {
         // The sound controls lead with the reserved BGM channel - the explicit spelling of the default -
         // and reach video too, since `/stop` `/pause` `/resume` are the transport verbs for both.
         expect(values("/stop |")).toEqual(["bgm", "sound", "music", "intro"]);
+    });
+
+    it("puts a name the query begins ahead of one it only occurs in, across the groups", () => {
+        // The reserved words lead an empty query, but 「N」 is the start of Narra, not the `n` inside
+        // `background`: the first row is the one Enter takes.
+        const context = { ...CONTEXT, characters: [{ id: "c9", name: "Narra" }] };
+        const first = (marked: string) => getCommandCandidates(at(marked), context, {})[0]?.value;
+        expect(first("/transform |")).toBe("camera");
+        expect(first("/transform N|")).toBe("Narra");
+        expect(getCommandCandidates(at("/transform N|"), context, {}).map(candidate => candidate.value))
+            .toEqual(["Narra", "background", "backgroundLayer"]);
+        expect(first("/transform b|")).toBe("background");
     });
 
     it("says which world a name lives in when the slot spans several", () => {

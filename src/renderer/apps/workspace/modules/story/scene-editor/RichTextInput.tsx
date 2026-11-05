@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
-import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEmphasis } from "@shared/types/story";
-import { isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEffect, StoryTextEmphasis } from "@shared/types/story";
+import { cleanStoryTextEffect, isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
@@ -21,6 +21,7 @@ import {
     renderRunsToElement,
     richRunsToPlain,
     rubyRunAt,
+    sameMarkValue,
     setSelectionUnitRange,
     spliceRuns,
     totalUnits,
@@ -71,6 +72,8 @@ export type ActiveMarks = {
     emphasis?: StoryTextEmphasis;
     fontSizeStep?: number;
     cps?: number;
+    /** The inline effect the effects panel edits, read the way the type panel's marks are. */
+    effect?: StoryTextEffect;
     /**
      * Whether the field holds a real selection. A mark is set over characters, so a control with no
      * selection can only change a value already written — see {@link RichTextInputHandle.setTypeMark}.
@@ -88,14 +91,30 @@ export type RubyTarget = { start: number; end: number; ruby?: string };
 /** The three marks the type panel sets, in the order it offers them. */
 const TYPE_MARKS = ["emphasis", "fontSizeStep", "cps"] as const;
 
-/** The unit range the type panel addresses, and the three marks already on it. */
+/** The mark the effects panel sets. A panel of its own, so a caret in an effect does not open the type panel. */
+const EFFECT_MARKS = ["effect"] as const;
+
+/** A mark set over a range from a panel rather than toggled from the strip. */
+export type PanelMark = "emphasis" | "fontSizeStep" | "cps" | "effect";
+
+/** The unit range the type or effects panel addresses, and the marks already on it. */
 export type TypeTarget = {
     start: number;
     end: number;
     emphasis?: StoryTextEmphasis;
     fontSizeStep?: number;
     cps?: number;
+    effect?: StoryTextEffect;
 };
+
+/** The effect a span's `data-effect` names, or `undefined` when the attribute is not one. */
+function parseEffect(value: string): StoryTextEffect | undefined {
+    try {
+        return cleanStoryTextEffect(JSON.parse(value));
+    } catch {
+        return undefined;
+    }
+}
 
 export type PauseClickInfo = {
     unit: number;
@@ -157,12 +176,15 @@ export type RichTextInputHandle = {
      * panel opens. `null` when there is nothing to set.
      */
     getTypeTarget: () => TypeTarget | null;
+    /** The characters the effects panel would act on, resolved by the rule {@link getTypeTarget} follows. */
+    getEffectTarget: () => TypeTarget | null;
     /**
-     * Set one of the type panel's marks — emphasis, the size step, the typing speed. `null` clears
-     * it. `target` is what {@link RichTextInputHandle.getTypeTarget} gave the panel on the way in,
-     * and passing it back is how the second press writes to the same characters as the first.
+     * Set one of the panel marks — emphasis, the size step, the typing speed, the inline effect.
+     * `null` clears it. `target` is what {@link RichTextInputHandle.getTypeTarget} gave the panel on
+     * the way in, and passing it back is how the second press writes to the same characters as the
+     * first.
      */
-    setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target?: { start: number; end: number }) => void;
+    setTypeMark: (mark: PanelMark, value: string | number | StoryTextEffect | null, target?: { start: number; end: number }) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -632,6 +654,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             let emphasis: StoryTextEmphasis | undefined;
             let fontSizeStep: number | undefined;
             let cps: number | undefined;
+            let effect: StoryTextEffect | undefined;
             const hasSelection = Boolean(range && range.start !== range.end);
             if (el && range && range.start !== range.end) {
                 // A selection can include inline value chips (contentEditable=false), which execCommand's
@@ -644,6 +667,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 emphasis = rangeTextMark(runs, range.start, range.end, "emphasis");
                 fontSizeStep = rangeTextMark(runs, range.start, range.end, "fontSizeStep");
                 cps = rangeTextMark(runs, range.start, range.end, "cps");
+                effect = rangeTextMark(runs, range.start, range.end, "effect");
                 canRuby = true;
             } else if (el && selection) {
                 // Read off the DOM, not the unit model. This branch runs on every caret move, and
@@ -653,13 +677,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 const node = selection.focusNode;
                 const from = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement ?? null;
                 const host = from && el.contains(from)
-                    ? from.closest<HTMLElement>("[data-ruby],[data-emphasis],[data-fontstep],[data-cps]")
+                    ? from.closest<HTMLElement>("[data-ruby],[data-emphasis],[data-fontstep],[data-cps],[data-effect]")
                     : null;
                 const marked = host && el.contains(host) ? host : null;
                 ruby = marked?.dataset.ruby || undefined;
                 emphasis = isStoryTextEmphasis(marked?.dataset.emphasis) ? marked.dataset.emphasis : undefined;
                 fontSizeStep = marked?.dataset.fontstep ? Number(marked.dataset.fontstep) : undefined;
                 cps = marked?.dataset.cps ? Number(marked.dataset.cps) : undefined;
+                effect = marked?.dataset.effect ? parseEffect(marked.dataset.effect) : undefined;
                 canRuby = ruby !== undefined;
             }
             const previousMarks = lastMarksRef.current;
@@ -672,8 +697,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 || previousMarks.emphasis !== emphasis
                 || previousMarks.fontSizeStep !== fontSizeStep
                 || previousMarks.cps !== cps
+                || !sameMarkValue(previousMarks.effect, effect)
                 || previousMarks.hasSelection !== hasSelection) {
-                const next: ActiveMarks = { bold, italic, color, ruby, canRuby, emphasis, fontSizeStep, cps, hasSelection };
+                const next: ActiveMarks = { bold, italic, color, ruby, canRuby, emphasis, fontSizeStep, cps, effect, hasSelection };
                 lastMarksRef.current = next;
                 onActiveRef.current?.(next);
             }
@@ -1079,7 +1105,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * write cannot work here: the panel is portalled to the body, so the first press takes focus off
      * the field and empties the selection, and the second press would find nothing to act on.
      */
-    const resolveTypeTarget = useCallback((): TypeTarget | null => {
+    const resolvePanelTarget = useCallback((caretMarks: readonly PanelMark[]): TypeTarget | null => {
         const el = editorRef.current;
         if (!el) {
             return null;
@@ -1095,13 +1121,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             emphasis: rangeTextMark(runs, start, end, "emphasis"),
             fontSizeStep: rangeTextMark(runs, start, end, "fontSizeStep"),
             cps: rangeTextMark(runs, start, end, "cps"),
+            effect: rangeTextMark(runs, start, end, "effect"),
         });
         if (selection.start !== selection.end) {
             return marksOver(selection.start, selection.end);
         }
         // A collapsed caret names no characters, so the only thing it can address is a run that is
         // already marked — the same rule the ruby control follows.
-        for (const mark of TYPE_MARKS) {
+        for (const mark of caretMarks) {
             const found = markedRunAt(runs, selection.start, mark);
             if (found) {
                 return marksOver(found.start, found.end);
@@ -1117,9 +1144,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * holds the focus, so the editor must not take it back, and a mark belongs to characters the
      * author wrote, so inline value chips in the range are left alone.
      */
+    const resolveTypeTarget = useCallback(() => resolvePanelTarget(TYPE_MARKS), [resolvePanelTarget]);
+    const resolveEffectTarget = useCallback(() => resolvePanelTarget(EFFECT_MARKS), [resolvePanelTarget]);
+
     const setTypeMark = useCallback((
-        mark: "emphasis" | "fontSizeStep" | "cps",
-        value: string | number | null,
+        mark: PanelMark,
+        value: string | number | StoryTextEffect | null,
         target?: { start: number; end: number },
     ) => {
         const el = editorRef.current;
@@ -1133,8 +1163,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         const runs = domToRuns(el);
         const next = value === null || value === ""
             ? undefined
-            : mark === "emphasis" ? value : Number(value);
-        if (next === rangeTextMark(runs, range.start, range.end, mark)) {
+            : mark === "effect" ? cleanStoryTextEffect(value)
+                : mark === "emphasis" ? value : Number(value);
+        if (sameMarkValue(next, rangeTextMark(runs, range.start, range.end, mark))) {
             return;
         }
         recordStructural();
@@ -1274,6 +1305,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         setColor: (color) => applyMark("color", color),
         getRubyTarget: resolveRubyTarget,
         getTypeTarget: resolveTypeTarget,
+        getEffectTarget: resolveEffectTarget,
         setTypeMark,
         setRuby,
         insertPause,
@@ -1289,7 +1321,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         insertText: (unit, text) => writeText(unit, unit, text),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
         isComposing: () => composingRef.current,
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits, writeText]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, resolveEffectTarget, setRuby, setTypeMark, spliceUnits, writeText]);
 
     return (
         <>

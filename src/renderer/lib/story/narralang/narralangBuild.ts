@@ -649,15 +649,15 @@ function buildDraft(
             };
         }
         case "choiceOption": {
-            const showIf = sourceOf(slots, "showIf");
-            const enableIf = sourceOf(slots, "enableIf");
+            const hideIf = sourceOf(slots, "hideIf");
+            const disableIf = sourceOf(slots, "disableIf");
             return {
                 kind: "nodeAction",
                 payload: prune({
                     action: "choiceOption" as const,
                     text: segmentOf(ctx, textOf(slots, "text"), "choiceText"),
-                    hiddenWhen: showIf === undefined ? undefined : conditionOf(ctx, showIf, warnings),
-                    disabledWhen: enableIf === undefined ? undefined : conditionOf(ctx, enableIf, warnings),
+                    hiddenWhen: hideIf === undefined ? undefined : conditionOf(ctx, hideIf, warnings),
+                    disabledWhen: disableIf === undefined ? undefined : conditionOf(ctx, disableIf, warnings),
                 }),
             };
         }

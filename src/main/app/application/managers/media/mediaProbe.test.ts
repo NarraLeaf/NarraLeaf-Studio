@@ -4,7 +4,7 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ExecFileException } from "child_process";
 import { isTimeout, probeMediaFile, type ProbeRunner } from "./mediaProbe";
-import { ffmpegHostTarget, resolveFfmpegBinary, type FfmpegResolverApp } from "./ffmpegTool";
+import { ffmpegHostTarget, mainCheckoutOfWorktree, resolveFfmpegBinary, type FfmpegResolverApp } from "./ffmpegTool";
 
 /**
  * The error arms, and only the error arms.
@@ -301,5 +301,60 @@ describe("resolveFfmpegBinary", () => {
         if (dev.available || packaged.available) return;
         expect(dev.searched).toHaveLength(2);
         expect(packaged.searched).toHaveLength(1);
+    });
+
+    /**
+     * A git worktree, laid out as `git worktree add` lays it out: the main checkout's `.git` is a
+     * directory holding `worktrees/<name>/commondir`, and the worktree's `.git` is a file naming that
+     * directory. The staged binaries are untracked, so only the main checkout has them.
+     */
+    async function worktreeFixture(): Promise<{ top: string; main: string; tree: string; staged: string }> {
+        const top = await fs.mkdtemp(path.join(os.tmpdir(), "nls-ffmpeg-worktree-"));
+        const main = path.join(top, "studio");
+        const tree = path.join(main, ".claude", "worktrees", "fix");
+        const gitDir = path.join(main, ".git", "worktrees", "fix");
+        await fs.mkdir(gitDir, { recursive: true });
+        await fs.writeFile(path.join(gitDir, "commondir"), "../..\n");
+        await fs.mkdir(path.join(tree, "resources"), { recursive: true });
+        await fs.writeFile(path.join(tree, ".git"), `gitdir: ${gitDir.replace(/\\/g, "/")}\n`);
+        const staged = path.join(main, "resources", "ffmpeg", "win32", "ffmpeg.exe");
+        await fs.mkdir(path.dirname(staged), { recursive: true });
+        await fs.writeFile(staged, "");
+        return { top, main, tree, staged };
+    }
+
+    const appAt = (root: string, packaged = false): FfmpegResolverApp => ({
+        isPackaged: () => packaged,
+        resolveResource: (p: string) => path.resolve(root, "resources", p),
+    });
+
+    it("finds the binaries a development worktree's main checkout staged", async () => {
+        const { top, main, tree, staged } = await worktreeFixture();
+        try {
+            expect(await mainCheckoutOfWorktree(tree)).toBe(main);
+            const tool = await resolveFfmpegBinary(appAt(tree), "ffmpeg", { platform: "win32", arch: "x64", env: {} });
+            expect(tool).toEqual({ available: true, path: staged });
+        } finally {
+            await fs.rm(top, { recursive: true, force: true });
+        }
+    });
+
+    it("prefers the worktree's own binaries, and borrows nothing for a main checkout or a packaged build", async () => {
+        const { top, main, tree } = await worktreeFixture();
+        try {
+            const own = path.join(tree, ".dev", "cache", "ffmpeg", "win32", "ffmpeg.exe");
+            await fs.mkdir(path.dirname(own), { recursive: true });
+            await fs.writeFile(own, "");
+            expect(await resolveFfmpegBinary(appAt(tree), "ffmpeg", { platform: "win32", arch: "x64", env: {} }))
+                .toEqual({ available: true, path: own });
+
+            // The main checkout's `.git` is a directory: it is nobody's worktree.
+            expect(await mainCheckoutOfWorktree(main)).toBeNull();
+            await fs.rm(own);
+            const packaged = await resolveFfmpegBinary(appAt(tree, true), "ffmpeg", { platform: "win32", arch: "x64", env: {} });
+            expect(packaged.available).toBe(false);
+        } finally {
+            await fs.rm(top, { recursive: true, force: true });
+        }
     });
 });

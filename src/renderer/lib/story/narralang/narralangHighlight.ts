@@ -62,7 +62,7 @@ export type NarralangToken = {
 type Tables = {
     /** Full verb spellings and the scene header, longest first so `image create` beats `image`. */
     readonly phrases: readonly string[];
-    /** Every lead word any slot hangs off, longest first so `show if` beats `show`. */
+    /** Every lead word any slot hangs off, longest first so `hide if` beats `hide`. */
     readonly leads: readonly string[];
     /** Verbs whose entire tail is one text slot, so what follows the keyword is prose. */
     readonly proseVerbs: ReadonlySet<string>;

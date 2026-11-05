@@ -1,8 +1,10 @@
+import { InputGroup } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { formatStageSize } from "@shared/types/stageSize";
 import { projectOrigins } from "../constants";
 import { stageSizeForTemplate } from "../stageSizeChoice";
+import { TemplatePartsPicker } from "../components";
 import { ProjectData, ProjectFlow, ProjectTemplate } from "../types";
 
 interface OriginStepProps {
@@ -50,11 +52,26 @@ export function OriginStep({
             // Cleared, not left behind: picking the blank entry after a template must not still
             // scaffold that template's content.
             contentTemplateId: template.contentTemplateId,
+            // The ids are the template's own, so another template starts from all of its content.
+            leaveOutParts: [],
             // A template's content is laid out in absolute coordinates, so its declared size wins
             // over whatever was chosen for a different one. Kept when this template allows it.
             resolution: stageSizeForTemplate(projectData.resolution, template.stageSizes),
         });
     };
+
+    // Under the list rather than inside the row: the row is itself a button, and what it holds is the
+    // template's description, which the picker's own words would crowd.
+    const selectedTemplate = templates.find(template => template.id === projectData.template);
+    const partsPicker = selectedTemplate && selectedTemplate.parts.length > 0 ? (
+        <InputGroup className="mt-4" label={t("wizard.template.parts.label")} helper={t("wizard.template.parts.helper")}>
+            <TemplatePartsPicker
+                parts={selectedTemplate.parts}
+                leaveOut={projectData.leaveOutParts}
+                onChange={leaveOutParts => updateProjectData({ leaveOutParts })}
+            />
+        </InputGroup>
+    ) : null;
 
     if (settled) {
         return (
@@ -65,6 +82,7 @@ export function OriginStep({
                         selectedId={projectData.template}
                         onSelect={handleTemplateSelect}
                     />
+                    {partsPicker}
                 </div>
             </div>
         );
@@ -101,11 +119,14 @@ export function OriginStep({
 
             <div className="min-w-0 flex-1 overflow-y-auto p-4">
                 {flow === "create" ? (
-                    <TemplateList
-                        templates={templates}
-                        selectedId={projectData.template}
-                        onSelect={handleTemplateSelect}
-                    />
+                    <>
+                        <TemplateList
+                            templates={templates}
+                            selectedId={projectData.template}
+                            onSelect={handleTemplateSelect}
+                        />
+                        {partsPicker}
+                    </>
                 ) : (
                     <p className="text-sm text-fg-muted">
                         {t(flow === "import" ? "wizard.origin.import.next" : "wizard.origin.clone.next")}

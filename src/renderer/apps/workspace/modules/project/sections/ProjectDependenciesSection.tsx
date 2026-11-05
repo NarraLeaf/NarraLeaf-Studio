@@ -23,6 +23,7 @@ const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
     widget: "project.dependencies.usage.widget",
     storage: "project.dependencies.usage.storage",
     storyAction: "project.dependencies.usage.storyAction",
+    inlineTextEffect: "project.dependencies.usage.inlineTextEffect",
 };
 
 /**

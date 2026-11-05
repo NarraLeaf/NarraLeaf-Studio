@@ -1,25 +1,35 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
-import type { RendererAgentBridgeInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
+import type {
+    RendererAgentBridgeInterface,
+    RendererGlobalBridge,
+    RendererPreloadedInterface,
+    RendererPrivilegedInterface,
+} from "@shared/types/renderer";
 
-let rendererInterface: Window[typeof RendererInterfaceKey] | null = null;
+let globalBridge: RendererGlobalBridge | null = null;
+let rendererInterface: RendererPreloadedInterface | null = null;
 let privilegedInterface: RendererPrivilegedInterface | null = null;
 let agentBridgeInterface: RendererAgentBridgeInterface | null = null;
 let hardened = false;
 
-function readGlobalInterface(): Window[typeof RendererInterfaceKey] | undefined {
+function readGlobalBridge(): RendererGlobalBridge | undefined {
     return window[RendererInterfaceKey];
 }
 
-export function initializeRendererBridge(): Window[typeof RendererInterfaceKey] {
+export function initializeRendererBridge(): RendererPreloadedInterface {
     if (rendererInterface) {
         return rendererInterface;
     }
 
-    const api = readGlobalInterface();
-    if (!api) {
+    const bridge = readGlobalBridge();
+    if (!bridge) {
         throw new Error("Invalid environment: Renderer interface not found");
     }
 
+    // The only copy of the bridge on the page lives in this module from here on: the preload hands
+    // it out once, and `hardenRendererBridge` closes the global before any plugin module loads.
+    const api = bridge.acquire();
+    globalBridge = bridge;
     rendererInterface = api;
     privilegedInterface = api.privileged.acquire();
     // Taken here, with the privileged half, for the same reason: this runs before the page has
@@ -61,6 +71,7 @@ export function hardenRendererBridge(): void {
 
     api.privileged.harden();
     api.agentBridge.harden();
+    globalBridge?.harden();
     hardened = true;
 
     try {
@@ -69,7 +80,7 @@ export function hardenRendererBridge(): void {
         /* Some Electron-exposed properties may be non-configurable. */
     }
 
-    if (readGlobalInterface()) {
+    if (readGlobalBridge()) {
         try {
             Object.defineProperty(window, RendererInterfaceKey, {
                 value: undefined,

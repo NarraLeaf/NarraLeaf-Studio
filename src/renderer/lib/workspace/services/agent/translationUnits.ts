@@ -18,12 +18,12 @@
 
 import { listSceneBlocksInDocumentOrder, type StoryDocument, type StoryRichRun } from "@shared/types/story";
 import type { StoryTextSegment } from "@shared/types/story";
-import { formatVoiceFilename, matchKeyForFilename } from "@shared/utils/voiceNaming";
+import { formatVoiceFilename, matchKeyForVoiceName } from "@shared/utils/voiceNaming";
 import {
     validateMarkupParity,
     validatePlaceholderParity,
 } from "@shared/utils/localizationText";
-import { i18nStore, translate } from "@/lib/i18n";
+import { i18nStore } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { Services, type WorkspaceContext } from "../services";
@@ -43,7 +43,7 @@ import {
 } from "../localization/localizationModel";
 import { listPluginWordsRows } from "../localization/pluginWords";
 import { describeLocalizationKeyContext, indexLocalizationKeyUses } from "../localization/localizationKeyUses";
-import { withSceneIndices } from "../voice/voiceScript";
+import { voiceLineSpeaker, voiceMatchKeysForEntry, withSceneIndices } from "../voice/voiceScript";
 import { refuse } from "./agentCall";
 import { storyService } from "./agentLookups";
 
@@ -378,24 +378,12 @@ export type AgentVoiceLine = {
     expectedName: string;
     /** `expectedName` reduced the way every file and asset name is matched against it. */
     matchKey: string;
+    /**
+     * Every key a take of this line may carry: `matchKey`, then the same name with the narration or
+     * option word in Studio's other languages (`voiceMatchKeysForEntry`).
+     */
+    matchKeys: readonly string[];
 };
-
-/**
- * The speaker a line is filed under, as the voice table and the recording script name it - which is
- * what `{character}` in the recording rule spells, so it has to be their answer exactly.
- */
-function voiceSpeaker(row: StoryTranslationRow, nameOf: ReadonlyMap<string, string>): string {
-    if (row.role === "choiceText") {
-        return translate("workspace.voice.table.choiceSpeaker");
-    }
-    if (row.role === "dialogue" && row.characterId) {
-        const name = nameOf.get(row.characterId);
-        if (name) {
-            return name;
-        }
-    }
-    return translate("workspace.voice.table.narrationSpeaker");
-}
 
 /**
  * Every voiced line of the project for one voice language, in narrative order, each with the file
@@ -408,6 +396,7 @@ export async function collectAgentVoiceLines(ctx: WorkspaceContext, locale: stri
     await voice.loadLineTexts(locale);
     const pattern = voice.getConfiguration().namingPattern;
     const nameOf = new Map(characterNames(ctx).map(character => [character.id, character.name]));
+    const sourceLocale = ctx.services.get<LocalizationService>(Services.Localization).getConfiguration().sourceLocale;
     const stories = await loadStories(ctx);
     const manyStories = stories.length > 1;
     const lines: AgentVoiceLine[] = [];
@@ -415,7 +404,10 @@ export async function collectAgentVoiceLines(ctx: WorkspaceContext, locale: stri
         const rows = rowIndex(document);
         const prefix = manyStories ? `${document.name} / ` : "";
         for (const row of withSceneIndices(voice.extractRows(document))) {
-            const speaker = voiceSpeaker(row, nameOf);
+            // The speaker the voice table and the recording script name the line by - what
+            // `{character}` in the recording rule spells, so it has to be their answer exactly.
+            const naming = voiceLineSpeaker(row, characterId => nameOf.get(characterId), sourceLocale);
+            const speaker = naming.speaker;
             const position = rows.get(row.sceneId)?.get(row.blockId);
             const expectedName = formatVoiceFilename(pattern, {
                 scene: row.sceneName,
@@ -437,7 +429,14 @@ export async function collectAgentVoiceLines(ctx: WorkspaceContext, locale: stri
                 text: voice.getLineText(locale, row.unitId, row.sourceText),
                 where: `${prefix}${row.sceneName}${position ? `, row ${position}` : ""}`,
                 expectedName,
-                matchKey: matchKeyForFilename(expectedName),
+                matchKey: matchKeyForVoiceName(expectedName),
+                matchKeys: voiceMatchKeysForEntry({
+                    unitId: row.unitId,
+                    sceneName: row.sceneName,
+                    indexInScene: row.indexInScene,
+                    ...naming,
+                    sourceText: row.sourceText,
+                }, pattern, locale),
             });
         }
     }

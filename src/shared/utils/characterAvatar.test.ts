@@ -5,8 +5,10 @@ import {
     characterAvatarKey,
     characterAvatarKeyFromTags,
     characterAvatarKeys,
+    characterAvatarSelection,
     parseCharacterAvatarAssetId,
     resolveCharacterAvatarAssetId,
+    resolveOffStageCharacterAvatarAssetId,
 } from "./characterAvatar";
 
 const preset: CharacterAppearanceSummary = {
@@ -30,6 +32,16 @@ const layered: CharacterAppearanceSummary = {
         { id: "l2", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } },
     ],
 };
+
+describe("characterAvatarSelection", () => {
+    it("keeps only the avatar axes' tags, so the box draws what the bake draws", () => {
+        // The avatar varies with the mood only: the coat the character wears now is not on it.
+        const moodOnly = { ...layered, avatarAxisIds: ["mood"] } as CharacterAppearanceSummary;
+        expect(characterAvatarSelection(moodOnly, { mood: "sad", outfit: "coat" })).toEqual({ tags: { mood: "sad" } });
+        // Every axis by default.
+        expect(characterAvatarSelection(layered, { mood: "sad", outfit: "coat" })).toEqual({ tags: { mood: "sad", outfit: "coat" } });
+    });
+});
 
 describe("characterAvatarKey", () => {
     it("keys a preset differential on its pose, falling back to the default pose", () => {
@@ -131,5 +143,26 @@ describe("resolveCharacterAvatarAssetId", () => {
 
     it("answers null rather than substituting the sprite", () => {
         expect(resolveCharacterAvatarAssetId({ id: "bob", appearance: preset }, "p1")).toBeNull();
+    });
+});
+
+describe("resolveOffStageCharacterAvatarAssetId", () => {
+    /**
+     * What the game's dialogue box shows while she has no portrait on stage, which is also what the
+     * story editor's row pictures for that line: the profile's avatar, else her default look's.
+     */
+    const baked = { ...preset, avatars: { p1: { baked: true } } } as CharacterAppearanceSummary;
+
+    it("takes the profile's avatar first", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "mio", appearance: baked, defaultAvatarAssetId: "asset-avatar" })).toBe("asset-avatar");
+    });
+
+    it("falls to the default look's avatar when the profile has none", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "mio", appearance: baked })).toBe(characterAvatarAssetId("mio", "p1"));
+    });
+
+    it("answers nothing for a character with neither", () => {
+        expect(resolveOffStageCharacterAvatarAssetId({ id: "aoi", appearance: preset })).toBeNull();
+        expect(resolveOffStageCharacterAvatarAssetId(undefined)).toBeNull();
     });
 });

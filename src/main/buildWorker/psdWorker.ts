@@ -88,6 +88,7 @@ parentPort.on("message", event => {
             fs.mkdirSync(message.request.outputDir, { recursive: true });
             const write = async (name: string, png: Uint8Array): Promise<string> => {
                 const target = path.join(message.request.outputDir, name);
+                fs.mkdirSync(path.dirname(target), { recursive: true });
                 fs.writeFileSync(target, png);
                 return target;
             };

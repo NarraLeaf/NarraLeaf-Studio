@@ -49,6 +49,7 @@ import {
     characterPropertySchema,
     CharacterEditorContext,
     scenePropertySchema,
+    getSurfaceKindNoun,
     type SceneEditorContext,
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
@@ -1022,8 +1023,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.scene")
         : activeComponentDefinition
         ? t("properties.panel.component")
+        // A page or a Game UI. "Scene" is the story's word, and a page is not one.
         : activeSceneSurface
-        ? t("properties.panel.scene")
+        ? getSurfaceKindNoun(activeSceneSurface, t)
         : activeCharacter
         ? t("properties.panel.character")
         : activeSet

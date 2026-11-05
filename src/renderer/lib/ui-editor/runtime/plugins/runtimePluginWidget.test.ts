@@ -69,6 +69,7 @@ async function writeWidgetPlugin(id: string): Promise<RuntimePluginDescriptor> {
         contributes: {
             blueprintNodes: [],
             widgets: [`${id}${WIDGET_SUFFIX}`],
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

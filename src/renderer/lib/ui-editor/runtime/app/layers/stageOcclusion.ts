@@ -147,6 +147,29 @@ export function isStageSlotConcealedByPage(slotId: UIStageSlotId): boolean {
 }
 
 /**
+ * Which slots step off while the story holds on a clip it waits out.
+ *
+ * The clip is the screen then, the way a page is: the quick menu's seven buttons were drawn across
+ * the opening movie, over a picture the player was meant to watch, with nothing on them usable that
+ * the clip's own click (or Skip) does not already answer. The same slots as a page takes, for the
+ * same reason a notification stays: it is the game telling the player something.
+ */
+export function isStageSlotConcealedByVideo(slotId: UIStageSlotId): boolean {
+    return slotId !== "notification";
+}
+
+/** Whether the action the engine is running is part of a clip the story waits out. */
+export function actionHoldsForVideo(
+    bindings: readonly { staticId: string; pause?: { kind: string } }[] | undefined,
+    actionId: string | null,
+): boolean {
+    if (!actionId || !bindings) {
+        return false;
+    }
+    return bindings.find(binding => binding.staticId === actionId)?.pause?.kind === "video";
+}
+
+/**
  * Whether the surface stack can put this layer on the screen.
  *
  * True when the caller did not say which pages the bundle has: a stack asked about with no renderer

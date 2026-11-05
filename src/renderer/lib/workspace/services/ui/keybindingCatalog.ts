@@ -137,6 +137,7 @@ export const KEYBINDING_CATEGORY = {
     localization: "workspace.shell.keybindings.categories.localization" as TranslationKey,
     voice: "workspace.shell.keybindings.categories.voice" as TranslationKey,
     lint: "workspace.shell.keybindings.categories.lint" as TranslationKey,
+    search: "workspace.shell.keybindings.categories.search" as TranslationKey,
 } as const;
 
 const CATEGORY = KEYBINDING_CATEGORY;
@@ -224,12 +225,20 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // the distinction VS Code draws with the same two chords.
     entry("panel:narraleaf-studio:search", "mod+shift+f", "placeholders.moduleTitles.search", CATEGORY.view, Search),
 
+    // --- Search panel -------------------------------------------------------
+    // The panel's replaces, taken back across every scene each one touched. Only with focus on the
+    // panel and not in one of its boxes, where the chord stays that box's own text undo; anywhere else
+    // `workspace.undo` has it. See `SearchUndoKeybindings`.
+    entry("search.undo", "mod+z", "workspace.shell.keybindings.catalog.search.undo", CATEGORY.search, Undo2),
+    entry("search.redo", "mod+shift+z", "workspace.shell.keybindings.catalog.search.redo", CATEGORY.search, Redo2),
+
     // --- Story scene editor (idle mode) ------------------------------------
     entry("story.find", "mod+f", "story.keybindings.find", CATEGORY.story, Search),
     entry("story.close-inspector", "escape", "story.keybindings.closeInspector", CATEGORY.story, PanelRightClose),
     entry("story.page-down", "pagedown", "story.keybindings.pageDown", CATEGORY.story, ChevronsDown),
     entry("story.page-up", "pageup", "story.keybindings.pageUp", CATEGORY.story, ChevronsUp),
     entry("story.edit-active", "enter", "story.keybindings.editRow", CATEGORY.story, Pencil),
+    entry("story.edit-line", "f2", "story.keybindings.editRowAsText", CATEGORY.story, PenLine),
     entry("story.insert-blank-after-selection", "shift+enter", "story.keybindings.insertRow", CATEGORY.story, Plus),
     entry("story.delete", "delete", "story.keybindings.deleteRows", CATEGORY.story, Trash2),
     entry("story.backspace", "backspace", "story.keybindings.deleteRowsConfirm", CATEGORY.story, Trash2),

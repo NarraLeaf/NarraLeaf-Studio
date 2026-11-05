@@ -91,6 +91,13 @@ export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(in
                 declaredOf: (source: T) => source.manifest.contributes.widgets,
                 contributesKey: "contributes.widgets",
             },
+            {
+                kindLabel: "inline text effect(s)",
+                used: dependency.usedBy.inlineTextEffect ?? [],
+                // `?? []`: an installed plugin's manifest written before this key existed has none.
+                declaredOf: (source: T) => source.manifest.contributes.inlineTextEffects ?? [],
+                contributesKey: "contributes.inlineTextEffects",
+            },
         ].filter(requirement => requirement.used.length > 0);
         const source = availableById.get(dependency.id);
         const entry = statusById.get(dependency.id);
@@ -139,7 +146,7 @@ export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(in
             continue;
         }
 
-        // Hard dependency without recorded node/widget usage. Ship its runtime
+        // Hard dependency without recorded node/widget/effect usage. Ship its runtime
         // entry when present - harmless and forward-compatible.
         if (source) {
             selected.push(source);

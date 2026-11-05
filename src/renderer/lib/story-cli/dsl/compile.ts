@@ -67,15 +67,17 @@ import {
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
 import type {
     StoryCommandContext,
+    StoryCommandResolutionIssue,
     StoryCommandResolvedArgs,
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import type { StoryCommandParamType } from "@/apps/workspace/modules/story/scene-editor/storyCommandGrammar";
 import { getCommandSpec, type AnyStoryCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { DECLARATION_COMMANDS } from "@/apps/workspace/modules/story/scene-editor/commands/specs/variables";
 import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLine } from "./ast";
-import { conditionFromSource, type ConditionLookups } from "./condition";
+import { conditionFromSource, conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
-import { buildProseBlock, type ProseLookups } from "./prose";
+import { splitOptionLine } from "./optionConditions";
+import { buildProseBlock, type ProseBuildResult, type ProseLookups } from "./prose";
 import { applySceneSettings } from "./sceneSettings";
 import { applySceneLayerDirectives } from "./sceneLayers";
 import { BRANCH_ELSE, escapeText, unescapeText } from "./shapes";
@@ -397,28 +399,32 @@ export function buildLineBlock(line: StoryFileLine, ctx: LineContext): LineResul
             return buildBranch(line, ctx);
         case "command":
             return buildCommand(line, ctx);
+        case "option":
+            return buildOption(line, ctx);
         default: {
             const built = buildProseBlock({ shape: line.shape, text: line.text }, {
                 previous: ctx.previous,
                 mintId: ctx.mintId,
                 lookups: ctx.prose,
             });
-            return built.ok
-                ? { ok: true, block: built.block }
-                : {
-                    ok: false,
-                    diagnostics: [
-                        errorAt(
-                            `compile.${built.reason}`,
-                            built.reason === "inlineMarkup"
-                                ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; write \\{ for a literal brace that would read as a tag.`
-                                : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
-                            line.lineNumber,
-                        ),
-                    ],
-                };
+            return built.ok ? { ok: true, block: built.block } : proseFailure(built, line);
         }
     }
+}
+
+function proseFailure(built: Extract<ProseBuildResult, { ok: false }>, line: StoryFileLine): LineResult {
+    return {
+        ok: false,
+        diagnostics: [
+            errorAt(
+                `compile.${built.reason}`,
+                built.reason === "inlineMarkup"
+                    ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; write \\{ for a literal brace that would read as a tag.`
+                    : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
+                line.lineNumber,
+            ),
+        ],
+    };
 }
 
 /**
@@ -505,6 +511,52 @@ function storedRowKindProblem(block: StoryBlock): string | null {
             : ".");
 }
 
+/** The payload field each option clause writes. */
+const OPTION_CONDITION_FIELD = { hide: "hiddenWhen", disable: "disabledWhen" } as const;
+
+/**
+ * An option line: its words as prose, its clauses as the option's two conditions.
+ *
+ * The line states each condition it can spell, so a clause left off clears one the row had - except
+ * a condition the printer could not have written (a blueprint), which no line can state and which
+ * therefore stays on the row however the words are edited.
+ */
+function buildOption(line: StoryFileLine, ctx: LineContext): LineResult {
+    const split = splitOptionLine(line.text);
+    if (!split.ok) {
+        return { ok: false, diagnostics: [errorAt("compile.bad_option_clause", split.message, line.lineNumber)] };
+    }
+    const built = buildProseBlock({ shape: "option", text: split.parts.words }, {
+        previous: ctx.previous,
+        mintId: ctx.mintId,
+        lookups: ctx.prose,
+    });
+    if (!built.ok) {
+        return proseFailure(built, line);
+    }
+    const block = built.block;
+    if (block.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+        return { ok: true, block };
+    }
+    const payload = { ...block.payload };
+    for (const key of ["hide", "disable"] as const) {
+        const field = OPTION_CONDITION_FIELD[key];
+        const source = split.parts.conditions[key];
+        if (source === undefined) {
+            if (payload[field] && conditionSource(payload[field], ctx.conditions) !== null) {
+                delete payload[field];
+            }
+            continue;
+        }
+        const condition = conditionFromSource(source, expressionScope(ctx.context));
+        if (!condition.ok) {
+            return { ok: false, diagnostics: [errorAt("compile.bad_condition", condition.message, line.lineNumber)] };
+        }
+        payload[field] = condition.condition;
+    }
+    return { ok: true, block: { ...block, payload } };
+}
+
 function buildBranch(line: StoryFileLine, ctx: LineContext): LineResult {
     const source = unescapeText(line.text).trim();
     const base = {
@@ -573,7 +625,7 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
         diagnostics.push(
             errorAt(
                 `compile.${issue.code}`,
-                `${issue.code}: "${(issue as { value?: string }).value ?? ""}" in ${source}`.trim(),
+                describeResolutionIssue(issue, source),
                 line.lineNumber,
             ),
         );
@@ -711,6 +763,35 @@ function segmentAt(block: StoryBlock, slot: "text" | "prompt"): { textId: string
     return value && typeof value === "object" && "textId" in value
         ? (value as { textId: string; role: string })
         : null;
+}
+
+/**
+ * A resolution issue as one English sentence that names what the line got wrong.
+ *
+ * Every issue carries a different payload - a `value` for most, a `key` for a slot refused on this
+ * target, a `keys` list for two slots that cannot share a row - so the sentence is picked by code and
+ * falls back to whichever of the three the issue has. The old one-size message read `value` alone,
+ * which left `unsupportedParam` and `conflictingParams` reporting an empty name.
+ */
+export function describeResolutionIssue(issue: StoryCommandResolutionIssue, source: string): string {
+    switch (issue.code) {
+        case "unsupportedParam":
+            return `"${issue.key}=" does not apply to this ${issue.kind}, in ${source}`;
+        case "conflictingParams":
+            return `${issue.keys.map(key => `"${key}="`).join(" and ")} cannot be set on one row; split the line in two, in ${source}`;
+        case "offsetWithoutPosition":
+            return `"${issue.key}=" needs a "pos=" on the same line, in ${source}`;
+        case "repeatTimesAndUntil":
+            return `a repeat count and "until=" say the same thing twice; keep one, in ${source}`;
+        case "unsupportedOption":
+            return `"${issue.value}" is not available here (one of: ${issue.allowed.join(", ")}), in ${source}`;
+        case "unsupportedTarget":
+            return `"${issue.value}" (${issue.kind}) is not something this command acts on, in ${source}`;
+        default: {
+            const named = (issue as { value?: unknown }).value;
+            return named === undefined ? `${issue.code} in ${source}` : `${issue.code}: "${String(named)}" in ${source}`;
+        }
+    }
 }
 
 function describeParseIssue(issue: { code: string } & Record<string, unknown>, source: string): string {

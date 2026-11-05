@@ -94,6 +94,11 @@ export type NarralangIssueReason =
      * dialect has no sentence for one yet, and dropping it would play a QTE scene straight through.
      */
     | "inputAction"
+    /**
+     * A `/page` row. The dialect has no sentence for one, and dropping it would let the story run
+     * straight past the page it waits on, its variable never written.
+     */
+    | "pageAction"
     /** A condition computed by a blueprint (`/if` backed by a graph). */
     | "blueprintCondition"
     /** An inline value computed by a blueprint. */
@@ -538,16 +543,16 @@ function nodeActionShape(ctx: NarralangExtractContext, block: StoryBlock, payloa
                 },
             };
         case "choiceOption": {
-            const showIf = conditionSource(ctx, block.id, payload.hiddenWhen);
-            const enableIf = conditionSource(ctx, block.id, payload.disabledWhen);
+            const hideIf = conditionSource(ctx, block.id, payload.hiddenWhen);
+            const disableIf = conditionSource(ctx, block.id, payload.disabledWhen);
             return {
                 form: "statement",
                 verb: "choiceOption",
                 opensBlock: true,
                 slots: {
                     text: { kind: "text", text: textOf(ctx, block.id, payload.text, "option") },
-                    showIf: showIf ? asExpression(showIf) : undefined,
-                    enableIf: enableIf ? asExpression(enableIf) : undefined,
+                    hideIf: hideIf ? asExpression(hideIf) : undefined,
+                    disableIf: disableIf ? asExpression(disableIf) : undefined,
                 },
             };
         }
@@ -1200,6 +1205,10 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
         case "input":
             ctx.report(block.id, "inputAction");
             return { form: "silent" };
+        case "page":
+            ctx.report(block.id, "pageAction");
+            return { form: "silent" };
+
         default:
             ctx.report(block.id, "unknownPayload");
             return { form: "silent" };

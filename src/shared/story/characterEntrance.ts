@@ -6,6 +6,7 @@ import type {
     StoryTransformRef,
 } from "../types/story/document";
 import { STORY_FILTER_FUNCTION_ORDER } from "./transformProps";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * A character's entrance defaults: the transform props an `enter` row falls back to, channel by
@@ -65,10 +66,6 @@ export type CharacterEntrancePropKey = (typeof CHARACTER_ENTRANCE_PROP_KEYS)[num
 
 /** The three writers of the single CSS filter channel - see `storyTransformPropsConflicts`. */
 const FILTER_WRITER_KEYS = ["filter", "filterRaw", "look"] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function finiteNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;

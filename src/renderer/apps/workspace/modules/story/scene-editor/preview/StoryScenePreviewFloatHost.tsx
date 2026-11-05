@@ -21,6 +21,7 @@ import {
     createDefaultStoryPreviewFloatRect,
     migrateEditorBodyStoryPreviewFloatRect,
     readRectInArea,
+    readStoryPreviewFloatAnchor,
     type StoryPreviewFloatBounds,
 } from "./storyPreviewFloatGeometry";
 import { trackStoryPreviewFloatOwner } from "./storyPreviewFloatTracking";
@@ -131,7 +132,7 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
     let rect: StoryScenePreviewFloatRect | null = null;
     if (layout && floating) {
         if (!layout.float) {
-            rect = createDefaultStoryPreviewFloatRect(bounds, readRectInArea(targetHandle?.editorBody() ?? null, hub?.getArea() ?? null));
+            rect = createDefaultStoryPreviewFloatRect(bounds, readStoryPreviewFloatAnchor(targetHandle?.editorBody() ?? null, hub?.getArea() ?? null));
         } else {
             rect = layout.floatFrame === "editorBody"
                 ? migrateEditorBodyStoryPreviewFloatRect(layout.float, editorBodyOffsetNow())
@@ -241,7 +242,7 @@ function useAreaBox(areaRef: RefObject<HTMLElement | null>, hub: StoryPreviewHub
 }
 
 /** A story document, loaded once and kept current with its edits. */
-function useStoryDocument(context: WorkspaceContext | null, storyId: StoryId | null): StoryDocument | null {
+export function useStoryDocument(context: WorkspaceContext | null, storyId: StoryId | null): StoryDocument | null {
     const [state, setState] = useState<{ storyId: StoryId; document: StoryDocument } | null>(null);
     useEffect(() => {
         if (!context || !storyId) {

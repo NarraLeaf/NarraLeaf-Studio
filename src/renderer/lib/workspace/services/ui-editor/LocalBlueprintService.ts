@@ -93,6 +93,7 @@ import {
     type ReadonlyBlueprintSurfaceSummary,
 } from "./blueprint/readonlyBlueprintSummary";
 import {
+    dropDisplacedEmptyBlueprints,
     getSlotBlueprintId,
     parsePrivateOwnerKeyToRef,
     setPrivateOwnerBlueprint,
@@ -393,6 +394,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         graph.applyGraphMutation(doc => {
             mutator(doc.blueprintDocument, doc);
+            // An empty blueprint its slot has moved away from cannot run and holds nothing, and left
+            // in place it fails the check below for every edit after the one that left it - adding
+            // a widget included. Dropped here as it is on load.
+            dropDisplacedEmptyBlueprints(doc.blueprintDocument);
             assertValidBlueprintDocument(doc.blueprintDocument);
         });
     }

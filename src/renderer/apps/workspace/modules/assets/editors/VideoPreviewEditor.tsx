@@ -31,6 +31,7 @@ import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFail
 import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import { fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt } from "./audio/viewWindow";
 import { resolvePlayStart } from "./audio/transport";
@@ -95,7 +96,18 @@ function formatBytes(size: number): string {
  * pixels, across its loop seam - and, for the one thing that is written, to take a frame out of it
  * as an image asset.
  */
-export function VideoPreviewEditor({ tabId, payload, active }: EditorComponentProps<VideoPreviewPayload>) {
+export function VideoPreviewEditor(props: EditorComponentProps<VideoPreviewPayload>) {
+    return (
+        <>
+            {/* The clip's own steps - Replace File…, a conversion, a frame saved as a picture - are on
+                the project's stack, and the preview is where the author looks at what they did. */}
+            <EditorProjectUndoKeybindings tabId={props.tabId} />
+            <VideoPreviewBody {...props} />
+        </>
+    );
+}
+
+function VideoPreviewBody({ tabId, payload, active }: EditorComponentProps<VideoPreviewPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     // Everything here is inspection and stays live while frozen, except saving a frame, which adds

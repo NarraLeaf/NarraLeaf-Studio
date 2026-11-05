@@ -16,6 +16,7 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
         contributes: {
             blueprintNodes,
             widgets,
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

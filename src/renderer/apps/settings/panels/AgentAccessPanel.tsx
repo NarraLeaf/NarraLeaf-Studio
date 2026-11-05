@@ -2,11 +2,18 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, IconButton, Select, Switch } from "@/lib/components/elements";
+import { Button, IconButton, Input, Select, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
-import type { AgentSettingsPatch, AgentSettingsSnapshot } from "@shared/agent/settings";
+import {
+    AGENT_PORT_MAX,
+    AGENT_PORT_MIN,
+    isUsableAgentPort,
+    type AgentPortRefusal,
+    type AgentSettingsPatch,
+    type AgentSettingsSnapshot,
+} from "@shared/agent/settings";
 import type { AgentClientId } from "@shared/agent/clients";
 import { SETTING_CONTROL_WIDTH } from "../components/settingControlWidth";
 import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClientGuide";
@@ -20,9 +27,10 @@ import { AgentClientGuide, useAgentClientOptions } from "../components/AgentClie
  * panel reads and writes over its own Settings-only channel and shows what main answers, never what
  * it hoped to write. The endpoint starts and stops the moment the switch moves.
  *
- * There is no port to fill in: main picks it and keeps it from one launch to the next. The address
- * row shows where the endpoint is, and says so when it had to move to another port - which is when
- * configurations copied before stop working - until a configuration or the address is copied again.
+ * The port row moves the endpoint at once, or says why it could not and shows the port it is still
+ * on. A start that finds the port in use or reserved fails, and the address row says which port and
+ * why. A profile moved off the old default port says so there too - configurations copied before
+ * name the old one - until a configuration or the address is copied again.
  *
  * Rows follow the generic settings row (label and description on the left, the control at the
  * shared control width on the right), so this section reads like the ones around it.
@@ -38,6 +46,8 @@ export function AgentAccessPanel() {
     const [settings, setSettings] = useState<AgentSettingsSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [portDraft, setPortDraft] = useState("");
+    const [portRefused, setPortRefused] = useState<AgentPortRefusal | null>(null);
     const [confirmRegenerate, setConfirmRegenerate] = useState(false);
     const [copied, setCopied] = useState<"address" | "token" | null>(null);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,6 +62,7 @@ export function AgentAccessPanel() {
     const adopt = useCallback((result: Awaited<ReturnType<ReturnType<typeof getInterface>["agent"]["getSettings"]>>) => {
         if (result.success) {
             setSettings(result.data);
+            setPortDraft(String(result.data.port));
             setError(null);
         } else {
             setError(result.error ?? "");
@@ -82,7 +93,15 @@ export function AgentAccessPanel() {
         }
     }, [adopt]);
 
-    const update = useCallback((patch: AgentSettingsPatch) => run(() => getInterface().agent.updateSettings(patch)), [run]);
+    const update = useCallback((patch: AgentSettingsPatch) => run(async () => {
+        const result = await getInterface().agent.updateSettings(patch);
+        // A refusal answers this request only. Main tells this window about every change, and the
+        // snapshot read again for that does not carry it, so it is held here until the field is edited.
+        if (patch.port !== undefined) {
+            setPortRefused(result.success ? result.data.portRefused ?? null : null);
+        }
+        return result;
+    }), [run]);
 
     const closeRegenerateConfirm = useCallback(() => {
         refocusRegenerate.current = true;
@@ -95,6 +114,19 @@ export function AgentAccessPanel() {
             regenerateButton.current?.focus();
         }
     }, [confirmRegenerate, busy]);
+
+    const portValue = Number(portDraft);
+    const portValid = portDraft.trim() !== "" && isUsableAgentPort(portValue);
+
+    const commitPort = useCallback(() => {
+        if (!settings || !portValid || portValue === settings.port) {
+            if (settings && !portValid) {
+                setPortDraft(String(settings.port));
+            }
+            return;
+        }
+        void update({ port: portValue });
+    }, [settings, portValid, portValue, update]);
 
     const copy = useCallback(async (what: "address" | "token") => {
         if (!settings) {
@@ -118,23 +150,34 @@ export function AgentAccessPanel() {
             : <p className="px-2 text-xs text-fg-subtle">{t("settings.agent.loading")}</p>;
     }
 
+    const portProblem = (refusal: AgentPortRefusal) =>
+        t(refusal.reason === "inUse" ? "settings.agent.portInUse" : "settings.agent.portReserved", { port: refusal.port });
+    const failure = settings.portUnavailable ? portProblem(settings.portUnavailable) : settings.error;
     const status = settings.running
         ? settings.movedToPort !== null
             ? t("settings.agent.portMoved", { port: settings.movedToPort })
             : t("settings.agent.running")
-        : settings.error
-            ? t("settings.agent.failed", { message: settings.error })
+        : failure
+            ? t("settings.agent.failed", { message: failure })
             : t("settings.agent.stopped");
     const statusTone = settings.running
         ? settings.movedToPort !== null ? "warning" : "muted"
-        : settings.error ? "danger" : "muted";
+        : failure ? "danger" : "muted";
+    const portDescription = settings.setByLaunch
+        ? t("settings.agent.portSetByLaunch")
+        : !portValid
+            ? t("settings.agent.portInvalid", { min: AGENT_PORT_MIN, max: AGENT_PORT_MAX })
+            : portRefused
+                ? portProblem(portRefused)
+                : t("settings.agent.portHint");
 
     return (
         <div className="flex flex-col gap-1">
-            <Row label={t("settings.agent.enable")} description={t("settings.agent.enableHint")}>
+            {/* A development launch decides both from its flags; the switch and the port show them and hold still. */}
+            <Row label={t("settings.agent.enable")} description={t(settings.setByLaunch ? "settings.agent.enableSetByLaunch" : "settings.agent.enableHint")}>
                 <Switch
                     checked={settings.enabled}
-                    disabled={busy}
+                    disabled={busy || settings.setByLaunch}
                     onCheckedChange={checked => void update({ enabled: checked })}
                     size="md"
                     aria-label={t("settings.agent.enable")}
@@ -158,6 +201,26 @@ export function AgentAccessPanel() {
                     onCheckedChange={checked => void update({ fullAccess: checked })}
                     size="md"
                     aria-label={t("settings.agent.fullAccess")}
+                />
+            </Row>
+            <Row label={t("settings.agent.port")} description={portDescription} descriptionTone={portValid && !portRefused ? "muted" : "danger"}>
+                <Input
+                    size="sm"
+                    inputMode="numeric"
+                    value={portDraft}
+                    variant={portValid ? "default" : "error"}
+                    disabled={busy || settings.setByLaunch}
+                    onChange={event => {
+                        setPortDraft(event.target.value.replace(/[^0-9]/g, ""));
+                        setPortRefused(null);
+                    }}
+                    onBlur={commitPort}
+                    onKeyDown={event => {
+                        if (event.key === "Enter") {
+                            commitPort();
+                        }
+                    }}
+                    aria-label={t("settings.agent.port")}
                 />
             </Row>
             <Row label={t("settings.agent.endpoint")} description={status} descriptionTone={statusTone}>

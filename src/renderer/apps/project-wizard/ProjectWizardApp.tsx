@@ -75,6 +75,7 @@ export function ProjectWizardApp() {
         createProject,
         canProceed,
         clearCreationError,
+        appIdTakenBy,
     } = useProjectWizard();
 
     // The first page of the create flow is two questions in two columns, and its rail label
@@ -147,6 +148,7 @@ export function ProjectWizardApp() {
                         updateProjectName={updateProjectName}
                         updateAppId={updateAppId}
                         validationErrors={validationErrors}
+                        appIdTakenBy={appIdTakenBy}
                         directoryValidation={directoryValidation}
                         isValidatingDirectory={isValidatingDirectory}
                         onLocationChange={handleLocationChange}

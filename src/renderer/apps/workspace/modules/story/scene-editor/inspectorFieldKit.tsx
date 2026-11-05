@@ -202,7 +202,16 @@ export function SelectField(props: { label: string; options: SelectOption[]; val
     );
 }
 
-export function NumberField(props: { label: string; value: number | undefined; onChange: (value: number | undefined) => void }) {
+/**
+ * A number, or nothing. `placeholder` is what the row uses while the field is empty - the effective
+ * default, shown greyed rather than stored, so the row keeps saying "not set".
+ */
+export function NumberField(props: {
+    label: string;
+    value: number | undefined;
+    onChange: (value: number | undefined) => void;
+    placeholder?: number;
+}) {
     return (
         <div>
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
@@ -210,6 +219,8 @@ export function NumberField(props: { label: string; value: number | undefined; o
                 committedDisplay={props.value === undefined ? "" : String(props.value)}
                 onFiniteNumber={props.onChange}
                 onEmpty={() => props.onChange(undefined)}
+                placeholder={props.placeholder === undefined ? undefined : String(props.placeholder)}
+                aria-label={props.label}
                 type="text"
                 inputMode="decimal"
             />
@@ -256,9 +267,15 @@ export function TextField(props: {
 
 /**
  * Edits a millisecond-backed timing field in seconds. `value` and `onChange` both speak the
- * stored milliseconds; only the text the author reads and types is seconds.
+ * stored milliseconds; only the text the author reads and types is seconds. `placeholderMs`, like
+ * {@link NumberField}'s `placeholder`, is the time the row uses while the field is empty.
  */
-export function SecondsField(props: { label: string; value: number | undefined; onChange: (ms: number | undefined) => void }) {
+export function SecondsField(props: {
+    label: string;
+    value: number | undefined;
+    onChange: (ms: number | undefined) => void;
+    placeholderMs?: number;
+}) {
     return (
         <div>
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
@@ -266,6 +283,8 @@ export function SecondsField(props: { label: string; value: number | undefined; 
                 committedDisplay={formatStorySecondsValue(props.value)}
                 onFiniteNumber={seconds => props.onChange(storySecondsToMs(seconds))}
                 onEmpty={() => props.onChange(undefined)}
+                placeholder={props.placeholderMs === undefined ? undefined : formatStorySecondsValue(props.placeholderMs)}
+                aria-label={props.label}
                 type="text"
                 inputMode="decimal"
             />

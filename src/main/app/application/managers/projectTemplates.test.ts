@@ -109,7 +109,7 @@ describe("scaffoldProjectFromTemplate", () => {
         await writeFile(path.join(templatesDir, "meta", "template.json"), JSON.stringify({ name: "Meta" }));
 
         expect(await scaffoldProjectFromTemplate(templatesDir, "meta", projectDir))
-            .toEqual({ filesCopied: 0, locales: [], dependencies: [] });
+            .toEqual({ filesCopied: 0, locales: [], dependencies: [], leftOut: [] });
     });
 
     it("hands back the plugin ids the template declares, and drops what is not one", async () => {
@@ -240,6 +240,30 @@ describe("scaffoldProjectFromTemplate", () => {
 
         expect(await fs.readFile(path.join(root, "outside.txt"), "utf-8")).toBe("not the project's");
         await expect(fs.stat(path.join(projectDir, "editor", "gone.json"))).rejects.toThrow();
+    });
+
+    it("leaves out the parts asked for, and what needs them, after the copy", async () => {
+        await writeFile(path.join(templatesDir, "parted", "template.json"), JSON.stringify({
+            name: "Parted",
+            parts: [
+                { id: "story", name: "Story", requires: ["characters"] },
+                { id: "characters", name: "Cast" },
+                { id: "unknown-kind", name: "Ignored" },
+            ],
+        }));
+        await writeFile(path.join(templatesDir, "parted", "content", "editor", "services", "character.json"), JSON.stringify({
+            characters: [{ profile: { id: "c1" } }],
+        }));
+        await writeFile(path.join(templatesDir, "parted", "content", "resources", "characters", "avatars", "c1", "p.png"), "png");
+
+        const listed = await listProjectTemplates(templatesDir);
+        expect(listed[0].parts?.map(part => part.id)).toEqual(["story", "characters"]);
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "parted", projectDir, undefined, ["characters"]);
+        expect(result.leftOut).toEqual(["story", "characters"]);
+        const cast = JSON.parse(await fs.readFile(path.join(projectDir, "editor", "services", "character.json"), "utf-8"));
+        expect(cast.characters).toEqual([]);
+        await expect(fs.stat(path.join(projectDir, "resources", "characters", "avatars", "c1", "p.png"))).rejects.toThrow();
     });
 
     it("refuses an id that would read outside the templates directory", async () => {

@@ -126,6 +126,60 @@ export function createDefaultStoryPreviewFloatRect(
 }
 
 /**
+ * The part of a scene editor a window may open over: the editor, short of its rows' action column.
+ *
+ * Each row ends in its own controls - insert, delete, ▶ play from here - and a window opened against
+ * the editor's bottom-right corner sat on exactly those of the bottom rows. `actionsInset` is how far
+ * the column reaches in from the right edge of the rows; the frame ends that far in from the editor's
+ * own right edge, so the window opens beside the controls rather than over them. An inset of nothing,
+ * or of the whole editor, leaves the editor as it is.
+ *
+ * An inset rather than a position because it is measured while the docked preview may still stand
+ * beside the rows: the column is then further left than it will be once the preview has left the
+ * editor for its window, while its distance from the rows' right edge is the same either way.
+ */
+export function insetStoryPreviewFloatAnchor(
+    editor: StoryScenePreviewFloatRect | null,
+    actionsInset: number | null,
+): StoryScenePreviewFloatRect | null {
+    if (!editor || actionsInset === null || actionsInset <= 0 || actionsInset >= editor.width) {
+        return editor;
+    }
+    return { ...editor, width: Math.floor(editor.width - actionsInset) };
+}
+
+/** Each row's trailing cluster of controls (`StorySceneEditorRows`), the one holding its ▶. */
+const STORY_ROW_ACTIONS_SELECTOR = ".nl-story-row-actions";
+
+/**
+ * Where a window opens over this scene editor, in the area's coordinates: the editor body as
+ * {@link readRectInArea} measures it, short of its rows' action column (see
+ * {@link insetStoryPreviewFloatAnchor}). The inset is the widest of the rows' trailing clusters laid
+ * out at the moment, measured from the right edge of the column of rows that holds it - the body's
+ * child the cluster sits in, beside which the docked preview may stand.
+ */
+export function readStoryPreviewFloatAnchor(editorBody: Element | null, area: Element | null): StoryScenePreviewFloatRect | null {
+    const editor = readRectInArea(editorBody, area);
+    if (!editor || !editorBody) {
+        return editor;
+    }
+    let inset: number | null = null;
+    editorBody.querySelectorAll(STORY_ROW_ACTIONS_SELECTOR).forEach(cluster => {
+        let column: Element | null = cluster;
+        while (column && column.parentElement !== editorBody) {
+            column = column.parentElement;
+        }
+        const box = cluster.getBoundingClientRect();
+        if (!column || box.width < 1 || box.height < 1) {
+            return;
+        }
+        const reach = column.getBoundingClientRect().right - box.left;
+        inset = inset === null ? reach : Math.max(inset, reach);
+    });
+    return insetStoryPreviewFloatAnchor(editor, inset);
+}
+
+/**
  * Carry a rect saved by a build that measured the window against the scene editor's body over to the
  * workspace's area.
  *

@@ -1,6 +1,8 @@
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_DOCUMENT_NAME, DEFAULT_UI_ROOT_NAME } from "../constants/ui-editor";
 import type { UIDocument, UIElement, UISurface, UISurfaceDesignSize } from "../types/ui-editor/document";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "../types/ui-editor/document";
+import { encodeCanonicalJson } from "../documents/canonicalJson";
+import { newProjectAudioTrackDocument } from "./newProjectAudioTracks";
 
 /**
  * The files every new project starts with, before a template lands on top of them.
@@ -51,13 +53,26 @@ export type NewProjectFile = { path: readonly string[]; text: string };
  * The text files of an empty project, in the order they are written.
  *
  * `createId` makes the interface document's ids; injected because the two writers run in different
- * realms and a test wants them fixed.
+ * realms and a test wants them fixed. `scriptLocale` is the language the story is written in, which
+ * names the three seeded audio tracks (see `newProjectAudioTracks`); absent or one Studio has no
+ * words for, they keep their English names.
  */
-export function newProjectFiles(designSize: UISurfaceDesignSize, createId: () => string): NewProjectFile[] {
+export function newProjectFiles(
+    designSize: UISurfaceDesignSize,
+    createId: () => string,
+    scriptLocale?: string | null,
+): NewProjectFile[] {
     const files: NewProjectFile[] = [
         { path: [".nlstudio", "editor.json"], text: JSON.stringify({}) },
         // So the app surface has a page to open on.
         { path: ["editor", "ui", "uidoc.json"], text: JSON.stringify(createDefaultUIDocument(designSize, createId), null, 2) },
+        // Written here rather than seeded on first open, because the seed on open cannot know the
+        // language: it names the tracks the way a project with no track file always has. Encoded
+        // the way the track service saves it, so the first open rewrites nothing.
+        {
+            path: ["editor", "audio-tracks.json"],
+            text: encodeCanonicalJson(newProjectAudioTrackDocument(scriptLocale, new Date().toISOString())),
+        },
     ];
     for (const type of NEW_PROJECT_ASSET_TYPES) {
         files.push({ path: ["assets", `assets.metadata.${type}.json`], text: JSON.stringify({}) });

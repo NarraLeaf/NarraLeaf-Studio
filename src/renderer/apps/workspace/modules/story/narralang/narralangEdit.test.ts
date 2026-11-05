@@ -204,6 +204,7 @@ const EVERY_PARSE_REASON: Record<NarralangParseReason, true> = {
     badIndent: true,
     danglingBranch: true,
     layerDeclaration: true,
+    retiredLead: true,
     badTag: true,
     badExpression: true,
 };

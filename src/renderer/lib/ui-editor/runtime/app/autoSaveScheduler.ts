@@ -35,13 +35,19 @@ import { needsRunningGame } from "./runtimeRefusals";
 
 export type AutoSaveLogLevel = "info" | "warning" | "error";
 
+/**
+ * Why a write happens: the timer found the story moved, or the author asked for one (`Auto Save`).
+ * A scheduled write may wait for a quiet moment to take its picture; a requested one does not.
+ */
+export type AutoSaveWriteReason = "scheduled" | "requested";
+
 export type AutoSaveSchedulerDeps = {
     /** Live configuration; re-read on every tick so a Dev Mode reload takes effect. */
     getConfig: () => AutoSaveConfiguration;
     /** True while a playthrough is running and can be serialized. */
     isPlaying: () => boolean;
     /** Write one autosave into the given reserved id. */
-    write: (id: string) => Promise<void>;
+    write: (id: string, reason: AutoSaveWriteReason) => Promise<void>;
     /** Every reserved autosave currently stored, in any order. */
     listStored: () => Promise<AutoSaveEntry[]>;
     log: (level: AutoSaveLogLevel, message: string) => void;
@@ -77,7 +83,7 @@ export class AutoSaveScheduler {
         if (!this.deps.getConfig().enabled || !this.deps.isPlaying()) {
             return;
         }
-        await this.runWrite();
+        await this.runWrite({ reason: "scheduled" });
     }
 
     /**
@@ -95,14 +101,14 @@ export class AutoSaveScheduler {
         if (!this.deps.isPlaying()) {
             throw needsRunningGame("blueprint.node.autoSave");
         }
-        await this.runWrite({ rethrow: true });
+        await this.runWrite({ reason: "requested", rethrow: true });
     }
 
-    private async runWrite(options?: { rethrow?: boolean }): Promise<void> {
+    private async runWrite(options: { reason: AutoSaveWriteReason; rethrow?: boolean }): Promise<void> {
         const config = this.deps.getConfig();
         const task = (async () => {
             const slot = (await this.resolveCursor(config)) % config.slots;
-            await this.deps.write(autoSaveSlotId(slot));
+            await this.deps.write(autoSaveSlotId(slot), options.reason);
             // Only on success: a failed write must not consume the slot it never
             // reached, and must leave the flag up so the next tick retries.
             this.cursor = slot + 1;
@@ -114,7 +120,7 @@ export class AutoSaveScheduler {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.deps.log("warning", `Auto save failed: ${message}`);
-            if (options?.rethrow) {
+            if (options.rethrow) {
                 throw error;
             }
         } finally {

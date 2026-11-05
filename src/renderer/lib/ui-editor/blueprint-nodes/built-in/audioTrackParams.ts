@@ -37,6 +37,12 @@ export const BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE = "audioTracks";
  */
 export const BLUEPRINT_SOUND_TRACK_OPTIONS_SOURCE = "soundTracks";
 
+/**
+ * The same again for `Play Page Music`, whose empty choice is the Music track - the track a page's
+ * music plays on when the page inspector names none.
+ */
+export const BLUEPRINT_MUSIC_TRACK_OPTIONS_SOURCE = "musicTracks";
+
 /** Empty is a real state (nothing picked yet); callers decide what it means for them. */
 export function readBlueprintAudioTrackParam(params: Record<string, unknown> | undefined): string {
     const value = params?.[BLUEPRINT_SOUND_PARAM_TRACK];

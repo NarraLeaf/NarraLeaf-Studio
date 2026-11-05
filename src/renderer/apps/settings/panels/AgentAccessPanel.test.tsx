@@ -28,10 +28,13 @@ function snapshot(overrides: Partial<AgentSettingsSnapshot> = {}): AgentSettings
         fullAccess: false,
         token: "secret-token",
         allowedImportRoots: [],
+        port: 41500,
         running: true,
         url: "http://127.0.0.1:41500/mcp",
         error: null,
         movedToPort: null,
+        portUnavailable: null,
+        setByLaunch: false,
         stdio: { command: "C:\\Studio\\NarraLeaf Studio.exe", args: ["--mcp-stdio"] },
         pluginTools: [],
         ...overrides,
@@ -46,6 +49,10 @@ const bridge = vi.hoisted(() => ({
     /** What main was asked to copy or install, by the guide. */
     mainCopies: [] as string[],
     installs: [] as string[],
+    /** What an update answers when it differs from what a read answers (a refusal is on the answer only). */
+    updateAnswer: null as AgentSettingsSnapshot | null,
+    /** The panel's handler for main's change notice, which main sends after every update. */
+    quickStateChanged: null as null | (() => void),
 }));
 
 vi.mock("@shared/utils/copyText", () => ({
@@ -58,10 +65,15 @@ vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         agent: {
             getSettings: () => Promise.resolve({ success: true, data: bridge.settings }),
-            onQuickStateChanged: () => ({ cancel: () => undefined }),
+            onQuickStateChanged: (handler: () => void) => {
+                bridge.quickStateChanged = handler;
+                return { cancel: () => undefined };
+            },
             updateSettings: (patch: unknown) => {
                 bridge.patches.push(patch);
-                return Promise.resolve({ success: true, data: bridge.settings });
+                // Main's notice of the change lands after the answer, and the panel reads again.
+                setTimeout(() => bridge.quickStateChanged?.(), 0);
+                return Promise.resolve({ success: true, data: bridge.updateAnswer ?? bridge.settings });
             },
             regenerateToken: () => new Promise(resolve => {
                 bridge.regenerate = resolve;
@@ -95,6 +107,8 @@ afterEach(() => {
     bridge.clipboard = [];
     bridge.mainCopies = [];
     bridge.installs = [];
+    bridge.updateAnswer = null;
+    bridge.quickStateChanged = null;
 });
 
 async function renderPanel(overrides: Partial<AgentSettingsSnapshot> = {}) {
@@ -117,10 +131,45 @@ describe("the agent access panel", () => {
         }
     });
 
-    it("asks for no port: the address is shown, read-only, with a way to copy it", async () => {
+    it("moves the endpoint to a port typed into the port row", async () => {
         const view = await renderPanel();
-        expect(view.queryByText("settings.agent.port")).toBeNull();
-        expect(view.container.querySelector("input")).toBeNull();
+        const field = view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement;
+        expect(field.value).toBe("41500");
+        expect(view.getByText("settings.agent.portHint")).toBeTruthy();
+        fireEvent.change(field, { target: { value: "50123" } });
+        fireEvent.keyDown(field, { key: "Enter" });
+        await waitFor(() => expect(bridge.patches).toEqual([{ port: 50123 }]));
+    });
+
+    it("asks main nothing for a port out of range, and puts the field back", async () => {
+        const view = await renderPanel();
+        const field = view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement;
+        fireEvent.change(field, { target: { value: "80" } });
+        expect(view.getByText("settings.agent.portInvalid(1024|65535)")).toBeTruthy();
+        fireEvent.blur(field);
+        expect(field.value).toBe("41500");
+        expect(bridge.patches).toEqual([]);
+    });
+
+    it("says why a port could not be used, beside the port the endpoint is still on", async () => {
+        const view = await renderPanel();
+        const field = view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement;
+        bridge.updateAnswer = snapshot({ portRefused: { port: 50123, reason: "reserved" } });
+        fireEvent.change(field, { target: { value: "50123" } });
+        fireEvent.keyDown(field, { key: "Enter" });
+        await waitFor(() => expect(view.getByText("settings.agent.portReserved(50123)")).toBeTruthy());
+        // Main's change notice is read again afterwards, without the refusal; the reason stays.
+        await act(() => new Promise(resolve => setTimeout(resolve, 20)));
+        expect(view.getByText("settings.agent.portReserved(50123)")).toBeTruthy();
+        expect(field.value).toBe("41500");
+        // Typing again clears it.
+        fireEvent.change(field, { target: { value: "5012" } });
+        expect(view.queryByText("settings.agent.portReserved(50123)")).toBeNull();
+        expect(view.getByText("settings.agent.portHint")).toBeTruthy();
+    });
+
+    it("shows the address read-only, with a way to copy it", async () => {
+        const view = await renderPanel();
         // The address row; the guide further down names the address inside a configuration as well.
         expect(view.container.querySelector('[data-tip="http://127.0.0.1:41500/mcp"]')?.textContent).toBe("http://127.0.0.1:41500/mcp");
         expect(view.getByText("settings.agent.running")).toBeTruthy();
@@ -138,6 +187,27 @@ describe("the agent access panel", () => {
         fireEvent.click(view.getByRole("button", { name: "settings.agent.copyAddress" }));
         await waitFor(() => expect(bridge.patches).toEqual([{ acknowledgeMovedPort: true }]));
         expect(bridge.clipboard).toEqual(["http://127.0.0.1:47220/mcp"]);
+    });
+
+    it("says the endpoint did not start, on which port and why, where it says it is running", async () => {
+        const view = await renderPanel({ running: false, portUnavailable: { port: 41500, reason: "inUse" } });
+        const status = view.getByText("settings.agent.failed(settings.agent.portInUse(41500))");
+        expect(status.className).toContain("text-danger");
+        expect(view.queryByText("settings.agent.stopped")).toBeNull();
+        // The port row is where another port is set; it shows the port that failed.
+        expect((view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement).value).toBe("41500");
+    });
+
+    it("holds the access switch and the port still in a development launch, and says what sets them", async () => {
+        const view = await renderPanel({ setByLaunch: true, port: 47300, url: "http://127.0.0.1:47300/mcp" });
+        expect((view.getByRole("switch", { name: "settings.agent.enable" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(view.getByText("settings.agent.enableSetByLaunch")).toBeTruthy();
+        const field = view.getByRole("textbox", { name: "settings.agent.port" }) as HTMLInputElement;
+        expect(field.disabled).toBe(true);
+        expect(field.value).toBe("47300");
+        expect(view.getByText("settings.agent.portSetByLaunch")).toBeTruthy();
+        // What the profile still owns stays live.
+        expect((view.getByRole("switch", { name: "settings.agent.allowWrites" }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     it("copies a configuration from the guide only, not from a second row of buttons", async () => {

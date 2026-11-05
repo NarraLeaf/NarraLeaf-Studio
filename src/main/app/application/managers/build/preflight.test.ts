@@ -73,6 +73,7 @@ describe("sidecar preflight", () => {
             contributes: {
                 blueprintNodes: [],
                 widgets: [],
+                inlineTextEffects: [],
                 tests: [],
                 reservedSaveIds: [],
                 runtimeData: [],
@@ -568,6 +569,7 @@ describe("plugin build config preflight", () => {
             contributes: {
                 blueprintNodes: [],
                 widgets: [],
+                inlineTextEffects: [],
                 tests: [],
                 reservedSaveIds: [],
                 runtimeData: [],

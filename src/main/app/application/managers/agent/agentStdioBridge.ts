@@ -1,4 +1,6 @@
 import { AGENT_MCP_STDIO_FLAG } from "@shared/agent/settings";
+import { AGENT_TOOLS } from "@shared/agent/tools";
+import { AGENT_MCP_PROMPTS, agentGuideResources, agentInitializeResult, describeTool } from "./agentMcpServer";
 
 /**
  * The stdio bridge: Studio launched with `--mcp-stdio`, standing between an MCP client that can only
@@ -31,9 +33,17 @@ import { AGENT_MCP_STDIO_FLAG } from "@shared/agent/settings";
  *     answered with an error that says where to turn it on. `initialize` included - a client that
  *     gets an error there shows the message, where one that gets silence shows only a timeout.
  *     The file is read again on the next request, so switching it on needs no restart of the bridge.
- *   - **Studio is not running** (no address in the file, or nothing answers a `ping` there): the
- *     bridge starts Studio once and waits for the address to come up. A second wait would hold
- *     every later request for the full timeout, so once the first has run out the bridge only looks.
+ *   - **Studio is not running** (no address in the file, or nothing answers a `ping` there): what a
+ *     client asks just to connect - `initialize`, `ping` and the lists of tools, guide chapters
+ *     and prompts - the bridge answers itself, from the same table Studio would answer from, and a
+ *     notification is dropped. A client connects to every server it is configured with whenever it
+ *     starts, so a bridge that started Studio here opened it with every new agent session - in every
+ *     project, when the bridge is configured for all of them. The first request that
+ *     needs Studio itself - a tool call, a guide chapter read, a prompt - starts it once and waits
+ *     for the address to come up; the bridge then gives Studio the client's `initialize`, for a
+ *     session that carries the client's name, and tells the client its tool list changed, since
+ *     the list it was given had no plugin tools. A second wait would hold every later request for
+ *     the full timeout, so once the first has run out the bridge only looks.
  *   - **The connection is refused mid-session** (Studio quit, or the author moved the port): the
  *     file is read again and the message retried once - safe because a refused connection
  *     delivered nothing. A connection that broke after the request went out is NOT retried: the
@@ -85,9 +95,24 @@ export interface AgentStdioBridgeIo {
     launchStudio: (() => void) | null;
     sleep(ms: number): Promise<void>;
     now(): number;
+    /** Studio's version, for the `initialize` the bridge answers while Studio is not running. */
+    version(): string;
     /** Defaults to {@link AGENT_BRIDGE_STARTUP_TIMEOUT_MS}. */
     startupTimeoutMs?: number;
+    /**
+     * In development a Studio serves agents when its command line says so, whatever the profile's
+     * switch - and a Studio the bridge starts is told to (`agentLaunchArgs`) - so the switch does not
+     * stop the bridge there. The profile's token is still needed. False when packaged.
+     */
+    accessFollowsLaunch?: boolean;
 }
+
+/**
+ * What a client asks just to connect, answered by the bridge itself while Studio is not running so
+ * that connecting does not start it. Everything else - a tool call, a guide chapter read, a prompt -
+ * needs Studio and starts it.
+ */
+const ANSWERED_WITHOUT_STUDIO = new Set(["initialize", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
 
 /** Whether this launch is the stdio bridge. */
 export function isMcpStdioLaunch(argv: readonly string[]): boolean {
@@ -181,6 +206,18 @@ class AgentStdioBridge {
     private launchWaitSpent = false;
     private replaying: Promise<void> | null = null;
     private readonly inFlight = new Set<Promise<void>>();
+    /**
+     * The client was given the bridge's own tool list, without plugin tools, while Studio was not
+     * running; it is told the list changed once Studio is reached.
+     */
+    private listedWithoutStudio = false;
+    /**
+     * The endpoint has not heard the client's `initialize`: the bridge answered it while Studio was
+     * not running, or the endpoint it went to is gone. The next message gives it first.
+     */
+    private needsSession = false;
+    /** One look at the file and the endpoint, shared by the messages that arrive together. */
+    private looking: Promise<Resolution> | null = null;
     /** The session a notification stream is open (or being opened) for. */
     private streamSession: string | null = null;
     private streamAbort: AbortController | null = null;
@@ -232,6 +269,9 @@ class AgentStdioBridge {
         const ids = requestIds(message);
         if (isInitialize(message)) {
             this.initializeParams = (message as { params?: unknown }).params;
+        }
+        if (await this.answerWithoutStudio(message)) {
+            return;
         }
         await this.forward(line, message, ids, false);
         // The client is ready for notifications once it says it is initialized; a stream that was
@@ -322,6 +362,47 @@ class AgentStdioBridge {
         }
     }
 
+    /**
+     * Answer `message` here when Studio is not running and it is something a client asks just to
+     * connect (see {@link ANSWERED_WITHOUT_STUDIO}); a notification is then dropped. False when it
+     * goes to Studio instead: Studio is running (or being started for another message, or access is
+     * off - `forward` says so), or the message needs Studio itself.
+     */
+    private async answerWithoutStudio(message: unknown): Promise<boolean> {
+        if (this.endpoint || !message || typeof message !== "object" || Array.isArray(message)) {
+            return false;
+        }
+        const request = message as { id?: unknown; method?: unknown; params?: unknown };
+        if (typeof request.method !== "string") {
+            return false;
+        }
+        const isRequest = typeof request.id === "string" || typeof request.id === "number";
+        if (isRequest && !ANSWERED_WITHOUT_STUDIO.has(request.method)) {
+            return false;
+        }
+        const resolution = await this.lookShared();
+        if (resolution.kind === "ready") {
+            this.endpoint ??= resolution.endpoint;
+            return false;
+        }
+        if (resolution.kind === "disabled") {
+            return false;
+        }
+        if (!isRequest) {
+            return true;
+        }
+        const params = request.params && typeof request.params === "object" ? request.params as Record<string, unknown> : {};
+        if (request.method === "tools/list") {
+            this.listedWithoutStudio = true;
+        }
+        if (request.method === "initialize") {
+            this.needsSession = true;
+            this.io.log("[Bridge] NarraLeaf Studio is not running; it will be started when a tool is first called.");
+        }
+        this.write({ jsonrpc: "2.0", id: request.id, result: answerBeforeStudio(request.method, params, this.io.version()) });
+        return true;
+    }
+
     private async forward(body: string, message: unknown, ids: JsonRpcId[], retried: boolean): Promise<void> {
         const resolution = await this.ensureEndpoint();
         if (resolution.kind === "disabled") {
@@ -332,15 +413,22 @@ class AgentStdioBridge {
             this.fail(ids, AGENT_BRIDGE_UNAVAILABLE_CODE, resolution.message);
             return;
         }
+        if (isInitialize(message)) {
+            this.needsSession = false;
+        } else if (this.needsSession) {
+            // Its `initialize` was answered here while Studio was not running, or went to a Studio
+            // that is gone: give it now, for a session that carries the client's name.
+            await this.startSession(resolution.endpoint);
+        }
 
         let response: Response;
         try {
             response = await this.post(resolution.endpoint, body);
         } catch (error) {
             if (!retried && isConnectionRefused(error)) {
-                // Nothing was delivered, so trying again cannot do anything twice.
+                // Nothing was delivered, so trying again cannot do anything twice. The retry finds
+                // the endpoint again and starts a session there.
                 this.forget(resolution.endpoint);
-                await this.reconnect(message);
                 await this.forward(body, message, ids, true);
                 return;
             }
@@ -352,7 +440,6 @@ class AgentStdioBridge {
             // The token was replaced in Settings. Refused before anything was read, so safe to retry.
             await response.body?.cancel().catch(() => undefined);
             this.forget(resolution.endpoint);
-            await this.reconnect(message);
             await this.forward(body, message, ids, true);
             return;
         }
@@ -405,21 +492,21 @@ class AgentStdioBridge {
         if (this.endpoint === endpoint) {
             this.endpoint = null;
             this.session = null;
+            this.needsSession = this.initializeParams !== undefined;
         }
     }
 
     /**
-     * Find the endpoint again and give it the client's `initialize`, so the session there carries
-     * the client's name - a Studio that restarted has never heard of the old session. Not done for
-     * an `initialize` that is itself about to be retried.
+     * Give Studio the client's `initialize`, so the session there carries the client's name: a
+     * Studio that restarted has never heard of the old session, and one reached only after the client
+     * connected never heard the first. Nothing to give before the client has sent one.
      */
-    private async reconnect(message: unknown): Promise<void> {
-        const resolution = await this.ensureEndpoint();
-        if (resolution.kind !== "ready" || isInitialize(message) || this.initializeParams === undefined || this.session) {
+    private async startSession(endpoint: Endpoint): Promise<void> {
+        if (this.initializeParams === undefined) {
             return;
         }
-        // Messages refused together all land here; one replay serves them all.
-        this.replaying ??= this.replayInitialize(resolution.endpoint).finally(() => {
+        // Messages that arrive together all land here; one replay serves them all.
+        this.replaying ??= this.replayInitialize(endpoint).finally(() => {
             this.replaying = null;
         });
         await this.replaying;
@@ -434,11 +521,17 @@ class AgentStdioBridge {
             await replay.text().catch(() => "");
             if (issued) {
                 this.session = issued;
+                this.needsSession = false;
                 const initialized = await this.post(endpoint, JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }));
                 await initialized.text().catch(() => "");
+                if (this.listedWithoutStudio) {
+                    // The list the client has came from the bridge, without the open projects' plugin tools.
+                    this.listedWithoutStudio = false;
+                    this.write({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+                }
             }
         } catch (error) {
-            this.io.log(`[Bridge] Could not start a session with the restarted Studio: ${describe(error)}`);
+            this.io.log(`[Bridge] Could not start a session with Studio: ${describe(error)}`);
         }
     }
 
@@ -460,8 +553,19 @@ class AgentStdioBridge {
         return this.resolving;
     }
 
+    /** The launch under way, or one look shared with the messages that arrive with this one. */
+    private lookShared(): Promise<Resolution> {
+        if (this.resolving) {
+            return this.resolving;
+        }
+        this.looking ??= this.look().finally(() => {
+            this.looking = null;
+        });
+        return this.looking;
+    }
+
     private async resolve(): Promise<Resolution> {
-        const first = await this.look();
+        const first = await (this.looking ?? this.look());
         if (first.kind !== "unavailable") {
             return first;
         }
@@ -471,7 +575,7 @@ class AgentStdioBridge {
             }
         } else {
             if (!this.io.launchStudio) {
-                return { kind: "unavailable", message: "NarraLeaf Studio is not running on this profile. Open it, then reconnect." };
+                return { kind: "unavailable", message: "NarraLeaf Studio is not running on this profile. Open it, then try again." };
             }
             this.launched = true;
             this.io.log("[Bridge] NarraLeaf Studio is not serving agent access; starting it.");
@@ -493,13 +597,13 @@ class AgentStdioBridge {
         this.launchWaitSpent = true;
         return {
             kind: "unavailable",
-            message: "NarraLeaf Studio did not start serving agent access in time. Open Studio, check Settings > Agent access, then reconnect.",
+            message: "NarraLeaf Studio did not start serving agent access in time. Open Studio, check Settings > Agent access, then try again.",
         };
     }
 
     /** One look at the file and, when it names an address, one `ping` there. */
     private async look(): Promise<Resolution> {
-        const settings = readBridgeSettings(await this.io.readSettings().catch(() => null));
+        const settings = readBridgeSettings(await this.io.readSettings().catch(() => null), this.io.accessFollowsLaunch === true);
         if (!settings.enabled) {
             return { kind: "disabled" };
         }
@@ -539,10 +643,34 @@ class AgentStdioBridge {
     }
 }
 
-/** What the file says, reduced to what the bridge acts on. A token too short to be one is treated as no file. */
-function readBridgeSettings(raw: unknown): ReadSettings {
+/**
+ * The bridge's own answer to a request in {@link ANSWERED_WITHOUT_STUDIO}: Studio's answer, from the
+ * same table, less what only the open projects add (their plugins' tools and guide chapters).
+ */
+function answerBeforeStudio(method: string, params: Record<string, unknown>, version: string): unknown {
+    switch (method) {
+        case "initialize":
+            return agentInitializeResult(params, version);
+        case "tools/list":
+            return { tools: AGENT_TOOLS.map(describeTool) };
+        case "resources/list":
+            return { resources: agentGuideResources() };
+        case "resources/templates/list":
+            return { resourceTemplates: [] };
+        case "prompts/list":
+            return { prompts: AGENT_MCP_PROMPTS };
+        default:
+            return {};
+    }
+}
+
+/**
+ * What the file says, reduced to what the bridge acts on. A token too short to be one is treated as no
+ * file; the switch is not read when access follows the launch (see `accessFollowsLaunch`).
+ */
+function readBridgeSettings(raw: unknown, accessFollowsLaunch: boolean): ReadSettings {
     const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
-    if (!record || record.enabled !== true || typeof record.token !== "string" || record.token.length === 0) {
+    if (!record || (!accessFollowsLaunch && record.enabled !== true) || typeof record.token !== "string" || record.token.length === 0) {
         return { enabled: false };
     }
     return { enabled: true, url: typeof record.url === "string" && record.url ? record.url : null, token: record.token };

@@ -48,8 +48,10 @@ import { AGENT_HISTORY_LABEL } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import type { UIPatchTarget } from "../uiPatch";
 import { readSource } from "./storyTextTools";
+import { checkUiShowParts, uiShowPart } from "./uiShowPaging";
 import { assertUiRevision, uiContentRevision } from "./uiTools";
 import {
+    AGENT_TEXT_LIMIT,
     capText,
     checkFailed,
     cloneJson,
@@ -185,10 +187,30 @@ export const uiShow: AgentToolHandler = async (args, { ctx, request, follow }) =
         );
     }
     const revision = uiContentRevision(ctx, target);
-    return answer(`${revisionComment(revision, "ui_apply")}\n${capText(text, "This page is very large; edit it with ui_patch instead.")}`, {
-        ...(target.kind === "surface" ? { surface: { id: target.surfaceId, name } } : { component: { id: target.componentId, name } }),
-        revision,
-    });
+    const whole = `${revisionComment(revision, "ui_apply")}\n${text}`;
+    const subject = target.kind === "surface" ? { surface: { id: target.surfaceId, name } } : { component: { id: target.componentId, name } };
+    const offset = readOptionalInteger(args, "offset", { min: 0 }) ?? 0;
+    if (readOptionalBoolean(args, "full") === true) {
+        if (offset !== 0) {
+            throw refuse("invalid_args", "Give `full` or `offset`, not both.");
+        }
+        // Uncut, however long: for a client that keeps long answers (in a file, say) and an agent
+        // that wants the page in one piece.
+        return answer(whole, { ...subject, revision, length: whole.length });
+    }
+    if (offset === 0 && whole.length <= AGENT_TEXT_LIMIT) {
+        return answer(whole, { ...subject, revision });
+    }
+    // Too long for one answer: served in parts that join back into a page ui_apply takes whole.
+    const part = uiShowPart(whole, offset, AGENT_TEXT_LIMIT, revision);
+    if (!part) {
+        throw refuse(
+            "invalid_args",
+            `\`offset\` ${offset} is not where a part of this page starts (it is ${whole.length} characters long).`,
+            "Start at 0 and use the offset each part names at its end; the page may have changed since, in which case start again.",
+        );
+    }
+    return answer(part.text, { ...subject, revision, offset, nextOffset: part.next, length: part.total });
 };
 
 // ── ui_apply ─────────────────────────────────────────────────────────────────────────────────────
@@ -240,6 +262,12 @@ export const uiApply: AgentToolHandler = async (args, { ctx, request, follow }) 
     const context = await uiAgentContextOf(ctx);
     const live = context.document;
 
+    // A cut or partial ui_show answer is said to be one, before the parser reports the sentence
+    // or the comment it ends at - or the apply deletes everything the missing part held.
+    const partial = checkUiShowParts(source);
+    if (partial) {
+        throw refuse("invalid_args", partial);
+    }
     const check = checkUiSource(source, context);
     const report = formatUiDiagnostics(check.diagnostics, { source });
     if (!check.ok || !check.compiled) {

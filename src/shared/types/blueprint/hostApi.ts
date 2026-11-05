@@ -1081,6 +1081,10 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
      *
      * Needed far beyond the gallery - before this family, an authored title
      * screen could not play a button click.
+     *
+     * `setPageMusic` is the exception: a page's music outlives the engine's
+     * sessions, so the host plays it on a graph of its own and multiplies the
+     * player's mixer in, as it does for a video's sound.
      */
     sound: {
         play: {
@@ -1141,6 +1145,18 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: { handle: null },
             output: false,
+        },
+        /**
+         * The music of the page the calling graph runs on (Play / Stop Page Music). No handle: the
+         * page's music hands over and comes back with the page, as its inspector setting does.
+         */
+        setPageMusic: {
+            capabilityId: "sound.setPageMusic",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { request: null },
+            output: null,
         },
         /**
          * For host-owned media elements (the `nl.video` widget's `<video>`), which sit outside the

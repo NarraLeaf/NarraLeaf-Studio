@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 2,
+  "id": "narraleaf.text-effects",
+  "name": "Text Effects",
+  "version": "1.0.0",
+  "description": "Inline effects for dialogue text, set from the text toolbar the way bold is. Includes shaking text.",
+  "localized": {
+    "zh": {
+      "name": "文本效果",
+      "description": "对白文本的行内效果，像粗体一样在文本工具栏中设置，包括文字抖动"
+    },
+    "ja": {
+      "name": "テキストエフェクト",
+      "description": "台詞のテキストに付ける行内エフェクト。太字と同じくテキストツールバーで設定する。文字の揺れを含む"
+    }
+  },
+  "publisher": "NarraLeaf Studio",
+  "entries": {
+    "studio": "main.js",
+    "runtime": "runtime.js"
+  },
+  "contributes": {
+    "inlineTextEffects": [
+      "narraleaf.text-effects.shake"
+    ]
+  },
+  "permissions": []
+}

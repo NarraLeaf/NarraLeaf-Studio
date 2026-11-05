@@ -53,6 +53,7 @@ import {
     parsePuppetDescriptionRecord,
     puppetDescriptionFingerprint,
     puppetDescriptionKey,
+    type DescribedPuppet,
     type PuppetDescriptionRecord,
     type PuppetDescriptionRequest,
     type PuppetDescriptionResult,
@@ -70,6 +71,8 @@ import {
 } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { storeWrite } from "../autosave/writeReport";
+import { join } from "@shared/utils/path";
+import { live2dMotionLabels } from "@shared/utils/live2dMotionLabels";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -83,6 +86,11 @@ interface PuppetMountPlan {
     size: PuppetSize;
     fingerprint: string;
     cacheKey: string;
+    /**
+     * The entry file on disk, when it is a Cubism manifest whose motions can be named by file -
+     * see {@link PuppetDescriptionService.withMotionLabels}. Null for every other model.
+     */
+    live2dManifest: string | null;
 }
 
 type PlanResult =
@@ -137,7 +145,7 @@ export class PuppetDescriptionService
     implements IPuppetDescriptionService {
 
     /** Fingerprint -> description, for the current session. Keyed by fingerprint so a stale one can never be served. */
-    private readonly memory = new Map<string, PuppetDescription>();
+    private readonly memory = new Map<string, DescribedPuppet>();
     /** In-flight lookups, keyed by fingerprint: an inspector and a story row asking at once mount one model, not two. */
     private readonly inFlight = new Map<string, Promise<PuppetDescriptionResult>>();
     private readonly listeners = new Set<() => void>();
@@ -186,9 +194,10 @@ export class PuppetDescriptionService
             }
             const stored = await this.readCache(plan);
             if (stored) {
-                this.memory.set(plan.fingerprint, stored.description);
+                const description = await this.withMotionLabels(plan, stored.description);
+                this.memory.set(plan.fingerprint, description);
                 this.notify();
-                return { status: "ok", description: stored.description, origin: "disk", fingerprint: plan.fingerprint };
+                return { status: "ok", description, origin: "disk", fingerprint: plan.fingerprint };
             }
         }
 
@@ -233,7 +242,7 @@ export class PuppetDescriptionService
      * Returns null rather than a promise when nothing is in memory; the caller kicks off
      * {@link describe} and re-renders when {@link onDescriptionChanged} fires.
      */
-    public peek(request: PuppetDescriptionRequest): PuppetDescription | null {
+    public peek(request: PuppetDescriptionRequest): DescribedPuppet | null {
         for (const [fingerprint, description] of this.memory) {
             if (fingerprint.endsWith(`:${puppetDescriptionKey(request)}`)) {
                 return description;
@@ -250,7 +259,7 @@ export class PuppetDescriptionService
      * not a puppet, or one whose model has not been asked yet, answers null - which is the caller's
      * cue to call {@link describeCharacter} and re-render on {@link onDescriptionChanged}.
      */
-    public peekCharacter(characterId: string): PuppetDescription | null {
+    public peekCharacter(characterId: string): DescribedPuppet | null {
         const characters = this.getContext().services.get<CharacterService>(Services.Character);
         const puppet = characters.getCharacter(characterId)?.profile.appearance.getPuppet();
         if (!puppet?.assetId || !puppet.backend) {
@@ -383,6 +392,13 @@ export class PuppetDescriptionService
         }
         const override = request.entry?.trim() ?? "";
         const src = override ? resolveBundleEntry(bundleUrl, override) : bundleUrl;
+        // The same arithmetic on the bundle-relative path finds the file the backend will read. An
+        // override that leaves the bundle, or is a URL, names no file here to read.
+        const entryInBundle = override ? resolveBundleEntry(resolved.entry, override) : resolved.entry;
+        const live2dManifest = entryInBundle.toLowerCase().endsWith(".model3.json")
+            && !entryInBundle.startsWith("/") && !entryInBundle.split("/").includes("..") && !/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(entryInBundle)
+            ? join(root, ...entryInBundle.split("/"))
+            : null;
         const options = request.options ?? {};
         const size = request.size ?? null;
         const cacheKey = puppetDescriptionKey({ ...request, assetId, backend });
@@ -395,6 +411,7 @@ export class PuppetDescriptionService
                 options,
                 size: size ?? DEFAULT_PROBE_SIZE,
                 cacheKey,
+                live2dManifest,
                 // The key is appended so `peek` can match on identity alone; the digest ahead of it
                 // is what decides freshness.
                 fingerprint: `${puppetDescriptionFingerprint({
@@ -503,15 +520,44 @@ export class PuppetDescriptionService
     }
 
     /** Validate what a backend returned, then keep it in memory and on disk. */
-    private async remember(plan: PuppetMountPlan, raw: unknown): Promise<PuppetDescription | null> {
+    private async remember(plan: PuppetMountPlan, raw: unknown): Promise<DescribedPuppet | null> {
         const description = normalizePuppetDescription(raw);
         if (!description) {
             return null;
         }
-        this.memory.set(plan.fingerprint, description);
+        const described = await this.withMotionLabels(plan, description);
+        this.memory.set(plan.fingerprint, described);
         this.notify();
         await this.writeCache(plan, description);
-        return description;
+        return described;
+    }
+
+    /**
+     * The description with a label for each Live2D motion its file's name can give one.
+     *
+     * The runtime names a Cubism motion `<group>_<index>`, which is what a row stores and says
+     * nothing about the motion; its file usually says more. Read from the manifest, by file name
+     * only (`live2dMotionLabels`), and only for names the runtime itself reported. Anything that
+     * goes wrong reading the manifest leaves the description as it was: the names still work.
+     */
+    private async withMotionLabels(plan: PuppetMountPlan, description: PuppetDescription): Promise<DescribedPuppet> {
+        if (!plan.live2dManifest || description.motions.length === 0) {
+            return description;
+        }
+        try {
+            const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+            const read = await filesystem.read(plan.live2dManifest, "utf-8");
+            if (!read.ok) {
+                return description;
+            }
+            const labels = live2dMotionLabels(JSON.parse(read.data));
+            const motionLabels = Object.fromEntries(
+                description.motions.filter(name => labels[name] !== undefined).map(name => [name, labels[name]] as const),
+            );
+            return Object.keys(motionLabels).length > 0 ? { ...description, motionLabels } : description;
+        } catch {
+            return description;
+        }
     }
 
     private cachePath(key: string): string {

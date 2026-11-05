@@ -166,6 +166,12 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      */
     available?: (context: StoryCommandContext) => boolean;
     /**
+     * A verb only a character drawn by a runtime (Live2D, Spine) answers to - a motion, a skin, a
+     * model parameter. The menu scoped to one speaker leaves it out for a character Studio draws,
+     * whose rows would refuse it; the full menu and the parser are unaffected.
+     */
+    runtimeDrawnOnly?: true;
+    /**
      * Working lines for the manual, written exactly as an author would type them.
      *
      * Written in the canonical English spellings, and left that way in every locale. A locale may add

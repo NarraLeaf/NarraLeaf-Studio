@@ -50,6 +50,7 @@ async function createManager(workspaces: FakeWorkspace[], settings: { allowWrite
     temporaryDirs.push(userDataDir);
     const app = {
         getUserDataDir: () => userDataDir,
+        getAgentLaunchAccess: () => null,
         windowManager: { getWindows: () => workspaces },
         logger: { info: vi.fn(), warn: vi.fn() },
         projectTrustManager: { isTrusted: () => true },

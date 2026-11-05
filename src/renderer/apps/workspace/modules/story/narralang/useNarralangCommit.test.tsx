@@ -9,7 +9,7 @@ import { useNarralangCommit } from "./useNarralangCommit";
 /**
  * Writing the script buffer back while a live session owns the story.
  *
- * The commit's one write is `StoryService.replaceScene`, which replaces a whole scene at once - and
+ * The commit's one write is `StoryService.commitSceneReplacement`, which replaces a whole scene at once - and
  * a session's vocabulary has no operation for that, so the rewrite would land in this machine's
  * document and in nobody else's. The next effect the host broadcast about the scene would then find
  * two different scenes, and the divergence guard would put this window out of the room.
@@ -28,7 +28,7 @@ const SCENE_ID = "scene-1";
 
 let ownedStoryId: string | null = null;
 
-const replaceScene = vi.fn();
+const commitSceneReplacement = vi.fn(() => true);
 const checkpoint = vi.fn();
 const breakMerge = vi.fn();
 
@@ -40,7 +40,7 @@ const workspace = {
                     return { ownsStory: (storyId: string) => ownedStoryId === storyId };
                 }
                 if (id === Services.Story) {
-                    return { replaceScene };
+                    return { commitSceneReplacement };
                 }
                 if (id === Services.History) {
                     return { checkpoint, breakMerge };
@@ -94,7 +94,7 @@ function commitOnce() {
 
 beforeEach(() => {
     ownedStoryId = null;
-    replaceScene.mockClear();
+    commitSceneReplacement.mockClear();
     checkpoint.mockClear();
 });
 
@@ -103,14 +103,14 @@ afterEach(cleanup);
 describe("a NarraLang commit", () => {
     it("writes the scene back when no session owns the story", () => {
         expect(commitOnce().kind).toBe("committed");
-        expect(replaceScene).toHaveBeenCalledTimes(1);
+        expect(commitSceneReplacement).toHaveBeenCalledTimes(1);
     });
 
     it("goes nowhere while a session owns this story", () => {
         ownedStoryId = THIS_STORY;
 
         expect(commitOnce().kind).toBe("unavailable");
-        expect(replaceScene).not.toHaveBeenCalled();
+        expect(commitSceneReplacement).not.toHaveBeenCalled();
         // Not even an undo entry: a checkpoint in front of a write that never happens is a step the
         // author would find on the stack with nothing behind it.
         expect(checkpoint).not.toHaveBeenCalled();
@@ -120,6 +120,6 @@ describe("a NarraLang commit", () => {
         ownedStoryId = ANOTHER_STORY;
 
         expect(commitOnce().kind).toBe("committed");
-        expect(replaceScene).toHaveBeenCalledTimes(1);
+        expect(commitSceneReplacement).toHaveBeenCalledTimes(1);
     });
 });

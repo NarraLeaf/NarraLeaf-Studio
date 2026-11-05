@@ -48,7 +48,7 @@ export type CheckResult = {
     /** Rule categories this run did not cover, so the caller can say so. */
     notRun: readonly string[];
     /** Which scene settings the file's header states (`#background`, `#music`); absent with no file. */
-    settingsStated?: { background: boolean; music: boolean };
+    settingsStated?: { background: boolean; music: boolean; description: boolean };
 };
 
 /**
@@ -91,7 +91,11 @@ export async function checkStorySource(
     input: { data: ProjectData; story: StoryLintStory; scene: StoryScene | null },
 ): Promise<CheckResult> {
     const parsed = parseStoryFile(source);
-    const settingsStated = { background: Boolean(parsed.ast.settings.background), music: Boolean(parsed.ast.settings.music) };
+    const settingsStated = {
+        background: Boolean(parsed.ast.settings.background),
+        music: Boolean(parsed.ast.settings.music),
+        description: Boolean(parsed.ast.settings.description),
+    };
     const { data, story } = input;
     const document = story.document;
     const existing = input.scene ?? (parsed.ast.sceneId ? document.scenes?.[parsed.ast.sceneId] ?? null : null);

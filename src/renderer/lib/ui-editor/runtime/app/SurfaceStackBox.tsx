@@ -14,6 +14,8 @@ const NO_KEYS: ReadonlySet<string> = new Set();
 
 const BOX_STYLE: CSSProperties = { pointerEvents: "none" };
 
+const HELD_BACK_BOX_STYLE: CSSProperties = { ...BOX_STYLE, opacity: 0 };
+
 const EXIT_GUARD_STYLE: CSSProperties = {
     position: "absolute",
     inset: 0,
@@ -43,7 +45,17 @@ const LeavingSurfaceReportContext = createContext<((key: string, leaving: boolea
  * on. The layers inherit from this box, and a page whose background inherited them would start
  * answering presses on its background for the length of some other page's exit.
  */
-export function SurfaceStackBox(props: { className?: string; children: ReactNode }): ReactNode {
+export function SurfaceStackBox(props: {
+    className?: string;
+    /**
+     * Keep everything in the box off the screen while it stays laid out and mounted: the page
+     * covering the stage is held back while the shell reads the stage behind it back from the
+     * compositor (see `stageCoverCapture`). Opacity rather than visibility, which a child could
+     * turn back on for itself.
+     */
+    heldBack?: boolean;
+    children: ReactNode;
+}): ReactNode {
     const [leavingKeys, setLeavingKeys] = useState<ReadonlySet<string>>(NO_KEYS);
     const reportLeaving = useCallback((key: string, leaving: boolean) => {
         setLeavingKeys(previous => {
@@ -61,7 +73,7 @@ export function SurfaceStackBox(props: { className?: string; children: ReactNode
     }, []);
     return (
         <LeavingSurfaceReportContext.Provider value={reportLeaving}>
-            <div className={props.className} style={BOX_STYLE}>
+            <div className={props.className} style={props.heldBack ? HELD_BACK_BOX_STYLE : BOX_STYLE}>
                 {leavingKeys.size > 0 ? (
                     // First in the box and with no z-index, so it paints under every layer - an exit
                     // drawn behind the page it reveals included.

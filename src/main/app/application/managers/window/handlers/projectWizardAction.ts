@@ -127,26 +127,69 @@ export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEvent
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dir: string }>> {
-        // The whole decision lives in `resolveDefaultProjectDirectory`, which is pure so the
-        // Windows case - a Documents folder OneDrive has moved into its sync root - can be tested
-        // without a machine set up that way.
-        const defaultDir = resolveDefaultProjectDirectory({
-            platform: process.platform,
-            documents: app.getPath("documents"),
-            downloads: app.getPath("downloads"),
-            home: app.getPath("home"),
-            env: process.env,
-            directoryExists: candidate => {
-                try {
-                    return fs.statSync(candidate).isDirectory();
-                } catch {
-                    return false;
-                }
-            },
-        });
+        const defaultDir = defaultProjectDirectory();
 
         window.app.storageManager.grantFileSystemAccess(window, defaultDir);
 
         return this.success({ dir: defaultDir });
+    }
+}
+
+/**
+ * The folder new projects go in unless the author picks another.
+ *
+ * The whole decision lives in `resolveDefaultProjectDirectory`, which is pure so the Windows case - a
+ * Documents folder OneDrive has moved into its sync root - can be tested without a machine set up
+ * that way.
+ */
+function defaultProjectDirectory(): string {
+    return resolveDefaultProjectDirectory({
+        platform: process.platform,
+        documents: app.getPath("documents"),
+        downloads: app.getPath("downloads"),
+        home: app.getPath("home"),
+        env: process.env,
+        directoryExists: candidate => {
+            try {
+                return fs.statSync(candidate).isDirectory();
+            } catch {
+                return false;
+            }
+        },
+    });
+}
+
+/**
+ * The app IDs the projects on this machine use, so the wizard can suggest one none of them has and
+ * say so when the author types one that is taken.
+ *
+ * An app ID cannot change once the project exists, so this is the one point where two games ending
+ * up with the same identity on a player's machine can be prevented.
+ *
+ * The wizard window only, and only folders it may read besides the projects folder, which it is
+ * always given: listing the projects in a folder is reading that folder.
+ */
+export class ProjectWizardListAppIdsHandler extends IPCHandler<IPCEventType.projectWizardListAppIds> {
+    readonly name = IPCEventType.projectWizardListAppIds;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.projectWizardListAppIds]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.projectWizardListAppIds]["response"]>> {
+        if (window.getWindowType() !== WindowAppType.ProjectWizard) {
+            return this.failed(new Error("Only the project wizard lists the app IDs in use."));
+        }
+        const folders = [defaultProjectDirectory()];
+        for (const folder of Array.isArray(data?.folders) ? data.folders : []) {
+            if (typeof folder === "string" && path.isAbsolute(folder)
+                && await window.app.storageManager.isPathAllowed(window, path.resolve(folder), "read")) {
+                folders.push(path.resolve(folder));
+            }
+        }
+        const projects = await window.app.listLocalAppIds(folders);
+        return this.success({
+            projects: projects.map(({ appId, key, projectName }) => ({ appId, key, projectName })),
+        });
     }
 }

@@ -1,5 +1,6 @@
 import {DocumentChangeLabel, DocumentMergeDecision, DocumentMergeSide} from "../diff";
 import {sameJsonValue} from "./diffHelpers";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * The three-way merge every keyed document turns out to be.
@@ -310,8 +311,4 @@ export function mergeMeta(
 
 function stampOf(record: unknown, key: string): unknown {
     return isRecord(record) ? record[key] : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
 }

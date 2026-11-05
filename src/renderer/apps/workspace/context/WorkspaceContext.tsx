@@ -19,6 +19,7 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
 import { watchForSessionTakeover } from "@/lib/workspace/startup/sessionTakeover";
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
@@ -177,6 +178,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     // test or sweep - and the run is told so when the job never starts.
                     job = props.commandLineRun ?? null;
                     setCommandLineRun(job);
+                    await ensureWidgetModulesRegistered();
                     if (props.recovery) {
                         setRecovery(true);
                         setRecoveryReason(props.recoveryReason ?? null);

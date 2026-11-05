@@ -233,7 +233,25 @@ describe("scanFolderForModels — Live2D", () => {
             "haru/t.png": "png",
         });
         expect(model.entry).toBe("model.json");
-        expect(model.problems).toEqual([{ kind: "missing", role: "moc", path: "haru.moc" }]);
+        expect(model.problems).toEqual([
+            { kind: "cubism2", path: "model.json" },
+            { kind: "missing", role: "moc", path: "haru.moc" },
+        ]);
+    });
+
+    /**
+     * The runtime Studio builds reads Cubism 3 and later manifests only, so a Cubism 2 model would
+     * import and draw nothing. It is listed, unticked, with that reason.
+     */
+    it("flags a complete Cubism 2 model as one the runtime cannot draw", async () => {
+        const [model] = await scan("live2d", {
+            "haru/model.json": JSON.stringify({ model: "haru.moc", textures: ["t.png"] }),
+            "haru/haru.moc": "moc",
+            "haru/t.png": "png",
+        });
+        expect(model.format).toBe("live2d-cubism2");
+        expect(model.problems).toEqual([{ kind: "cubism2", path: "model.json" }]);
+        expect(model.problems.some(isBlockingModelProblem)).toBe(true);
     });
 
     it("does not warn about containing a folder whose manifest was not one", async () => {

@@ -182,7 +182,7 @@ const SENTENCES: { name: string; build: Build; en: [number[], string][]; zh: [nu
             [[1, 2], "1 layer · ~2 MB"],
             [[12, 40], "12 layers · ~40 MB"],
         ],
-        zh: [[12, 40], "12 层 · 约 40 MB"],
+        zh: [[12, 40], "12 个图层 · 约 40 MB"],
         ja: [[12, 40], "12 レイヤー · 約 40 MB"],
     },
 ];
@@ -257,7 +257,7 @@ describe("strings with one count", () => {
         { key: "assets.magicTag.moreFiles", one: "… and 1 more file", many: [3, "… and 3 more files"],
             zh: "…还有 3 个文件", ja: "…ほか 3 ファイル" },
         { key: "characters.editor.psd.axis", one: "axis, 1 tag", many: [3, "axis, 3 tags"],
-            zh: "轴，3 个差分", ja: "軸、タグ 3 個" },
+            zh: "差分轴，3 个标签", ja: "軸、タグ 3 個" },
         { key: "uiEditor.componentLibrary.refs", one: "1 ref", many: [3, "3 refs"], zh: "3 处引用", ja: "参照 3" },
         { key: "dashboard.builds.logOmitted",
             one: "The first 1 line was dropped to keep the record small.",

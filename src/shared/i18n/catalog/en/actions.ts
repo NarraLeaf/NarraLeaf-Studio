@@ -32,6 +32,17 @@ export const actions = {
             // is, and DLC are what is beside it.
             runWithDlc: "Run with DLC",
             dlcCount: "{active} of {total}",
+        // Which of the project's languages a Dev Mode run is shown in, in place of the player's saved
+        // language and the system language. Only there when the project has two or more languages.
+        language: "Language",
+        languageDetail: "The language Dev Mode runs in",
+        // The default entry: the game picks the language the way it would for a player.
+        languageAuto: "Automatic",
+        // The chosen language was removed from the project, so the choice went back to the default.
+        languageRemoved: "{name} was removed from the project. Dev Mode language is now Automatic.",
+        // Said by the main process when a Dev Mode run is asked for in a language the project no
+        // longer has. The run does not start in some other language instead.
+        languageMissingRun: "The Dev Mode language {code} is not one of this project's languages. Choose another under Language in the run menu.",
         // Whether a preview of this project holds its content the way a protected build does. Only
         // offered where the project protects its assets; off unless this machine turns it on.
         previewAsShipped: "Preview as shipped",

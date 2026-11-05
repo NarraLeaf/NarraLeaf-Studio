@@ -52,6 +52,7 @@ async function writePlugin(id: string, externalLinks: string[]): Promise<Runtime
         contributes: {
             blueprintNodes: [],
             widgets: [],
+            inlineTextEffects: [],
             tests: [],
             reservedSaveIds: [],
             runtimeData: [],

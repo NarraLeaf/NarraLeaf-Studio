@@ -79,7 +79,7 @@ export class ProjectService {
             for (const directory of NEW_PROJECT_DIRECTORIES) {
                 throwException(await BaseFileSystemService.createDir(join(basePath, ...directory)));
             }
-            for (const file of newProjectFiles(designSize, createId)) {
+            for (const file of newProjectFiles(designSize, createId, projectData.sourceLocale.trim())) {
                 throwException(await BaseFileSystemService.write(join(basePath, ...file.path), file.text, "utf-8"));
             }
 
@@ -93,6 +93,7 @@ export class ProjectService {
                     basePath,
                     projectData.contentTemplateId,
                     projectData.sourceLocale.trim(),
+                    projectData.leaveOutParts,
                 );
                 const withLocales = await this.registerTemplateLocales(
                     projectConfigPath,
@@ -162,8 +163,9 @@ export class ProjectService {
         projectPath: string,
         templateId: string,
         locale: string,
+        leaveOut: readonly string[],
     ): Promise<{ locales: string[]; dependencies: string[] }> {
-        const result = await getInterface().projectTemplates.scaffold(templateId, projectPath, locale);
+        const result = await getInterface().projectTemplates.scaffold(templateId, projectPath, locale, [...leaveOut]);
         if (!result.success) {
             throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }

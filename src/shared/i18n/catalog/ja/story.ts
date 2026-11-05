@@ -27,6 +27,9 @@ export const story = {
         },
         sceneActions: "シーンの操作",
         chapterActions: "チャプターの操作",
+        outlineView: "アウトラインの表示",
+        showCastAvatars: "登場キャラクターのアバターを表示",
+        castLabel: "登場キャラクター：{names}",
         setEntryScene: "開始シーンにする",
         documentUnavailable: "ストーリーのドキュメントを使えない",
         newStoryPlaceholder: "ストーリー名を入力",
@@ -73,11 +76,6 @@ export const story = {
         storyMismatch: "このファイルは別のストーリーから書き出されている",
         stale: "このシーンは書き出しの後に変わっている。読み込むとその変更は失われる",
         sceneMissing: "このシーンはもうストーリーに無いので、読み込まない",
-        // 元に戻すはシーンエディタごとなので、複数シーンの読み込みは一部だけ取り消せることがある。
-        noUndo: "ここからの読み込みは元に戻せない",
-        noUndoSome: {
-            other: "このうち {count} 個のシーンは、読み込んだ後に元に戻せない",
-        },
         // どちらの失敗もプロジェクトがどうなったかを言う。「エラーが発生しました」では、
         // 断られた読み込みと途中まで書かれた読み込みを見分けられない。
         planFailed: "このスクリプトは読み込みの準備ができなかった。何も変わっていない",
@@ -202,6 +200,7 @@ export const story = {
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
             inputAction: "この行はプレイヤーの入力またはコントローラーの振動を扱う。スクリプトの書き方は無い",
+            pageAction: "この行はストーリーの上にページを開いて閉じるまで待つ。スクリプトの書き方は無い",
             blueprintCondition: "この条件はブループリントが決める",
             blueprintInterpolation: "文の中の値をブループリントが計算する",
             inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
@@ -228,6 +227,7 @@ export const story = {
             badTag: "この行に、知らない書式タグか、閉じていないタグがある",
             badExpression: "この式は解決できない",
             layerDeclaration: "スクリプトではレイヤーを宣言できない。シーンのレイヤーに追加する",
+            retiredLead: "選択肢では「show if」と「enable if」はもう使えない。「hide if」か「disable if」の後に、選択肢を隠す条件またはグレーアウトする条件を書く",
         },
         view: {
             open: "スクリプトとして読む",
@@ -441,6 +441,20 @@ export const story = {
     stage: {
         notOnStage: "舞台に出ていない",
         builtin: "組み込み",
+        reserved: {
+            camera: "カメラ",
+            background: "背景",
+            backgroundLayer: "背景のレイヤー",
+            displayableLayer: "基準レイヤー",
+        },
+        defaultName: {
+            text: "テキスト",
+        },
+        reservedHint: {
+            background: "シーンの背景画像",
+            backgroundLayer: "組み込みのレイヤー。すべての後ろにある",
+            displayableLayer: "組み込みの既定のレイヤー",
+        },
     },
     targetField: {
         label: "対象",
@@ -525,6 +539,12 @@ export const story = {
         speedUnit: "字/秒",
         speedPlaceholder: "行と同じ",
     },
+    textEffect: {
+        effect: "エフェクト",
+        none: "なし",
+        /** テキストのエフェクトを提供するプラグインがインストールされていない。 */
+        unavailable: "{id}（未インストール）",
+    },
     ruby: {
         title: "ルビ",
         placeholder: "読み",
@@ -568,6 +588,8 @@ export const story = {
         rubyHint: "ルビ（振りたい語を選んでから）",
         type: "文字",
         typeHint: "文字（設定する語を選んでから）",
+        effects: "エフェクト",
+        effectsHint: "エフェクト（設定する語を選んでから）",
         tools: "リッチテキストの道具",
         pauseClick: "停止（クリックを待つ）",
         pauseSeconds: "停止 {seconds} 秒",
@@ -589,10 +611,6 @@ export const story = {
         addStarred: "お気に入りに追加",
         removeStarred: "お気に入りから外す",
         starredEmpty: "お気に入りのコマンドは「/」メニューの先頭に並ぶ",
-    },
-    music: {
-        missingAudio: "音声が見つからない",
-        none: "音楽なし",
     },
     background: {
         missingImage: "画像が見つからない",
@@ -618,7 +636,7 @@ export const story = {
         // 舞台とメディア
         character: "キャラクター",
         speaker: "話者",
-        form: "表情",
+        form: "見た目",
         motion: "モーション",
         skin: "スキン",
         puppetParam: "パラメータ",
@@ -676,6 +694,8 @@ export const story = {
         hold: "保持秒",
         opacity: "不透明度",
         size: "文字サイズ",
+        outline: "縁取りの太さ",
+        outlineColor: "縁取りの色",
         // 変形プロパティの語彙（`commands/transformVocabulary.ts`）。バッグの 1 チャンネルに 1 キー。
         // 2 つのオフセットは `pos=` に加えるデザイン上のピクセル。正の値で右、上へ動く。
         xOffset: "横オフセット",
@@ -933,9 +953,9 @@ export const story = {
             video: "動画アセット",
             character: "キャラクター",
             characterOrName: "キャラクター、または任意の名前",
-            characterForm: "そのキャラクターの表情のいずれか",
+            characterForm: "そのキャラクターの見た目のいずれか",
             puppet: {
-                motion: "ランタイムが提供するモーション。空にすると静止に戻す",
+                motion: "ランタイムが提供するモーション。ループ再生する。空にすると静止に戻す",
                 expression: "ランタイムが提供する表情。空にすると消す",
                 skin: "ランタイムが提供するスキン。空にすると既定に戻す",
                 param: "モデルの数値パラメータを id で指定",
@@ -1018,9 +1038,9 @@ export const story = {
         createCharacterUnavailable: "ライブセッション中は使えない。既存のキャラクターを選ぶ",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
         voiceManage: "ボイスの表を開く",
-        voicePlay: "ボイスのテイクを再生",
+        voicePlay: "テイクを再生",
         // 「停止」だけでは、行の中のアイコンボタンの読み上げ名として何を止めるか分からなかった。
-        voiceStop: "ボイスのテイクを停止",
+        voiceStop: "テイクを停止",
     },
     sceneEditor: {
         defaultSceneName: "無題のシーン",
@@ -1033,17 +1053,7 @@ export const story = {
         noDescription: "説明なし",
         defaultBackground: "既定の背景",
         clearBackground: "背景を外す",
-        sceneMusic: "シーンの音楽",
-        clearSceneMusic: "シーンの音楽を外す",
-        selectSceneMusic: "シーンの音楽を選択",
-        sceneMusicVolume: "音量",
-        sceneMusicLoop: "ループ",
-        sceneMusicFade: "フェードイン（秒）",
-        sceneMusicLoopRegion: "{from} 秒から {to} 秒をループ",
         // イントロからループへ。頭は 1 回だけ鳴り、その後ろが繰り返す。印は 3 つで、表示は 1 行のまま。
-        sceneMusicIntroLoop: "{from} 秒から再生し、{loop} 秒から {to} 秒をループ",
-        sceneMusicFromIn: "{from} 秒から始める",
-        sceneMusicWholeClip: "クリップ全体",
         selectDefaultBackground: "既定の背景を選択",
         tabInvalid: "ストーリーのシーンエディタのタブが不正",
         loadingScene: "ストーリーのシーンを読み込んでいる…",
@@ -1058,6 +1068,29 @@ export const story = {
         filteredEmpty: "絞り込みに一致する行がない",
         filteredEmptyClear: "すべて表示",
         snapshotsPanel: "シーンのスナップショット",
+    },
+    timeline: {
+        empty: "ストーリーのシーンを開くとステージタイムラインを表示します",
+        emptyScene: "このシーンには実行される行がありません",
+        showAllRows: "すべての行番号を表示",
+        zoom: "ズーム",
+        resetZoom: "100% に戻す",
+        row: "{index} 行目",
+        seconds: "{seconds} 秒",
+        source: {
+            voice: "ボイス",
+            estimate: "推定",
+            choice: "選択待ち",
+            instant: "即時",
+        },
+        lane: {
+            dialogue: "台詞",
+            background: "背景",
+            camera: "カメラ",
+            music: "BGM",
+        },
+        chooseBranch: "分岐を選択",
+        untitledOption: "無題の選択肢",
     },
     preview: {
         label: "プレビュー",
@@ -1323,14 +1356,14 @@ export const story = {
         show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像を表示する" },
         hide: { label: "非表示", detail: "キャラクターや舞台のオブジェクトを隠す" },
         face: { label: "見た目", detail: "キャラクターのどの見た目を表示するかを切り替える" },
-        motion: { label: "モーション", detail: "ランタイムが描くキャラクターに再生させるモーションを決める" },
+        motion: { label: "モーション", detail: "ランタイムが描くキャラクターにループ再生させるモーションを決める。別の行で変えるまで続く" },
         param: { label: "パラメータ", detail: "ランタイムが描くキャラクターのモデルの数値パラメータを 1 つ決める" },
         skin: { label: "スキン", detail: "ランタイムが描くキャラクターが着るスキンを決める" },
         rename: { label: "改名", detail: "キャラクターが話すときの表示名を変える" },
         say: { label: "台詞", detail: "台詞を 1 行" },
         image: { label: "画像", detail: "舞台に画像を宣言する。表示は /show" },
         text: { label: "テキスト", detail: "舞台にテキストを宣言する。表示は /show" },
-        vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
+        vfx: { label: "環境演出", detail: "全画面でループする重ね描き（花びら、雨、埃、光）を宣言する。表示は /show" },
         layer: { label: "レイヤー", detail: "このシーンにレイヤーを追加" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "アセットライブラリの動画を再生する。再生済みの動画をもう一度再生する" },
@@ -1371,6 +1404,7 @@ export const story = {
         cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
         ending: { label: "エンディング", detail: "この行でストーリーを終わらせ、到達したエンディングを記録する" },
         quit: { label: "ページへ戻る", detail: "この行でプレイを終了してページを表示する。エンディングは記録しない" },
+        page: { label: "ページを開く", detail: "ストーリーの上にページを開き、閉じるまで待つ。ページが閉じたときの結果を変数に書き込める" },
         rumble: { label: "振動", detail: "プレイヤーのコントローラーを振動させる。プリセットを選ぶか、左右のモーターを個別に設定する" },
         input: { label: "入力ロック", detail: "プレイヤーの入力をロックまたは解除する。ロック中はクリックでの送り、送りキー、オート、スキップが無効になるが、選択肢は選べる。次の台詞の前に解除する" },
         waitInput: { label: "入力待ち", detail: "プレイヤーが入力アクションを行うまで待つ。制限時間を設定できる" },
@@ -1427,6 +1461,7 @@ export const story = {
         cut: "カットポイント",
         ending: "エンディング",
         quit: "ページへ戻る",
+        page: "ページ",
         rumble: "振動",
         input: "入力",
         jump: "ジャンプ",
@@ -1500,6 +1535,8 @@ export const story = {
         cutUnknown: "カットポイント",
         ending: "エンディング {name}",
         quit: "{page} へ戻る",
+        page: "{page} を開く",
+        pageUnset: "ページを開く",
         rumble: "振動：{shape}",
         rumbleStop: "振動を停止",
         inputLock: "プレイヤーの入力をロック",
@@ -1545,8 +1582,9 @@ export const story = {
         mergeWithNext: "次のシーンと結合",
         mergeIntoPrevious: "前のシーンに結合",
         changeSpeaker: "話者を変更",
-        speakerNameOnly: "{name}（名前のみ）",
+        speakerNameOnly: "{name}（名前だけ）",
         openInspector: "インスペクタを開く",
+        editAsText: "テキストとして編集",
         delete: "削除",
     },
     // これらの変更が履歴に残す名前（「シーン 駅にて の削除を元に戻す」）。
@@ -1606,6 +1644,7 @@ export const story = {
         undo: "ストーリーのシーンの編集を元に戻す",
         redo: "ストーリーのシーンの編集をやり直す",
         editRow: "現在の行を編集する、またはそのインスペクタを開く",
+        editRowAsText: "現在の行をテキストとして編集",
         closeInspector: "プロパティの編集を閉じる",
         insertRow: "現在の行の下に新しい行を挿入",
         indent: "選択中のストーリーの行を字下げ",

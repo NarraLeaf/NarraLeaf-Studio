@@ -390,6 +390,35 @@ describe("voice tools", () => {
         expect(harness.voice.getDocumentIfLoaded("ja")!.units["t-c"]).toMatchObject({ status: "linked" });
     });
 
+    it("names a take with a dot in it as written, not as a name plus an extension", async () => {
+        // Ren'Py numbers takes `316.5-2.ogg`; imported, the library name is `voice_316.5-2`.
+        const harness = createHarness({
+            audio: [
+                { id: "au-316", name: "voice_316", type: "audio" },
+                { id: "au-316.5-2", name: "voice_316.5-2", type: "audio" },
+                { id: "au-132", name: "voice_132", type: "audio" },
+                { id: "au-132.5", name: "voice_132.5", type: "audio" },
+                { id: "au-ogg", name: "rain.ogg", type: "audio" },
+            ],
+        });
+        await harness.run(voiceLink, {
+            language: "ja",
+            links: [
+                { unitId: "t-a", asset: "voice_316.5-2" },
+                // `voice_132.5` is not `voice_132` with the extension `.5`, so the name is not ambiguous.
+                { unitId: "t-b", asset: "voice_132" },
+                // The file name the agent imported from works too.
+                { unitId: "t-c", asset: "voice_132.5.ogg" },
+            ],
+        });
+        const takes = harness.voice.getDocumentIfLoaded("ja")!.units;
+        expect(takes["t-a"]).toMatchObject({ assetId: "au-316.5-2" });
+        expect(takes["t-b"]).toMatchObject({ assetId: "au-132" });
+        expect(takes["t-c"]).toMatchObject({ assetId: "au-132.5" });
+        await harness.run(voiceLink, { language: "ja", links: [{ unitId: "t-a", asset: "rain" }] });
+        expect(harness.voice.getDocumentIfLoaded("ja")!.units["t-a"]).toMatchObject({ assetId: "au-ogg" });
+    });
+
     it("adds and refuses to silently drop voice languages, as one step of undo", async () => {
         const harness = createHarness();
         await harness.run(voiceSettingsSet, { languages: ["ja", "en"] });
@@ -402,9 +431,16 @@ describe("voice tools", () => {
 });
 
 describe("planAutoLink", () => {
-    const voiced = (unitId: string, expectedName: string, matchKey: string): AgentVoiceLine => ({
+    const voiced = (unitId: string, expectedName: string, matchKey: string, aliasKeys: string[] = []): AgentVoiceLine => ({
         unitId, storyId: "s", sceneId: "sc", sceneName: "S", indexInScene: 1, speaker: "A", role: "dialogue",
-        text: unitId, where: unitId, expectedName, matchKey,
+        text: unitId, where: unitId, expectedName, matchKey, matchKeys: [matchKey, ...aliasKeys],
+    });
+
+    it("links a narration take named with another language's word", () => {
+        const lines = [voiced("n", "S_001_旁白", "s001旁白", ["s001narration", "s001地の文"])];
+        const plan = planAutoLink(lines, () => true, [{ id: "x", name: "S_001_Narration.wav" }], {}, false);
+        expect(plan.matched.map(item => item.asset.id)).toEqual(["x"]);
+        expect(plan.unmatchedAssets).toEqual([]);
     });
 
     it("treats a name two lines share as ambiguous even when only one is in scope", () => {

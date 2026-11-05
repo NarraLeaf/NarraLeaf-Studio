@@ -192,9 +192,10 @@ export async function bakeLayers(
         baked.push({
             path: target.path,
             name,
-            // Prefixed with the position so two layers of the same name in different groups do not
-            // collide on disk, and so the import order is readable in the temp directory.
-            filePath: await write(`${String(position).padStart(3, "0")}-${sanitize(target.name ?? name)}.png`, png),
+            // One directory per position, so two layers of the same name in different groups do not
+            // collide on disk. Not a prefix on the name: the asset library names an asset after the
+            // file it imports, and `000-美绪_身体.png` is what every layer was called.
+            filePath: await write(`${String(position).padStart(3, "0")}/${sanitize(target.name ?? name)}.png`, png),
         });
     }
     return baked;

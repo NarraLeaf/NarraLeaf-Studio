@@ -641,3 +641,104 @@ function videoAssetOf(block: StoryBlock): string | undefined {
     }
     return block.payload.assetId?.trim() || undefined;
 }
+
+/**
+ * The stage element a row animates, as a key two rows share exactly when they animate the same one -
+ * or null when the row puts no motion on any element.
+ *
+ * Only the elements that carry a transform and a transition: images and character portraits (one
+ * table, so `/char Alice` and `/transform Alice` agree), texts, layers, the camera and the scene's
+ * built-in displayables. Sounds, clips and ambience overlays have no pose to fight over.
+ */
+export function stageMotionTargetKey(scene: StoryScene | null | undefined, block: StoryBlock): string | null {
+    if (block.kind !== "action") {
+        return null;
+    }
+    const payload = block.payload;
+    if (payload.action === "camera") {
+        return "camera";
+    }
+    if (payload.action === "setBackground") {
+        return "builtin:background";
+    }
+    if (payload.action === "displayable" && payload.target.builtin) {
+        return `builtin:${payload.target.builtin}`;
+    }
+    const declared = declaredStageObject(block);
+    const reference = declared ? null : stageObjectReference(scene, block);
+    const kinds = declared ? [declared.kind] : reference?.kinds;
+    const name = declared?.name ?? reference?.name;
+    if (!kinds || name === undefined) {
+        return null;
+    }
+    const family = kinds.some(kind => kind === "image" || kind === "character")
+        ? "image"
+        : kinds[0] === "text" || kinds[0] === "layer" ? kinds[0] : null;
+    return family ? `${family}:${normalizeStageObjectName(name)}` : null;
+}
+
+/**
+ * The bodies of a parallel group or a race, gathered so that rows animating the same stage element
+ * share one entry - each entry in document order, entries ordered by their first row.
+ *
+ * An element carries one transform and one transition at a time, so two branches running on one
+ * element at once are not "both at the same time": the engine keeps one and abandons the other. A
+ * transition abandoned that way never settles, which is a story that stops on the spot with nothing
+ * on screen saying why (two `/char` rows with `t=` on one character in a `/parallel`). The compiler
+ * therefore runs each entry of more than one row as a single branch, its rows in order, and project
+ * lint reports the same entries (`story/parallel-same-target`) so the author knows those rows are
+ * not simultaneous.
+ *
+ * A child that is itself a group is read whole: it shares an entry with any sibling that animates
+ * an element anything inside it animates. A disabled row takes no part.
+ */
+export function groupSameMotionTarget(
+    scene: StoryScene | null | undefined,
+    childIds: readonly StoryBlockId[],
+): StoryBlockId[][] {
+    if (!scene) {
+        return childIds.map(id => [id]);
+    }
+    const keysUnder = (id: StoryBlockId): Set<string> => {
+        const keys = new Set<string>();
+        const visit = (blockId: StoryBlockId): void => {
+            const block = scene.blocks[blockId];
+            if (!block || block.disabled) {
+                return;
+            }
+            const key = stageMotionTargetKey(scene, block);
+            if (key) {
+                keys.add(key);
+            }
+            block.childrenIds.forEach(visit);
+        };
+        visit(id);
+        return keys;
+    };
+    // Union-find over the children, joined by any key they share.
+    const parent = childIds.map((_, index) => index);
+    const find = (index: number): number => (parent[index] === index ? index : (parent[index] = find(parent[index])));
+    const ownerOfKey = new Map<string, number>();
+    childIds.forEach((id, index) => {
+        for (const key of keysUnder(id)) {
+            const owner = ownerOfKey.get(key);
+            if (owner === undefined) {
+                ownerOfKey.set(key, index);
+            } else {
+                const a = find(owner);
+                const b = find(index);
+                if (a !== b) {
+                    parent[Math.max(a, b)] = Math.min(a, b);
+                }
+            }
+        }
+    });
+    const groups = new Map<number, StoryBlockId[]>();
+    childIds.forEach((id, index) => {
+        const root = find(index);
+        const group = groups.get(root) ?? [];
+        group.push(id);
+        groups.set(root, group);
+    });
+    return [...groups.values()];
+}
