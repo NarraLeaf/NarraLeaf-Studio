@@ -15,13 +15,13 @@
  * Comments in English per project convention.
  */
 
-import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
+import { BuiltinWidgetDeclarations } from "@/lib/ui-editor/widget-modules/builtin/declarations";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
-import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
+import type { UIWidgetDeclaration, UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 
 export type WidgetModuleSource = {
     /** Every widget module the catalogue should answer for, Studio's and plugins' alike. */
-    list(): readonly UIWidgetModule[];
+    list(): readonly UIWidgetDeclaration[];
     /** The plugin that owns a widget type, or undefined for one of Studio's own. */
     pluginOwnerOf(type: string): string | undefined;
 };
@@ -40,11 +40,11 @@ export function cliPluginOwnerOf(type: string): string | undefined {
  * Studio's built-in modules, then every plugin-owned module in the shared registry.
  *
  * The built-ins come from the static list rather than from the registry, because the registry is
- * seeded with them lazily (`ensureWidgetModulesRegistered`) and a command-line run never seeds it.
+ * populated by the workspace startup, while command-line queries use declarations directly.
  * In a running workspace the two agree.
  */
 export const registryWidgetModuleSource: WidgetModuleSource = {
-    list: () => [...BuiltinWidgetModules, ...listCliPluginWidgetModules()],
+    list: () => [...BuiltinWidgetDeclarations, ...listCliPluginWidgetModules()],
     pluginOwnerOf: cliPluginOwnerOf,
 };
 

@@ -14,8 +14,6 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { Services } from "@/lib/workspace/services/services";
 import type { TranslationKey } from "@shared/i18n";
-import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { useWorkspace } from "../../../context";
 import { StoryScriptExportModal } from "./StoryScriptExportModal";
 import { StoryScriptImportModal } from "./StoryScriptImportModal";
@@ -30,8 +28,6 @@ import {
     createStoryScriptSpeakerLabeller,
     createStoryScriptSpeakerResolver,
     storyScriptFileName,
-    storyScriptUndoCoverage,
-    type StoryScriptUndoState,
 } from "./storyScriptIo";
 
 /** What an export was asked to write: one scene, or the whole story when `sceneIds` is null. */
@@ -235,16 +231,10 @@ export function useStoryScriptIo(): StoryScriptIo {
             const storyService = context.services.get<StoryService>(Services.Story);
             const ui = context.services.get<UIService>(Services.UI);
             const scenes = applicableScenePlans(importRequest.plan);
-            // The checkpoint has to precede the first write, and cover the whole batch: an import that
-            // rewrote three scenes and then asked for undo would find the first two already replaced.
-            const history = context.services.get<HistoryService>(Services.History);
-            for (const scene of scenes) {
-                history.checkpoint(storySceneHistoryScope(importRequest.storyId, scene.sceneId), {
-                    label: { key: "workspace.history.entry.storyEdit" as TranslationKey },
-                });
-            }
             const outcome = applyStoryScriptScenes(scenes, scene => {
-                storyService.replaceScene(importRequest.storyId, scene.sceneId, scene.scene);
+                if (!storyService.commitSceneReplacement(importRequest.storyId, scene.sceneId, scene.scene, {
+                    label: { key: "workspace.history.entry.storyEdit" as TranslationKey },
+                })) throw new Error("Scene replacement refused");
             });
             if (outcome.failed) {
                 // A scene the plan was built against is gone (deleted while this dialog was open), so
@@ -266,18 +256,6 @@ export function useStoryScriptIo(): StoryScriptIo {
             setBusy(false);
         }
     }, [context, importRequest, report, t, tn]);
-
-    // A scene is undoable exactly when something is live to apply the snapshot back through - which
-    // for a scene means an editor tab is holding it. The dialog says so before it writes rather than
-    // letting the author discover it by pressing Ctrl+Z afterwards.
-    const undo: StoryScriptUndoState = storyScriptUndoCoverage(
-        importRequest === null ? [] : applicableScenePlans(importRequest.plan),
-        sceneId =>
-            importRequest !== null &&
-            !!context?.services
-                .get<HistoryService>(Services.History)
-                .hasScope(storySceneHistoryScope(importRequest.storyId, sceneId)),
-    );
 
     const beginExport = useCallback((target: StoryScriptExportTarget) => {
         if (ready) {
@@ -305,7 +283,6 @@ export function useStoryScriptIo(): StoryScriptIo {
                 <StoryScriptImportModal
                     plan={importRequest?.plan ?? null}
                     busy={busy}
-                    undo={undo}
                     onClose={() => setImportRequest(null)}
                     onImport={runImport}
                 />

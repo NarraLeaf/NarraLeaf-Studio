@@ -1,39 +1,10 @@
-import { ListChecks } from "lucide-react";
-import { translate } from "@/lib/i18n";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
-import { UI_STRUCT_ID_CHOICE_ITEM } from "@shared/types/ui-editor/builtinStructs";
 import { extendWidgetModule } from "@/lib/ui-editor/widget-modules/inheritance";
-import { patchListWidgetDefaultElement } from "@/lib/ui-editor/widget-modules/shared/list/listWidgetDefaults";
 import { ListWidgetModule } from "./list";
+import { defineWidgetModule } from "../declaration";
+import { ChoiceListWidgetDeclaration } from "./choiceList.declaration";
 
-const CHOICE_LIST_TYPE = "nl.choice.list";
-
-/**
- * Choice (NarraLeaf menu) slot wrapper. Runtime items are injected by the choice slot bridge;
- * hidden choices are filtered before injection. Item clicks feed the `Select Choice` blueprint node
- * through the seeded Choice widget blueprint, and `voiceId` is what `Play Choice Voice` speaks.
- *
- * The shape is the engine's, so it is declared once as a built-in struct rather than authored here:
- * the fields are what an author binds a row's text and disabled state to, and a project that could
- * edit them could only make them disagree with what the bridge writes.
- */
-export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWidgetModule, {
-    type: CHOICE_LIST_TYPE,
-    displayName: () => translate("widgets.defaults.choiceList.name"),
-    icon: ListChecks,
-    defaultElement: (inherited, words) =>
-        patchListWidgetDefaultElement(inherited, {
-            layout: { width: 640, height: 360 },
-            props: {
-                itemStructId: UI_STRUCT_ID_CHOICE_ITEM,
-                itemKeyFieldId: "index",
-                itemGap: 16,
-                items: [
-                    { text: words.t("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false, voiceId: "" },
-                    { text: words.t("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false, voiceId: "" },
-                    { text: words.t("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true, voiceId: "" },
-                ],
-                scrollbar: { enabled: false, visibility: "hidden" },
-            },
-        }),
-});
+export const ChoiceListWidgetModule: UIWidgetModule = defineWidgetModule(ChoiceListWidgetDeclaration, extendWidgetModule(ListWidgetModule, {
+    type: ChoiceListWidgetDeclaration.type,
+    displayName: () => ChoiceListWidgetDeclaration.displayName
+}));

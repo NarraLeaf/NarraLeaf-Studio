@@ -5,7 +5,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UILayout } from "@shared/types/ui-editor/document";
 import { commandI18nStore } from "@/lib/i18n";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { HistoryService } from "../history/HistoryService";
 import { blueprintHistoryScope, projectHistoryScope, storySceneHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";

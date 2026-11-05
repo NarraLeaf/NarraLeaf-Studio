@@ -1,38 +1,15 @@
-import { MessageSquareText } from "lucide-react";
 import { translate } from "@/lib/i18n";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { extendWidgetModule } from "@/lib/ui-editor/widget-modules/inheritance";
-import { patchTextWidgetDefaultElement } from "@/lib/ui-editor/widget-modules/shared/text/textWidgetDefaults";
 import { TextWidgetModule } from "./text";
 import { DialogSentenceSampleTextField } from "./text/TextSourceField";
 import { DialogSentenceRenderer } from "./dialog/renderer";
+import { defineWidgetModule } from "../declaration";
+import { DialogSentenceWidgetDeclaration } from "./dialog.declaration";
 
-const DIALOG_SENTENCE_TYPE = "nl.dialog.sentence";
-
-/**
- * The dialog slot's line: a Text whose live renderer hands the sentence to the engine's typewriter.
- *
- * Everything an author sets on a Text - typography, vertical writing, appearance variants, effects -
- * is inherited, so a text feature reaches the dialog line without being wired a second time.
- */
-export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(TextWidgetModule, {
-    type: DIALOG_SENTENCE_TYPE,
-    displayName: () => translate("widgets.defaults.dialog.name"),
-    icon: MessageSquareText,
-    defaultElement: (inherited, words) =>
-        patchTextWidgetDefaultElement(inherited, {
-            layout: { width: 560, height: 72 },
-            props: {
-                text: words.t("widgets.defaults.dialog.text"),
-                fontSize: 24,
-                color: "#f8fafc",
-                fontWeight: "normal",
-                lineHeight: 1.45,
-                // A dialogue line is written once and read in every language the game ships in, so
-                // it fits itself to its box unless the author turns that off.
-                textAutoFit: true,
-            },
-        }),
+export const DialogSentenceWidgetModule: UIWidgetModule = defineWidgetModule(DialogSentenceWidgetDeclaration, extendWidgetModule(TextWidgetModule, {
+    type: DialogSentenceWidgetDeclaration.type,
+    displayName: () => DialogSentenceWidgetDeclaration.displayName,
     render: DialogSentenceRenderer,
     inspector: () => ({
         // The authored text is a design-time stand-in: at run time the story's sentence replaces it,
@@ -45,5 +22,5 @@ export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(Tex
                 label: translate("widgets.sampleText.label"),
             },
         },
-    }),
-});
+    })
+}));

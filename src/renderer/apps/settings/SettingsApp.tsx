@@ -23,6 +23,7 @@ import { getLocaleMeta, getRegisteredLocales, type TranslationKey } from "@share
 import { localeAutonym } from "@shared/types/localization";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { onDictionariesChanged } from "./panels/dictionaryChanges";
+import { useGlobalSettings } from "@/lib/settings/useGlobalSettings";
 
 /**
  * What an installed dictionary is called, in itself, with its code kept.
@@ -54,8 +55,8 @@ export function SettingsApp() {
         })),
         [categories, t],
     );
-    const [values, setValues] = useState<Record<string, SettingValue>>({});
-    const [loading, setLoading] = useState(true);
+    const storedKeys = useMemo(() => getAllAppSettings().filter(isStoredSetting).map(setting => setting.key), []);
+    const { values, loading } = useGlobalSettings(storedKeys);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
     const [selectedSettingId, setSelectedSettingId] = useState<string | undefined>(undefined);
@@ -63,60 +64,6 @@ export function SettingsApp() {
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
         () => new Set(categories[0] ? [categories[0].key] : []),
     );
-
-    useEffect(() => {
-        let mounted = true;
-        const loadSettings = async () => {
-            const nextValues: Record<string, SettingValue> = {};
-            await Promise.all(
-                getAllAppSettings().map(async (setting) => {
-                    // Actions and panels store nothing here; their `key` is an identity (or, for a
-                    // panel, a key the panel itself owns), not something this layer reads.
-                    if (!isStoredSetting(setting)) {
-                        return;
-                    }
-                    try {
-                        const result = await getInterface().app.state.getGlobalState(setting.key);
-                        const storedValue = result.success
-                            ? (result.data.value ?? setting.defaultValue)
-                            : setting.defaultValue;
-                        nextValues[setting.key] = storedValue as SettingValue;
-                    } catch (error) {
-                        console.error("Failed to load setting", setting.key, error);
-                        nextValues[setting.key] = setting.defaultValue;
-                    }
-                }),
-            );
-            if (!mounted) {
-                return;
-            }
-            setValues(nextValues);
-            setLoading(false);
-        };
-
-        loadSettings();
-        return () => {
-            mounted = false;
-        };
-    }, []);
-
-    // Settings can move without this window touching them — Cmd/Ctrl +/-/0 write
-    // `ui.zoomPercent` from the main process, and any other window may write a
-    // global key. Follow the broadcast so the fields show what is actually stored
-    // instead of a snapshot from mount.
-    useEffect(() => {
-        const keys = new Set<string>(getAllAppSettings().filter(isStoredSetting).map(setting => setting.key));
-        const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (!keys.has(change.key)) {
-                return;
-            }
-            setValues((prev) => ({
-                ...prev,
-                [change.key]: change.value as SettingValue,
-            }));
-        });
-        return () => token?.cancel();
-    }, []);
 
     // Availability of workspace-bound actions, keyed by setting key. Evaluated on mount, whenever
     // this window regains focus — the user may have opened or closed a workspace since — and
@@ -289,11 +236,6 @@ export function SettingsApp() {
     const resetSettingRow = useCallback(
         async (setting: AppSettingDefinition) => {
             await resetSetting(setting.key);
-            setValues((prev) => {
-                const next = { ...prev };
-                delete next[setting.key];
-                return next;
-            });
         },
         [],
     );
@@ -309,10 +251,6 @@ export function SettingsApp() {
                 const errorText = response.error ?? t("settings.persistFailed");
                 throw new Error(errorText);
             }
-            setValues((prev) => ({
-                ...prev,
-                [key]: value,
-            }));
         },
         [t],
     );

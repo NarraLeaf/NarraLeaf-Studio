@@ -1295,7 +1295,8 @@ interface IStoryService extends IService {
     ): StoryBlock;
     updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void;
     deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void;
-    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void;
+    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): boolean;
+    commitSceneReplacement(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene, historyEntry: import("./history/HistoryService").HistoryPushRequest): boolean;
     moveBlock(
         storyId: StoryId,
         sceneId: StorySceneId,

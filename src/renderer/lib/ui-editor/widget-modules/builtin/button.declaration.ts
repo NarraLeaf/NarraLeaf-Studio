@@ -1,0 +1,63 @@
+import { MousePointerClick } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
+import { defaultButtonWidgetProps } from "./button/types";
+import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { formatBrandLink } from "@shared/brand/brandLink";
+import { INTERFACE_DEFAULT_WORDS } from "@/lib/ui-editor/widget-modules/defaultWords";
+import type { UIWidgetDeclaration } from "../types";
+
+/**
+ * The colours a *newly created* button starts with: links into the project palette, so that a fresh
+ * button is already the project's colour and changing the brand changes it.
+ *
+ * **Deliberately here and not in `defaultButtonWidgetProps`.** That object is the read-time fallback
+ * for a prop a document does not carry, which makes it the answer for every button ever made - so
+ * putting links in it would repaint buttons in existing projects whose author never chose a colour.
+ * Materialising them here means the link is written into the new element, and only into that one.
+ *
+ * `button.secondary` and `button.shadow` are absent because a new button has no row for them to land
+ * on: `createInitialButtonAppearance` builds a single `default` variant with no conditional rows, and
+ * `effects.effectShadow` starts null. Those two slots exist for an author who adds a hover row or a
+ * shadow layer and then points it at the brand - giving every new button a hover state and a shadow
+ * so the slots had somewhere to go would be changing what a button *is*, not what colour it is.
+ */
+const BRANDED_BUTTON_COLORS = {
+    backgroundColor: formatBrandLink("button.primary"),
+    borderColor: formatBrandLink("button.border"),
+    color: formatBrandLink("button.text"),
+} as const;
+export const ButtonWidgetDeclaration: UIWidgetDeclaration = {
+    type: "nl.button",
+    logicApi: getWidgetLogicApi("nl.button"),
+    get displayName() {
+        return translate("widgets.defaults.button.name");
+    },
+    icon: MousePointerClick,
+    createDefaultElement: (words = INTERFACE_DEFAULT_WORDS) => {
+        // Built once and used for both halves: the appearance model's `default` variant is seeded
+        // from these props, so the rows have to be the branded ones or the panel would show the old
+        // literals the moment the author opened it.
+        const props = {
+            ...defaultButtonWidgetProps,
+            ...BRANDED_BUTTON_COLORS,
+            label: words.t("widgets.defaults.button.label"),
+        };
+        return {
+            type: "nl.button",
+            name: translate("widgets.defaults.button.name"),
+            layout: {
+                x: 0,
+                y: 0,
+                width: 160,
+                height: 48,
+                opacity: 1,
+                visible: true,
+            },
+            props: {
+                ...props,
+                appearance: createInitialButtonAppearance(props),
+            },
+        };
+    }
+};

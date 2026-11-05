@@ -120,3 +120,44 @@ describe("writeSceneForAgent", () => {
         expect(service.getStoryDocument(storyId).scenes[sceneId].blocks.a).toBeDefined();
     });
 });
+
+describe("whole-scene edit commits", () => {
+    it("keeps undo when an editor registered its scope but cannot capture yet", () => {
+        const { service, history, storyId, sceneId } = createHarness();
+        const scope = storySceneHistoryScope(storyId, sceneId);
+        history.clearScope(scope);
+        history.registerScope({ id: scope, label: LABEL, capture: () => null, apply: () => undefined });
+        const next = withRows(service.getStoryDocument(storyId).scenes[sceneId], [note("new")]);
+        expect(service.commitSceneReplacement(storyId, sceneId, next, { label: LABEL })).toBe(true);
+        expect(history.undo(scope)).toBe(true);
+        expect(service.getStoryDocument(storyId).scenes[sceneId].rootBlockIds).toEqual(["a"]);
+    });
+
+    it("captures the open editor's undo scope before replacing the scene", () => {
+        const { service, history, storyId, sceneId } = createHarness();
+        const scope = storySceneHistoryScope(storyId, sceneId);
+        history.clearScope(scope);
+        history.registerScope({
+            id: scope,
+            label: LABEL,
+            capture: () => ({ scene: structuredClone(service.getStoryDocument(storyId).scenes[sceneId]), selected: "a" }),
+            apply: snapshot => { service.replaceScene(storyId, sceneId, snapshot.scene); },
+        });
+        const next = withRows(service.getStoryDocument(storyId).scenes[sceneId], [note("new")]);
+        expect(service.commitSceneReplacement(storyId, sceneId, next, { label: LABEL })).toBe(true);
+        expect(history.describe().find(stack => stack.scopeId === scope)?.undo).toBe(1);
+        history.undo(scope);
+        expect(service.getStoryDocument(storyId).scenes[sceneId].rootBlockIds).toEqual(["a"]);
+    });
+
+    it("leaves both document and undo unchanged while a session owns edits", () => {
+        const { service, history, storyId, sceneId } = createHarness();
+        const scope = storySceneHistoryScope(storyId, sceneId);
+        history.clearScope(scope);
+        const before = structuredClone(service.getStoryDocument(storyId).scenes[sceneId]);
+        service.setOperationSink({ handle: () => true });
+        expect(service.commitSceneReplacement(storyId, sceneId, withRows(before, [note("new")]), { label: LABEL })).toBe(false);
+        expect(service.getStoryDocument(storyId).scenes[sceneId]).toEqual(before);
+        expect(history.canUndo(scope)).toBe(false);
+    });
+});

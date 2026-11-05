@@ -1,20 +1,11 @@
+import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import type { EditorTabDefinition } from "../../registry/types";
 import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchIndexModel";
 import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import type { Service } from "@/lib/workspace/services/Service";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { Asset } from "@/lib/workspace/services/assets/types";
-import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
-import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
-import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
-import type { StoryService } from "@/lib/workspace/services/story/StoryService";
-import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { localizationKeyUnitId } from "@shared/types/localization";
 import { findDeclarationBlock } from "@shared/types/story";
@@ -54,7 +45,7 @@ const ASSETS_PANEL_ID = "narraleaf-studio:assets";
  */
 function selectUIElement(context: WorkspaceContext, surfaceId: string, elementId: string): void {
     try {
-        context.services.get<UIEditorStateService>(Services.UIEditorState).setUIElementSelection({
+        context.services.get(Services.UIEditorState).setUIElementSelection({
             editor: "ui",
             surfaceId,
             elementIds: [elementId],
@@ -66,9 +57,9 @@ function selectUIElement(context: WorkspaceContext, surfaceId: string, elementId
 }
 
 /** A service, or null when the workspace has none of that kind (a test, a window that never loaded it). */
-function optionalService<T extends Service>(context: WorkspaceContext, id: Services): T | null {
+function optionalService<K extends Services>(context: WorkspaceContext, id: K): WorkspaceServiceMap[K] | null {
     try {
-        return context.services.get<T>(id);
+        return context.services.get(id);
     } catch {
         return null;
     }
@@ -89,11 +80,11 @@ function translationLocaleName(localization: LocalizationService, locale: string
  * listed by the variables panel too, while their story is the focused one.
  */
 function projectVariableExists(context: WorkspaceContext, variableId: string): boolean {
-    const registry = optionalService<VariableRegistryService>(context, Services.VariableRegistry);
+    const registry = optionalService(context, Services.VariableRegistry);
     if (registry?.getEntry(variableId)) {
         return true;
     }
-    const stories = optionalService<StoryService>(context, Services.Story);
+    const stories = optionalService(context, Services.Story);
     for (const entry of stories?.listStories() ?? []) {
         try {
             if (findDeclarationBlock(stories!.getStoryDocument(entry.id), variableId)) {
@@ -157,7 +148,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // The story's own row in the list - where it is renamed or deleted, and the only way into
             // a story whose document cannot be opened, which is the finding this exists for.
             const context = deps.context;
-            const stories = context ? optionalService<StoryService>(context, Services.Story) : null;
+            const stories = context ? optionalService(context, Services.Story) : null;
             if (!stories || !stories.listStories().some(entry => entry.id === target.storyId)) {
                 return false;
             }
@@ -171,7 +162,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             const character = context.services
-                .get<CharacterService>(Services.Character)
+                .get(Services.Character)
                 .getCharacter(target.characterId);
             if (!character) {
                 return false;
@@ -181,7 +172,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // that instead revealed the panel and selected a row was the odd one out. The selection
             // still follows so the inspector rail shows who was opened.
             deps.openEditorTab(createCharacterEditorTab(character));
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "character", data: character });
+            context.services.get(Services.UI).getStore().setSelection({ type: "character", data: character });
             return true;
         }
         case "uiSurface": {
@@ -190,7 +181,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             const surface = context.services
-                .get<UIDocumentService>(Services.UIDocument)
+                .get(Services.UIDocument)
                 .getDocument()
                 .surfaces.find(candidate => candidate.id === target.surfaceId);
             if (!surface) {
@@ -208,7 +199,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             const component = context.services
-                .get<UIDocumentService>(Services.UIDocument)
+                .get(Services.UIDocument)
                 .getComponent(target.componentId);
             if (!component) {
                 return false;
@@ -235,7 +226,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "localizationKey": {
             const context = deps.context;
-            const localization = context ? optionalService<LocalizationService>(context, Services.Localization) : null;
+            const localization = context ? optionalService(context, Services.Localization) : null;
             if (!localization) {
                 return false;
             }
@@ -263,7 +254,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "translation": {
             const context = deps.context;
-            const localization = context ? optionalService<LocalizationService>(context, Services.Localization) : null;
+            const localization = context ? optionalService(context, Services.Localization) : null;
             const name = localization ? translationLocaleName(localization, target.locale) : null;
             if (name === null) {
                 return false;
@@ -283,7 +274,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "voiceLine": {
             const context = deps.context;
-            const voice = context ? optionalService<VoiceService>(context, Services.Voice) : null;
+            const voice = context ? optionalService(context, Services.Voice) : null;
             const entry = voice?.getConfiguration().voicedLocales.find(candidate => candidate.code === target.locale);
             if (!entry) {
                 return false;
@@ -303,7 +294,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "translationOrphans": {
             const context = deps.context;
-            const localization = context ? optionalService<LocalizationService>(context, Services.Localization) : null;
+            const localization = context ? optionalService(context, Services.Localization) : null;
             const name = localization ? translationLocaleName(localization, target.locale) : null;
             if (name === null) {
                 return false;
@@ -313,7 +304,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "voiceOrphans": {
             const context = deps.context;
-            const voice = context ? optionalService<VoiceService>(context, Services.Voice) : null;
+            const voice = context ? optionalService(context, Services.Voice) : null;
             const entry = voice?.getConfiguration().voicedLocales.find(candidate => candidate.code === target.locale);
             if (!entry) {
                 return false;
@@ -334,7 +325,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "storyMotion": {
             const context = deps.context;
-            const stories = context ? optionalService<StoryService>(context, Services.Story) : null;
+            const stories = context ? optionalService(context, Services.Story) : null;
             let known = false;
             try {
                 known = Boolean(stories?.listAnimationAssets().some(entry => entry.id === target.animationId));
@@ -363,12 +354,12 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // this is the `asset` case's second arm and nothing more. Resolved live for the same
             // reason that one is: the declaration may be gone, and a jump that reveals the panel
             // with nothing selected is worse than one that declines.
-            const set = context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId);
+            const set = context.services.get(Services.AssetSets).getSet(target.assetSetId);
             if (!set) {
                 return false;
             }
             deps.setPanelVisibility(ASSETS_PANEL_ID, true);
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
+            context.services.get(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
             // Selecting it fills the inspector; this puts the ROW on screen. They are different
             // questions - a set can be several folders down from anything the panel is currently
             // drawing, and an inspector for a row nobody can see reads as a jump that half worked.
@@ -381,7 +372,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             // Resolve the live asset - the index only carries ids, and the asset may be gone.
-            const assetsMap = context.services.get<AssetsService>(Services.Assets).getAssets();
+            const assetsMap = context.services.get(Services.Assets).getAssets();
             const asset = Object.values(assetsMap)
                 .flatMap(byId => Object.values(byId) as Asset[])
                 .find(candidate => candidate.id === target.assetId);
@@ -396,7 +387,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // opened, the search that hid it cleared. The selection alone filled the inspector for a
             // row the panel was not drawing, which read as a jump that half worked.
             deps.setPanelVisibility(ASSETS_PANEL_ID, true);
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: asset });
+            context.services.get(Services.UI).getStore().setSelection({ type: "asset", data: asset });
             requestAssetReveal(ASSETS_PANEL_ID, asset.id);
             return true;
         }

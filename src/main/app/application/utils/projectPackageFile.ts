@@ -1,7 +1,6 @@
-import type { WriteStream } from "fs";
 import path from "path";
 import { once } from "events";
-import { finished, pipeline } from "stream/promises";
+import { pipeline } from "stream/promises";
 import {
     PROJECT_PACKAGE_BODY_OFFSET,
     PROJECT_PACKAGE_FORMAT,
@@ -91,7 +90,9 @@ async function packProject(source: ProjectPackageSource): Promise<ProjectPackage
         const byteLength = await streamPackage(source, walked, out);
         return { fileCount: walked.files.length, byteLength, skippedCount: walked.skippedCount };
     } catch (error) {
-        out.destroy();
+        if (!out.closed) {
+            await new Promise<void>(resolve => out.once("close", resolve));
+        }
         await fs.rm(source.packagePath, { force: true }).catch(() => undefined);
         throw error;
     }
@@ -100,58 +101,44 @@ async function packProject(source: ProjectPackageSource): Promise<ProjectPackage
 async function streamPackage(
     source: ProjectPackageSource,
     walked: WalkedProject,
-    out: WriteStream,
+    out: ReturnType<typeof nodeFs.createWriteStream>,
 ): Promise<number> {
     let byteLength = PROJECT_PACKAGE_BODY_OFFSET;
-    out.write(projectPackageMagic());
-
-    const entries: ProjectPackageIndex["files"] = [];
-    for (const file of walked.files) {
-        const size = await copyFileInto(out, file.absolutePath, file.relativePath);
-        entries.push({ path: file.relativePath, size });
-        byteLength += size;
-    }
-
-    const index = encodeProjectPackageIndex({
-        format: PROJECT_PACKAGE_FORMAT,
-        version: PROJECT_PACKAGE_FORMAT_VERSION,
-        createdAt: source.createdAt,
-        projectName: source.projectName,
-        projectIdentifier: source.projectIdentifier,
-        directories: walked.directories,
-        files: entries,
-    });
-    out.write(index);
-
-    const trailer = Buffer.alloc(PROJECT_PACKAGE_INDEX_LENGTH_SIZE);
-    trailer.writeUInt32LE(index.byteLength, 0);
-    out.write(trailer);
-
-    out.end();
-    await finished(out);
-    return byteLength + index.byteLength + PROJECT_PACKAGE_INDEX_LENGTH_SIZE;
-}
-
-/**
- * One file into the open package, chunk by chunk, returning how many bytes it turned out to be.
- *
- * The count is taken from what is handed to the output rather than from `bytesWritten`, which only
- * counts bytes the filesystem has already taken and therefore lags behind whatever is still queued.
- * An index built from a lagging count would put every later file at the wrong offset.
- */
-async function copyFileInto(out: WriteStream, absolutePath: string, relativePath: string): Promise<number> {
-    let size = 0;
-    try {
-        for await (const chunk of nodeFs.createReadStream(absolutePath)) {
-            size += (chunk as Buffer).length;
-            if (!out.write(chunk)) {
-                await once(out, "drain");
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+        yield projectPackageMagic();
+        const entries: ProjectPackageIndex["files"] = [];
+        for (const file of walked.files) {
+            let size = 0;
+            try {
+                for await (const chunk of nodeFs.createReadStream(file.absolutePath)) {
+                    const bytes = chunk as Buffer;
+                    size += bytes.length;
+                    yield bytes;
+                }
+            } catch (error) {
+                throw describeFileFailure(file.relativePath, error);
             }
+            entries.push({ path: file.relativePath, size });
+            byteLength += size;
         }
-    } catch (error) {
-        throw describeFileFailure(relativePath, error);
+        const index = encodeProjectPackageIndex({
+            format: PROJECT_PACKAGE_FORMAT,
+            version: PROJECT_PACKAGE_FORMAT_VERSION,
+            createdAt: source.createdAt,
+            projectName: source.projectName,
+            projectIdentifier: source.projectIdentifier,
+            directories: walked.directories,
+            files: entries,
+        });
+        yield index;
+        const trailer = Buffer.alloc(PROJECT_PACKAGE_INDEX_LENGTH_SIZE);
+        trailer.writeUInt32LE(index.byteLength, 0);
+        yield trailer;
+        byteLength += index.byteLength + PROJECT_PACKAGE_INDEX_LENGTH_SIZE;
     }
-    return size;
+    // The pipeline owns backpressure and closes both streams before a failure reaches cleanup.
+    await pipeline(chunks(), out);
+    return byteLength;
 }
 
 /**

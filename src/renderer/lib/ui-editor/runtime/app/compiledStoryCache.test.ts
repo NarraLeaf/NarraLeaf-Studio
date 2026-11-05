@@ -4,6 +4,7 @@ import {
     compiledStoryCacheKey,
     reuseCompiledStory,
     type CompiledStoryCacheEntry,
+    StoryCompileSession,
 } from "./compiledStoryCache";
 
 const BASE = {
@@ -70,6 +71,39 @@ describe("compiledStoryCacheKey", () => {
 
     it("is blind to the scene, which is what makes one compile serve every launch of a story", () => {
         expect(compiledStoryCacheKey(BASE)).toBe(compiledStoryCacheKey(BASE));
+    });
+});
+
+describe("story compile session", () => {
+    it("drops obsolete diagnostics and cache writes after a bundle changes", async () => {
+        const session = new StoryCompileSession();
+        session.follow(BASE);
+        let finish!: (value: CompiledNlrStory) => void;
+        const reports: unknown[] = [];
+        const old = session.compile(BASE, "hub", () => new Promise(resolve => { finish = resolve; }), value => reports.push(value));
+        session.follow({ ...BASE, revision: 4 });
+        finish(compiled(["hub"]).compiled);
+        await old;
+        expect(reports).toEqual([]);
+        let builds = 0;
+        const build = async () => { builds += 1; return compiled(["hub", "next"]).compiled; };
+        await session.compile({ ...BASE, revision: 4 }, "hub", build, value => reports.push(value));
+        const reused = await session.compile({ ...BASE, revision: 4 }, "next", build, value => reports.push(value));
+        expect(builds).toBe(1);
+        expect(reused.sceneId).toBe("next");
+        expect(reports).toHaveLength(2);
+    });
+
+    it("invalidates pending work when the session is cleared", async () => {
+        const session = new StoryCompileSession();
+        session.follow(BASE);
+        let finish!: (value: CompiledNlrStory) => void;
+        const reports: unknown[] = [];
+        const pending = session.compile(BASE, "hub", () => new Promise(resolve => { finish = resolve; }), value => reports.push(value));
+        session.clear();
+        finish(compiled(["hub"]).compiled);
+        await pending;
+        expect(reports).toEqual([]);
     });
 });
 
