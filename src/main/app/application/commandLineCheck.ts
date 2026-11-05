@@ -31,6 +31,7 @@ import { readProjectDlcFromDir } from "./utils/dlcFile";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
 import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
+import { describeError, flushStandardOutput, recordCommandLineRunLine } from "./commandLineRunConsole";
 import {
     defaultTestEdition,
     describeTestEdition,
@@ -530,25 +531,8 @@ export class CommandLineCheckRun {
         });
     }
 
-    /**
-     * Keep a line and print it.
-     *
-     * Standard output carries the prose, which is what a person tailing a job reads; the report file
-     * carries the same lines with their timestamps and levels intact, which is what a job archives.
-     * Nothing a script needs is read off this stream - see the report.
-     */
     private record(line: CommandLineRunLogLine): void {
-        this.log.push(line);
-        // Every line is progress, to the watchdog as to the run's own deadline.
-        getCommandLineRunEnd()?.progress();
-        const source = line.source ? `${line.source}: ` : "";
-        const text = `[${line.level}] ${source}${line.message}`;
-        process.stdout.write(`${text}\n`);
-        // And into the profile's own log. Standard output is the stream a job captures, but on
-        // Windows it is buffered by whoever redirected it, so a run that ends without a clean
-        // exit - a renderer that took the process with it - takes its whole console with it and
-        // leaves the operator nothing at all to read. The log file is written as it goes.
-        this.app.logger.info(`[CommandLine] ${text}`);
+        recordCommandLineRunLine(this.log, this.app.logger, line);
     }
 }
 
@@ -623,25 +607,4 @@ function describeJob(job: CommandLineRunJob, projectName: string): string {
         default:
             return `running against ${projectName}`;
     }
-}
-
-/**
- * Wait for everything written to standard output to have left this process.
- *
- * Writes to a pipe are asynchronous on Windows - and a pipe is exactly what a build agent captures
- * output through - so `exit()` can end the process with the last few lines still queued. Which lines
- * those are is the worst possible sample: the outcome and the exit code are the last thing written.
- */
-function flushStandardOutput(): Promise<void> {
-    return new Promise<void>(resolve => {
-        try {
-            process.stdout.write("", () => resolve());
-        } catch {
-            resolve();
-        }
-    });
-}
-
-function describeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }

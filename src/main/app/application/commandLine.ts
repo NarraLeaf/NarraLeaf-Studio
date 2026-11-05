@@ -709,6 +709,9 @@ function hasCheckCompanionFlag(check: CheckCommandLineOptions, testFlagNamed: bo
  *
  * Without this list, `--project demo` would offer "demo" to the open-request resolver as well.
  * Only the separated forms need it; `--flag=value` is one argument and never looks positional.
+ *
+ * The equals-only flags are here too. Their separated form is refused, and the refusal names the
+ * next argument as the value it was meant to be, so that argument is not also a path to open.
  */
 const VALUE_TAKING_FLAGS = new Set<string>([
     "--project",
@@ -719,6 +722,9 @@ const VALUE_TAKING_FLAGS = new Set<string>([
     ...Object.keys(BUILD_LIST_FLAGS),
     ...Object.keys(CHECK_VALUE_FLAGS),
     CHECK_PARAMETER_FLAG,
+    ...Object.keys(PLUGIN_FLAGS),
+    CHECK_VARIANT_FLAG,
+    CHECK_DLC_FLAG,
 ]);
 
 /**
