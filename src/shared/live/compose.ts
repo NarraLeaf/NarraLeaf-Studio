@@ -1,4 +1,5 @@
 import type { LiveOp } from "./ops";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * What this window has said and not yet been told about - the layer between a gesture and its
@@ -88,10 +89,6 @@ export function composeAssertedRecord<T>(pending: T, base: unknown, next: T): T 
         }
     }
     return composed as T;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

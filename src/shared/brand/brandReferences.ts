@@ -1,4 +1,5 @@
 import { parseBrandLink } from "./brandLink";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * Who is pointing at the project's palette, and from where.
@@ -87,10 +88,6 @@ export function countBrandLinkReferences(refs: readonly BrandLinkReference[]): M
         counts.set(ref.id, (counts.get(ref.id) ?? 0) + 1);
     }
     return counts;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function text(value: unknown): string {

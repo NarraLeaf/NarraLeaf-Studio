@@ -1,3 +1,5 @@
+import { isRecord } from "@shared/utils/isRecord";
+
 /**
  * Every place a UI document stores a library asset id, as a read and a write.
  *
@@ -63,10 +65,6 @@ export type UiAssetIdSlot = {
  */
 export function uiAssetSlotAcceptsSets(key: string): boolean {
     return key !== "fontAssetId";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

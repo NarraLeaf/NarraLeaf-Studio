@@ -33,6 +33,7 @@
  */
 
 import { DevTools, type SavedGame } from "narraleaf-react";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The engine's positional action names. */
 const POSITIONAL_ACTION_ID = /^a-\d+$/;
@@ -180,10 +181,6 @@ export function legacyActionIdTableFor(story: unknown): LegacyActionIdTable | nu
  * - `unknown`: neither, and no number in it can be trusted.
  */
 export type ActionIdReading = "current" | "legacy" | "unknown";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** Today's id for one id a save holds, or `undefined` when it is a number nothing can place. */
 type Rename = (id: string) => string | undefined;

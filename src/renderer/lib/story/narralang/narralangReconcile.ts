@@ -80,6 +80,7 @@ import {
     type NarralangDiagnostic,
     type NarralangParseLookups,
 } from "./narralangParse";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The parser's diagnostic, under the name the reconcile surface publishes it as. */
 export type NarralangParseDiagnostic = NarralangDiagnostic;
@@ -240,10 +241,6 @@ function inheritTextIds(previous: unknown, fresh: unknown): unknown {
         out.textId = previous.textId;
     }
     return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isTextSegment(value: Record<string, unknown>): boolean {

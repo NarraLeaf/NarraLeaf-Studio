@@ -1,4 +1,5 @@
 import type {DocumentMergeDecision} from "./diff";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * Turning a list of per-change choices back into one document.
@@ -222,8 +223,4 @@ function elementIndex(documentPath: string, path: readonly string[], segment: st
         throw new MergeChangeUnaddressableError(documentPath, path, `"${segment}" is not a position in this list`);
     }
     return index;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

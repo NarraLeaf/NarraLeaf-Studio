@@ -13,6 +13,7 @@ import {
     type VariableRegistryEntry,
     type VariableRegistryScope,
 } from "../types/variables/registry";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The 4-value closed set persistent variables converge to. */
 export function normalizePersistentValueType(valueType: string | undefined): StoryVariableValueType {
@@ -36,10 +37,6 @@ export function createEmptyVariableRegistry(now?: string): VariableRegistry {
         entries: {},
         ...(now ? { meta: { createdAt: now, updatedAt: now } } : {}),
     };
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 
