@@ -156,7 +156,12 @@ Launcher 看到的是 `PluginListItem`，它在 record 基础上增加 `status`�
 {pluginId}@{manifest.version}
 ```
 
-因此只要 `version` 改变，旧授权不会复用。下一次扫描或安装同 ID 新版本时，`PluginManager` 会把 `grantedManifestVersion` 置空，插件进入 `needsAuthorization`，必须由用户重新批准后才能启用。
+安装或扫描到同 ID 新版本时，`PluginManager` 比较新 manifest 的权限与已批准的 `grantedPermissions`：
+
+- 新权限是已批准集合的子集：沿用授权，`grantedManifestVersion` 更新为新版本，并在 `{pluginId}@{新版本}` 下重新签发同一组授权，插件保持启用。
+- 新权限超出已批准集合：`grantedManifestVersion` 置空，插件进入 `needsAuthorization`，必须由用户重新批准后才能启用。
+
+权限集合是安全边界，版本号只决定授权存放在哪个键下。
 
 撤销和卸载行为：
 
@@ -483,6 +488,11 @@ Launcher、workspace、Dev Mode 和 preload 之间使用这些 IPC：
 | `plugin.workspaceList` | workspace 获取 studio entry descriptor；非 workspace 窗口会被拒绝。 |
 | `plugin.runtimeList` | Dev Mode 窗口获取 runtime entry descriptor；非 Dev Mode 窗口会被拒绝。 |
 | `plugin.reportLoadError` | workspace 上报插件加载成功或失败；非 workspace 窗口会被拒绝。 |
+| `plugin.localeList` | 任意窗口获取已启用插件贡献的 Studio 语言包。 |
+| `plugin.localesChanged` | 主进程推送：已启用插件集合变化，窗口重新获取语言包。 |
+| `plugin.registryFetch` | 获取插件商店索引（配置的 URL，否则为官方默认地址）。 |
+| `plugin.registryIcon` | 获取商店条目的图标；主进程按其信任的索引校验字节并按版本缓存。 |
+| `plugin.installFromRegistry` | 从商店安装插件；下载地址取自主进程刚获取的索引。安装后与本地安装一样进入 `needsAuthorization`。 |
 
 插件代码本身不应调用这些 IPC。插件只使用 `definePlugin`/`defineRuntimePlugin` 和对应的 app 对象。
 
@@ -490,7 +500,6 @@ Launcher、workspace、Dev Mode 和 preload 之间使用这些 IPC：
 
 - 只支持预打包 ESM 入口；Studio 不构建插件源代码，每个 entry 都必须是自包含单文件。
 - 插件代码不是 sandbox；安装批准意味着用户信任该本地代码（runtime entry 还会随游戏发布）。
-- 没有在线插件商店、远程 feed、自动更新或依赖解析。
 - 没有插件间依赖排序。
 - 插件注册的 UI、widget、blueprint ID 由约定 + 注册时前缀校验保证，必须以插件 ID 为前缀。项目依赖扫描靠的就是这一条：插件没有载入（未安装、已停用、因版本被扣下）时，它的节点与 widget 按 type 前缀认回给它（`attributeByNamespace`），所以放宽前缀约束会让依赖表认不出这类引用。
 - runtime API 面当前是 `blueprintNodes` + `widgets` + `log`。transform 字段 / transition 预设扩展点等待核心先建立预设系统（当前核心自身也没有可插拔的预设注册点）。

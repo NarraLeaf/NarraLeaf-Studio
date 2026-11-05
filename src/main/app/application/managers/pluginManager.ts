@@ -282,6 +282,9 @@ export class PluginManager {
         // not the version number.
         const granted = this.grantedPermissionsOf(existing);
         const inheritsGrant = granted !== null && isPermissionSubset(manifest.permissions, granted);
+        if (inheritsGrant && existing?.grantedManifestVersion !== manifest.version) {
+            this.carryGrantForward(manifest);
+        }
         const record: PluginInstallRecord = {
             pluginId: manifest.id,
             installPath,
@@ -522,6 +525,9 @@ export class PluginManager {
                 // approved - the same rule installFromDirectory applies.
                 const priorGrant = builtIn ? null : this.grantedPermissionsOf(previous);
                 const inheritsGrant = priorGrant !== null && isPermissionSubset(manifest.permissions, priorGrant);
+                if (inheritsGrant && previous?.grantedManifestVersion !== manifest.version) {
+                    this.carryGrantForward(manifest);
+                }
                 const grantedManifestVersion = builtIn || inheritsGrant ? manifest.version : null;
                 nextRecords[manifest.id] = {
                     pluginId: manifest.id,
@@ -700,7 +706,25 @@ export class PluginManager {
         manifest: NormalizedPluginManifestV2,
         sourcePath: string,
     ): void {
-        const requestId = `builtin-install:${manifest.id}:${manifest.version}`;
+        this.issueManifestGrant(manifest, `builtin-install:${manifest.id}:${manifest.version}`,
+            `builtin:${sourcePath}`, "Built-in Studio plugin permissions.");
+    }
+
+    /**
+     * Issue an inherited grant under the version that now runs. The privileged gate looks grants up
+     * by plugin id and version, so the record alone does not let the updated code act.
+     */
+    private carryGrantForward(manifest: NormalizedPluginManifestV2): void {
+        this.issueManifestGrant(manifest, `inherited-install:${manifest.id}:${manifest.version}`,
+            "inherited", "Permissions carried over from the approved version.");
+    }
+
+    private issueManifestGrant(
+        manifest: NormalizedPluginManifestV2,
+        requestId: string,
+        source: string,
+        reason: string,
+    ): void {
         this.permissionManager.grantPermission({
             kind: "install",
             requestId,
@@ -710,10 +734,10 @@ export class PluginManager {
                 version: manifest.version,
                 publisher: manifest.publisher,
             },
-            source: `builtin:${sourcePath}`,
+            source,
             permissions: manifest.permissions,
             persistence: "permanent",
-            reason: "Built-in Studio plugin permissions.",
+            reason,
             requestedAt: Date.now(),
         }, {
             requestId,
