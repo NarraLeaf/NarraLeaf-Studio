@@ -242,7 +242,7 @@ function useAreaBox(areaRef: RefObject<HTMLElement | null>, hub: StoryPreviewHub
 }
 
 /** A story document, loaded once and kept current with its edits. */
-function useStoryDocument(context: WorkspaceContext | null, storyId: StoryId | null): StoryDocument | null {
+export function useStoryDocument(context: WorkspaceContext | null, storyId: StoryId | null): StoryDocument | null {
     const [state, setState] = useState<{ storyId: StoryId; document: StoryDocument } | null>(null);
     useEffect(() => {
         if (!context || !storyId) {

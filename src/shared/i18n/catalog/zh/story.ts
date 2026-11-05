@@ -1031,6 +1031,30 @@ export const story = {
         filteredEmptyClear: "显示全部",
         snapshotsPanel: "场景快照",
     },
+    // 底栏「舞台时间轴」面板。一列是一行会执行的剧本，「第 n 行」与编辑器左侧的行号一致
+    timeline: {
+        empty: "打开故事场景以查看舞台时间轴",
+        emptyScene: "该场景没有会执行的行",
+        showAllRows: "显示完整行号",
+        zoom: "缩放",
+        resetZoom: "重置为 100%",
+        row: "第 {index} 行",
+        seconds: "{seconds} 秒",
+        source: {
+            voice: "配音",
+            estimate: "估算",
+            choice: "等待选择",
+            instant: "即时",
+        },
+        lane: {
+            dialogue: "对白",
+            background: "背景",
+            camera: "镜头",
+            music: "音乐",
+        },
+        chooseBranch: "选择分支",
+        untitledOption: "未命名选项",
+    },
     preview: {
         label: "预览",
         openPreview: "打开实时预览",

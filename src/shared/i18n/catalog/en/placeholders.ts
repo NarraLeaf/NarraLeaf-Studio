@@ -22,6 +22,7 @@ export const placeholders = {
         problems: "Problems",
         agentLog: "Agent Log",
         storyMotion: "Story Motion",
+        stageTimeline: "Stage timeline",
         dashboard: "Dashboard",
         audioPreview: "Audio Preview",
         imagePreview: "Image Preview",

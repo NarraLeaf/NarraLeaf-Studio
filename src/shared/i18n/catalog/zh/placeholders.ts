@@ -22,6 +22,7 @@ export const placeholders = {
         problems: "问题",
         agentLog: "Agent 日志",
         storyMotion: "故事动效",
+        stageTimeline: "舞台时间轴",
         dashboard: "仪表盘",
         audioPreview: "音频预览",
         imagePreview: "图片预览",

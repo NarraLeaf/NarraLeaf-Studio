@@ -52,6 +52,7 @@ export const HELP_TOPIC_IDS = [
     "storyPaste",
     "sceneSnapshot",
     "storyMotion",
+    "stageTimeline",
     "dictionary",
     "dictionaryMarks",
     "assets",
@@ -140,6 +141,22 @@ export interface HelpTopic {
     related?: readonly HelpTopicId[];
     /** An http(s) page carrying the version that would not fit the eight-line budget. */
     learnMore?: string;
+    /**
+     * The topic has a short recording of the thing it describes, shown above the body. There is one
+     * per recorded interface language, `src/renderer/public/help/<en|zh>/<id>.webp` (an animated
+     * WebP, served from `app://public`), and `helpTopics.test.ts` fails both for a flag missing a
+     * file and for a file with no flag.
+     */
+    clip?: true;
+}
+
+/** The interface languages the recordings were made in; every other language shows the English one. */
+export const HELP_CLIP_LOCALES = ["en", "zh"] as const;
+
+/** Where a topic's recording is served from, relative to the window. */
+export function helpClipUrl(id: HelpTopicId, locale: string): string {
+    const folder = HELP_CLIP_LOCALES.find(code => code === locale) ?? "en";
+    return `/help/${folder}/${id}.webp`;
 }
 
 const DOCS_URL = "https://www.narraleaf.com/docs/studio";
@@ -151,12 +168,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "gettingHelp",
         section: "start",
+        clip: true,
         shortcuts: ["workspace-context-help", "workspace-command-palette"],
         related: ["workspaceLayout", "keyboard", "search"],
     },
     {
         id: "workspaceLayout",
         section: "start",
+        clip: true,
         shortcuts: ["editor-split-right", "editor-split-down", "workspace.split.reset", "workspace-editor-quick-switch-next"],
         related: ["keyboard", "search", "undo"],
     },
@@ -168,30 +187,35 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "runModes",
         section: "start",
+        clip: true,
         shortcuts: ["run:dev-mode", "run:preview", "run:stop"],
         related: ["tests", "build", "freeze", "sceneSnapshot"],
     },
     {
         id: "keyboard",
         section: "start",
+        clip: true,
         shortcuts: ["workspace-keybinding-cheatsheet", "workspace-command-palette"],
         related: ["workspaceLayout", "studioSettings"],
     },
     {
         id: "search",
         section: "start",
+        clip: true,
         shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find", "search.undo", "search.redo"],
         related: ["storyScene"],
     },
     {
         id: "undo",
         section: "start",
+        clip: true,
         shortcuts: ["workspace.undo", "workspace.redo", "workspace-reopen-closed-tab"],
         related: ["workspaceLayout", "versionControl"],
     },
     {
         id: "studioSettings",
         section: "start",
+        clip: true,
         related: ["keyboard", "plugins"],
     },
 
@@ -199,6 +223,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyScene",
         section: "story",
+        clip: true,
         shortcuts: [
             "story.edit-active",
             "story.edit-line",
@@ -213,11 +238,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyCommands",
         section: "story",
+        clip: true,
         related: ["storyScene", "storyVariables", "storyExpressions"],
     },
     {
         id: "storyVariables",
         section: "story",
+        clip: true,
         related: ["storyCommands", "storyExpressions", "sceneSnapshot"],
     },
     {
@@ -228,6 +255,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyFlow",
         section: "story",
+        clip: true,
         related: ["storyScene", "lint"],
     },
     {
@@ -246,11 +274,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "sceneSnapshot",
         section: "story",
+        clip: true,
         related: ["storyVariables", "runModes"],
     },
     {
         id: "dictionary",
         section: "story",
+        clip: true,
         related: ["dictionaryMarks", "spellcheck", "storyScene"],
     },
     {
@@ -261,6 +291,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyMotion",
         section: "story",
+        clip: true,
         shortcuts: [
             "story-motion.play-pause",
             "story-motion.prev-keyframe",
@@ -272,11 +303,18 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         ],
         related: ["storyCommands", "characters"],
     },
+    {
+        id: "stageTimeline",
+        section: "story",
+        clip: true,
+        related: ["storyScene", "voice", "storyMotion"],
+    },
 
     // --- Content --------------------------------------------------------------
     {
         id: "assets",
         section: "content",
+        clip: true,
         shortcuts: ["assets.rename", "assets.copy", "assets.paste", "assets.range-select", "assets.up"],
         related: ["assetSources", "assetSets", "characters", "audio", "lint"],
     },
@@ -303,6 +341,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "characters",
         section: "content",
+        clip: true,
         related: ["appearances", "assets", "storyScene"],
     },
     {
@@ -323,6 +362,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "audioClips",
         section: "content",
+        clip: true,
         shortcuts: [
             "assets.audio.play-pause",
             "assets.audio.audition-seam",
@@ -355,6 +395,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "localization",
         section: "content",
+        clip: true,
         related: ["storyScene", "voice", "build"],
     },
 
@@ -364,11 +405,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "brand",
         section: "interface",
+        clip: true,
         related: ["uiSurfaces", "uiComponents", "lint"],
     },
     {
         id: "uiSurfaces",
         section: "interface",
+        clip: true,
         shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap", "ui-editor.snap-to-grid"],
         related: ["uiComponents", "blueprints", "inputActions", "focusNavigation"],
     },
@@ -415,12 +458,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "uiComponents",
         section: "interface",
+        clip: true,
         shortcuts: ["ui-editor.group", "ui-editor.dup"],
         related: ["uiSurfaces", "uiBindings"],
     },
     {
         id: "blueprints",
         section: "interface",
+        clip: true,
         shortcuts: [
             "blueprint.add-node",
             "blueprint.add-connected-node",
@@ -460,6 +505,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "lint",
         section: "quality",
+        clip: true,
         related: ["tests", "build"],
     },
     {
@@ -470,6 +516,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "dashboard",
         section: "quality",
+        clip: true,
         related: ["storyScene", "localization"],
     },
     {
@@ -482,6 +529,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "versionControl",
         section: "version",
+        clip: true,
         related: ["versionChanges", "versionViewing", "versionRestore", "versionServer"],
     },
     {
@@ -519,6 +567,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "build",
         section: "ship",
+        clip: true,
         related: ["patches", "icons", "signing", "assetProtection"],
         learnMore: DOCS_URL,
     },
@@ -613,6 +662,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "plugins",
         section: "ship",
+        clip: true,
         related: ["uiSurfaces", "storyCommands", "studioSettings"],
         learnMore: DOCS_URL,
     },
