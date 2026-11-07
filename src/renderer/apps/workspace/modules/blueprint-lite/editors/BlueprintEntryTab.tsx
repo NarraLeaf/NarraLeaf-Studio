@@ -210,12 +210,16 @@ import {
 import {
     graphClipboardSourceStamp,
     importForeignGraphAssets,
+    isGraphPasteRefusal,
     publishGraphClipboard,
     readGraphClipboardEnvironment,
     reportForeignGraphPaste,
+    reportGraphTextPaste,
+    reportRefusedGraphTextPaste,
     resolveGraphPasteSource,
     type ForeignGraphPasteReport,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboardBridge";
+import { readBlueprintTextPaste } from "@/lib/workspace/services/ui-editor/blueprint/graphTextPaste";
 import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
@@ -1032,10 +1036,34 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         void (async () => {
             const environment = readGraphClipboard();
-            const source = await resolveGraphPasteSource(environment);
-            if (!source || environment?.isFrozen()) {
+            // Blueprint text on the clipboard is compiled for this graph as it is when the author
+            // pastes: the owner decides which nodes may go here, the open graph which kind it is.
+            const readText = (text: string) => {
+                const blueprint = localBp.getBlueprintDocument().blueprints[payload.blueprintId];
+                const elements = blueprintDocumentService.getDocument();
+                const graphView = editor.graphView;
+                if (!blueprint || !graphView) {
+                    return { kind: "none" as const };
+                }
+                const elementId = anchorElementId(blueprint.owner) !== null ? payload.elementId : undefined;
+                return readBlueprintTextPaste(text, {
+                    owner: blueprint.owner,
+                    graphKind: graphView.kind === "function" ? "function" : "event",
+                    variables: blueprint.members?.variables,
+                    widgetElementType: elementId ? elements.elements[elementId]?.type : undefined,
+                    uiElements: elements.elements,
+                    uiStructs: elements.structs,
+                });
+            };
+            const resolved = await resolveGraphPasteSource(environment, readText);
+            if (!resolved || environment?.isFrozen()) {
                 return;
             }
+            if (isGraphPasteRefusal(resolved)) {
+                reportRefusedGraphTextPaste(resolved);
+                return;
+            }
+            const source = resolved;
             let imported: ForeignGraphPasteReport = { imported: 0, frozen: false };
             if (source.foreign) {
                 imported = await importForeignGraphAssets(source);
@@ -1060,9 +1088,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             editor.setSelectedNodeIds(pasted.newNodeIds);
             if (source.foreign) {
                 reportForeignGraphPaste(source, imported);
+            } else if (source.text) {
+                reportGraphTextPaste(source, pasted.newNodeIds.length);
             }
         })();
-    }, [commitIr, editor, readGraphClipboard, uuid, payload.blueprintId]);
+    }, [blueprintDocumentService, commitIr, editor, localBp, readGraphClipboard, uuid, payload.blueprintId, payload.elementId]);
 
     // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
     // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen

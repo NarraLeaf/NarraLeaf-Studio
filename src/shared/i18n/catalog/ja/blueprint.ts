@@ -77,6 +77,22 @@ export const blueprint = {
             other: "{count} 件の参照が未解決",
         },
     },
+    textPaste: {
+        pasted: {
+            one: "ブループリントテキストから {count} 個のノードを貼り付けた",
+            other: "ブループリントテキストから {count} 個のノードを貼り付けた",
+        },
+        warnings: {
+            one: "{count} 件の警告",
+            other: "{count} 件の警告",
+        },
+        refusedAtLine: "ブループリントテキストを貼り付けなかった。{line} 行目：{reason}",
+        refused: "ブループリントテキストを貼り付けなかった：{reason}",
+        moreProblems: {
+            one: "ほか {count} 件の問題",
+            other: "ほか {count} 件の問題",
+        },
+    },
     addNode: {
         close: "ノード追加のメニューを閉じる",
         searchPlaceholder: "ノードを検索",

@@ -439,6 +439,7 @@ export enum IPCEventType {
 
     clipboardWriteEditorSelection = "clipboard.editorSelection.write",
     clipboardReadEditorSelection = "clipboard.editorSelection.read",
+    clipboardReadPlainText = "clipboard.plainText.read",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -4363,6 +4364,17 @@ export type IPCAssetEvents = {
             kind: StudioClipboardKind;
         },
         response: { payload: string | null };
+    };
+    /**
+     * The clipboard's plain text, for an editor that accepts a text format on paste (the blueprint
+     * canvas reads the blueprint text format). `text: null` when there is none, or when it is larger
+     * than an editor selection may be.
+     */
+    [IPCEventType.clipboardReadPlainText]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { text: string | null };
     };
 };
 

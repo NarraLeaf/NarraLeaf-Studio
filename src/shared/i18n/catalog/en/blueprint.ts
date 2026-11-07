@@ -90,6 +90,26 @@ export const blueprint = {
             other: "{count} references unresolved",
         },
     },
+    /**
+     * Pasting the blueprint text format onto the canvas. The reason line is the text compiler's own
+     * message, which is English in both languages, the same as the command-line tools report it.
+     */
+    textPaste: {
+        pasted: {
+            one: "{count} node pasted from blueprint text",
+            other: "{count} nodes pasted from blueprint text",
+        },
+        warnings: {
+            one: "{count} warning",
+            other: "{count} warnings",
+        },
+        refusedAtLine: "Blueprint text not pasted. Line {line}: {reason}",
+        refused: "Blueprint text not pasted: {reason}",
+        moreProblems: {
+            one: "{count} more problem",
+            other: "{count} more problems",
+        },
+    },
     addNode: {
         close: "Close add node menu",
         searchPlaceholder: "Search nodes",

@@ -76,6 +76,22 @@ export const blueprint = {
             other: "{count} 处引用未解析",
         },
     },
+    textPaste: {
+        pasted: {
+            one: "已从蓝图文本粘贴 {count} 个节点",
+            other: "已从蓝图文本粘贴 {count} 个节点",
+        },
+        warnings: {
+            one: "{count} 条警告",
+            other: "{count} 条警告",
+        },
+        refusedAtLine: "蓝图文本未粘贴，第 {line} 行：{reason}",
+        refused: "蓝图文本未粘贴：{reason}",
+        moreProblems: {
+            one: "另有 {count} 处问题",
+            other: "另有 {count} 处问题",
+        },
+    },
     addNode: {
         close: "关闭添加节点菜单",
         searchPlaceholder: "搜索节点",

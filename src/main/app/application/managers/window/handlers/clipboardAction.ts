@@ -80,3 +80,31 @@ export class ClipboardReadEditorSelectionHandler extends IPCHandler<IPCEventType
         }
     }
 }
+
+/**
+ * The clipboard's plain text, for the blueprint canvas's text paste.
+ *
+ * Read in main for the reason the selections are: the paste is a keybinding, cancelled before
+ * Chromium raises a `paste` event, and the renderer has no clipboard of its own to read. Bounded by
+ * the same ceiling as an editor selection, so a runaway clipboard cannot reach a parser.
+ */
+export class ClipboardReadPlainTextHandler extends IPCHandler<IPCEventType.clipboardReadPlainText> {
+    readonly name = IPCEventType.clipboardReadPlainText;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<{ text: string | null }> {
+        if (!isClipboardWindow(window)) {
+            return this.success({ text: null });
+        }
+        try {
+            const text = clipboard.readText();
+            if (!text || Buffer.byteLength(text, "utf8") > STUDIO_CLIPBOARD_MAX_BYTES) {
+                return this.success({ text: null });
+            }
+            return this.success({ text });
+        } catch (error) {
+            window.app.logger.warn(`[Clipboard] could not read plain text: ${String(error)}`);
+            return this.success({ text: null });
+        }
+    }
+}

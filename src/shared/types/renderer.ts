@@ -1597,6 +1597,8 @@ export interface RendererPreloadedInterface {
     clipboard: {
         writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
         readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
+        /** The clipboard's plain text; `null` when it holds none. Read by the blueprint canvas's text paste. */
+        readPlainText(): Promise<RequestStatus<{ text: string | null }>>;
     };
 
     /**

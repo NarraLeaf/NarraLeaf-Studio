@@ -1077,6 +1077,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload }),
         readEditorSelection: (kind: StudioClipboardKind) =>
             ipcClient.invoke(IPCEventType.clipboardReadEditorSelection, { kind }),
+        readPlainText: () =>
+            ipcClient.invoke(IPCEventType.clipboardReadPlainText, {}),
     },
 
     puppetRuntimes: {
