@@ -14,7 +14,7 @@ import type { BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprin
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { parseBlueprintText } from "@/lib/blueprint-cli/dsl/parse";
 import { compileBlueprintDocument } from "@/lib/blueprint-cli/dsl/compile";
-import { BLUEPRINT_OWNER_GRAMMAR } from "@/lib/blueprint-cli/dsl/ownerGrammar";
+import { blueprintOwnerFieldsOf } from "@/lib/blueprint-cli/dsl/ownerGrammar";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
@@ -60,7 +60,7 @@ export function buildBlueprintLayerTemplate(
         return null;
     }
     blueprintAst.ownerKind = target.owner.kind;
-    blueprintAst.ownerFields = ownerFieldsOf(target.owner);
+    blueprintAst.ownerFields = blueprintOwnerFieldsOf(target.owner);
 
     const compiled = compileBlueprintDocument(parsed.document, {
         resolveWidgetElementType: () => target.widgetElementType,
@@ -124,18 +124,6 @@ export function pickFeaturedBlueprintTemplates(available: readonly BlueprintLaye
         .sort((a, b) => a.featured! - b.featured!);
     const rest = available.filter(template => template.featured === undefined);
     return [...ranked, ...rest].slice(0, FEATURED_BLUEPRINT_TEMPLATE_COUNT);
-}
-
-function ownerFieldsOf(owner: BlueprintOwnerRef): Record<string, string> {
-    const carried = owner as unknown as Record<string, unknown>;
-    const fields: Record<string, string> = {};
-    for (const field of BLUEPRINT_OWNER_GRAMMAR[owner.kind]) {
-        const value = carried[field.prop];
-        if (typeof value === "string" && value.length > 0) {
-            fields[field.prop] = value;
-        }
-    }
-    return fields;
 }
 
 /** Whether a key head in `graph` listens for a key the blueprint already answers through an action. */

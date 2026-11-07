@@ -439,6 +439,8 @@ export enum IPCEventType {
 
     clipboardWriteEditorSelection = "clipboard.editorSelection.write",
     clipboardReadEditorSelection = "clipboard.editorSelection.read",
+    clipboardReadPlainText = "clipboard.plainText.read",
+    clipboardWritePlainText = "clipboard.plainText.write",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -4363,6 +4365,30 @@ export type IPCAssetEvents = {
             kind: StudioClipboardKind;
         },
         response: { payload: string | null };
+    };
+    /**
+     * The clipboard's plain text, for an editor that accepts a text format on paste (the blueprint
+     * canvas reads the blueprint text format). `text: null` when there is none, or when it is larger
+     * than an editor selection may be.
+     */
+    [IPCEventType.clipboardReadPlainText]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { text: string | null };
+    };
+    /**
+     * Plain text onto the clipboard, for an editor that copies a text format (the blueprint canvas's
+     * Copy as Text). `stored: false` when main declined it: not a workspace window, empty, or larger
+     * than an editor selection may be.
+     */
+    [IPCEventType.clipboardWritePlainText]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            text: string;
+        },
+        response: { stored: boolean };
     };
 };
 

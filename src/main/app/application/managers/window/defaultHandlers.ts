@@ -173,7 +173,9 @@ import { AssetExportToFileHandler, AssetExportToFolderHandler, AssetFetchRemoteH
 import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./handlers/assetTransferAction";
 import {
     ClipboardReadEditorSelectionHandler,
+    ClipboardReadPlainTextHandler,
     ClipboardWriteEditorSelectionHandler,
+    ClipboardWritePlainTextHandler,
 } from "./handlers/clipboardAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
@@ -463,6 +465,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AssetTransferRedeemHandler(),
         new ClipboardWriteEditorSelectionHandler(),
         new ClipboardReadEditorSelectionHandler(),
+        new ClipboardReadPlainTextHandler(),
+        new ClipboardWritePlainTextHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers

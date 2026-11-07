@@ -1901,6 +1901,7 @@ export const workspace = {
                     copy: "Copy Nodes",
                     cut: "Cut Nodes",
                     paste: "Paste Nodes",
+                    copyAsText: "Copy Nodes as Text",
                 },
                 // The Search panel: its replaces, each taken back across every scene it touched.
                 search: {

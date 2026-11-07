@@ -28,6 +28,7 @@ step that needs it, not all at once.
 | Translation and voice | translating the game, wiring voice recordings | `references/localization-and-voice.md` | `agent_guide {chapter:"localization-and-voice"}` |
 | Troubleshooting | after any refusal you do not understand | `references/troubleshooting.md` | `agent_guide {chapter:"troubleshooting"}` |
 | Brief template | step 1 | `assets/brief-template.md` | (copy it into the chat) |
+| Catalogue | looking up what a node, a widget field, a story command, a shortcut or a help topic is called in the interface | `references/catalog/README.md` | (files only; generated from the Studio source. For the project you have open, `blueprint_nodes` and `blueprint_node` answer live, plugin nodes included) |
 
 The same chapters are MCP resources at `narraleaf://guide/<chapter>`. If you cannot open the files,
 call `agent_guide`.
