@@ -130,6 +130,7 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 复制节点 · Copy Nodes：`⌘C`（macOS）/ `Ctrl+C`（Windows）
 - 剪切节点 · Cut Nodes：`⌘X`（macOS）/ `Ctrl+X`（Windows）
 - 粘贴节点 · Paste Nodes：`⌘V`（macOS）/ `Ctrl+V`（Windows）
+- 将节点复制为文本 · Copy Nodes as Text：`⌘⇧C`（macOS）/ `Ctrl+Shift+C`（Windows）
 - 在蓝图总览中查找 · Find in Blueprint Overview：`⌘F`（macOS）/ `Ctrl+F`（Windows）
 - 平移画布 · Pan the Canvas：中键拖动 · Middle-drag；Ctrl+拖动 · Ctrl+Drag；滚动滚轮 · Scroll（不可改 · fixed）
 - 以指针为中心缩放 · Zoom at the Pointer：Ctrl+滚动滚轮 · Ctrl+Scroll（不可改 · fixed）

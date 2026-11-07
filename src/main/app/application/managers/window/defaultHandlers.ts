@@ -175,6 +175,7 @@ import {
     ClipboardReadEditorSelectionHandler,
     ClipboardReadPlainTextHandler,
     ClipboardWriteEditorSelectionHandler,
+    ClipboardWritePlainTextHandler,
 } from "./handlers/clipboardAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
@@ -465,6 +466,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ClipboardWriteEditorSelectionHandler(),
         new ClipboardReadEditorSelectionHandler(),
         new ClipboardReadPlainTextHandler(),
+        new ClipboardWritePlainTextHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers

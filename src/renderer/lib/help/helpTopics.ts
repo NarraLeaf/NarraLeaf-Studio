@@ -473,6 +473,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "blueprint.pan",
             "blueprint.copy",
             "blueprint.paste",
+            "blueprint.copy-as-text",
             "blueprint.undo",
         ],
         related: ["scripts", "uiBindings", "uiSurfaces", "storyVariables"],

@@ -1088,6 +1088,7 @@ Widgets that belong together can be saved as a component and placed on any scree
 - 同一个事件可以由多个事件头监听；事件发生时它们同时开始，互不等待
 - 问题列在画布下方，选中一条即选中它指向的对象
 - 粘贴蓝图文本格式的内容（例如 AI 工具写出的图层），其中的节点和连线添加到当前图中，可一次撤销；文本有错误时不添加任何内容，通知中注明出错的行
+- 节点右键菜单中的「复制为文本」将所选节点以同一格式复制到剪贴板，可粘贴到其他图中或 AI 工具里
 - 每个节点及其引脚列在官网的节点参考中，点击下方「打开完整页面」前往
 
 A blueprint defines what a screen does: what runs when a button is pressed, what runs when the screen opens. Every graph starts from an event.
@@ -1103,6 +1104,7 @@ Execution follows the wires between the nodes. One kind of wire sets the order o
 - Several event heads can listen for the same event. They all start when it happens, and none waits for another to finish.
 - Problems are listed under the canvas, and selecting one selects what it refers to.
 - Pasting blueprint text, such as a layer written in the blueprint text format by an AI tool, adds its nodes and wires to the open graph as one undo step. Text with an error adds nothing, and a notification names the line.
+- Copy as Text, on a node's right-click menu, puts the selected nodes on the clipboard in the same format, ready to paste into another graph or an AI tool.
 - The node reference on the website lists every node and its pins. Open the full page, below, goes there.
 
 相关快捷键 · Shortcuts：
@@ -1113,6 +1115,7 @@ Execution follows the wires between the nodes. One kind of wire sets the order o
 - 平移画布 · Pan the Canvas：中键拖动 · Middle-drag；Ctrl+拖动 · Ctrl+Drag；滚动滚轮 · Scroll
 - 复制节点 · Copy Nodes：`⌘C`（macOS）/ `Ctrl+C`（Windows）
 - 粘贴节点 · Paste Nodes：`⌘V`（macOS）/ `Ctrl+V`（Windows）
+- 将节点复制为文本 · Copy Nodes as Text：`⌘⇧C`（macOS）/ `Ctrl+Shift+C`（Windows）
 - 撤销 · Undo：`⌘Z`（macOS）/ `Ctrl+Z`（Windows）
 
 相关主题 · Related：脚本 · Scripts、界面上的值 · Values on a screen、游戏界面 · Game screens、变量 · Variables

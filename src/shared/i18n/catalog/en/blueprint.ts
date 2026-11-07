@@ -110,6 +110,14 @@ export const blueprint = {
             other: "{count} more problems",
         },
     },
+    textCopy: {
+        menu: "Copy as Text",
+        copied: {
+            one: "{count} node copied as blueprint text",
+            other: "{count} nodes copied as blueprint text",
+        },
+        failed: "Could not put the blueprint text on the clipboard",
+    },
     addNode: {
         close: "Close add node menu",
         searchPlaceholder: "Search nodes",

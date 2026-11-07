@@ -6,6 +6,7 @@ import {
     ClipboardReadEditorSelectionHandler,
     ClipboardReadPlainTextHandler,
     ClipboardWriteEditorSelectionHandler,
+    ClipboardWritePlainTextHandler,
 } from "./clipboardAction";
 
 /**
@@ -29,12 +30,17 @@ vi.mock("electron", () => ({
         },
         readBuffer: (format: string) => clipboardStore.get(format) ?? Buffer.alloc(0),
         readText: () => clipboardStore.get("text/plain")?.toString("utf8") ?? "",
+        writeText: (text: string) => {
+            clipboardStore.clear();
+            clipboardStore.set("text/plain", Buffer.from(text, "utf8"));
+        },
     },
 }));
 
 const writeHandler = new ClipboardWriteEditorSelectionHandler();
 const readHandler = new ClipboardReadEditorSelectionHandler();
 const readTextHandler = new ClipboardReadPlainTextHandler();
+const writeTextHandler = new ClipboardWritePlainTextHandler();
 
 function makeWindow(windowType: WindowAppType = WindowAppType.Workspace): AppWindow {
     return {
@@ -105,5 +111,26 @@ describe("the plain text clipboard channel", () => {
         clipboardStore.set("text/plain", Buffer.from("anything", "utf8"));
         expect(await readTextHandler.handle(makeWindow(WindowAppType.DevMode)))
             .toEqual({ success: true, data: { text: null } });
+    });
+
+    it("puts a workspace window's text on the clipboard, in place of what was there", async () => {
+        await writeHandler.handle(makeWindow(), { kind: "ui-elements", payload: "{}" });
+        const written = await writeTextHandler.handle(makeWindow(), { text: "log: blueprint.log" });
+
+        expect(written).toEqual({ success: true, data: { stored: true } });
+        expect(await readTextHandler.handle(makeWindow())).toEqual({ success: true, data: { text: "log: blueprint.log" } });
+        expect(await readHandler.handle(makeWindow(), { kind: "ui-elements" })).toEqual({ success: true, data: { payload: null } });
+    });
+
+    it("declines empty or oversized text, and any window that is not a workspace", async () => {
+        clipboardStore.set("text/plain", Buffer.from("kept", "utf8"));
+        for (const [window, text] of [
+            [makeWindow(), ""],
+            [makeWindow(), "x".repeat(STUDIO_CLIPBOARD_MAX_BYTES + 1)],
+            [makeWindow(WindowAppType.DevMode), "log: blueprint.log"],
+        ] as const) {
+            expect(await writeTextHandler.handle(window, { text })).toEqual({ success: true, data: { stored: false } });
+        }
+        expect(await readTextHandler.handle(makeWindow())).toEqual({ success: true, data: { text: "kept" } });
     });
 });

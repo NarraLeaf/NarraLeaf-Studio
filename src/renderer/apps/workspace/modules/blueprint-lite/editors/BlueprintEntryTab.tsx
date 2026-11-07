@@ -212,6 +212,7 @@ import {
     importForeignGraphAssets,
     isGraphPasteRefusal,
     publishGraphClipboard,
+    publishGraphText,
     readGraphClipboardEnvironment,
     reportForeignGraphPaste,
     reportGraphTextPaste,
@@ -219,6 +220,7 @@ import {
     resolveGraphPasteSource,
     type ForeignGraphPasteReport,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboardBridge";
+import { printBlueprintGraphText } from "@/lib/workspace/services/ui-editor/blueprint/graphTextCopy";
 import { readBlueprintTextPaste } from "@/lib/workspace/services/ui-editor/blueprint/graphTextPaste";
 import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
@@ -1002,6 +1004,35 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
     }, [fillGraphClipboard]);
 
+    /**
+     * Put `nodeIds` on the clipboard as blueprint text, the format a paste here reads back.
+     *
+     * Only the platform clipboard is written. The in-window copy is left as it was: a paste reads
+     * the text ahead of it, and a Ctrl+C after this replaces both the usual way.
+     */
+    const copyGraphNodesAsText = useCallback(
+        (nodeIds: readonly string[]) => {
+            const activeIr = activeIrRef.current;
+            const copied = activeIr ? buildBlueprintGraphClipboardPayload(activeIr, nodeIds) : null;
+            if (!copied) {
+                return;
+            }
+            const blueprint = localBp.getBlueprintDocument().blueprints[payload.blueprintId];
+            const text = printBlueprintGraphText(copied, blueprint?.members?.variables);
+            if (text) {
+                void publishGraphText(uiService, text, copied.nodeIds.length);
+            }
+        },
+        [localBp, payload.blueprintId, uiService],
+    );
+
+    const copySelectedGraphNodesAsText = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        copyGraphNodesAsText(editor.selectedNodeIds);
+    }, [copyGraphNodesAsText, editor.selectedNodeIds]);
+
     const cutSelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
@@ -1139,6 +1170,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 handler: copySelectedGraphNodes,
             },
             {
+                id: "copy-as-text",
+                key: "mod+shift+c",
+                handler: copySelectedGraphNodesAsText,
+            },
+            {
                 id: "cut",
                 key: "mod+x",
                 handler: freeze.run(cutSelectedGraphNodes),
@@ -1151,6 +1187,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         ],
         [
             copySelectedGraphNodes,
+            copySelectedGraphNodesAsText,
             cutSelectedGraphNodes,
             freeze,
             localBp,
@@ -2556,6 +2593,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
                         onCreateGroupFrame={onCreateGroupFrame}
+                        onCopyNodesAsText={copyGraphNodesAsText}
                         structTypeContext={structTypeContext}
                     />
                 </div>

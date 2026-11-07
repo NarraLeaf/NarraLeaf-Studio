@@ -108,3 +108,34 @@ export class ClipboardReadPlainTextHandler extends IPCHandler<IPCEventType.clipb
         }
     }
 }
+
+/**
+ * Plain text onto the clipboard, for the blueprint canvas's Copy as Text.
+ *
+ * Written in main rather than through the renderer's own clipboard because a detached editor window
+ * shares its opener's realm, and the opener's clipboard refuses a write while that window is not the
+ * focused one. Same window rule and the same ceiling as an editor selection.
+ */
+export class ClipboardWritePlainTextHandler extends IPCHandler<IPCEventType.clipboardWritePlainText> {
+    readonly name = IPCEventType.clipboardWritePlainText;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { text }: IPCEvents[IPCEventType.clipboardWritePlainText]["data"],
+    ): RequestStatus<{ stored: boolean }> {
+        if (!isClipboardWindow(window) || typeof text !== "string" || text.length === 0) {
+            return this.success({ stored: false });
+        }
+        if (Buffer.byteLength(text, "utf8") > STUDIO_CLIPBOARD_MAX_BYTES) {
+            return this.success({ stored: false });
+        }
+        try {
+            clipboard.writeText(text);
+            return this.success({ stored: true });
+        } catch (error) {
+            window.app.logger.warn(`[Clipboard] could not write plain text: ${String(error)}`);
+            return this.success({ stored: false });
+        }
+    }
+}

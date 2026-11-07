@@ -440,6 +440,7 @@ export enum IPCEventType {
     clipboardWriteEditorSelection = "clipboard.editorSelection.write",
     clipboardReadEditorSelection = "clipboard.editorSelection.read",
     clipboardReadPlainText = "clipboard.plainText.read",
+    clipboardWritePlainText = "clipboard.plainText.write",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -4375,6 +4376,19 @@ export type IPCAssetEvents = {
         consumer: IPCType.Host,
         data: {},
         response: { text: string | null };
+    };
+    /**
+     * Plain text onto the clipboard, for an editor that copies a text format (the blueprint canvas's
+     * Copy as Text). `stored: false` when main declined it: not a workspace window, empty, or larger
+     * than an editor selection may be.
+     */
+    [IPCEventType.clipboardWritePlainText]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            text: string;
+        },
+        response: { stored: boolean };
     };
 };
 

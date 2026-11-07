@@ -1590,6 +1590,7 @@ export const workspace = {
                     copy: "复制节点",
                     cut: "剪切节点",
                     paste: "粘贴节点",
+                    copyAsText: "将节点复制为文本",
                 },
                 // 搜索面板：撤销或重做一次替换，涉及它改过的每个场景。
                 search: {

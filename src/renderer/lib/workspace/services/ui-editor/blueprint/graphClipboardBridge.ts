@@ -398,6 +398,28 @@ async function readSystemClipboardPayload(): Promise<BlueprintGraphClipboardPayl
     }
 }
 
+/**
+ * Put the selection's blueprint text on the clipboard and say so.
+ *
+ * Replaces whatever was there, Studio's own format included: the author asked for text, and a paste
+ * back onto a canvas reads the text anyway. A text that could not be written is reported, since the
+ * author would otherwise paste whatever the clipboard held before.
+ */
+export async function publishGraphText(uiService: UIService | null, text: string, nodes: number): Promise<boolean> {
+    let stored = false;
+    try {
+        const status = await getInterface().clipboard.writePlainText(text);
+        stored = status.success && status.data.stored;
+    } catch (error) {
+        console.warn("[graphClipboard] could not write the clipboard's text", error);
+    }
+    uiService?.showNotification(
+        stored ? translateN("blueprint.textCopy.copied", nodes) : translate("blueprint.textCopy.failed"),
+        stored ? "info" : "error",
+    );
+    return stored;
+}
+
 async function readSystemClipboardText(): Promise<string | null> {
     try {
         const status = await getInterface().clipboard.readPlainText();

@@ -116,6 +116,13 @@ its nodes and edges to the graph open in that editor:
 Text written for pasting needs no `owner=` or `id=`, so give the author the layer body - the node,
 `<-` and `->` lines - and name the blueprint and layer it belongs in.
 
+The other way round, **Copy as Text** on a node's right-click menu (Ctrl/Cmd+Shift+C by default)
+puts the selected nodes on the clipboard as a bare body: each node named after the last part of its
+type (`log`, `log2`), with its fields and `@x,y`, then the edges among them. A Get / Set Local names
+its variable, and a `var` line above the nodes gives that variable's type. Wires to nodes outside the
+selection are left out. When an author pastes graph text into a question, it is most likely this; an
+answer in the same shape can be pasted straight back.
+
 ## Nodes you will reach for
 
 Verify each with `blueprint_node` - pins and fields change.

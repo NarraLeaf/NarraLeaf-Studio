@@ -92,6 +92,14 @@ export const blueprint = {
             other: "另有 {count} 处问题",
         },
     },
+    textCopy: {
+        menu: "复制为文本",
+        copied: {
+            one: "已将 {count} 个节点复制为蓝图文本",
+            other: "已将 {count} 个节点复制为蓝图文本",
+        },
+        failed: "无法将蓝图文本写入剪贴板",
+    },
     addNode: {
         close: "关闭添加节点菜单",
         searchPlaceholder: "搜索节点",

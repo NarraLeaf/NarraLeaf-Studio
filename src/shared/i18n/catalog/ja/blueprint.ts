@@ -93,6 +93,14 @@ export const blueprint = {
             other: "ほか {count} 件の問題",
         },
     },
+    textCopy: {
+        menu: "テキストとしてコピー",
+        copied: {
+            one: "{count} 個のノードをブループリントテキストとしてコピーした",
+            other: "{count} 個のノードをブループリントテキストとしてコピーした",
+        },
+        failed: "ブループリントテキストをクリップボードに書き込めなかった",
+    },
     addNode: {
         close: "ノード追加のメニューを閉じる",
         searchPlaceholder: "ノードを検索",

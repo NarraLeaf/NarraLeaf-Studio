@@ -814,6 +814,8 @@ export const help = {
                 + "- Pasting blueprint text, such as a layer written in the blueprint text format by an AI tool, adds "
                 + "its nodes and wires to the open graph as one undo step. Text with an error adds nothing, and a "
                 + "notification names the line.\n"
+                + "- Copy as Text, on a node's right-click menu, puts the selected nodes on the clipboard in the same "
+                + "format, ready to paste into another graph or an AI tool.\n"
                 + "- The node reference on the website lists every node and its pins. Open the full page, below, "
                 + "goes there.",
         },
