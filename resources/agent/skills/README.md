@@ -32,17 +32,13 @@ writes, the interface conventions it keeps and the traps to avoid.
   serves it to agents that have no skill support at all.
 - **Ready-made connections.** Settings for Claude Code, Claude Desktop, opencode, Codex, Cursor and
   Gemini CLI in [`mcp-configs/`](mcp-configs/).
-- **Ren'Py porting** *(experimental)*. Moving an existing Ren'Py game, with its source, into Studio:
-  a converter-based method, Ren'Py-to-Studio mappings, and an interface traced from screenshots of
-  the running Ren'Py game.
 
-> **Ren'Py porting is still being tested and is not stable yet.** Expect gaps and differences from the
-> original game, and check the result yourself before you rely on it.
->
-> **A Ren'Py game is a program.** To trace its interface the porting skill runs the game, and a game
-> runs with your permissions on your computer. Port only games you made or trust. The skill tells the
-> agent to ask you before it runs the game or downloads or installs any tool (the Ren'Py SDK, an
-> unpacker, ffmpeg), and never to switch off a security protection to get something to run.
+> **Porting a Ren'Py game has moved.** The `narraleaf-port-renpy` skill is no longer in this
+> repository. It now lives in [Ren2Leaf](https://github.com/MewBaka/Ren2Leaf), together with the
+> Ren2Leaf wizard itself: a local tool that scans the Ren'Py game, captures its screens and writes
+> the hand-over pack the agent reads alongside the skill. Install it from there; it still needs `narraleaf-make-game` from this
+> repository, and its own warnings (porting is experimental, and running a Ren'Py game runs a
+> program on your computer) are in that repository's README.
 
 ```
 NarraLeaf-Skills/
@@ -53,7 +49,6 @@ NarraLeaf-Skills/
     references/catalog/      every blueprint node, widget property, story command, shortcut and
                              help topic, named as Studio's interface names them (Chinese and English);
                              generated from the Studio source, so never edit it by hand
-  narraleaf-port-renpy/      the Ren'Py porting skill - experimental (needs narraleaf-make-game too)
 ```
 
 ## Getting started
@@ -161,20 +156,16 @@ bridge such as `mcp-remote`, as in the Claude Desktop example.
 
 ### 3. Give your agent the skill
 
-The skill is the folder `narraleaf-make-game/`. `narraleaf-port-renpy/` is the Ren'Py porting skill; it
-relies on `narraleaf-make-game`, so install both if you are porting a Ren'Py game.
+The skill is the folder `narraleaf-make-game/`. Install it with `npx skills`, by hand, or from
+Studio - *Install Agent Skill* under *Settings -> Agent access -> Agent application* (and in
+first-run setup), *Agent -> Export Agent Skill...*, the zip first-run setup saves for Claude
+Desktop, or the guide Studio's MCP server serves (`make_game`, `agent_guide`,
+`narraleaf://guide/...`).
 
-The porting skill reads the game's source and runs the game on your computer, so it is meant for an
+Porting a Ren'Py game needs this skill **and** `narraleaf-port-renpy` from
+[Ren2Leaf](https://github.com/MewBaka/Ren2Leaf); install that one the way that repository
+describes. It reads the game's source and runs the game on your computer, so it is meant for an
 agent that works in your folders and terminal (Claude Code, Codex, opencode, Cursor, Gemini CLI).
-Where each skill is available:
-
-- **Both skills:** `npx skills`, a copy by hand, and Studio's own copies into a skill folder - *Install
-  Agent Skill* under *Settings -> Agent access -> Agent application* (and in first-run setup), and
-  *Agent -> Export Agent Skill...*, which writes this whole folder.
-- **`narraleaf-make-game` only:** the zip Studio's first-run setup saves for Claude Desktop, and the
-  guide Studio's MCP server serves (`make_game`, `agent_guide`, `narraleaf://guide/...`). To give
-  Claude Desktop or claude.ai the porting skill as well, zip `narraleaf-port-renpy/` yourself and
-  upload it as a second skill.
 
 #### With npx
 
@@ -215,7 +206,7 @@ Agents that read `AGENTS.md` (opencode, Codex, Cursor, Gemini CLI with the setti
 others) then find the pointer to the skill on their own.
 
 **Even without any of that, the agent still gets the game-making guide**, because Studio's MCP server
-serves it itself (the Ren'Py porting skill is not served this way):
+serves it itself:
 
 - the **`make_game` prompt** - in clients that show MCP prompts (often as a slash command such as
   `/make_game`, or `/mcp__narraleaf__make_game` in Claude Code), it starts the whole workflow;

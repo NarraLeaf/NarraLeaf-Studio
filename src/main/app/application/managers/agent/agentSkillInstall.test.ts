@@ -82,11 +82,11 @@ describe("changedSkillFolders", () => {
         expect(await changedSkillFolders(fs, source, target)).toEqual([]);
 
         await writeFile(path.join(target, AGENT_INSTALLED_SKILLS[0], "SKILL.md"), `studio ${AGENT_INSTALLED_SKILLS[0]}`);
+        await writeFile(path.join(target, "their-skill", "SKILL.md"), "theirs");
         expect(await changedSkillFolders(fs, source, target)).toEqual([]);
 
-        await writeFile(path.join(target, AGENT_INSTALLED_SKILLS[1], "SKILL.md"), "edited by the author");
-        await writeFile(path.join(target, "their-skill", "SKILL.md"), "theirs");
-        expect(await changedSkillFolders(fs, source, target)).toEqual([AGENT_INSTALLED_SKILLS[1]]);
+        await writeFile(path.join(target, AGENT_INSTALLED_SKILLS[0], "SKILL.md"), "edited by the author");
+        expect(await changedSkillFolders(fs, source, target)).toEqual([AGENT_INSTALLED_SKILLS[0]]);
     });
 });
 
