@@ -299,6 +299,13 @@ export const DEV_MODE_AGENT_BUDGET_MS = {
 export const DEV_MODE_AGENT_ANSWER_GRACE_MS = 5_000;
 
 /**
+ * How long a Dev Mode session an agent opened may sit with no play-test call before Studio closes it,
+ * in milliseconds. The window is hidden while the agent holds it, so a session the agent forgot to
+ * stop would otherwise keep a whole game running where nobody can see it.
+ */
+export const DEV_MODE_AGENT_IDLE_MS = 5 * 60_000;
+
+/**
  * The `code` a refused play-test action carries (`RequestStatus.code`), so the agent tool can say
  * what to do about it without matching on prose.
  */

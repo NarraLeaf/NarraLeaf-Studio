@@ -2,6 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const devMode = {
     title: "开发模式",
+    agentHeldTitle: "开发模式 - Agent 正在使用，仅供查看",
     dismiss: "关闭",
     surfaceUnavailable: "界面不可用",
     waitingPayload: "正在等待开发模式数据…",

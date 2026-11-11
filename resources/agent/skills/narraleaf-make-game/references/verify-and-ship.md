@@ -47,8 +47,14 @@ never be true, or a leftover skeleton demo scene (`scene_delete` it once nothing
 
 ## 3. Playtest
 
-`playtest_start` opens the game in Dev Mode, which the author sees too. With `scene` (and optionally
-`row`) it starts there; without, it starts as a player would, on the splash and title.
+`playtest_start` opens the game in Dev Mode. With `scene` (and optionally `row`) it starts there;
+without, it starts as a player would, on the splash and title.
+
+The Dev Mode window you open is yours while it runs. It opens hidden; the status bar tells the author
+an agent is using Dev Mode, and they can show the window to watch, but not click or type in it, and
+closing it only hides it. They are asked before stopping it. Studio stops it after **5 minutes
+without a playtest call**: when a call says Dev Mode is not running, `playtest_start` again. The
+author starting Dev Mode themselves takes it back.
 
 How the playtest tools behave:
 

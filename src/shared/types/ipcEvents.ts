@@ -352,6 +352,8 @@ export enum IPCEventType {
     devModeWindowCloseRequested = "devMode.window.closeRequested",
     devModeAgentControl = "devMode.agent.control",
     devModeAgentDrive = "devMode.agent.drive",
+    devModeAgentHoldChanged = "devMode.agent.holdChanged",
+    devModeReveal = "devMode.reveal",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -2976,6 +2978,13 @@ export type IPCDevModeEvents = {
         data: {
             projectPath: string;
             entry: DevModeEntry;
+            /**
+             * Launched by an agent's `playtest_start`. The session is then held by the agent: its
+             * window opens hidden, takes no input from the author, hides rather than closes when the
+             * author closes it, and is stopped after {@link DEV_MODE_AGENT_IDLE_MS} without a
+             * play-test call. A launch without it hands the session back to the author.
+             */
+            agent?: boolean;
         },
         response: {
             status: DevModeStatus;
@@ -3014,6 +3023,19 @@ export type IPCDevModeEvents = {
         },
         response: {
             status: DevModeStatus;
+            /** The session is held by an agent; see `agent` on {@link IPCEventType.devModeLaunch}. */
+            agentHeld: boolean;
+        };
+    };
+    /** Show the project's Dev Mode window and bring it forward; the way to look at one an agent holds. */
+    [IPCEventType.devModeReveal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            revealed: boolean;
         };
     };
     /** Payload includes optional blueprint forward-compat fields on `DevModeBundle.ui` (M1+). */
@@ -3192,6 +3214,17 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Client,
         data: { action: DevModeAgentAction };
         response: RequestStatus<DevModeAgentResult>;
+    };
+    /**
+     * Main → the Dev Mode window: whether an agent holds this session. While it does the page turns
+     * away the author's own pointer and keys and says why; the agent's acts are synthetic events and
+     * pass. Sent on every change and again once the window is ready.
+     */
+    [IPCEventType.devModeAgentHoldChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { held: boolean };
+        response: never;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,

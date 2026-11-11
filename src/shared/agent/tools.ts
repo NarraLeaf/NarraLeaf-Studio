@@ -942,7 +942,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     drivesGame(ws(
         "playtest_start",
         "Play the game",
-        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
+        "Opens the game in Dev Mode, from the title page or from a scene (and row). The window is yours while it runs: it opens hidden, the author can show it from the status bar but cannot click or type in it, and closing it only hides it. Studio stops it after 5 minutes without a playtest call; start again if a call says Dev Mode is not running. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
     )),
     drivesGame(ws(

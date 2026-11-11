@@ -32,7 +32,7 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
 
     public async handle(
         window: AppWindow,
-        { projectPath, entry }: IPCEvents[IPCEventType.devModeLaunch]["data"],
+        { projectPath, entry, agent }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
         return this.tryUse(async () => {
             // The window's project, not the payload's. Dev Mode compiles and runs the named
@@ -45,9 +45,28 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
             // somebody else's project that happens to be trusted, that gate said yes about a
             // project this window was never opened on.
             const status = await window.getApp().getDevModeManager()
-                .launch(requireWindowProject(window, projectPath), entry);
+                .launch(requireWindowProject(window, projectPath), entry, { agent: agent === true });
             return { status };
         });
+    }
+}
+
+/**
+ * Show the project's Dev Mode window, for the author to look at a session an agent holds (its window
+ * opens hidden). The window's project, not the payload's, for the reason {@link DevModeLaunchHandler}
+ * gives.
+ */
+export class DevModeRevealHandler extends IPCHandler<IPCEventType.devModeReveal> {
+    readonly name = IPCEventType.devModeReveal;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeReveal]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.devModeReveal]["response"]>> {
+        return this.tryUse(async () => ({
+            revealed: window.getApp().getDevModeManager().reveal(requireWindowProject(window, projectPath)),
+        }));
     }
 }
 
@@ -368,14 +387,14 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
     public handle(
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.devModeGetStatus]["data"],
-    ): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
+    ): RequestStatus<IPCEvents[IPCEventType.devModeGetStatus]["response"]> {
         // The window's project, not the payload's. The status of another author's session is not
         // much on its own, but this is the one channel that answers "is that project running", and
         // it is polled - which is how a session is watched rather than merely glimpsed.
         try {
-            const status = window.getApp().getDevModeManager()
-                .getStatus(requireWindowProject(window, projectPath));
-            return this.success({ status });
+            const manager = window.getApp().getDevModeManager();
+            const project = requireWindowProject(window, projectPath);
+            return this.success({ status: manager.getStatus(project), agentHeld: manager.isAgentHeld(project) });
         } catch (error) {
             return this.failed(error);
         }

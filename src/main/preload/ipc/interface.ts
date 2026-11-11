@@ -510,14 +510,20 @@ export const IPCInterface: RendererPreloadedInterface = {
     },
 
     devMode: {
-        launch: (projectPath: string, entry: DevModeEntry) =>
-            ipcClient.invoke(IPCEventType.devModeLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        launch: (projectPath: string, entry: DevModeEntry, options?: { agent?: boolean }) =>
+            ipcClient.invoke(IPCEventType.devModeLaunch, {
+                projectPath,
+                entry,
+                ...(options?.agent ? { agent: true } : {}),
+            }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        reveal: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeReveal, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
         stop: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeStop, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         reload: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus; agentHeld: boolean }>>,
         getWindowScaleOptions: (
             design: { width: number; height: number },
             chrome: { width: number; height: number },
@@ -555,6 +561,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
         onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
             ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
+        onAgentHoldChanged: (handler: (payload: { held: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentHoldChanged, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
