@@ -9,7 +9,8 @@
  */
 
 import { i18nStore } from "@/lib/i18n";
-import { ensureWidgetModulesRegistered, widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { bilingual, type CatalogLocale } from "./catalogText";
