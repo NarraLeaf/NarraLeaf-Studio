@@ -16,7 +16,7 @@ Studio/editor 偏好现在只有一套设置存储：Electron `userData/state/gl
 | 应用全局设置              | `getInterface().app.state.*` / `GlobalStateManager`                 | `userData/state/global.json`                                                          |
 | Workspace/editor 设置 | `GlobalSettingsService`                                             | 同一个 `global.json`                                                                     |
 | Settings 窗口设置       | `SettingsApp` + `app.state.getGlobalState/setGlobalState`           | 同一个 `global.json`                                                                     |
-| 项目配置                | `ProjectService` / project wizard / project config helpers          | 项目根 `.nlproj`，legacy fallback 为 `project.json`                                        |
+| 项目配置                | `ProjectService` / project wizard / project config helpers          | 项目根 `.nlproj`                                        |
 | 项目内容设置              | 对应功能 service，例如 `StoryService`、`UIDocumentService`、`UIGraphService` | 项目内功能文件，例如 `editor/story/index.json`、`editor/ui/uidoc.json`、`editor/ui/uigraphs.json` |
 
 
@@ -47,7 +47,7 @@ Workspace/editor 设置：
 项目配置：
 
 `ProjectService`
-→ 读取项目根 `.nlproj`，找不到时 fallback 到 legacy `project.json`
+→ 读取项目根 `.nlproj`
 → 返回 `ProjectConfig`
 
 项目内容设置：
@@ -58,6 +58,8 @@ Workspace/editor 设置：
 
 ## 入口文件
 
+- Renderer read subscriptions：`src/renderer/lib/settings/observeGlobalSettings.ts`、`useGlobalSettings.ts`。先订阅再读取，每个键独立判断初始读取是否已被广播更新。
+- Editable panel preferences：`src/renderer/lib/settings/useGlobalSettingDraft.ts`。草稿独立于已确认值，写入串行；失败保留草稿并提供重试。
 - Renderer global settings wrapper：`src/renderer/lib/workspace/services/GlobalSettingsService.ts`
 - Main global state：`src/main/app/application/managers/storage/globalState.ts`
 - Global state types/defaults：`src/shared/types/state/globalState.ts`
@@ -73,7 +75,7 @@ Workspace/editor 设置：
 
 可以写项目文件的内容：
 
-- 项目身份和元数据：name、identifier、metadata、resolution 等，写 `.nlproj` / legacy `project.json`。
+- 项目身份和元数据：name、identifier、metadata、resolution 等，写 `.nlproj`。
 - 会影响项目运行或导出的内容：story library、story document、UI document、UI graph、asset metadata、scripts。
 - 成品游戏对玩家的行为：`app.autoSave`（自动保存开关 / 间隔 / 保留数量），写 `.nlproj`，由 `bundleAssembler` 烘焙进 bundle 交给游戏运行时。UI 在「项目 → 游戏」。
 - 项目内容内部的业务选择：例如 `editor/story/index.json` 里的 `defaultStoryId`，它是项目 story library 的 convenience 字段。
@@ -190,8 +192,9 @@ GitCode 整仓镜像取代了它。
 ## 缓存
 
 `src/main/app/application/managers/storage/cacheInventory.ts` 是**唯一**知道 Studio 在磁盘上留了
-什么的地方。六个桶（electron-builder 缓存、插件构建依赖、Chromium 缓存、插件图标、PSD 导入
-残留、日志），都保证「删掉只损失时间，不损失工作」。`backgrounds/`、`dev-mode-saves/`、
+什么的地方。桶的完整列表是 `src/shared/types/cacheInventory.ts` 的 `CACHE_BUCKET_IDS`（插件图标、模板海报、拼写词典、
+优化图片、压缩媒体、构建依赖、工具链、Puppet 运行时、electron-builder 缓存、浏览器缓存、PSD 导入残留、
+载荷读取器、日志），都保证「删掉只损失时间，不损失工作」。`backgrounds/`、`dev-mode-saves/`、
 `plugins/`、`authorization/`、`signing/`、`state/` **不是缓存**，不在里面。
 
 ## 快速验证
@@ -199,5 +202,5 @@ GitCode 整仓镜像取代了它。
 - 修改 workspace layout / editor session / UI editor 状态后，确认 `global.json` 更新。
 - 重开 Studio 后，确认这些状态从 `global.json` 恢复。
 - 修改项目配置或项目内容后，确认对应项目文件更新，而不是 `global.json`。
-- `rg -n "ProjectSettings|projectSettings|runtime_settings|appUserSettings|userSettings" src` 不应出现结果。
+- `rg -n "runtime_settings|appUserSettings|\buserSettings\b" src` 不应出现结果；这些是已移除的旧存储名。`ProjectSettings` / `projectSettings` 是现行的项目设置分区与引用种类名，不在此列。
 

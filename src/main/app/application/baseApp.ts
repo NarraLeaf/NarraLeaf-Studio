@@ -772,17 +772,6 @@ export class BaseApp {
     }
 
     /**
-     * The native prompt behind {@link crash}. Returns whether to come back up.
-     *
-     * Synchronous, because by this point the process is on its way out and there is nothing left to
-     * await in. Only the first line of the failure is shown: the rest is a stack trace, which
-     * belongs in the log this names rather than wrapped across a message box.
-     *
-     * The line about unwritten changes reuses the crash screen's own wording rather than restating
-     * it: an author who sees both must not be told two different things about whether their last
-     * edits survived.
-     */
-    /**
      * Where the log a fatal error is written to lives, for the sentence that points at it. Best
      * effort: the profile may be exactly what failed.
      */
@@ -794,28 +783,41 @@ export class BaseApp {
         }
     }
 
+    /**
+     * The native prompt behind {@link crash}. Returns whether to come back up.
+     *
+     * Synchronous, because by this point the process is on its way out and there is nothing left to
+     * await in. Only the first line of the failure is shown: the rest is a stack trace, which
+     * belongs in the log this names rather than wrapped across a message box.
+     *
+     * The line about unwritten changes reuses the crash screen's own wording rather than restating
+     * it: an author who sees both must not be told two different things about whether their last
+     * edits survived.
+     */
     private askToRestartAfterCrash(message: string, outcome: CrashSaveOutcome): boolean {
-        const logsDir = path.join(this.getUserDataDir(), "logs");
+        // Through the guarded lookup: the failure being reported may be the profile itself, and a
+        // throw here would replace the prompt with a second, unexplained crash.
+        const logsDir = this.logsDirForCrash();
         const headline = message.split("\n", 1)[0] ?? message;
         let title = `${APP_DISPLAY_NAME}: Fatal Error`;
         let body = headline;
         let saveLine = outcome === "saved"
             ? "Unsaved changes were written to disk."
             : "Unsaved changes could not be written to disk.";
-        let detail = `The report is in ${logsDir}.`;
+        let detail = logsDir ? `The report is in ${logsDir}.` : "";
         let buttons = ["Restart", "Quit"];
         try {
             const { t } = getMainTranslator(this);
             title = t("crash.fatal.title");
             body = `${t("crash.fatal.message")}\n\n${headline}`;
             saveLine = outcome === "saved" ? t("crash.screen.saved") : t("crash.screen.saveFailed");
-            detail = t("crash.fatal.detail", { path: logsDir });
+            detail = logsDir ? t("crash.fatal.detail", { path: logsDir }) : "";
             buttons = [t("crash.fatal.restart"), t("crash.fatal.quit")];
         } catch (translationError) {
             this.logger.warn("[App] Could not translate the fatal error prompt:", translationError);
         }
         if (outcome !== "none") {
-            detail = `${saveLine}\n\n${detail}`;
+            detail = detail ? `${saveLine}\n\n${detail}` : saveLine;
         }
 
         const choice = dialog.showMessageBoxSync({

@@ -5609,6 +5609,29 @@ describe("stage object references", () => {
             expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
         });
 
+        /** The pre-posed stand-in is replaced by the box, not shown beside it. */
+        it("leaves no image behind for the puppet a row-precise launch restores", async () => {
+            const blocks = {
+                enter: characterRow("enter", "enter", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+            };
+            const document = baseDocument(blocks, Object.keys(blocks));
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                characters: [DOLL],
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId: "motion",
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "motion" }),
+                },
+            });
+
+            const launchIds = compiled.elementIdBindings.filter(id => id.startsWith("nl:launch:"));
+            expect(launchIds.filter(id => id.includes(":puppet:"))).toHaveLength(1);
+            expect(launchIds.filter(id => id.includes(":image:"))).toEqual([]);
+        });
+
         /**
          * `setName` addresses the `Character` record, not the portrait - it is how "？？？" becomes a
          * name mid-scene, and it is meant to work before anyone walks on.

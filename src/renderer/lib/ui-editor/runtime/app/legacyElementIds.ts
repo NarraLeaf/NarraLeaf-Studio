@@ -41,6 +41,7 @@
 
 import { Scene, type SavedGame } from "narraleaf-react";
 import { isSoundElementId, STORY_CAMERA_ELEMENT_ID } from "@/lib/ui-editor/runtime/game/stableElementIds";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The engine's positional names: `e-<n>` for elements, `s-<n>` for scene music nothing acted on. */
 const POSITIONAL_ID = /^[es]-\d+$/;
@@ -176,10 +177,6 @@ function owningSceneElementId(soundId: string): string | null {
         }
     }
     return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The camera's state and nothing else: a transform, perhaps a loop, and none of an image's own state. */

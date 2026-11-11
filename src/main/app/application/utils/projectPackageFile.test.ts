@@ -12,6 +12,7 @@ import {
     readProjectPackageVersion,
 } from "@shared/utils/projectPackage";
 import { ProjectPackageExportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import { unpatchedFs as nodeFs } from "../../../utils/unpatchedFs";
 import { classifyPackFailure, classifyUnpackFailure, readProjectPackageInto, writeProjectPackage } from "./projectPackageFile";
 
 const roots: string[] = [];
@@ -152,6 +153,58 @@ describe("writing a project package", () => {
         })).rejects.toThrow("editor/ui/uidoc.json");
 
         await expect(fs.stat(packagePath)).rejects.toThrow();
+    });
+
+    it.skipIf(process.platform === "win32")("closes pending output writes before rejecting an unreadable source", async () => {
+        const projectRoot = await scratch("unreadable");
+        const sourcePath = path.join(projectRoot, "unreadable.txt");
+        await fs.writeFile(sourcePath, "content");
+        await fs.chmod(sourcePath, 0o000);
+        const packagePath = path.join(await scratch("out"), "Demo.nlspkg");
+        const createStream = nodeFs.createWriteStream.bind(nodeFs);
+        let output: ReturnType<typeof createStream> | undefined;
+        const errors: unknown[] = [];
+        const streams = vi.spyOn(nodeFs, "createWriteStream").mockImplementation((...args) => {
+            output = createStream(...args);
+            output.on("error", error => errors.push(error));
+            return output;
+        });
+        const write = nodeFs.write;
+        const writes = vi.spyOn(nodeFs, "write").mockImplementation((...args: unknown[]) => {
+            const callback = args.pop() as (...values: unknown[]) => void;
+            Reflect.apply(write, nodeFs, [...args, (...values: unknown[]) => {
+                setTimeout(() => callback(...values), 30);
+            }]);
+        });
+        try {
+            await expect(writeProjectPackage({
+                projectRoot,
+                packagePath,
+                projectName: "Demo",
+                createdAt: "2026-01-01T00:00:00.000Z",
+            })).rejects.toThrow("unreadable.txt");
+            expect(output?.closed).toBe(true);
+            await expect(fs.stat(packagePath)).rejects.toThrow();
+            const errorCount = errors.length;
+            await new Promise(resolve => setTimeout(resolve, 60));
+            expect(errors).toHaveLength(errorCount);
+            await fs.chmod(sourcePath, 0o600);
+            const retried = await writeProjectPackage({
+                projectRoot,
+                packagePath,
+                projectName: "Demo",
+                createdAt: "2026-01-01T00:00:00.000Z",
+            });
+            expect(retried.fileCount).toBe(1);
+            expect(output?.closed).toBe(true);
+        } finally {
+            if (output && !output.closed) {
+                await new Promise<void>(resolve => output!.once("close", resolve));
+            }
+            writes.mockRestore();
+            streams.mockRestore();
+            await fs.chmod(sourcePath, 0o600);
+        }
     });
 });
 

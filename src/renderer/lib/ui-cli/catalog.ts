@@ -31,7 +31,7 @@ import {
     uiElementTypeTakesInteractionSounds,
 } from "@shared/types/ui-editor/interactionSounds";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
-import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
+import type { UIWidgetDeclaration } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
 import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { queryNodes } from "../blueprint-cli/catalog";
@@ -255,7 +255,7 @@ function paletteEntry(type: string): InsertPaletteConfigEntry | undefined {
  * Studio's widgets, and those of every plugin this run knows: the ones `--plugin` loaded on the
  * command line, the ones the open workspace loaded in Studio (see `widgetSource.ts`).
  */
-export function listWidgetModules(): UIWidgetModule[] {
+export function listWidgetModules(): UIWidgetDeclaration[] {
     return [...activeWidgetModuleSource().list()];
 }
 
@@ -263,7 +263,7 @@ function pluginOwnerOf(type: string): string | undefined {
     return activeWidgetModuleSource().pluginOwnerOf(type);
 }
 
-export function findWidgetModule(type: string): UIWidgetModule | undefined {
+export function findWidgetModule(type: string): UIWidgetDeclaration | undefined {
     return listWidgetModules().find(module => module.type === type);
 }
 
@@ -275,7 +275,7 @@ export function findWidgetModule(type: string): UIWidgetModule | undefined {
  * before anything can ask. A widget may also carry keys no default declares (the props naming where
  * its words come from - see `textSites.ts`), so this is the shape of a new widget, not a closed set.
  */
-function readProps(module: UIWidgetModule): Record<string, unknown> {
+function readProps(module: UIWidgetDeclaration): Record<string, unknown> {
     try {
         return (module.createDefaultElement().props ?? {}) as Record<string, unknown>;
     } catch {
@@ -298,7 +298,7 @@ function describeValue(value: unknown): string {
     return typeof value;
 }
 
-export function summariseWidget(module: UIWidgetModule): WidgetSummary {
+export function summariseWidget(module: UIWidgetDeclaration): WidgetSummary {
     const entry = paletteEntry(module.type);
     const logic: WidgetLogicApi | undefined = module.logicApi ?? getWidgetLogicApi(module.type);
     return {
@@ -317,7 +317,7 @@ export function summariseWidget(module: UIWidgetModule): WidgetSummary {
 }
 
 /** `displayName` is a translated getter; a catalogue run has no locale loaded, so it may be empty. */
-function safeDisplayName(module: UIWidgetModule): string {
+function safeDisplayName(module: UIWidgetDeclaration): string {
     try {
         return module.displayName || module.type;
     } catch {
@@ -447,7 +447,7 @@ function interactionSoundProps(type: string, props: Record<string, unknown>): Wi
  * Called with a counter for `generateId` rather than a real minter: this is asking what parts exist,
  * and the ids in the answer are thrown away.
  */
-function readParts(module: UIWidgetModule): WidgetPartDoc[] {
+function readParts(module: UIWidgetDeclaration): WidgetPartDoc[] {
     if (!module.createDefaultChildElements) {
         return [];
     }
@@ -479,7 +479,7 @@ function readSlotMarker(child: UIElement): string | undefined {
     return undefined;
 }
 
-function readEditorStates(module: UIWidgetModule): { id: string | null; name: string }[] {
+function readEditorStates(module: UIWidgetDeclaration): { id: string | null; name: string }[] {
     if (!module.listEditorStates) {
         return [];
     }

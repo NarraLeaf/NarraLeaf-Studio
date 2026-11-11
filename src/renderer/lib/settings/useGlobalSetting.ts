@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { getInterface } from "@/lib/app/bridge";
+import { useMemo, useRef } from "react";
 import type { GlobalStateKeys } from "@shared/types/state/globalState";
+import { useGlobalSettings } from "./useGlobalSettings";
 
 /**
  * One global-state preference, read once and then followed live.
@@ -19,44 +19,9 @@ import type { GlobalStateKeys } from "@shared/types/state/globalState";
  * stored at all, so resolving is the reader's job rather than the store's.
  */
 export function useGlobalSetting<T>(key: GlobalStateKeys, resolve: (stored: unknown) => T): T {
-    // Held in a ref so an inline resolver does not re-subscribe on every render. What it resolves
-    // is a function of the stored value alone, so the latest one is always the right one to use.
+    const { values } = useGlobalSettings([key]);
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
-
-    const [value, setValue] = useState<T>(() => resolve(undefined));
-
-    useEffect(() => {
-        let cancelled = false;
-        let pushed = false;
-
-        // Subscribed before the read, not after: a change that lands while the read is in flight
-        // would otherwise reach nobody, and the window would keep showing the previous value.
-        const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (change.key !== key) {
-                return;
-            }
-            pushed = true;
-            setValue(() => resolveRef.current(change.value));
-        });
-
-        void (async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState(key);
-                // A broadcast that arrived first is newer than what this read returns.
-                if (!cancelled && !pushed) {
-                    setValue(() => resolveRef.current(result.success ? result.data.value : undefined));
-                }
-            } catch {
-                // Keep the last known-good value on transient IPC failures.
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-            token?.cancel();
-        };
-    }, [key]);
-
-    return value;
+    const stored = values[key];
+    return useMemo(() => resolveRef.current(stored), [key, stored]);
 }

@@ -36,6 +36,12 @@ export class ScopeStoreBridge {
     private readonly persistentDefaults: ReadonlyMap<string, unknown>;
     /** This session's copy of each object default a reader has been handed; see `persistenceGet`. */
     private readonly persistentDefaultCopies = new Map<string, unknown>();
+    /**
+     * The values written with {@link persistenceSetSessionOnly}, kept apart so a re-read of the store
+     * does not take them away. They exist nowhere else: the store never sees them, so a reload that
+     * replaced the whole cache with the store's contents used to drop them on the floor.
+     */
+    private readonly sessionOnlyValues = new Map<string, unknown>();
     private persistenceAdapter: BlueprintPersistentStoreAdapter | null = null;
     private persistenceAdapterVersion = 0;
 
@@ -141,6 +147,9 @@ export class ScopeStoreBridge {
      * value is already readable, and a failed disk write is not something a story can act on.
      */
     public persistenceSet(key: string, value: unknown): Promise<void> {
+        // A durable write is the game's own answer for this key from now on, so a session-only value
+        // that stood in for it steps aside rather than coming back on the next re-read.
+        this.sessionOnlyValues.delete(key);
         this.applyPersistenceLocally(key, value);
         return this.writePersistenceThrough(key, value);
     }
@@ -152,8 +161,16 @@ export class ScopeStoreBridge {
      * value in the persistence scope at all is that it should outlive the window. Reach for it only
      * when the value is re-derived on every boot from something outside the store, and say which
      * something in a comment at the call site.
+     *
+     * It holds for the rest of the session, over the store: re-reading the store (every story boot
+     * does) keeps it, and only a durable write to the same key or a reset replaces it.
      */
     public persistenceSetSessionOnly(key: string, value: unknown): void {
+        if (value === undefined) {
+            this.sessionOnlyValues.delete(key);
+        } else {
+            this.sessionOnlyValues.set(key, value);
+        }
         this.applyPersistenceLocally(key, value);
     }
 
@@ -207,6 +224,7 @@ export class ScopeStoreBridge {
      */
     public resetPersistenceToDefaults(): void {
         this.persistenceValues.clear();
+        this.sessionOnlyValues.clear();
         this.persistentDefaultCopies.clear();
         this.notifyPersistence();
         announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
@@ -228,6 +246,10 @@ export class ScopeStoreBridge {
             if (value !== undefined) {
                 this.persistenceValues.set(key, value);
             }
+        }
+        // Over the store, because that is what they were written to be: see `sessionOnlyValues`.
+        for (const [key, value] of this.sessionOnlyValues) {
+            this.persistenceValues.set(key, value);
         }
         this.notifyPersistence();
         announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
@@ -251,7 +273,9 @@ export class ScopeStoreBridge {
             return this.persistenceValues.get(key);
         }
         const value = await adapter.getValue(key);
-        if (this.persistenceAdapter === adapter) {
+        // The store's answer is returned either way; it only refreshes the cache where no
+        // session-only value is standing over it.
+        if (this.persistenceAdapter === adapter && !this.sessionOnlyValues.has(key)) {
             if (value === undefined) {
                 this.persistenceValues.delete(key);
             } else {

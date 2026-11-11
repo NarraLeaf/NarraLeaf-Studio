@@ -323,7 +323,7 @@ export function writeSceneForAgent(
             "Call story_show again, redo the edit on what it prints, and pass the new revision.",
         );
     }
-    if (!story.applyAgentSceneReplacement(input.storyId, input.sceneId, input.scene, AGENT_HISTORY_LABEL)) {
+    if (!story.commitSceneReplacement(input.storyId, input.sceneId, input.scene, { label: AGENT_HISTORY_LABEL })) {
         throw refuse("unavailable", "The scene could not be written (a live session may own the story).");
     }
     const document = story.getStoryDocument(input.storyId);

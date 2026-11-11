@@ -13,10 +13,7 @@ import {
     type SaveSchemaFieldType,
     type SaveSchemaRuntimeTable,
 } from "../types/saveSchema";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The closed type set, with `string` as the fallback for anything unreadable. */
 export function normalizeSaveSchemaFieldType(valueType: unknown): SaveSchemaFieldType {

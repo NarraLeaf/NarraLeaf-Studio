@@ -613,6 +613,11 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.scopes.clear();
+        // Through each stack's own clear, so every entry's disposer runs: an entry that kept bytes
+        // aside for its undo releases them when the workspace that could undo it is gone.
+        for (const stack of this.stacks.values()) {
+            stack.clear();
+        }
         this.stacks.clear();
         this.touchOrder.length = 0;
         this.holds.clear();

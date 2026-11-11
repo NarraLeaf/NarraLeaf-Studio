@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentDiffEntry } from "@shared/documents/diff";
 import type { RevisionId } from "@shared/types/vcs";
 import { Services } from "@/lib/workspace/services/services";
-import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
+import type { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { useWorkspace } from "@/apps/workspace/context";
 
 /**
@@ -74,15 +74,7 @@ export function useDocumentDiff(
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<DocumentDiffResult | null>(null);
-    // Guards every setState behind an await: a project switch unmounts this while a read is still
-    // out, and a working-tree comparison of a real project is not instant.
-    const alive = useRef(true);
-    useEffect(() => {
-        alive.current = true;
-        return () => {
-            alive.current = false;
-        };
-    }, []);
+    const generation = useRef(0);
 
     const service = useMemo(
         () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
@@ -103,13 +95,15 @@ export function useDocumentDiff(
         if (!service) {
             return;
         }
+        const ticket = ++generation.current;
         setLoading(true);
         setError(null);
+        setResult(null);
         try {
             const answer = mode === "between" && from && to
                 ? await service.diffRevisions(from, to)
                 : await service.diffWorkingTree();
-            if (!alive.current) return;
+            if (ticket !== generation.current) return;
             setResult(answer);
             if (answer === null) {
                 // Not an exception anywhere in this stack: version control is an optional capability,
@@ -117,27 +111,25 @@ export function useDocumentDiff(
                 setError(null);
             }
         } catch (thrown) {
-            if (!alive.current) return;
+            if (ticket !== generation.current) return;
             // The previous answer is dropped rather than left on screen: it described a comparison
             // that is no longer the one being asked about, and a stale list beside a failed read is
             // the one thing this surface must never show.
             setResult(null);
             setError(thrown instanceof Error ? thrown.message : String(thrown));
         } finally {
-            if (alive.current) setLoading(false);
+            if (ticket === generation.current) setLoading(false);
         }
     }, [service, mode, from, to]);
 
-    // Keyed on the request and on `enabled`, so it fires ONCE per comparison the author asked for.
-    // Not on `read`, which changes identity with the service instance - and not on anything that
-    // moves while the tab is open, which is what would turn this into the poll the header forbids.
     useEffect(() => {
         if (!options.enabled || !service) {
+            setLoading(false);
             return;
         }
         void read();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [options.enabled, service, key]);
+        return () => { generation.current += 1; };
+    }, [options.enabled, service, key, read]);
 
     const reload = useCallback(() => {
         if (!options.enabled) {

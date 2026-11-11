@@ -78,12 +78,6 @@ export const story = {
         storyMismatch: "This file was exported from a different story.",
         stale: "This scene changed after the export; importing discards those changes.",
         sceneMissing: "This scene is no longer in the story, so it is skipped.",
-        // Undo is per open scene editor, so a multi-scene import can be undoable in part.
-        noUndo: "Importing from here cannot be undone.",
-        noUndoSome: {
-            one: "{count} of these scenes cannot be undone after importing.",
-            other: "{count} of these scenes cannot be undone after importing.",
-        },
         // Both failure paths state what happened to the project, because "an error occurred" leaves an
         // author unable to tell a refused import from a half-written one.
         planFailed: "This script could not be prepared for import. Nothing was changed.",

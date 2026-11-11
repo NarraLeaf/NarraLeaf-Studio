@@ -8,6 +8,7 @@ import {
 } from "../documentSet";
 import {mergeKeyed} from "../specs/mergeHelpers";
 import type {DocumentKind, DocumentParseContext} from "../types";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * A document set that exists only for tests, and deliberately resembles the story document.
@@ -224,10 +225,6 @@ export function notebookManifest(options: {
 
 export function notebookPage(title: string, lines: readonly string[]): NotebookPage {
     return {title, lines: [...lines]};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isString(value: unknown): value is string {

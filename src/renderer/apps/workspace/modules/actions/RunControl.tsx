@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Languages, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
@@ -23,6 +23,7 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { ProjectDlc } from "@shared/types/dlc";
+import type { LocalizationConfiguration } from "@shared/types/localization";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
@@ -30,6 +31,13 @@ import { openBuildDialog } from "./BuildDialog";
 import { openPatchDialog } from "./PatchDialog";
 import { openBuildReportTab } from "../build-report";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
+import {
+    isRunLocaleChoiceGone,
+    readRunLocaleChoice,
+    RUN_LOCALE_SETTINGS_KEY,
+    runLanguageOptions,
+    writeRunLocaleChoice,
+} from "./runLanguage";
 import {
     getTestRunService,
     isTerminalTestStatus,
@@ -213,6 +221,30 @@ export function RunControl() {
      * the same rule the edition row follows for a project with no variants.
      */
     const [assetsProtected, setAssetsProtected] = useState(false);
+    /**
+     * The project's languages and the one this machine runs Dev Mode in, for the Language row.
+     *
+     * Seeded from the services on the first render rather than only by the effects below: the row
+     * and the face both read them, and a menu that grew a row a frame after it opened would move
+     * under the pointer. The effects keep them live.
+     */
+    const [localization, setLocalization] = useState<LocalizationConfiguration | null>(
+        () => context?.services.get<ProjectService>(Services.Project).getLocalizationConfiguration() ?? null,
+    );
+    const [runLocale, setRunLocale] = useState<string | null>(() => {
+        if (!context) {
+            return null;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        return readRunLocaleChoice(settings.getSync(RUN_LOCALE_SETTINGS_KEY), projectKey);
+    });
+    const [languageOpen, setLanguageOpen] = useState(false);
+    /**
+     * The names the languages had when last seen, so a language that has just been removed can be
+     * named in the notice that says so: by then the configuration no longer holds it.
+     */
+    const languageNamesRef = useRef(new Map<string, string>());
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -222,6 +254,7 @@ export function RunControl() {
         if (!menuOpen) {
             setVariantOpen(false);
             setDlcOpen(false);
+            setLanguageOpen(false);
             setResetOpen(false);
         }
     }, [menuOpen]);
@@ -344,6 +377,73 @@ export function RunControl() {
         read();
         return project.onConfigChanged(read);
     }, [context]);
+
+    // The project's languages, followed live: an author who adds a translation in the Localization
+    // panel and comes straight here must find it in the list.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const project = context.services.get<ProjectService>(Services.Project);
+        const read = () => setLocalization(project.getLocalizationConfiguration());
+        read();
+        return project.onConfigChanged(read);
+    }, [context]);
+
+    // Which language Dev Mode runs in, from the same store the main process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => setRunLocale(readRunLocaleChoice(value, projectKey));
+        read(settings.getSync(RUN_LOCALE_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === RUN_LOCALE_SETTINGS_KEY) {
+                read(change.value);
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+
+    /**
+     * A chosen language the project no longer has is cleared, and the author is told.
+     *
+     * Cleared rather than kept: the main process refuses a Dev Mode run in a language the project
+     * does not have (it must not quietly show another one), so a choice left behind would stop every
+     * run - and when the project is down to one language the row that could change it is not even
+     * shown. The removal is the author's own act, so the notice lands while they are looking at it.
+     * The new answer is "the game decides", the same as choosing that entry, reload included.
+     */
+    useEffect(() => {
+        for (const locale of localization?.locales ?? []) {
+            languageNamesRef.current.set(locale.code, locale.displayName || locale.code);
+        }
+        if (!context || !runLocale || !isRunLocaleChoiceGone(runLocale, localization)) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        setRunLocale(null);
+        // A running Dev Mode is still showing the language that was removed, and a change to the
+        // project's languages does not reload it - so the reload choosing a language would have
+        // made happens here too, once the cleared choice is where the main process reads it.
+        const dev = context.services.get<DevModeService>(Services.DevMode);
+        void settings.set(
+            RUN_LOCALE_SETTINGS_KEY,
+            writeRunLocaleChoice(settings.getSync(RUN_LOCALE_SETTINGS_KEY), projectKey, null),
+        ).then(() => {
+            if (isDevModeRuntimeActive(dev.getStatus())) {
+                return dev.reload();
+            }
+            return undefined;
+        }).catch(error => console.warn("[run] could not apply the cleared run language", error));
+        context.services.get<UIService>(Services.UI).showNotification(
+            translate("actions.run.languageRemoved", { name: languageNamesRef.current.get(runLocale) ?? runLocale }),
+            "info",
+        );
+    }, [context, localization, runLocale]);
 
     useEffect(() => {
         if (!context) {
@@ -855,6 +955,41 @@ export function RunControl() {
         setVariantOpen(false);
     }, [context]);
 
+    /** The Language row's entries, or null where the row is not shown. */
+    const languageOptions = useMemo(() => runLanguageOptions(localization), [localization]);
+    const selectedLanguage = useMemo(
+        () => languageOptions?.find(option => option.code === runLocale) ?? null,
+        [languageOptions, runLocale],
+    );
+
+    /**
+     * Choose the language Dev Mode runs in, or null to leave it to the game.
+     *
+     * Never written into the project and never into the player's store: it is a machine habit like
+     * the edition, and the game holds it session-only. A running Dev Mode is reloaded so the choice
+     * applies at once - a language change restarts the game (see `localeRestart`), and in Dev Mode a
+     * restart is a session reload. Awaited before the reload, because the reload is what reads it.
+     */
+    const selectRunLanguage = useCallback(async (code: string | null): Promise<void> => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(RUN_LOCALE_SETTINGS_KEY);
+        const changed = readRunLocaleChoice(current, projectKey) !== code;
+        setRunLocale(code);
+        setLanguageOpen(false);
+        if (!changed) {
+            return;
+        }
+        await settings.set(RUN_LOCALE_SETTINGS_KEY, writeRunLocaleChoice(current, projectKey, code));
+        const dev = context.services.get<DevModeService>(Services.DevMode);
+        if (isDevModeRuntimeActive(dev.getStatus())) {
+            await dev.reload();
+        }
+    }, [context]);
+
     /**
      * How many of this project's DLC a run has, and how many it could.
      *
@@ -1001,6 +1136,10 @@ export function RunControl() {
         : [
             t(meta.labelKey),
             ...(selectedVariant ? [selectedVariant.name] : []),
+            // The language rides here on the same terms as the edition: a Dev Mode run that no longer
+            // follows the player's language must not look like one that does. Only under Dev Mode,
+            // the one mode it applies to.
+            ...(shownMode === "devMode" && selectedLanguage ? [selectedLanguage.displayName] : []),
             ...(mode === "preview" && assetsProtected && previewAsShipped ? [t("actions.run.asShipped")] : []),
         ].join(" · ");
 
@@ -1103,7 +1242,7 @@ export function RunControl() {
                         {/* The rule that separates the run modes from the rows that say what a run
                             IS. Drawn once for the group rather than by whichever row happens to come
                             first, because which of them is there depends on the project. */}
-                        {(variants.length > 0 || dlcs.length > 0 || assetsProtected) && (
+                        {(variants.length > 0 || dlcs.length > 0 || languageOptions || assetsProtected) && (
                             <div className="my-1 mx-2 h-px bg-fill-strong" />
                         )}
 
@@ -1205,6 +1344,62 @@ export function RunControl() {
                                         >
                                             <span className="flex-1 truncate text-left">{dlc.name}</span>
                                             <span className="w-3">{active && <Check className="h-3 w-3" />}</span>
+                                        </button>
+                                    );
+                                })}
+                            </>
+                        )}
+
+                        {/* Which language a Dev Mode run is shown in. With the edition and DLC rows,
+                            without a rule between them: all three say what a run IS. Only where the
+                            project has two or more languages - one language is one answer. The
+                            default entry leaves the language to the game, as a player gets it. */}
+                        {languageOptions && (
+                            <>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    aria-expanded={languageOpen}
+                                    aria-label={t("actions.run.language")}
+                                    data-tip={t("actions.run.languageDetail")}
+                                    data-run-language-row=""
+                                    onClick={() => setLanguageOpen(open => !open)}
+                                    className={cn(
+                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                        "text-fg-muted hover:bg-fill hover:text-fg",
+                                    )}
+                                >
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                        <Languages className="h-4 w-4" />
+                                    </span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.language")}</span>
+                                    <span className="text-fg-subtle">
+                                        {selectedLanguage?.displayName ?? t("actions.run.languageAuto")}
+                                    </span>
+                                    <span className="w-3">
+                                        <ChevronRight className={cn("h-3 w-3 transition-transform", languageOpen && "rotate-90")} />
+                                    </span>
+                                </button>
+                                {languageOpen && [null, ...languageOptions].map(option => {
+                                    const code = option?.code ?? null;
+                                    const selected = code === (selectedLanguage?.code ?? null);
+                                    return (
+                                        <button
+                                            key={code ?? ""}
+                                            type="button"
+                                            role="menuitemradio"
+                                            aria-checked={selected}
+                                            data-run-language={code ?? ""}
+                                            onClick={() => void selectRunLanguage(code)}
+                                            className={cn(
+                                                "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
+                                                selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                            )}
+                                        >
+                                            <span className="flex-1 whitespace-nowrap text-left">
+                                                {option?.displayName ?? t("actions.run.languageAuto")}
+                                            </span>
+                                            <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
                                         </button>
                                     );
                                 })}

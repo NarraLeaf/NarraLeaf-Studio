@@ -1,3 +1,5 @@
+import { isRecord } from "@shared/utils/isRecord";
+
 /**
  * What to call a Live2D model's motions in a list: a label made from each motion's file name.
  *
@@ -21,10 +23,6 @@ const MOTION_FILE_SUFFIXES = [".motion3.json", ".json"] as const;
  * name and numbers is no better than the key it would replace.
  */
 const NAMELESS_WORDS = new Set(["motion", "motions", "mtn", "anim", "animation"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** The words of a name, lower case: split at separators, at case changes and between letters and digits. */
 function wordsOf(text: string): string[] {

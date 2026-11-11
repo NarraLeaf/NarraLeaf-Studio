@@ -18,13 +18,10 @@
  */
 
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** The widgets whose fill is a choice of colour, gradient or image. */
 const IMAGE_FILL_WIDGETS = new Set(["nl.container", "nl.button"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** The value a key is drawn with at rest: the default variant's unconditional row, else the flat prop. */
 function restingValue(props: Record<string, unknown>, key: string): unknown {

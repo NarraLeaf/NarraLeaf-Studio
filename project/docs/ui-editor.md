@@ -52,7 +52,7 @@
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`、`nvl`。
 - Dialog Game UI 默认模板把推进逻辑集中在 Dialog Content 的 widgetMain 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 和默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连接到同一个 Game `Next` 节点，触发 NarraLeaf virtual click 路径。全屏透明 `nl.container` 只作为工具控件负责命中面板外点击；Dialog Panel 是视觉壳，Dialog Content 是实际顶层点击区。句子仍使用私有 `nl.dialog.sentence` 映射 NarraLeaf React `<Texts />`；说话人名使用普通 `nl.text`，通过自身 `Init` / `On Flush` 事件图读取 Game `Get Nametag` 并在空值时隐藏，不再提供特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog hook 在文本/说话人变化时会对带 Blueprint Value 或 `On Flush` 逻辑的 Dialog 元素派发 flush，因此 Dialog 不重新挂载时也会更新。
 - Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
-- Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
+- Flow parent 由 `isUIFlowLayoutParentElement` 判定：`nl.list` 及其特化类型，以及布局为 `stack` 或 `scroll` 的 `nl.container`。
 - `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。
 - Slider 的 `track` / `handle` 可以双击进入后按普通 Container 编辑外观，但它们不是普通用户子元素；运行时布局由 Slider renderer 拥有，`handle` 位置由当前映射值推导。
 - Inspector 的 Position `X` / `Y` 显示当前 Surface 的设计坐标；UIDocument 内部仍保存父级局部 `layout.x` / `layout.y`，编辑器在写入时转换。
@@ -62,7 +62,7 @@
 
 - 事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`。文档根上那张 legacy `graphs` map 已删除。
 - Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`、`widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`。
-- Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`、`nl.slider` 的 `props.value`。Text / Button / Slider 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
+- Blueprint Value 是单点属性动态数据提供方案。目标由 `BlueprintValueRuntimeStore.ts` 的 `valueTargetsFor` 解析：每个文本位点接受值绑定的控件（`uiTextSiteOf`，如 `nl.text` 的文本、`nl.button` 的标签），以及 `nl.image` 的 `imageFill.assetId`、Page 组件 `nl.frame` 的 `params`、`nl.slider` 的 `value`、`nl.switch` 的 `checked`，特化类型继承父类型的目标。检视器不使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
 - 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal，`float` 值使用 Float literal。不会创建额外刷新 layer；刷新由 Blueprint Value 内部记录的 Element 属性依赖驱动。
 - `nl.list` 私有 Blueprint 具有 Collection Events Head：`scroll`、`scrollEnd`、`itemRender`、`itemClick`、`itemHover`、`selectionChanged`。这些节点会在 List widget 的创建上下文浮窗中出现，并由真实滚动、条目渲染、点击、悬停和选中索引变化触发。
 - `nl.slider` 私有 Blueprint 具有 Slider Events Head：`dragStart`、`valueChanged`、`dragEnd`。事件 payload 默认输出映射后的 `value`；需要主动读取映射值时使用 Slider 分类下的 `Get Value`，派生显示为 `Slider:Get Value`；需要 0-1 值时使用 `Get Normalized Value`。
@@ -96,8 +96,8 @@
 
 ## 已知缺口
 
-- TypeScript Blueprint 编辑体验仍是 textarea 级 partial，没有完整 Monaco/类型提示/源码级诊断闭环。
-- Function graph service API 存在，但 Workspace UI 暴露不完整。
+- 脚本图层的源码由磁盘拥有：Studio 以只读 Monaco 视图显示 `scripts/` 下的文件（`ScriptPreviewEditor.tsx`），编辑交给外部编辑器（`ScriptOpenMenu.tsx`）。
+- 文档模型中的 `function` / `macro` graph kind 仍受校验与迁移支持，但作者无法创建它们；可复用逻辑通过 Fn head 与 Call Fn 节点表达（`built-in/fnNodes.ts`）。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
 - Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。
 - Page 作为游戏内 layer 的真实运行时 host 语义仍待 page/layer API 完成。

@@ -1,5 +1,6 @@
 import { agentRefusal, isAgentInternalToolName, type AgentCallResult, type AgentContent, type AgentErrorCode } from "./protocol";
 import { AGENT_TOOLS_BY_NAME, type AgentJsonSchema, type AgentToolDescriptor } from "./tools";
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * Tools a plugin contributes to Studio's MCP endpoint, beside the built-in ones in `./tools.ts`.
@@ -448,8 +449,4 @@ function jsonSize(value: unknown): number | null {
     } catch {
         return null;
     }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

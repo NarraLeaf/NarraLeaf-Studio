@@ -45,6 +45,31 @@ function createContext(services: Service[]): WorkspaceContext {
 }
 
 describe("Service lifecycle", () => {
+    it("tears services down in the reverse of the order they came up", async () => {
+        const order: string[] = [];
+        class Named extends Service<Named> {
+            constructor(private readonly name: string, private readonly deps: () => Service[] = () => []) {
+                super();
+            }
+            protected async init(_ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+                await depend(this.deps());
+            }
+            public override dispose(): void {
+                order.push(this.name);
+            }
+        }
+        const base = new Named("base");
+        const dependent = new Named("dependent", () => [base]);
+        // Registered dependent-last, as the registry lists them; initializeAll walks it backwards
+        // and brings `base` up through the dependency first.
+        const ctx = createContext([base, dependent]);
+
+        await Service.initializeAll(ctx);
+        await Service.disposeAll(ctx);
+
+        expect(order).toEqual(["dependent", "base"]);
+    });
+
     it("resets services after disposeAll so a new workspace context reinitializes them", async () => {
         const service = new TestService();
         const ctx1 = createContext([service]);

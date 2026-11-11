@@ -1,3 +1,4 @@
+import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { normalizeProjectBrandColors } from "@shared/types/brand";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -13,7 +14,6 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
-import type { Service } from "@/lib/workspace/services/Service";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
@@ -67,23 +67,23 @@ export type Ports = {
 };
 
 export function readPorts(context: WorkspaceContext): Ports {
-    const optional = <T extends Service>(key: Services): T | null => {
+    const optional = <K extends Services>(key: K): WorkspaceServiceMap[K] | null => {
         try {
-            return context.services.get<T>(key);
+            return context.services.get(key);
         } catch {
             return null;
         }
     };
     return {
-        documents: context.services.get<UIDocumentService>(Services.UIDocument),
-        blueprints: context.services.get<LocalBlueprintService>(Services.LocalBlueprint),
-        stories: context.services.get<StoryService>(Services.Story),
-        assets: context.services.get<AssetsService>(Services.Assets),
-        brand: context.services.get<BrandService>(Services.Brand),
-        project: context.services.get<ProjectService>(Services.Project),
-        ui: context.services.get<UIService>(Services.UI),
-        freeze: optional<WorkspaceFreezeService>(Services.WorkspaceFreeze),
-        catalog: optional<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
+        documents: context.services.get(Services.UIDocument),
+        blueprints: context.services.get(Services.LocalBlueprint),
+        stories: context.services.get(Services.Story),
+        assets: context.services.get(Services.Assets),
+        brand: context.services.get(Services.Brand),
+        project: context.services.get(Services.Project),
+        ui: context.services.get(Services.UI),
+        freeze: optional(Services.WorkspaceFreeze),
+        catalog: optional(Services.BlueprintNodeCatalog),
     };
 }
 

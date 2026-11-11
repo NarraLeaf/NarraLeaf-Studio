@@ -103,8 +103,8 @@ describe("the boot path", () => {
         const primed = body.indexOf("await openStoryPersistence(");
         expect(primed, "the boot must read the persistent store before it compiles").toBeGreaterThan(-1);
 
-        // Ahead of the cache lookup too: a reused story is handed the same port a fresh compile is.
-        const cacheHit = body.indexOf("reuseCompiledStory(");
+        // Entering the compile session may reuse its cached story, so persistence must be ready first.
+        const cacheHit = body.indexOf("compileSessionRef.current.compile(");
         expect(cacheHit).toBeGreaterThan(-1);
         expect(primed, "the store read must come before the compiled-story cache is consulted")
             .toBeLessThan(cacheHit);

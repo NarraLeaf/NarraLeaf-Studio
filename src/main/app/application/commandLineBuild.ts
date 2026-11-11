@@ -31,6 +31,7 @@ import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
 import { findCommandLineVariant, namesReleaseVariant } from "./utils/commandLineVariant";
 import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
 import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
+import { describeError, flushStandardOutput, recordCommandLineRunLine } from "./commandLineRunConsole";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
@@ -689,47 +690,12 @@ export class CommandLineBuildRun {
         this.record({ timestamp: Date.now(), level, source: "Build", message });
     }
 
-    /**
-     * Keep a line and print it.
-     *
-     * Standard output carries the prose, which is what a person tailing a job reads; the report file
-     * carries the same lines with their timestamps and levels intact, which is what a job archives.
-     * Nothing a script needs is read off this stream - see the report - so it is free to be the
-     * build's own words in the build's own language.
-     */
     private record(line: CommandLineRunLogLine): void {
-        this.log.push(line);
-        // Every line is progress, to the watchdog as to the run's own deadline.
-        getCommandLineRunEnd()?.progress();
-        const source = line.source ? `${line.source}: ` : "";
-        process.stdout.write(`[${line.level}] ${source}${line.message}\n`);
+        recordCommandLineRunLine(this.log, this.app.logger, line);
     }
 }
 
-/**
- * Wait for everything written to standard output to have left this process.
- *
- * Writes to a pipe are asynchronous on Windows - and a pipe is exactly what a build agent captures
- * output through - so `exit()` can end the process with the last few lines still queued. Which lines
- * those are is the worst possible sample: the outcome and the exit code are the last thing written.
- * An empty write is enough, because the callback runs behind everything already in the queue.
- *
- * Resolves rather than rejects if the stream is gone: the exit code is what carries the result, and
- * losing the log must not turn a finished build into a failed one.
- */
-function flushStandardOutput(): Promise<void> {
-    return new Promise<void>(resolve => {
-        try {
-            process.stdout.write("", () => resolve());
-        } catch {
-            resolve();
-        }
-    });
-}
 
-function describeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * One line for a finding.

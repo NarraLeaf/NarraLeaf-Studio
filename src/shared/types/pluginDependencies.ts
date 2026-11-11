@@ -10,6 +10,7 @@
  */
 
 import type { PluginManifestLocalized, PluginStatus } from "./plugins";
+import { isRecord } from "@shared/utils/isRecord";
 
 export const PROJECT_DEPENDENCY_SCHEMA_VERSION = 1;
 
@@ -148,8 +149,4 @@ function normalizeDependency(value: unknown): ProjectPluginDependency | null {
         ...(typeof value.publisher === "string" && value.publisher.trim() ? { publisher: value.publisher.trim() } : {}),
         usedBy,
     };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

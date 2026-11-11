@@ -4,7 +4,7 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
-import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registerBuiltinWidgetModules";
 import { HistoryService } from "../history/HistoryService";
 import { blueprintHistoryScope, projectHistoryScope, uiComponentHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";

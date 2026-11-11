@@ -38,7 +38,7 @@ import { transformSync } from "esbuild";
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
 import type { PluginWidgetModule } from "@/lib/plugins/pluginWidgetApi";
-import { sanitizePluginWidgetDeclaration } from "@/lib/plugins/pluginWidgetGuard";
+import { sanitizePluginWidgetDeclaration } from "@/lib/plugins/pluginWidgetDeclaration";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { uiTextSitesFromPluginDeclaration, type UITextSite } from "@shared/types/ui-editor/textSource";

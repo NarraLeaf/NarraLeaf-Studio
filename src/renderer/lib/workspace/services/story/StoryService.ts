@@ -47,7 +47,7 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
-import { HistoryService } from "../history/HistoryService";
+import { HistoryService, type HistoryPushRequest } from "../history/HistoryService";
 import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
 import { projectHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
@@ -2294,28 +2294,24 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
     }
 
-    /**
-     * Put a whole scene in the document for an agent connected over MCP, as one step of undo on the
-     * scene's own stack.
-     *
-     * {@link replaceScene} records nothing - its two callers own their undo - and an agent's write
-     * has to be one Ctrl+Z in the scene editor like any edit the author makes there. A command over
-     * the two whole scenes, because both ends are known and the scene editor need not be open for
-     * the step to be taken back later. Refused, like `replaceScene`, while a session owns the story.
-     * False means nothing was written.
-     */
-    public applyAgentSceneReplacement(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene, label: HistoryLabel): boolean {
+    /** Commit a whole-scene edit with the scene's own undo scope, including when its editor is closed. */
+    public commitSceneReplacement(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene, historyEntry: HistoryPushRequest): boolean {
         const current = this.getStoryDocument(storyId).scenes[sceneId];
         if (!current || this.opSink !== null) {
             return false;
+        }
+        const history = this.getHistoryService();
+        const scope = storySceneHistoryScope(storyId, sceneId);
+        if (history.checkpoint(scope, historyEntry)) {
+            return this.replaceScene(storyId, sceneId, scene);
         }
         const before = this.cloneScene(current);
         const after = this.cloneScene({ ...scene, id: sceneId });
         if (!this.replaceScene(storyId, sceneId, after)) {
             return false;
         }
-        this.getHistoryService().pushCommand(storySceneHistoryScope(storyId, sceneId), {
-            label,
+        history.pushCommand(scope, {
+            ...historyEntry,
             undo: () => {
                 this.replaceScene(storyId, sceneId, before);
             },
@@ -2662,14 +2658,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 }
             }
         });
-    }
-
-    public canImportStoryPackage(): false {
-        return false;
-    }
-
-    public canExportStoryPackage(): false {
-        return false;
     }
 
     private mutateLibrary(mutator: (index: StoryLibraryIndex) => void): void {

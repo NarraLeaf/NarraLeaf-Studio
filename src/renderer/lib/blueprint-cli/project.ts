@@ -6,10 +6,8 @@
  * tool wrote and a file Studio wrote are the same shape, and version control sees one change rather
  * than a reformat.
  *
- * The blueprint schema version is checked before anything is written. The migration that lifts an
- * older document to the current shape needs a service to seed the variable registry as it runs, so
- * it cannot happen here; writing an unmigrated document back under the current version number would
- * be the migration silently not having run.
+ * Documents migrate on read through the same shared conversion the editor uses. The write path
+ * checks that the resulting schema is current before replacing the file.
  *
  * Comments in English per project convention.
  */

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, RotateCcw, TriangleAlert } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { getInterface } from "@/lib/app/bridge";
 import {
     formatKeybinding,
     keybindingFromKeyboardEvent,
@@ -11,7 +10,8 @@ import {
 import { KEYBINDING_CATALOG } from "@/lib/workspace/services/ui/keybindingCatalog";
 import { isMacPlatform } from "@/lib/app/platform";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
-import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
+import { useGlobalSettingDraft } from "@/lib/settings/useGlobalSettingDraft";
+import { SettingSaveFailure } from "@/lib/settings/SettingSaveFailure";
 
 interface BindingRow {
     /** Catalog id — what overrides persist under. */
@@ -43,41 +43,11 @@ export function KeybindingsPanel() {
     const { t, formatList } = useTranslation();
     const [query, setQuery] = useState("");
     const [recordingId, setRecordingId] = useState<string | null>(null);
-    const [overrides, setOverrides] = useState<Record<string, string>>({});
+    const { value: overrides, failed, retry, update: persist } = useGlobalSettingDraft(
+        KEYBINDING_OVERRIDES_SETTINGS_KEY,
+        sanitizeKeybindingOverrides,
+    );
     const isMac = isMacPlatform();
-
-    // Seed from global state, then follow cross-window writes — a workspace can reset overrides
-    // too, and two Settings windows may be open at once.
-    useEffect(() => {
-        let mounted = true;
-        void getInterface()
-            .app.state.getGlobalState(KEYBINDING_OVERRIDES_SETTINGS_KEY)
-            .then(result => {
-                if (mounted && result.success) {
-                    setOverrides(sanitizeKeybindingOverrides(result.data.value));
-                }
-            })
-            .catch(() => undefined);
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === KEYBINDING_OVERRIDES_SETTINGS_KEY) {
-                setOverrides(sanitizeKeybindingOverrides(change.value));
-            }
-        });
-        return () => {
-            mounted = false;
-            token?.cancel();
-        };
-    }, []);
-
-    const persist = useCallback(async (next: Record<string, string>) => {
-        // Optimistic: the broadcast comes back and re-sets the same value, so a failed write is
-        // corrected by the next change event rather than leaving the row lying about its chord.
-        setOverrides(next);
-        await getInterface().app.state.setGlobalState(
-            KEYBINDING_OVERRIDES_SETTINGS_KEY as GlobalStateKeys,
-            next as unknown as GlobalStateValue<GlobalStateKeys>,
-        );
-    }, []);
 
     const applyOverride = useCallback(
         (id: string, key: string | null) => {
@@ -207,6 +177,7 @@ export function KeybindingsPanel() {
 
     return (
         <div className="flex flex-col">
+            {failed && <SettingSaveFailure retry={retry} />}
             <div className="flex shrink-0 items-center gap-3 pb-2">
                 <SearchBox
                     value={query}

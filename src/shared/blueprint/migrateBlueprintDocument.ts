@@ -25,10 +25,7 @@ import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
 import { decodeLegacyBlueprintOwnerKey, encodeBlueprintOwnerKey } from "./ownerKey";
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
-}
+import { isRecord } from "@shared/utils/isRecord";
 
 /**
  * The oldest document version this build can read.

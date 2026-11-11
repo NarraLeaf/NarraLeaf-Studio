@@ -8,6 +8,7 @@
  */
 
 import type { BlueprintGraphIndex } from "../types/blueprint/document";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** Tolerates raw parsed JSON: this runs on documents before they have been validated. */
 type GraphOrderCarrier = {
@@ -16,10 +17,6 @@ type GraphOrderCarrier = {
     functionIds?: unknown;
     functions?: unknown;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Merge an order array with the record it orders.

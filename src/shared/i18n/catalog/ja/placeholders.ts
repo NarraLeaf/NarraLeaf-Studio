@@ -1,14 +1,6 @@
 import type { LocaleNamespace } from "../types";
 
 export const placeholders = {
-    story: {
-        title: "ストーリー",
-        description: "チャプター、シーン、ストーリーの構成がここに並ぶ",
-    },
-    localization: {
-        title: "ローカライズ",
-        description: "翻訳表と言語ごとのアセットをここで扱う",
-    },
     // 読み込み時に登録される静的なパネル／エディタのモジュール名（各モジュールの index を参照）
     moduleTitles: {
         welcome: "ようこそ",
@@ -25,11 +17,6 @@ export const placeholders = {
         storyMotion: "ストーリーモーション",
         stageTimeline: "ステージタイムライン",
         dashboard: "ダッシュボード",
-        audioPreview: "音声プレビュー",
-        imagePreview: "画像プレビュー",
-        videoPreview: "動画プレビュー",
-        fontPreview: "フォントプレビュー",
-        jsonPreview: "JSON プレビュー",
         search: "検索",
         keybindings: "キーボードショートカット",
         history: "履歴",

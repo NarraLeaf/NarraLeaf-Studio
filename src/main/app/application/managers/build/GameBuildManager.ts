@@ -1,3 +1,5 @@
+import { resolveBuildTargets, isDesktopTarget, isMobileTarget, type GameBuildMobileTarget } from "./buildTargets";
+export { isDesktopTarget, isMobileTarget, type GameBuildMobileTarget } from "./buildTargets";
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
@@ -12,43 +14,7 @@ import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import { electronBuilderCacheRoot } from "../storage/cacheInventory";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
-import {
-    assetCompressionDidSomething,
-    currentGameBuildPlatform,
-    deriveAndroidVersionCode,
-    deriveGameAppId,
-    deriveIosBundleVersion,
-    GAME_BUILD_FORMATS_BY_PLATFORM,
-    gameBuildArtifactBaseName,
-    hostBuildLimitsSentence,
-    hostCanBuildFormat,
-    hostCanBuildTarget,
-    hostPackagesWithoutPlatformTools,
-    iosAppDirectoryName,
-    isDesktopBuildPlatform,
-    isMobileBuildPlatform,
-    mobileExportFileName,
-    normalizeAndroidPackageName,
-    normalizeGameBuildArch,
-    normalizeIosBundleId,
-    webExportDirName,
-    webExportZipName,
-    type AssetCompressionReport,
-    type AssetCompressionTrackReport,
-    type BuildPreflightFinding,
-    type GameBuildArch,
-    type GameBuildDesktopPlatform,
-    type GameBuildFormat,
-    type GameBuildMobilePlatform,
-    type GameBuildPlatform,
-    type GameBuildRequest,
-    type GameBuildStateSnapshot,
-    type GameBuildTarget,
-    type GamePatchExportRequest,
-    type GameBuildRunKind,
-    type LastGameBuildRun,
-    type ShippedAssetReport,
-} from "@shared/types/gameBuild";
+import { assetCompressionDidSomething, currentGameBuildPlatform, deriveAndroidVersionCode, deriveGameAppId, deriveIosBundleVersion, gameBuildArtifactBaseName, hostBuildLimitsSentence, hostCanBuildFormat, hostCanBuildTarget, hostPackagesWithoutPlatformTools, iosAppDirectoryName, isDesktopBuildPlatform, mobileExportFileName, normalizeAndroidPackageName, normalizeGameBuildArch, normalizeIosBundleId, webExportDirName, webExportZipName, type AssetCompressionReport, type AssetCompressionTrackReport, type BuildPreflightFinding, type GameBuildArch, type GameBuildDesktopPlatform, type GameBuildFormat, type GameBuildMobilePlatform, type GameBuildPlatform, type GameBuildRequest, type GameBuildStateSnapshot, type GameBuildTarget, type GamePatchExportRequest, type GameBuildRunKind, type LastGameBuildRun, type ShippedAssetReport } from "@shared/types/gameBuild";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 import {
     readAssetCompressionConfiguration,
@@ -57,15 +23,7 @@ import {
     resolveVideoCompression,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
-import {
-    SIGNING_CREDENTIAL_MATERIAL_FIELDS,
-    SIGNING_CREDENTIAL_PLATFORM,
-    SIGNING_CREDENTIAL_SECRET_FIELDS,
-    signingNotarizes,
-    type ResolvedAppleNotarization,
-    type ResolvedSigningMaterial,
-    type SigningPlatform,
-} from "@shared/types/signing";
+import { SIGNING_CREDENTIAL_PLATFORM, SIGNING_CREDENTIAL_SECRET_FIELDS, signingNotarizes, type ResolvedAppleNotarization, type ResolvedSigningMaterial, type SigningPlatform } from "@shared/types/signing";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -673,13 +631,12 @@ export class GameBuildManager {
         const variant = resolveAppTag(appTagDocument.tags, request.appTagId);
         const overrides = variant.overrides;
         const hostPlatform = currentGameBuildPlatform();
-        const targets = normalizeTargets(request.targets);
+        const { targets, desktopTargets, mobileTargets } = resolveBuildTargets(request.targets);
         const findings: BuildPreflightFinding[] = [];
 
         if (targets.length === 0) {
             findings.push({ code: "no-targets", severity: "error", section: "targets" });
         }
-        const desktopTargets = targets.filter(isDesktopTarget);
         for (const target of desktopTargets) {
             if (!hostCanBuildTarget(hostPlatform, target.platform)) {
                 findings.push({
@@ -713,7 +670,6 @@ export class GameBuildManager {
             });
         }
 
-        const mobileTargets = targets.filter(isMobileTarget);
         // Every identity check below judges what this build will actually carry, which is the
         // selected variant's value where it states one. Checking the project's value instead would
         // clear a build whose variant sets an unusable version, and flag one whose variant fixes it.
@@ -2015,28 +1971,13 @@ export class GameBuildManager {
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         const hostPlatform = currentGameBuildPlatform();
-        const targets = normalizeTargets(request.targets);
+        const { targets, desktopTargets, mobileTargets, webTarget, webFormats, unknownTargets } = resolveBuildTargets(request.targets);
         if (targets.length === 0) {
             throw new Error("No build targets selected");
         }
-        const desktopTargets = targets.filter(isDesktopTarget);
-        const mobileTargets = targets.filter(isMobileTarget);
-        // A platform outside the union (malformed non-UI payload) must also
-        // fail loudly: with the explicit partitions above it would otherwise
-        // fall into none of them and the build would "succeed" with zero
-        // artifacts - worse than the TypeError the old desktop fall-through
-        // produced.
-        const unknownTargets = targets.filter(target =>
-            !isDesktopBuildPlatform(target.platform)
-            && !isMobileBuildPlatform(target.platform)
-            && target.platform !== "web");
         if (unknownTargets.length > 0) {
             throw new Error(`Unknown build platform(s): ${unknownTargets.map(t => String(t.platform)).join(", ")}`);
         }
-        const webTarget = targets.find(target => target.platform === "web");
-        const webFormats = webTarget
-            ? webTarget.formats.filter(format => GAME_BUILD_FORMATS_BY_PLATFORM.web.includes(format))
-            : [];
         if (webTarget && webFormats.length === 0) {
             throw new Error("The web target has no usable format (expected zip or dir)");
         }
@@ -4320,22 +4261,6 @@ function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
 }
 
-type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };
-
-export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
-    // Must be the shared exhaustive test, not `platform !== "web"`: this is a
-    // type predicate, whose body TypeScript never checks - the old form
-    // silently routed mobile targets into the electron-builder path when the
-    // platform union grew.
-    return isDesktopBuildPlatform(target.platform);
-}
-
-export type GameBuildMobileTarget = GameBuildTarget & { platform: GameBuildMobilePlatform };
-
-export function isMobileTarget(target: GameBuildTarget): target is GameBuildMobileTarget {
-    return isMobileBuildPlatform(target.platform);
-}
-
 /**
  * What the repack writes for the Android target, keyed by format. A selection
  * rather than two jobs: both packages come out of one pass over one payload,
@@ -4376,19 +4301,6 @@ export function androidLacksPlayPackage(targets: GameBuildTarget[]): boolean {
         return false;
     }
     return android.formats.includes("apk") && !android.formats.includes("aab");
-}
-
-function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {
-    if (!Array.isArray(targets)) {
-        return [];
-    }
-    return targets
-        .map(target => ({
-            platform: target.platform,
-            formats: [...new Set(target.formats)],
-            ...(target.arch ? { arch: target.arch } : {}),
-        }))
-        .filter(target => target.formats.length > 0);
 }
 
 /**

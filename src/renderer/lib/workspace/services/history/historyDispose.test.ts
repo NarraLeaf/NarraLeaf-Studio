@@ -60,6 +60,14 @@ describe("history entry disposal", () => {
         expect(disposed).toEqual(["a"]);
     });
 
+    it("disposes every entry when the workspace that could undo them closes", () => {
+        push("a");
+        push("b");
+        history.undo("project");
+        history.dispose({ project: {} as never, services: {} as never, commandLineRun: false });
+        expect(disposed.sort()).toEqual(["a", "b"]);
+    });
+
     it("disposes an entry that was never recorded because a restore was in progress", () => {
         const state = { value: 0 };
         history.registerScope<number>({

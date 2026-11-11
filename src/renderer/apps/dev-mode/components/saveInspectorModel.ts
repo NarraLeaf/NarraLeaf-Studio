@@ -24,6 +24,7 @@
  */
 
 import type { MergedPersistentEntry } from "@shared/variables/mergedPersistentView";
+import { isRecord } from "@shared/utils/isRecord";
 
 /** One key of a namespace (or of the host persistence store), ready to draw. */
 export type SaveValueRow = {
@@ -79,10 +80,6 @@ export type DecodeSaveInput = {
     /** Studio block id of a choice option → the text the author wrote on it. */
     optionNames: ReadonlyMap<string, string>;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * The value inside one `WrappedStorableData`.
