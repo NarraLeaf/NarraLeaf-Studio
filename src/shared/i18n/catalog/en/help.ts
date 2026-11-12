@@ -232,6 +232,26 @@ export const help = {
                 + "persistent variables are declared once for the whole project, in the Variables panel, and any "
                 + "scene and any blueprint can then use them. Both must hold a value that can be written to a save.",
         },
+        renameRefactor: {
+            title: "Rename and find references",
+            body:
+                "Rename a variable, a label, a scene or a character together with every place that names it. "
+                + "Open it from the right-click menu of a Variables panel row, a story row, a scene in the Story panel or a character in the Characters panel.\n"
+                + "\n"
+                + "The preview lists each change by scene, with the text before and after. Untick a change to leave it as it is. "
+                + "Rename writes every ticked change at once, and one undo takes all of them back.\n"
+                + "\n"
+                + "What is rewritten:\n"
+                + "- the declaration, label, scene or character name\n"
+                + "- the name inside expressions: assignments, conditions, loop conditions, option conditions and inline values\n"
+                + "- goto rows that jump to a renamed label\n"
+                + "- for a character, lines that speak as its old name without being linked to it\n"
+                + "\n"
+                + "Rows that point at a variable, a scene or a character by id, and blueprint nodes, follow the rename without being rewritten; the preview lists them separately. "
+                + "Translations need no change. A name already in use, or one the expression language reserves, cannot be chosen.\n"
+                + "\n"
+                + "The arrow beside a variable in the Variables panel lists where it is read and where it is written. Click an entry to go to it.",
+        },
         storyFlow: {
             title: "Branches and routes",
             body:

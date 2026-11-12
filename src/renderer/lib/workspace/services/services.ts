@@ -1344,7 +1344,7 @@ interface ICharacterService extends IService {
         kind?: CharacterAppearanceKind,
         initial?: { color?: string; groupId?: string },
     ): Character;
-    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean>;
+    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean; spokenRows?: readonly { storyId: string; rows: readonly { sceneId: string; blockId: string }[] }[] }): Promise<boolean>;
     countRowsSpeakingAs(speakerName: string): Promise<number>;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;

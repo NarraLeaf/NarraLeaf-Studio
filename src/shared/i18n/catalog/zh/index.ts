@@ -21,6 +21,7 @@ import { motion } from "./motion";
 import { saveSchema } from "./saveSchema";
 import { struct } from "./struct";
 import { storyVars } from "./storyVars";
+import { refactor } from "./refactor";
 import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
@@ -75,6 +76,7 @@ export const zh = {
     struct,
 
     storyVars,
+    refactor,
     storySnapshot,
     uiEditor,
     widgets,

@@ -46,6 +46,7 @@ import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
+import { RenamePreviewHost } from "../../modules/refactor/RenamePreviewHost";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle, backgroundPlateStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useKeybindings } from "../../hooks";
@@ -1067,6 +1068,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                 {/* UI Overlays */}
                 <BackgroundImageDialog />
+                {/* The rename refactor's preview; opened through `requestRename`. */}
+                {!recovery && <RenamePreviewHost />}
                 <WorkspaceEditorQuickSwitch />
                 {/* The palette and quick-open are absent in a recovery window, and not merely as
                     tidiness: both walk the story library, the cast and the interface documents to build
