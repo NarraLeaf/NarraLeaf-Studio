@@ -53,6 +53,7 @@ export const HELP_TOPIC_IDS = [
     "sceneSnapshot",
     "storyMotion",
     "stageTimeline",
+    "stagePlacement",
     "dictionary",
     "dictionaryMarks",
     "assets",
@@ -308,6 +309,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         clip: true,
         related: ["storyScene", "voice", "storyMotion"],
+    },
+    {
+        id: "stagePlacement",
+        section: "story",
+        related: ["storyScene", "storyMotion", "undo"],
     },
 
     // --- Content --------------------------------------------------------------

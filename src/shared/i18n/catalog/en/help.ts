@@ -352,6 +352,16 @@ export const help = {
                 + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
                 + "- Hold Ctrl or Command and scroll to zoom the timeline.",
         },
+        stagePlacement: {
+            title: "Placing objects on the stage",
+            body:
+                "With the cursor on a row that shows or moves a character or an image, the story preview draws a box around that object. Dragging the box or its corners rewrites the position and size the row states.\n"
+                + "\n"
+                + "- Drag the box to move the object. Its centre snaps to the middle and thirds of the stage, and its edges snap to the stage edges and the safe area. Hold Shift to keep to one axis, and Cmd or Ctrl to move without snapping. The magnet button in the preview header turns snapping off.\n"
+                + "- Drag a corner to resize. The opposite corner stays in place and the proportions are kept. Hold Shift to resize each axis on its own, and Alt to resize about the centre.\n"
+                + "- The row is written when the pointer is released, and one drag is one undo step. Esc cancels a drag.\n"
+                + "- A row that only hides, changes an expression or plays a motion cannot be placed, and the preview names the reason.",
+        },
         assets: {
             title: "Assets",
             body:

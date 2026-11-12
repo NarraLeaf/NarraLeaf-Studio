@@ -103,7 +103,8 @@ import { useNarralangCommit } from "../narralang/useNarralangCommit";
 import { narralangUiEnabled } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
-import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
+import { StoryScenePreviewPane, type StoryPreviewStageEditApi } from "./preview/StoryScenePreviewPane";
+import { resolveStageGizmoRow } from "./preview/stageGizmoModel";
 import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
 import { STORY_CONSOLE_CHANNEL } from "./preview/storyPreviewConsole";
 import {
@@ -1891,6 +1892,20 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             layerUses: layerId => sceneLayerUses(editorRef.current.scene, layerId).length,
         }
         : undefined;
+    // The stage gizmo: the object the cursor's row places, dragged on the preview and written back to
+    // that row in one edit. Built every render for the same reason as the layers.
+    const gizmoBlock = editor.activeBlockId && editor.scene ? editor.scene.blocks[editor.activeBlockId] : null;
+    const stageEditApi: StoryPreviewStageEditApi | undefined = editor.scene
+        ? {
+            row: resolveStageGizmoRow(editor.scene, gizmoBlock, freeze.frozen),
+            commit: (blockId, nextPayload) => {
+                if (freeze.frozen) {
+                    return;
+                }
+                editorRef.current.updateBlockPayloadFor(blockId, nextPayload);
+            },
+        }
+        : undefined;
     // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
     // view's moving preview rests on that shot.
     const framedCameraBlockId = editor.activeBlockId;
@@ -2884,6 +2899,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             onToggleSkipTyping={togglePreviewSkipTyping}
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                             layers={layersApi}
+                            stageEdit={stageEditApi}
                             camera={previewCamera}
                             view={previewPane?.view}
                             onSetView={setPreviewView}
