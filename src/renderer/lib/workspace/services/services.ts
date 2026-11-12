@@ -262,6 +262,8 @@ enum Services {
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
     Dictionary = "dictionary",
+    /** Review threads on story rows, at `editor/story-comments.json`. Never compiled */
+    StoryComments = "storyComments",
     /** The transforms the project saved to reuse, offered beside the ones Studio ships */
     TransformPreset = "transformPreset",
     /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */

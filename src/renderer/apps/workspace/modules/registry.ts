@@ -18,6 +18,7 @@ import { stageTimelinePanelModule } from "./stage-timeline";
 import { storyVariablesPanelModule } from "./story-variables";
 import { storySnapshotPanelModule } from "./story-snapshots";
 import { dictionaryPanelModule } from "./dictionary";
+import { storyCommentsPanelModule } from "./story-comments";
 import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
@@ -48,6 +49,7 @@ export const builtInPanels: PanelModule[] = [
     storyVariablesPanelModule,
     storySnapshotPanelModule,
     dictionaryPanelModule,
+    storyCommentsPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
     consoleModule,

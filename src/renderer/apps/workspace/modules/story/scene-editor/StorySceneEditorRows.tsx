@@ -111,6 +111,8 @@ import { useStoryRowActions } from "./storyRowActions";
 import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
 import { diagnoseRow } from "./storyRowDiagnostics";
 import { RowProblemMark } from "./RowProblemMark";
+import { StoryRowCommentMark } from "./StoryRowCommentMark";
+import { useStoryCommentPopoverFor, useStoryCommentThreadForBlock } from "../../story-comments/storyCommentsState";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -352,6 +354,11 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     /** What the project checks found on this row; the same array until that changes. */
     const rowProblems = useRowProblems(block.id);
+    /** Whether this row carries a review thread, or is being given one; a container shows its slot for it. */
+    const commentThread = useStoryCommentThreadForBlock(block.id);
+    const commentPopover = useStoryCommentPopoverFor(block.id);
+    const hasComment = commentThread !== null || commentPopover !== null;
+    const commentMark = <StoryRowCommentMark storyId={document.id} sceneId={scene.id} block={block} />;
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
     /**
@@ -656,13 +663,15 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
                         <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
-                    ) : containerInfo && rowProblems.length > 0 ? (
+                    ) : containerInfo && (rowProblems.length > 0 || hasComment) ? (
                         // A choice or a condition header: no voice to hear, but the checks can still
                         // have something to say about it (a choice with no options, a cut point).
                         <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
@@ -674,6 +683,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                             {block.kind === "control" && block.payload.control === "cut"
                                 ? <RowCutPointMark appTagId={block.payload.appTagId} commandContext={props.commandContext} />
                                 : null}
+                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={diagnostic?.code ?? null} />
                             <StoryVoiceIndicator block={block} />
                         </div>

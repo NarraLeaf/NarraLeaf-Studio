@@ -1,0 +1,63 @@
+import type { LocaleNamespace } from "../types";
+
+/**
+ * `storyComments` 中文。故事行上的审阅批注，以及汇总它们的「批注」面板。
+ *
+ * 只写标签与预期；批注是什么、存在哪里由帮助主题说明。
+ */
+export const storyComments = {
+    add: "添加批注",
+    open: "打开批注",
+    count: {
+        other: "{count} 条批注",
+    },
+    placeholder: {
+        new: "输入批注",
+        reply: "回复",
+    },
+    submit: "发表",
+    reply: "回复",
+    edit: "编辑",
+    save: "保存",
+    cancel: "取消",
+    edited: "已编辑",
+    resolve: "标为已解决",
+    reopen: "重新打开",
+    resolved: "已解决",
+    resolvedBy: "由 {name} 标为已解决",
+    todo: "待办",
+    markTodo: "标为待办",
+    clearTodo: "取消待办",
+    deleteComment: "删除批注",
+    deleteThread: "删除批注线程",
+    unnamedAuthor: "未署名",
+    authorHint: "批注署名取自设置中版本控制的作者名称",
+    signedAs: "署名：{name}",
+    orphan: "未找到对应的行",
+    orphanGroup: "未找到对应的行",
+    unknownScene: "未知场景",
+    unknownStory: "未知故事",
+    filter: {
+        open: "未解决",
+        resolved: "已解决",
+        todo: "待办",
+        all: "全部",
+        allAuthors: "全部作者",
+        author: "作者",
+    },
+    search: "搜索批注",
+    empty: "暂无批注",
+    noMatches: "没有匹配的批注",
+    history: {
+        create: "添加批注",
+        reply: "回复批注",
+        edit: "编辑批注",
+        deleteComment: "删除批注",
+        deleteThread: "删除批注线程",
+        resolve: "将批注标为已解决",
+        reopen: "重新打开批注",
+        markTodo: "将批注标为待办",
+        clearTodo: "取消批注待办",
+        reanchor: "将批注移到其他行",
+    },
+} satisfies LocaleNamespace<"storyComments">;

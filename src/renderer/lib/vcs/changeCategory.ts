@@ -84,6 +84,8 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      * "the flag I added last night" looks under the story.
      */
     variables: "story",
+    /** Review threads on story rows: written beside the story and read in the story editor. */
+    "story-comments": "story",
     "audio-tracks": "audio",
     /**
      * What one save slot carries besides the engine's own record. Settings rather than interface,

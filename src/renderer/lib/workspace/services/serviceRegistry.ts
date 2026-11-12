@@ -41,6 +41,7 @@ import { DlcService } from "./dlc/DlcService";
 import { AssetSetService } from "./assets/AssetSetService";
 import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
+import { StoryCommentsService } from "./storyComments/StoryCommentsService";
 import { TransformPresetService } from "./transformPreset/TransformPresetService";
 import { SaveSchemaService } from "./saves/SaveSchemaService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
@@ -100,6 +101,7 @@ export type WorkspaceServiceMap = {
     [Services.AssetSets]: AssetSetService;
     [Services.Brand]: BrandService;
     [Services.Dictionary]: DictionaryService;
+    [Services.StoryComments]: StoryCommentsService;
     [Services.TransformPreset]: TransformPresetService;
     [Services.SaveSchema]: SaveSchemaService;
     [Services.SaveStatus]: SaveStatusService;
@@ -162,6 +164,7 @@ export class ServiceRegistry {
         [Services.AssetSets]: AssetSetService.getInstance(),
         [Services.Brand]: BrandService.getInstance(),
         [Services.Dictionary]: DictionaryService.getInstance(),
+        [Services.StoryComments]: StoryCommentsService.getInstance(),
         [Services.TransformPreset]: TransformPresetService.getInstance(),
         [Services.SaveSchema]: SaveSchemaService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
