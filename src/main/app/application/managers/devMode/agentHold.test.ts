@@ -207,7 +207,7 @@ describe("a Dev Mode session an agent opened", () => {
         expect(devMode.takeOverFromAgent(root)).toBe(true);
 
         expect(devMode.isAgentHeld(root)).toBe(false);
-        expect(holdEvents(window).at(-1)).toEqual({ held: false });
+        expect(holdEvents(window).at(-1)).toEqual({ held: false, takenOver: true });
         expect(window.shown).toBe(1);
         expect(workspaceEvents.filter(event => event.type === IPCEventType.devModeAgentTakenOver)).toHaveLength(1);
         // The author's now: closing goes to the game's blueprints again instead of hiding.
@@ -215,6 +215,36 @@ describe("a Dev Mode session an agent opened", () => {
         expect(window.hiddenByGuard).toBe(0);
         // A second press finds nothing to take.
         expect(devMode.takeOverFromAgent(root)).toBe(false);
+    });
+
+    it("tells the window it was taken over, and is handed back to the agent from there", async () => {
+        await devMode.launch(root, SURFACE_ENTRY, { agent: true, client: "Claude Code" });
+        const { window } = launched[0];
+        devMode.takeOverFromAgent(root);
+
+        expect(holdEvents(window).at(-1)).toEqual({ held: false, takenOver: true, client: "Claude Code" });
+
+        expect(devMode.handBackToAgent(root)).toBe(true);
+
+        expect(devMode.isAgentHeld(root)).toBe(true);
+        expect(holdEvents(window).at(-1)).toEqual({ held: true, client: "Claude Code" });
+        expect(workspaceEvents.filter(event => event.type === IPCEventType.devModeAgentHandedBack)).toHaveLength(1);
+        // Held again: the author's close hides it, and nothing is left to hand back.
+        expect(window.requestClose()).toBe(true);
+        expect(window.hiddenByGuard).toBe(1);
+        expect(devMode.handBackToAgent(root)).toBe(false);
+    });
+
+    it("stops offering the hand-back once the author resumes the agent another way", async () => {
+        await devMode.launch(root, SURFACE_ENTRY, { agent: true });
+        const { window } = launched[0];
+        devMode.takeOverFromAgent(root);
+
+        devMode.endTakeover(root);
+
+        expect(holdEvents(window).at(-1)).toEqual({ held: false });
+        expect(devMode.isAgentHeld(root)).toBe(false);
+        expect(devMode.handBackToAgent(root)).toBe(false);
     });
 
     it("an author's taken-over session has no idle limit", async () => {

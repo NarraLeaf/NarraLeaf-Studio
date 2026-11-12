@@ -58,8 +58,10 @@ author starting Dev Mode themselves takes it back.
 
 The author can also press **Take over** on the window's notice. Dev Mode is then theirs and you are
 paused: every playtest call and every write is refused with `paused`, saying the author took over.
-Stop there and wait until the author tells you to continue (they resume you from Studio's status
-bar); do not start Dev Mode again before that. Read tools keep working, and the game and the project
+Stop there and wait until the author tells you to continue; do not start Dev Mode again before
+that. They resume you from Studio's status bar, or with **Continue** in the Dev Mode window, which
+also hands Dev Mode back to you as it is: your next playtest call goes on in the same game, which the
+author may have moved. Read tools keep working, and the game and the project
 may have changed, so look again before you go on.
 
 How the playtest tools behave:

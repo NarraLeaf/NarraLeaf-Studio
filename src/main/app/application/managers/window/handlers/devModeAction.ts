@@ -72,6 +72,37 @@ export class DevModeAgentTakeOverHandler extends IPCHandler<IPCEventType.devMode
     }
 }
 
+/** The author hands a session they took over back to the agent, from the Dev Mode window. */
+export class DevModeAgentHandBackHandler extends IPCHandler<IPCEventType.devModeAgentHandBack> {
+    readonly name = IPCEventType.devModeAgentHandBack;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeAgentHandBack]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.devModeAgentHandBack]["response"]>> {
+        return this.tryUse(async () => ({
+            handedBack: window.getApp().getDevModeManager().handBackToAgent(requireWindowProject(window, projectPath)),
+        }));
+    }
+}
+
+/** The author resumed the agent from the workspace's status bar: the window stops offering the hand-back. */
+export class DevModeAgentTakeoverEndHandler extends IPCHandler<IPCEventType.devModeAgentTakeoverEnd> {
+    readonly name = IPCEventType.devModeAgentTakeoverEnd;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeAgentTakeoverEnd]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.devModeAgentTakeoverEnd]["response"]>> {
+        return this.tryUse(async () => {
+            window.getApp().getDevModeManager().endTakeover(requireWindowProject(window, projectPath));
+            return { ended: true };
+        });
+    }
+}
+
 /**
  * Show the project's Dev Mode window, for the author to look at a session an agent holds (its window
  * opens hidden). The window's project, not the payload's, for the reason {@link DevModeLaunchHandler}

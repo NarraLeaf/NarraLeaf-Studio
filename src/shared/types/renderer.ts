@@ -736,6 +736,12 @@ export interface RendererPreloadedInterface {
         takeOverFromAgent(projectPath: string): Promise<RequestStatus<{ takenOver: boolean }>>;
         /** In the workspace: the author took this project's Dev Mode over from the agent. */
         onAgentTakenOver(handler: (payload: { projectPath: string }) => void): AppEventToken;
+        /** From the Dev Mode window: hand a session the author took over back to the agent. */
+        handBackToAgent(projectPath: string): Promise<RequestStatus<{ handedBack: boolean }>>;
+        /** In the workspace: the author handed this project's Dev Mode back to the agent. */
+        onAgentHandedBack(handler: (payload: { projectPath: string }) => void): AppEventToken;
+        /** From the workspace: the author resumed the agent another way; the window stops offering the hand-back. */
+        endAgentTakeover(projectPath: string): Promise<RequestStatus<{ ended: boolean }>>;
         /** Show the project's Dev Mode window and bring it forward. */
         reveal(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
         /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */
@@ -794,7 +800,7 @@ export interface RendererPreloadedInterface {
         /** Dev Mode window: answer the play-test actions main forwards to it. */
         onAgentDrive(handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>): AppEventToken;
         /** Whether an agent holds this Dev Mode window's session; sent on every change and once the window is ready. */
-        onAgentHoldChanged(handler: (payload: { held: boolean; client?: string }) => void): AppEventToken;
+        onAgentHoldChanged(handler: (payload: { held: boolean; client?: string; takenOver?: boolean }) => void): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         /**

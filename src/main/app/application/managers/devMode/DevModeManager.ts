@@ -89,6 +89,11 @@ type DevModeSession = {
      * not launched over it since. See {@link DevModeManager.setAgentHold}.
      */
     agentHold: { idleTimer: ReturnType<typeof setTimeout>; client?: string } | null;
+    /**
+     * Set once the author has taken the session over from an agent and until they hand it back or
+     * resume the agent another way. The window offers the hand-back while it is set.
+     */
+    takenOver: { client?: string } | null;
 };
 
 export type DevModeLaunchOptions = {
@@ -160,6 +165,8 @@ export class DevModeManager {
         if (!session?.agentHold) {
             return false;
         }
+        // Before the hold goes, so the one message the window gets says both.
+        session.takenOver = session.agentHold.client ? { client: session.agentHold.client } : {};
         this.setAgentHold(session, false);
         this.emitWorkspaceConsoleLog(session, {
             level: "info",
@@ -175,6 +182,42 @@ export class DevModeManager {
             window.win.focus();
         }
         return true;
+    }
+
+    /**
+     * The author hands a session they took over back to the agent, from the Dev Mode window. The agent
+     * holds it again (read-only for the author, the idle limit running) and the workspace resumes the
+     * agent. The window stays where it is. False when nothing was taken over.
+     */
+    public handBackToAgent(projectPath: string): boolean {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        const takenOver = session?.takenOver;
+        if (!session || !takenOver) {
+            return false;
+        }
+        this.setAgentHold(session, true, takenOver.client);
+        this.emitWorkspaceConsoleLog(session, {
+            level: "info",
+            source: "Dev Mode",
+            message: "handed back to the agent by the author; the agent may go on.",
+        });
+        this.findWorkspaceWindow(session.projectPath)?.sendIpcEvent(IPCEventType.devModeAgentHandedBack, {
+            projectPath: session.projectPath,
+        });
+        return true;
+    }
+
+    /**
+     * The author resumed the agent some other way (the status bar's switch): the session stays theirs,
+     * and the window stops offering the hand-back.
+     */
+    public endTakeover(projectPath: string): void {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session?.takenOver) {
+            return;
+        }
+        session.takenOver = null;
+        this.sendAgentHold(session);
     }
 
     /**
@@ -505,6 +548,7 @@ export class DevModeManager {
             startToken: 0,
             reloadTimer: null,
             agentHold: null,
+            takenOver: null,
         };
     }
 
@@ -526,6 +570,7 @@ export class DevModeManager {
             session.agentHold = null;
         }
         if (held) {
+            session.takenOver = null;
             session.agentHold = { idleTimer: this.armAgentIdleTimer(session), ...(client ? { client } : {}) };
             // A window the author had open goes on rendering when they cover it; see `keepPainting`.
             const window = session.window;
@@ -572,9 +617,12 @@ export class DevModeManager {
         const window = session.window;
         if (window && !window.isClosed() && session.windowReady) {
             const hold = session.agentHold;
+            const takenOver = session.takenOver;
             window.sendIpcEvent(IPCEventType.devModeAgentHoldChanged, hold
                 ? { held: true, ...(hold.client ? { client: hold.client } : {}) }
-                : { held: false });
+                : takenOver
+                    ? { held: false, takenOver: true, ...(takenOver.client ? { client: takenOver.client } : {}) }
+                    : { held: false });
         }
     }
 
@@ -628,7 +676,7 @@ export class DevModeManager {
         window.onReady(() => {
             session.windowReady = true;
             this.emitVerbose(session, "Dev Mode window ready");
-            if (session.agentHold) {
+            if (session.agentHold || session.takenOver) {
                 this.sendAgentHold(session);
             }
             this.tryFlushPendingToDevWindow(session);

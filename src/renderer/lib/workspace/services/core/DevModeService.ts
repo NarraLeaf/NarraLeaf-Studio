@@ -32,6 +32,8 @@ export class DevModeService extends Service<DevModeService> {
     private launchInFlight = false;
     private consoleLogToken: { cancel: () => void } | null = null;
     private takenOverToken: { cancel: () => void } | null = null;
+    private handedBackToken: { cancel: () => void } | null = null;
+    private stopWatchingPause: (() => void) | null = null;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -40,22 +42,49 @@ export class DevModeService extends Service<DevModeService> {
 
     public override activate(_ctx: WorkspaceContext): void {
         void this.refreshStatus();
+        this.watchAgentTakeover();
         // The session reports every step of its pipeline to this window's console, a status change
         // included, and nothing else is pushed: a hot reload that is over well inside one poll
         // interval would otherwise never reach the run cell. A line from Dev Mode while a session is
         // up is the cue to read the status again; it is read, never parsed out of the line.
-        // The author took Dev Mode over from an agent in its window: the session is theirs now, and
-        // the agent waits until they resume it.
-        this.takenOverToken?.cancel();
-        this.takenOverToken = getInterface().devMode.onAgentTakenOver(() => {
-            this.updateAgentHeld(false);
-            this.getContext().services.get<AgentFollowService>(Services.AgentFollow).setPaused(true, "devModeTakeover");
-        });
         this.consoleLogToken?.cancel();
         this.consoleLogToken = getInterface().devMode.onConsoleLog(() => {
             if (this.shouldPoll(this.status)) {
                 void this.refreshStatus();
             }
+        });
+    }
+
+    /**
+     * The author taking Dev Mode over from an agent, and giving it back.
+     *
+     * Taken over in the Dev Mode window: the session is the author's and the agent is paused with that
+     * reason. Handed back there: the agent holds it again and is resumed. Resumed from the status bar
+     * instead: the session stays the author's, and main is told so the window stops offering to hand
+     * it back.
+     */
+    private watchAgentTakeover(): void {
+        const follow = this.getContext().services.get<AgentFollowService>(Services.AgentFollow);
+        this.takenOverToken?.cancel();
+        this.takenOverToken = getInterface().devMode.onAgentTakenOver(() => {
+            this.updateAgentHeld(false);
+            follow.setPaused(true, "devModeTakeover");
+        });
+        this.handedBackToken?.cancel();
+        this.handedBackToken = getInterface().devMode.onAgentHandedBack(() => {
+            this.updateAgentHeld(true);
+            if (follow.getState().pausedBy === "devModeTakeover") {
+                follow.setPaused(false);
+            }
+        });
+        this.stopWatchingPause?.();
+        let pausedForTakeover = follow.getState().pausedBy === "devModeTakeover";
+        this.stopWatchingPause = follow.onChanged(state => {
+            const now = state.pausedBy === "devModeTakeover";
+            if (pausedForTakeover && !now) {
+                void getInterface().devMode.endAgentTakeover(this.projectPath());
+            }
+            pausedForTakeover = now;
         });
     }
 
@@ -65,6 +94,10 @@ export class DevModeService extends Service<DevModeService> {
         this.consoleLogToken = null;
         this.takenOverToken?.cancel();
         this.takenOverToken = null;
+        this.handedBackToken?.cancel();
+        this.handedBackToken = null;
+        this.stopWatchingPause?.();
+        this.stopWatchingPause = null;
         this.events.clear();
     }
 

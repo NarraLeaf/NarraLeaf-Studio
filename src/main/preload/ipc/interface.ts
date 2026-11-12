@@ -521,6 +521,12 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeAgentTakeOver, { projectPath }) as Promise<RequestStatus<{ takenOver: boolean }>>,
         onAgentTakenOver: (handler: (payload: { projectPath: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeAgentTakenOver, handler),
+        handBackToAgent: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentHandBack, { projectPath }) as Promise<RequestStatus<{ handedBack: boolean }>>,
+        onAgentHandedBack: (handler: (payload: { projectPath: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentHandedBack, handler),
+        endAgentTakeover: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentTakeoverEnd, { projectPath }) as Promise<RequestStatus<{ ended: boolean }>>,
         reveal: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeReveal, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
         stop: (projectPath: string) =>
@@ -566,7 +572,7 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
         onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
             ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
-        onAgentHoldChanged: (handler: (payload: { held: boolean; client?: string }) => void) =>
+        onAgentHoldChanged: (handler: (payload: { held: boolean; client?: string; takenOver?: boolean }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeAgentHoldChanged, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),

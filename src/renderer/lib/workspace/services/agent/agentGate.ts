@@ -42,7 +42,7 @@ export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
         return agentRefusal(
             "paused",
             "The author has taken over Dev Mode from you and paused the agent.",
-            "Stop and wait until the author tells you to continue (they resume the agent from Studio's status bar). Do not start Dev Mode again before then. Read tools keep working; the game and the project may have changed when you come back, so look again first.",
+            "Stop and wait until the author tells you to continue (they resume you from Studio's status bar, or with Continue in the Dev Mode window, which also hands Dev Mode back to you). Do not start Dev Mode again before then. Read tools keep working; the game and the project may have changed when you come back, so look again first.",
         );
     }
     if (!input.write) {

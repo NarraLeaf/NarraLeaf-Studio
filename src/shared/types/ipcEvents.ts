@@ -356,6 +356,9 @@ export enum IPCEventType {
     devModeReveal = "devMode.reveal",
     devModeAgentTakeOver = "devMode.agent.takeOver",
     devModeAgentTakenOver = "devMode.agent.takenOver",
+    devModeAgentHandBack = "devMode.agent.handBack",
+    devModeAgentHandedBack = "devMode.agent.handedBack",
+    devModeAgentTakeoverEnd = "devMode.agent.takeoverEnd",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -3055,6 +3058,37 @@ export type IPCDevModeEvents = {
         },
         response: never;
     };
+    /** The Dev Mode window → main: the author hands a session they took over back to the agent. */
+    [IPCEventType.devModeAgentHandBack]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            handedBack: boolean;
+        };
+    };
+    /** Main → the project's workspace: the author handed Dev Mode back; resume the agent. */
+    [IPCEventType.devModeAgentHandedBack]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: never;
+    };
+    /** The workspace → main: the author resumed the agent from the status bar; stop offering the hand-back. */
+    [IPCEventType.devModeAgentTakeoverEnd]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            ended: boolean;
+        };
+    };
     /** Show the project's Dev Mode window and bring it forward; the way to look at one an agent holds. */
     [IPCEventType.devModeReveal]: {
         type: IPCMessageType.request,
@@ -3251,7 +3285,8 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeAgentHoldChanged]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
-        data: { held: boolean; client?: string };
+        /** `takenOver`: not held because the author took it over; the window offers to hand it back. */
+        data: { held: boolean; client?: string; takenOver?: boolean };
         response: never;
     };
     [IPCEventType.devModeControlReload]: {
