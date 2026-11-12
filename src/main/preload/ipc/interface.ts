@@ -510,11 +510,12 @@ export const IPCInterface: RendererPreloadedInterface = {
     },
 
     devMode: {
-        launch: (projectPath: string, entry: DevModeEntry, options?: { agent?: boolean }) =>
+        launch: (projectPath: string, entry: DevModeEntry, options?: { agent?: boolean; agentClient?: string }) =>
             ipcClient.invoke(IPCEventType.devModeLaunch, {
                 projectPath,
                 entry,
                 ...(options?.agent ? { agent: true } : {}),
+                ...(options?.agent && options.agentClient ? { agentClient: options.agentClient } : {}),
             }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         reveal: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeReveal, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
@@ -561,7 +562,7 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
         onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
             ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
-        onAgentHoldChanged: (handler: (payload: { held: boolean }) => void) =>
+        onAgentHoldChanged: (handler: (payload: { held: boolean; client?: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeAgentHoldChanged, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),

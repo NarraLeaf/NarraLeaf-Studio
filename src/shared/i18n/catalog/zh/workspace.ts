@@ -411,7 +411,7 @@ export const workspace = {
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
         devMode: {
-            status: "Agent 正在使用开发模式",
+            status: "Agent 使用中",
             tooltip: "显示开发模式窗口，仅供查看",
             confirmTitle: "Agent 正在使用开发模式",
             confirmStopDetail: "停止将中断 Agent 正在进行的试玩",
@@ -1017,7 +1017,6 @@ export const workspace = {
                 textLineEnding: "行尾符号",
                 textSelection: "光标位置",
                 agent: "Agent",
-                agentDevMode: "Agent 开发模式",
             },
         },
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。

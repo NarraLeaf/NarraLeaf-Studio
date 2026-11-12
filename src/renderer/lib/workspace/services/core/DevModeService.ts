@@ -14,7 +14,7 @@ type DevModeServiceEvents = {
 };
 
 /** Who is asking: the author (the default), or an agent's play-test tool. */
-export type DevModeCaller = { agent?: boolean };
+export type DevModeCaller = { agent?: boolean; agentClient?: string };
 
 export class DevModeService extends Service<DevModeService> {
     private status: DevModeStatus = "idle";
@@ -133,7 +133,10 @@ export class DevModeService extends Service<DevModeService> {
                 this.updateStatus("error");
                 return this.status;
             }
-            const result = await getInterface().devMode.launch(this.projectPath(), entry, { agent: caller.agent === true });
+            const result = await getInterface().devMode.launch(this.projectPath(), entry, {
+                agent: caller.agent === true,
+                ...(caller.agent && caller.agentClient ? { agentClient: caller.agentClient } : {}),
+            });
             if (result.success) {
                 // The launch decides who holds the session: an agent's takes it, the author's gives it back.
                 this.updateAgentHeld(caller.agent === true && result.data.status !== "error");

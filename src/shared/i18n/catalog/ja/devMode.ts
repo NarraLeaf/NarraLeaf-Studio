@@ -3,7 +3,8 @@ import type { LocaleNamespace } from "../types";
 /** `devMode` 日本語。開発モードのウィンドウとオーバーレイ。実行面、セッションの状態、実況デバッグの道具。 */
 export const devMode = {
     title: "開発モード",
-    agentHeldTitle: "開発モード - エージェントが使用中（閲覧のみ）",
+    agentHeldCapsule: "{client} が開発モードを使用中",
+    agentHeldFallbackClient: "エージェント",
     dismiss: "閉じる",
     surfaceUnavailable: "サーフェスが使えない",
     waitingPayload: "開発モードのペイロードを待っている…",

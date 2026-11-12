@@ -188,7 +188,7 @@ export const playtestStart: AgentToolHandler = async (args, { ctx, request, foll
         ? before.data.state.entries
         : -1;
     // As the agent: the window opens hidden and read-only, and closes after five idle minutes.
-    let status = await service.launch(entry, { agent: true });
+    let status = await service.launch(entry, { agent: true, ...(request.clientName ? { agentClient: request.clientName } : {}) });
     // The launch answers once the window is asked for; compiling follows. Wait (bounded) for the game
     // to be running so the next playtest call has something to act on.
     const deadline = Date.now() + 60_000;

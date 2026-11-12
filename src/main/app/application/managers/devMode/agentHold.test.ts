@@ -135,6 +135,12 @@ describe("a Dev Mode session an agent opened", () => {
         expect(holdEvents(launched[0].window)).toEqual([{ held: true }]);
     });
 
+    it("names the agent's client to the window", async () => {
+        await devMode.launch(root, SURFACE_ENTRY, { agent: true, client: "Claude Code" });
+
+        expect(holdEvents(launched[0].window)).toEqual([{ held: true, client: "Claude Code" }]);
+    });
+
     it("an author's launch opens a visible window that is not held", async () => {
         await devMode.launch(root, SURFACE_ENTRY);
 

@@ -731,7 +731,7 @@ export interface RendererPreloadedInterface {
 
     devMode: {
         /** `agent`: launched by an agent's play-test, which then holds the session (see `IPCEventType.devModeLaunch`). */
-        launch(projectPath: string, entry: DevModeEntry, options?: { agent?: boolean }): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        launch(projectPath: string, entry: DevModeEntry, options?: { agent?: boolean; agentClient?: string }): Promise<RequestStatus<{ status: DevModeStatus }>>;
         /** Show the project's Dev Mode window and bring it forward. */
         reveal(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
         /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */
@@ -790,7 +790,7 @@ export interface RendererPreloadedInterface {
         /** Dev Mode window: answer the play-test actions main forwards to it. */
         onAgentDrive(handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>): AppEventToken;
         /** Whether an agent holds this Dev Mode window's session; sent on every change and once the window is ready. */
-        onAgentHoldChanged(handler: (payload: { held: boolean }) => void): AppEventToken;
+        onAgentHoldChanged(handler: (payload: { held: boolean; client?: string }) => void): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         /**

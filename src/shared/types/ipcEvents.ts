@@ -2985,6 +2985,8 @@ export type IPCDevModeEvents = {
              * play-test call. A launch without it hands the session back to the author.
              */
             agent?: boolean;
+            /** The agent's client as it introduced itself (`clientInfo.name`), for the window's notice. */
+            agentClient?: string;
         },
         response: {
             status: DevModeStatus;
@@ -3223,7 +3225,7 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeAgentHoldChanged]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
-        data: { held: boolean };
+        data: { held: boolean; client?: string };
         response: never;
     };
     [IPCEventType.devModeControlReload]: {

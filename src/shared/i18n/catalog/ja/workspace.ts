@@ -422,7 +422,7 @@ export const workspace = {
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
         devMode: {
-            status: "エージェントが開発モードを使用中",
+            status: "エージェント使用中",
             tooltip: "開発モードのウィンドウを表示（閲覧のみ）",
             confirmTitle: "エージェントが開発モードを使用中です",
             confirmStopDetail: "停止するとエージェントのテストプレイが中断されます",
@@ -1045,7 +1045,6 @@ export const workspace = {
                 textLineEnding: "改行コード",
                 textSelection: "カーソル位置",
                 agent: "エージェント",
-                agentDevMode: "エージェントの開発モード",
             },
         },
         // 保存の報告。ファイルを書けなかったときに出す居座るトーストと、「ストレージ」チャンネルに

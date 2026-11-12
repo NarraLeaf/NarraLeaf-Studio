@@ -15,7 +15,6 @@ import {
 import { TeamStatusEntry } from "../team";
 import { ProblemsStatusEntry } from "../lint/ProblemsStatusEntry";
 import { AgentStatusEntry } from "../agent/AgentStatusEntry";
-import { AgentDevModeEntry } from "../agent/AgentDevModeEntry";
 import {
     TextEncodingEntry,
     TextFileNameEntry,
@@ -78,14 +77,6 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.runStatus",
         alignment: StatusBarAlignment.Left,
         component: RunStatusEntry,
-    },
-    {
-        // Directly inboard of the run status: it says who is running the Dev Mode that cell reports,
-        // and why its window is not on screen.
-        id: "narraleaf-studio:status-bar/agent-dev-mode",
-        labelKey: "workspace.shell.statusBar.entries.agentDevMode",
-        alignment: StatusBarAlignment.Left,
-        component: AgentDevModeEntry,
     },
     {
         // Directly inboard of the run status, because the two answer the same question - what is

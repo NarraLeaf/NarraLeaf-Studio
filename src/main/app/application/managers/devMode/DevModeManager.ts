@@ -88,12 +88,14 @@ type DevModeSession = {
      * Set while an agent holds this session: it was launched by `playtest_start` and the author has
      * not launched over it since. See {@link DevModeManager.setAgentHold}.
      */
-    agentHold: { idleTimer: ReturnType<typeof setTimeout> } | null;
+    agentHold: { idleTimer: ReturnType<typeof setTimeout>; client?: string } | null;
 };
 
 export type DevModeLaunchOptions = {
     /** Launched by an agent's play-test; see `agent` on `IPCEventType.devModeLaunch`. */
     agent?: boolean;
+    /** That agent's client name, for the notice the window shows. */
+    client?: string;
 };
 
 export class DevModeManager {
@@ -201,7 +203,15 @@ export class DevModeManager {
                         height: Math.max(1, Math.round(rect.height * zoom)),
                     }
                     : undefined;
-                return (await (area ? contents.capturePage(area) : contents.capturePage())).toDataURL();
+                try {
+                    return (await (area ? contents.capturePage(area) : contents.capturePage())).toDataURL();
+                } finally {
+                    // The page put its agent notice away for this picture (`prepareWindowCapture`);
+                    // telling it again who holds the session is what brings the notice back.
+                    if (session.agentHold) {
+                        this.sendAgentHold(session);
+                    }
+                }
             },
             // For the rest of this window's life once an agent has driven it, as a test-driven
             // standalone run is (`backgroundThrottling` in the runtime's main): between two calls the
@@ -230,7 +240,8 @@ export class DevModeManager {
         }
         const requestedAt = Date.now();
         const agent = options.agent === true;
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt, agent));
+        const client = agent ? options.client : undefined;
+        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt, agent, client));
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
@@ -299,14 +310,14 @@ export class DevModeManager {
         });
     }
 
-    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number, agent: boolean): Promise<DevModeStatus> {
+    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number, agent: boolean, client?: string): Promise<DevModeStatus> {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
         if (previous && entry.kind === "story" && previous.window && !previous.window.isClosed()) {
             // Before the window is focused: an agent's launch leaves a hidden window hidden, and the
             // author's launch takes the session back and shows it.
-            this.setAgentHold(previous, agent);
+            this.setAgentHold(previous, agent, client);
             return this.relaunchInPlace(previous, entry);
         }
         if (previous) {
@@ -315,7 +326,7 @@ export class DevModeManager {
 
         const session = this.createSession(projectPath, entry, requestedAt);
         this.sessions.set(key, session);
-        this.setAgentHold(session, agent);
+        this.setAgentHold(session, agent, client);
 
         try {
             this.emitVerbose(session, `launch requested: ${this.describeEntry(entry)}`);
@@ -477,14 +488,15 @@ export class DevModeManager {
      * without a play-test call. The author's own launch takes the session back. The workspace asks
      * before the author stops or relaunches a held session.
      */
-    private setAgentHold(session: DevModeSession, held: boolean): void {
+    private setAgentHold(session: DevModeSession, held: boolean, client?: string): void {
         const was = session.agentHold !== null;
+        const clientChanged = held && session.agentHold?.client !== client;
         if (session.agentHold) {
             clearTimeout(session.agentHold.idleTimer);
             session.agentHold = null;
         }
         if (held) {
-            session.agentHold = { idleTimer: this.armAgentIdleTimer(session) };
+            session.agentHold = { idleTimer: this.armAgentIdleTimer(session), ...(client ? { client } : {}) };
             // A window the author had open goes on rendering when they cover it; see `keepPainting`.
             const window = session.window;
             if (window && !window.isClosed() && window.win.webContents.getBackgroundThrottling()) {
@@ -493,6 +505,8 @@ export class DevModeManager {
         }
         if (was !== held) {
             this.emitVerbose(session, held ? "held by an agent" : "released by the agent");
+        }
+        if (was !== held || clientChanged) {
             this.sendAgentHold(session);
         }
     }
@@ -527,7 +541,10 @@ export class DevModeManager {
     private sendAgentHold(session: DevModeSession): void {
         const window = session.window;
         if (window && !window.isClosed() && session.windowReady) {
-            window.sendIpcEvent(IPCEventType.devModeAgentHoldChanged, { held: session.agentHold !== null });
+            const hold = session.agentHold;
+            window.sendIpcEvent(IPCEventType.devModeAgentHoldChanged, hold
+                ? { held: true, ...(hold.client ? { client: hold.client } : {}) }
+                : { held: false });
         }
     }
 

@@ -9,6 +9,7 @@ import {
     type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { prepareWindowCapture } from "../agentHoldShield";
 import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
@@ -1601,13 +1602,19 @@ export function DevModeContent(props: DevModeContentProps) {
         testControlsRef.current = controls;
     }, []);
     useEffect(() => {
-        const token = getInterface().devMode.onAgentDrive(({ action }) =>
-            runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock, undefined, {
+        const token = getInterface().devMode.onAgentDrive(async ({ action }) => {
+            const answer = await runAgentDriveAction(() => testControlsRef.current, action, browserPlaytestClock, undefined, {
                 // What the issue strip counts, so an agent hears about the warnings the author sees.
                 readIssues: () => runtimeIssuesRef.current.map(runtimeIssueForAgent),
                 // The title page before any story ran: no controls yet, but the game box is there.
                 findGameRoot: () => document.querySelector("[data-nl-game-root]"),
-            }));
+            });
+            // Main photographs the window itself next: the agent notice must not be in that picture.
+            if (answer.success && answer.data.kind === "capture" && !answer.data.png) {
+                await prepareWindowCapture();
+            }
+            return answer;
+        });
         return () => token.cancel();
     }, []);
 

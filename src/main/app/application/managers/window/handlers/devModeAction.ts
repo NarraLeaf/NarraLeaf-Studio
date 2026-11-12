@@ -32,7 +32,7 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
 
     public async handle(
         window: AppWindow,
-        { projectPath, entry, agent }: IPCEvents[IPCEventType.devModeLaunch]["data"],
+        { projectPath, entry, agent, agentClient }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
         return this.tryUse(async () => {
             // The window's project, not the payload's. Dev Mode compiles and runs the named
@@ -45,7 +45,10 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
             // somebody else's project that happens to be trusted, that gate said yes about a
             // project this window was never opened on.
             const status = await window.getApp().getDevModeManager()
-                .launch(requireWindowProject(window, projectPath), entry, { agent: agent === true });
+                .launch(requireWindowProject(window, projectPath), entry, {
+                    agent: agent === true,
+                    ...(agent === true && typeof agentClient === "string" && agentClient.trim() ? { client: agentClient.trim().slice(0, 80) } : {}),
+                });
             return { status };
         });
     }

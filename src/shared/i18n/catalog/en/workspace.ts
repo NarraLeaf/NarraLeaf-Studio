@@ -455,7 +455,7 @@ export const workspace = {
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
         devMode: {
-            status: "Agent is using Dev Mode",
+            status: "Agent in use",
             tooltip: "Show the Dev Mode window, view only",
             confirmTitle: "An agent is using Dev Mode",
             confirmStopDetail: "Stopping it interrupts the agent's play-test",
@@ -1146,7 +1146,6 @@ export const workspace = {
                 textLineEnding: "Line ending",
                 textSelection: "Cursor position",
                 agent: "Agent",
-                agentDevMode: "Agent Dev Mode",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
