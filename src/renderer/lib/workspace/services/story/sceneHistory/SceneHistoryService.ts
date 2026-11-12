@@ -267,7 +267,8 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
      *
      * The current scene is snapshotted first (a manual "before restoring" entry), so restoring can
      * never lose what the author had - not even what undo alone would not bring back after the
-     * editor is reloaded. Only the block tree is restored: the scene's name, runtime name, music
+     * editor is reloaded. When the newest snapshot already holds exactly this content, that one is
+     * the copy and no duplicate is written. Only the block tree is restored: the scene's name, runtime name, music
      * and variable snapshots are not content a row history speaks about.
      */
     public async restoreSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<boolean> {
