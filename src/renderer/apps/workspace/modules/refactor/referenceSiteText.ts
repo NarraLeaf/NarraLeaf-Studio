@@ -22,7 +22,9 @@ export function referenceSitePlace(site: ReferenceSite, t: Translate): string {
 
 /** What a site is: `Line 3 · Condition`. */
 export function referenceSiteDetail(site: ReferenceSite, t: Translate): string {
-    const slot = t(`refactor.slot.${site.slot}` as TranslationKey);
+    // The registry entry and the character record are their own place; what they are there is the declaration.
+    const slotKey = site.slot === "registry" || site.slot === "characterName" ? "declaration" : site.slot;
+    const slot = t(`refactor.slot.${slotKey}` as TranslationKey);
     return site.line ? `${t("refactor.site.line" as TranslationKey, { line: site.line })} · ${slot}` : slot;
 }
 
