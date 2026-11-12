@@ -60,6 +60,7 @@ import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
+import type { OfficeReadResult } from "@shared/manuscript/officeRead";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -266,6 +267,9 @@ export enum IPCEventType {
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
     fontProbeCoverage = "font.probeCoverage",
+    manuscriptReadOffice = "manuscript.readOffice",
+    manuscriptWriteDocx = "manuscript.writeDocx",
+    manuscriptPrintPdf = "manuscript.printPdf",
     mediaConvertStart = "media.convert.start",
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
@@ -2344,6 +2348,46 @@ export type IPCWorkspaceEvents = {
         response: {
             result: FontCoverageResult;
         };
+    };
+    /**
+     * Read the text of a Word document or a spreadsheet the author picked for a script import. In
+     * main because both are zip archives and only main has zlib; what crosses back is paragraphs or
+     * rows of text, never the archive.
+     */
+    [IPCEventType.manuscriptReadOffice]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            result: OfficeReadResult;
+        };
+    };
+    /** Zip the XML parts of a readable script into a .docx at a path the author chose. */
+    [IPCEventType.manuscriptWriteDocx]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+            parts: { name: string; content: string }[];
+        };
+        response: Record<string, never>;
+    };
+    /**
+     * Print a readable script's HTML to a PDF at a path the author chose. Rendered in a hidden
+     * window with scripts off and every request refused, so the page can draw nothing it did not
+     * carry inline.
+     */
+    [IPCEventType.manuscriptPrintPdf]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+            html: string;
+            footerHtml: string;
+        };
+        response: Record<string, never>;
     };
     /**
      * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job

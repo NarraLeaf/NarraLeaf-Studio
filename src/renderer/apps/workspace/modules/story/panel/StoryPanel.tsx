@@ -30,6 +30,7 @@ import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
+import { useManuscriptIo } from "../manuscript/useManuscriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
 import { narralangUiEnabled } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
@@ -101,6 +102,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const freeze = useFreezeGuard();
     const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
     const { beginExport: beginNarralangExport, dialogs: narralangDialogs } = useNarralangExport();
+    const { beginExport: beginManuscriptExport, beginImport: beginManuscriptImport, dialogs: manuscriptDialogs } = useManuscriptIo();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [defaultStoryId, setDefaultStoryId] = useState<StoryId | undefined>();
     const [selectedStoryId, setSelectedStoryId] = useState<StoryId | null>(null);
@@ -603,6 +605,20 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 ...freeze.menuRow(),
                 onClick: () => beginScriptImport(entry.id),
             },
+            { id: "story-manuscript-separator", separator: true },
+            {
+                id: "export-story-manuscript",
+                label: t("manuscript.exportCommand"),
+                onClick: () => beginManuscriptExport({ storyId: entry.id, sceneIds: null }),
+            },
+            {
+                // Adds scenes from a file on this machine's disk, which a live session has no way
+                // to carry - the same conservative answer as the script import above.
+                id: "import-story-manuscript",
+                label: t("manuscript.importCommand"),
+                ...freeze.menuRow(),
+                onClick: () => beginManuscriptImport(entry.id),
+            },
             { id: "story-actions-separator", separator: true },
             {
                 id: "delete-story",
@@ -613,7 +629,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, dlcs, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, storyService, t]);
+    }, [beginManuscriptExport, beginManuscriptImport, beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, dlcs, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, storyService, t]);
 
     /**
      * The developer section, wired the same way for all three of this panel's menus: what the row
@@ -899,6 +915,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     }
                 },
             },
+            {
+                id: "export-scene-manuscript",
+                label: t("manuscript.exportSceneCommand"),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginManuscriptExport({ storyId: selectedStoryId, sceneIds: [scene.id] });
+                    }
+                },
+            },
             ...(narralangUiEnabled()
                 ? [{
                     id: "export-scene-narralang",
@@ -961,7 +986,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document, freeze, handleDeleteScene, handleMergeScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
+    }, [beginManuscriptExport, beginNarralangExport, beginScriptExport, beginScriptImport, document, freeze, handleDeleteScene, handleMergeScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {
@@ -1405,6 +1430,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             />
             {scriptDialogs}
             {narralangDialogs}
+            {manuscriptDialogs}
         </div>
     );
 }

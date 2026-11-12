@@ -50,6 +50,7 @@ export const HELP_TOPIC_IDS = [
     "storyFlow",
     "storyScript",
     "storyPaste",
+    "storyManuscript",
     "sceneSnapshot",
     "sceneHistory",
     "storyMotion",
@@ -272,6 +273,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         shortcuts: ["story.paste-plain"],
         related: ["storyScene", "characters", "storyScript"],
+    },
+    // Script documents: Word, Fountain and spreadsheet scripts in, a readable PDF or Word script out.
+    {
+        id: "storyManuscript",
+        section: "story",
+        related: ["storyPaste", "storyScript", "voice"],
     },
     {
         id: "sceneSnapshot",

@@ -309,6 +309,13 @@ export const IPCInterface: RendererPreloadedInterface = {
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
+    manuscript: {
+        readOffice: (path: string) => ipcClient.invoke(IPCEventType.manuscriptReadOffice, { path }),
+        writeDocx: (path: string, parts: { name: string; content: string }[]) =>
+            ipcClient.invoke(IPCEventType.manuscriptWriteDocx, { path, parts }),
+        printPdf: (path: string, html: string, footerHtml: string) =>
+            ipcClient.invoke(IPCEventType.manuscriptPrintPdf, { path, html, footerHtml }),
+    },
     /** What long work Studio is doing. See `@shared/types/studioTask`. */
     studioTasks: {
         getOverview: () =>
