@@ -44,6 +44,8 @@ export type DocumentKind =
     | "dlc"
     /** The words the project spells on purpose, at `editor/dictionary.json`. */
     | "dictionary"
+    /** Review threads on story rows, at `editor/story-comments.json`. Never compiled. */
+    | "story-comments"
     /** The transforms the project saved to reuse, at `editor/transform-presets.json`. */
     | "transform-presets"
     /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */

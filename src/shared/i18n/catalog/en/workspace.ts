@@ -1259,6 +1259,7 @@ export const workspace = {
                 assetSets: "asset sets",
                 brand: "brand palette",
                 dictionary: "project dictionary",
+                storyComments: "story comments",
                 transformPresets: "transform presets",
                 saveSchema: "save fields",
                 characters: "characters",

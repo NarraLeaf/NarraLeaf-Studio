@@ -1,0 +1,62 @@
+/**
+ * `storyComments` - review threads on story rows, and the Comments panel that lists them.
+ *
+ * Labels and expectations only; what a thread is and where it lives is the help topic's job.
+ */
+export const storyComments = {
+    add: "Add comment",
+    open: "Open comments",
+    count: {
+        one: "{count} comment",
+        other: "{count} comments",
+    },
+    placeholder: {
+        new: "Write a comment",
+        reply: "Reply",
+    },
+    submit: "Comment",
+    reply: "Reply",
+    edit: "Edit",
+    save: "Save",
+    cancel: "Cancel",
+    edited: "Edited",
+    resolve: "Resolve",
+    reopen: "Reopen",
+    resolved: "Resolved",
+    resolvedBy: "Resolved by {name}",
+    todo: "To-do",
+    markTodo: "Mark as to-do",
+    clearTodo: "Clear to-do",
+    deleteComment: "Delete comment",
+    deleteThread: "Delete thread",
+    unnamedAuthor: "Unnamed author",
+    authorHint: "Comments are signed with the author name set in Settings under Version control",
+    signedAs: "Signed as {name}",
+    orphan: "Row not found",
+    orphanGroup: "Rows not found",
+    unknownScene: "Unknown scene",
+    unknownStory: "Unknown story",
+    filter: {
+        open: "Open",
+        resolved: "Resolved",
+        todo: "To-do",
+        all: "All",
+        allAuthors: "All authors",
+        author: "Author",
+    },
+    search: "Search comments",
+    empty: "No comments",
+    noMatches: "No matching comments",
+    history: {
+        create: "add comment",
+        reply: "reply to comment",
+        edit: "edit comment",
+        deleteComment: "delete comment",
+        deleteThread: "delete comment thread",
+        resolve: "resolve comment",
+        reopen: "reopen comment",
+        markTodo: "mark comment as to-do",
+        clearTodo: "clear comment to-do",
+        reanchor: "move comment to another row",
+    },
+};

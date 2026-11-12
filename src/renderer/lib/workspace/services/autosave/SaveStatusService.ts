@@ -128,6 +128,7 @@ const UNREADABLE_DOCUMENT_STORE: Record<DocumentKind, TranslationKey> = {
     "app-tags": "workspace.shell.save.stores.appTags",
     dlc: "workspace.shell.save.stores.dlc",
     dictionary: "workspace.shell.save.stores.dictionary",
+    "story-comments": "workspace.shell.save.stores.storyComments",
     "transform-presets": "workspace.shell.save.stores.transformPresets",
     "save-schema": "workspace.shell.save.stores.saveSchema",
     "asset-sets": "workspace.shell.save.stores.assetSets",
