@@ -349,8 +349,14 @@ export type GizmoStartScale = { zoom: number; scaleX: number; scaleY: number };
 export function gizmoTransformPatch(input: {
     box: GizmoBox;
     container: GizmoContainer;
-    /** The row's current position, for its offsets. */
+    /** The row's current position, kept beside the new shares. */
     position: StoryAlignPositionValue | undefined;
+    /**
+     * The pixel offsets the element is drawn with, when they differ from the row's own: a character's
+     * entrance defaults merge into the row axis by axis, so a row that states only shares still
+     * stands at the character's default offset. Absent means the row's own offsets.
+     */
+    offsets?: { xoffset?: number; yoffset?: number };
     /** The design stage's size, to turn the offsets back into shares. */
     designSize: { width: number; height: number };
     moved: boolean;
@@ -359,8 +365,8 @@ export function gizmoTransformPatch(input: {
     const patch: Partial<StoryTransformProps> = {};
     if (input.moved) {
         const align = alignFromBox(input.box, input.container);
-        const xoffset = input.position?.xoffset ?? 0;
-        const yoffset = input.position?.yoffset ?? 0;
+        const xoffset = input.offsets?.xoffset ?? input.position?.xoffset ?? 0;
+        const yoffset = input.offsets?.yoffset ?? input.position?.yoffset ?? 0;
         const xalign = align.xalign - (input.designSize.width > 0 ? xoffset / input.designSize.width : 0);
         const yalign = align.yalign - (input.designSize.height > 0 ? yoffset / input.designSize.height : 0);
         patch.position = {
@@ -389,6 +395,19 @@ export function writeGizmoTransform<T extends StageGizmoPayload>(payload: T, pat
 /** A number read off the live stage's props, when it is one. */
 function finiteNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The pixel offsets the live stage draws the element with. The engine keeps a position's offsets as
+ * their own keys beside the shares, so they read back as numbers.
+ */
+export function gizmoLiveOffsets(live: Record<string, unknown> | null): { xoffset?: number; yoffset?: number } {
+    const position = live?.position;
+    if (!position || typeof position !== "object") {
+        return {};
+    }
+    const record = position as Record<string, unknown>;
+    return { xoffset: finiteNumber(record.xoffset), yoffset: finiteNumber(record.yoffset) };
 }
 
 /** The size the element stands at as the drag begins: the row's own statement first, then the stage. */

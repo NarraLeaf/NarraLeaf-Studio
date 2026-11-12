@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import {
     alignFromBox,
+    gizmoLiveOffsets,
     gizmoStartScale,
     gizmoTransformPatch,
     moveGizmo,
@@ -151,6 +152,20 @@ describe("writing back", () => {
         });
         // 320.4/960 = 0.33375, less 192/1920 = 0.1.
         expect(patch.position).toEqual({ xalign: 0.234, yalign: 0.75, xoffset: 192 });
+    });
+
+    it("leaves room for an offset the character's defaults draw it with", () => {
+        // The row states no offset, but the character's entrance default pulls her down 108px.
+        const patch = gizmoTransformPatch({
+            box: { cx: 480, cy: 270, width: 10, height: 10 },
+            container: CONTAINER,
+            position: { xalign: 0.5, yalign: 0.5 },
+            offsets: gizmoLiveOffsets({ position: { x: "50%", y: "50%", yoffset: -108 } }),
+            designSize: design,
+            moved: true,
+        });
+        // The centre is drawn at half height; the default still applies, so the share is 0.5 + 0.1.
+        expect(patch.position).toEqual({ xalign: 0.5, yalign: 0.6 });
     });
 
     it("holds a far drop to the align reach the command line accepts", () => {

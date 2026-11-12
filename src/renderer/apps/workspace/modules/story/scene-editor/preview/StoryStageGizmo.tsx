@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
 import {
     alignFromBox,
+    gizmoLiveOffsets,
     gizmoStartScale,
     gizmoTransformPatch,
     moveGizmo,
@@ -61,6 +62,8 @@ type Drag = {
     startY: number;
     start: Measured;
     startScale: GizmoStartScale;
+    /** The offsets the element is drawn with, which the new shares must leave room for. */
+    offsets: { xoffset?: number; yoffset?: number };
     /** The live props the drag overwrites, to put back if it is cancelled. */
     restore: Record<string, unknown>;
     moved: boolean;
@@ -233,6 +236,7 @@ export function StoryStageGizmo(props: {
             startY: event.clientY,
             start: measured,
             startScale: gizmoStartScale(rowProps, live),
+            offsets: gizmoLiveOffsets(live),
             restore: {
                 position: live?.position,
                 zoom: live?.zoom,
@@ -257,6 +261,7 @@ export function StoryStageGizmo(props: {
                     box: result.box,
                     container: drag.start.container,
                     position: rowProps?.position,
+                    offsets: drag.offsets,
                     designSize,
                     moved: true,
                 });
@@ -276,6 +281,7 @@ export function StoryStageGizmo(props: {
                 box: result.box,
                 container: drag.start.container,
                 position: rowProps?.position,
+                offsets: drag.offsets,
                 designSize,
                 // About the centre the centre stays, and the row's position is left as it was written.
                 moved: !moveEvent.altKey,
@@ -336,16 +342,19 @@ export function StoryStageGizmo(props: {
             }
         };
         const teardown = () => {
-            view.removeEventListener("pointermove", handleMove);
-            view.removeEventListener("pointerup", handleUp);
-            view.removeEventListener("pointercancel", handleCancel);
+            view.removeEventListener("pointermove", handleMove, true);
+            view.removeEventListener("pointerup", handleUp, true);
+            view.removeEventListener("pointercancel", handleCancel, true);
             view.removeEventListener("keydown", handleKey, true);
             teardownRef.current = null;
         };
         teardownRef.current = teardown;
-        view.addEventListener("pointermove", handleMove);
-        view.addEventListener("pointerup", handleUp);
-        view.addEventListener("pointercancel", handleCancel);
+        // Capture phase: the box stops its own press from reaching the stage beneath (whose click
+        // steps the story), and React's stopPropagation also stops the native event short of the
+        // window, so a bubbling listener here would never hear the release.
+        view.addEventListener("pointermove", handleMove, true);
+        view.addEventListener("pointerup", handleUp, true);
+        view.addEventListener("pointercancel", handleCancel, true);
         view.addEventListener("keydown", handleKey, true);
     }, [applyLive, controller.designSize, editable, measured, onCommit, snap, t]);
 
