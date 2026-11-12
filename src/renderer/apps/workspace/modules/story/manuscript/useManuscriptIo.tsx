@@ -315,9 +315,10 @@ export function useManuscriptIo(): ManuscriptIo {
         const chosen = speakers.filter(speaker => choice.speakerKeys.includes(speaker.key));
         const only = choice.sceneIds.length === 1 ? request.document.scenes[choice.sceneIds[0]] : undefined;
         const title = only ? `${request.document.name} · ${only.name}` : request.document.name;
-        const subtitle = [
+        // The scene count is of the scenes printed: an actor's copy leaves out the ones they are not in.
+        const subtitle = (sceneCount: number) => [
             chosen.length > 0 ? t("manuscript.linesFor", { names: chosen.map(speaker => speaker.name).join("、") }) : null,
-            tn("manuscript.sceneCount", choice.sceneIds.length),
+            tn("manuscript.sceneCount", sceneCount),
         ].filter(Boolean).join("　");
         const manuscript = buildManuscript(request.document, {
             sceneIds: choice.sceneIds,

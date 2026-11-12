@@ -98,8 +98,10 @@ describe("buildManuscript", () => {
     });
 
     it("filters to one speaker with context and drops the scenes they are not in", () => {
-        const manuscript = buildManuscript(fixture(), { ...all, speakers: new Set([`character:${LIN}`]), includeDirections: false }, labels, { title: "Story" });
+        const manuscript = buildManuscript(fixture(), { ...all, speakers: new Set([`character:${LIN}`]), includeDirections: false }, labels, { title: "Story", subtitle: count => `${count} scenes` });
+        expect(manuscript.subtitle).toBe("1 scenes");
         expect(manuscript.scenes.map(entry => entry.name)).toEqual(["教室"]);
+        expect(manuscript.compact).toBe(true);
         expect(manuscript.scenes[0].lines).toEqual([
             { kind: "narration", text: "雨声。", depth: 0, id: "t1", context: true },
             { kind: "dialogue", speaker: "林", text: "有人吗？", depth: 0, id: "t2" },
@@ -123,7 +125,7 @@ describe("rendering", () => {
     const strings = { gap: "Omitted", pageOf: "{page} / {total}" };
 
     it("writes a self-contained, escaped HTML page with the CJK face for the language", () => {
-        const manuscript = buildManuscript(fixture(), all, labels, { title: "剧本 <一>", subtitle: "林" });
+        const manuscript = buildManuscript(fixture(), all, labels, { title: "剧本 <一>", subtitle: () => "林" });
         const html = renderManuscriptHtml(manuscript, "zh", strings);
         expect(html).toMatch(/^<!doctype html>\n<html lang="zh-CN">/);
         expect(html).toContain("<h1>剧本 &lt;一&gt;</h1><p>林</p>");
@@ -142,6 +144,7 @@ describe("rendering", () => {
         const manuscript = buildManuscript(fixture(), { ...all, speakers: new Set([`character:${LIN}`]) }, labels, { title: "t" });
         const html = renderManuscriptHtml(manuscript, "ja", strings);
         expect(html).toContain("<html lang=\"ja\">");
+        expect(html).toContain("<body class=\"compact\">");
         expect(html).toContain("class=\"line narration context\"");
         expect(html).toContain("<div class=\"gap\" aria-label=\"Omitted\">⋯</div>");
     });

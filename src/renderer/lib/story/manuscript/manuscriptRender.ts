@@ -60,7 +60,7 @@ header.title { margin: 0 0 10mm; padding-bottom: 4mm; border-bottom: 1.2pt solid
 header.title h1 { margin: 0; font-size: 20pt; font-weight: 600; letter-spacing: 0.01em; line-height: 1.3; }
 header.title p { margin: 2mm 0 0; font-size: 9.5pt; color: #5b616b; }
 section.scene { margin: 0 0 9mm; }
-section.scene + section.scene { break-before: page; }
+body:not(.compact) section.scene + section.scene { break-before: page; }
 section.scene h2 { margin: 0 0 4mm; padding-bottom: 1.5mm; font-size: 13pt; font-weight: 600; border-bottom: 0.6pt solid #c9ccd1; break-after: avoid; }
 .line { display: grid; grid-template-columns: 26mm 1fr; column-gap: 5mm; margin: 0 0 2mm; break-inside: avoid; }
 .line .speaker { text-align: right; font-weight: 600; color: #1b1d21; overflow-wrap: anywhere; }
@@ -88,7 +88,7 @@ export function renderManuscriptHtml(manuscript: Manuscript, locale: ManuscriptL
     return `<!doctype html>
 <html lang="${HTML_LANG[locale]}"><head><meta charset="utf-8"><title>${escapeHtml(manuscript.title)}</title>
 <style>:root { --font: ${manuscriptFontStack(locale)}; }${STYLE}</style></head>
-<body><header class="title"><h1>${escapeHtml(manuscript.title)}</h1>${subtitle}</header>
+<body${manuscript.compact ? " class=\"compact\"" : ""}><header class="title"><h1>${escapeHtml(manuscript.title)}</h1>${subtitle}</header>
 ${scenes}
 </body></html>
 `;
@@ -194,7 +194,7 @@ export function buildManuscriptDocx(manuscript: Manuscript, locale: ManuscriptLo
     body.push(`<w:p><w:pPr><w:pStyle w:val="Subtitle"/></w:pPr>${manuscript.subtitle ? run(manuscript.subtitle) : ""}</w:p>`);
     manuscript.scenes.forEach((scene, index) => {
         // The first scene follows the title on the same page.
-        const pageBreak = index === 0 ? "<w:pageBreakBefore w:val=\"0\"/>" : "";
+        const pageBreak = index === 0 || manuscript.compact ? "<w:pageBreakBefore w:val=\"0\"/>" : "";
         body.push(`<w:p><w:pPr><w:pStyle w:val="Heading1"/>${pageBreak}</w:pPr>${run(scene.name)}</w:p>`);
         for (const line of scene.lines) {
             body.push(docxParagraph(line, locale));

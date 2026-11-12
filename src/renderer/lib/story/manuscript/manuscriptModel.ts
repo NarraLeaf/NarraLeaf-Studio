@@ -25,6 +25,8 @@ export type Manuscript = {
     title: string;
     /** One line under the title: who the copy is for, how many scenes. Already translated. */
     subtitle?: string;
+    /** An actor's copy: scenes run on without a page break each, since most of each is left out. */
+    compact?: boolean;
     scenes: ManuscriptScene[];
 };
 
@@ -235,7 +237,7 @@ export function buildManuscript(
     document: StoryDocument,
     options: ManuscriptOptions,
     labels: ManuscriptLabels,
-    heading: { title: string; subtitle?: string },
+    heading: { title: string; subtitle?: (sceneCount: number) => string },
 ): Manuscript {
     const scenes: ManuscriptScene[] = [];
     for (const sceneId of options.sceneIds) {
@@ -251,5 +253,11 @@ export function buildManuscript(
         }
         scenes.push({ id: scene.id, name: scene.name, lines });
     }
-    return { title: heading.title, ...(heading.subtitle ? { subtitle: heading.subtitle } : {}), scenes };
+    const subtitle = heading.subtitle?.(scenes.length);
+    return {
+        title: heading.title,
+        ...(subtitle ? { subtitle } : {}),
+        ...(options.speakers ? { compact: true } : {}),
+        scenes,
+    };
 }
