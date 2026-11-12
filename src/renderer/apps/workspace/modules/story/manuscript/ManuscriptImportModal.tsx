@@ -96,6 +96,7 @@ export function ManuscriptImportModal(props: {
                                 <FieldLabel as="span">{t("manuscript.table.sheet")}</FieldLabel>
                                 <Select
                                     size="sm"
+                                    fullWidth
                                     portalMenu
                                     ariaLabel={t("manuscript.table.sheet")}
                                     options={sheets.map((sheet, index) => ({ value: String(index), label: sheet.name }))}
@@ -113,6 +114,7 @@ export function ManuscriptImportModal(props: {
                                 <FieldLabel as="span">{t(`manuscript.table.role.${role}` as TranslationKey)}</FieldLabel>
                                 <Select
                                     size="sm"
+                                    fullWidth
                                     portalMenu
                                     ariaLabel={t(`manuscript.table.role.${role}` as TranslationKey)}
                                     options={columnOptions}

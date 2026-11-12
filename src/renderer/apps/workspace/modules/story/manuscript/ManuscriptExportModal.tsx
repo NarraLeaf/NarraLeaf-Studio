@@ -181,6 +181,7 @@ export function ManuscriptExportModal(props: {
                         <FieldLabel as="span">{t("manuscript.context.label")}</FieldLabel>
                         <Select
                             size="sm"
+                            fullWidth
                             portalMenu
                             ariaLabel={t("manuscript.context.label")}
                             options={CONTEXT_OPTIONS.map(count => ({
