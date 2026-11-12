@@ -11,5 +11,7 @@ export function useDevModeAgentHeld(context: WorkspaceContext | null | undefined
         (listener: () => void) => (devMode ? devMode.onAgentHeldChanged(listener) : NO_SUBSCRIPTION()),
         [devMode],
     );
-    return useSyncExternalStore(subscribe, () => devMode?.isAgentHeld() ?? false);
+    const read = () => devMode?.isAgentHeld() ?? false;
+    // The same read for a server render (the run control's tests render to a string).
+    return useSyncExternalStore(subscribe, read, read);
 }

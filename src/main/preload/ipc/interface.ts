@@ -517,6 +517,10 @@ export const IPCInterface: RendererPreloadedInterface = {
                 ...(options?.agent ? { agent: true } : {}),
                 ...(options?.agent && options.agentClient ? { agentClient: options.agentClient } : {}),
             }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        takeOverFromAgent: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentTakeOver, { projectPath }) as Promise<RequestStatus<{ takenOver: boolean }>>,
+        onAgentTakenOver: (handler: (payload: { projectPath: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentTakenOver, handler),
         reveal: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeReveal, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
         stop: (projectPath: string) =>

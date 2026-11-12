@@ -7,6 +7,7 @@ import { flushPendingSaves } from "../autosave/flushPendingSaves";
 import { refreshDependenciesForRun } from "./refreshDependenciesForRun";
 import { translate } from "@/lib/i18n";
 import type { UIService } from "./UIService";
+import type { AgentFollowService } from "../agent/AgentFollowService";
 
 type DevModeServiceEvents = {
     statusChanged: DevModeStatus;
@@ -30,6 +31,7 @@ export class DevModeService extends Service<DevModeService> {
     // has registered the launch.
     private launchInFlight = false;
     private consoleLogToken: { cancel: () => void } | null = null;
+    private takenOverToken: { cancel: () => void } | null = null;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -42,6 +44,13 @@ export class DevModeService extends Service<DevModeService> {
         // included, and nothing else is pushed: a hot reload that is over well inside one poll
         // interval would otherwise never reach the run cell. A line from Dev Mode while a session is
         // up is the cue to read the status again; it is read, never parsed out of the line.
+        // The author took Dev Mode over from an agent in its window: the session is theirs now, and
+        // the agent waits until they resume it.
+        this.takenOverToken?.cancel();
+        this.takenOverToken = getInterface().devMode.onAgentTakenOver(() => {
+            this.updateAgentHeld(false);
+            this.getContext().services.get<AgentFollowService>(Services.AgentFollow).setPaused(true, "devModeTakeover");
+        });
         this.consoleLogToken?.cancel();
         this.consoleLogToken = getInterface().devMode.onConsoleLog(() => {
             if (this.shouldPoll(this.status)) {
@@ -54,6 +63,8 @@ export class DevModeService extends Service<DevModeService> {
         this.stopPolling();
         this.consoleLogToken?.cancel();
         this.consoleLogToken = null;
+        this.takenOverToken?.cancel();
+        this.takenOverToken = null;
         this.events.clear();
     }
 

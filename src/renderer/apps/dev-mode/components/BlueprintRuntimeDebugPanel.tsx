@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import { Check, ChevronDown, ChevronRight, Frame } from "lucide-react";
 import {
     getBlueprintDebugEventLogLevel,
@@ -85,6 +86,7 @@ type BlueprintRuntimeDebugPanelProps = {
 };
 
 export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProps) {
+    const readOnly = useDevModeReadOnly();
     const {
         debug,
         blueprintDocument,
@@ -331,6 +333,8 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             data-tip={t("uiEditor.preview.safeArea")}
                             aria-haspopup="menu"
                             aria-expanded={safeAreaMenuOpen}
+                            // Read-only while an agent holds the session: the overlay would be in its screenshots.
+                            disabled={readOnly}
                             onClick={() => setSafeAreaMenuOpen(prev => !prev)}
                         >
                             <Frame className="h-3.5 w-3.5" aria-hidden />

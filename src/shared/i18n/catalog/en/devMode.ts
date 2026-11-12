@@ -3,6 +3,8 @@ export const devMode = {
     title: "Dev Mode",
     agentHeldCapsule: "{client} is using Dev Mode",
     agentHeldFallbackClient: "Agent",
+    agentHeldReadOnly: "Read-only for now",
+    agentTakeOver: "Take over",
     dismiss: "Dismiss",
     surfaceUnavailable: "Surface not available",
     waitingPayload: "Waiting for Dev Mode payload…",

@@ -426,6 +426,7 @@ export const workspace = {
             edited: "Agent 刚刚编辑：{name}",
             unknownClient: "外部 Agent",
             paused: "Agent 已暂停",
+            pausedTakeover: "Agent 已暂停，开发模式已由你接管",
         },
         menu: {
             pause: "暂停 Agent",

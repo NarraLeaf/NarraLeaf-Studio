@@ -55,6 +55,24 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
 }
 
 /**
+ * The author takes over the Dev Mode session an agent holds, from the Dev Mode window's notice. The
+ * window's project, not the payload's, for the reason {@link DevModeLaunchHandler} gives.
+ */
+export class DevModeAgentTakeOverHandler extends IPCHandler<IPCEventType.devModeAgentTakeOver> {
+    readonly name = IPCEventType.devModeAgentTakeOver;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeAgentTakeOver]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.devModeAgentTakeOver]["response"]>> {
+        return this.tryUse(async () => ({
+            takenOver: window.getApp().getDevModeManager().takeOverFromAgent(requireWindowProject(window, projectPath)),
+        }));
+    }
+}
+
+/**
  * Show the project's Dev Mode window, for the author to look at a session an agent holds (its window
  * opens hidden). The window's project, not the payload's, for the reason {@link DevModeLaunchHandler}
  * gives.

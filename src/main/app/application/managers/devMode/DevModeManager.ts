@@ -148,6 +148,36 @@ export class DevModeManager {
     }
 
     /**
+     * The author takes over the session an agent holds, from the notice in the Dev Mode window.
+     *
+     * The session becomes the author's: the window takes their input again, closes when they close it,
+     * and has no idle limit. The workspace is told, and pauses the agent until the author resumes it,
+     * so the agent's next act is refused with the reason instead of fighting the author for the game.
+     * False when no agent held it (a second click, or the idle stop got there first).
+     */
+    public takeOverFromAgent(projectPath: string): boolean {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session?.agentHold) {
+            return false;
+        }
+        this.setAgentHold(session, false);
+        this.emitWorkspaceConsoleLog(session, {
+            level: "info",
+            source: "Dev Mode",
+            message: "taken over by the author; the agent is paused until they resume it.",
+        });
+        this.findWorkspaceWindow(session.projectPath)?.sendIpcEvent(IPCEventType.devModeAgentTakenOver, {
+            projectPath: session.projectPath,
+        });
+        const window = session.window;
+        if (window && !window.isClosed()) {
+            void window.show();
+            window.win.focus();
+        }
+        return true;
+    }
+
+    /**
      * Show this project's Dev Mode window and bring it forward. The author's way to watch a session an
      * agent holds, whose window opens hidden; it stays held, so the page still takes no input.
      */

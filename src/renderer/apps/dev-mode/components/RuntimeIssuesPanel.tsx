@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, ExternalLink, X } from "lucide-react";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
@@ -37,6 +38,7 @@ export type RuntimeIssuesPanelProps = {
  * which of THEIR lines caused it. The message sits under it and the stack is folded away.
  */
 export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const {
         sessionError,
         onDismissSessionError,
@@ -89,7 +91,7 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                    {empty ? null : (
+                    {empty || readOnly ? null : (
                         <ToolbarButton
                             size="xs"
                             aria-label={t("devMode.issues.dismissAll", { count: issues.length })}
@@ -139,21 +141,24 @@ function entryClass(tone: RuntimeIssueTone): string {
  * region is how the second half of a compile error stays unread.
  */
 function SessionFailureEntry(props: { message: string; onDismiss: () => void }): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { t } = useTranslation();
     const tone = RUNTIME_ISSUE_TONE.error;
     return (
         <div className={entryClass(tone)}>
             <div className="flex items-baseline justify-between gap-2">
                 <span className="font-medium">{t("devMode.issues.sessionFailure")}</span>
-                <button
-                    type="button"
-                    className={cn("shrink-0 rounded-md p-0.5", tone.ghost)}
-                    onClick={props.onDismiss}
-                    data-tip={t("devMode.dismiss")}
-                    aria-label={t("devMode.dismiss")}
-                >
-                    <X className="h-3 w-3" aria-hidden />
-                </button>
+                {readOnly ? null : (
+                    <button
+                        type="button"
+                        className={cn("shrink-0 rounded-md p-0.5", tone.ghost)}
+                        onClick={props.onDismiss}
+                        data-tip={t("devMode.dismiss")}
+                        aria-label={t("devMode.dismiss")}
+                    >
+                        <X className="h-3 w-3" aria-hidden />
+                    </button>
+                )}
             </div>
             <pre className="whitespace-pre-wrap break-words font-mono text-2xs leading-snug opacity-90">
                 {props.message}
@@ -168,6 +173,7 @@ function RuntimeIssueEntry(props: {
     projectPath: string | null;
     onDismiss: () => void;
 }): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { issue, tone, projectPath, onDismiss } = props;
     const { t } = useTranslation();
     const [stackOpen, setStackOpen] = useState(false);
@@ -242,15 +248,17 @@ function RuntimeIssueEntry(props: {
                             {t("devMode.openInStudio")}
                         </button>
                     ) : null}
-                    <button
-                        type="button"
-                        className={cn("rounded-md p-0.5", tone.ghost)}
-                        onClick={onDismiss}
-                        data-tip={t("devMode.dismiss")}
-                        aria-label={t("devMode.dismiss")}
-                    >
-                        <X className="h-3 w-3" aria-hidden />
-                    </button>
+                    {readOnly ? null : (
+                        <button
+                            type="button"
+                            className={cn("rounded-md p-0.5", tone.ghost)}
+                            onClick={onDismiss}
+                            data-tip={t("devMode.dismiss")}
+                            aria-label={t("devMode.dismiss")}
+                        >
+                            <X className="h-3 w-3" aria-hidden />
+                        </button>
+                    )}
                 </div>
             </div>
             {/* The row itself, quoted the way the editor writes it — so an author recognises the line

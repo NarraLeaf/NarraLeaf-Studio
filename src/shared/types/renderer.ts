@@ -732,6 +732,10 @@ export interface RendererPreloadedInterface {
     devMode: {
         /** `agent`: launched by an agent's play-test, which then holds the session (see `IPCEventType.devModeLaunch`). */
         launch(projectPath: string, entry: DevModeEntry, options?: { agent?: boolean; agentClient?: string }): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** From the Dev Mode window: the author takes over the session an agent holds. */
+        takeOverFromAgent(projectPath: string): Promise<RequestStatus<{ takenOver: boolean }>>;
+        /** In the workspace: the author took this project's Dev Mode over from the agent. */
+        onAgentTakenOver(handler: (payload: { projectPath: string }) => void): AppEventToken;
         /** Show the project's Dev Mode window and bring it forward. */
         reveal(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
         /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */

@@ -9,7 +9,8 @@ import {
     type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { prepareWindowCapture } from "../agentHoldShield";
+import { AGENT_HOLD_SHIELD_ATTRIBUTE, prepareWindowCapture } from "../agentHoldShield";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
@@ -245,6 +246,7 @@ function DevModeDebugOverlay(props: {
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [fastForwarding, setFastForwarding] = useState(false);
+    const readOnly = useDevModeReadOnly();
     /** The row the play head is on, kept current by the effect below. Null while nothing is playing. */
     const [playHeadRow, setPlayHeadRow] = useState<StoryRowLocation | null>(null);
     /** Set when the workspace could not be pointed at the row; cleared whenever the menu opens. */
@@ -768,9 +770,9 @@ function DevModeDebugOverlay(props: {
                                 <button
                                     type="button"
                                     role="menuitem"
-                                    disabled={fastForwarding}
+                                    disabled={fastForwarding || readOnly}
                                     className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
-                                        fastForwarding
+                                        fastForwarding || readOnly
                                             ? "text-fg-subtle"
                                             : "text-fg-muted hover:bg-fill hover:text-fg"
                                     }`}
@@ -869,6 +871,7 @@ function DevModeDebugOverlay(props: {
 }
 
 export function DevModeContent(props: DevModeContentProps) {
+    const readOnly = useDevModeReadOnly();
     const { t, locale } = useTranslation();
     const {
         bundle,
@@ -2077,7 +2080,8 @@ export function DevModeContent(props: DevModeContentProps) {
                 {/* The box the stage is fitted into, and the one the window-size capabilities
                     answer for. Measured from here rather than from the frame inside it: this is the
                     element whose size the drawer and the top bar actually decide. */}
-                <div className="min-h-0 min-w-0 flex-1" ref={stageAreaRef}>
+                {/* `isolate`: the game's own stacking stays inside this box, under the shield. */}
+                <div className="isolate min-h-0 min-w-0 flex-1" ref={stageAreaRef}>
                     <StageViewportFrame
                         designSize={viewportSize}
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
@@ -2099,9 +2103,21 @@ export function DevModeContent(props: DevModeContentProps) {
                         />
                     </StageViewportFrame>
                 </div>
+                {readOnly ? (
+                    // Over the game only, while an agent holds the session: it takes every pointer
+                    // event there, the hover included, so the author can watch without moving the
+                    // game. The debug button and panels sit outside this box and stay usable, in
+                    // their read-only form. Transparent: the window's notice says why.
+                    <div
+                        {...{ [AGENT_HOLD_SHIELD_ATTRIBUTE]: "" }}
+                        aria-hidden
+                        className="absolute inset-0 z-10 cursor-not-allowed"
+                        onContextMenu={event => event.preventDefault()}
+                    />
+                ) : null}
             </div>
         );
-    }, [bundle?.letterbox, entry, handleAspectUpdate, safeAreaId, stageViewport]);
+    }, [bundle?.letterbox, entry, handleAspectUpdate, safeAreaId, stageViewport, readOnly]);
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">

@@ -56,6 +56,12 @@ closing it only hides it. They are asked before stopping it. Studio stops it aft
 without a playtest call**: when a call says Dev Mode is not running, `playtest_start` again. The
 author starting Dev Mode themselves takes it back.
 
+The author can also press **Take over** on the window's notice. Dev Mode is then theirs and you are
+paused: every playtest call and every write is refused with `paused`, saying the author took over.
+Stop there and wait until the author tells you to continue (they resume you from Studio's status
+bar); do not start Dev Mode again before that. Read tools keep working, and the game and the project
+may have changed, so look again before you go on.
+
 How the playtest tools behave:
 
 - `playtest_start {scene}` returns once the scene's first line is shown in full, and names that line

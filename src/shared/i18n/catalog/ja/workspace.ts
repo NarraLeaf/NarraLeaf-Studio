@@ -437,6 +437,7 @@ export const workspace = {
             edited: "エージェントが編集した：{name}",
             unknownClient: "外部エージェント",
             paused: "エージェントは一時停止中",
+            pausedTakeover: "エージェント一時停止中：開発モードを引き継ぎました",
         },
         menu: {
             pause: "エージェントを一時停止",

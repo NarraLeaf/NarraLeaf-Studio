@@ -60,7 +60,7 @@ export function AgentStatusEntry() {
     }
 
     const label = state.paused
-        ? t("workspace.agent.status.paused")
+        ? t(state.pausedBy === "devModeTakeover" ? "workspace.agent.status.pausedTakeover" : "workspace.agent.status.paused")
         : state.activity
             ? state.activity.target
                 ? t("workspace.agent.status.editing", { name: state.activity.target })

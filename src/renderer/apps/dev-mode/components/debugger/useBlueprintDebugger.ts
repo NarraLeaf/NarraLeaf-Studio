@@ -59,8 +59,11 @@ export function useBlueprintDebugger(input: {
     session: BlueprintDebugSession | null;
     blueprintDocument: BlueprintDocument | undefined;
     projectPath: string | null;
+    /** While an agent holds the session: breakpoints are shown but not changed. */
+    readOnly?: boolean;
 }): UseBlueprintDebuggerResult {
     const { session, blueprintDocument, projectPath } = input;
+    const readOnly = input.readOnly === true;
     const breakpointStore = useBlueprintBreakpoints(projectPath);
     const { breakpoints, byKey, toggle, setEnabled, configure, remove, removeAll } = breakpointStore;
 
@@ -133,28 +136,40 @@ export function useBlueprintDebugger(input: {
         viewVariables,
         toggleBreakpoint: useCallback(
             nodeId => {
+                if (readOnly) {
+                    return;
+                }
                 const entry = target(nodeId);
                 if (entry) {
                     toggle(entry);
                 }
             },
-            [target, toggle],
+            [target, toggle, readOnly],
         ),
-        setBreakpointEnabled: setEnabled,
-        removeBreakpoint: remove,
-        removeAllBreakpoints: removeAll,
-        configureBreakpoint: configure,
+        setBreakpointEnabled: readOnly ? noop : setEnabled,
+        removeBreakpoint: readOnly ? noop : remove,
+        removeAllBreakpoints: readOnly ? noop : removeAll,
+        configureBreakpoint: readOnly ? noop : configure,
         contextMenu,
         openContextMenu: useCallback((event: ReactMouseEvent, nodeId: string) => {
             event.preventDefault();
+            if (readOnly) {
+                return;
+            }
             setContextMenu({ position: { x: event.clientX, y: event.clientY }, nodeId });
-        }, []),
+        }, [readOnly]),
         closeContextMenu: useCallback(() => setContextMenu(null), []),
         editingTarget,
         openBreakpointEditor: useCallback((next: BlueprintBreakpointTarget) => {
             setContextMenu(null);
-            setEditingTarget(next);
-        }, []),
+            if (!readOnly) {
+                setEditingTarget(next);
+            }
+        }, [readOnly]),
         closeBreakpointEditor: useCallback(() => setEditingTarget(null), []),
     };
+}
+
+function noop(): void {
+    return;
 }

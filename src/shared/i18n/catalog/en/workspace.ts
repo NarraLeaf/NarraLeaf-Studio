@@ -470,6 +470,7 @@ export const workspace = {
             edited: "Agent edited: {name}",
             unknownClient: "external agent",
             paused: "Agent paused",
+            pausedTakeover: "Agent paused: you took over Dev Mode",
         },
         menu: {
             pause: "Pause agent",

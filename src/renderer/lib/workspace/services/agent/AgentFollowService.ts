@@ -47,8 +47,17 @@ export type AgentActivity = {
     target: string | null;
 };
 
+/**
+ * Why the agent is paused: the author's switch in the status bar, or the author taking over the Dev
+ * Mode an agent's play-test was holding. The agent is told which, and both end the same way, with the
+ * author resuming it.
+ */
+export type AgentPauseReason = "author" | "devModeTakeover";
+
 export type AgentFollowState = {
     paused: boolean;
+    /** Set while `paused`; see {@link AgentPauseReason}. */
+    pausedBy: AgentPauseReason | null;
     follow: boolean;
     activity: AgentActivity | null;
     /** The last client that called, by the name it gave in `initialize`. Null before any call. */
@@ -88,7 +97,7 @@ type AgentFollowEvents = {
 
 export class AgentFollowService extends Service<AgentFollowService> {
     private readonly events = new EventEmitter<AgentFollowEvents>();
-    private state: AgentFollowState = { paused: false, follow: AGENT_FOLLOW_DEFAULT, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
+    private state: AgentFollowState = { paused: false, pausedBy: null, follow: AGENT_FOLLOW_DEFAULT, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
     private settings: GlobalSettingsService | null = null;
     private stopFollowingSetting: (() => void) | null = null;
     private lastWriteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -100,6 +109,7 @@ export class AgentFollowService extends Service<AgentFollowService> {
         this.settings = settings;
         this.state = {
             paused: false,
+            pausedBy: null,
             follow: resolveAgentFollow(settings.getSync(AGENT_FOLLOW_KEY)),
             activity: null,
             clientName: null,
@@ -151,15 +161,18 @@ export class AgentFollowService extends Service<AgentFollowService> {
         return this.events.on("highlight", handler);
     }
 
-    public setPaused(paused: boolean): void {
+    public setPaused(paused: boolean, reason: AgentPauseReason = "author"): void {
         if (this.state.paused === paused) {
+            if (paused && this.state.pausedBy !== reason) {
+                this.update({ pausedBy: reason });
+            }
             return;
         }
         if (paused) {
             this.clearIdleTimer();
-            this.update({ paused, active: true });
+            this.update({ paused, pausedBy: reason, active: true });
         } else {
-            this.update({ paused });
+            this.update({ paused, pausedBy: null });
             this.scheduleIdle();
         }
     }

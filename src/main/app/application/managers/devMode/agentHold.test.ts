@@ -16,6 +16,8 @@ import type { DevModeBundleLoadContext, DevModeBundleSource } from "./pipeline/t
 let root: string;
 let devMode: DevModeManager;
 let launched: { window: FakeWindow; hidden: boolean }[];
+/** What the project's workspace window was sent. */
+let workspaceEvents: { type: IPCEventType; payload: unknown }[];
 
 const SURFACE_ENTRY: DevModeEntry = { kind: "surface", surfaceId: "main" };
 const STORY_ENTRY: DevModeEntry = { kind: "story", storyId: "story-1", sceneId: "scene-1" };
@@ -96,7 +98,9 @@ function fakeApp(): App {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         isQuitting: () => false,
         windowManager: { getWindows: () => [] },
-        findWorkspaceForProject: () => undefined,
+        findWorkspaceForProject: () => ({
+            sendIpcEvent: (type: IPCEventType, payload: unknown) => workspaceEvents.push({ type, payload }),
+        }),
         getGlobalState: () => ({ get: () => undefined }),
         projectTrustManager: { isTrusted: () => true },
         getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
@@ -116,6 +120,7 @@ beforeEach(() => {
     root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-devmode-agent-hold-")));
     fs.writeFileSync(path.join(root, "project.json"), JSON.stringify({ name: "agent-hold" }));
     launched = [];
+    workspaceEvents = [];
     devMode = new DevModeManager(fakeApp(), bundleSource);
 });
 
@@ -193,6 +198,33 @@ describe("a Dev Mode session an agent opened", () => {
         expect(devMode.isAgentHeld(root)).toBe(true);
         expect(window.shown).toBe(shownBefore);
         expect(window.throttled).toBe(false);
+    });
+
+    it("is handed to the author when they take it over, and the workspace is told", async () => {
+        await devMode.launch(root, SURFACE_ENTRY, { agent: true });
+        const { window } = launched[0];
+
+        expect(devMode.takeOverFromAgent(root)).toBe(true);
+
+        expect(devMode.isAgentHeld(root)).toBe(false);
+        expect(holdEvents(window).at(-1)).toEqual({ held: false });
+        expect(window.shown).toBe(1);
+        expect(workspaceEvents.filter(event => event.type === IPCEventType.devModeAgentTakenOver)).toHaveLength(1);
+        // The author's now: closing goes to the game's blueprints again instead of hiding.
+        window.requestClose();
+        expect(window.hiddenByGuard).toBe(0);
+        // A second press finds nothing to take.
+        expect(devMode.takeOverFromAgent(root)).toBe(false);
+    });
+
+    it("an author's taken-over session has no idle limit", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        await devMode.launch(root, SURFACE_ENTRY, { agent: true });
+        devMode.takeOverFromAgent(root);
+
+        await vi.advanceTimersByTimeAsync(DEV_MODE_AGENT_IDLE_MS * 2);
+
+        expect(launched[0].window.isClosed()).toBe(false);
     });
 
     it("is stopped after five minutes without a play-test call, and every call restarts the clock", async () => {

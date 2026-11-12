@@ -5,6 +5,8 @@ export const devMode = {
     title: "開発モード",
     agentHeldCapsule: "{client} が開発モードを使用中",
     agentHeldFallbackClient: "エージェント",
+    agentHeldReadOnly: "現在は閲覧のみ",
+    agentTakeOver: "引き継ぐ",
     dismiss: "閉じる",
     surfaceUnavailable: "サーフェスが使えない",
     waitingPayload: "開発モードのペイロードを待っている…",

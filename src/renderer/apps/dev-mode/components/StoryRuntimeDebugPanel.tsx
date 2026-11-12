@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -346,6 +347,7 @@ function useStoryRunTrail(
 }
 
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { storyRuntime, scopeBridge, bundle, projectPath, className, chrome } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<StoryRuntimeTabId>("variables");
@@ -436,6 +438,7 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                             portalMenu
                             options={snapshotOptions}
                             value={context?.snapshotId ?? ""}
+                            disabled={readOnly}
                             onChange={value => onSelectSnapshot(String(value))}
                         />
                     ) : null}
@@ -642,11 +645,13 @@ function VariableValueEditor(props: {
     onCommit: (value: StoryLiteralValue) => void;
 }): ReactNode {
     const { valueType, value, live, scenes, onCommit } = props;
+    const readOnly = useDevModeReadOnly();
 
     if (valueType === "boolean") {
         return (
             <Switch
                 size="sm"
+                disabled={readOnly}
                 checked={value === true}
                 className={live ? undefined : "opacity-60"}
                 onCheckedChange={onCommit}
@@ -666,6 +671,7 @@ function VariableTextEditor(props: {
     onCommit: (value: StoryLiteralValue) => void;
 }): ReactNode {
     const { valueType, value, live, scenes, onCommit } = props;
+    const readOnly = useDevModeReadOnly();
     const initial = useMemo(() => formatStoryVariableValue(valueType, value, scenes), [valueType, value, scenes]);
     const [draft, setDraft] = useState(initial);
     const [invalid, setInvalid] = useState(false);
@@ -699,6 +705,7 @@ function VariableTextEditor(props: {
         <input
             type="text"
             value={draft}
+            readOnly={readOnly}
             spellCheck={false}
             className={`min-w-0 flex-1 rounded-md border bg-surface-sunken px-1.5 py-0.5 text-2xs outline-none focus-visible:border-edge-strong ${
                 invalid ? "border-danger/60 text-danger" : "border-edge text-fg-muted"
@@ -931,6 +938,7 @@ function TimelineTab(props: {
     /** Names the workspace a row is opened in. Absent = no project behind this window, so no button. */
     projectPath: string | null;
 }): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { storyRuntime, document, sceneId: entrySceneId, bundle, projectPath } = props;
     const { t } = useTranslation();
     const currentRowRef = useRef<HTMLLIElement>(null);
@@ -1050,7 +1058,7 @@ function TimelineTab(props: {
                                     : "border-transparent text-fg-muted hover:bg-fill-subtle",
                                 row.disabled ? "opacity-45" : "",
                             )}
-                            onClick={row.disabled ? undefined : () => void jumpToRow(row)}
+                            onClick={row.disabled || readOnly ? undefined : () => void jumpToRow(row)}
                         >
                             {/* Every column is centred inside the same single-line box and the row
                                 grows below it (`items-start`), so a wrapped line would keep its first

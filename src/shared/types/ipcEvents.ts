@@ -354,6 +354,8 @@ export enum IPCEventType {
     devModeAgentDrive = "devMode.agent.drive",
     devModeAgentHoldChanged = "devMode.agent.holdChanged",
     devModeReveal = "devMode.reveal",
+    devModeAgentTakeOver = "devMode.agent.takeOver",
+    devModeAgentTakenOver = "devMode.agent.takenOver",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -3028,6 +3030,30 @@ export type IPCDevModeEvents = {
             /** The session is held by an agent; see `agent` on {@link IPCEventType.devModeLaunch}. */
             agentHeld: boolean;
         };
+    };
+    /**
+     * The Dev Mode window → main: the author takes over the session an agent holds. The window becomes
+     * theirs (input, closing, no idle limit) and the workspace pauses the agent
+     * ({@link IPCEventType.devModeAgentTakenOver}).
+     */
+    [IPCEventType.devModeAgentTakeOver]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            takenOver: boolean;
+        };
+    };
+    /** Main → the project's workspace: the author took Dev Mode over from the agent; pause the agent. */
+    [IPCEventType.devModeAgentTakenOver]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: never;
     };
     /** Show the project's Dev Mode window and bring it forward; the way to look at one an agent holds. */
     [IPCEventType.devModeReveal]: {
