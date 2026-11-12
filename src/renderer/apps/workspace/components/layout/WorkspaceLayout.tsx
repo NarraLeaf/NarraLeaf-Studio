@@ -33,6 +33,7 @@ import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
+import { ManuscriptCommands } from "../../modules/story/manuscript/ManuscriptCommands";
 import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
 import { narralangUiEnabled } from "../../modules/story/narralang/narralangUi";
 import { StoryScenePreviewFloatHost } from "../../modules/story/scene-editor/preview/StoryScenePreviewFloatHost";
@@ -1088,6 +1089,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <LiveSessionFreezeCommands />
                 <LintCommands />
                 <StoryScriptCommands />
+                <ManuscriptCommands />
                 {narralangUiEnabled() ? <NarralangCommands /> : null}
                 <KeybindingCheatSheet />
                 {/* Present in a recovery window too: that is the one place an author most needs to be

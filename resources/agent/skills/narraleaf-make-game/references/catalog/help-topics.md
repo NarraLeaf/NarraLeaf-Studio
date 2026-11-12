@@ -364,6 +364,34 @@ Pasting several lines into the story editor opens Paste as Rows first. It splits
 
 相关主题 · Related：场景与行 · Scenes and rows、角色 · Characters、在 Studio 之外编辑 · Editing outside Studio
 
+### 剧本文档 · Script documents
+
+用 Word、Fountain 或电子表格写成的剧本可以导入为场景，故事也可以导出为 PDF 或 Word 格式的可读剧本
+
+导入时先读取文件，再打开粘贴向导确定每个说话人。Word 中的标题、Fountain 中的场景标题或场景列的变化会开始一个新场景
+
+- 电子表格需指定说话人、台词、备注与场景各在哪一列
+- 没有说话人的行成为旁白，备注成为台词之后的备注行
+- 新场景添加到故事中，撤销一次即可移除
+
+导出时选择场景、角色以及要包含的内容。只选一个角色时，剧本只包含该角色的台词，并以前面的台词作为上下文
+
+- 行 ID 与配音录音稿中的 ID 相同
+
+Scripts written in Word, Fountain or a spreadsheet can be imported as scenes, and a story can be exported as a readable script in PDF or Word.
+
+Import reads the file, then opens the paste wizard to decide who each speaker is. A heading in Word, a scene heading in Fountain or a change in the scene column starts a new scene.
+
+- For a spreadsheet, choose which columns hold the speaker, the line, a note and the scene.
+- Rows without a speaker become narration, and notes become note rows after their line.
+- The new scenes are added to the story and can be removed with one undo.
+
+Export chooses the scenes, the speakers and what else to print. Filtered to one speaker, the script holds only that speaker's lines with the lines before them as context.
+
+- Line IDs are the same IDs the voice recording script uses.
+
+相关主题 · Related：粘贴为行 · Paste as Rows、在 Studio 之外编辑 · Editing outside Studio、配音 · Voice-over
+
 ### 从某一行开始播放 · Playing from a row
 
 开发模式可以从当前行开始播放，而不是从场景开头；该行之前的内容不会运行，其中本应设置的变量取本项目为它们声明的值

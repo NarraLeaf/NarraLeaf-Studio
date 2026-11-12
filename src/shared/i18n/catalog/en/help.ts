@@ -285,6 +285,24 @@ export const help = {
                 + "- A scene edited in Studio after the export loses those edits on import, and the import states "
                 + "this first.",
         },
+        storyManuscript: {
+            title: "Script documents",
+            body:
+                "Scripts written in Word, Fountain or a spreadsheet can be imported as scenes, and a story can be "
+                + "exported as a readable script in PDF or Word.\n"
+                + "\n"
+                + "Import reads the file, then opens the paste wizard to decide who each speaker is. A heading in "
+                + "Word, a scene heading in Fountain or a change in the scene column starts a new scene.\n"
+                + "\n"
+                + "- For a spreadsheet, choose which columns hold the speaker, the line, a note and the scene.\n"
+                + "- Rows without a speaker become narration, and notes become note rows after their line.\n"
+                + "- The new scenes are added to the story and can be removed with one undo.\n"
+                + "\n"
+                + "Export chooses the scenes, the speakers and what else to print. Filtered to one speaker, the "
+                + "script holds only that speaker's lines with the lines before them as context.\n"
+                + "\n"
+                + "- Line IDs are the same IDs the voice recording script uses.",
+        },
         storyPaste: {
             title: "Paste as Rows",
             body:
