@@ -54,6 +54,7 @@ export const HELP_TOPIC_IDS = [
     "storyMotion",
     "stageTimeline",
     "dictionary",
+    "storyComments",
     "dictionaryMarks",
     "assets",
     "assetSources",
@@ -282,6 +283,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         clip: true,
         related: ["dictionaryMarks", "spellcheck", "storyScene"],
+    },
+    {
+        id: "storyComments",
+        section: "story",
+        related: ["storyScene", "versionControl"],
     },
     {
         id: "dictionaryMarks",

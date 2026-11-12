@@ -78,6 +78,8 @@ import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommandLineView";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
+import { storyRowCommentText } from "./StoryRowCommentMark";
+import { openStoryCommentPopover } from "../../story-comments/storyCommentsState";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -2335,6 +2337,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             onClick: () => void editor.splitSceneAtRow(menuTarget),
         }] : []),
         { id: "sep-op", separator: true },
+        // A review thread lives in its own document, so it is offered whatever the story allows; the
+        // popover itself greys out while the comments document cannot be written.
+        ...(payload?.storyId && payload.sceneId && scene.blocks[menuTarget] ? [{
+            id: "comment",
+            label: t("storyComments.add"),
+            onClick: () => openStoryCommentPopover({
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+                blockId: menuTarget,
+                text: storyRowCommentText(scene.blocks[menuTarget]),
+            }),
+        }] : []),
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
         // Only on a row a command line owns: a text row, a blank line and a draft row are text already,
