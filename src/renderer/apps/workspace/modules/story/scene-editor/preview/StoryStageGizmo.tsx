@@ -48,6 +48,8 @@ type NlrImage = Parameters<typeof DevTools.getDisplayableTransformProps>[0];
 /** What one measure of the stage found: the element, its drawn box, and the stage box it sits in. */
 type Measured = {
     element: NlrImage;
+    /** The engine's transform box for the element: the node whose inline pose the drag adjusts. */
+    node: HTMLElement;
     box: GizmoBox;
     container: GizmoContainer;
     /** The container's top-left inside the overlay, so a container-space box can be drawn. */
@@ -66,6 +68,8 @@ type Drag = {
     offsets: { xoffset?: number; yoffset?: number };
     /** The live props the drag overwrites, to put back if it is cancelled. */
     restore: Record<string, unknown>;
+    /** The transform box's inline pose as the drag began, to adjust from and to put back. */
+    pose: InlinePose | null;
     moved: boolean;
 };
 
@@ -74,6 +78,47 @@ type DragView = {
     guides: GizmoGuide[];
     readout: string;
 };
+
+/**
+ * The engine's inline pose of a transform box: `left` and `bottom` as percentages of the stage (the
+ * share and any offset folded into one number) and a `transform` ending in `scaleX(..) scaleY(..)`.
+ */
+type InlinePose = { left: number; bottom: number; transform: string; raw: { left: string; bottom: string; transform: string } };
+
+function readInlinePose(node: HTMLElement): InlinePose | null {
+    const percent = (value: string) => {
+        const match = /^(-?\d+(?:\.\d+)?)%$/.exec(value.trim());
+        return match ? Number(match[1]) : null;
+    };
+    const left = percent(node.style.left);
+    const bottom = percent(node.style.bottom);
+    if (left === null || bottom === null) {
+        return null;
+    }
+    return { left, bottom, transform: node.style.transform, raw: { left: node.style.left, bottom: node.style.bottom, transform: node.style.transform } };
+}
+
+/**
+ * Move and scale the drawn box while the pointer is down.
+ *
+ * Injecting the props into the element's state is not enough on its own: the engine re-derives the
+ * box's style from its state only while no transition or transform is held on it, and the preview's
+ * still of a row usually holds one. Writing the same pose onto the box directly is what the author
+ * sees move; the row write on release rebuilds the stage from the document either way.
+ */
+function writeInlinePose(node: HTMLElement, pose: InlinePose, start: GizmoBox, box: GizmoBox, container: GizmoContainer, factorX: number, factorY: number) {
+    node.style.left = `${pose.left + (box.cx - start.cx) / container.width * 100}%`;
+    node.style.bottom = `${pose.bottom - (box.cy - start.cy) / container.height * 100}%`;
+    node.style.transform = pose.transform
+        .replace(/scaleX\((-?[\d.]+)\)/, (_, value: string) => `scaleX(${Number(value) * factorX})`)
+        .replace(/scaleY\((-?[\d.]+)\)/, (_, value: string) => `scaleY(${Number(value) * factorY})`);
+}
+
+function restoreInlinePose(node: HTMLElement, pose: InlinePose) {
+    node.style.left = pose.raw.left;
+    node.style.bottom = pose.raw.bottom;
+    node.style.transform = pose.raw.transform;
+}
 
 /**
  * Find the object on the visible stage buffer and read where it is drawn.
@@ -113,6 +158,7 @@ function measureStageObject(
     }
     return {
         element: element as unknown as NlrImage,
+        node: box,
         box: {
             cx: rect.left + rect.width / 2 - containerRect.left,
             cy: rect.top + rect.height / 2 - containerRect.top,
@@ -243,6 +289,7 @@ export function StoryStageGizmo(props: {
                 scaleX: live?.scaleX,
                 scaleY: live?.scaleY,
             },
+            pose: readInlinePose(measured.node),
             moved: false,
         };
         dragRef.current = drag;
@@ -268,6 +315,8 @@ export function StoryStageGizmo(props: {
                 const align = alignFromBox(result.box, drag.start.container);
                 return {
                     patch,
+                    factorX: 1,
+                    factorY: 1,
                     view: {
                         box: result.box,
                         guides: result.guides,
@@ -289,6 +338,8 @@ export function StoryStageGizmo(props: {
             });
             return {
                 patch,
+                factorX: result.factorX,
+                factorY: result.factorY,
                 view: {
                     box: result.box,
                     guides: [],
@@ -313,6 +364,9 @@ export function StoryStageGizmo(props: {
             const next = compute(moveEvent);
             lastPatch = next.patch;
             applyLive(drag.start.element, next.patch as Record<string, unknown>);
+            if (drag.pose) {
+                writeInlinePose(drag.start.node, drag.pose, drag.start.box, next.view.box, drag.start.container, next.factorX, next.factorY);
+            }
             setDragView(next.view);
         };
         const finish = (commit: boolean) => {
@@ -326,6 +380,9 @@ export function StoryStageGizmo(props: {
                 onCommit(editable.blockId, writeGizmoTransform(editable.payload, lastPatch));
             } else {
                 applyLive(drag.start.element, drag.restore);
+                if (drag.pose) {
+                    restoreInlinePose(drag.start.node, drag.pose);
+                }
             }
         };
         const handleUp = (upEvent: PointerEvent) => {
