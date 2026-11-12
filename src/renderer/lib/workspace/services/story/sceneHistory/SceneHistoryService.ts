@@ -134,7 +134,7 @@ export class SceneHistoryScheduler {
 const yieldToEditor = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 export class SceneHistoryService extends Service<SceneHistoryService> {
-    private ctx: WorkspaceContext | null = null;
+    private workspace: WorkspaceContext | null = null;
     private settings: GlobalSettingsService | null = null;
     private scheduler: SceneHistoryScheduler | null = null;
     private stopListening: (() => void) | null = null;
@@ -145,7 +145,7 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
     private readonly chains = new Map<string, Promise<unknown>>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        this.ctx = ctx;
+        this.workspace = ctx;
         const story = ctx.services.get<StoryService>(Services.Story);
         const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
         try {
@@ -157,7 +157,7 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
             this.settings = null;
         }
         this.scheduler = new SceneHistoryScheduler({
-            enabled: () => this.setting(AUTO_SNAPSHOT_ENABLED_SETTING, AUTO_SNAPSHOT_DEFAULT_ENABLED) !== false,
+            enabled: () => this.setting<boolean>(AUTO_SNAPSHOT_ENABLED_SETTING, AUTO_SNAPSHOT_DEFAULT_ENABLED) !== false,
             intervalMinutes: () => Number(this.setting(AUTO_SNAPSHOT_INTERVAL_SETTING, AUTO_SNAPSHOT_DEFAULT_INTERVAL_MINUTES)),
             isFrozen: () => getProjectWriteFreeze() !== null,
             run: storyIds => this.snapshotStories(storyIds),
@@ -180,7 +180,7 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         this.indexes.clear();
         this.chains.clear();
         this.events.clear();
-        this.ctx = null;
+        this.workspace = null;
     }
 
     public onChanged(handler: (event: { storyId: StoryId; sceneId: StorySceneId }) => void): () => void {
@@ -233,7 +233,7 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         let revisionsFailed = false;
         if (options.includeRevisions) {
             try {
-                const vcs = this.ctx!.services.get<VersionControlService>(Services.VersionControl);
+                const vcs = this.workspace!.services.get<VersionControlService>(Services.VersionControl);
                 if (await vcs.isRepository()) {
                     const history: VcsHistoryEntry[] = await vcs.getHistory(ROW_HISTORY_REVISION_LIMIT);
                     const path = `editor/story/stories/${storyId}/storydoc.json`;
@@ -409,27 +409,27 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
     }
 
     private sceneDir(storyId: StoryId, sceneId: StorySceneId): string {
-        return this.ctx!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId));
+        return this.workspace!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId));
     }
 
     private indexPath(storyId: StoryId, sceneId: StorySceneId): string {
-        return this.ctx!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId), "index.json");
+        return this.workspace!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId), "index.json");
     }
 
     private entryPath(storyId: StoryId, sceneId: StorySceneId, entryId: string): string {
-        return this.ctx!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId), `${safeSegment(entryId)}.json`);
+        return this.workspace!.project.resolve(".nlstudio", "scene-history", safeSegment(storyId), safeSegment(sceneId), `${safeSegment(entryId)}.json`);
     }
 
     private fs(): FileSystemService {
-        return this.ctx!.services.get<FileSystemService>(Services.FileSystem);
+        return this.workspace!.services.get<FileSystemService>(Services.FileSystem);
     }
 
     private story(): StoryService {
-        return this.ctx!.services.get<StoryService>(Services.Story);
+        return this.workspace!.services.get<StoryService>(Services.Story);
     }
 
     private uuid(): UuidService {
-        return this.ctx!.services.get<UuidService>(Services.Uuid);
+        return this.workspace!.services.get<UuidService>(Services.Uuid);
     }
 }
 

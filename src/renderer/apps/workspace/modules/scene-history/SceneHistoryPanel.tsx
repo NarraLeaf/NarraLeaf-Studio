@@ -151,7 +151,6 @@ export function SceneHistoryPanel() {
                     onChange={value => setFilter(String(value) as KindFilter)}
                     size="sm"
                     className="min-w-0 flex-1"
-                    aria-label={t("sceneHistory.panelTitle")}
                 />
                 <Button
                     size="sm"
