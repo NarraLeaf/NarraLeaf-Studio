@@ -235,7 +235,7 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
             try {
                 const vcs = this.workspace!.services.get<VersionControlService>(Services.VersionControl);
                 if (await vcs.isRepository()) {
-                    const history: VcsHistoryEntry[] = await vcs.getHistory(ROW_HISTORY_REVISION_LIMIT);
+                    const history: VcsHistoryEntry[] = await vcs.getHistory(ROW_HISTORY_REVISION_LIMIT, { includeDetails: true });
                     const path = `editor/story/stories/${storyId}/storydoc.json`;
                     for (const revision of history.slice(0, ROW_HISTORY_REVISION_LIMIT)) {
                         let scene: StoryScene | null = null;
