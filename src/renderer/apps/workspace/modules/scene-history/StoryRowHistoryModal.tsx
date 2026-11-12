@@ -128,7 +128,7 @@ export function StoryRowHistoryModal(props: {
                         ) : (
                             <ul className="flex max-h-[50vh] flex-col overflow-y-auto rounded-md border border-edge">
                                 {state.versions.map((version, index) => (
-                                    <li key={index} className="flex items-start gap-3 border-b border-edge/60 px-3 py-2 last:border-b-0" data-story-row-version={version.source.kind}>
+                                    <li key={index} className="flex items-start gap-3 border-b border-edge px-3 py-2 last:border-b-0" data-story-row-version={version.source.kind}>
                                         <div className="min-w-0 flex-1">
                                             <div className="text-2xs text-fg-subtle">
                                                 {version.at ? formatHistoryTime(version.at, locale) : null}

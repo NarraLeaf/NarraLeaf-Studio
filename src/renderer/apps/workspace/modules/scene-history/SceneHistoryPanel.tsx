@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GitCompareArrows, History, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { GitCompareArrows, History, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
@@ -177,11 +177,11 @@ export function SceneHistoryPanel() {
                             const open = comparing?.id === entry.id;
                             const currentScene = open ? document?.scenes[sceneId] : undefined;
                             return (
-                                <li key={entry.id} className="border-b border-edge/60 px-3 py-2" data-scene-history-entry={entry.kind}>
+                                <li key={entry.id} className="border-b border-edge px-3 py-2" data-scene-history-entry={entry.kind}>
                                     <div className="flex items-center gap-2">
                                         {entry.kind === "auto"
                                             ? <History className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden />
-                                            : <Plus className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />}
+                                            : <Save className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />}
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-xs text-fg">
                                                 {formatHistoryTime(entry.createdAt, locale)}
