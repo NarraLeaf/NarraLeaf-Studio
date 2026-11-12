@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_FOLLOW_KEY } from "@shared/agent/follow";
+import { AGENT_EDITOR_LOCK_IDLE_MS } from "@shared/agent/editorLock";
 import { Services } from "../services";
 import { AGENT_ACTIVE_IDLE_MS, AgentFollowService, LAST_WRITE_VISIBLE_MS } from "./AgentFollowService";
 
@@ -147,5 +148,51 @@ describe("AgentFollowService: follow mode is the Studio-wide setting", () => {
         expect(settings.listenerCount(AGENT_FOLLOW_KEY)).toBe(1);
         follow.dispose(context);
         expect(settings.listenerCount(AGENT_FOLLOW_KEY)).toBe(0);
+    });
+});
+
+describe("AgentFollowService: editor locks", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("locks and unlocks an editor", () => {
+        const follow = new AgentFollowService();
+        follow.lockEditor("story");
+        expect(follow.getState().editorLocks).toEqual({ story: { overridden: false } });
+        follow.unlockEditor("story");
+        expect(follow.getState().editorLocks).toEqual({});
+    });
+
+    it("keeps the author's read-write choice when the agent locks again", () => {
+        const follow = new AgentFollowService();
+        follow.lockEditor("interface");
+        follow.setEditorLockOverridden("interface", true);
+        follow.lockEditor("interface");
+        expect(follow.getState().editorLocks.interface).toEqual({ overridden: true });
+        follow.setEditorLockOverridden("interface", false);
+        expect(follow.getState().editorLocks.interface).toEqual({ overridden: false });
+    });
+
+    it("lifts every lock after the idle window without a call, and a call restarts the clock", () => {
+        const follow = new AgentFollowService();
+        follow.beginCall("1", "editor_lock", null);
+        follow.lockEditor("story");
+        follow.endCall("1");
+        vi.advanceTimersByTime(AGENT_EDITOR_LOCK_IDLE_MS - 1000);
+        follow.beginCall("2", "story_show", null);
+        follow.endCall("2");
+        vi.advanceTimersByTime(AGENT_EDITOR_LOCK_IDLE_MS - 1000);
+        expect(follow.getState().editorLocks.story).toBeDefined();
+        vi.advanceTimersByTime(2000);
+        expect(follow.getState().editorLocks).toEqual({});
+    });
+
+    it("drops the locks when the agent is paused, and takes none while paused", () => {
+        const follow = new AgentFollowService();
+        follow.lockEditor("story");
+        follow.setPaused(true);
+        expect(follow.getState().editorLocks).toEqual({});
+        follow.lockEditor("story");
+        expect(follow.getState().editorLocks).toEqual({});
     });
 });

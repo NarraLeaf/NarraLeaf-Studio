@@ -421,6 +421,25 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} がストーリーを編集中",
+                interface: "{client} がインターフェースを編集中",
+            },
+            detail: {
+                readOnly: "現在は閲覧のみ",
+                readWrite: "読み書きに切り替えました",
+            },
+            action: {
+                readWrite: "読み書きにする",
+                readOnly: "閲覧のみに戻す",
+            },
+            fallbackClient: "エージェント",
+            reason: {
+                story: "エージェントがストーリーを編集中のため、閲覧のみです。エディター上部の通知で読み書きに切り替えられます",
+                interface: "エージェントがインターフェースを編集中のため、閲覧のみです。エディター上部の通知で読み書きに切り替えられます",
+            },
+        },
         devMode: {
             status: "エージェント使用中",
             tooltip: "開発モードのウィンドウを表示（閲覧のみ）",
@@ -636,6 +655,8 @@ export const workspace = {
             playtest_hover: "プレイ中にポインターを重ねる",
             playtest_key: "プレイ中にキーを押す",
             playtest_stop: "プレイを終了",
+            editor_lock: "エディターを閲覧のみにする",
+            editor_unlock: "エディターの閲覧のみを解除",
             playtest_variables: "ゲームの変数を読む",
             console_read: "コンソールを読む",
             build: "ゲームをビルド",

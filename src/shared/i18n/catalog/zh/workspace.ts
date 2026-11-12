@@ -410,6 +410,25 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} 正在编辑故事",
+                interface: "{client} 正在编辑界面",
+            },
+            detail: {
+                readOnly: "目前为只读模式",
+                readWrite: "已改为读写模式",
+            },
+            action: {
+                readWrite: "改为读写",
+                readOnly: "恢复只读",
+            },
+            fallbackClient: "Agent",
+            reason: {
+                story: "Agent 正在编辑故事，已设为只读，可在编辑器顶部的提示中改为读写",
+                interface: "Agent 正在编辑界面，已设为只读，可在编辑器顶部的提示中改为读写",
+            },
+        },
         devMode: {
             status: "Agent 使用中",
             tooltip: "显示开发模式窗口，仅供查看",
@@ -627,6 +646,8 @@ export const workspace = {
             playtest_hover: "在试玩中悬停",
             playtest_key: "在试玩中按键",
             playtest_stop: "停止试玩",
+            editor_lock: "将编辑器设为只读",
+            editor_unlock: "解除编辑器只读",
             playtest_variables: "读取游戏变量",
             console_read: "读取控制台",
             build: "构建游戏",

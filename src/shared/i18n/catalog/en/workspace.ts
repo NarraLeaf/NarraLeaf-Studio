@@ -454,6 +454,25 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} is editing the story",
+                interface: "{client} is editing the interface",
+            },
+            detail: {
+                readOnly: "Read-only for now",
+                readWrite: "Switched to read-write",
+            },
+            action: {
+                readWrite: "Read-write",
+                readOnly: "Read-only",
+            },
+            fallbackClient: "Agent",
+            reason: {
+                story: "An agent is editing the story, so it is read-only for you. Switch it to read-write on the notice at the top of the editor",
+                interface: "An agent is editing the interface, so it is read-only for you. Switch it to read-write on the notice at the top of the editor",
+            },
+        },
         devMode: {
             status: "Agent in use",
             tooltip: "Show the Dev Mode window, view only",
@@ -679,6 +698,8 @@ export const workspace = {
             playtest_hover: "Hover in the game",
             playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
+            editor_lock: "Set an editor read-only",
+            editor_unlock: "Give an editor back",
             playtest_variables: "Read the game's variables",
             console_read: "Read Studio's console",
             build: "Build the game",

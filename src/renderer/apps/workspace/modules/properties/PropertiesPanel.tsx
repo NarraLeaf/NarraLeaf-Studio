@@ -1,3 +1,4 @@
+import { AgentEditorLockClamp } from "../agent/AgentEditorLockClamp";
 import { startTransition, useDeferredValue, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
     ArrowLeftRight,
@@ -1530,7 +1531,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             );
         }
         if (sceneEditorContext) {
-            return <PropertyEditor schema={sceneSchema} data={sceneEditorContext} />;
+            // The page's own fields write the interface document: an agent's interface lock clamps
+            // them. Freezes keep reaching them the way they always have, through the field renderer.
+            return (
+                <AgentEditorLockClamp area="interface">
+                    <PropertyEditor schema={sceneSchema} data={sceneEditorContext} />
+                </AgentEditorLockClamp>
+            );
         }
 
         // Character editor

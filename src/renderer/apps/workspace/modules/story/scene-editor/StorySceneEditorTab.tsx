@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -2386,7 +2387,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             data-help-topic="storyScene"
             data-story-density={editor.density}
             style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
-            className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
+            className="relative flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
             // Freeze-wrapped for the same reason the paste is: this handler's one job is to arm the
@@ -2401,6 +2402,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             onCut={scriptOpen ? undefined : freeze.run(editor.cutSelectionToClipboard)}
             onPaste={scriptOpen ? undefined : freeze.run(editor.handlePaste)}
         >
+            {/* An agent set the story editor read-only while it works; the author can switch it back. */}
+            <AgentEditorLockCapsule area="story" />
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-primary" />

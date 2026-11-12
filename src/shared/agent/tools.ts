@@ -16,6 +16,8 @@
  * Comments in English per project convention.
  */
 
+import { AGENT_LOCK_AREAS } from "./editorLock";
+
 export type AgentJsonSchema = {
     type?: "object" | "string" | "number" | "integer" | "boolean" | "array" | "null";
     description?: string;
@@ -1011,6 +1013,19 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string", description: "Only variables whose name contains this." } },
     ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
+    ws(
+        "editor_lock",
+        "Set an editor read-only for the author",
+        "Sets one of Studio's editors read-only for the author while you work in it, so their edits do not land between your read and your write: `story` (scenes and the story outline) or `interface` (pages, layers and their blueprints). Your own tools are not affected. Use it around a long rewrite, and call editor_unlock when you are done. The author can switch the editor back to read-write whenever they like; you are not told, so still read a page or scene again before each write. The lock lifts by itself after 5 minutes without a call from you, and when the author pauses you.",
+        { editor: { type: "string", enum: [...AGENT_LOCK_AREAS] } },
+        ["editor"],
+    ),
+    ws(
+        "editor_unlock",
+        "Give an editor back to the author",
+        "Lifts the read-only lock editor_lock put on an editor. Without `editor`, lifts every lock you hold.",
+        { editor: { type: "string", enum: [...AGENT_LOCK_AREAS] } },
+    ),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",

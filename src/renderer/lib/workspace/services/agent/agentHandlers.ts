@@ -41,6 +41,7 @@ import {
     playtestStop,
     playtestVariables,
 } from "./tools/verifyTools";
+import { editorLock, editorUnlock } from "./tools/editorLockTools";
 
 export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
     const handlers: Record<string, AgentToolHandler> = {
@@ -118,6 +119,8 @@ export function createAgentToolHandlers(): Record<string, AgentToolHandler> {
         playtest_key: playtestKey,
         playtest_stop: playtestStop,
         playtest_variables: playtestVariables,
+        editor_lock: editorLock,
+        editor_unlock: editorUnlock,
     };
     return handlers;
 }

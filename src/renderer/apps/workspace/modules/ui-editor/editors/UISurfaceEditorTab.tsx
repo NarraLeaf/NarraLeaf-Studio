@@ -8,6 +8,7 @@ import {
     type CSSProperties,
 } from "react";
 import { MotionConfig } from "motion/react";
+import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
@@ -54,6 +55,7 @@ import { editorSidebarCssWidth, useEditorSidebarWidth } from "@/apps/workspace/c
 import {
     CANVAS_CORNER_CHROME_MAX_WIDTH,
     EDITOR_SIDEBAR_INSET_PROPERTY,
+    CANVAS_SIDEBAR_INSET_PADDING,
 } from "@/lib/components/layout/editorSidebarInset";
 import { SurfaceZoomMenu } from "@/apps/workspace/modules/ui-editor/editors/SurfaceZoomMenu";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
@@ -1069,6 +1071,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         visible={menuState.visible}
                         onClose={hideMenu}
                     />
+                    {/* An agent set the interface editor read-only while it works; the author can switch it back. */}
+                    {/* In the part of the canvas the outline leaves, above the docked bar. */}
+                    <AgentEditorLockCapsule area="interface" position={{ left: CANVAS_SIDEBAR_INSET_PADDING, offset: "80px" }} />
                 </div>
             </WidgetRuntimeStateProvider>
         </div>
