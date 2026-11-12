@@ -312,7 +312,8 @@ export function StoryStageGizmo(props: {
                     designSize,
                     moved: true,
                 });
-                const align = alignFromBox(result.box, drag.start.container);
+                // The numbers the row will hold, which is what the inspector shows beside it.
+                const align = patch.position ?? alignFromBox(result.box, drag.start.container);
                 return {
                     patch,
                     factorX: 1,
@@ -320,7 +321,7 @@ export function StoryStageGizmo(props: {
                     view: {
                         box: result.box,
                         guides: result.guides,
-                        readout: t("story.preview.gizmo.readoutPosition", { x: align.xalign.toFixed(3), y: align.yalign.toFixed(3) }),
+                        readout: t("story.preview.gizmo.readoutPosition", { x: (align.xalign ?? 0).toFixed(3), y: (align.yalign ?? 0).toFixed(3) }),
                     },
                 };
             }
