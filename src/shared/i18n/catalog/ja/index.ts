@@ -59,6 +59,7 @@ import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
 import { dictionary } from "./dictionary";
+import { storyComments } from "./storyComments";
 import { game } from "./game";
 import { crash } from "./crash";
 import { documents } from "./documents";
@@ -114,6 +115,7 @@ export const ja = {
     update,
     brand,
     dictionary,
+    storyComments,
     game,
     crash,
     documents,

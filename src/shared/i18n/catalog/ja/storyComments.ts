@@ -1,0 +1,61 @@
+import type { LocaleNamespace } from "../types";
+
+/**
+ * `storyComments` 日本語。ストーリー行のレビューコメントと、それを一覧する「コメント」パネル。
+ */
+export const storyComments = {
+    add: "コメントを追加",
+    open: "コメントを開く",
+    count: {
+        other: "コメント {count} 件",
+    },
+    placeholder: {
+        new: "コメントを入力",
+        reply: "返信",
+    },
+    submit: "投稿",
+    reply: "返信",
+    edit: "編集",
+    save: "保存",
+    cancel: "キャンセル",
+    edited: "編集済み",
+    resolve: "解決済みにする",
+    reopen: "再開",
+    resolved: "解決済み",
+    resolvedBy: "{name} が解決済みにしました",
+    todo: "TODO",
+    markTodo: "TODO にする",
+    clearTodo: "TODO を解除",
+    deleteComment: "コメントを削除",
+    deleteThread: "スレッドを削除",
+    unnamedAuthor: "名前未設定",
+    authorHint: "コメントの署名には、設定のバージョン管理で指定した作成者名が使われます",
+    signedAs: "署名：{name}",
+    orphan: "対応する行が見つかりません",
+    orphanGroup: "対応する行が見つかりません",
+    unknownScene: "不明なシーン",
+    unknownStory: "不明なストーリー",
+    filter: {
+        open: "未解決",
+        resolved: "解決済み",
+        todo: "TODO",
+        all: "すべて",
+        allAuthors: "すべての作成者",
+        author: "作成者",
+    },
+    search: "コメントを検索",
+    empty: "コメントはありません",
+    noMatches: "一致するコメントはありません",
+    history: {
+        create: "コメントの追加",
+        reply: "コメントへの返信",
+        edit: "コメントの編集",
+        deleteComment: "コメントの削除",
+        deleteThread: "コメントスレッドの削除",
+        resolve: "コメントの解決",
+        reopen: "コメントの再開",
+        markTodo: "コメントを TODO にする",
+        clearTodo: "コメントの TODO 解除",
+        reanchor: "コメントを別の行へ移動",
+    },
+} satisfies LocaleNamespace<"storyComments">;

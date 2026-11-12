@@ -434,6 +434,34 @@ A term is added in the dictionary panel, or from a story row: select the words a
 
 相关主题 · Related：词典标记 · Dictionary marks、拼写 · Spelling、场景与行 · Scenes and rows
 
+### 故事行批注 · Comments on story rows
+
+批注线程属于某一个故事行，包含多条回复，每条记录作者和时间，可标为已解决或待办
+
+- 在行上右击并选择「添加批注」开始一个线程，按 Ctrl+Enter 或 Cmd+Enter 发表
+- 带有批注的行在右侧显示气泡标记，点击即可阅读和回复
+- 「批注」面板按场景列出全部线程，可按未解决、待办、已解决或作者筛选，点击线程跳到对应的行
+
+批注保存在工程中，随版本控制同步，不进入游戏，也不计入剧情文本统计
+
+署名使用工程当前登录的 Team 账号；未登录时使用设置中版本控制的作者名称
+
+行被移动时批注随行移动；行被删除后，线程列在面板的「未找到对应的行」下
+
+A comment thread belongs to one story row. It holds replies, each with its author and time, and can be marked as resolved or as a to-do.
+
+- Right-click a row and choose Add comment to start a thread. Press Ctrl+Enter or Cmd+Enter to send.
+- A row with a thread shows a speech bubble at its right edge. Click it to read and reply.
+- The Comments panel lists every thread by scene. Filter by open, to-do, resolved or author, and click a thread to go to its row.
+
+Comments are stored in the project and shared through version control. They are not part of the game and are not counted as story text.
+
+Comments are signed with the Team account the project is signed in with, or with the author name set in Settings under Version control.
+
+A thread follows its row when the row is moved. When the row is deleted, the thread is listed under Rows not found in the panel.
+
+相关主题 · Related：场景与行 · Scenes and rows、版本控制 · Version control
+
 ### 词典标记 · Dictionary marks
 
 检查原文拼写时，词典中的每一种拼写都会被接受，词条与异体写法一样

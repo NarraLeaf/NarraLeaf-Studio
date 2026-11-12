@@ -188,6 +188,8 @@ export const ProjectNameConvention = {
     // the spellchecker is told about while the project is open. Cross-cutting like the three above,
     // so it sits at editor root too.
     EditorDictionary: ["editor", "dictionary.json"],
+    // Review threads on story rows. Versioned with the project, never read by a build.
+    EditorStoryComments: ["editor", "story-comments.json"],
     // The transforms this project saved to reuse, offered in the transform card's preset list beside
     // the ones Studio ships. Cross-cutting like the ones above, so it sits at editor root too.
     EditorTransformPresets: ["editor", "transform-presets.json"],

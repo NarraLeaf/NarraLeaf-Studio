@@ -9,6 +9,7 @@ import {brandSpec} from "./brand";
 import {charactersSpec} from "./characters";
 import {dictionarySpec} from "./dictionary";
 import {dlcSpec} from "./dlc";
+import {storyCommentsSpec} from "./storyComments";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
 import {projectConfigSpec} from "./project";
@@ -39,6 +40,7 @@ export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizat
 export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
 export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
 export {DLC_DOCUMENT_PATH, dlcSpec} from "./dlc";
+export {STORY_COMMENTS_DOCUMENT_PATH, storyCommentsSpec} from "./storyComments";
 export {
     PROJECT_CONFIG_DOCUMENT_PATH,
     projectConfigSpec,
@@ -76,6 +78,7 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     audioTracksSpec,
     brandSpec,
     dictionarySpec,
+    storyCommentsSpec,
     dlcSpec,
     saveSchemaSpec,
     transformPresetsSpec,
