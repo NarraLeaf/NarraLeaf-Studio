@@ -63,6 +63,7 @@ import { storyComments } from "./storyComments";
 import { game } from "./game";
 import { crash } from "./crash";
 import { documents } from "./documents";
+import { manuscript } from "./manuscript";
 import type { LocaleMessages } from "../types";
 
 export const ja = {
@@ -118,4 +119,5 @@ export const ja = {
     game,
     crash,
     documents,
+    manuscript,
 } satisfies LocaleMessages;

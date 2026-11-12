@@ -23,6 +23,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { OfficeReadResult } from "@shared/manuscript/officeRead";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
@@ -319,6 +320,12 @@ export interface RendererPreloadedInterface {
      * not got, and because what comes back is a range list rather than a thirty-megabyte face.
      */
     probeFontCoverage(path: string): Promise<RequestStatus<{ result: FontCoverageResult }>>;
+    /** Script documents: read a .docx/.xlsx for import, write a .docx or a PDF for export. */
+    manuscript: {
+        readOffice(path: string): Promise<RequestStatus<{ result: OfficeReadResult }>>;
+        writeDocx(path: string, parts: { name: string; content: string }[]): Promise<RequestStatus<Record<string, never>>>;
+        printPdf(path: string, html: string, footerHtml: string): Promise<RequestStatus<Record<string, never>>>;
+    };
     /**
      * Converting a media file, polled the way a production build is.
      *
