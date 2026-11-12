@@ -26,6 +26,7 @@ import type { VariableRegistryService } from "../variables/VariableRegistryServi
 import type { AudioTrackService } from "../audio/AudioTrackService";
 import type { AppTagService } from "../appTag/AppTagService";
 import type { DictionaryService } from "../dictionary/DictionaryService";
+import type { StoryCommentsService } from "../storyComments/StoryCommentsService";
 import type { TransformPresetService } from "../transformPreset/TransformPresetService";
 import { EventEmitter } from "../ui/EventEmitter";
 
@@ -207,6 +208,14 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         // save" state as at project open rather than throwing through the reload.
         reload: async ctx => {
             await ctx.services.get<DictionaryService>(Services.Dictionary).load();
+        },
+    },
+    {
+        id: "storyComments",
+        labelKey: "workspace.shell.save.stores.storyComments",
+        // Review threads only point at rows by id, so they can be re-read in any order.
+        reload: async ctx => {
+            await ctx.services.get<StoryCommentsService>(Services.StoryComments).load();
         },
     },
 ];

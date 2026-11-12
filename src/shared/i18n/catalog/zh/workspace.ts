@@ -1113,6 +1113,7 @@ export const workspace = {
                 assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "项目词典",
+                storyComments: "故事批注",
                 transformPresets: "变换预设",
                 saveSchema: "存档字段",
                 characters: "角色",

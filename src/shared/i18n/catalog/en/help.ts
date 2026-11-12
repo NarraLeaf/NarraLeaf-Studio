@@ -292,6 +292,19 @@ export const help = {
                 + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
         },
+        storyComments: {
+            title: "Comments on story rows",
+            body:
+                "A comment thread belongs to one story row. It holds replies, each with its author and time, and can be marked as resolved or as a to-do.\n"
+                + "\n"
+                + "- Right-click a row and choose Add comment to start a thread. Press Ctrl+Enter or Cmd+Enter to send.\n"
+                + "- A row with a thread shows a speech bubble at its right edge. Click it to read and reply.\n"
+                + "- The Comments panel lists every thread by scene. Filter by open, to-do, resolved or author, and click a thread to go to its row.\n"
+                + "\n"
+                + "Comments are stored in the project and shared through version control. They are not part of the game and are not counted as story text.\n"
+                + "Comments are signed with the Team account the project is signed in with, or with the author name set in Settings under Version control.\n"
+                + "A thread follows its row when the row is moved. When the row is deleted, the thread is listed under Rows not found in the panel.",
+        },
         dictionary: {
             title: "Project dictionary",
             body:
