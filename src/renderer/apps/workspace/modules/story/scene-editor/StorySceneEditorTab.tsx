@@ -77,6 +77,7 @@ import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommandLineView";
+import { StoryRowHistoryModal, type StoryRowHistoryTarget } from "../../scene-history/StoryRowHistoryModal";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
@@ -572,6 +573,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const openFindRef = useRef<() => void>(() => {});
     /** Reads a row's line as the row prints it; published by the {@link StoryCommandLineReader} below. */
     const rowLineReaderRef = useRef<((block: StoryBlock) => string | null) | null>(null);
+    /** The row whose history dialog is open (row menu ▸ View line history), or null. */
+    const [rowHistoryTarget, setRowHistoryTarget] = useState<StoryRowHistoryTarget | null>(null);
+    const readRowLineForHistory = useCallback((block: StoryBlock) => rowLineReaderRef.current?.(block) ?? null, []);
     const rowLineOf = useCallback((blockId: StoryBlockId): string | null => {
         const block = editor.scene?.blocks[blockId];
         return block ? rowLineReaderRef.current?.(block) ?? null : null;
@@ -2345,6 +2349,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ...freeze.menuRow(),
             onClick: () => editRowAsText(menuTarget),
         }] : []),
+        // Reading history writes nothing, so it stays live on a frozen project; restoring from the
+        // dialog is what the freeze guards.
+        { id: "row-history", label: t("sceneHistory.rowMenu"), onClick: () => setRowHistoryTarget({ storyId: document.id, sceneId: scene.id, blockId: menuTarget }) },
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
@@ -2896,6 +2903,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             {/* Opens already parsed, writes nothing until it is confirmed, and leaves the document
                 (and the cast) untouched on cancel. It is a paste affordance and has no menu entry. */}
+            <StoryRowHistoryModal
+                target={rowHistoryTarget}
+                onClose={() => setRowHistoryTarget(null)}
+                characters={editor.characters}
+                scene={scene}
+                scenes={document.scenes}
+                readLine={readRowLineForHistory}
+            />
             {editor.pasteWizard ? (
                 <StoryPasteWizardModal
                     open

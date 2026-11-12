@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import {
     applyRetention,
+    diffScenes,
+    diffText,
     extractRowVersions,
     hashString,
     sceneWithRowRestored,
@@ -103,5 +105,34 @@ describe("hashString", () => {
     it("is stable and distinguishes small changes", () => {
         expect(hashString("abc")).toBe(hashString("abc"));
         expect(hashString("abc")).not.toBe(hashString("abd"));
+    });
+});
+
+describe("diffScenes", () => {
+    it("reports changed, added and removed rows by id", () => {
+        const snapshot = sceneWith(narration("a", "1"), narration("b", "2"), narration("c", "3"));
+        const current = sceneWith(narration("a", "1"), narration("b", "two"), narration("d", "4"));
+        expect(diffScenes(snapshot, current)).toEqual({ changed: ["b"], added: ["d"], removed: ["c"] });
+    });
+});
+
+describe("diffText", () => {
+    it("marks the characters that changed", () => {
+        expect(diffText("她笑了", "她哭了")).toEqual([
+            { kind: "same", text: "她" },
+            { kind: "removed", text: "笑" },
+            { kind: "added", text: "哭" },
+            { kind: "same", text: "了" },
+        ]);
+    });
+
+    it("handles empty sides and identical text", () => {
+        expect(diffText("", "new")).toEqual([{ kind: "added", text: "new" }]);
+        expect(diffText("same", "same")).toEqual([{ kind: "same", text: "same" }]);
+    });
+
+    it("falls back to a whole replacement for very long input", () => {
+        const long = "x".repeat(3000);
+        expect(diffText(long, "y")).toEqual([{ kind: "removed", text: long }, { kind: "added", text: "y" }]);
     });
 });

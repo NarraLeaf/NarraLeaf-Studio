@@ -150,3 +150,81 @@ export function sceneWithRowRestored(scene: StoryScene, version: StoryBlock): St
     if (restored.disabled === undefined) delete restored.disabled;
     return { ...scene, blocks: { ...scene.blocks, [version.id]: restored } };
 }
+
+export type SceneDiffSummary = {
+    /** Rows present in both whose content differs. */
+    changed: StoryBlockId[];
+    /** Rows the current scene has and the snapshot does not. */
+    added: StoryBlockId[];
+    /** Rows the snapshot has and the current scene does not. */
+    removed: StoryBlockId[];
+};
+
+/** Row-level comparison of a snapshot against the current scene, by block id. Tree moves are not reported. */
+export function diffScenes(snapshot: StoryScene, current: StoryScene): SceneDiffSummary {
+    const changed: StoryBlockId[] = [];
+    const added: StoryBlockId[] = [];
+    const removed: StoryBlockId[] = [];
+    for (const [id, block] of Object.entries(current.blocks)) {
+        const before = snapshot.blocks[id];
+        if (!before) added.push(id);
+        else if (rowSignature(before) !== rowSignature(block)) changed.push(id);
+    }
+    for (const id of Object.keys(snapshot.blocks)) {
+        if (!current.blocks[id]) removed.push(id);
+    }
+    return { changed, added, removed };
+}
+
+export type TextDiffPart = { kind: "same" | "removed" | "added"; text: string };
+
+/** Longest strings compared character by character; past this the diff is a whole replacement. */
+const TEXT_DIFF_LIMIT = 2000;
+
+/**
+ * Character-level diff of `before` → `after` (LCS). Adjacent parts of one kind are merged. Long
+ * inputs fall back to one removal plus one addition, so a pathological row never stalls the UI.
+ */
+export function diffText(before: string, after: string): TextDiffPart[] {
+    if (before === after) return before ? [{ kind: "same", text: before }] : [];
+    const a = [...before];
+    const b = [...after];
+    if (a.length > TEXT_DIFF_LIMIT || b.length > TEXT_DIFF_LIMIT) {
+        return [
+            ...(before ? [{ kind: "removed" as const, text: before }] : []),
+            ...(after ? [{ kind: "added" as const, text: after }] : []),
+        ];
+    }
+    const rows = a.length + 1;
+    const cols = b.length + 1;
+    const table = new Uint16Array(rows * cols);
+    for (let i = a.length - 1; i >= 0; i--) {
+        for (let j = b.length - 1; j >= 0; j--) {
+            table[i * cols + j] = a[i] === b[j]
+                ? table[(i + 1) * cols + j + 1] + 1
+                : Math.max(table[(i + 1) * cols + j], table[i * cols + j + 1]);
+        }
+    }
+    const parts: TextDiffPart[] = [];
+    const push = (kind: TextDiffPart["kind"], text: string) => {
+        const last = parts[parts.length - 1];
+        if (last && last.kind === kind) last.text += text;
+        else parts.push({ kind, text });
+    };
+    let i = 0;
+    let j = 0;
+    while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) {
+            push("same", a[i]);
+            i++;
+            j++;
+        } else if (table[(i + 1) * cols + j] >= table[i * cols + j + 1]) {
+            push("removed", a[i++]);
+        } else {
+            push("added", b[j++]);
+        }
+    }
+    while (i < a.length) push("removed", a[i++]);
+    while (j < b.length) push("added", b[j++]);
+    return parts;
+}
