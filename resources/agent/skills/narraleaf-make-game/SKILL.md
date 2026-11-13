@@ -486,6 +486,11 @@ Checkpoint: `localization_status` shows nothing missing or stale for each langua
 - If the author edits something you were working on, you get `stale_revision`: re-read, merge your
   intent into their version, write again. Their edit wins over your plan.
 - If the author undoes one of your edits, treat that as a "no": ask before doing it again.
+- For a long rewrite of the story or the interface, `editor_lock {editor:"story"}` (or
+  `"interface"`) sets that editor read-only for the author so their edits do not land between your
+  read and your write; `editor_unlock` when done. It changes nothing for your own tools. The author
+  can switch it back to read-write at any time and you are not told, so still re-read before each
+  write. It lifts after 5 minutes without a call, and when you are paused.
 - `paused` means stop. Summarise where you are so you can resume cleanly.
 - Never touch files in the project folder directly; everything goes through the tools, so the author
   can see and undo it.

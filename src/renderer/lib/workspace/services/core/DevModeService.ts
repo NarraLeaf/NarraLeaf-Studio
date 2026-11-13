@@ -5,14 +5,24 @@ import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { EventEmitter } from "../ui/EventEmitter";
 import { flushPendingSaves } from "../autosave/flushPendingSaves";
 import { refreshDependenciesForRun } from "./refreshDependenciesForRun";
+import { translate } from "@/lib/i18n";
+import type { UIService } from "./UIService";
+import type { AgentFollowService } from "../agent/AgentFollowService";
 
 type DevModeServiceEvents = {
     statusChanged: DevModeStatus;
+    agentHeldChanged: boolean;
 };
+
+/** Who is asking: the author (the default), or an agent's play-test tool. */
+export type DevModeCaller = { agent?: boolean; agentClient?: string };
 
 export class DevModeService extends Service<DevModeService> {
     private status: DevModeStatus = "idle";
+    /** An agent holds the running session; see `agent` on `IPCEventType.devModeLaunch`. */
+    private agentHeld = false;
     private timer: ReturnType<typeof setInterval> | null = null;
+    private timerInterval: number | null = null;
     private refreshInFlight = false;
     // Set when a read is asked for while one is already on its way: the answer that read brings may
     // predate whatever prompted the second ask, so one more read follows it.
@@ -22,6 +32,9 @@ export class DevModeService extends Service<DevModeService> {
     // has registered the launch.
     private launchInFlight = false;
     private consoleLogToken: { cancel: () => void } | null = null;
+    private takenOverToken: { cancel: () => void } | null = null;
+    private handedBackToken: { cancel: () => void } | null = null;
+    private stopWatchingPause: (() => void) | null = null;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -30,6 +43,7 @@ export class DevModeService extends Service<DevModeService> {
 
     public override activate(_ctx: WorkspaceContext): void {
         void this.refreshStatus();
+        this.watchAgentTakeover();
         // The session reports every step of its pipeline to this window's console, a status change
         // included, and nothing else is pushed: a hot reload that is over well inside one poll
         // interval would otherwise never reach the run cell. A line from Dev Mode while a session is
@@ -42,10 +56,49 @@ export class DevModeService extends Service<DevModeService> {
         });
     }
 
+    /**
+     * The author taking Dev Mode over from an agent, and giving it back.
+     *
+     * Taken over in the Dev Mode window: the session is the author's and the agent is paused with that
+     * reason. Handed back there: the agent holds it again and is resumed. Resumed from the status bar
+     * instead: the session stays the author's, and main is told so the window stops offering to hand
+     * it back.
+     */
+    private watchAgentTakeover(): void {
+        const follow = this.getContext().services.get<AgentFollowService>(Services.AgentFollow);
+        this.takenOverToken?.cancel();
+        this.takenOverToken = getInterface().devMode.onAgentTakenOver(() => {
+            this.updateAgentHeld(false);
+            follow.setPaused(true, "devModeTakeover");
+        });
+        this.handedBackToken?.cancel();
+        this.handedBackToken = getInterface().devMode.onAgentHandedBack(() => {
+            this.updateAgentHeld(true);
+            if (follow.getState().pausedBy === "devModeTakeover") {
+                follow.setPaused(false);
+            }
+        });
+        this.stopWatchingPause?.();
+        let pausedForTakeover = follow.getState().pausedBy === "devModeTakeover";
+        this.stopWatchingPause = follow.onChanged(state => {
+            const now = state.pausedBy === "devModeTakeover";
+            if (pausedForTakeover && !now) {
+                void getInterface().devMode.endAgentTakeover(this.projectPath());
+            }
+            pausedForTakeover = now;
+        });
+    }
+
     public override dispose(_ctx: WorkspaceContext): void {
         this.stopPolling();
         this.consoleLogToken?.cancel();
         this.consoleLogToken = null;
+        this.takenOverToken?.cancel();
+        this.takenOverToken = null;
+        this.handedBackToken?.cancel();
+        this.handedBackToken = null;
+        this.stopWatchingPause?.();
+        this.stopWatchingPause = null;
         this.events.clear();
     }
 
@@ -55,6 +108,24 @@ export class DevModeService extends Service<DevModeService> {
 
     public onStatusChanged(handler: (status: DevModeStatus) => void): () => void {
         return this.events.on("statusChanged", handler);
+    }
+
+    /** Whether an agent's play-test holds the running session. */
+    public isAgentHeld(): boolean {
+        return this.agentHeld;
+    }
+
+    public onAgentHeldChanged(handler: (held: boolean) => void): () => void {
+        return this.events.on("agentHeldChanged", handler);
+    }
+
+    /**
+     * Show the Dev Mode window. The way the author looks at a session an agent holds: its window opens
+     * hidden, and stays read-only while shown.
+     */
+    public async reveal(): Promise<boolean> {
+        const result = await getInterface().devMode.reveal(this.projectPath());
+        return result.success && result.data.revealed;
     }
 
     public async refreshStatus(): Promise<DevModeStatus> {
@@ -71,6 +142,7 @@ export class DevModeService extends Service<DevModeService> {
                 this.refreshAgain = false;
                 const result = await getInterface().devMode.getStatus(this.projectPath());
                 if (result.success) {
+                    this.updateAgentHeld(result.data.agentHeld === true);
                     this.updateStatus(result.data.status);
                 }
             } while (this.refreshAgain && !this.launchInFlight);
@@ -90,7 +162,10 @@ export class DevModeService extends Service<DevModeService> {
      * call would be refused for. A parameter whose every value but one is rejected is a place a
      * caller is invited to make a mistake.
      */
-    public async launch(entry: DevModeEntry): Promise<DevModeStatus> {
+    public async launch(entry: DevModeEntry, caller: DevModeCaller = {}): Promise<DevModeStatus> {
+        if (!caller.agent && !(await this.confirmTakeOver("launch"))) {
+            return this.status;
+        }
         this.launchInFlight = true;
         // Flip to a running state up front so the toolbar Run button and the status bar react the
         // instant the user clicks — not after the flush and compile the launch entails.
@@ -103,8 +178,13 @@ export class DevModeService extends Service<DevModeService> {
                 this.updateStatus("error");
                 return this.status;
             }
-            const result = await getInterface().devMode.launch(this.projectPath(), entry);
+            const result = await getInterface().devMode.launch(this.projectPath(), entry, {
+                agent: caller.agent === true,
+                ...(caller.agent && caller.agentClient ? { agentClient: caller.agentClient } : {}),
+            });
             if (result.success) {
+                // The launch decides who holds the session: an agent's takes it, the author's gives it back.
+                this.updateAgentHeld(caller.agent === true && result.data.status !== "error");
                 this.updateStatus(result.data.status);
             } else {
                 this.updateStatus("error");
@@ -140,12 +220,45 @@ export class DevModeService extends Service<DevModeService> {
         await refreshDependenciesForRun(this.getContext());
     }
 
-    public async stop(): Promise<DevModeStatus> {
+    public async stop(caller: DevModeCaller = {}): Promise<DevModeStatus> {
+        if (!caller.agent && !(await this.confirmTakeOver("stop"))) {
+            return this.status;
+        }
         const result = await getInterface().devMode.stop(this.projectPath());
         if (result.success) {
+            this.updateAgentHeld(false);
             this.updateStatus(result.data.status);
         }
         return this.status;
+    }
+
+    /**
+     * Ask the author before they stop or relaunch a session an agent holds: the agent is in the middle
+     * of a play-test, and ending it is the one thing it cannot recover from. Read fresh, so a session
+     * the agent has just let go of (or the idle timer has just closed) does not ask.
+     */
+    private async confirmTakeOver(action: "launch" | "stop"): Promise<boolean> {
+        if (!this.agentHeld) {
+            return true;
+        }
+        await this.refreshStatus();
+        if (!this.agentHeld) {
+            return true;
+        }
+        const ui = this.getContext().services.get<UIService>(Services.UI);
+        return ui.showDestructiveConfirm(
+            translate("workspace.agent.devMode.confirmTitle"),
+            translate(action === "stop" ? "workspace.agent.devMode.confirmStopDetail" : "workspace.agent.devMode.confirmLaunchDetail"),
+            translate(action === "stop" ? "workspace.agent.devMode.confirmStop" : "workspace.agent.devMode.confirmLaunch"),
+        );
+    }
+
+    private updateAgentHeld(held: boolean): void {
+        if (this.agentHeld === held) {
+            return;
+        }
+        this.agentHeld = held;
+        this.events.emit("agentHeldChanged", held);
     }
 
     public async reload(): Promise<DevModeStatus> {
@@ -182,6 +295,9 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     private updateStatus(nextStatus: DevModeStatus): void {
+        if (nextStatus === "idle" || nextStatus === "error") {
+            this.updateAgentHeld(false);
+        }
         this.syncPolling(nextStatus);
         if (this.status === nextStatus) {
             return;
@@ -192,7 +308,7 @@ export class DevModeService extends Service<DevModeService> {
 
     private syncPolling(status: DevModeStatus): void {
         if (this.shouldPoll(status)) {
-            this.startPolling();
+            this.startPolling(devModePollInterval(status));
         } else {
             this.stopPolling();
         }
@@ -202,13 +318,15 @@ export class DevModeService extends Service<DevModeService> {
         return status !== "idle" && status !== "error";
     }
 
-    private startPolling(): void {
-        if (this.timer) {
+    private startPolling(intervalMs: number): void {
+        if (this.timer && this.timerInterval === intervalMs) {
             return;
         }
+        this.stopPolling();
+        this.timerInterval = intervalMs;
         this.timer = setInterval(() => {
             void this.refreshStatus();
-        }, 1000);
+        }, intervalMs);
     }
 
     private stopPolling(): void {
@@ -217,5 +335,23 @@ export class DevModeService extends Service<DevModeService> {
         }
         clearInterval(this.timer);
         this.timer = null;
+        this.timerInterval = null;
     }
 }
+
+/**
+ * How often the status is read while a session is up.
+ *
+ * Once per second while the session is moving between states, where the run cell has to follow it.
+ * A running game is read only every few seconds: everything that moves it on - a reload, an error,
+ * a stop, the window being closed - writes a line to this window's console first, and that line is
+ * already the cue to read again (see `activate`). The slow read is the net under that, not the way
+ * the change arrives, so it no longer wakes the workspace and crosses IPC every second for as long
+ * as the author leaves the game open.
+ */
+export function devModePollInterval(status: DevModeStatus): number {
+    return status === "running" ? DEV_MODE_STEADY_POLL_MS : DEV_MODE_ACTIVE_POLL_MS;
+}
+
+const DEV_MODE_ACTIVE_POLL_MS = 1000;
+const DEV_MODE_STEADY_POLL_MS = 5000;

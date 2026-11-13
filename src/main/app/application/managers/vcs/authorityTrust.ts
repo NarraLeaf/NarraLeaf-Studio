@@ -67,8 +67,26 @@ function quote(target: string): string {
     return /^[A-Za-z0-9_@%+=:,./-]+$/.test(target) ? target : `'${target.replaceAll("'", `'\\''`)}'`;
 }
 
-/** What this platform does about a certificate at `certificatePath`. */
-export function authorityInstallPlan(certificatePath: string): AuthorityInstallPlan {
+/**
+ * The host name an install may be limited to, or null when `host` is not one a policy can name.
+ * Brackets are taken off an IPv6 literal, which is how a URL spells it and not how a policy does.
+ */
+export function trustScopeHost(host: string | null | undefined): string | null {
+    if (typeof host !== "string") return null;
+    const bare = host.trim().replace(/^\[(.*)\]$/, "$1").toLowerCase();
+    return /^[a-z0-9.:-]{1,253}$/.test(bare) && !bare.startsWith("-") ? bare : null;
+}
+
+/**
+ * What this platform does about a certificate at `certificatePath`.
+ *
+ * `host` is the server the author was shown. Where the platform can scope a trust setting, the
+ * authority is trusted for TLS to that one name and nothing else, so its key cannot vouch for
+ * any other site this account visits. macOS can (`-p ssl -s`); Windows' per-user Root store has no
+ * such setting from the command line, and Linux installs nothing itself.
+ */
+export function authorityInstallPlan(certificatePath: string, host?: string | null): AuthorityInstallPlan {
+    const scope = trustScopeHost(host);
     switch (process.platform) {
         case "win32":
             // `-user` is the whole of the difference between this and an installation
@@ -83,11 +101,17 @@ export function authorityInstallPlan(certificatePath: string): AuthorityInstallP
             // Without `-d` this is the login keychain, which is the current user's.
             // `-r trustRoot` is what makes it a trusted root rather than a certificate
             // the system merely holds a copy of.
-            return {
-                canInstall: true,
-                command: `security add-trusted-cert -r trustRoot ${quote(certificatePath)}`,
-                argv: ["security", "add-trusted-cert", "-r", "trustRoot", certificatePath],
-            };
+            //
+            // `-p ssl -s <host>` scopes the trust setting: the authority is a root for TLS
+            // to the one server the author named, not for every name it could sign.
+            {
+                const scoped = scope ? ["-p", "ssl", "-s", scope] : [];
+                return {
+                    canInstall: true,
+                    command: `security add-trusted-cert -r trustRoot${scope ? ` -p ssl -s ${quote(scope)}` : ""} ${quote(certificatePath)}`,
+                    argv: ["security", "add-trusted-cert", "-r", "trustRoot", ...scoped, certificatePath],
+                };
+            }
         default:
             // Linux and anything else. The per-user NSS database Firefox and Chrome
             // read is not what other programs use, so a certificate installed there
@@ -135,13 +159,41 @@ export async function writeAuthorityCertificate(
     userDataDir: string,
     fingerprint: string,
     pem: string,
+    host?: string | null,
 ): Promise<string> {
     const directory = authorityDirectory(userDataDir);
     await fs.mkdir(directory, { recursive: true });
     await sweep(directory);
     const target = path.join(directory, `${fingerprint.replaceAll(":", "").toLowerCase()}.crt`);
     await fs.writeFile(target, pem, "utf-8");
+    // Beside the certificate rather than passed back through the renderer, which names only the
+    // file: the install scopes its trust to this host, and a renderer must not choose the host.
+    const scope = trustScopeHost(host);
+    if (scope) {
+        await fs.writeFile(authorityHostPath(target), scope, "utf-8");
+    } else {
+        await fs.rm(authorityHostPath(target), { force: true });
+    }
     return target;
+}
+
+/** The host of an address, or null when it does not parse. */
+export function hostOfAddress(address: string): string | null {
+    try {
+        return new URL(address).hostname || null;
+    } catch {
+        return null;
+    }
+}
+
+function authorityHostPath(certificatePath: string): string {
+    return certificatePath.replace(/\.crt$/, ".host");
+}
+
+/** The host a written certificate was presented by, or null when none was recorded. */
+export async function readAuthorityHost(certificatePath: string): Promise<string | null> {
+    const recorded = await fs.readFile(authorityHostPath(certificatePath), "utf-8").catch(() => null);
+    return trustScopeHost(recorded);
 }
 
 /**
@@ -159,7 +211,7 @@ async function sweep(directory: string): Promise<void> {
     const cutoff = Date.now() - KEEP_MS;
     await Promise.all(
         entries.map(async (entry) => {
-            if (!entry.endsWith(".crt")) return;
+            if (!entry.endsWith(".crt") && !entry.endsWith(".host")) return;
             const target = path.join(directory, entry);
             const stat = await fs.stat(target).catch(() => null);
             if (stat && stat.mtimeMs < cutoff) await fs.rm(target, { force: true });

@@ -3,6 +3,7 @@ import {
     DEFAULT_LOCALE,
     getLocaleMeta,
     InterpolationParams,
+    loadBuiltinCatalog,
     LocaleCode,
     normalizeLocale,
     PluralKey,
@@ -61,6 +62,9 @@ export const i18nStore = {
         translator = createTranslator(next);
         applyDocumentLocale(next);
         listeners.forEach((listener) => listener());
+        // In a window built without every catalog this starts fetching the language; its arrival
+        // notifies the locale registry, which calls `refresh` below. A no-op everywhere else.
+        void loadBuiltinCatalog(next);
     },
     /**
      * Rebuild the translator without changing the locale value. Called when the

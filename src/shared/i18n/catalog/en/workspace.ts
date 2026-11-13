@@ -454,6 +454,34 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} is editing the story",
+                interface: "{client} is editing the interface",
+            },
+            detail: {
+                readOnly: "Read-only for now",
+                readWrite: "Switched to read-write",
+            },
+            action: {
+                readWrite: "Read-write",
+                readOnly: "Read-only",
+            },
+            fallbackClient: "Agent",
+            reason: {
+                story: "An agent is editing the story, so it is read-only for you. Switch it to read-write on the notice at the top of the editor",
+                interface: "An agent is editing the interface, so it is read-only for you. Switch it to read-write on the notice at the top of the editor",
+            },
+        },
+        devMode: {
+            status: "Agent in use",
+            tooltip: "Show the Dev Mode window, view only",
+            confirmTitle: "An agent is using Dev Mode",
+            confirmStopDetail: "Stopping it interrupts the agent's play-test",
+            confirmLaunchDetail: "Running the game now interrupts the agent's play-test and hands Dev Mode back to you",
+            confirmStop: "Stop",
+            confirmLaunch: "Run",
+        },
         status: {
             editing: "Agent editing: {name}",
             working: "Agent working",
@@ -461,6 +489,7 @@ export const workspace = {
             edited: "Agent edited: {name}",
             unknownClient: "external agent",
             paused: "Agent paused",
+            pausedTakeover: "Agent paused: you took over Dev Mode",
         },
         menu: {
             pause: "Pause agent",
@@ -669,6 +698,8 @@ export const workspace = {
             playtest_hover: "Hover in the game",
             playtest_key: "Press a key in the game",
             playtest_stop: "Stop playing",
+            editor_lock: "Set an editor read-only",
+            editor_unlock: "Give an editor back",
             playtest_variables: "Read the game's variables",
             console_read: "Read Studio's console",
             build: "Build the game",
@@ -1228,6 +1259,7 @@ export const workspace = {
                 assetSets: "asset sets",
                 brand: "brand palette",
                 dictionary: "project dictionary",
+                storyComments: "story comments",
                 transformPresets: "transform presets",
                 saveSchema: "save fields",
                 characters: "characters",

@@ -132,14 +132,15 @@ class DevModeNetworkPolicyManager {
      * Whether one request from a preview must be refused by its allowlist.
      *
      * Only reached for a window that allows HTTP - {@link isBlocked} has already answered for the
-     * others - so what is left is the list, and a preview that states none passes everything.
+     * others - so what is left is the list, or with none, the refusal of the local network that
+     * "any address" still carries.
      */
     private isRefused(webContentsId: number | undefined, url: string): boolean {
         if (webContentsId === undefined) {
             return false;
         }
         const policy = this.policies.get(webContentsId);
-        if (!policy || networkAllowlistCspSources(policy.allowlist) === null) {
+        if (!policy) {
             return false;
         }
         return !isNetworkAddressAllowed(url, policy.allowlist);

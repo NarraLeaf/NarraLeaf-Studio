@@ -1,7 +1,11 @@
-import { CATALOGS, PluralKey, TranslationKey } from "./catalog";
+import type { PluralKey, TranslationKey } from "./catalog/types";
+// For its side effect: the catalog index registers the built-in catalogs (all of them, except in the
+// windows built with the lean set - see `catalog/builtinCatalogs.lean.ts`). Imported here so that
+// anything able to translate has them, however it reached the translator.
+import "./catalog";
 import { flattenCatalog, type FlatMessages } from "./flatten";
 import { FALLBACK_LOCALE, getLocaleMeta, isLocale, LocaleCode } from "./locales";
-import { getLocaleRegistryVersion, getOverlayMessages } from "./registry";
+import { getBuiltinCatalog, getLocaleRegistryVersion, getOverlayMessages } from "./registry";
 
 export type InterpolationParams = Record<string, string | number>;
 
@@ -11,9 +15,11 @@ let cachedRegistryVersion = getLocaleRegistryVersion();
 
 /**
  * Flatten a locale into a `dotted.key -> string` map, memoized. Merges the
- * built-in catalog (if any) with the plugin overlay for that code. The cache is
+ * built-in catalog (if any) with the plugin overlay for that code, the built-in
+ * winning: a pack may fill gaps, never replace Studio's own text. The cache is
  * invalidated whenever the locale registry changes, so a newly registered or
- * removed language pack is reflected on the next call.
+ * removed language pack - or a built-in catalog loaded late - is reflected on
+ * the next call.
  */
 function getFlat(locale: LocaleCode): FlatMessages {
     const registryVersion = getLocaleRegistryVersion();
@@ -23,12 +29,11 @@ function getFlat(locale: LocaleCode): FlatMessages {
     }
     let flat = flatCache.get(locale);
     if (!flat) {
-        flat = isLocale(locale)
-            ? flattenCatalog(CATALOGS[locale])
-            : new Map();
         const overlay = getOverlayMessages(locale);
-        if (overlay) {
-            for (const [key, value] of overlay) {
+        flat = new Map(overlay ?? []);
+        const builtin = isLocale(locale) ? getBuiltinCatalog(locale) : undefined;
+        if (builtin) {
+            for (const [key, value] of flattenCatalog(builtin)) {
                 flat.set(key, value);
             }
         }

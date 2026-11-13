@@ -2415,14 +2415,22 @@ export class App extends BaseApp {
         return window;
     }
 
+    /**
+     * Open a Dev Mode window. `hidden` leaves it off screen and unfocused: the window an agent's
+     * play-test runs in, which the author opens from the status bar when they want to watch. It keeps
+     * rendering while hidden (no background throttling), so its frames, timers and captures run as
+     * they would on screen.
+     */
     async launchDevMode(
         props: WindowProps[WindowAppType.DevMode],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+        { hidden = false }: { hidden?: boolean } = {},
     ): Promise<AppWindow<WindowAppType.DevMode>> {
         const config: WindowConfig<WindowAppType.DevMode> = {
             windowType: WindowAppType.DevMode,
             isolated: true,
-            autoFocus: true,
+            // `focus()` on a hidden window orders it front on macOS, so a hidden one must not autofocus.
+            autoFocus: !hidden,
             preload: this.getPreloadScript(),
             options: {
                 minWidth: 900,
@@ -2438,6 +2446,9 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
+        if (hidden) {
+            window.win.webContents.setBackgroundThrottling(false);
+        }
         window.setTitle("Dev Mode - NarraLeaf Studio");
         this.applyWindowIcon(window);
 
@@ -2463,8 +2474,10 @@ export class App extends BaseApp {
         // Do not rely only on renderer `appWindowReady` + showWhenReady: if the renderer never
         // announces ready (crash, IPC timing, aborted load), the window would stay hidden while
         // DevModeManager still reports running. Show as soon as main navigation completes.
-        await window.show();
-        window.win.focus();
+        if (!hidden) {
+            await window.show();
+            window.win.focus();
+        }
 
         window.onKeyUp("F12", () => {
             window.toggleDevTools();

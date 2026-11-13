@@ -619,6 +619,11 @@ export function BuildDialogContent({
                     )}
                     {page === "signing" && (
                         <SigningSummary platforms={signablePlatforms} signing={signing}>
+                            {/* Not a preflight finding: nothing the author picks changes it. Electron
+                                verifies app.asar only on signed Windows and macOS builds. */}
+                            {state.formats.linux.size > 0 && (
+                                <p className="text-2xs leading-relaxed text-warning">{t("build.signing.linuxIntegrity")}</p>
+                            )}
                             <Findings findings={findings} section="signing" />
                             <EditInProject label={t("build.signing.editInProject")} onClick={onEditSigning} />
                         </SigningSummary>

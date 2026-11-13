@@ -2,6 +2,13 @@ import type { LocaleNamespace } from "../types";
 
 export const devMode = {
     title: "开发模式",
+    agentHeldCapsule: "{client} 正在使用开发模式",
+    agentHeldFallbackClient: "Agent",
+    agentHeldReadOnly: "目前为只读模式",
+    agentTakeOver: "接管",
+    agentTakenOverCapsule: "你已接管开发模式",
+    agentTakenOverPaused: "{client} 已暂停",
+    agentHandBack: "继续",
     dismiss: "关闭",
     surfaceUnavailable: "界面不可用",
     waitingPayload: "正在等待开发模式数据…",

@@ -298,6 +298,18 @@ export const settings = {
             label: "UI テンプレートレジストリの URL",
             description: "テンプレートストアが索引を取ってくる先",
         },
+        autoSnapshotEnabled: {
+            label: "シーンの自動スナップショット",
+            description: "変更のあったシーンのコピーを一定間隔で保存し、「シーン履歴」パネルに表示します",
+        },
+        autoSnapshotInterval: {
+            label: "自動スナップショットの間隔",
+            description: "最初の未記録の変更からこの時間が経過するとスナップショットを保存します",
+        },
+        autoSnapshotKeep: {
+            label: "保持する最近の自動スナップショット数",
+            description: "シーンごとの数です。それより古い自動スナップショットは 2 週間、1 日 1 件に間引かれます。手動スナップショットは削除されません",
+        },
         checkpointInterval: {
             label: "自動チェックポイントの間隔",
             description:

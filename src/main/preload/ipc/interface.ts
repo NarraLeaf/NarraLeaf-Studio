@@ -309,6 +309,13 @@ export const IPCInterface: RendererPreloadedInterface = {
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
+    manuscript: {
+        readOffice: (path: string) => ipcClient.invoke(IPCEventType.manuscriptReadOffice, { path }),
+        writeDocx: (path: string, parts: { name: string; content: string }[]) =>
+            ipcClient.invoke(IPCEventType.manuscriptWriteDocx, { path, parts }),
+        printPdf: (path: string, html: string, footerHtml: string) =>
+            ipcClient.invoke(IPCEventType.manuscriptPrintPdf, { path, html, footerHtml }),
+    },
     /** What long work Studio is doing. See `@shared/types/studioTask`. */
     studioTasks: {
         getOverview: () =>
@@ -510,14 +517,31 @@ export const IPCInterface: RendererPreloadedInterface = {
     },
 
     devMode: {
-        launch: (projectPath: string, entry: DevModeEntry) =>
-            ipcClient.invoke(IPCEventType.devModeLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        launch: (projectPath: string, entry: DevModeEntry, options?: { agent?: boolean; agentClient?: string }) =>
+            ipcClient.invoke(IPCEventType.devModeLaunch, {
+                projectPath,
+                entry,
+                ...(options?.agent ? { agent: true } : {}),
+                ...(options?.agent && options.agentClient ? { agentClient: options.agentClient } : {}),
+            }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        takeOverFromAgent: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentTakeOver, { projectPath }) as Promise<RequestStatus<{ takenOver: boolean }>>,
+        onAgentTakenOver: (handler: (payload: { projectPath: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentTakenOver, handler),
+        handBackToAgent: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentHandBack, { projectPath }) as Promise<RequestStatus<{ handedBack: boolean }>>,
+        onAgentHandedBack: (handler: (payload: { projectPath: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentHandedBack, handler),
+        endAgentTakeover: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeAgentTakeoverEnd, { projectPath }) as Promise<RequestStatus<{ ended: boolean }>>,
+        reveal: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeReveal, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
         stop: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeStop, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         reload: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus; agentHeld: boolean }>>,
         getWindowScaleOptions: (
             design: { width: number; height: number },
             chrome: { width: number; height: number },
@@ -555,6 +579,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeAgentControl, { projectPath, action }) as Promise<RequestStatus<DevModeAgentResult>>,
         onAgentDrive: (handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>) =>
             ipcClient.onRequest(IPCEventType.devModeAgentDrive, handler),
+        onAgentHoldChanged: (handler: (payload: { held: boolean; client?: string; takenOver?: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeAgentHoldChanged, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>

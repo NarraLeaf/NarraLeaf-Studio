@@ -301,7 +301,7 @@ describe("DevModeLaunchHandler", () => {
         expect(result.success).toBe(true);
         // Asserted through to the manager, and with the window's own spelling: two spellings of one
         // project are two session keys, so which string crosses is not cosmetic.
-        expect(launch).toHaveBeenCalledWith(mine, entry);
+        expect(launch).toHaveBeenCalledWith(mine, entry, { agent: false });
     });
 
     it("refuses a project this window does not have open, and compiles nothing", async () => {
@@ -334,7 +334,7 @@ describe("DevModeLaunchHandler", () => {
         });
 
         expect(result.success).toBe(true);
-        expect(launch).toHaveBeenCalledWith(mine, entry);
+        expect(launch).toHaveBeenCalledWith(mine, entry, { agent: false });
     });
 });
 
@@ -354,9 +354,10 @@ describe("the Dev Mode session controls take their project from the window", () 
         const stop = vi.fn(async () => "idle");
         const reload = vi.fn(async () => "running");
         const getStatus = vi.fn(() => "running");
+        const isAgentHeld = vi.fn(() => false);
         const window = {
             getProps: () => ({ projectPath }),
-            getApp: () => ({ getDevModeManager: () => ({ stop, reload, getStatus }) }),
+            getApp: () => ({ getDevModeManager: () => ({ stop, reload, getStatus, isAgentHeld }) }),
         } as unknown as AppWindowLike;
         return { window, stop, reload, getStatus };
     }

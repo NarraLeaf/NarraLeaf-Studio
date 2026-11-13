@@ -183,6 +183,60 @@ export function normalizeNetworkAllowlistEntries(raw: unknown): string[] {
  * same answer whether or not a list is in force - the list is about which hosts, never about which
  * schemes.
  */
+/**
+ * Whether a host names the local network the machine sits on rather than the internet: the private
+ * ranges, link-local (the cloud metadata address among them), carrier-grade NAT and the unspecified
+ * address, in IPv4 and IPv6.
+ *
+ * {@link NETWORK_POLICY_ANY} means any address on the internet. It does not mean the player's router
+ * or the printer down the hall - a game, or a page it shows, reaching those is the player's network
+ * being used by whatever the game loaded. A project that does need such an address names it on an
+ * allowlist, where an entry for it is honoured.
+ *
+ * Loopback is not included, on purpose: an author's own local API is a working address under "any",
+ * and the services Studio itself listens on are refused separately (`refuseOwnLoopbackService`).
+ *
+ * Decided on the spelling of the host. The WHATWG parser has already turned `http://2130706433/` and
+ * `http://0x7f.1/` into `127.0.0.1`, so the numeric disguises arrive as dotted quads. A DNS name that
+ * resolves to a private address is not caught here.
+ */
+export function isLocalNetworkHost(hostname: string): boolean {
+    const host = hostname.replace(/^\[/, "").replace(/\]$/, "").replace(/\.$/, "").toLowerCase();
+    const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    if (v4) {
+        return isLocalIpv4(v4.slice(1).map(Number));
+    }
+    if (!host.includes(":")) {
+        return false;
+    }
+    // IPv4-mapped (`::ffff:10.0.0.1`, which the parser writes as `::ffff:a00:1`).
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (mapped) {
+        const high = parseInt(mapped[1], 16);
+        const low = parseInt(mapped[2], 16);
+        return isLocalIpv4([high >> 8, high & 0xff, low >> 8, low & 0xff]);
+    }
+    const dotted = /^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    if (dotted) {
+        return isLocalIpv4(dotted.slice(1).map(Number));
+    }
+    if (host === "::") {
+        return true;
+    }
+    const first = parseInt(host.split(":")[0] || "0", 16);
+    // fc00::/7 unique local, fe80::/10 link-local.
+    return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+}
+
+function isLocalIpv4([a, b]: number[]): boolean {
+    return a === 0
+        || a === 10
+        || (a === 100 && b >= 64 && b <= 127)
+        || (a === 169 && b === 254)
+        || (a === 172 && b >= 16 && b <= 31)
+        || (a === 192 && b === 168);
+}
+
 export function isNetworkAddressAllowed(url: string, allowlist: NetworkAllowlist | undefined): boolean {
     let parsed: URL;
     try {
@@ -194,7 +248,7 @@ export function isNetworkAddressAllowed(url: string, allowlist: NetworkAllowlist
         return false;
     }
     if ((allowlist?.policy ?? NETWORK_POLICY_ANY) !== NETWORK_POLICY_ALLOWLIST) {
-        return true;
+        return !isLocalNetworkHost(parsed.hostname);
     }
     if (isExternalLinkPatternDeclared(allowlist?.entries, parsed.href)) {
         return true;
@@ -212,6 +266,18 @@ export function isNetworkAddressAllowed(url: string, allowlist: NetworkAllowlist
  */
 export function networkAllowlistRefusalMessage(url: string): string {
     return `${url.trim() || "(none)"} is not on this project's network allowlist.`;
+}
+
+/**
+ * The line for an address {@link isNetworkAddressAllowed} refused, naming the reason that applies:
+ * the list, or - with no list - that the address is on the local network.
+ */
+export function networkAddressRefusalMessage(url: string, allowlist: NetworkAllowlist | undefined): string {
+    if ((allowlist?.policy ?? NETWORK_POLICY_ANY) === NETWORK_POLICY_ALLOWLIST) {
+        return networkAllowlistRefusalMessage(url);
+    }
+    return `${url.trim() || "(none)"} is on the local network, which a game allowed any address still may not `
+        + "reach. Put it on a network allowlist to allow it.";
 }
 
 /**

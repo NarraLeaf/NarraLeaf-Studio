@@ -14,7 +14,7 @@ const settings = vi.hoisted(() => {
     };
 });
 
-vi.mock("@/apps/workspace/context/WorkspaceContext", () => ({
+vi.mock("@/apps/workspace/context", () => ({
     useOptionalWorkspace: () => ({ context: { services: { get: () => settings } }, isInitialized: true }),
 }));
 

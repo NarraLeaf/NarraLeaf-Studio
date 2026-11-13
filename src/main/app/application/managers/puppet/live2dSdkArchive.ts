@@ -55,6 +55,20 @@ function normalize(name: string): string {
     return name.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
 }
 
+/**
+ * Whether a normalised entry name stays inside wherever it is unpacked.
+ *
+ * The names become file paths under the staging tree and the project's runtime directory, so a
+ * `..` segment, an empty or `.` segment, a drive (`C:`) or a NUL would write somewhere the author
+ * never chose. No genuine SDK archive has any of these, so such an archive is refused outright.
+ */
+export function isSafeArchiveEntryName(name: string): boolean {
+    if (!name || name.includes("\0") || name.includes(":")) {
+        return false;
+    }
+    return name.split("/").every(segment => segment !== "" && segment !== "." && segment !== "..");
+}
+
 /** Enough names to orient an author without pasting a 342-entry listing. */
 const MAX_LISTED_ENTRIES = 16;
 
@@ -107,9 +121,17 @@ export function inspectLive2DSdkArchive(archive: Buffer): Live2DSdkArchive {
 
     const files = new Map<string, ZipIndexEntry>();
     for (const entry of index.entries) {
-        if (!entry.isDirectory) {
-            files.set(normalize(entry.name), entry);
+        if (entry.isDirectory) {
+            continue;
         }
+        const name = normalize(entry.name);
+        if (!isSafeArchiveEntryName(name)) {
+            throw new Error(
+                `This archive contains an entry whose path leaves the archive (${JSON.stringify(entry.name)}). `
+                + "A Cubism SDK for Web download never does; choose the archive exactly as it came from live2d.com.",
+            );
+        }
+        files.set(name, entry);
     }
 
     // The info file is the anchor: it exists once, at the SDK root, in every release.

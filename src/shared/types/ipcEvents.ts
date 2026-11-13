@@ -60,6 +60,7 @@ import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
+import type { OfficeReadResult } from "@shared/manuscript/officeRead";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -266,6 +267,9 @@ export enum IPCEventType {
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
     fontProbeCoverage = "font.probeCoverage",
+    manuscriptReadOffice = "manuscript.readOffice",
+    manuscriptWriteDocx = "manuscript.writeDocx",
+    manuscriptPrintPdf = "manuscript.printPdf",
     mediaConvertStart = "media.convert.start",
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
@@ -352,6 +356,13 @@ export enum IPCEventType {
     devModeWindowCloseRequested = "devMode.window.closeRequested",
     devModeAgentControl = "devMode.agent.control",
     devModeAgentDrive = "devMode.agent.drive",
+    devModeAgentHoldChanged = "devMode.agent.holdChanged",
+    devModeReveal = "devMode.reveal",
+    devModeAgentTakeOver = "devMode.agent.takeOver",
+    devModeAgentTakenOver = "devMode.agent.takenOver",
+    devModeAgentHandBack = "devMode.agent.handBack",
+    devModeAgentHandedBack = "devMode.agent.handedBack",
+    devModeAgentTakeoverEnd = "devMode.agent.takeoverEnd",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -2339,6 +2350,46 @@ export type IPCWorkspaceEvents = {
         };
     };
     /**
+     * Read the text of a Word document or a spreadsheet the author picked for a script import. In
+     * main because both are zip archives and only main has zlib; what crosses back is paragraphs or
+     * rows of text, never the archive.
+     */
+    [IPCEventType.manuscriptReadOffice]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            result: OfficeReadResult;
+        };
+    };
+    /** Zip the XML parts of a readable script into a .docx at a path the author chose. */
+    [IPCEventType.manuscriptWriteDocx]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+            parts: { name: string; content: string }[];
+        };
+        response: Record<string, never>;
+    };
+    /**
+     * Print a readable script's HTML to a PDF at a path the author chose. Rendered in a hidden
+     * window with scripts off and every request refused, so the page can draw nothing it did not
+     * carry inline.
+     */
+    [IPCEventType.manuscriptPrintPdf]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+            html: string;
+            footerHtml: string;
+        };
+        response: Record<string, never>;
+    };
+    /**
      * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job
      * id straight away, `getStatus` is polled while it runs, `cancel` stops it.
      *
@@ -2976,6 +3027,15 @@ export type IPCDevModeEvents = {
         data: {
             projectPath: string;
             entry: DevModeEntry;
+            /**
+             * Launched by an agent's `playtest_start`. The session is then held by the agent: its
+             * window opens hidden, takes no input from the author, hides rather than closes when the
+             * author closes it, and is stopped after {@link DEV_MODE_AGENT_IDLE_MS} without a
+             * play-test call. A launch without it hands the session back to the author.
+             */
+            agent?: boolean;
+            /** The agent's client as it introduced itself (`clientInfo.name`), for the window's notice. */
+            agentClient?: string;
         },
         response: {
             status: DevModeStatus;
@@ -3014,6 +3074,74 @@ export type IPCDevModeEvents = {
         },
         response: {
             status: DevModeStatus;
+            /** The session is held by an agent; see `agent` on {@link IPCEventType.devModeLaunch}. */
+            agentHeld: boolean;
+        };
+    };
+    /**
+     * The Dev Mode window → main: the author takes over the session an agent holds. The window becomes
+     * theirs (input, closing, no idle limit) and the workspace pauses the agent
+     * ({@link IPCEventType.devModeAgentTakenOver}).
+     */
+    [IPCEventType.devModeAgentTakeOver]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            takenOver: boolean;
+        };
+    };
+    /** Main → the project's workspace: the author took Dev Mode over from the agent; pause the agent. */
+    [IPCEventType.devModeAgentTakenOver]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: never;
+    };
+    /** The Dev Mode window → main: the author hands a session they took over back to the agent. */
+    [IPCEventType.devModeAgentHandBack]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            handedBack: boolean;
+        };
+    };
+    /** Main → the project's workspace: the author handed Dev Mode back; resume the agent. */
+    [IPCEventType.devModeAgentHandedBack]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: never;
+    };
+    /** The workspace → main: the author resumed the agent from the status bar; stop offering the hand-back. */
+    [IPCEventType.devModeAgentTakeoverEnd]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            ended: boolean;
+        };
+    };
+    /** Show the project's Dev Mode window and bring it forward; the way to look at one an agent holds. */
+    [IPCEventType.devModeReveal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            revealed: boolean;
         };
     };
     /** Payload includes optional blueprint forward-compat fields on `DevModeBundle.ui` (M1+). */
@@ -3192,6 +3320,18 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Client,
         data: { action: DevModeAgentAction };
         response: RequestStatus<DevModeAgentResult>;
+    };
+    /**
+     * Main → the Dev Mode window: whether an agent holds this session. While it does the page turns
+     * away the author's own pointer and keys and says why; the agent's acts are synthetic events and
+     * pass. Sent on every change and again once the window is ready.
+     */
+    [IPCEventType.devModeAgentHoldChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        /** `takenOver`: not held because the author took it over; the window offers to hand it back. */
+        data: { held: boolean; client?: string; takenOver?: boolean };
+        response: never;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,

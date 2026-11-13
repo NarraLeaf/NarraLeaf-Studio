@@ -232,6 +232,26 @@ export const help = {
                 + "persistent variables are declared once for the whole project, in the Variables panel, and any "
                 + "scene and any blueprint can then use them. Both must hold a value that can be written to a save.",
         },
+        renameRefactor: {
+            title: "Rename and find references",
+            body:
+                "Rename a variable, a label, a scene or a character together with every place that names it. "
+                + "Open it from the right-click menu of a Variables panel row, a story row, a scene in the Story panel or a character in the Characters panel.\n"
+                + "\n"
+                + "The preview lists each change by scene, with the text before and after. Untick a change to leave it as it is. "
+                + "Rename writes every ticked change at once, and one undo takes all of them back.\n"
+                + "\n"
+                + "What is rewritten:\n"
+                + "- the declaration, label, scene or character name\n"
+                + "- the name inside expressions: assignments, conditions, loop conditions, option conditions and inline values\n"
+                + "- goto rows that jump to a renamed label\n"
+                + "- for a character, lines that speak as its old name without being linked to it\n"
+                + "\n"
+                + "Rows that point at a variable, a scene or a character by id, and blueprint nodes, follow the rename without being rewritten; the preview lists them separately. "
+                + "Translations need no change. A name already in use, or one the expression language reserves, cannot be chosen.\n"
+                + "\n"
+                + "The arrow beside a variable in the Variables panel lists where it is read and where it is written. Click an entry to go to it.",
+        },
         storyFlow: {
             title: "Branches and routes",
             body:
@@ -265,6 +285,24 @@ export const help = {
                 + "- A scene edited in Studio after the export loses those edits on import, and the import states "
                 + "this first.",
         },
+        storyManuscript: {
+            title: "Script documents",
+            body:
+                "Scripts written in Word, Fountain or a spreadsheet can be imported as scenes, and a story can be "
+                + "exported as a readable script in PDF or Word.\n"
+                + "\n"
+                + "Import reads the file, then opens the paste wizard to decide who each speaker is. A heading in "
+                + "Word, a scene heading in Fountain or a change in the scene column starts a new scene.\n"
+                + "\n"
+                + "- For a spreadsheet, choose which columns hold the speaker, the line, a note and the scene.\n"
+                + "- Rows without a speaker become narration, and notes become note rows after their line.\n"
+                + "- The new scenes are added to the story and can be removed with one undo.\n"
+                + "\n"
+                + "Export chooses the scenes, the speakers and what else to print. Filtered to one speaker, the "
+                + "script holds only that speaker's lines with the lines before them as context.\n"
+                + "\n"
+                + "- Line IDs are the same IDs the voice recording script uses.",
+        },
         storyPaste: {
             title: "Paste as Rows",
             body:
@@ -291,6 +329,36 @@ export const help = {
                 + "- A snapshot is optional. The snapshot list starts with Defaults, which applies none.\n"
                 + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
+        },
+        sceneHistory: {
+            title: "Scene history and line history",
+            body:
+                "The Scene History panel lists content snapshots of the current scene. Snapshots are kept on this "
+                + "computer, outside version control, and are not part of the finished game.\n"
+                + "\n"
+                + "- Automatic snapshots: while editing, one per changed scene at the interval set in Settings.\n"
+                + "- Manual snapshots: Save snapshot keeps the current content now. They are never removed automatically.\n"
+                + "- Older automatic snapshots are thinned to one a day and kept for two weeks.\n"
+                + "- Compare with current lists changed, added and removed lines.\n"
+                + "- Restore this snapshot first snapshots the current content, then replaces the lines in the scene. Undo reverts it.\n"
+                + "\n"
+                + "View line history in a story line's context menu shows the versions that line had in each snapshot.\n"
+                + "- Struck-through text exists only in that version; highlighted text exists only in the current one.\n"
+                + "- Recent version-control revisions can be searched as well.\n"
+                + "- Restore this version changes that line only. Undo reverts it.",
+        },
+        storyComments: {
+            title: "Comments on story rows",
+            body:
+                "A comment thread belongs to one story row. It holds replies, each with its author and time, and can be marked as resolved or as a to-do.\n"
+                + "\n"
+                + "- Right-click a row and choose Add comment to start a thread. Press Ctrl+Enter or Cmd+Enter to send.\n"
+                + "- A row with a thread shows a speech bubble at its right edge. Click it to read and reply.\n"
+                + "- The Comments panel lists every thread by scene. Filter by open, to-do, resolved or author, and click a thread to go to its row.\n"
+                + "\n"
+                + "Comments are stored in the project and shared through version control. They are not part of the game and are not counted as story text.\n"
+                + "Comments are signed with the Team account the project is signed in with, or with the author name set in Settings under Version control.\n"
+                + "A thread follows its row when the row is moved. When the row is deleted, the thread is listed under Rows not found in the panel.",
         },
         dictionary: {
             title: "Project dictionary",
@@ -351,6 +419,16 @@ export const help = {
                 + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
                 + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
                 + "- Hold Ctrl or Command and scroll to zoom the timeline.",
+        },
+        stagePlacement: {
+            title: "Placing objects on the stage",
+            body:
+                "With the cursor on a row that shows or moves a character or an image, the story preview draws a box around that object. Dragging the box or its corners rewrites the position and size the row states.\n"
+                + "\n"
+                + "- Drag the box to move the object. Its centre snaps to the middle and thirds of the stage, and its edges snap to the stage edges and the safe area. Hold Shift to keep to one axis, and Cmd or Ctrl to move without snapping. The magnet button in the preview header turns snapping off.\n"
+                + "- Drag a corner to resize. The opposite corner stays in place and the proportions are kept. Hold Shift to resize each axis on its own, and Alt to resize about the centre.\n"
+                + "- The row is written when the pointer is released, and one drag is one undo step. Esc cancels a drag.\n"
+                + "- A row that only hides, changes an expression or plays a motion cannot be placed, and the preview names the reason.",
         },
         assets: {
             title: "Assets",
@@ -1185,7 +1263,9 @@ export const help = {
                 + "- Before the build starts, the dialog states whether the chosen credential can be used here "
                 + "and what is missing if it cannot.\n"
                 + "- Android with no key chosen is signed with a local debug identity, which stores do not "
-                + "accept.",
+                + "accept.\n"
+                + "- Only signed Windows and macOS builds check their game files for tampering. Unsigned builds "
+                + "and every Linux build can be altered, and their packed content read, by anyone holding them.",
         },
         networkAllowlist: {
             title: "Network request allowlist",
@@ -1197,7 +1277,8 @@ export const help = {
                 + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
                 + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.\n"
                 + "- A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.\n"
-                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
+                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.\n"
+                + "- Under any address, local-network, link-local and carrier-grade NAT addresses are still refused; this machine's own addresses are not. To reach one of them, switch to the allowlist and list it.",
         },
         assetProtection: {
             title: "Asset protection",

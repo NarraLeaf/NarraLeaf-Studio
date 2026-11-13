@@ -1504,6 +1504,50 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: null,
     },
     {
+        // Read by SceneHistoryService on every timer beat, so a change applies without a restart.
+        // Automatic scene snapshots are local history under `.nlstudio/`, separate from version
+        // control: they are taken only for scenes that changed, and never while the workspace is
+        // frozen.
+        key: "story.autoSnapshot.enabled",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Automatic scene snapshots",
+        labelKey: "settings.items.autoSnapshotEnabled.label",
+        description: "Keeps a copy of every changed scene at a regular interval, shown in the Scene History panel.",
+        descriptionKey: "settings.items.autoSnapshotEnabled.description",
+        defaultValue: true,
+    },
+    {
+        key: "story.autoSnapshot.intervalMinutes",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Automatic snapshot interval",
+        labelKey: "settings.items.autoSnapshotInterval.label",
+        description: "How long after the first unrecorded change a snapshot is taken.",
+        descriptionKey: "settings.items.autoSnapshotInterval.description",
+        defaultValue: 10,
+        min: 1,
+        max: 240,
+        step: 1,
+        unit: "min",
+    },
+    {
+        key: "story.autoSnapshot.keepRecent",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Recent automatic snapshots kept",
+        labelKey: "settings.items.autoSnapshotKeep.label",
+        description: "Per scene. Older automatic snapshots are thinned to one a day for two weeks; manual snapshots are never removed.",
+        descriptionKey: "settings.items.autoSnapshotKeep.description",
+        defaultValue: 20,
+        min: 1,
+        max: 200,
+        step: 1,
+    },
+    {
         // Read by the renderer's CheckpointScheduler (VersionControlService) on every
         // beat, so a change here applies without a restart. 0 turns the timer off.
         // Only ever fires when a versioned file has actually been written - never by

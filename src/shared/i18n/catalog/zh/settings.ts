@@ -285,6 +285,18 @@ export const settings = {
             label: "界面模板注册表地址",
             description: "模板商店索引的来源地址",
         },
+        autoSnapshotEnabled: {
+            label: "场景自动快照",
+            description: "按固定间隔为有改动的场景保存副本，可在「场景历史」面板中查看",
+        },
+        autoSnapshotInterval: {
+            label: "自动快照间隔",
+            description: "自首次未记录的改动起，经过该时长后保存快照",
+        },
+        autoSnapshotKeep: {
+            label: "保留的近期自动快照数",
+            description: "按场景计算；更早的自动快照每天保留一份、保留两周，手动快照不会被清理",
+        },
         checkpointInterval: {
             label: "自动检查点间隔",
             description: "相邻检查点的时间间隔，仅在确有改动时记录；设为 0 表示关闭",

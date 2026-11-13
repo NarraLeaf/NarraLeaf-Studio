@@ -20,6 +20,25 @@ export class ImageService extends AssetServiceBase {
         return this.readImageFromBuffer(asset, fileResult.data);
     }
 
+    /**
+     * The stored bytes alone, without the metadata {@link readLocalImage} adds.
+     *
+     * That metadata comes from decoding the whole picture into an `<img>`, which for a thumbnail is
+     * a second full-size decode of an image about to be decoded again at a fraction of its size. A
+     * 4K picture spent most of its thumbnail time in the decode nobody used.
+     */
+    public async readLocalImageBytes(asset: Asset<AssetType.Image>): Promise<RequestStatus<Uint8Array>> {
+        const fileResult = await this.getFileSystemService().readRaw(this.getAssetPath(asset.id));
+        if (!fileResult.ok) {
+            return {
+                success: false,
+                error: `Failed to read image file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
+            };
+        }
+        return { success: true, data: fileResult.data };
+    }
+
     public async readImageFromBuffer(asset: Asset<AssetType.Image>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Image>>> {
         const size = buffer.byteLength;
 

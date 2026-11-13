@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { countRuntimeIssues, surfacePlaceHeading, type LocatedRuntimeIssue } from "./runtimeIssueModel";
@@ -45,6 +46,8 @@ export type RuntimeIssueStripProps = {
  */
 export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
     const { sessionError, issues, onDismiss, onOpenIssues } = props;
+    // While an agent holds the session: the agent is told about these same issues.
+    const readOnly = useDevModeReadOnly();
     const { t, tn } = useTranslation();
 
     if (!sessionError && issues.length === 0) {
@@ -118,15 +121,17 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
                     })}
                 </span>
             ) : null}
-            <button
-                type="button"
-                className={cn("shrink-0 rounded-md p-0.5", tone.ghost, inlineFailure && "mt-0.5")}
-                onClick={onDismiss}
-                data-tip={t("devMode.dismiss")}
-                aria-label={t("devMode.dismiss")}
-            >
-                <X className="h-3 w-3" aria-hidden />
-            </button>
+            {readOnly ? null : (
+                <button
+                    type="button"
+                    className={cn("shrink-0 rounded-md p-0.5", tone.ghost, inlineFailure && "mt-0.5")}
+                    onClick={onDismiss}
+                    data-tip={t("devMode.dismiss")}
+                    aria-label={t("devMode.dismiss")}
+                >
+                    <X className="h-3 w-3" aria-hidden />
+                </button>
+            )}
         </div>
     );
 }

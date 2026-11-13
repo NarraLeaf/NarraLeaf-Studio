@@ -33,6 +33,7 @@ import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
+import { ManuscriptCommands } from "../../modules/story/manuscript/ManuscriptCommands";
 import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
 import { narralangUiEnabled } from "../../modules/story/narralang/narralangUi";
 import { StoryScenePreviewFloatHost } from "../../modules/story/scene-editor/preview/StoryScenePreviewFloatHost";
@@ -46,6 +47,7 @@ import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
+import { RenamePreviewHost } from "../../modules/refactor/RenamePreviewHost";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle, backgroundPlateStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useKeybindings } from "../../hooks";
@@ -1067,6 +1069,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                 {/* UI Overlays */}
                 <BackgroundImageDialog />
+                {/* The rename refactor's preview; opened through `requestRename`. */}
+                {!recovery && <RenamePreviewHost />}
                 <WorkspaceEditorQuickSwitch />
                 {/* The palette and quick-open are absent in a recovery window, and not merely as
                     tidiness: both walk the story library, the cast and the interface documents to build
@@ -1085,6 +1089,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <LiveSessionFreezeCommands />
                 <LintCommands />
                 <StoryScriptCommands />
+                <ManuscriptCommands />
                 {narralangUiEnabled() ? <NarralangCommands /> : null}
                 <KeybindingCheatSheet />
                 {/* Present in a recovery window too: that is the one place an author most needs to be

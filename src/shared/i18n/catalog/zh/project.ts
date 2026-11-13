@@ -438,7 +438,7 @@ export const project = {
         networkPolicyDetail: {
             off: "所有 HTTP 与 HTTPS 请求都会被拒绝",
             allowlist: "只有下方白名单中的地址可以被请求，其余请求会被拒绝",
-            any: "游戏可以通过 HTTP 或 HTTPS 请求任意地址",
+            any: "游戏可以通过 HTTP 或 HTTPS 请求任意公网地址；局域网地址仍会被拒绝，需要时请改用白名单列出",
         },
         networkPolicyWebHint: "Web 导出通过 HTTP 提供，无法执行「不允许联网」；白名单照常执行",
         networkAllowlist: {

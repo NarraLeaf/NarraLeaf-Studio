@@ -23,6 +23,7 @@
  */
 
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { AGENT_HOLD_SHIELD_ATTRIBUTE } from "./agentHoldShield";
 import { DEV_MODE_AGENT_KEYS, DEV_MODE_AGENT_POINTER_KEYS, type DevModeAgentPointerGesture } from "@shared/types/devMode";
 import { uiElementPathSegments } from "@/lib/workspace/services/agent/uiElementRefs";
 
@@ -86,7 +87,10 @@ export function browserInputEnvironment(root: Element, document: UIDocument): In
                 ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
                 : null;
         },
-        hitTest: (x, y) => root.ownerDocument.elementFromPoint(x, y),
+        // Through the shield Dev Mode draws over the game while an agent holds it: it is there to stop
+        // the author's pointer, and the agent's pointer is the one it lets through.
+        hitTest: (x, y) => root.ownerDocument.elementsFromPoint(x, y)
+            .find(node => !node.closest(`[${AGENT_HOLD_SHIELD_ATTRIBUTE}]`)) ?? null,
     };
 }
 

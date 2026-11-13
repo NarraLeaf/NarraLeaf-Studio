@@ -29,7 +29,8 @@ import { useCharacterAvatar } from "../story/scene-editor/storyCharacterFace";
 import { readableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import { cn } from "@/lib/utils/cn";
-import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
+import { useCharacterFocus } from "./state/useCharacterFocus";
+import { requestRename } from "../refactor/renameRequests";
 
 /** The one character-panel menu row that only reads: re-reading the character list off disk. */
 const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel-refresh"]);
@@ -375,25 +376,12 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
         closeMenu();
     }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
 
-    const handleRenameCharacter = useCallback(async (item: CharacterItem) => {
-        if (!characterService || !inputDialog || !context) return;
-        const nextName = await inputDialog.showRenameDialog(item.name, "character");
-        if (!nextName) return;
-        // Lines that speak as the old name with no character behind them are a separate decision:
-        // nothing binds them to this character, so the rename leaves them alone unless the author
-        // says otherwise. Declining still renames the character - the question is only about the rows.
-        const spokenRows = await characterService.countRowsSpeakingAs(item.name);
-        const renameSpokenRows = spokenRows > 0 && await context.services.get<UIService>(Services.UI).showConfirm(
-            tn("characters.panel.renameSpokenRowsConfirm", spokenRows, { count: spokenRows, name: item.name }),
-            t("characters.panel.renameSpokenRowsDetail", { name: nextName }),
-        );
-        await characterService.renameCharacter(item.id, nextName, { renameSpokenRows });
-        // The tab's title was a snapshot taken at open time, so a rename left it on the old name
-        // until the tab was closed and reopened.
-        syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
-        loadCharacters();
+    const handleRenameCharacter = useCallback((item: CharacterItem) => {
+        // The rename preview: the character, and the lines that speak as its old name with no
+        // character behind them, each with a box - those rows are offered, never assumed.
+        requestRename({ kind: "character", characterId: item.id });
         closeMenu();
-    }, [characterService, context, inputDialog, loadCharacters, closeMenu, t, tn]);
+    }, [closeMenu]);
 
     const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !context) return;

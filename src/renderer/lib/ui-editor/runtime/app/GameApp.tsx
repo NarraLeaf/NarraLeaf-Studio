@@ -348,6 +348,7 @@ import { AutoSavePicture } from "./autoSavePicture";
 import { SaveRecordReads } from "./saveRecordReads";
 import { usePlaytime } from "./usePlaytime";
 import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import { sanitizeRestoredSave } from "@shared/utils/restoredSaveSafety";
 import type { WeatherSeedRef } from "@shared/weather/model";
 import { weatherSpecForStage } from "@shared/weather/stage";
 
@@ -3884,7 +3885,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                         (game.game as { preference?: PreferenceStoreLike }).preference,
                         currentBundleRef.current.preferences,
                     );
-                    game.newGame().deserialize(savedGame);
+                    // A save is a file on the player's disk: anything in it that points the stage at
+                    // a local file or a script URL is taken out before the engine applies it.
+                    const { save, removed } = sanitizeRestoredSave(savedGame);
+                    if (removed > 0) {
+                        console.warn(`[GameApp] Ignored ${removed} unsafe value(s) in the loaded save.`);
+                    }
+                    game.newGame().deserialize(save);
                 },
                 /**
                  * Put the run back - and, when this load switched stories or mounted this one

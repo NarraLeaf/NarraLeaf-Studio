@@ -8,6 +8,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Pause, Play, Redo2 } from "lucide-rea
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useTranslation } from "@/lib/i18n";
 import type { BlueprintDebugSession, BlueprintDebugSnapshot } from "@/lib/ui-editor/blueprint-runtime/BlueprintDebugSession";
+import { useDevModeReadOnly } from "../../devModeReadOnly";
 
 export function BlueprintDebuggerToolbar(props: {
     session: BlueprintDebugSession | null;
@@ -17,6 +18,9 @@ export function BlueprintDebuggerToolbar(props: {
     const { session, snapshot, className } = props;
     const { t } = useTranslation();
     const paused = snapshot.status === "paused";
+    // While an agent holds the session the author may not pause or step its game. Resume stays: it
+    // only lets a game a breakpoint stopped go on, which is what the agent needs too.
+    const readOnly = useDevModeReadOnly();
 
     return (
         <div className={`flex items-center gap-0.5 ${className ?? ""}`}>
@@ -33,6 +37,7 @@ export function BlueprintDebuggerToolbar(props: {
                 <ToolbarButton
                     size="sm"
                     active={snapshot.pausePending}
+                    disabled={readOnly}
                     aria-label={t("devMode.debugger.pause")}
                     data-tip={t("devMode.debugger.pause")}
                     onClick={() =>
@@ -44,7 +49,7 @@ export function BlueprintDebuggerToolbar(props: {
             )}
             <ToolbarButton
                 size="sm"
-                disabled={!paused}
+                disabled={!paused || readOnly}
                 aria-label={t("devMode.debugger.stepOver")}
                 data-tip={t("devMode.debugger.stepOver")}
                 onClick={() => session?.stepOver()}
@@ -53,7 +58,7 @@ export function BlueprintDebuggerToolbar(props: {
             </ToolbarButton>
             <ToolbarButton
                 size="sm"
-                disabled={!paused}
+                disabled={!paused || readOnly}
                 aria-label={t("devMode.debugger.stepInto")}
                 data-tip={t("devMode.debugger.stepInto")}
                 onClick={() => session?.stepInto()}
@@ -62,7 +67,7 @@ export function BlueprintDebuggerToolbar(props: {
             </ToolbarButton>
             <ToolbarButton
                 size="sm"
-                disabled={!paused}
+                disabled={!paused || readOnly}
                 aria-label={t("devMode.debugger.stepOut")}
                 data-tip={t("devMode.debugger.stepOut")}
                 onClick={() => session?.stepOut()}

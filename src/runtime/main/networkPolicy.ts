@@ -197,8 +197,8 @@ export type RuntimeNetworkPolicyOptions = {
 };
 
 /**
- * Install the main-process request block on the given session. No-op only when
- * HTTP is allowed with no allowlist to enforce and no test block in force. Must
+ * Install the main-process request block on the given session. Never a no-op:
+ * even "any address" refuses the local network. Must
  * be called before the window loads so the initial document and every subsequent
  * request is governed. The runtime process runs only the game, so the block
  * applies to the whole session (no per-webContents scoping).
@@ -211,10 +211,6 @@ export type RuntimeNetworkPolicyOptions = {
  */
 export function installRuntimeNetworkPolicy(session: Session, options: RuntimeNetworkPolicyOptions): void {
     const { allowHttp, allowlist, blockAll } = options;
-    const narrowed = networkAllowlistCspSources(allowlist) !== null;
-    if (allowHttp && !narrowed && !blockAll) {
-        return;
-    }
     session.webRequest.onBeforeRequest({ urls: BLOCKED_REMOTE_URL_PATTERNS }, (details, callback) => {
         // Without allowHttp the game is confined to `nlgame:` and every pattern
         // above is cancelled outright - unchanged shipped behaviour, loopback
@@ -229,7 +225,9 @@ export function installRuntimeNetworkPolicy(session: Session, options: RuntimeNe
             callback({ cancel: isNetworkBlockedUrl(details.url) });
             return;
         }
-        // The allowlist. Second of the two layers over the same list - the CSP is the first - because
+        // The allowlist - or, with none, the refusal of the local network that
+        // "any address" still carries (see `isLocalNetworkHost`). Second of the two layers over the
+        // same list - the CSP is the first - because
         // a `connect-src` governs what the page's own script may ask for and this governs the
         // session, which is what catches a subresource load the page never wrote down.
         callback({ cancel: !isNetworkAddressAllowed(details.url, allowlist) });

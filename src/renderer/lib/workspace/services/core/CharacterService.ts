@@ -20,6 +20,7 @@ import {
     revertCharacterSpeakerFallback,
     planSpeakerNameRows,
     applySpeakerNameRename,
+    type CharacterSpeakerFallbackPlan,
 } from "../story/characterSpeakerFallback";
 import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
@@ -427,15 +428,20 @@ export class CharacterService extends Service<CharacterService> implements IChar
      * Asynchronous only because finding those rows means reading every story document, including the
      * ones nobody has opened - the same reason {@link deleteCharacter} is.
      */
-    public async renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean> {
+    public async renameCharacter(
+        id: string,
+        name: string,
+        options?: { renameSpokenRows?: boolean; spokenRows?: CharacterSpeakerFallbackPlan },
+    ): Promise<boolean> {
         const character = this.characters[id];
         if (!character) {
             return false;
         }
         const previousName = character.profile.getName();
-        const spokenRows = options?.renameSpokenRows
-            ? await planSpeakerNameRows(this.getStoryService(), previousName)
-            : [];
+        // `spokenRows` is the rename preview's answer: the rows the author left ticked, rather than
+        // every row that speaks as the old name.
+        const spokenRows = options?.spokenRows
+            ?? (options?.renameSpokenRows ? await planSpeakerNameRows(this.getStoryService(), previousName) : []);
         const applyRename = (next: string, rowName: string) => {
             const current = this.characters[id];
             if (!current) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -40,6 +41,7 @@ import { useStoryRowReveal } from "./useStoryRowReveal";
 import { useRowFilterChange } from "./useRowFilterChange";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
+import { useStoryRowRefactorMenu } from "../../refactor/useStoryRowRefactorMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
     isSameStoryBlockSelection,
@@ -76,7 +78,10 @@ import { createBlockForCommand } from "./storyActionCommands";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommandLineView";
+import { StoryRowHistoryModal, type StoryRowHistoryTarget } from "../../scene-history/StoryRowHistoryModal";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
+import { storyRowCommentText } from "./StoryRowCommentMark";
+import { openStoryCommentPopover } from "../../story-comments/storyCommentsState";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -102,7 +107,8 @@ import { useNarralangCommit } from "../narralang/useNarralangCommit";
 import { narralangUiEnabled } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
-import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
+import { StoryScenePreviewPane, type StoryPreviewStageEditApi } from "./preview/StoryScenePreviewPane";
+import { resolveStageGizmoRow } from "./preview/stageGizmoModel";
 import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
 import { STORY_CONSOLE_CHANNEL } from "./preview/storyPreviewConsole";
 import {
@@ -571,6 +577,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const openFindRef = useRef<() => void>(() => {});
     /** Reads a row's line as the row prints it; published by the {@link StoryCommandLineReader} below. */
     const rowLineReaderRef = useRef<((block: StoryBlock) => string | null) | null>(null);
+    /** The row whose history dialog is open (row menu ▸ View line history), or null. */
+    const [rowHistoryTarget, setRowHistoryTarget] = useState<StoryRowHistoryTarget | null>(null);
+    const readRowLineForHistory = useCallback((block: StoryBlock) => rowLineReaderRef.current?.(block) ?? null, []);
     const rowLineOf = useCallback((blockId: StoryBlockId): string | null => {
         const block = editor.scene?.blocks[blockId];
         return block ? rowLineReaderRef.current?.(block) ?? null : null;
@@ -1829,6 +1838,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
+    const storyRowRefactorMenu = useStoryRowRefactorMenu();
     const densityMenu = useContextMenu();
     /**
      * The row filter's panel, anchored to its toolbar button rather than to the pointer: it is a set of
@@ -1888,6 +1898,20 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             setSceneLayers: layers => editorRef.current.setSceneLayers(layers),
             createSceneLayer: () => editorRef.current.createSceneLayer(),
             layerUses: layerId => sceneLayerUses(editorRef.current.scene, layerId).length,
+        }
+        : undefined;
+    // The stage gizmo: the object the cursor's row places, dragged on the preview and written back to
+    // that row in one edit. Built every render for the same reason as the layers.
+    const gizmoBlock = editor.activeBlockId && editor.scene ? editor.scene.blocks[editor.activeBlockId] : null;
+    const stageEditApi: StoryPreviewStageEditApi | undefined = editor.scene
+        ? {
+            row: resolveStageGizmoRow(editor.scene, gizmoBlock, freeze.frozen),
+            commit: (blockId, nextPayload) => {
+                if (freeze.frozen) {
+                    return;
+                }
+                editorRef.current.updateBlockPayloadFor(blockId, nextPayload);
+            },
         }
         : undefined;
     // The selected row, when it is a camera row that states a pose and the preview shows it: the layer
@@ -2334,6 +2358,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             onClick: () => void editor.splitSceneAtRow(menuTarget),
         }] : []),
         { id: "sep-op", separator: true },
+        // A review thread lives in its own document, so it is offered whatever the story allows; the
+        // popover itself greys out while the comments document cannot be written.
+        ...(payload?.storyId && payload.sceneId && scene.blocks[menuTarget] ? [{
+            id: "comment",
+            label: t("storyComments.add"),
+            onClick: () => openStoryCommentPopover({
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+                blockId: menuTarget,
+                text: storyRowCommentText(scene.blocks[menuTarget]),
+            }),
+        }] : []),
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
         // Only on a row a command line owns: a text row, a blank line and a draft row are text already,
@@ -2344,6 +2380,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ...freeze.menuRow(),
             onClick: () => editRowAsText(menuTarget),
         }] : []),
+        // Reading history writes nothing, so it stays live on a frozen project; restoring from the
+        // dialog is what the freeze guards.
+        { id: "row-history", label: t("sceneHistory.rowMenu"), onClick: () => setRowHistoryTarget({ storyId: document.id, sceneId: scene.id, blockId: menuTarget }) },
+        // Rename / find references for what the row names: its variables, or the label it declares.
+        ...storyRowRefactorMenu({
+            block: scene.blocks[menuTarget],
+            storyId: document.id,
+            sceneId: scene.id,
+            variables: editor.commandContext.variables,
+            writeRow: () => freeze.menuRow(),
+        }),
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
@@ -2386,7 +2433,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             data-help-topic="storyScene"
             data-story-density={editor.density}
             style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
-            className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
+            className="relative flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
             // Freeze-wrapped for the same reason the paste is: this handler's one job is to arm the
@@ -2401,6 +2448,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             onCut={scriptOpen ? undefined : freeze.run(editor.cutSelectionToClipboard)}
             onPaste={scriptOpen ? undefined : freeze.run(editor.handlePaste)}
         >
+            {/* An agent set the story editor read-only while it works; the author can switch it back. */}
+            <AgentEditorLockCapsule area="story" />
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-primary" />
@@ -2881,6 +2930,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             onToggleSkipTyping={togglePreviewSkipTyping}
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                             layers={layersApi}
+                            stageEdit={stageEditApi}
                             camera={previewCamera}
                             view={previewPane?.view}
                             onSetView={setPreviewView}
@@ -2893,6 +2943,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             {/* Opens already parsed, writes nothing until it is confirmed, and leaves the document
                 (and the cast) untouched on cancel. It is a paste affordance and has no menu entry. */}
+            <StoryRowHistoryModal
+                target={rowHistoryTarget}
+                onClose={() => setRowHistoryTarget(null)}
+                characters={editor.characters}
+                scene={scene}
+                scenes={document.scenes}
+                readLine={readRowLineForHistory}
+            />
             {editor.pasteWizard ? (
                 <StoryPasteWizardModal
                     open

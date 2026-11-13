@@ -61,6 +61,7 @@ import {
     MediaProbeHandler,
 } from "./handlers/mediaAction";
 import { FontCoverageProbeHandler } from "./handlers/fontAction";
+import { ManuscriptPrintPdfHandler, ManuscriptReadOfficeHandler, ManuscriptWriteDocxHandler } from "./handlers/manuscriptAction";
 import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
 import {
     ProjectTrustQueryHandler,
@@ -80,6 +81,10 @@ import {
     DevModeScreenshotSaveHandler,
     DevModeStageCaptureHandler,
     DevModeAgentControlHandler,
+    DevModeRevealHandler,
+    DevModeAgentTakeOverHandler,
+    DevModeAgentHandBackHandler,
+    DevModeAgentTakeoverEndHandler,
     DevModeScreenshotOpenFolderHandler,
     DevModeWindowScaleOptionsHandler,
     DevModeWindowSetStageSizeHandler,
@@ -306,6 +311,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PsdBakeHandler(),
         new MediaProbeHandler(),
         new FontCoverageProbeHandler(),
+        new ManuscriptReadOfficeHandler(),
+        new ManuscriptWriteDocxHandler(),
+        new ManuscriptPrintPdfHandler(),
         new MediaConvertStartHandler(),
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
@@ -357,6 +365,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeProcessMemoryHandler(),
         new DevModeScreenshotSaveHandler(),
         new DevModeAgentControlHandler(),
+        new DevModeRevealHandler(),
+        new DevModeAgentTakeOverHandler(),
+        new DevModeAgentHandBackHandler(),
+        new DevModeAgentTakeoverEndHandler(),
         new DevModeScreenshotOpenFolderHandler(),
         new DevModeStageCaptureHandler(),
         new DevModeWindowScaleOptionsHandler(),

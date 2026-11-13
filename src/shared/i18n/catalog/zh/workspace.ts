@@ -410,6 +410,34 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} 正在编辑故事",
+                interface: "{client} 正在编辑界面",
+            },
+            detail: {
+                readOnly: "目前为只读模式",
+                readWrite: "已改为读写模式",
+            },
+            action: {
+                readWrite: "改为读写",
+                readOnly: "恢复只读",
+            },
+            fallbackClient: "Agent",
+            reason: {
+                story: "Agent 正在编辑故事，已设为只读，可在编辑器顶部的提示中改为读写",
+                interface: "Agent 正在编辑界面，已设为只读，可在编辑器顶部的提示中改为读写",
+            },
+        },
+        devMode: {
+            status: "Agent 使用中",
+            tooltip: "显示开发模式窗口，仅供查看",
+            confirmTitle: "Agent 正在使用开发模式",
+            confirmStopDetail: "停止将中断 Agent 正在进行的试玩",
+            confirmLaunchDetail: "现在运行将中断 Agent 正在进行的试玩，开发模式交还给你",
+            confirmStop: "停止",
+            confirmLaunch: "运行",
+        },
         status: {
             editing: "Agent 正在编辑：{name}",
             working: "Agent 正在工作",
@@ -417,6 +445,7 @@ export const workspace = {
             edited: "Agent 刚刚编辑：{name}",
             unknownClient: "外部 Agent",
             paused: "Agent 已暂停",
+            pausedTakeover: "Agent 已暂停，开发模式已由你接管",
         },
         menu: {
             pause: "暂停 Agent",
@@ -617,6 +646,8 @@ export const workspace = {
             playtest_hover: "在试玩中悬停",
             playtest_key: "在试玩中按键",
             playtest_stop: "停止试玩",
+            editor_lock: "将编辑器设为只读",
+            editor_unlock: "解除编辑器只读",
             playtest_variables: "读取游戏变量",
             console_read: "读取控制台",
             build: "构建游戏",
@@ -1082,6 +1113,7 @@ export const workspace = {
                 assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "项目词典",
+                storyComments: "故事批注",
                 transformPresets: "变换预设",
                 saveSchema: "存档字段",
                 characters: "角色",

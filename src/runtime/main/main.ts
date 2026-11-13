@@ -133,6 +133,7 @@ import { silenceRuntimeConsole } from "./runtimeConsole";
 import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
 import { installWindowTag, readWindowTag } from "@shared/utils/windowTag";
+import { installRuntimeIpcSenderGuard, installRuntimeNavigationGuard } from "./navigationGuard";
 
 /**
  * When this process was created, as the operating system recorded it - the zero of the game's
@@ -732,6 +733,11 @@ void app.whenReady().then(async () => {
         registerRuntimeProtocol(allowHttp, networkAllowlist);
         sidecars = createSidecarHost(pack);
         sidecarHost = sidecars;
+        // Before any channel exists: every handler registered below answers only the runtime
+        // document, never a remote page a link or redirect may have put in a frame.
+        installRuntimeIpcSenderGuard(ipcMain, (channel, url) => {
+            logRuntime("warning", `Refused IPC "${channel}" from ${url ?? "a detached frame"}`);
+        });
         registerRuntimeIpc();
         startPreviewControlServer(pack);
         // Confine the renderer to the app protocol before it loads any document
@@ -1392,6 +1398,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             powerSaveBlocker.stop(id);
         },
         log: logRuntime,
+    });
+    installRuntimeNavigationGuard(win.webContents, (kind, url) => {
+        logRuntime("warning", `Blocked ${kind} away from the runtime document: ${url}`);
     });
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {

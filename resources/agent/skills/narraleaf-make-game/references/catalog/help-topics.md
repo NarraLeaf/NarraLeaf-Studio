@@ -294,7 +294,41 @@ Three scopes, differing in how long a value is kept:
 
 A scene variable is declared in the scene it belongs to, as a row like any other. Saved and persistent variables are declared once for the whole project, in the Variables panel, and any scene and any blueprint can then use them. Both must hold a value that can be written to a save.
 
-相关主题 · Related：指令 · Commands、表达式 · Expressions、从某一行开始播放 · Playing from a row
+相关主题 · Related：指令 · Commands、表达式 · Expressions、从某一行开始播放 · Playing from a row、重命名与查找引用 · Rename and find references
+
+### 重命名与查找引用 · Rename and find references
+
+为变量、标签、场景或角色更名，并同时更新所有引用该名称的位置。可从变量面板的行、故事行、故事面板中的场景或角色面板中的角色的右键菜单打开
+
+预览按场景列出每处修改及修改前后的文本，取消勾选的位置保持不变。确认后所有勾选的修改一次写入，一次撤销即可全部还原
+
+改写的内容：
+
+- 变量声明、标签、场景或角色名称本身
+- 表达式中的名称：赋值、条件、循环条件、选项条件与行内取值
+- 跳转到被重命名标签的跳转行
+- 角色重命名时，以旧名称作为说话人且未关联角色的对白行
+
+按标识指向变量、场景或角色的行以及蓝图节点会自动跟随，不需要改写，预览中单独列出。翻译无需修改。已被使用的名称和表达式语言的保留字不可选用
+
+变量面板中变量左侧的箭头可展开其读取位置与写入位置，点击条目即可跳转
+
+Rename a variable, a label, a scene or a character together with every place that names it. Open it from the right-click menu of a Variables panel row, a story row, a scene in the Story panel or a character in the Characters panel.
+
+The preview lists each change by scene, with the text before and after. Untick a change to leave it as it is. Rename writes every ticked change at once, and one undo takes all of them back.
+
+What is rewritten:
+
+- the declaration, label, scene or character name
+- the name inside expressions: assignments, conditions, loop conditions, option conditions and inline values
+- goto rows that jump to a renamed label
+- for a character, lines that speak as its old name without being linked to it
+
+Rows that point at a variable, a scene or a character by id, and blueprint nodes, follow the rename without being rewritten; the preview lists them separately. Translations need no change. A name already in use, or one the expression language reserves, cannot be chosen.
+
+The arrow beside a variable in the Variables panel lists where it is read and where it is written. Click an entry to go to it.
+
+相关主题 · Related：变量 · Variables、表达式 · Expressions、撤销 · Undo and redo
 
 ### 表达式 · Expressions
 
@@ -364,6 +398,34 @@ Pasting several lines into the story editor opens Paste as Rows first. It splits
 
 相关主题 · Related：场景与行 · Scenes and rows、角色 · Characters、在 Studio 之外编辑 · Editing outside Studio
 
+### 剧本文档 · Script documents
+
+用 Word、Fountain 或电子表格写成的剧本可以导入为场景，故事也可以导出为 PDF 或 Word 格式的可读剧本
+
+导入时先读取文件，再打开粘贴向导确定每个说话人。Word 中的标题、Fountain 中的场景标题或场景列的变化会开始一个新场景
+
+- 电子表格需指定说话人、台词、备注与场景各在哪一列
+- 没有说话人的行成为旁白，备注成为台词之后的备注行
+- 新场景添加到故事中，撤销一次即可移除
+
+导出时选择场景、角色以及要包含的内容。只选一个角色时，剧本只包含该角色的台词，并以前面的台词作为上下文
+
+- 行 ID 与配音录音稿中的 ID 相同
+
+Scripts written in Word, Fountain or a spreadsheet can be imported as scenes, and a story can be exported as a readable script in PDF or Word.
+
+Import reads the file, then opens the paste wizard to decide who each speaker is. A heading in Word, a scene heading in Fountain or a change in the scene column starts a new scene.
+
+- For a spreadsheet, choose which columns hold the speaker, the line, a note and the scene.
+- Rows without a speaker become narration, and notes become note rows after their line.
+- The new scenes are added to the story and can be removed with one undo.
+
+Export chooses the scenes, the speakers and what else to print. Filtered to one speaker, the script holds only that speaker's lines with the lines before them as context.
+
+- Line IDs are the same IDs the voice recording script uses.
+
+相关主题 · Related：粘贴为行 · Paste as Rows、在 Studio 之外编辑 · Editing outside Studio、配音 · Voice-over
+
 ### 从某一行开始播放 · Playing from a row
 
 开发模式可以从当前行开始播放，而不是从场景开头；该行之前的内容不会运行，其中本应设置的变量取本项目为它们声明的值
@@ -381,6 +443,38 @@ Dev Mode can start at the current row instead of at the beginning of the scene. 
 - Snapshots do not affect the finished game.
 
 相关主题 · Related：变量 · Variables、运行游戏 · Running the game
+
+### 场景历史与单行历史 · Scene history and line history
+
+「场景历史」面板列出当前场景的内容快照；快照保存在本机，不进入版本控制，也不随游戏发布
+
+- 自动快照：编辑期间按设置中的间隔，为有改动的场景各保存一份
+- 手动快照：点击「保存快照」立即保存当前内容，不会被自动清理
+- 较早的自动快照每天保留一份，保留两周
+- 「与当前对比」列出修改、新增与删除的行
+- 「恢复此快照」先为当前内容保存一份快照，再替换场景中的行；可撤销
+
+在故事行的右键菜单中选择「查看此行历史」，可查看该行在各快照中的不同版本
+
+- 删除线为该版本独有的文字，高亮为当前版本独有的文字
+- 可同时检索最近的版本控制提交
+- 「恢复此版本」只改动该行，可撤销
+
+The Scene History panel lists content snapshots of the current scene. Snapshots are kept on this computer, outside version control, and are not part of the finished game.
+
+- Automatic snapshots: while editing, one per changed scene at the interval set in Settings.
+- Manual snapshots: Save snapshot keeps the current content now. They are never removed automatically.
+- Older automatic snapshots are thinned to one a day and kept for two weeks.
+- Compare with current lists changed, added and removed lines.
+- Restore this snapshot first snapshots the current content, then replaces the lines in the scene. Undo reverts it.
+
+View line history in a story line's context menu shows the versions that line had in each snapshot.
+
+- Struck-through text exists only in that version; highlighted text exists only in the current one.
+- Recent version-control revisions can be searched as well.
+- Restore this version changes that line only. Undo reverts it.
+
+相关主题 · Related：场景与行 · Scenes and rows、Studio 设置 · Studio settings
 
 ### 项目词典 · Project dictionary
 
@@ -405,6 +499,34 @@ An entry is a term, and three fields that may be left empty:
 A term is added in the dictionary panel, or from a story row: select the words and choose Add to dictionary, or right-click a marked word.
 
 相关主题 · Related：词典标记 · Dictionary marks、拼写 · Spelling、场景与行 · Scenes and rows
+
+### 故事行批注 · Comments on story rows
+
+批注线程属于某一个故事行，包含多条回复，每条记录作者和时间，可标为已解决或待办
+
+- 在行上右击并选择「添加批注」开始一个线程，按 Ctrl+Enter 或 Cmd+Enter 发表
+- 带有批注的行在右侧显示气泡标记，点击即可阅读和回复
+- 「批注」面板按场景列出全部线程，可按未解决、待办、已解决或作者筛选，点击线程跳到对应的行
+
+批注保存在工程中，随版本控制同步，不进入游戏，也不计入剧情文本统计
+
+署名使用工程当前登录的 Team 账号；未登录时使用设置中版本控制的作者名称
+
+行被移动时批注随行移动；行被删除后，线程列在面板的「未找到对应的行」下
+
+A comment thread belongs to one story row. It holds replies, each with its author and time, and can be marked as resolved or as a to-do.
+
+- Right-click a row and choose Add comment to start a thread. Press Ctrl+Enter or Cmd+Enter to send.
+- A row with a thread shows a speech bubble at its right edge. Click it to read and reply.
+- The Comments panel lists every thread by scene. Filter by open, to-do, resolved or author, and click a thread to go to its row.
+
+Comments are stored in the project and shared through version control. They are not part of the game and are not counted as story text.
+
+Comments are signed with the Team account the project is signed in with, or with the author name set in Settings under Version control.
+
+A thread follows its row when the row is moved. When the row is deleted, the thread is listed under Rows not found in the panel.
+
+相关主题 · Related：场景与行 · Scenes and rows、版本控制 · Version control
 
 ### 词典标记 · Dictionary marks
 
@@ -481,6 +603,24 @@ The stage timeline lists the stage after every row of the current scene, in the 
 - Hold Ctrl or Command and scroll to zoom the timeline.
 
 相关主题 · Related：场景与行 · Scenes and rows、配音 · Voice-over、故事动效 · Story Motion
+
+### 在舞台上摆放对象 · Placing objects on the stage
+
+光标位于显示或移动角色、图片的行时，故事预览在该对象上显示操控框；拖动操控框或其角柄，即改写该行设定的位置与缩放
+
+- 拖动操控框移动对象：中心吸附到舞台中线与三分线，边缘吸附到舞台边缘与安全区；按住 Shift 只沿一个方向移动，按住 Cmd 或 Ctrl 暂停吸附；预览标题栏的磁铁按钮可关闭吸附
+- 拖动角柄缩放：对角保持不动并保持比例；按住 Shift 分别缩放两轴，按住 Alt 以中心缩放
+- 松开指针时写入该行，一次拖动为一步撤销；按 Esc 取消拖动
+- 仅隐藏对象、更换表情或播放动作的行不能摆放，预览会注明原因
+
+With the cursor on a row that shows or moves a character or an image, the story preview draws a box around that object. Dragging the box or its corners rewrites the position and size the row states.
+
+- Drag the box to move the object. Its centre snaps to the middle and thirds of the stage, and its edges snap to the stage edges and the safe area. Hold Shift to keep to one axis, and Cmd or Ctrl to move without snapping. The magnet button in the preview header turns snapping off.
+- Drag a corner to resize. The opposite corner stays in place and the proportions are kept. Hold Shift to resize each axis on its own, and Alt to resize about the centre.
+- The row is written when the pointer is released, and one drag is one undo step. Esc cancels a drag.
+- A row that only hides, changes an expression or plays a motion cannot be placed, and the preview names the reason.
+
+相关主题 · Related：场景与行 · Scenes and rows、故事动效 · Story Motion、撤销 · Undo and redo
 
 ## 内容 · Content
 
@@ -1587,12 +1727,14 @@ One image is the application icon, and each platform's icons are generated from 
 - 凭据按平台各选一份，仅保存在本机，不随项目传递
 - 构建开始之前，对话框会说明所选凭据在本机是否可用，不可用时缺少什么
 - Android 未选择密钥时使用本机调试身份签名，应用商店不接受该签名
+- 只有已签名的 Windows 和 macOS 构建会校验游戏文件是否被改动；未签名的构建和所有 Linux 构建，持有者都可以改写文件并读出打包的内容
 
 A signature states where a build came from. An unsigned build runs, but the first launch shows a security prompt on Windows and macOS, and iOS installs nothing unsigned.
 
 - A credential is chosen per platform and stays on this machine. It does not travel with the project.
 - Before the build starts, the dialog states whether the chosen credential can be used here and what is missing if it cannot.
 - Android with no key chosen is signed with a local debug identity, which stores do not accept.
+- Only signed Windows and macOS builds check their game files for tampering. Unsigned builds and every Linux build can be altered, and their packed content read, by anyone holding them.
 
 相关主题 · Related：构建 · Builds、资产保护 · Asset protection
 
@@ -1624,6 +1766,7 @@ With asset protection enabled, the images, audio, story text and plugin code ins
 - 插件声明的地址列在白名单下方，同样可以请求；它们来自安装该插件时批准的内容
 - Fetch 节点上直接填写、且不在白名单内的地址，会被项目检查报告，构建被拒绝；由蓝图计算得出的地址在游戏运行时被拒绝
 - 插件附带的程序在游戏进程之外运行，不受白名单约束
+- 选择「任意地址」时，局域网、链路本地与运营商 NAT 地址仍会被拒绝（本机地址除外）；要请求其中某个地址，改用白名单并把它列出
 
 The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.
 
@@ -1633,6 +1776,7 @@ The network policy in project settings has three positions: no network access, a
 - Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.
 - A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.
 - A program a plugin ships runs outside the game process. The allowlist does not cover it.
+- Under any address, local-network, link-local and carrier-grade NAT addresses are still refused; this machine's own addresses are not. To reach one of them, switch to the allowlist and list it.
 
 相关主题 · Related：网络请求 · Network requests、资产保护 · Asset protection、插件 · Plugins、项目检查 · Project checks
 
