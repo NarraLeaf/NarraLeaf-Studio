@@ -19,6 +19,7 @@ export const PANEL_HELP_TOPICS: Readonly<Record<string, HelpTopicId>> = {
     "narraleaf-studio:story-comments": "storyComments",
     "narraleaf-studio:story-action-creator": "storyCommands",
     "narraleaf-studio:story-snapshots": "sceneSnapshot",
+    "narraleaf-studio:scene-history": "sceneHistory",
     "narraleaf-studio:story-motion": "storyMotion",
     "narraleaf-studio:stage-timeline": "stageTimeline",
     "narraleaf-studio:assets": "assets",

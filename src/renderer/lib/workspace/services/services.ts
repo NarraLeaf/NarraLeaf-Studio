@@ -286,6 +286,8 @@ enum Services {
     AgentFollow = "agentFollow",
     /** Carries out the calls an AI agent makes over Studio's MCP endpoint; see `agent/AgentBridgeService` */
     AgentBridge = "agentBridge",
+    /** Automatic and manual scene content snapshots, and per-row history; see `story/sceneHistory` */
+    SceneHistory = "sceneHistory",
     // Plugin = "plugin",
 }
 

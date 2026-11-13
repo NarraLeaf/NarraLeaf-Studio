@@ -443,6 +443,12 @@ export interface GlobalStateType extends Record<string, any> {
      * the author wants Studio interrupting to record, which is a habit rather than a
      * property of any one project.
      */
+    /** Automatic scene content snapshots (SceneHistoryService). */
+    "story.autoSnapshot.enabled": boolean;
+    /** Minutes from the first unrecorded change to the automatic snapshot. */
+    "story.autoSnapshot.intervalMinutes": number;
+    /** Newest automatic snapshots kept per scene before thinning to one a day. */
+    "story.autoSnapshot.keepRecent": number;
     "versionControl.checkpointIntervalMinutes": number;
     /**
      * Record a checkpoint when a workspace window is closed.
@@ -646,6 +652,9 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
     "project.defaultAuthor": "",
+    "story.autoSnapshot.enabled": true,
+    "story.autoSnapshot.intervalMinutes": 10,
+    "story.autoSnapshot.keepRecent": 20,
     "versionControl.checkpointIntervalMinutes": 15,
     "versionControl.checkpointOnClose": true,
     [QUIT_CHECKPOINT_TIMEOUT_KEY]: QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,

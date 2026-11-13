@@ -26,6 +26,7 @@ import { saveSchema } from "./saveSchema";
 import { struct } from "./struct";
 import { storyVars } from "./storyVars";
 import { storySnapshot } from "./storySnapshot";
+import { sceneHistory } from "./sceneHistory";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
 import { widgetAppearance } from "./widgetAppearance";
@@ -81,6 +82,7 @@ export const en = {
 
     storyVars,
     storySnapshot,
+    sceneHistory,
     uiEditor,
     widgets,
     widgetAppearance,

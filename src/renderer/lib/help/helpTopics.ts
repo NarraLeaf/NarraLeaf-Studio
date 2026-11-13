@@ -52,6 +52,7 @@ export const HELP_TOPIC_IDS = [
     "storyPaste",
     "storyManuscript",
     "sceneSnapshot",
+    "sceneHistory",
     "storyMotion",
     "stageTimeline",
     "stagePlacement",
@@ -285,6 +286,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         clip: true,
         related: ["storyVariables", "runModes"],
+    },
+    {
+        id: "sceneHistory",
+        section: "story",
+        related: ["storyScene", "studioSettings"],
     },
     {
         id: "dictionary",

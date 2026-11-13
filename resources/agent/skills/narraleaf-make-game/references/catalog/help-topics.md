@@ -410,6 +410,38 @@ Dev Mode can start at the current row instead of at the beginning of the scene. 
 
 相关主题 · Related：变量 · Variables、运行游戏 · Running the game
 
+### 场景历史与单行历史 · Scene history and line history
+
+「场景历史」面板列出当前场景的内容快照；快照保存在本机，不进入版本控制，也不随游戏发布
+
+- 自动快照：编辑期间按设置中的间隔，为有改动的场景各保存一份
+- 手动快照：点击「保存快照」立即保存当前内容，不会被自动清理
+- 较早的自动快照每天保留一份，保留两周
+- 「与当前对比」列出修改、新增与删除的行
+- 「恢复此快照」先为当前内容保存一份快照，再替换场景中的行；可撤销
+
+在故事行的右键菜单中选择「查看此行历史」，可查看该行在各快照中的不同版本
+
+- 删除线为该版本独有的文字，高亮为当前版本独有的文字
+- 可同时检索最近的版本控制提交
+- 「恢复此版本」只改动该行，可撤销
+
+The Scene History panel lists content snapshots of the current scene. Snapshots are kept on this computer, outside version control, and are not part of the finished game.
+
+- Automatic snapshots: while editing, one per changed scene at the interval set in Settings.
+- Manual snapshots: Save snapshot keeps the current content now. They are never removed automatically.
+- Older automatic snapshots are thinned to one a day and kept for two weeks.
+- Compare with current lists changed, added and removed lines.
+- Restore this snapshot first snapshots the current content, then replaces the lines in the scene. Undo reverts it.
+
+View line history in a story line's context menu shows the versions that line had in each snapshot.
+
+- Struck-through text exists only in that version; highlighted text exists only in the current one.
+- Recent version-control revisions can be searched as well.
+- Restore this version changes that line only. Undo reverts it.
+
+相关主题 · Related：场景与行 · Scenes and rows、Studio 设置 · Studio settings
+
 ### 项目词典 · Project dictionary
 
 词典收录本项目有意使用的词：人名、地名、自造词。它属于项目，打开该项目的每个人用到的是同一份
