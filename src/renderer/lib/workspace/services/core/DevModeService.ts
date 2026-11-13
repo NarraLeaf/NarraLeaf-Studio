@@ -22,6 +22,7 @@ export class DevModeService extends Service<DevModeService> {
     /** An agent holds the running session; see `agent` on `IPCEventType.devModeLaunch`. */
     private agentHeld = false;
     private timer: ReturnType<typeof setInterval> | null = null;
+    private timerInterval: number | null = null;
     private refreshInFlight = false;
     // Set when a read is asked for while one is already on its way: the answer that read brings may
     // predate whatever prompted the second ask, so one more read follows it.
@@ -307,7 +308,7 @@ export class DevModeService extends Service<DevModeService> {
 
     private syncPolling(status: DevModeStatus): void {
         if (this.shouldPoll(status)) {
-            this.startPolling();
+            this.startPolling(devModePollInterval(status));
         } else {
             this.stopPolling();
         }
@@ -317,13 +318,15 @@ export class DevModeService extends Service<DevModeService> {
         return status !== "idle" && status !== "error";
     }
 
-    private startPolling(): void {
-        if (this.timer) {
+    private startPolling(intervalMs: number): void {
+        if (this.timer && this.timerInterval === intervalMs) {
             return;
         }
+        this.stopPolling();
+        this.timerInterval = intervalMs;
         this.timer = setInterval(() => {
             void this.refreshStatus();
-        }, 1000);
+        }, intervalMs);
     }
 
     private stopPolling(): void {
@@ -332,5 +335,23 @@ export class DevModeService extends Service<DevModeService> {
         }
         clearInterval(this.timer);
         this.timer = null;
+        this.timerInterval = null;
     }
 }
+
+/**
+ * How often the status is read while a session is up.
+ *
+ * Once per second while the session is moving between states, where the run cell has to follow it.
+ * A running game is read only every few seconds: everything that moves it on - a reload, an error,
+ * a stop, the window being closed - writes a line to this window's console first, and that line is
+ * already the cue to read again (see `activate`). The slow read is the net under that, not the way
+ * the change arrives, so it no longer wakes the workspace and crosses IPC every second for as long
+ * as the author leaves the game open.
+ */
+export function devModePollInterval(status: DevModeStatus): number {
+    return status === "running" ? DEV_MODE_STEADY_POLL_MS : DEV_MODE_ACTIVE_POLL_MS;
+}
+
+const DEV_MODE_ACTIVE_POLL_MS = 1000;
+const DEV_MODE_STEADY_POLL_MS = 5000;
