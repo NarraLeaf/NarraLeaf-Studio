@@ -55,7 +55,8 @@
       }
     }
   </script>
-  <script defer src="<%= script %>"></script>
+  <!-- A module, so the bundle can load its chunks with import(); modules are deferred already. -->
+  <script type="module" src="<%= script %>"></script>
   <link href="<%= style %>" rel="stylesheet">
 </head>
 

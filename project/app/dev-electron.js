@@ -37,6 +37,8 @@ const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
 const { thirdPartyNoticesPlugin } = require('../build/third-party-notices');
+const { rendererChunkOptions, chunkStylesheetPlugin } = require('../build/rendererChunks');
+const { leanLocalePlugin } = require('../build/rendererLocales');
 const {
     buildBuiltInPlugins,
     sourceRoot: builtInPluginsSourceRoot,
@@ -398,14 +400,11 @@ function broadcastReload(target = 'all') {
         const entryFile = path.join(rootDir, 'src', 'renderer', 'apps', appName, 'index.tsx');
         const outDir = path.join(distWindows, appName);
         fs.mkdirSync(outDir, { recursive: true });
-        const outfile = path.join(outDir, 'index.js');
-
         const ctx = await watchBuild({
             entryPoints: [entryFile],
-            outfile,
+            ...rendererChunkOptions(outDir),
             platform: 'browser',
             bundle: true,
-            format: 'iife',
             sourcemap: true,
             jsx: 'automatic',
             target: ['chrome114'],
@@ -425,7 +424,7 @@ function broadcastReload(target = 'all') {
                 '.woff': 'file',
                 '.woff2': 'file',
             },
-            plugins: [postcssPlugin(), thirdPartyNoticesPlugin()],
+            plugins: [leanLocalePlugin(appName), postcssPlugin(), thirdPartyNoticesPlugin(), chunkStylesheetPlugin(outDir, { cssPlugins: [postcssPlugin()] })],
         }, () => {
             // Only broadcast reloads after the app has started
             console.log(`[renderer:${appName}] rebuilt.`);

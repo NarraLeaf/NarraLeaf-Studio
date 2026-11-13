@@ -4,7 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Services } from "@/lib/workspace/services/services";
 import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/services/agent/AgentFollowService";
-import { useWorkspace } from "../../context/WorkspaceContext";
+import { useWorkspace } from "../../context";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { agentStatusCellShown } from "./useAgentActive";
 import { useAgentQuickState } from "./useAgentQuickState";

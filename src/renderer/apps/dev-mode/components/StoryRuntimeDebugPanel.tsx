@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { useDevModeReadOnly } from "../devModeReadOnly";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -12,7 +12,15 @@ import { Switch } from "@/lib/components/elements";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
-import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
+/**
+ * The scene graph, loaded when this panel first draws it rather than with the window.
+ *
+ * It is the story-flow editor's canvas, and with it come React Flow and the editor's flow modules -
+ * the largest piece of editor code the Dev Mode window was still loading at start-up, for a panel
+ * that is closed until someone opens it.
+ */
+const SceneFlowCanvas = lazy(() => import("@/apps/workspace/modules/story-flow/SceneFlowCanvas")
+    .then(module => ({ default: module.SceneFlowCanvas })));
 import {
     branchDeltaFor,
     collectBlueprintVariableWrites,
@@ -1373,6 +1381,7 @@ function SceneTab(props: {
             ) : null}
 
             <div className="min-h-0 flex-1">
+                <Suspense fallback={null}>
                 <SceneFlowCanvas
                     graph={graph}
                     positionOverrides={{}}
@@ -1390,6 +1399,7 @@ function SceneTab(props: {
                     minTitleRenderedPx={SCENE_GRAPH_MIN_TITLE_PX}
                     fitPadding={0.06}
                 />
+                </Suspense>
             </div>
         </div>
     );

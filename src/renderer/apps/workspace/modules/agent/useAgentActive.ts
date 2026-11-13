@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { Services } from "@/lib/workspace/services/services";
 import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/services/agent/AgentFollowService";
 import type { AgentQuickState } from "@shared/agent/workspaceAccess";
-import { useWorkspace } from "../../context/WorkspaceContext";
+import { useWorkspace } from "../../context";
 import { agentAccessOff, useAgentQuickState } from "./useAgentQuickState";
 
 const NO_SUBSCRIPTION = () => () => {};

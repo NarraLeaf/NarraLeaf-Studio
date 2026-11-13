@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { useOptionalWorkspace } from "@/apps/workspace/context/WorkspaceContext";
+import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { ResizableHandle } from "./ResizableHandle";

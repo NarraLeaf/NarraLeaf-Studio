@@ -10,13 +10,18 @@
  * a plugin locale is a first-class locale everywhere: picker, formatters,
  * `<html lang>`, native menu.
  *
- * This module is deliberately dependency-light. It imports the built-in
- * `CATALOGS` (to know which keys the baseline already satisfies, for the
- * collision policy) and only the *type* of `LocaleMeta`, so `locales.ts` can
- * import this module without a runtime cycle.
+ * This module is deliberately dependency-light. It imports the English source
+ * catalog and only the *type* of `LocaleMeta`, so `locales.ts` can import this
+ * module without a runtime cycle. (`SUPPORTED_LOCALES` is read from `locales.ts`
+ * only inside a function, at call time, which a cycle does not affect.)
+ *
+ * It also holds the built-in catalogs themselves - see {@link registerBuiltinCatalog}.
  */
 
-import { CATALOGS } from "./catalog";
+import { en } from "./catalog/en";
+import type { Locale } from "./locales";
+import { SUPPORTED_LOCALES } from "./locales";
+import type { LocaleMessages } from "./catalog/types";
 import { flattenCatalog, type FlatMessages } from "./flatten";
 import type { LocaleMeta } from "./locales";
 
@@ -49,15 +54,60 @@ const overlay = new Map<string, OverlayEntry>();
 const listeners = new Set<() => void>();
 let version = 0;
 
-/** Built-in locale codes (the baseline). Overriding their satisfied keys is disallowed. */
-const BUILTIN_CODES = new Set(Object.keys(CATALOGS));
+/**
+ * The built-in catalogs this process holds. English always: it is the source and every lookup's
+ * fallback. The others are registered by `catalog/builtinCatalogs.ts` the moment anything imports
+ * the catalog index - which is every process and every window, except the small renderer windows
+ * whose build swaps that module for one that registers nothing up front and loads only the language
+ * the window is shown in (see `catalog/loadBuiltinCatalog.ts` and `project/build/rendererLocales.js`).
+ */
+const builtinCatalogs = new Map<string, LocaleMessages>([["en", en]]);
 
-/** Lazily-flattened baseline messages per built-in locale, for the collision check. */
+/**
+ * Add a built-in catalog. Bumps the registry version and notifies, exactly like a plugin pack
+ * arriving, so cached translators drop their flattened maps and mounted UI re-renders in it.
+ */
+export function registerBuiltinCatalog(code: Locale, messages: LocaleMessages): void {
+    if (builtinCatalogs.get(code) === messages) {
+        return;
+    }
+    builtinCatalogs.set(code, messages);
+    baselineFlatCache.delete(code);
+    version += 1;
+    for (const listener of listeners) {
+        listener();
+    }
+}
+
+/** The built-in catalog for a code, or `undefined` when it is not one or is not loaded here. */
+export function getBuiltinCatalog(code: string): LocaleMessages | undefined {
+    return builtinCatalogs.get(code);
+}
+
+/** Whether a built-in catalog is in this process yet. */
+export function isBuiltinCatalogLoaded(code: string): boolean {
+    return builtinCatalogs.has(code);
+}
+
+/** Built-in locale codes (the baseline). Overriding their satisfied keys is disallowed. */
+function isBuiltinCode(code: string): boolean {
+    return (SUPPORTED_LOCALES as readonly string[]).includes(code);
+}
+
+/**
+ * Lazily-flattened baseline messages per built-in locale, for the collision check. A built-in
+ * catalog that is not loaded yet reads as empty here; the translator still lets the baseline win
+ * over the overlay once it arrives, so the policy holds either way - only the warning is skipped.
+ */
 const baselineFlatCache = new Map<string, FlatMessages>();
 function baselineFlat(code: string): FlatMessages {
     let flat = baselineFlatCache.get(code);
     if (!flat) {
-        flat = flattenCatalog((CATALOGS as Record<string, unknown>)[code]);
+        const catalog = builtinCatalogs.get(code);
+        if (!catalog) {
+            return new Map();
+        }
+        flat = flattenCatalog(catalog);
         baselineFlatCache.set(code, flat);
     }
     return flat;
@@ -96,7 +146,7 @@ export function setLocaleContributions(
         if (!code) {
             continue;
         }
-        const isBuiltin = BUILTIN_CODES.has(code);
+        const isBuiltin = isBuiltinCode(code);
 
         let entry = next.get(code);
         if (!entry) {

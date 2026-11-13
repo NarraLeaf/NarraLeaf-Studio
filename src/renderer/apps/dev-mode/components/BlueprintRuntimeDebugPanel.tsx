@@ -26,8 +26,7 @@ import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeSt
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useFloatingLayer } from "@/lib/components/layout";
-import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
-import { SAFE_AREA_FAMILY_LABELS } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
+import { SAFE_AREA_FAMILY_LABELS, SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
 import { scriptEventExportNamesForOwner } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 import { isScriptMounted, listScriptExportedFunctionNames } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";

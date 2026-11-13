@@ -10,7 +10,7 @@
  * author is watching without going back to the editor window.
  */
 
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Select } from "@/lib/components/elements/Select";
@@ -23,7 +23,12 @@ import { buildBreakpointContextMenu } from "@/lib/ui-editor/blueprint-debug/brea
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { BlueprintDebuggerToolbar } from "./BlueprintDebuggerToolbar";
-import { BlueprintReadonlyGraphView } from "./BlueprintReadonlyGraphView";
+/**
+ * Loaded when the debugger first shows a graph. It brings React Flow with it, which the Dev Mode
+ * window otherwise has no use for until someone opens the debugger.
+ */
+const BlueprintReadonlyGraphView = lazy(() => import("./BlueprintReadonlyGraphView")
+    .then(module => ({ default: module.BlueprintReadonlyGraphView })));
 import { useBlueprintDebuggerContext } from "./BlueprintDebuggerContext";
 
 export function BlueprintDebuggerOverlay(): ReactNode {
@@ -152,6 +157,7 @@ export function BlueprintDebuggerOverlay(): ReactNode {
 
             <div className="min-h-0 flex-1">
                 {ctx.viewIr ? (
+                    <Suspense fallback={null}>
                     <BlueprintReadonlyGraphView
                         ir={ctx.viewIr}
                         blueprintId={ctx.viewBlueprintId ?? ""}
@@ -162,6 +168,7 @@ export function BlueprintDebuggerOverlay(): ReactNode {
                         focusNonce={ctx.snapshot.pausedFrameId}
                         onNodeContextMenu={ctx.openContextMenu}
                     />
+                    </Suspense>
                 ) : (
                     <div className="flex h-full items-center justify-center text-2xs text-fg-subtle">
                         {t("devMode.debugger.pickGraph")}

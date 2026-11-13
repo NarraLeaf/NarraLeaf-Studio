@@ -13,12 +13,14 @@ const {
 } = require('./utils');
 const { postcssPlugin } = require('./postCss-plugin');
 const { thirdPartyNoticesPlugin } = require('./third-party-notices');
+const { rendererChunkOptions, chunkStylesheetPlugin } = require('./rendererChunks');
+const { leanLocalePlugin } = require('./rendererLocales');
 
 /**
  * Build all renderer apps located under "src/renderer/apps/<appName>".
  * Each app must have an "index.tsx" entry file.
  * The build output is written to "dist/windows/<appName>" with:
- *   - index.js  : bundled renderer script
+ *   - index.js  : bundled renderer script (an ES module; code behind `import()` goes to chunk-*.js)
  *   - index.html: generated via project/assets/app-entry-html.ejs
  */
 
@@ -49,16 +51,13 @@ const { thirdPartyNoticesPlugin } = require('./third-party-notices');
         const outDir = path.join(distWindows, appName);
         fs.mkdirSync(outDir, { recursive: true });
 
-        const outfile = path.join(outDir, 'index.js');
-
-        console.log(`[build-apps] Bundling ${appName} → ${path.relative(rootDir, outfile)}`);
+        console.log(`[build-apps] Bundling ${appName} → ${path.relative(rootDir, path.join(outDir, 'index.js'))}`);
 
         await esbuild.build({
             entryPoints: [entryFile],
-            outfile,
+            ...rendererChunkOptions(outDir),
             bundle: true,
             platform: 'browser',
-            format: 'iife',
             sourcemap: isDev(),
             minify: !isDev(),
             // A crash screen that reports `at t (index.js:1:948213)` reports nothing. Function
@@ -84,7 +83,7 @@ const { thirdPartyNoticesPlugin } = require('./third-party-notices');
                 '.woff': 'file',
                 '.woff2': 'file',
             },
-            plugins: [postcssPlugin(), thirdPartyNoticesPlugin()],
+            plugins: [leanLocalePlugin(appName), postcssPlugin(), thirdPartyNoticesPlugin(), chunkStylesheetPlugin(outDir, { cssPlugins: [postcssPlugin()], minify: !isDev() })],
         });
 
         // Render html
