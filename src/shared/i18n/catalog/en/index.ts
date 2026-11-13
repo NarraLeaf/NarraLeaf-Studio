@@ -27,6 +27,7 @@ import { struct } from "./struct";
 import { storyVars } from "./storyVars";
 import { refactor } from "./refactor";
 import { storySnapshot } from "./storySnapshot";
+import { sceneHistory } from "./sceneHistory";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
 import { widgetAppearance } from "./widgetAppearance";
@@ -83,6 +84,7 @@ export const en = {
     storyVars,
     refactor,
     storySnapshot,
+    sceneHistory,
     uiEditor,
     widgets,
     widgetAppearance,

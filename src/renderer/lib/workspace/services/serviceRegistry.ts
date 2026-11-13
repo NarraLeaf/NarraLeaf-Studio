@@ -55,6 +55,7 @@ import { RecoveryService } from "./core/RecoveryService";
 import { WeatherPrebakeService } from "./weather/WeatherPrebakeService";
 import { AgentFollowService } from "./agent/AgentFollowService";
 import { AgentBridgeService } from "./agent/AgentBridgeService";
+import { SceneHistoryService } from "./story/sceneHistory/SceneHistoryService";
 
 export type WorkspaceServiceMap = {
     [Services.Project]: ProjectService;
@@ -112,6 +113,7 @@ export type WorkspaceServiceMap = {
     [Services.Recovery]: RecoveryService;
     [Services.AgentFollow]: AgentFollowService;
     [Services.AgentBridge]: AgentBridgeService;
+    [Services.SceneHistory]: SceneHistoryService;
 };
 
 type KeysForService<T extends Service> = {
@@ -175,6 +177,7 @@ export class ServiceRegistry {
         [Services.Recovery]: RecoveryService.getInstance(),
         [Services.AgentFollow]: AgentFollowService.getInstance(),
         [Services.AgentBridge]: AgentBridgeService.getInstance(),
+        [Services.SceneHistory]: SceneHistoryService.getInstance(),
     };
 
     public get<K extends Services>(service: K): WorkspaceServiceMap[K];

@@ -330,6 +330,23 @@ export const help = {
                 + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
         },
+        sceneHistory: {
+            title: "Scene history and line history",
+            body:
+                "The Scene History panel lists content snapshots of the current scene. Snapshots are kept on this "
+                + "computer, outside version control, and are not part of the finished game.\n"
+                + "\n"
+                + "- Automatic snapshots: while editing, one per changed scene at the interval set in Settings.\n"
+                + "- Manual snapshots: Save snapshot keeps the current content now. They are never removed automatically.\n"
+                + "- Older automatic snapshots are thinned to one a day and kept for two weeks.\n"
+                + "- Compare with current lists changed, added and removed lines.\n"
+                + "- Restore this snapshot first snapshots the current content, then replaces the lines in the scene. Undo reverts it.\n"
+                + "\n"
+                + "View line history in a story line's context menu shows the versions that line had in each snapshot.\n"
+                + "- Struck-through text exists only in that version; highlighted text exists only in the current one.\n"
+                + "- Recent version-control revisions can be searched as well.\n"
+                + "- Restore this version changes that line only. Undo reverts it.",
+        },
         storyComments: {
             title: "Comments on story rows",
             body:
