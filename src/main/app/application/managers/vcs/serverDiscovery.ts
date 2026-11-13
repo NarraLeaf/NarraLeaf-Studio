@@ -4,6 +4,7 @@ import { TEAM_PROTOCOL_VERSION } from "@shared/types/team";
 import type { VcsServerDiscovery, VcsServerPolicy, VcsServerProbe } from "@shared/types/vcs";
 import {
     describeAuthority,
+    hostOfAddress,
     isTrustFailure,
     reachThroughTrustStores,
     writeAuthorityCertificate,
@@ -408,6 +409,7 @@ async function describeUntrusted(endpoint: ServerEndpoint, userDataDir: string):
         userDataDir,
         verdict.fingerprint,
         verdict.pem,
+        hostOfAddress(endpoint.origin),
     ).catch(() => "");
     const document = await fetchDiscovery(endpoint, null)
         .then(readDiscoveryDocument)

@@ -11,7 +11,7 @@ import {
     type VcsSignInProblem,
     type VcsSignInToken,
 } from "@shared/types/vcs";
-import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
+import { describeAuthority, hostOfAddress, writeAuthorityCertificate } from "./authorityTrust";
 import {
     listAuthSessions,
     loginWithToken,
@@ -407,6 +407,7 @@ async function describeSignInFailure(
             context.userDataDir,
             verdict.fingerprint,
             verdict.pem,
+            hostOfAddress(authUrl),
         ).catch(() => "");
         return new VcsSignInError(
             {
