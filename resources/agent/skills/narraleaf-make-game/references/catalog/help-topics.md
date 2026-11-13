@@ -294,7 +294,41 @@ Three scopes, differing in how long a value is kept:
 
 A scene variable is declared in the scene it belongs to, as a row like any other. Saved and persistent variables are declared once for the whole project, in the Variables panel, and any scene and any blueprint can then use them. Both must hold a value that can be written to a save.
 
-相关主题 · Related：指令 · Commands、表达式 · Expressions、从某一行开始播放 · Playing from a row
+相关主题 · Related：指令 · Commands、表达式 · Expressions、从某一行开始播放 · Playing from a row、重命名与查找引用 · Rename and find references
+
+### 重命名与查找引用 · Rename and find references
+
+为变量、标签、场景或角色更名，并同时更新所有引用该名称的位置。可从变量面板的行、故事行、故事面板中的场景或角色面板中的角色的右键菜单打开
+
+预览按场景列出每处修改及修改前后的文本，取消勾选的位置保持不变。确认后所有勾选的修改一次写入，一次撤销即可全部还原
+
+改写的内容：
+
+- 变量声明、标签、场景或角色名称本身
+- 表达式中的名称：赋值、条件、循环条件、选项条件与行内取值
+- 跳转到被重命名标签的跳转行
+- 角色重命名时，以旧名称作为说话人且未关联角色的对白行
+
+按标识指向变量、场景或角色的行以及蓝图节点会自动跟随，不需要改写，预览中单独列出。翻译无需修改。已被使用的名称和表达式语言的保留字不可选用
+
+变量面板中变量左侧的箭头可展开其读取位置与写入位置，点击条目即可跳转
+
+Rename a variable, a label, a scene or a character together with every place that names it. Open it from the right-click menu of a Variables panel row, a story row, a scene in the Story panel or a character in the Characters panel.
+
+The preview lists each change by scene, with the text before and after. Untick a change to leave it as it is. Rename writes every ticked change at once, and one undo takes all of them back.
+
+What is rewritten:
+
+- the declaration, label, scene or character name
+- the name inside expressions: assignments, conditions, loop conditions, option conditions and inline values
+- goto rows that jump to a renamed label
+- for a character, lines that speak as its old name without being linked to it
+
+Rows that point at a variable, a scene or a character by id, and blueprint nodes, follow the rename without being rewritten; the preview lists them separately. Translations need no change. A name already in use, or one the expression language reserves, cannot be chosen.
+
+The arrow beside a variable in the Variables panel lists where it is read and where it is written. Click an entry to go to it.
+
+相关主题 · Related：变量 · Variables、表达式 · Expressions、撤销 · Undo and redo
 
 ### 表达式 · Expressions
 

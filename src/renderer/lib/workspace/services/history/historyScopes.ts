@@ -41,6 +41,11 @@ export const HistoryScopeKind = {
      * `HistoryService.pushGroup`.
      */
     SearchReplace: "search-replace",
+    /**
+     * The parts of a rename refactor that belong to no scene - a registry entry's name. Nothing routes
+     * Ctrl+Z here: the rename's group step on the project stack takes these back with the scene steps.
+     */
+    RenameRefactor: "rename-refactor",
 } as const;
 
 export type HistoryScopeKind = typeof HistoryScopeKind[keyof typeof HistoryScopeKind];
@@ -95,6 +100,11 @@ export function projectHistoryScope(): HistoryScopeId {
 /** The Search panel's stack of replaces. One per window, like the project's. */
 export function searchReplaceHistoryScope(): HistoryScopeId {
     return HistoryScopeKind.SearchReplace;
+}
+
+/** The rename refactor's non-scene share; see {@link HistoryScopeKind.RenameRefactor}. */
+export function renameRefactorHistoryScope(): HistoryScopeId {
+    return HistoryScopeKind.RenameRefactor;
 }
 
 export function isHistoryScopeOf(scopeId: HistoryScopeId, kind: HistoryScopeKind): boolean {

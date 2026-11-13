@@ -17,6 +17,11 @@ export type StoryVariablesPanelPayload = {
  * A channel rather than the panel's payload: the payload belongs to the focused scene editor, which
  * publishes its scene there, and a jump that wrote it would take the scene section away.
  */
-export const storyVariableReveal = createPanelRevealChannel<{ scope: "saved" | "persistent"; variableId: string }>(
+export const storyVariableReveal = createPanelRevealChannel<{
+    scope: "saved" | "persistent" | "scene";
+    variableId: string;
+    /** Open the row's reads and writes as well - "Find all references" from a story row. */
+    references?: boolean;
+}>(
     STORY_VARIABLES_PANEL_ID,
 );
