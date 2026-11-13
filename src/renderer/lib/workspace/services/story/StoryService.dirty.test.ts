@@ -495,3 +495,89 @@ describe("StoryService per-file dirty tracking", () => {
         expect(paths.filter(path => path.includes(first.id))).toHaveLength(0);
     });
 });
+
+describe("StoryService scene JSON cache", () => {
+    let harness: ReturnType<typeof createHarness>;
+
+    beforeEach(() => {
+        harness = createHarness();
+    });
+
+    function note(id: string, value: string = id) {
+        return {
+            id,
+            kind: "note" as const,
+            parentId: null,
+            childrenIds: [],
+            payload: { text: { textId: `text-${id}`, value, role: "note" as const } },
+        };
+    }
+
+    /** Fill the idle-time cache synchronously, the way the idle callback eventually would. */
+    function warmAll(service: StoryService) {
+        const internals = service as never as {
+            documents: Map<string, never>;
+            documentJson: { warm: (id: string, doc: never, hasTime: () => boolean) => boolean };
+        };
+        for (const [id, document] of internals.documents) {
+            internals.documentJson.warm(id, document, () => true);
+        }
+    }
+
+    function fileOf(storyId: string) {
+        const path = [...harness.files.keys()].find(key => key.includes(storyId) && key.endsWith(".json"))!;
+        return harness.files.get(path)!;
+    }
+
+    it("writes exactly what a whole-document serialise writes, through every kind of edit", async () => {
+        const { service } = harness;
+        const story = await seedStory(service, "Cached");
+        const storyId = story.entry.id;
+        const second = service.createScene(storyId, { chapterId: story.chapterId, name: "Second" });
+        service.insertBlock(storyId, story.sceneId, note("a"), { parentId: null });
+        service.insertBlock(storyId, second.id, note("b", "第二场 \"引号\" 与\n换行"), { parentId: null });
+        await service.flushPendingChanges();
+        warmAll(service);
+
+        const expectFileMatchesMemory = () => {
+            expect(fileOf(storyId)).toBe(JSON.stringify(service.getStoryDocument(storyId), null, 2));
+        };
+
+        // A row edit narrows the invalidation to its scene; the other scene comes from the cache.
+        service.updateBlock(storyId, story.sceneId, "a", note("a", "edited").payload);
+        await service.flushPendingChanges();
+        expectFileMatchesMemory();
+
+        // An edit that names no scene drops the whole story's cache.
+        service.renameScene(storyId, second.id, "Renamed");
+        await service.flushPendingChanges();
+        expectFileMatchesMemory();
+
+        warmAll(service);
+        service.insertBlocks(storyId, second.id, [{ block: note("c"), target: { parentId: null } }]);
+        service.deleteBlock(storyId, story.sceneId, "a");
+        await service.flushPendingChanges();
+        expectFileMatchesMemory();
+        expect(JSON.parse(fileOf(storyId)).scenes[story.sceneId].blocks.a).toBeUndefined();
+        expect(JSON.parse(fileOf(storyId)).scenes[second.id].blocks.c).toBeDefined();
+    });
+
+    it("does not reuse a scene's text once the document object has been replaced", async () => {
+        const { service } = harness;
+        const story = await seedStory(service, "Replaced");
+        const storyId = story.entry.id;
+        await service.flushPendingChanges();
+        warmAll(service);
+
+        // A document re-read or restored arrives as new objects; an identity miss, not a stale hit.
+        const documents = (service as never as { documents: Map<string, unknown> }).documents;
+        const copy = JSON.parse(JSON.stringify(service.getStoryDocument(storyId)));
+        copy.scenes[story.sceneId].name = "From disk";
+        documents.set(storyId, copy);
+        service.renameStory(storyId, "Touch");
+        (service as never as { dirtyDocuments: Set<string> }).dirtyDocuments.add(storyId);
+        await (service as never as { flush: () => Promise<void> }).flush();
+
+        expect(JSON.parse(fileOf(storyId)).scenes[story.sceneId].name).toBe("From disk");
+    });
+});

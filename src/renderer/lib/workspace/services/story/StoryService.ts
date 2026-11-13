@@ -62,6 +62,7 @@ import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { assertValidStoryId } from "@shared/utils/storyId";
+import { StoryDocumentJsonCache } from "./storyDocumentJson";
 import {
     createChapter as createStoryChapterModel,
     createEmptyStoryDocument,
@@ -194,6 +195,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * all stay owed.
      */
     private readonly dirtyDocuments = new Set<StoryId>();
+    /**
+     * The scenes' file text from the last save, so the next one re-serialises only the scenes that
+     * changed. See {@link StoryDocumentJsonCache}; every {@link mutateDocument} invalidates it.
+     */
+    private readonly documentJson = new StoryDocumentJsonCache();
+    /** Stories whose cache is still being filled in idle time; see {@link scheduleDocumentJsonWarm}. */
+    private readonly documentJsonWarming = new Set<StoryId>();
+    private documentJsonWarmHandle: { cancel: () => void } | null = null;
     private readonly dirtyAnimationAssets = new Set<StoryAnimationAssetId>();
     /** Absolute directories already known to exist; see {@link ensureDir}. */
     private readonly verifiedDirs = new Set<string>();
@@ -433,6 +442,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
     private removeStory(storyId: StoryId): void {
         this.documents.delete(storyId);
+        this.documentJson.invalidate(storyId);
         // The file is about to go; a debt against it would only outlive the story it belonged to.
         this.dirtyDocuments.delete(storyId);
         this.mutateLibrary(index => {
@@ -625,6 +635,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.loadAnimationIndex();
 
         this.documents.clear();
+        this.documentJson.clear();
         this.animationAssets.clear();
         this.revision = 0;
         this.invalidateSceneContentRevisions();
@@ -2078,7 +2089,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             insertBlockInScene(scene, block, target);
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2118,7 +2129,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const insert of inserts) {
                 insertBlockInScene(scene, insert.block, insert.target);
             }
-        });
+        }, [sceneId]);
     }
 
     public updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
@@ -2132,7 +2143,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             updateBlockPayload(scene, blockId, payload);
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2166,7 +2177,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 const scene = this.getSceneOrThrow(document, edit.sceneId);
                 updateBlockPayload(scene, edit.blockId, edit.payload);
             }
-        });
+        }, edits.map(edit => edit.sceneId));
     }
 
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
@@ -2180,7 +2191,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             deleteBlockFromScene(scene, blockId);
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2205,7 +2216,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const blockId of blockIds) {
                 deleteBlockFromScene(scene, blockId);
             }
-        });
+        }, [sceneId]);
     }
 
     /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
@@ -2228,7 +2239,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             } else {
                 delete block.disabled;
             }
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2333,7 +2344,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlockInScene(scene, blockId, target);
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2356,7 +2367,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlocksInScene(scene, moves.map(move => ({ blockIds: [...move.blockIds], target: move.target })));
-        });
+        }, [sceneId]);
     }
 
     /**
@@ -2689,11 +2700,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /** The one way a loaded story document changes. */
+    /**
+     * `scenes` names the only scenes the mutator can reach, for the row operations whose whole reach is
+     * the scene they were given; the next save then re-serialises just those. Left out - the default,
+     * and right for anything that is not plainly one scene's rows - the whole document is serialised
+     * again. Naming too few scenes is the one mistake here that writes a stale file, so a path that
+     * is not sure leaves it out.
+     */
     private mutateDocument(
         storyId: StoryId,
         mutator: (document: StoryDocument) => void,
+        scenes?: readonly StorySceneId[],
     ): void {
         const document = this.getStoryDocument(storyId);
+        // Before the mutator, so a mutator that throws halfway has still dropped what it may have changed.
+        this.documentJson.invalidate(storyId, scenes);
         mutator(document);
         document.meta = {
             ...document.meta,
@@ -2900,8 +2921,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
      */
     private async writeStoryDocument(storyId: StoryId, document: StoryDocument): Promise<void> {
         await this.ensureStoryDocumentDir(storyId);
-        const payload = JSON.stringify(document, null, 2);
+        const payload = this.documentJson.serialize(storyId, document);
         this.dirtyDocuments.delete(storyId);
+        this.scheduleDocumentJsonWarm(storyId);
         const result = await this.writeStoryFile(
             this.getStoryDocumentPath(storyId),
             payload,
@@ -2910,6 +2932,41 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
         });
+    }
+
+    /**
+     * Fill a story's scene cache in idle time after a save, so the save after it can use it.
+     *
+     * The first save of a session finds the cache empty and serialises in one piece, as it always did
+     * ({@link StoryDocumentJsonCache.serialize} will not use a mostly cold cache, which would be
+     * slower). The scenes are then serialised a few at a time while the renderer has nothing else to
+     * do, instead of all at once inside the save that someone is typing through.
+     */
+    private scheduleDocumentJsonWarm(storyId?: StoryId): void {
+        if (storyId !== undefined) {
+            this.documentJsonWarming.add(storyId);
+        }
+        if (this.documentJsonWarmHandle || this.documentJsonWarming.size === 0) {
+            return;
+        }
+        this.documentJsonWarmHandle = whenIdle(hasTime => {
+            this.documentJsonWarmHandle = null;
+            for (const id of Array.from(this.documentJsonWarming)) {
+                const document = this.documents.get(id);
+                if (document && !this.documentJson.warm(id, document, hasTime)) {
+                    break;
+                }
+                this.documentJsonWarming.delete(id);
+            }
+            this.scheduleDocumentJsonWarm();
+        });
+    }
+
+    public override dispose(_ctx: WorkspaceContext): void {
+        this.documentJsonWarmHandle?.cancel();
+        this.documentJsonWarmHandle = null;
+        this.documentJsonWarming.clear();
+        this.documentJson.clear();
     }
 
     private async writeAnimationIndex(): Promise<void> {
@@ -3224,3 +3281,19 @@ function describeStoryDocumentRefusal(storyName: string, error: unknown): string
     return null;
 }
 
+/**
+ * Run `work` when the renderer is idle, handing it a check for whether the idle period has time left.
+ * Falls back to a short timer where `requestIdleCallback` does not exist (tests, older hosts), with a
+ * fixed budget per turn.
+ */
+function whenIdle(work: (hasTime: () => boolean) => void): { cancel: () => void } {
+    if (typeof requestIdleCallback === "function") {
+        const handle = requestIdleCallback(deadline => work(() => deadline.timeRemaining() > 2), { timeout: 2000 });
+        return { cancel: () => cancelIdleCallback(handle) };
+    }
+    const handle = setTimeout(() => {
+        const until = Date.now() + 8;
+        work(() => Date.now() < until);
+    }, 50);
+    return { cancel: () => clearTimeout(handle) };
+}
