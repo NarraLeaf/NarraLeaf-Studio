@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+    NETWORK_POLICY_ALLOWLIST,
+    NETWORK_POLICY_ANY,
+    isLocalNetworkHost,
     isNetworkAddressAllowed,
     networkAllowlistCspSources,
     normalizeNetworkAllowlistEntries,
@@ -140,5 +143,40 @@ describe("networkAllowlistCspSources", () => {
 
     it("emits an empty list for an empty allowlist rather than null", () => {
         expect(networkAllowlistCspSources({ policy: "allowlist" })).toEqual([]);
+    });
+});
+
+describe("isLocalNetworkHost", () => {
+    it("names the local network in every spelling the parser hands over", () => {
+        for (const url of [
+            "http://10.0.0.1/",
+            "http://172.16.5.4/",
+            "http://192.168.1.1/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://100.64.0.1/",
+            "http://0.0.0.0/",
+            "http://[fd00::1]/",
+            "http://[fe80::1]/",
+            "http://[::ffff:192.168.0.1]/",
+            "http://3232235777/",
+        ]) {
+            expect(isLocalNetworkHost(new URL(url).hostname), url).toBe(true);
+        }
+    });
+
+    it("leaves the internet and loopback alone", () => {
+        for (const url of ["https://api.example.com/", "http://8.8.8.8/", "http://172.32.0.1/", "http://localhost:3000/", "http://127.0.0.1/", "http://[::1]/", "http://[2001:db8::1]/"]) {
+            expect(isLocalNetworkHost(new URL(url).hostname), url).toBe(false);
+        }
+    });
+
+    it("is what \"any address\" refuses, and an allowlist entry still opens it", () => {
+        expect(isNetworkAddressAllowed("http://192.168.1.1/admin", { policy: NETWORK_POLICY_ANY })).toBe(false);
+        expect(isNetworkAddressAllowed("https://api.example.com/", { policy: NETWORK_POLICY_ANY })).toBe(true);
+        expect(isNetworkAddressAllowed("http://localhost:3000/api", { policy: NETWORK_POLICY_ANY })).toBe(true);
+        expect(isNetworkAddressAllowed("http://192.168.1.1/admin", {
+            policy: NETWORK_POLICY_ALLOWLIST,
+            entries: ["http://192.168.1.1/*"],
+        })).toBe(true);
     });
 });
