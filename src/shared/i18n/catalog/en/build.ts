@@ -235,6 +235,8 @@ export const build = {
         macIdentityNotDeveloperId: "not for distribution",
         notarized: "Notarized with Apple",
         notNotarized: "Not notarized; Gatekeeper warns players on first launch",
+        // Electron can only verify app.asar on signed Windows and macOS builds.
+        linuxIntegrity: "Linux builds are never integrity-checked, signed or not: anyone holding one can alter its game files and read the packed content",
         kind: {
             "windows-pfx": "Certificate file",
             "windows-store": "Windows certificate store",
@@ -377,7 +379,7 @@ export const build = {
         // Names the vendors' security prompts no longer: "Gatekeeper" and "SmartScreen" are their
         // vocabulary, not the author's, and what to expect is the same either way. The `build`
         // help topic carries the longer version.
-        unsigned: "Not code-signed. Players may see a security prompt the first time they open it.",
+        unsigned: "Not code-signed. Players may see a security prompt the first time they open it, and the game files are not integrity-checked, so anyone holding the build can alter them and read the packed content.",
         "unsigned-android": "Signed with a local debug identity. It works for sideloading, and an AAB signed with it is not usable as a Google Play upload key. Choose a release keystore to sign under a release identity.",
         // The chain caveat belongs here rather than on a later error: this is
         // what an author reads while they are exporting the .p12, and a leaf-only

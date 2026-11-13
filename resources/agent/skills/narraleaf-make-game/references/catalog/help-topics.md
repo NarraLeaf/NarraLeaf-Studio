@@ -1675,12 +1675,14 @@ One image is the application icon, and each platform's icons are generated from 
 - 凭据按平台各选一份，仅保存在本机，不随项目传递
 - 构建开始之前，对话框会说明所选凭据在本机是否可用，不可用时缺少什么
 - Android 未选择密钥时使用本机调试身份签名，应用商店不接受该签名
+- 只有已签名的 Windows 和 macOS 构建会校验游戏文件是否被改动；未签名的构建和所有 Linux 构建，持有者都可以改写文件并读出打包的内容
 
 A signature states where a build came from. An unsigned build runs, but the first launch shows a security prompt on Windows and macOS, and iOS installs nothing unsigned.
 
 - A credential is chosen per platform and stays on this machine. It does not travel with the project.
 - Before the build starts, the dialog states whether the chosen credential can be used here and what is missing if it cannot.
 - Android with no key chosen is signed with a local debug identity, which stores do not accept.
+- Only signed Windows and macOS builds check their game files for tampering. Unsigned builds and every Linux build can be altered, and their packed content read, by anyone holding them.
 
 相关主题 · Related：构建 · Builds、资产保护 · Asset protection
 
@@ -1712,6 +1714,7 @@ With asset protection enabled, the images, audio, story text and plugin code ins
 - 插件声明的地址列在白名单下方，同样可以请求；它们来自安装该插件时批准的内容
 - Fetch 节点上直接填写、且不在白名单内的地址，会被项目检查报告，构建被拒绝；由蓝图计算得出的地址在游戏运行时被拒绝
 - 插件附带的程序在游戏进程之外运行，不受白名单约束
+- 选择「任意地址」时，局域网、链路本地与运营商 NAT 地址仍会被拒绝（本机地址除外）；要请求其中某个地址，改用白名单并把它列出
 
 The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.
 
@@ -1721,6 +1724,7 @@ The network policy in project settings has three positions: no network access, a
 - Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.
 - A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.
 - A program a plugin ships runs outside the game process. The allowlist does not cover it.
+- Under any address, local-network, link-local and carrier-grade NAT addresses are still refused; this machine's own addresses are not. To reach one of them, switch to the allowlist and list it.
 
 相关主题 · Related：网络请求 · Network requests、资产保护 · Asset protection、插件 · Plugins、项目检查 · Project checks
 

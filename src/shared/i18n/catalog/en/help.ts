@@ -1233,7 +1233,9 @@ export const help = {
                 + "- Before the build starts, the dialog states whether the chosen credential can be used here "
                 + "and what is missing if it cannot.\n"
                 + "- Android with no key chosen is signed with a local debug identity, which stores do not "
-                + "accept.",
+                + "accept.\n"
+                + "- Only signed Windows and macOS builds check their game files for tampering. Unsigned builds "
+                + "and every Linux build can be altered, and their packed content read, by anyone holding them.",
         },
         networkAllowlist: {
             title: "Network request allowlist",
@@ -1245,7 +1247,8 @@ export const help = {
                 + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
                 + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.\n"
                 + "- A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.\n"
-                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
+                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.\n"
+                + "- Under any address, local-network, link-local and carrier-grade NAT addresses are still refused; this machine's own addresses are not. To reach one of them, switch to the allowlist and list it.",
         },
         assetProtection: {
             title: "Asset protection",
