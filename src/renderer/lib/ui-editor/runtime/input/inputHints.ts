@@ -137,7 +137,6 @@ const REFRESH_MS = 250;
 
 let source: (() => InputHintsSnapshot | null) | null = null;
 let current: InputHintsSnapshot | null = null;
-let currentKey = "null";
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -148,15 +147,64 @@ function refresh(): void {
     } catch {
         next = null;
     }
-    const key = JSON.stringify(next);
-    if (key === currentKey) {
+    if (sameJsonValue(next, current)) {
         return;
     }
     current = next;
-    currentKey = key;
     for (const listener of Array.from(listeners)) {
         listener();
     }
+}
+
+/**
+ * Whether two snapshots say the same thing, compared in place.
+ *
+ * Asked four times a second for as long as a hint bar is on screen, and almost always answered
+ * "yes". It used to be a `JSON.stringify` of the fresh snapshot each time - a string built only to
+ * be compared and thrown away; walking both values allocates nothing and stops at the first
+ * difference. Same answer for these plain objects: key order is ignored here, which is only ever
+ * the more forgiving of the two.
+ */
+export function sameJsonValue(a: unknown, b: unknown): boolean {
+    if (a === b) {
+        return true;
+    }
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+        return false;
+    }
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) {
+            return false;
+        }
+        for (let i = 0; i < a.length; i += 1) {
+            if (!sameJsonValue(a[i], b[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (Array.isArray(b)) {
+        return false;
+    }
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    let leftCount = 0;
+    for (const key in left) {
+        if (left[key] === undefined) {
+            continue;
+        }
+        leftCount += 1;
+        if (!sameJsonValue(left[key], right[key])) {
+            return false;
+        }
+    }
+    let rightCount = 0;
+    for (const key in right) {
+        if (right[key] !== undefined) {
+            rightCount += 1;
+        }
+    }
+    return leftCount === rightCount;
 }
 
 function syncTimer(): void {

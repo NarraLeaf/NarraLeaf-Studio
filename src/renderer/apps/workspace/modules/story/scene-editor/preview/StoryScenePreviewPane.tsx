@@ -1,4 +1,4 @@
-import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X, Zap } from "lucide-react";
+import { Loader2, Magnet, MonitorPlay, PanelRight, PictureInPicture2, X, Zap } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
@@ -10,6 +10,17 @@ import type { StoryScenePreviewController } from "./useStoryScenePreviewControll
 import type { StoryScenePreviewPaneMode, StoryScenePreviewView } from "./storyScenePreviewSessionStore";
 import { StoryLayerStackView, type StoryPreviewLayersApi } from "./StoryLayerStackView";
 import type { StoryPreviewCameraApi } from "./storyPreviewCameraModel";
+import { StoryStageGizmo } from "./StoryStageGizmo";
+import type { StageGizmoRow } from "./stageGizmoModel";
+
+/**
+ * What the stage gizmo needs from the scene's editor: what the cursor's row may do with its object,
+ * and the write that lands a finished drag on that row (one edit, one undo step).
+ */
+export type StoryPreviewStageEditApi = {
+    row: StageGizmoRow | null;
+    commit: (blockId: string, payload: Extract<StageGizmoRow, { kind: "editable" }>["payload"]) => void;
+};
 
 const NOOP = () => undefined;
 
@@ -71,12 +82,18 @@ export function StoryScenePreviewPane(props: {
     /** Which of the two the pane shows: the shot, or the shot taken apart into its layers. */
     view?: StoryScenePreviewView;
     onSetView?: (view: StoryScenePreviewView) => void;
+    /**
+     * Placing the cursor row's object by dragging it on the stage. Absent where the pane has no scene
+     * editor behind it to write to (the floating window), and then the stage is only looked at.
+     */
+    stageEdit?: StoryPreviewStageEditApi;
 }) {
     const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio, skipTyping = false, onToggleSkipTyping, layers, onSetView } = props;
     const view: StoryScenePreviewView = layers && props.view === "layers" ? "layers" : "stage";
     // State rather than a ref: the layer view reads the stage's frames and has to be handed the element.
     const [stageElement, setStageElement] = useState<HTMLDivElement | null>(null);
+    const [snap, setSnap] = useState(true);
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -135,6 +152,20 @@ export function StoryScenePreviewPane(props: {
                             ]}
                         />
                     </div>
+                ) : null}
+                {props.stageEdit && view === "stage" ? (
+                    <ToolbarButton
+                        size="xs"
+                        className={cn("shrink-0", snap && ACTIVE_TOGGLE_CLASS)}
+                        onPointerDown={stopPointerDown}
+                        onClick={() => setSnap(current => !current)}
+                        active={snap}
+                        aria-pressed={snap}
+                        data-tip={t("story.preview.gizmo.snap")} aria-label={t("story.preview.gizmo.snap")}
+                        data-story-preview-snap=""
+                    >
+                        <Magnet className="h-3.5 w-3.5" />
+                    </ToolbarButton>
                 ) : null}
                 {onToggleSkipTyping ? (
                     <ToolbarButton
@@ -207,6 +238,15 @@ export function StoryScenePreviewPane(props: {
                     <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/50">
                         {t("story.preview.selectRow")}
                     </div>
+                ) : null}
+                {view === "stage" && props.stageEdit ? (
+                    <StoryStageGizmo
+                        controller={controller}
+                        stageRoot={stageElement}
+                        row={props.stageEdit.row}
+                        snap={snap}
+                        onCommit={props.stageEdit.commit}
+                    />
                 ) : null}
                 {view === "layers" && layers ? (
                     <StoryLayerStackView

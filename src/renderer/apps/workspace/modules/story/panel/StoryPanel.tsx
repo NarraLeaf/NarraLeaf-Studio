@@ -27,6 +27,8 @@ import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId"
 import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
 import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
+import { requestRename } from "../../refactor/renameRequests";
+import type { TranslationKey } from "@shared/i18n/catalog";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
@@ -960,6 +962,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
+            },
+            {
+                // The preview: every `visited(…)` that names the scene is rewritten with it.
+                id: "rename-scene-with-references",
+                label: t("refactor.menu.renameScene" as TranslationKey),
+                ...outlineFreeze.menuRow(),
+                onClick: () => selectedStoryId && requestRename({ kind: "scene", storyId: selectedStoryId, sceneId: scene.id }),
             },
             {
                 id: "merge-with-next-scene",

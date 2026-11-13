@@ -232,6 +232,26 @@ export const help = {
                 + "persistent variables are declared once for the whole project, in the Variables panel, and any "
                 + "scene and any blueprint can then use them. Both must hold a value that can be written to a save.",
         },
+        renameRefactor: {
+            title: "Rename and find references",
+            body:
+                "Rename a variable, a label, a scene or a character together with every place that names it. "
+                + "Open it from the right-click menu of a Variables panel row, a story row, a scene in the Story panel or a character in the Characters panel.\n"
+                + "\n"
+                + "The preview lists each change by scene, with the text before and after. Untick a change to leave it as it is. "
+                + "Rename writes every ticked change at once, and one undo takes all of them back.\n"
+                + "\n"
+                + "What is rewritten:\n"
+                + "- the declaration, label, scene or character name\n"
+                + "- the name inside expressions: assignments, conditions, loop conditions, option conditions and inline values\n"
+                + "- goto rows that jump to a renamed label\n"
+                + "- for a character, lines that speak as its old name without being linked to it\n"
+                + "\n"
+                + "Rows that point at a variable, a scene or a character by id, and blueprint nodes, follow the rename without being rewritten; the preview lists them separately. "
+                + "Translations need no change. A name already in use, or one the expression language reserves, cannot be chosen.\n"
+                + "\n"
+                + "The arrow beside a variable in the Variables panel lists where it is read and where it is written. Click an entry to go to it.",
+        },
         storyFlow: {
             title: "Branches and routes",
             body:
@@ -399,6 +419,16 @@ export const help = {
                 + "- At a menu the timeline follows the first option. The branch button on the ruler picks another. With the cursor inside an option, the timeline follows that option.\n"
                 + "- Conditions are evaluated the way the preview evaluates them. Rows after a jump, an ending or a quit are not shown.\n"
                 + "- Hold Ctrl or Command and scroll to zoom the timeline.",
+        },
+        stagePlacement: {
+            title: "Placing objects on the stage",
+            body:
+                "With the cursor on a row that shows or moves a character or an image, the story preview draws a box around that object. Dragging the box or its corners rewrites the position and size the row states.\n"
+                + "\n"
+                + "- Drag the box to move the object. Its centre snaps to the middle and thirds of the stage, and its edges snap to the stage edges and the safe area. Hold Shift to keep to one axis, and Cmd or Ctrl to move without snapping. The magnet button in the preview header turns snapping off.\n"
+                + "- Drag a corner to resize. The opposite corner stays in place and the proportions are kept. Hold Shift to resize each axis on its own, and Alt to resize about the centre.\n"
+                + "- The row is written when the pointer is released, and one drag is one undo step. Esc cancels a drag.\n"
+                + "- A row that only hides, changes an expression or plays a motion cannot be placed, and the preview names the reason.",
         },
         assets: {
             title: "Assets",

@@ -1,0 +1,70 @@
+/** `refactor` - 重命名重构的预览对话框，以及变量面板的读取与写入位置列表 */
+export const refactor = {
+    command: {
+        renameScene: "重命名场景并更新引用",
+    },
+    menu: {
+        rename: "重命名…",
+        findReferences: "查找所有引用",
+        renameVariable: "重命名变量“{name}”…",
+        findVariableReferences: "查找“{name}”的所有引用",
+        renameLabel: "重命名标签…",
+        renameScene: "重命名并更新引用…",
+    },
+    dialog: {
+        titleVariable: "重命名变量",
+        titleLabel: "重命名标签",
+        titleScene: "重命名场景",
+        titleCharacter: "重命名角色",
+        newName: "新名称",
+        confirm: "重命名",
+        summary: {
+            other: "将修改 {count} 处",
+        },
+        followers: {
+            other: "另有 {count} 处按标识引用，自动跟随",
+        },
+        followersTitle: "按标识引用的位置",
+        failures: "以下表达式无法自动改写，请手动修改后重新执行重命名",
+        reformatted: "已统一空格",
+        required: "必定修改",
+    },
+    problem: {
+        empty: "请输入名称",
+        reserved: "该名称为表达式语言保留字",
+        taken: "该名称已被使用",
+    },
+    slot: {
+        declaration: "声明",
+        registry: "变量面板",
+        assignTarget: "赋值目标",
+        assignValue: "赋值表达式",
+        inputTarget: "输入结果",
+        pageTarget: "页面结果",
+        condition: "条件",
+        loopCondition: "循环条件",
+        hiddenWhen: "隐藏条件",
+        disabledWhen: "禁用条件",
+        text: "行内取值",
+        label: "标签",
+        goto: "跳转",
+        sceneName: "场景名称",
+        characterName: "角色名称",
+        speaker: "说话人",
+        blueprintNode: "蓝图节点",
+    },
+    site: {
+        line: "第 {line} 行",
+        blueprint: "蓝图 {name}",
+        unnamedBlueprint: "未命名",
+    },
+    refs: {
+        toggle: "引用",
+        reads: "读取位置",
+        writes: "写入位置",
+        none: "暂无引用",
+    },
+    history: {
+        rename: "将 {from} 重命名为 {to}",
+    },
+} as const;

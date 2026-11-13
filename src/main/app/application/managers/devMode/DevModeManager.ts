@@ -658,6 +658,10 @@ export class DevModeManager {
         session.window = window;
         session.windowReady = false;
         window.onClose(() => {
+            // Also the workspace's cue to read the status again: it polls a running session only every
+            // few seconds and relies on a console line to notice a change sooner. Sent before the
+            // session is forgotten, while the lookup can still find the workspace it reports into.
+            this.emitVerbose(session, "Dev Mode window closed");
             if (session.agentHold) {
                 clearTimeout(session.agentHold.idleTimer);
                 session.agentHold = null;

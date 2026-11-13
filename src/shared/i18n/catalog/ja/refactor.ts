@@ -1,0 +1,70 @@
+/** `refactor` - 名前変更リファクタリングのプレビューダイアログと、変数パネルの読み取り・書き込み位置の一覧 */
+export const refactor = {
+    command: {
+        renameScene: "シーン名を変更して参照を更新",
+    },
+    menu: {
+        rename: "名前を変更…",
+        findReferences: "すべての参照を検索",
+        renameVariable: "変数「{name}」の名前を変更…",
+        findVariableReferences: "「{name}」のすべての参照を検索",
+        renameLabel: "ラベル名を変更…",
+        renameScene: "名前を変更して参照を更新…",
+    },
+    dialog: {
+        titleVariable: "変数名の変更",
+        titleLabel: "ラベル名の変更",
+        titleScene: "シーン名の変更",
+        titleCharacter: "キャラクター名の変更",
+        newName: "新しい名前",
+        confirm: "名前を変更",
+        summary: {
+            other: "{count} 箇所を変更",
+        },
+        followers: {
+            other: "ID で参照する {count} 箇所は自動で追従",
+        },
+        followersTitle: "ID で参照する箇所",
+        failures: "次の式は自動で書き換えられない。手動で修正してから名前を変更し直す",
+        reformatted: "空白を統一",
+        required: "常に変更",
+    },
+    problem: {
+        empty: "名前を入力",
+        reserved: "この名前は式言語の予約語",
+        taken: "この名前はすでに使われている",
+    },
+    slot: {
+        declaration: "宣言",
+        registry: "変数パネル",
+        assignTarget: "代入先",
+        assignValue: "代入する式",
+        inputTarget: "入力の結果",
+        pageTarget: "ページの結果",
+        condition: "条件",
+        loopCondition: "ループ条件",
+        hiddenWhen: "非表示の条件",
+        disabledWhen: "無効の条件",
+        text: "インラインの値",
+        label: "ラベル",
+        goto: "ジャンプ",
+        sceneName: "シーン名",
+        characterName: "キャラクター名",
+        speaker: "話者",
+        blueprintNode: "ブループリントのノード",
+    },
+    site: {
+        line: "{line} 行目",
+        blueprint: "ブループリント {name}",
+        unnamedBlueprint: "名前なし",
+    },
+    refs: {
+        toggle: "参照",
+        reads: "読み取り位置",
+        writes: "書き込み位置",
+        none: "参照なし",
+    },
+    history: {
+        rename: "{from} を {to} に名前変更",
+    },
+} as const;
