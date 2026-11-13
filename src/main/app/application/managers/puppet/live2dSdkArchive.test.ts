@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import { inspectLive2DSdkArchive, readArchiveEntry } from "./live2dSdkArchive";
+import { inspectLive2DSdkArchive, isSafeArchiveEntryName, readArchiveEntry } from "./live2dSdkArchive";
+import { archivePathInside } from "./live2dRuntimeBuild";
 import {
     CRC32_INITIAL,
     CENTRAL_HEADER_SIZE,
@@ -111,6 +112,36 @@ describe("inspectLive2DSdkArchive", () => {
         const files = sdkFiles();
         files["CubismSdkForWeb-5-r.5/cubism-info.yml"] = "id: 10\n";
         expect(inspectLive2DSdkArchive(zip(files)).version).toBeNull();
+    });
+
+    it("refuses an archive whose entries climb out of the unpack directory", () => {
+        for (const evil of [
+            "CubismSdkForWeb-5-r.5/Framework/src/../../../../escape.ts",
+            "CubismSdkForWeb-5-r.5/Framework/src/..\\..\\escape.ts",
+            "CubismSdkForWeb-5-r.5/LICENSE/../../../x/LICENSE.md",
+            "C:/Windows/LICENSE.md",
+        ]) {
+            const files = { ...sdkFiles(), [evil]: "x" };
+            expect(() => inspectLive2DSdkArchive(zip(files)), evil).toThrow(/leaves the archive/);
+        }
+    });
+
+    it("judges entry names segment by segment", () => {
+        expect(isSafeArchiveEntryName("Framework/src/math/a.ts")).toBe(true);
+        expect(isSafeArchiveEntryName("..foo/a.ts")).toBe(true);
+        expect(isSafeArchiveEntryName("a/../b")).toBe(false);
+        expect(isSafeArchiveEntryName("a//b")).toBe(false);
+        expect(isSafeArchiveEntryName("a/./b")).toBe(false);
+        expect(isSafeArchiveEntryName("a\0b")).toBe(false);
+        expect(isSafeArchiveEntryName("")).toBe(false);
+    });
+
+    it("refuses to write outside the target directory even when a name gets through", () => {
+        const base = path.join(path.sep, "tmp", "nls-unpack");
+        expect(archivePathInside(base, "math/a.ts")).toBe(path.join(base, "math", "a.ts"));
+        expect(() => archivePathInside(base, "../a.ts")).toThrow(/outside/);
+        expect(() => archivePathInside(base, "x/../../a.ts")).toThrow(/outside/);
+        expect(() => archivePathInside(base, "")).toThrow(/outside/);
     });
 
     it("hands back the bytes of what it located", () => {
