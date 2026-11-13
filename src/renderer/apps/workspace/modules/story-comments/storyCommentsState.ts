@@ -114,6 +114,11 @@ export function useStoryCommentPopoverFor(blockId: string): StoryCommentPopoverT
     );
 }
 
+/** The open target, whichever row it is on. */
+export function useStoryCommentPopoverTarget(): StoryCommentPopoverTarget | null {
+    return useSyncExternalStore(subscribePopover, () => popoverTarget, () => null);
+}
+
 /** Show the comments panel. */
 export function openStoryCommentsPanel(context: WorkspaceContext): void {
     const uiService = context.services.get<UIService>(Services.UI);

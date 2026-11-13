@@ -81,7 +81,7 @@ import { StoryCommandLineProvider, StoryCommandLineReader } from "./StoryCommand
 import { StoryRowHistoryModal, type StoryRowHistoryTarget } from "../../scene-history/StoryRowHistoryModal";
 import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import { storyRowCommentText } from "./StoryRowCommentMark";
-import { openStoryCommentPopover } from "../../story-comments/storyCommentsState";
+import { openStoryCommentPopover, useStoryCommentPopoverTarget, useStoryCommentThreads } from "../../story-comments/storyCommentsState";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -942,6 +942,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
     // them all repaint when the author changes it in the (separate) Settings window.
     const rowHighlight = useStoryRowHighlight();
+    /**
+     * Whether this scene carries any review thread, or is being given its first. When it does, every
+     * row reserves the comment column so the marks stand in one line down the scene.
+     */
+    const commentThreads = useStoryCommentThreads();
+    const commentPopoverTarget = useStoryCommentPopoverTarget();
+    const commentColumn = useMemo(() => {
+        const blocks = editor.scene?.blocks;
+        if (!blocks) return false;
+        return commentThreads.some(thread => Boolean(blocks[thread.blockId]))
+            || Boolean(commentPopoverTarget && blocks[commentPopoverTarget.blockId]);
+    }, [commentThreads, commentPopoverTarget, editor.scene]);
     /**
      * Hold each mounted row's projection at one identity for as long as it projects the same line.
      *
@@ -2715,6 +2727,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     rowHighlight={rowHighlight}
                                     dragGroupSize={dragGroupSizeFor(row.block.id)}
                                     coDragging={draggingGroup.size > 1 && draggingGroup.has(row.block.id)}
+                                    commentColumn={commentColumn}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
