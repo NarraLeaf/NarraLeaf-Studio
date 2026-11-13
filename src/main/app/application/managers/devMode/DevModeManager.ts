@@ -10,7 +10,7 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
-import { DevModeAgentErrorCode, type DevModeAgentAction, type DevModeAgentResult } from "@shared/types/devMode";
+import { DEV_MODE_AGENT_IDLE_MS, DevModeAgentErrorCode, type DevModeAgentAction, type DevModeAgentResult } from "@shared/types/devMode";
 import { DevModeAgentError, driveDevModeWindow } from "./devModeAgentDrive";
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
@@ -84,6 +84,23 @@ type DevModeSession = {
     /** Rises with each in-place launch, so the window can tell one request from the next. */
     startToken: number;
     reloadTimer: ReturnType<typeof setTimeout> | null;
+    /**
+     * Set while an agent holds this session: it was launched by `playtest_start` and the author has
+     * not launched over it since. See {@link DevModeManager.setAgentHold}.
+     */
+    agentHold: { idleTimer: ReturnType<typeof setTimeout>; client?: string } | null;
+    /**
+     * Set once the author has taken the session over from an agent and until they hand it back or
+     * resume the agent another way. The window offers the hand-back while it is set.
+     */
+    takenOver: { client?: string } | null;
+};
+
+export type DevModeLaunchOptions = {
+    /** Launched by an agent's play-test; see `agent` on `IPCEventType.devModeLaunch`. */
+    agent?: boolean;
+    /** That agent's client name, for the notice the window shows. */
+    client?: string;
 };
 
 export class DevModeManager {
@@ -130,6 +147,93 @@ export class DevModeManager {
      * which only the app-wide surfaces (quit checks) should ask for - a workspace always passes its
      * own path, or it would show a neighbouring project's state as its own.
      */
+    /** Whether an agent holds this project's session; see {@link setAgentHold}. */
+    public isAgentHeld(projectPath: string): boolean {
+        return this.sessions.get(this.projectKey(projectPath))?.agentHold != null;
+    }
+
+    /**
+     * The author takes over the session an agent holds, from the notice in the Dev Mode window.
+     *
+     * The session becomes the author's: the window takes their input again, closes when they close it,
+     * and has no idle limit. The workspace is told, and pauses the agent until the author resumes it,
+     * so the agent's next act is refused with the reason instead of fighting the author for the game.
+     * False when no agent held it (a second click, or the idle stop got there first).
+     */
+    public takeOverFromAgent(projectPath: string): boolean {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session?.agentHold) {
+            return false;
+        }
+        // Before the hold goes, so the one message the window gets says both.
+        session.takenOver = session.agentHold.client ? { client: session.agentHold.client } : {};
+        this.setAgentHold(session, false);
+        this.emitWorkspaceConsoleLog(session, {
+            level: "info",
+            source: "Dev Mode",
+            message: "taken over by the author; the agent is paused until they resume it.",
+        });
+        this.findWorkspaceWindow(session.projectPath)?.sendIpcEvent(IPCEventType.devModeAgentTakenOver, {
+            projectPath: session.projectPath,
+        });
+        const window = session.window;
+        if (window && !window.isClosed()) {
+            void window.show();
+            window.win.focus();
+        }
+        return true;
+    }
+
+    /**
+     * The author hands a session they took over back to the agent, from the Dev Mode window. The agent
+     * holds it again (read-only for the author, the idle limit running) and the workspace resumes the
+     * agent. The window stays where it is. False when nothing was taken over.
+     */
+    public handBackToAgent(projectPath: string): boolean {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        const takenOver = session?.takenOver;
+        if (!session || !takenOver) {
+            return false;
+        }
+        this.setAgentHold(session, true, takenOver.client);
+        this.emitWorkspaceConsoleLog(session, {
+            level: "info",
+            source: "Dev Mode",
+            message: "handed back to the agent by the author; the agent may go on.",
+        });
+        this.findWorkspaceWindow(session.projectPath)?.sendIpcEvent(IPCEventType.devModeAgentHandedBack, {
+            projectPath: session.projectPath,
+        });
+        return true;
+    }
+
+    /**
+     * The author resumed the agent some other way (the status bar's switch): the session stays theirs,
+     * and the window stops offering the hand-back.
+     */
+    public endTakeover(projectPath: string): void {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session?.takenOver) {
+            return;
+        }
+        session.takenOver = null;
+        this.sendAgentHold(session);
+    }
+
+    /**
+     * Show this project's Dev Mode window and bring it forward. The author's way to watch a session an
+     * agent holds, whose window opens hidden; it stays held, so the page still takes no input.
+     */
+    public reveal(projectPath: string): boolean {
+        const window = this.sessions.get(this.projectKey(projectPath))?.window;
+        if (!window || window.isClosed()) {
+            return false;
+        }
+        void window.show();
+        window.win.focus();
+        return true;
+    }
+
     public getStatus(projectPath?: string): DevModeStatus {
         if (projectPath) {
             return this.sessions.get(this.projectKey(projectPath))?.status ?? "idle";
@@ -151,6 +255,9 @@ export class DevModeManager {
         if (!session || !window || window.isClosed()) {
             throw new DevModeAgentError("Dev Mode is not running for this project.", DevModeAgentErrorCode.notRunning);
         }
+        // Every call counts as activity, a refused one included: an agent polling a window that is
+        // still loading is not idle.
+        this.touchAgentHold(session);
         if (!session.windowReady) {
             throw new DevModeAgentError("The Dev Mode window is still loading.", DevModeAgentErrorCode.starting);
         }
@@ -169,7 +276,15 @@ export class DevModeManager {
                         height: Math.max(1, Math.round(rect.height * zoom)),
                     }
                     : undefined;
-                return (await (area ? contents.capturePage(area) : contents.capturePage())).toDataURL();
+                try {
+                    return (await (area ? contents.capturePage(area) : contents.capturePage())).toDataURL();
+                } finally {
+                    // The page put its agent notice away for this picture (`prepareWindowCapture`);
+                    // telling it again who holds the session is what brings the notice back.
+                    if (session.agentHold) {
+                        this.sendAgentHold(session);
+                    }
+                }
             },
             // For the rest of this window's life once an agent has driven it, as a test-driven
             // standalone run is (`backgroundThrottling` in the runtime's main): between two calls the
@@ -187,7 +302,7 @@ export class DevModeManager {
         }, action);
     }
 
-    public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
+    public launch(projectPath: string, entry: DevModeEntry, options: DevModeLaunchOptions = {}): Promise<DevModeStatus> {
         // Before anything is built. A Dev Mode window resolves every asset through this project's
         // workspace, and a workspace turned away by another Studio never started - so the window
         // it would open is black, and says nothing about why.
@@ -197,7 +312,9 @@ export class DevModeManager {
             return Promise.reject(new Error(refusal));
         }
         const requestedAt = Date.now();
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt));
+        const agent = options.agent === true;
+        const client = agent ? options.client : undefined;
+        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt, agent, client));
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
@@ -266,11 +383,14 @@ export class DevModeManager {
         });
     }
 
-    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number): Promise<DevModeStatus> {
+    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number, agent: boolean, client?: string): Promise<DevModeStatus> {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
         if (previous && entry.kind === "story" && previous.window && !previous.window.isClosed()) {
+            // Before the window is focused: an agent's launch leaves a hidden window hidden, and the
+            // author's launch takes the session back and shows it.
+            this.setAgentHold(previous, agent, client);
             return this.relaunchInPlace(previous, entry);
         }
         if (previous) {
@@ -279,6 +399,7 @@ export class DevModeManager {
 
         const session = this.createSession(projectPath, entry, requestedAt);
         this.sessions.set(key, session);
+        this.setAgentHold(session, agent, client);
 
         try {
             this.emitVerbose(session, `launch requested: ${this.describeEntry(entry)}`);
@@ -426,11 +547,91 @@ export class DevModeManager {
             pendingStartStory: null,
             startToken: 0,
             reloadTimer: null,
+            agentHold: null,
+            takenOver: null,
         };
+    }
+
+    /**
+     * Hand the session to an agent, or back to the author.
+     *
+     * While an agent holds it, the window an agent's launch opens is hidden and stays hidden until the
+     * author asks to see it ({@link reveal}); its page turns away the author's own pointer and keys, so
+     * a stray click cannot move the game out from under the agent's play-test; closing it hides it
+     * instead of ending the session; and the session is stopped after {@link DEV_MODE_AGENT_IDLE_MS}
+     * without a play-test call. The author's own launch takes the session back. The workspace asks
+     * before the author stops or relaunches a held session.
+     */
+    private setAgentHold(session: DevModeSession, held: boolean, client?: string): void {
+        const was = session.agentHold !== null;
+        const clientChanged = held && session.agentHold?.client !== client;
+        if (session.agentHold) {
+            clearTimeout(session.agentHold.idleTimer);
+            session.agentHold = null;
+        }
+        if (held) {
+            session.takenOver = null;
+            session.agentHold = { idleTimer: this.armAgentIdleTimer(session), ...(client ? { client } : {}) };
+            // A window the author had open goes on rendering when they cover it; see `keepPainting`.
+            const window = session.window;
+            if (window && !window.isClosed() && window.win.webContents.getBackgroundThrottling()) {
+                window.win.webContents.setBackgroundThrottling(false);
+            }
+        }
+        if (was !== held) {
+            this.emitVerbose(session, held ? "held by an agent" : "released by the agent");
+        }
+        if (was !== held || clientChanged) {
+            this.sendAgentHold(session);
+        }
+    }
+
+    private touchAgentHold(session: DevModeSession): void {
+        if (!session.agentHold) {
+            return;
+        }
+        clearTimeout(session.agentHold.idleTimer);
+        session.agentHold.idleTimer = this.armAgentIdleTimer(session);
+    }
+
+    private armAgentIdleTimer(session: DevModeSession): ReturnType<typeof setTimeout> {
+        const timer = setTimeout(() => {
+            if (!session.agentHold || this.sessions.get(this.projectKey(session.projectPath)) !== session) {
+                return;
+            }
+            this.emitWorkspaceConsoleLog(session, {
+                level: "info",
+                source: "Dev Mode",
+                message: `closed: the agent that started it made no play-test call for ${Math.round(DEV_MODE_AGENT_IDLE_MS / 60_000)} minutes.`,
+            });
+            void this.stop(session.projectPath).catch(error => {
+                this.app.logger.warn("[DevMode] stopping an idle agent session failed", error);
+            });
+        }, DEV_MODE_AGENT_IDLE_MS);
+        // A pending idle stop is no reason to keep a quitting app alive.
+        timer.unref?.();
+        return timer;
+    }
+
+    private sendAgentHold(session: DevModeSession): void {
+        const window = session.window;
+        if (window && !window.isClosed() && session.windowReady) {
+            const hold = session.agentHold;
+            const takenOver = session.takenOver;
+            window.sendIpcEvent(IPCEventType.devModeAgentHoldChanged, hold
+                ? { held: true, ...(hold.client ? { client: hold.client } : {}) }
+                : takenOver
+                    ? { held: false, takenOver: true, ...(takenOver.client ? { client: takenOver.client } : {}) }
+                    : { held: false });
+        }
     }
 
     private async startOrFocusWindow(session: DevModeSession): Promise<void> {
         if (session.window && !session.window.isClosed()) {
+            if (session.agentHold) {
+                // Left where it is: hidden if the agent opened it, on screen if the author has it open.
+                return;
+            }
             this.emitVerbose(session, "focusing existing Dev Mode window");
             session.window.show();
             session.window.win.focus();
@@ -453,10 +654,18 @@ export class DevModeManager {
                 zero: session.requestedAt,
                 milestones: [{ name: "windowCreated", at: Math.max(session.requestedAt, Date.now()) }],
             },
-        });
+        }, {}, { hidden: session.agentHold !== null });
         session.window = window;
         session.windowReady = false;
         window.onClose(() => {
+            // Also the workspace's cue to read the status again: it polls a running session only every
+            // few seconds and relies on a console line to notice a change sooner. Sent before the
+            // session is forgotten, while the lookup can still find the workspace it reports into.
+            this.emitVerbose(session, "Dev Mode window closed");
+            if (session.agentHold) {
+                clearTimeout(session.agentHold.idleTimer);
+                session.agentHold = null;
+            }
             this.disposeWatcher(session);
             this.clearReloadTimer(session);
             this.forgetSession(session);
@@ -471,6 +680,9 @@ export class DevModeManager {
         window.onReady(() => {
             session.windowReady = true;
             this.emitVerbose(session, "Dev Mode window ready");
+            if (session.agentHold || session.takenOver) {
+                this.sendAgentHold(session);
+            }
             this.tryFlushPendingToDevWindow(session);
         });
         // Feeds the `On Fullscreen Changed` blueprint head, so it also fires for
@@ -501,6 +713,24 @@ export class DevModeManager {
         // bypasses this entirely - that path must never fire the blueprint close event.
         let closeRequestPending = false;
         window.setCloseGuard(() => {
+            if (session.agentHold) {
+                // The author looked at the agent's play-test and closed it: put it away, and leave
+                // the game running for the agent. Not a close the game's blueprints get a say in.
+                this.emitVerbose(session, "window hidden: an agent holds this session");
+                const win = window.win;
+                if (process.platform === "darwin" && win.isFullScreen()) {
+                    // Ordered out of its own Space, a fullscreen window leaves a black Space behind.
+                    win.once("leave-full-screen", () => {
+                        if (!win.isDestroyed()) {
+                            win.hide();
+                        }
+                    });
+                    win.setFullScreen(false);
+                } else {
+                    win.hide();
+                }
+                return true;
+            }
             if (closeRequestPending) {
                 // A second close while the last decision is still settling: surface the window
                 // rather than stacking requests.
@@ -829,6 +1059,10 @@ export class DevModeManager {
     }
 
     private async terminateSession(session: DevModeSession): Promise<void> {
+        if (session.agentHold) {
+            clearTimeout(session.agentHold.idleTimer);
+            session.agentHold = null;
+        }
         session.status = "stopping";
         this.emitVerbose(session, "terminating Dev Mode session");
         this.disposeWatcher(session);

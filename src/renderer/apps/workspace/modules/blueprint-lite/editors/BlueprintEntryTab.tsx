@@ -210,12 +210,18 @@ import {
 import {
     graphClipboardSourceStamp,
     importForeignGraphAssets,
+    isGraphPasteRefusal,
     publishGraphClipboard,
+    publishGraphText,
     readGraphClipboardEnvironment,
     reportForeignGraphPaste,
+    reportGraphTextPaste,
+    reportRefusedGraphTextPaste,
     resolveGraphPasteSource,
     type ForeignGraphPasteReport,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboardBridge";
+import { printBlueprintGraphText } from "@/lib/workspace/services/ui-editor/blueprint/graphTextCopy";
+import { readBlueprintTextPaste } from "@/lib/workspace/services/ui-editor/blueprint/graphTextPaste";
 import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
@@ -998,6 +1004,35 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
     }, [fillGraphClipboard]);
 
+    /**
+     * Put `nodeIds` on the clipboard as blueprint text, the format a paste here reads back.
+     *
+     * Only the platform clipboard is written. The in-window copy is left as it was: a paste reads
+     * the text ahead of it, and a Ctrl+C after this replaces both the usual way.
+     */
+    const copyGraphNodesAsText = useCallback(
+        (nodeIds: readonly string[]) => {
+            const activeIr = activeIrRef.current;
+            const copied = activeIr ? buildBlueprintGraphClipboardPayload(activeIr, nodeIds) : null;
+            if (!copied) {
+                return;
+            }
+            const blueprint = localBp.getBlueprintDocument().blueprints[payload.blueprintId];
+            const text = printBlueprintGraphText(copied, blueprint?.members?.variables);
+            if (text) {
+                void publishGraphText(uiService, text, copied.nodeIds.length);
+            }
+        },
+        [localBp, payload.blueprintId, uiService],
+    );
+
+    const copySelectedGraphNodesAsText = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        copyGraphNodesAsText(editor.selectedNodeIds);
+    }, [copyGraphNodesAsText, editor.selectedNodeIds]);
+
     const cutSelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
@@ -1032,10 +1067,34 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         void (async () => {
             const environment = readGraphClipboard();
-            const source = await resolveGraphPasteSource(environment);
-            if (!source || environment?.isFrozen()) {
+            // Blueprint text on the clipboard is compiled for this graph as it is when the author
+            // pastes: the owner decides which nodes may go here, the open graph which kind it is.
+            const readText = (text: string) => {
+                const blueprint = localBp.getBlueprintDocument().blueprints[payload.blueprintId];
+                const elements = blueprintDocumentService.getDocument();
+                const graphView = editor.graphView;
+                if (!blueprint || !graphView) {
+                    return { kind: "none" as const };
+                }
+                const elementId = anchorElementId(blueprint.owner) !== null ? payload.elementId : undefined;
+                return readBlueprintTextPaste(text, {
+                    owner: blueprint.owner,
+                    graphKind: graphView.kind === "function" ? "function" : "event",
+                    variables: blueprint.members?.variables,
+                    widgetElementType: elementId ? elements.elements[elementId]?.type : undefined,
+                    uiElements: elements.elements,
+                    uiStructs: elements.structs,
+                });
+            };
+            const resolved = await resolveGraphPasteSource(environment, readText);
+            if (!resolved || environment?.isFrozen()) {
                 return;
             }
+            if (isGraphPasteRefusal(resolved)) {
+                reportRefusedGraphTextPaste(resolved);
+                return;
+            }
+            const source = resolved;
             let imported: ForeignGraphPasteReport = { imported: 0, frozen: false };
             if (source.foreign) {
                 imported = await importForeignGraphAssets(source);
@@ -1060,9 +1119,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             editor.setSelectedNodeIds(pasted.newNodeIds);
             if (source.foreign) {
                 reportForeignGraphPaste(source, imported);
+            } else if (source.text) {
+                reportGraphTextPaste(source, pasted.newNodeIds.length);
             }
         })();
-    }, [commitIr, editor, readGraphClipboard, uuid, payload.blueprintId]);
+    }, [blueprintDocumentService, commitIr, editor, localBp, readGraphClipboard, uuid, payload.blueprintId, payload.elementId]);
 
     // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
     // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen
@@ -1109,6 +1170,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 handler: copySelectedGraphNodes,
             },
             {
+                id: "copy-as-text",
+                key: "mod+shift+c",
+                handler: copySelectedGraphNodesAsText,
+            },
+            {
                 id: "cut",
                 key: "mod+x",
                 handler: freeze.run(cutSelectedGraphNodes),
@@ -1121,6 +1187,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         ],
         [
             copySelectedGraphNodes,
+            copySelectedGraphNodesAsText,
             cutSelectedGraphNodes,
             freeze,
             localBp,
@@ -2526,6 +2593,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
                         onCreateGroupFrame={onCreateGroupFrame}
+                        onCopyNodesAsText={copyGraphNodesAsText}
                         structTypeContext={structTypeContext}
                     />
                 </div>

@@ -7,6 +7,7 @@
  */
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { useDevModeReadOnly } from "../../devModeReadOnly";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugSession } from "@/lib/ui-editor/blueprint-runtime/BlueprintDebugSession";
 import { useBlueprintDebugger, type UseBlueprintDebuggerResult } from "./useBlueprintDebugger";
@@ -29,7 +30,7 @@ export function BlueprintDebuggerProvider(props: {
     children: ReactNode;
 }): ReactNode {
     const { session, blueprintDocument, projectPath, children } = props;
-    const debugger_ = useBlueprintDebugger({ session, blueprintDocument, projectPath });
+    const debugger_ = useBlueprintDebugger({ session, blueprintDocument, projectPath, readOnly: useDevModeReadOnly() });
     const [graphBrowserOpen, setGraphBrowserOpen] = useState(false);
 
     const value = useMemo<BlueprintDebuggerContextValue>(

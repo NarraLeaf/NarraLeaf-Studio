@@ -227,6 +227,7 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
             drivesGame: !internal && !plugin && descriptor?.drivesGame === true,
             policy: request.policy,
             paused: follow.getState().paused,
+            pausedBy: follow.getState().pausedBy,
             freeze: getProjectWriteFreeze(),
             liveSession: this.liveSessionActive(ctx),
         });

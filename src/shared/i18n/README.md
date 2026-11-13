@@ -97,7 +97,9 @@ picker is the worked example.
 2. Add its `LOCALE_META` entry (native/English name, BCP-47 `intl` tag, `dir`).
 3. Create `catalog/<code>/` with one file per namespace (each
    `satisfies LocaleNamespace<"…">`) plus its `index.ts`
-   (`satisfies LocaleMessages`), and register that catalog in `catalog/index.ts`.
+   (`satisfies LocaleMessages`), register it in `catalog/builtinCatalogs.ts`
+   (`CATALOGS` and a `registerBuiltinCatalog` call), and give it a loader in
+   `catalog/loadBuiltinCatalog.ts` - the type check refuses a locale without one.
 
 The Settings language picker, formatters, and fallback all read the registry, so
 nothing else changes. `catalog/parity.test.ts` covers every locale in `CATALOGS`
@@ -107,10 +109,19 @@ are exempt, for locales with a single plural form such as zh and ja).
 
 ## Notes / trade-offs
 
-- **Bundling:** renderer apps are built as IIFE bundles (no code-splitting), so
-  every locale is bundled into every app. Fine for a few languages — text is tiny
-  next to code. If it ever matters, split catalogs per-namespace and have each app
-  import only what it renders, or lazy-load catalogs over `app://`.
+- **Bundling:** renderer apps are ES modules with code-splitting. Importing the
+  catalog index registers every built-in catalog (`catalog/builtinCatalogs.ts`),
+  which is what the main process, the game runtime, the workspace, Dev Mode and
+  the project wizard get: they translate into languages other than the interface
+  language (a widget's default words in the game's language), synchronously. The
+  small windows listed in `project/build/rendererLocales.js` are built with
+  `builtinCatalogs.lean.ts` instead and fetch only the interface language
+  (`loadBuiltinCatalog`), before the first paint and again on a language switch -
+  three catalogs are ~2.6 MB, most of a dialog's script. A window that starts
+  translating into another language has to leave that list, or its lookups
+  quietly come back in English.
+- **Precedence:** a built-in catalog always wins over a plugin pack for the keys
+  it has, even when the pack was registered before a lean window loaded it.
 - **No flash:** `initI18n()` runs in `renderApp` before the first paint, so
   windows never flash English before switching.
 - **Main process:** system menu `role:` items are localized by Electron/macOS;

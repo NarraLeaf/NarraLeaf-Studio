@@ -51,10 +51,10 @@ export type AgentClientDescriptor = {
 };
 
 /**
- * The skill folders Studio installs, from `resources/agent/skills`. The porting skill relies on
- * the first, so the two go together.
+ * The skill folders Studio installs, from `resources/agent/skills`. The Ren'Py porting skill is not
+ * one of them: it ships with Ren2Leaf, next to the tool that prepares its hand-over pack.
  */
-export const AGENT_INSTALLED_SKILLS = ["narraleaf-make-game", "narraleaf-port-renpy"] as const;
+export const AGENT_INSTALLED_SKILLS = ["narraleaf-make-game"] as const;
 
 /** The file name of the zip written for clients that take an uploaded skill. */
 export const AGENT_SKILL_ZIP_NAME = "narraleaf-make-game.zip";

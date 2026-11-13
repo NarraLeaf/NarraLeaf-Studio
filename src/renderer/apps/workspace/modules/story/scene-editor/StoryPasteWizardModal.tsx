@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { Input } from "@/lib/components/elements/Input";
@@ -11,8 +11,10 @@ import { planPastedRows, speakerMemoryKey, splitPastedText } from "@/lib/story/p
 import { useCreateCharacterFreeze } from "./storySceneReadOnly";
 import { characterIdentity } from "./StoryRowGutter";
 import { characterSpeakerIdentity, storySpeakerPaint } from "./storySpeakerIdentity";
+import type { HelpTopicId } from "@/lib/help/helpTopics";
 import type {
     PastePlan,
+    PasteSplit,
     PastePlanRow,
     PasteSeparatorChoice,
     PasteSeparatorKind,
@@ -71,6 +73,18 @@ export function StoryPasteWizardModal(props: {
      * computed, and it is what gets remembered. See {@link authoredMappings}.
      */
     onConfirm: (plan: PastePlan, authoredMappings: Record<string, SpeakerMappingTarget>) => void;
+    /**
+     * A split made by someone who already knows who speaks each line - a script file with a speaker
+     * column or character cues. The separator controls are hidden: there is nothing to guess.
+     */
+    presplit?: PasteSplit;
+    /** Rendered above the speaker table; a script import puts its source controls here. */
+    header?: ReactNode;
+    title?: string;
+    actionLabel?: string;
+    helpTopic?: HelpTopicId;
+    /** Confirm is held off while the caller is writing. */
+    busy?: boolean;
 }) {
     const { t, tn } = useTranslation();
     // The wizard's second way to mint a cast member, and the same answer the row picker's rung gets:
@@ -115,7 +129,7 @@ export function StoryPasteWizardModal(props: {
         }
     }, [props.open]);
 
-    const split = useMemo(() => splitPastedText(props.text, choice), [props.text, choice]);
+    const split = useMemo(() => props.presplit ?? splitPastedText(props.text, choice), [props.presplit, props.text, choice]);
 
     /** What each label maps to before the author touches it - the row the table opens showing. */
     const defaults = useMemo(() => {
@@ -207,8 +221,8 @@ export function StoryPasteWizardModal(props: {
         <Modal
             isOpen={props.open}
             onClose={props.onCancel}
-            title={t("story.paste.title")}
-            helpTopic="storyPaste"
+            title={props.title ?? t("story.paste.title")}
+            helpTopic={props.helpTopic ?? "storyPaste"}
             size="xl"
             footer={
                 <div className="flex w-full items-center gap-2">
@@ -230,13 +244,13 @@ export function StoryPasteWizardModal(props: {
                         type="button"
                         className={dialogFooterButtonClass({
                             variant: "primary",
-                            disabled: plan.rows.length === 0 || wouldCreateWhileUnavailable,
+                            disabled: plan.rows.length === 0 || wouldCreateWhileUnavailable || props.busy === true,
                         })}
                         onClick={() => props.onConfirm(plan, authoredMappings)}
-                        disabled={plan.rows.length === 0 || wouldCreateWhileUnavailable}
+                        disabled={plan.rows.length === 0 || wouldCreateWhileUnavailable || props.busy === true}
                         data-tip={wouldCreateWhileUnavailable ? createCharacter.reason : undefined}
                     >
-                        {t("story.paste.action")}
+                        {props.actionLabel ?? t("story.paste.action")}
                     </button>
                 </div>
             }
@@ -244,8 +258,9 @@ export function StoryPasteWizardModal(props: {
             {/* `tabIndex={-1}` so the dialog itself can hold the caret: it is not a control, it just
                 has to be somewhere focus can land that is not the editor underneath. */}
             <div ref={surfaceRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
+                {props.header}
                 {/* Separator: compact, at the top, above the thing it changes. */}
-                <div className="flex flex-col gap-1.5">
+                {props.presplit ? null : <div className="flex flex-col gap-1.5">
                     <div className="flex flex-wrap items-center gap-1">
                         {SEPARATOR_KINDS.map(kind => (
                             <button
@@ -335,7 +350,7 @@ export function StoryPasteWizardModal(props: {
                             {t("story.paste.savePreset")}
                         </button>
                     </div>
-                </div>
+                </div>}
 
                 {/* The speaker table - the body, and the point of the wizard. */}
                 {split.speakers.length === 0 ? (

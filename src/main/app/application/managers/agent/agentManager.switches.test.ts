@@ -590,7 +590,6 @@ describe("installing the Agent Skill into a skill folder", () => {
         expect(await declined.manager.installSkill(declined.window, "claudeCode")).toEqual({ canceled: true });
         expect(declined.asked).toEqual([{ kind: "skillOverwrite", folders: [path.dirname(installed(AGENT_INSTALLED_SKILLS[0]))] }]);
         expect(fs.readFileSync(installed(AGENT_INSTALLED_SKILLS[0]), "utf8")).toBe("my own edits");
-        expect(fs.existsSync(installed(AGENT_INSTALLED_SKILLS[1]))).toBe(false);
 
         const allowed = makeManager(true);
         expect(await allowed.manager.installSkill(allowed.window, "claudeCode")).toMatchObject({ canceled: false });

@@ -17,6 +17,8 @@ import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
 import { useActiveRunMode } from "./useActiveRunMode";
+import { useDevModeAgentHeld } from "../agent/useDevModeAgentHeld";
+import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useStudioTasks } from "./useStudioTasks";
@@ -53,21 +55,33 @@ export function RunStatusEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const active = useActiveRunMode();
+    const agentHeld = useDevModeAgentHeld(context);
 
     if (!active) {
         return null;
     }
 
+    // An agent's play-test holds Dev Mode: the phase says so, and the cell shows the window, which
+    // opens hidden for the agent and is the one thing the author cannot otherwise find.
+    const heldByAgent = active.kind === "devMode" && agentHeld;
     const openConsole = () => {
         context?.services.get<UIService>(Services.UI).panels.show("narraleaf-studio:console");
     };
+    const revealDevMode = () => {
+        void context?.services.get<DevModeService>(Services.DevMode).reveal();
+    };
 
     return (
-        <StatusEntry emphasis onClick={openConsole} tooltip={t("workspace.shell.statusBar.openConsole")}>
+        <StatusEntry
+            emphasis
+            onClick={heldByAgent ? revealDevMode : openConsole}
+            tooltip={t(heldByAgent ? "workspace.agent.devMode.tooltip" : "workspace.shell.statusBar.openConsole")}
+            dataAttributes={heldByAgent ? { "data-agent-devmode": "held" } : undefined}
+        >
             {active.busy && <Loader2 className="h-3 w-3 animate-spin" />}
             <span className="font-medium">{t(active.labelKey)}</span>
             <span aria-hidden className="opacity-50">|</span>
-            <span>{t(active.phaseKey)}</span>
+            <span>{heldByAgent ? t("workspace.agent.devMode.status") : t(active.phaseKey)}</span>
         </StatusEntry>
     );
 }

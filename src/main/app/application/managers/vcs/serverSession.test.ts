@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isVcsSignInAddress, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import type { VcsServerAuthority } from "@shared/types/vcs";
-import { authorityInstallPlan } from "./authorityTrust";
+import { authorityInstallPlan, trustScopeHost } from "./authorityTrust";
 import {
     VcsSignInError,
     decodeServerAccount,
@@ -329,6 +329,27 @@ describe("the install plan", () => {
         const plan = authorityInstallPlan(certificate);
         if (process.platform === "win32") expect(plan.argv).toContain("-user");
         if (process.platform === "darwin") expect(plan.argv).not.toContain("-d");
+    });
+
+    it("scopes the trust to the server's name where the platform can", () => {
+        const plan = authorityInstallPlan(certificate, "team.example.com");
+        if (process.platform === "darwin") {
+            expect(plan.argv).toEqual(expect.arrayContaining(["-p", "ssl", "-s", "team.example.com"]));
+            expect(plan.argv[plan.argv.length - 1]).toBe(certificate);
+            expect(plan.command).toContain("-p ssl -s team.example.com");
+        }
+        // Without a host the install is unscoped, as before.
+        expect(authorityInstallPlan(certificate).argv).not.toContain("-s");
+    });
+
+    it("only scopes to something a policy can name", () => {
+        expect(trustScopeHost("Team.Example.com")).toBe("team.example.com");
+        expect(trustScopeHost("[::1]")).toBe("::1");
+        expect(trustScopeHost("192.168.1.2")).toBe("192.168.1.2");
+        expect(trustScopeHost("-p")).toBeNull();
+        expect(trustScopeHost("a b")).toBeNull();
+        expect(trustScopeHost("")).toBeNull();
+        expect(trustScopeHost(null)).toBeNull();
     });
 });
 

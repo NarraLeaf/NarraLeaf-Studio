@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Play, RotateCw, Trash2 } from "lucide-react";
+import { useDevModeReadOnly } from "../devModeReadOnly";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryDocument } from "@shared/types/story";
 import { sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
@@ -142,6 +143,7 @@ function buildNameTables(document: StoryDocument | undefined, bundle: DevModeBun
 }
 
 export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { saves, storyRuntime, scopeBridge, bundle, className, chrome } = props;
     const { t, formatDate } = useTranslation();
 
@@ -368,7 +370,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                                 size="xs"
                                                 aria-label={t("devMode.saves.load")}
                                                 data-tip={t("devMode.saves.load")}
-                                                disabled={busy || !context || !entry.record}
+                                                disabled={busy || readOnly || !context || !entry.record}
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void load(entry);
@@ -380,7 +382,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                                 size="xs"
                                                 aria-label={t("devMode.saves.delete")}
                                                 data-tip={t("devMode.saves.delete")}
-                                                disabled={busy}
+                                                disabled={busy || readOnly}
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void remove(id);

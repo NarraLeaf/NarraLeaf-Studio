@@ -8,6 +8,7 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
 import { app as electronApp } from "electron";
 import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
+import { resolvePhysicalPath } from "../../../utils/physicalPath";
 import path from "path";
 import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";
@@ -752,25 +753,7 @@ export class StorageManager extends Manager {
     }
 
     private async resolvePathForAuthorization(fsPath: string): Promise<string> {
-        const resolvedPath = path.resolve(fsPath);
-        const pendingSegments: string[] = [];
-        let current = resolvedPath;
-
-        while (true) {
-            try {
-                const realCurrent = await fs.realpath(current);
-                return pendingSegments.length > 0
-                    ? path.join(realCurrent, ...pendingSegments)
-                    : realCurrent;
-            } catch {
-                const parent = path.dirname(current);
-                if (parent === current) {
-                    return resolvedPath;
-                }
-                pendingSegments.unshift(path.basename(current));
-                current = parent;
-            }
-        }
+        return resolvePhysicalPath(fsPath);
     }
 
     private async isProtectedStoragePath(target: string): Promise<boolean> {
@@ -822,3 +805,4 @@ export class StorageManager extends Manager {
         return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
     }
 }
+

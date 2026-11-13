@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_CLIPBOARD_FORMATS, STUDIO_CLIPBOARD_MAX_BYTES } from "@shared/types/studioClipboard";
 import { WindowAppType } from "@shared/types/window";
 import type { AppWindow } from "../appWindow";
-import { ClipboardReadEditorSelectionHandler, ClipboardWriteEditorSelectionHandler } from "./clipboardAction";
+import {
+    ClipboardReadEditorSelectionHandler,
+    ClipboardReadPlainTextHandler,
+    ClipboardWriteEditorSelectionHandler,
+    ClipboardWritePlainTextHandler,
+} from "./clipboardAction";
 
 /**
  * The platform clipboard channel's own guards.
@@ -24,11 +29,18 @@ vi.mock("electron", () => ({
             clipboardStore.set(format, buffer);
         },
         readBuffer: (format: string) => clipboardStore.get(format) ?? Buffer.alloc(0),
+        readText: () => clipboardStore.get("text/plain")?.toString("utf8") ?? "",
+        writeText: (text: string) => {
+            clipboardStore.clear();
+            clipboardStore.set("text/plain", Buffer.from(text, "utf8"));
+        },
     },
 }));
 
 const writeHandler = new ClipboardWriteEditorSelectionHandler();
 const readHandler = new ClipboardReadEditorSelectionHandler();
+const readTextHandler = new ClipboardReadPlainTextHandler();
+const writeTextHandler = new ClipboardWritePlainTextHandler();
 
 function makeWindow(windowType: WindowAppType = WindowAppType.Workspace): AppWindow {
     return {
@@ -84,5 +96,41 @@ describe("the editor selection clipboard channel", () => {
 
         expect(written).toEqual({ success: true, data: { stored: false } });
         expect(read).toEqual({ success: true, data: { payload: null } });
+    });
+});
+
+describe("the plain text clipboard channel", () => {
+    it("hands a workspace window the clipboard's text, and null when there is none", async () => {
+        expect(await readTextHandler.handle(makeWindow())).toEqual({ success: true, data: { text: null } });
+        clipboardStore.set("text/plain", Buffer.from("boot: blueprint.event.head.appBoot", "utf8"));
+        expect(await readTextHandler.handle(makeWindow()))
+            .toEqual({ success: true, data: { text: "boot: blueprint.event.head.appBoot" } });
+    });
+
+    it("gives a window that is not a workspace nothing", async () => {
+        clipboardStore.set("text/plain", Buffer.from("anything", "utf8"));
+        expect(await readTextHandler.handle(makeWindow(WindowAppType.DevMode)))
+            .toEqual({ success: true, data: { text: null } });
+    });
+
+    it("puts a workspace window's text on the clipboard, in place of what was there", async () => {
+        await writeHandler.handle(makeWindow(), { kind: "ui-elements", payload: "{}" });
+        const written = await writeTextHandler.handle(makeWindow(), { text: "log: blueprint.log" });
+
+        expect(written).toEqual({ success: true, data: { stored: true } });
+        expect(await readTextHandler.handle(makeWindow())).toEqual({ success: true, data: { text: "log: blueprint.log" } });
+        expect(await readHandler.handle(makeWindow(), { kind: "ui-elements" })).toEqual({ success: true, data: { payload: null } });
+    });
+
+    it("declines empty or oversized text, and any window that is not a workspace", async () => {
+        clipboardStore.set("text/plain", Buffer.from("kept", "utf8"));
+        for (const [window, text] of [
+            [makeWindow(), ""],
+            [makeWindow(), "x".repeat(STUDIO_CLIPBOARD_MAX_BYTES + 1)],
+            [makeWindow(WindowAppType.DevMode), "log: blueprint.log"],
+        ] as const) {
+            expect(await writeTextHandler.handle(window, { text })).toEqual({ success: true, data: { stored: false } });
+        }
+        expect(await readTextHandler.handle(makeWindow())).toEqual({ success: true, data: { text: "kept" } });
     });
 });

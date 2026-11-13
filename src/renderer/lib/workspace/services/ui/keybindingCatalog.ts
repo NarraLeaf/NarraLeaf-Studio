@@ -304,6 +304,8 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("blueprint.copy", "mod+c", "workspace.shell.keybindings.catalog.blueprint.copy", CATEGORY.blueprint, Copy),
     entry("blueprint.cut", "mod+x", "workspace.shell.keybindings.catalog.blueprint.cut", CATEGORY.blueprint, Scissors),
     entry("blueprint.paste", "mod+v", "workspace.shell.keybindings.catalog.blueprint.paste", CATEGORY.blueprint, ClipboardPaste),
+    // The selection in the blueprint text format, for a paste elsewhere or a question to a chat tool.
+    entry("blueprint.copy-as-text", "mod+shift+c", "workspace.shell.keybindings.catalog.blueprint.copyAsText", CATEGORY.blueprint, Copy),
 
     // --- Story motion editor -------------------------------------------------
     entry("story-motion.undo", "mod+z", "workspace.shell.keybindings.catalog.storyMotion.undo", CATEGORY.storyMotion, Undo2),

@@ -421,6 +421,34 @@ export const workspace = {
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {
+        editorLock: {
+            title: {
+                story: "{client} がストーリーを編集中",
+                interface: "{client} がインターフェースを編集中",
+            },
+            detail: {
+                readOnly: "現在は閲覧のみ",
+                readWrite: "読み書きに切り替えました",
+            },
+            action: {
+                readWrite: "読み書きにする",
+                readOnly: "閲覧のみに戻す",
+            },
+            fallbackClient: "エージェント",
+            reason: {
+                story: "エージェントがストーリーを編集中のため、閲覧のみです。エディター上部の通知で読み書きに切り替えられます",
+                interface: "エージェントがインターフェースを編集中のため、閲覧のみです。エディター上部の通知で読み書きに切り替えられます",
+            },
+        },
+        devMode: {
+            status: "エージェント使用中",
+            tooltip: "開発モードのウィンドウを表示（閲覧のみ）",
+            confirmTitle: "エージェントが開発モードを使用中です",
+            confirmStopDetail: "停止するとエージェントのテストプレイが中断されます",
+            confirmLaunchDetail: "今実行するとエージェントのテストプレイが中断され、開発モードはあなたに戻ります",
+            confirmStop: "停止",
+            confirmLaunch: "実行",
+        },
         status: {
             editing: "エージェントが編集中：{name}",
             working: "エージェントが作業中",
@@ -428,6 +456,7 @@ export const workspace = {
             edited: "エージェントが編集した：{name}",
             unknownClient: "外部エージェント",
             paused: "エージェントは一時停止中",
+            pausedTakeover: "エージェント一時停止中：開発モードを引き継ぎました",
         },
         menu: {
             pause: "エージェントを一時停止",
@@ -626,6 +655,8 @@ export const workspace = {
             playtest_hover: "プレイ中にポインターを重ねる",
             playtest_key: "プレイ中にキーを押す",
             playtest_stop: "プレイを終了",
+            editor_lock: "エディターを閲覧のみにする",
+            editor_unlock: "エディターの閲覧のみを解除",
             playtest_variables: "ゲームの変数を読む",
             console_read: "コンソールを読む",
             build: "ゲームをビルド",
@@ -1117,6 +1148,7 @@ export const workspace = {
                 assetSets: "アセットセット",
                 brand: "ブランドの配色",
                 dictionary: "プロジェクト辞書",
+                storyComments: "ストーリーのコメント",
                 transformPresets: "変換プリセット",
                 saveSchema: "セーブ項目",
                 characters: "キャラクター",
@@ -1640,6 +1672,7 @@ export const workspace = {
                     copy: "ノードをコピー",
                     cut: "ノードを切り取り",
                     paste: "ノードを貼り付け",
+                    copyAsText: "ノードをテキストとしてコピー",
                 },
                 // 検索パネル：置換を、それが変えたすべてのシーンで元に戻す・やり直す。
                 search: {

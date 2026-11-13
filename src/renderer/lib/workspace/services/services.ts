@@ -262,6 +262,8 @@ enum Services {
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
     Dictionary = "dictionary",
+    /** Review threads on story rows, at `editor/story-comments.json`. Never compiled */
+    StoryComments = "storyComments",
     /** The transforms the project saved to reuse, offered beside the ones Studio ships */
     TransformPreset = "transformPreset",
     /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
@@ -284,6 +286,8 @@ enum Services {
     AgentFollow = "agentFollow",
     /** Carries out the calls an AI agent makes over Studio's MCP endpoint; see `agent/AgentBridgeService` */
     AgentBridge = "agentBridge",
+    /** Automatic and manual scene content snapshots, and per-row history; see `story/sceneHistory` */
+    SceneHistory = "sceneHistory",
     // Plugin = "plugin",
 }
 
@@ -1344,7 +1348,7 @@ interface ICharacterService extends IService {
         kind?: CharacterAppearanceKind,
         initial?: { color?: string; groupId?: string },
     ): Character;
-    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean>;
+    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean; spokenRows?: readonly { storyId: string; rows: readonly { sceneId: string; blockId: string }[] }[] }): Promise<boolean>;
     countRowsSpeakingAs(speakerName: string): Promise<number>;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;

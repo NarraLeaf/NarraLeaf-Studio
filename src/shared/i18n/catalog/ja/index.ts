@@ -28,7 +28,9 @@ import { motion } from "./motion";
 import { saveSchema } from "./saveSchema";
 import { struct } from "./struct";
 import { storyVars } from "./storyVars";
+import { refactor } from "./refactor";
 import { storySnapshot } from "./storySnapshot";
+import { sceneHistory } from "./sceneHistory";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
 import { widgetAppearance } from "./widgetAppearance";
@@ -59,9 +61,11 @@ import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
 import { dictionary } from "./dictionary";
+import { storyComments } from "./storyComments";
 import { game } from "./game";
 import { crash } from "./crash";
 import { documents } from "./documents";
+import { manuscript } from "./manuscript";
 import type { LocaleMessages } from "../types";
 
 export const ja = {
@@ -82,7 +86,9 @@ export const ja = {
     struct,
 
     storyVars,
+    refactor,
     storySnapshot,
+    sceneHistory,
     uiEditor,
     widgets,
     widgetAppearance,
@@ -113,7 +119,9 @@ export const ja = {
     update,
     brand,
     dictionary,
+    storyComments,
     game,
     crash,
     documents,
+    manuscript,
 } satisfies LocaleMessages;

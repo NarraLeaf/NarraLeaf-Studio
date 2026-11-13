@@ -44,7 +44,7 @@ import {
 import { BLUEPRINT_NETWORK_METHODS_WITH_BODY, type BlueprintNetworkMethod } from "@shared/types/blueprint/graph";
 import {
     isNetworkAddressAllowed,
-    networkAllowlistRefusalMessage,
+    networkAddressRefusalMessage,
     type NetworkAllowlist,
 } from "@shared/types/networkAllowlist";
 import { withoutHostHeader } from "./ownLoopbackGuard";
@@ -219,7 +219,7 @@ export async function executeBlueprintNetworkFetch(
         return networkError(`Only http and https addresses can be fetched: ${url}`);
     }
     if (!isNetworkAddressAllowed(url, options.allowlist)) {
-        return networkError(networkAllowlistRefusalMessage(url));
+        return networkError(networkAddressRefusalMessage(url, options.allowlist));
     }
     const refusedAtFirst = await refusalOf(url, options);
     if (refusedAtFirst) {
@@ -293,7 +293,7 @@ export async function executeBlueprintNetworkFetch(
                 return networkError(`Redirect to a scheme that cannot be fetched: ${next}`);
             }
             if (!isNetworkAddressAllowed(next, options.allowlist)) {
-                return networkError(networkAllowlistRefusalMessage(next));
+                return networkError(networkAddressRefusalMessage(next, options.allowlist));
             }
             const refusedHop = await refusalOf(next, options);
             if (refusedHop) {

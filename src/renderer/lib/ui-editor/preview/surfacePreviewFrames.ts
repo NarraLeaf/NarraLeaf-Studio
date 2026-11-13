@@ -102,6 +102,19 @@ export type SafeAreaGeometry = {
 export type SafeAreaDeviceFamily = "iphone" | "ipad" | "android";
 
 /**
+ * Family headings. Not translated: they are product names, and a localized "iPhone" would be wrong
+ * in every language. Order is the order the groups appear in. Here rather than beside the
+ * editor's menu because the Dev Mode window lists the same families, and importing the menu's module
+ * pulled editor code into that window.
+ */
+export const SAFE_AREA_FAMILY_LABELS: ReadonlyArray<[SafeAreaDeviceFamily, string]> = [
+    ["iphone", "iPhone"],
+    ["ipad", "iPad"],
+    ["android", "Android"],
+];
+
+
+/**
  * A safe-area preset is a *device*, not a flat percentage: the whole point is that the letterbox bars
  * can swallow the notch entirely, in which case the correct answer is "no risk on this device".
  *

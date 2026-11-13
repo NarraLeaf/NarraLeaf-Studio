@@ -94,3 +94,21 @@ export function knownBlueprintOwnerFieldNames(): string[] {
     }
     return [...names];
 }
+
+/**
+ * The `owner=` fields an owner ref carries, keyed by the property name the AST stores them under.
+ *
+ * For code that compiles text against an owner it already holds (a layer template, a paste onto the
+ * canvas): the header only has to parse, and the real owner is put back in its place from this.
+ */
+export function blueprintOwnerFieldsOf(owner: BlueprintOwnerRef): Record<string, string> {
+    const carried = owner as unknown as Record<string, unknown>;
+    const fields: Record<string, string> = {};
+    for (const field of BLUEPRINT_OWNER_GRAMMAR[owner.kind]) {
+        const value = carried[field.prop];
+        if (typeof value === "string" && value.length > 0) {
+            fields[field.prop] = value;
+        }
+    }
+    return fields;
+}

@@ -29,8 +29,8 @@
  * Comments in English per convention.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HelpCircle, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { ChevronDown, ChevronRight, HelpCircle, Plus, Trash2 } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -40,6 +40,10 @@ import {
     Select,
     type SelectOption,
 } from "@/lib/components/elements";
+import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import type { TranslationKey } from "@shared/i18n/catalog";
+import { requestRename } from "../refactor/renameRequests";
+import { VariableReferenceList } from "./VariableReferenceList";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useRegistry } from "@/apps/workspace/registry";
@@ -55,6 +59,7 @@ import { VariableRegistryService } from "@/lib/workspace/services/variables/Vari
 import type {
     StoryDocument,
     StoryLiteralValue,
+    StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
 import {
@@ -286,6 +291,27 @@ export function VariableJumpRow(props: { name: string; valueType: StoryVariableV
     );
 }
 
+/**
+ * The chevron that opens a row's reads and writes. A row's own controls are the variable's fields, so
+ * the references hang below the row rather than taking a column from it.
+ */
+function ReferenceToggle(props: { open: boolean; onToggle: () => void }) {
+    const { t } = useTranslation();
+    const Icon = props.open ? ChevronDown : ChevronRight;
+    return (
+        <button
+            type="button"
+            onClick={props.onToggle}
+            aria-expanded={props.open}
+            aria-label={t("refactor.refs.toggle" as TranslationKey)}
+            data-tip={t("refactor.refs.toggle" as TranslationKey)}
+            className={cn(CONTROL_SQUARE_CLASS.sm, "flex shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fill hover:text-fg")}
+        >
+            <Icon className="h-3.5 w-3.5" />
+        </button>
+    );
+}
+
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
     const { t } = useTranslation();
     // Declaring a variable writes project data. The hint popover beside it does not, and stays
@@ -372,7 +398,40 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
     usePanelRevealRequests(storyVariableReveal, detail => {
         revealToken.current += 1;
         setRevealed({ variableId: detail.variableId, token: revealToken.current, scrolled: false });
+        if (detail.references) {
+            setExpanded(current => new Set(current).add(detail.variableId));
+        }
     });
+
+    /** The rows whose reads and writes are open. */
+    const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+    const toggleExpanded = useCallback((variableId: string) => {
+        setExpanded(current => {
+            const next = new Set(current);
+            if (!next.delete(variableId)) {
+                next.add(variableId);
+            }
+            return next;
+        });
+    }, []);
+    const rowMenu = useContextMenu();
+    const [menuRow, setMenuRow] = useState<{ ref: StoryVariableRef; id: string } | null>(null);
+    const openRowMenu = useCallback((event: ReactMouseEvent, ref: StoryVariableRef, id: string) => {
+        setMenuRow({ ref, id });
+        rowMenu.showMenu(event);
+    }, [rowMenu]);
+    const rowMenuItems: ContextMenuDef = menuRow ? [
+        {
+            id: "rename",
+            label: t("refactor.menu.rename" as TranslationKey),
+            onClick: () => requestRename({ kind: "variable", ref: menuRow.ref, storyId }),
+        },
+        {
+            id: "references",
+            label: t("refactor.menu.findReferences" as TranslationKey),
+            onClick: () => setExpanded(current => new Set(current).add(menuRow.id)),
+        },
+    ] : [];
 
     /**
      * Hold the entry this panel has open, so nobody in the room writes over it.
@@ -513,6 +572,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
 
     /** One project-level row: editable when this panel owns it, a jump when the story does. */
     const renderProjectRow = (
+        scope: "saved" | "persistent",
         entry: MergedPersistentEntry,
         edit: {
             rename: (id: string, name: string) => void;
@@ -535,23 +595,32 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
             data-variable-id={entry.id}
             data-revealed={revealed?.variableId === entry.id ? "" : undefined}
             className={cn("rounded-md", revealed?.variableId === entry.id && "ring-1 ring-primary")}
+            onContextMenu={event => openRowMenu(event, { scope, variableId: entry.id } as StoryVariableRef, entry.id)}
         >
-            {entry.source === "story" ? (
-                <VariableJumpRow
-                    name={entry.name}
-                    valueType={entry.valueType}
-                    onJump={() => jumpToDeclaration(entry.id)}
-                />
-            ) : (
-                <VariableRowEditor
-                    row={entry}
-                    onRename={name => edit.rename(entry.id, name)}
-                    onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
-                    onDefault={value => edit.setDefault(entry.id, value)}
-                    onDelete={() => edit.remove(entry.id)}
-                    onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
-                />
-            )}
+            <div className="flex items-center gap-1">
+                <ReferenceToggle open={expanded.has(entry.id)} onToggle={() => toggleExpanded(entry.id)} />
+                <div className="min-w-0 flex-1">
+                    {entry.source === "story" ? (
+                        <VariableJumpRow
+                            name={entry.name}
+                            valueType={entry.valueType}
+                            onJump={() => jumpToDeclaration(entry.id)}
+                        />
+                    ) : (
+                        <VariableRowEditor
+                            row={entry}
+                            onRename={name => edit.rename(entry.id, name)}
+                            onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
+                            onDefault={value => edit.setDefault(entry.id, value)}
+                            onDelete={() => edit.remove(entry.id)}
+                            onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
+                        />
+                    )}
+                </div>
+            </div>
+            {expanded.has(entry.id) ? (
+                <VariableReferenceList variableRef={{ scope, variableId: entry.id } as StoryVariableRef} storyId={storyId} />
+            ) : null}
         </div>
     );
 
@@ -563,7 +632,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                     line saying the list is empty would only be describing the list. */}
                 <div className="flex flex-col gap-1.5">
                     {savedRows.map(entry =>
-                        renderProjectRow(entry, {
+                        renderProjectRow("saved", entry, {
                             rename: (id, name) =>
                                 blueprintService?.renameSavedRegistryVariable(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, name),
                             retype: (id, valueType, defaultValue) =>
@@ -589,7 +658,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 />
                 <div className="flex flex-col gap-1.5">
                     {persistentRows.map(entry =>
-                        renderProjectRow(entry, {
+                        renderProjectRow("persistent", entry, {
                             rename: (id, name) =>
                                 blueprintService?.renamePersistentVariable(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, name),
                             retype: (id, valueType, defaultValue) =>
@@ -618,15 +687,38 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                     <SectionHeader title={t("storyVars.scene.title")} hint={t("storyVars.scene.hint")} />
                     <div className="flex flex-col gap-1.5">
                         {sceneRows.map(row => (
-                            <VariableJumpRow
+                            <div
                                 key={row.id}
-                                name={row.name}
-                                valueType={row.valueType}
-                                onJump={() => jumpToDeclaration(row.id)}
-                            />
+                                data-variable-id={row.id}
+                                data-revealed={revealed?.variableId === row.id ? "" : undefined}
+                                className={cn("rounded-md", revealed?.variableId === row.id && "ring-1 ring-primary")}
+                                onContextMenu={event => openRowMenu(event, { scope: "scene", variableId: row.id }, row.id)}
+                            >
+                                <div className="flex items-center gap-1">
+                                    <ReferenceToggle open={expanded.has(row.id)} onToggle={() => toggleExpanded(row.id)} />
+                                    <div className="min-w-0 flex-1">
+                                        <VariableJumpRow
+                                            name={row.name}
+                                            valueType={row.valueType}
+                                            onJump={() => jumpToDeclaration(row.id)}
+                                        />
+                                    </div>
+                                </div>
+                                {expanded.has(row.id) ? (
+                                    <VariableReferenceList variableRef={{ scope: "scene", variableId: row.id }} storyId={storyId} />
+                                ) : null}
+                            </div>
                         ))}
                     </div>
                 </div>
+            ) : null}
+            {rowMenu.menuState.visible ? (
+                <ContextMenu
+                    items={rowMenuItems}
+                    position={rowMenu.menuState.position}
+                    visible
+                    onClose={rowMenu.hideMenu}
+                />
             ) : null}
         </div>
     );

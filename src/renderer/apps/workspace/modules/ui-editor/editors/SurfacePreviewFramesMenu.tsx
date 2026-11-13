@@ -2,18 +2,8 @@ import { useCallback } from "react";
 import { Frame } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
-import { SAFE_AREA_PRESETS, SURFACE_PREVIEW_ASPECT_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
-import type { SafeAreaDeviceFamily } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import { SAFE_AREA_FAMILY_LABELS, SAFE_AREA_PRESETS, SURFACE_PREVIEW_ASPECT_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 
-/**
- * Family headings. Not translated: they are product names, and a localized "iPhone" would be wrong
- * in every language. Order is the order the groups appear in.
- */
-export const SAFE_AREA_FAMILY_LABELS: ReadonlyArray<[SafeAreaDeviceFamily, string]> = [
-    ["iphone", "iPhone"],
-    ["ipad", "iPad"],
-    ["android", "Android"],
-];
 import { SurfaceEditorToolbarButtonGroup, SurfaceEditorToolbarSegButton } from "./SurfaceEditorToolbarButtonGroup";
 import {
     SurfaceToolbarPopoverPanel,

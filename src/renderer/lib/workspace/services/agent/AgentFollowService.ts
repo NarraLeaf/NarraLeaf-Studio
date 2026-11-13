@@ -21,6 +21,8 @@
  */
 
 import { EventEmitter } from "../ui/EventEmitter";
+import { AGENT_EDITOR_LOCK_IDLE_MS, type AgentLockArea } from "@shared/agent/editorLock";
+import { NO_AGENT_EDITOR_LOCKS, setAgentEditorLocks, type AgentEditorLocks } from "./agentEditorLockStore";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import type { GlobalSettingsService } from "../GlobalSettingsService";
@@ -47,8 +49,28 @@ export type AgentActivity = {
     target: string | null;
 };
 
+/**
+ * Why the agent is paused: the author's switch in the status bar, or the author taking over the Dev
+ * Mode an agent's play-test was holding. The agent is told which, and both end the same way, with the
+ * author resuming it.
+ */
+export type AgentPauseReason = "author" | "devModeTakeover";
+
+export type { AgentEditorLocks };
+
+const NO_EDITOR_LOCKS: AgentEditorLocks = NO_AGENT_EDITOR_LOCKS;
+
 export type AgentFollowState = {
     paused: boolean;
+    /** Set while `paused`; see {@link AgentPauseReason}. */
+    pausedBy: AgentPauseReason | null;
+    /**
+     * The editors the agent has set read-only for the author (`@shared/agent/editorLock`), and for
+     * each whether the author switched it back to read-write. An overridden lock stays listed, so the
+     * author can switch it to read-only again, and so the agent locking it a second time does not undo
+     * the author's choice.
+     */
+    editorLocks: AgentEditorLocks;
     follow: boolean;
     activity: AgentActivity | null;
     /** The last client that called, by the name it gave in `initialize`. Null before any call. */
@@ -88,11 +110,12 @@ type AgentFollowEvents = {
 
 export class AgentFollowService extends Service<AgentFollowService> {
     private readonly events = new EventEmitter<AgentFollowEvents>();
-    private state: AgentFollowState = { paused: false, follow: AGENT_FOLLOW_DEFAULT, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
+    private state: AgentFollowState = { paused: false, pausedBy: null, editorLocks: NO_EDITOR_LOCKS, follow: AGENT_FOLLOW_DEFAULT, activity: null, clientName: null, lastCallAt: null, lastWrite: null, active: false };
     private settings: GlobalSettingsService | null = null;
     private stopFollowingSetting: (() => void) | null = null;
     private lastWriteTimer: ReturnType<typeof setTimeout> | null = null;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
+    private lockIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const settings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
@@ -100,6 +123,8 @@ export class AgentFollowService extends Service<AgentFollowService> {
         this.settings = settings;
         this.state = {
             paused: false,
+            pausedBy: null,
+            editorLocks: NO_EDITOR_LOCKS,
             follow: resolveAgentFollow(settings.getSync(AGENT_FOLLOW_KEY)),
             activity: null,
             clientName: null,
@@ -121,6 +146,8 @@ export class AgentFollowService extends Service<AgentFollowService> {
             this.lastWriteTimer = null;
         }
         this.clearIdleTimer();
+        this.clearLockIdleTimer();
+        setAgentEditorLocks(NO_AGENT_EDITOR_LOCKS);
         this.stopFollowingSetting?.();
         this.stopFollowingSetting = null;
         this.settings = null;
@@ -151,15 +178,20 @@ export class AgentFollowService extends Service<AgentFollowService> {
         return this.events.on("highlight", handler);
     }
 
-    public setPaused(paused: boolean): void {
+    public setPaused(paused: boolean, reason: AgentPauseReason = "author"): void {
         if (this.state.paused === paused) {
+            if (paused && this.state.pausedBy !== reason) {
+                this.update({ pausedBy: reason });
+            }
             return;
         }
         if (paused) {
             this.clearIdleTimer();
-            this.update({ paused, active: true });
+            // A paused agent is not editing anything: its locks go with it.
+            this.clearLockIdleTimer();
+            this.update({ paused, pausedBy: reason, active: true, editorLocks: NO_EDITOR_LOCKS });
         } else {
-            this.update({ paused });
+            this.update({ paused, pausedBy: null });
             this.scheduleIdle();
         }
     }
@@ -179,8 +211,65 @@ export class AgentFollowService extends Service<AgentFollowService> {
         });
     }
 
+    /**
+     * The agent sets an editor read-only for the author. A lock the author already switched back to
+     * read-write stays that way: locking again is the agent repeating itself, not the author changing
+     * their mind.
+     */
+    public lockEditor(area: AgentLockArea): void {
+        if (this.state.paused || this.state.editorLocks[area]) {
+            return;
+        }
+        this.update({ editorLocks: { ...this.state.editorLocks, [area]: { overridden: false } } });
+        this.scheduleLockIdle();
+    }
+
+    public unlockEditor(area: AgentLockArea): void {
+        if (!this.state.editorLocks[area]) {
+            return;
+        }
+        const { [area]: _released, ...rest } = this.state.editorLocks;
+        this.update({ editorLocks: rest });
+        if (Object.keys(rest).length === 0) {
+            this.clearLockIdleTimer();
+        }
+    }
+
+    /** The author's switch: read-write (`true`) or read-only again (`false`). Nothing reaches the agent. */
+    public setEditorLockOverridden(area: AgentLockArea, overridden: boolean): void {
+        const lock = this.state.editorLocks[area];
+        if (!lock || lock.overridden === overridden) {
+            return;
+        }
+        this.update({ editorLocks: { ...this.state.editorLocks, [area]: { overridden } } });
+    }
+
+    /** Lift every lock once {@link AGENT_EDITOR_LOCK_IDLE_MS} pass with no call from the agent. */
+    private scheduleLockIdle(): void {
+        this.clearLockIdleTimer();
+        if (Object.keys(this.state.editorLocks).length === 0) {
+            return;
+        }
+        this.lockIdleTimer = setTimeout(() => {
+            this.lockIdleTimer = null;
+            if (this.state.activity !== null) {
+                // A call still running is not an idle agent; it ends through `endCall`, which re-arms this.
+                return;
+            }
+            this.update({ editorLocks: NO_EDITOR_LOCKS });
+        }, AGENT_EDITOR_LOCK_IDLE_MS);
+    }
+
+    private clearLockIdleTimer(): void {
+        if (this.lockIdleTimer) {
+            clearTimeout(this.lockIdleTimer);
+            this.lockIdleTimer = null;
+        }
+    }
+
     public beginCall(callId: string, tool: string, clientName: string | null): void {
         this.clearIdleTimer();
+        this.clearLockIdleTimer();
         this.update({ activity: { callId, tool, target: null }, clientName: clientName ?? this.state.clientName, active: true });
     }
 
@@ -195,6 +284,7 @@ export class AgentFollowService extends Service<AgentFollowService> {
         if (this.state.activity?.callId === callId) {
             this.update({ activity: null, lastCallAt: Date.now() });
             this.scheduleIdle();
+            this.scheduleLockIdle();
         }
     }
 
@@ -234,6 +324,9 @@ export class AgentFollowService extends Service<AgentFollowService> {
 
     private update(patch: Partial<AgentFollowState>): void {
         this.state = { ...this.state, ...patch };
+        if (patch.editorLocks !== undefined) {
+            setAgentEditorLocks(this.state.editorLocks);
+        }
         this.events.emit("changed", this.state);
     }
 }

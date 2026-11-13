@@ -215,6 +215,7 @@ export const build = {
         macIdentityNotDeveloperId: "不能用于分发",
         notarized: "已配置 Apple 公证",
         notNotarized: "未公证，玩家首次打开时会看到 Gatekeeper 警告",
+        linuxIntegrity: "Linux 构建无论是否签名都不做完整性校验，持有构建的人可以改写游戏文件并读出打包的内容",
         kind: {
             "windows-pfx": "证书文件",
             "windows-store": "Windows 证书存储",
@@ -327,7 +328,7 @@ export const build = {
         "bundleid-ios-adjusted": "应用 ID {appId} 不是合法的 iOS Bundle ID，构建将使用 {bundleId}",
         // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
         // 更长的说法在 `build` 帮助主题里。
-        unsigned: "未做代码签名；玩家首次打开时可能看到安全提示",
+        unsigned: "未做代码签名；玩家首次打开时可能看到安全提示，游戏文件也不做完整性校验，持有构建的人可以改写文件并读出打包的内容",
         "unsigned-android": "使用本地调试签名，可用于旁加载安装；这样签出的 AAB 不能用作 Google Play 的上传密钥。选择 release keystore 以发行身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用；请选择一份 Apple 签名凭据；从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
         "signing-credential-missing": "本机没有本项目为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",

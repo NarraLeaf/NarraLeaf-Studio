@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Languages, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { AgentStopIcon } from "../agent/AgentStopIcon";
+import { useDevModeAgentHeld } from "../agent/useDevModeAgentHeld";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -613,6 +615,9 @@ export function RunControl() {
     }, [context]);
 
     const devActive = isDevModeRuntimeActive(devStatus);
+    // An agent's play-test holds the session: the stop mark carries a robot, so the author knows
+    // what pressing it stops (it asks first; see `DevModeService.stop`).
+    const agentHeld = useDevModeAgentHeld(context);
     const previewActive = isPreviewRuntimeActive(previewStatus);
     const testActive = activeRun !== null;
     const activeMode: RunMode | null = devActive ? "devMode" : previewActive ? "preview" : null;
@@ -1162,7 +1167,11 @@ export function RunControl() {
                     )}
                 >
                     <span className={cn("flex h-4 w-4 items-center justify-center", errored && "text-danger")}>
-                        {running ? <Square className="h-3.5 w-3.5 fill-current" /> : meta.icon}
+                        {running
+                            ? agentHeld && devActive
+                                ? <AgentStopIcon className="h-4 w-4" />
+                                : <Square className="h-3.5 w-3.5 fill-current" />
+                            : meta.icon}
                     </span>
                     <span>{runLabel}</span>
                 </button>

@@ -1,7 +1,8 @@
 import type { WorkspaceServiceMap } from "@/lib/workspace/services/serviceRegistry";
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import { getInterface } from "@/lib/app/bridge";
-import { translateN } from "@/lib/i18n";
+import type { BpDiagnostic } from "@/lib/blueprint-cli/dsl/ast";
+import { translate, translateN } from "@/lib/i18n";
 import {
     buildAssetTransferEntries,
     createTransferredAssetPort,
@@ -31,6 +32,7 @@ import {
     countUnresolvedGraphFnCalls,
     isBlueprintGraphPasteFromAnotherProject,
 } from "./graphForeignPaste";
+import type { BlueprintTextPasteOutcome } from "./graphTextPaste";
 
 /**
  * The workspace half of the graph editor's clipboard.
@@ -172,6 +174,14 @@ export type GraphPasteSource = {
     payload: BlueprintGraphClipboardPayload;
     foreign: boolean;
     environment: GraphClipboardEnvironment | null;
+    /** Set when the payload was compiled from the blueprint text format on the clipboard. */
+    text?: { warnings: BpDiagnostic[] };
+};
+
+/** Blueprint text on the clipboard that cannot go here: nothing is pasted, and the author is told why. */
+export type GraphPasteRefusal = {
+    refused: BpDiagnostic[];
+    environment: GraphClipboardEnvironment;
 };
 
 /**
@@ -182,18 +192,35 @@ export type GraphPasteSource = {
  * the *same* copy the in-window payload is used verbatim, which is what keeps a same-project paste
  * byte for byte what it has always been.
  *
- * A clipboard holding something else - text from another application, or nothing - leaves the
- * in-window copy standing rather than clearing it. That is the behaviour this editor has always
- * had, and it is the one an author expects of a copy they made in this window.
+ * Without a private payload on the clipboard, its plain text is offered to `readText` - the blueprint
+ * text format, compiled for the graph open on the canvas. Text that is the format outranks the
+ * in-window copy for the same reason the private payload does: Studio's own copy replaces the whole
+ * clipboard, so text found there was put there later. Text that is the format and cannot go here
+ * comes back as a refusal, and the paste does nothing else.
+ *
+ * Text that is not the format - from another application, a field, or nothing - leaves the in-window
+ * copy standing rather than clearing it. That is the behaviour this editor has always had, and it is
+ * the one an author expects of a copy they made in this window.
  */
 export async function resolveGraphPasteSource(
     environment: GraphClipboardEnvironment | null,
-): Promise<GraphPasteSource | null> {
+    readText?: (text: string) => BlueprintTextPasteOutcome,
+): Promise<GraphPasteSource | GraphPasteRefusal | null> {
     const inMemory = getBlueprintGraphClipboard();
     if (!environment) {
         return inMemory ? { payload: inMemory, foreign: false, environment: null } : null;
     }
     const fromClipboard = await readSystemClipboardPayload();
+    if (!fromClipboard && readText) {
+        const text = await readSystemClipboardText();
+        const outcome = text ? readText(text) : { kind: "none" as const };
+        if (outcome.kind === "refused") {
+            return { refused: outcome.diagnostics, environment };
+        }
+        if (outcome.kind === "ready") {
+            return { payload: outcome.payload, foreign: false, environment, text: { warnings: outcome.warnings } };
+        }
+    }
     const payload = !fromClipboard || (inMemory?.copyId && fromClipboard.copyId === inMemory.copyId)
         ? inMemory
         : fromClipboard;
@@ -207,6 +234,49 @@ export async function resolveGraphPasteSource(
         foreign: isBlueprintGraphPasteFromAnotherProject(payload, environment.projectPath),
         environment,
     };
+}
+
+/** Whether a resolved paste is a refusal rather than something to paste. */
+export function isGraphPasteRefusal(value: GraphPasteSource | GraphPasteRefusal): value is GraphPasteRefusal {
+    return "refused" in value;
+}
+
+/** Say why the clipboard's blueprint text was not pasted, naming the first problem and its line. */
+export function reportRefusedGraphTextPaste(refusal: GraphPasteRefusal): void {
+    refusal.environment.uiService?.showNotification(describeRefusedGraphTextPaste(refusal.refused), "error");
+}
+
+/** Say how many nodes the clipboard's blueprint text became, and how many warnings came with them. */
+export function reportGraphTextPaste(source: GraphPasteSource, nodes: number): void {
+    const warnings = source.text?.warnings.length ?? 0;
+    const parts = [translateN("blueprint.textPaste.pasted", nodes)];
+    if (warnings > 0) {
+        parts.push(translateN("blueprint.textPaste.warnings", warnings));
+    }
+    source.environment?.uiService?.showNotification(parts.join(" · "), warnings > 0 ? "warning" : "info");
+}
+
+/**
+ * One line for a refused text paste: the first problem, on its line, in the compiler's own words.
+ *
+ * The compiler's hint is kept beside its message, since that is where the nearest node types or the
+ * pins a node does have are listed. The rest are counted rather than listed: a notification is one
+ * line, and the first problem is the one to fix first.
+ */
+export function describeRefusedGraphTextPaste(diagnostics: readonly BpDiagnostic[]): string {
+    const first = diagnostics.find(diagnostic => diagnostic.severity === "error") ?? diagnostics[0];
+    if (!first) {
+        return translate("blueprint.textPaste.refused", { reason: "" });
+    }
+    const reason = [first.message, first.hint]
+        .filter((part): part is string => Boolean(part && part.trim()))
+        .map(part => part.trim().replace(/[.。]$/, ""))
+        .join(". ");
+    const head = first.line !== undefined
+        ? translate("blueprint.textPaste.refusedAtLine", { line: first.line, reason })
+        : translate("blueprint.textPaste.refused", { reason });
+    const more = diagnostics.length - 1;
+    return more > 0 ? `${head} · ${translateN("blueprint.textPaste.moreProblems", more)}` : head;
 }
 
 /** What a foreign paste did, in the terms the author is told about it. */
@@ -321,6 +391,38 @@ async function readSystemClipboardPayload(): Promise<BlueprintGraphClipboardPayl
         return json ? readBlueprintGraphClipboardPayload(json) : null;
     } catch (error) {
         console.warn("[graphClipboard] could not read the platform clipboard", error);
+        return null;
+    }
+}
+
+/**
+ * Put the selection's blueprint text on the clipboard and say so.
+ *
+ * Replaces whatever was there, Studio's own format included: the author asked for text, and a paste
+ * back onto a canvas reads the text anyway. A text that could not be written is reported, since the
+ * author would otherwise paste whatever the clipboard held before.
+ */
+export async function publishGraphText(uiService: UIService | null, text: string, nodes: number): Promise<boolean> {
+    let stored = false;
+    try {
+        const status = await getInterface().clipboard.writePlainText(text);
+        stored = status.success && status.data.stored;
+    } catch (error) {
+        console.warn("[graphClipboard] could not write the clipboard's text", error);
+    }
+    uiService?.showNotification(
+        stored ? translateN("blueprint.textCopy.copied", nodes) : translate("blueprint.textCopy.failed"),
+        stored ? "info" : "error",
+    );
+    return stored;
+}
+
+async function readSystemClipboardText(): Promise<string | null> {
+    try {
+        const status = await getInterface().clipboard.readPlainText();
+        return status.success ? status.data.text : null;
+    } catch (error) {
+        console.warn("[graphClipboard] could not read the clipboard's text", error);
         return null;
     }
 }

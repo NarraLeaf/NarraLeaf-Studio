@@ -23,6 +23,7 @@ export const placeholders = {
         plugins: "Plugins",
         variables: "Variables",
         dictionary: "Dictionary",
+        storyComments: "Comments",
         collaboration: "Collaboration",
     },
 } as const;

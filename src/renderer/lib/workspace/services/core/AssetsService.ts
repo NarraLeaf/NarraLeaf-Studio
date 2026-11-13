@@ -55,6 +55,7 @@ import {
 // service registry at call time instead.
 import type { ReferenceService } from "../references/ReferenceService";
 import { dirname, extname } from "@shared/utils/path";
+import { readImageDimensions } from "@shared/utils/imageDimensions";
 import type { TranslationKey } from "@shared/i18n";
 import { AssetTrash } from "../assets/AssetTrash";
 import { AssetLibraryChange, type AssetIdentity, type TakenFolder } from "../assets/AssetLibraryChange";
@@ -336,6 +337,31 @@ const THUMBNAIL_DIMENSION = 160;
 
 /** How long a first frame is waited for before the clip keeps its glyph instead. */
 const VIDEO_FRAME_TIMEOUT_MS = 8_000;
+
+/**
+ * Asks the decoder for the picture at thumbnail size rather than at its own.
+ *
+ * Without it a 4K image is decoded into a 4K bitmap (32 MB of pixels) only to be drawn into 160
+ * pixels a side. Only the longer side is named: the other then follows the picture's own aspect
+ * ratio, and that holds even for a JPEG whose orientation tag turns it on its side, where the
+ * header's width and height are the wrong way round for the picture the decoder hands back. The
+ * thumbnail is still drawn from the bitmap's own size, so the exact factor never matters.
+ *
+ * A format the header reader does not know (GIF, BMP, AVIF...) is decoded at full size as before.
+ */
+export function thumbnailDecodeOptions(buffer: Uint8Array): ImageBitmapOptions | undefined {
+    const dimensions = readImageDimensions(buffer);
+    if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) {
+        return undefined;
+    }
+    const longest = Math.max(dimensions.width, dimensions.height);
+    if (longest <= THUMBNAIL_DIMENSION) {
+        return undefined;
+    }
+    return dimensions.width >= dimensions.height
+        ? { resizeWidth: THUMBNAIL_DIMENSION, resizeQuality: "high" }
+        : { resizeHeight: THUMBNAIL_DIMENSION, resizeQuality: "high" };
+}
 
 /**
  * The media type a clip's bytes are handed to a `<video>` under.
@@ -1892,14 +1918,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return { success: true, data: cachePath };
         }
 
-        const source = await this.readThumbnailSource(asset);
-        if (!source.success || !source.data) {
-            return { success: false, error: source.error ?? "Failed to read the asset" };
+        const thumbnail = asset.type === AssetType.Video
+            ? await this.createVideoThumbnail(asset)
+            : await this.createImageThumbnail(asset as Asset<AssetType.Image>);
+        if (!thumbnail.success || !thumbnail.data) {
+            return { success: false, error: thumbnail.error ?? "Failed to read the asset" };
         }
-
-        const thumbnailBuffer = asset.type === AssetType.Video
-            ? await this.createVideoThumbnailBuffer(source.data, videoBlobType(asset.ext))
-            : await this.createThumbnailBuffer(source.data);
+        const thumbnailBuffer = thumbnail.data;
         await this.ensureThumbnailDir(cachePath);
         // A cache: a thumbnail that could not be stored is drawn again from the image next time,
         // and costs the author nothing to be told about.
@@ -1974,25 +1999,34 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
     }
 
-    /**
-     * The bytes a thumbnail is drawn from. An image goes through the image service, which is where
-     * the format checks and the local/remote split already live; anything else is read whole by the
-     * ordinary asset read.
-     */
-    private async readThumbnailSource(asset: Asset): Promise<RequestStatus<Uint8Array>> {
-        if (asset.type === AssetType.Image) {
-            if (!this.imageService) {
-                return { success: false, error: "Image service is not initialized" };
-            }
-            const read = await this.imageService.readLocalImage(asset as Asset<AssetType.Image>);
-            return read.success && read.data
-                ? { success: true, data: read.data.data }
-                : { success: false, error: read.error ?? "Failed to read source image" };
+    private async createImageThumbnail(asset: Asset<AssetType.Image>): Promise<RequestStatus<Uint8Array>> {
+        if (!this.imageService) {
+            return { success: false, error: "Image service is not initialized" };
         }
+        const read = await this.imageService.readLocalImageBytes(asset);
+        if (!read.success || !read.data) {
+            return { success: false, error: read.error ?? "Failed to read source image" };
+        }
+        return { success: true, data: await this.createThumbnailBuffer(read.data) };
+    }
+
+    /**
+     * A clip's thumbnail, from its whole bytes.
+     *
+     * Read whole on purpose, measured: handing the `<video>` a streamed `app://fs` grant instead
+     * does not work, because the grant is one-shot and Chromium reads even a front-loaded MP4 as
+     * hundreds of requests - every one after the first was refused and the frame never came.
+     * Streaming here needs a grant that answers ranges, which only Dev Mode's session grants do.
+     */
+    private async createVideoThumbnail(asset: Asset): Promise<RequestStatus<Uint8Array>> {
         const read = await this.fetch(asset as Asset<AssetType, AssetSource>);
-        return read.success && read.data
-            ? { success: true, data: read.data.data as Uint8Array }
-            : { success: false, error: read.error ?? "Failed to read the asset" };
+        if (!read.success || !read.data) {
+            return { success: false, error: read.error ?? "Failed to read the asset" };
+        }
+        return {
+            success: true,
+            data: await this.createVideoThumbnailBuffer(read.data.data as Uint8Array, videoBlobType(asset.ext)),
+        };
     }
 
     /**
@@ -2053,7 +2087,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         const bufferSource = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
         const blob = new Blob([bufferSource]);
-        const bitmap = await createImageBitmap(blob);
+        const bitmap = await createImageBitmap(blob, thumbnailDecodeOptions(buffer));
         const canvas = this.createCanvas();
         const context = this.getThumbnailContext(canvas);
         if (!context) {

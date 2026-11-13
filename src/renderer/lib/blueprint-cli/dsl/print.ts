@@ -132,6 +132,19 @@ function printGraph(
         lines.push(`${INDENT}graphMeta = ${JSON.stringify(extraMeta)}`);
     }
 
+    lines.push(...printGraphBody(ir, INDENT));
+    return lines;
+}
+
+/**
+ * A graph's node declarations and its `->` edges, without the layer header.
+ *
+ * On its own it is a bare body, the shape the blueprint canvas copies as text and accepts as a
+ * paste; `printGraph` puts it under its header. `indent` is the indent of a node line: one step
+ * inside a layer, none when the body stands alone.
+ */
+export function printGraphBody(ir: BlueprintGraphIr | undefined, indent = ""): string[] {
+    const lines: string[] = [];
     const nodes = ir?.nodes ?? {};
     const nodeIds = new Set(Object.keys(nodes));
     for (const [nodeId, node] of Object.entries(nodes)) {
@@ -144,12 +157,12 @@ function printGraph(
             && `${params[0][0]}=${printValue(params[0][1])}`.length <= INLINE_PARAM_BUDGET;
         if (params.length === 0 || inlineable) {
             const inline = inlineable ? ` ${params[0][0]}=${printValue(params[0][1])}` : "";
-            lines.push(`${INDENT}${nodeId}: ${node.type}${inline}${suffix}`);
+            lines.push(`${indent}${nodeId}: ${node.type}${inline}${suffix}`);
             continue;
         }
-        lines.push(`${INDENT}${nodeId}: ${node.type}${suffix}`);
+        lines.push(`${indent}${nodeId}: ${node.type}${suffix}`);
         for (const [key, value] of params) {
-            lines.push(`${INDENT}${INDENT}${key} = ${printValue(value)}`);
+            lines.push(`${indent}${INDENT}${key} = ${printValue(value)}`);
         }
     }
 
@@ -157,7 +170,7 @@ function printGraph(
     if (edges.length > 0) {
         lines.push("");
         for (const edge of edges) {
-            lines.push(`${INDENT}${printEndpoint(edge, "from", nodeIds)} -> ${printEndpoint(edge, "to", nodeIds)}`);
+            lines.push(`${indent}${printEndpoint(edge, "from", nodeIds)} -> ${printEndpoint(edge, "to", nodeIds)}`);
         }
     }
     return lines;

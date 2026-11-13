@@ -500,7 +500,7 @@ export const project = {
         networkPolicyDetail: {
             off: "Every HTTP and HTTPS request is refused.",
             allowlist: "Only addresses on the allowlist below can be requested. Every other request is refused.",
-            any: "The game can request any address over HTTP or HTTPS.",
+            any: "The game can request any internet address over HTTP or HTTPS. Local-network addresses are still refused; list one on an allowlist to reach it.",
         },
         networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce No network access. The allowlist is enforced.",
         networkAllowlist: {

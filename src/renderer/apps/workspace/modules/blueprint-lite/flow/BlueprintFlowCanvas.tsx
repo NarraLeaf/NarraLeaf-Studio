@@ -184,8 +184,13 @@ import {
 
 /** The node menu's Delete runs what the canvas's Delete key runs (a fixed key: React Flow owns it). */
 const BLUEPRINT_NODE_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    "blueprint.node.copyAsText": "blueprint.copy-as-text",
     "blueprint.node.delete": "blueprint.delete",
 };
+
+const NODE_MENU_COPY_AS_TEXT = "blueprint.node.copyAsText";
+/** Rows a frozen project leaves live: the debugger's, and copying, which writes only the clipboard. */
+const NODE_MENU_READ_ONLY_ROW_IDS: ReadonlySet<string> = new Set([...BREAKPOINT_MENU_ROW_IDS, NODE_MENU_COPY_AS_TEXT]);
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -542,6 +547,8 @@ type BlueprintFlowCanvasInnerProps = {
         color: string;
         name: string;
     }) => string | undefined;
+    /** Puts these nodes on the clipboard as blueprint text. Withheld where the menu should not offer it. */
+    onCopyNodesAsText?: (nodeIds: readonly string[]) => void;
     /**
      * Where this graph's struct types come from: the document's list shapes and the row in scope.
      * Without it, pins are typed by the engine's own shapes only.
@@ -659,6 +666,7 @@ function BlueprintFlowCanvasInner({
     currentBlueprintId,
     resolveCallableFnSignature,
     onCreateGroupFrame,
+    onCopyNodesAsText,
     structTypeContext,
 }: BlueprintFlowCanvasInnerProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge
@@ -2512,16 +2520,28 @@ function BlueprintFlowCanvasInner({
             return [];
         }
         const { breakpointNodeId, targetIds, frameIds } = nodeMenu;
-        const items: ContextMenuDef = [
-            {
-                id: "blueprint.node.delete",
-                label: t("common.delete"),
-                onClick: () => {
-                    setNodeMenu(null);
-                    deleteNodeIds(targetIds);
+        const items: ContextMenuDef = [];
+        if (onCopyNodesAsText) {
+            items.push(
+                {
+                    id: NODE_MENU_COPY_AS_TEXT,
+                    label: t("blueprint.textCopy.menu"),
+                    onClick: () => {
+                        setNodeMenu(null);
+                        onCopyNodesAsText(targetIds);
+                    },
                 },
+                { separator: true, id: "blueprint.node.sep-copy" },
+            );
+        }
+        items.push({
+            id: "blueprint.node.delete",
+            label: t("common.delete"),
+            onClick: () => {
+                setNodeMenu(null);
+                deleteNodeIds(targetIds);
             },
-        ];
+        });
         // Group and Ungroup are the same pair the toolbar offers, brought to where the cards are:
         // grouping is about the nodes under the cursor, so reaching the far corner of the canvas
         // for it was always a detour. The colour is the one the toolbar is showing - picking a
@@ -2635,7 +2655,7 @@ function BlueprintFlowCanvasInner({
         // pane's creation menu is. The pin's wires come last, after every row the menu has always
         // had, so that none of those moves; following a wire writes nothing, so they stay live too.
         return [
-            ...freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason),
+            ...freezeContextMenuRows(items, freeze.frozen, NODE_MENU_READ_ONLY_ROW_IDS, freeze.reason),
             ...buildPinConnectionRows(nodeMenu.pin, () => setNodeMenu(null)),
         ];
     }, [
@@ -2650,6 +2670,7 @@ function BlueprintFlowCanvasInner({
         freeze.reason,
         groupColor,
         nodeMenu,
+        onCopyNodesAsText,
         onCreateGroupFrame,
         t,
     ]);

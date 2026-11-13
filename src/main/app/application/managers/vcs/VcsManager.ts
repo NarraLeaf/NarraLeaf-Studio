@@ -74,6 +74,7 @@ import { readWorkingSetFile } from "./workingFile";
 import {
     authorityDirectory,
     authorityInstallPlan,
+    readAuthorityHost,
     rememberAcceptedAuthority,
     runAuthorityInstall,
 } from "./authorityTrust";
@@ -2174,7 +2175,7 @@ export class VcsManager extends Manager {
         }
         await fs.access(target);
 
-        const outcome = await runAuthorityInstall(authorityInstallPlan(target));
+        const outcome = await runAuthorityInstall(authorityInstallPlan(target, await readAuthorityHost(target)));
         if (outcome.installed) {
             // The platform's store has it now, and this process cannot see it there: node
             // read that store once, when it first needed it, and answers from that reading

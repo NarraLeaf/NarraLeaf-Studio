@@ -4,6 +4,7 @@ import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { freezeAllowsWrite, type WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
 import { useReadOnlyInspection } from "./readOnlyInspection";
+import { agentLockBlocking, useAgentEditorLocks } from "../../modules/agent/useAgentEditorLocks";
 
 /**
  * What a control inside an editor renders as while the workspace is frozen.
@@ -284,13 +285,20 @@ export function useFreezeGuard(scope?: string | readonly string[]): FreezeGuard 
     // session is left or closed, and telling its author to unfreeze the project names a control
     // that is itself unavailable.
     const frozenReason = useFreezeUnavailableReason();
+    // A third way, nearer still: an agent set this editor read-only while it works here. Only the
+    // author's controls; the write boundary stays open for the agent. The author switches it back
+    // from the status bar, which the sentence says.
+    const agentLocked = agentLockBlocking(useAgentEditorLocks(), scope);
+    const frozenByFreeze = isFreezeBlocking(freeze, scope);
     const reason = inspecting
         ? t("documentDiff.inspector.readOnly")
-        : frozenReason;
+        : agentLocked && !frozenByFreeze
+            ? t(`workspace.agent.editorLock.reason.${agentLocked}`)
+            : frozenReason;
     // Joined rather than passed through as an array: a caller that builds its list inline hands over
     // a new array on every render, and a guard rebuilt on every render is a new object for every
     // memo downstream to notice.
     const key = scope === undefined ? "" : typeof scope === "string" ? scope : scope.join("\n");
-    const frozen = inspecting || isFreezeBlocking(freeze, scope);
+    const frozen = inspecting || frozenByFreeze || agentLocked !== null;
     return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason, key]);
 }

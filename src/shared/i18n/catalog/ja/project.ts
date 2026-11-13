@@ -449,7 +449,7 @@ export const project = {
         networkPolicyDetail: {
             off: "HTTP と HTTPS の要求はすべて拒否される",
             allowlist: "下の許可一覧にあるアドレスだけを要求できる。ほかの要求は拒否される",
-            any: "ゲームは HTTP または HTTPS で任意のアドレスを要求できる",
+            any: "ゲームは HTTP または HTTPS でインターネット上の任意のアドレスを要求できる。ローカルネットワークのアドレスは引き続き拒否される。必要なら許可リストに載せる",
         },
         networkPolicyWebHint: "Web 書き出しは HTTP で配信されるため「ネットワークを使わない」は適用できない。許可一覧は適用される",
         networkAllowlist: {

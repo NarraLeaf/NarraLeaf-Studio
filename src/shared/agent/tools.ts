@@ -16,6 +16,8 @@
  * Comments in English per project convention.
  */
 
+import { AGENT_LOCK_AREAS } from "./editorLock";
+
 export type AgentJsonSchema = {
     type?: "object" | "string" | "number" | "integer" | "boolean" | "array" | "null";
     description?: string;
@@ -942,7 +944,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     drivesGame(ws(
         "playtest_start",
         "Play the game",
-        "Opens the game in Dev Mode, from the title page or from a scene (and row). The author sees it too. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
+        "Opens the game in Dev Mode, from the title page or from a scene (and row). The window is yours while it runs: it opens hidden, the author can show it from the status bar but cannot click or type in it, and closing it only hides it. Studio stops it after 5 minutes without a playtest call; start again if a call says Dev Mode is not running. The author can take it over from the window: you are then paused, and every playtest call and write is refused (`paused`) until they resume you - wait for them, and do not start Dev Mode again before then. Continue in the Dev Mode window resumes you and hands Dev Mode back as it is, so the next playtest call goes on in it. From a scene it returns once the first line is shown in full (or a menu is up), and says what it is (speaker and text). Then use playtest_advance and playtest_screenshot. Every playtest answer also lists the errors and warnings Dev Mode has reported in this run (`issues`, with scene and row or page) - the ones its issue strip counts.",
         { scene: { type: "string" }, row: { type: "integer", description: "1-based row in the scene." } },
     )),
     drivesGame(ws(
@@ -1011,6 +1013,19 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
         { query: { type: "string", description: "Only variables whose name contains this." } },
     ),
     drivesGame(ws("playtest_stop", "Stop playing", "Closes the Dev Mode game.")),
+    ws(
+        "editor_lock",
+        "Set an editor read-only for the author",
+        "Sets one of Studio's editors read-only for the author while you work in it, so their edits do not land between your read and your write: `story` (scenes and the story outline) or `interface` (pages, layers and their blueprints). Your own tools are not affected. Use it around a long rewrite, and call editor_unlock when you are done. The author can switch the editor back to read-write whenever they like; you are not told, so still read a page or scene again before each write. The lock lifts by itself after 5 minutes without a call from you, and when the author pauses you.",
+        { editor: { type: "string", enum: [...AGENT_LOCK_AREAS] } },
+        ["editor"],
+    ),
+    ws(
+        "editor_unlock",
+        "Give an editor back to the author",
+        "Lifts the read-only lock editor_lock put on an editor. Without `editor`, lifts every lock you hold.",
+        { editor: { type: "string", enum: [...AGENT_LOCK_AREAS] } },
+    ),
     ws("console_read", "Read Studio's console", "Recent lines from Studio's console. Channels: `build` (builds, and everything Dev Mode reports - the running game's errors land here), `blueprint`, `lint`, `storage`, `agent` (your own calls), and `story` while a scene's editor is open.", { channel: { type: "string" }, level: { type: "string", enum: ["debug", "info", "warning", "error"] }, limit: { type: "integer", default: 100 } }),
     main(
         "build",

@@ -1,6 +1,13 @@
 /** `devMode` - the Dev Mode window/overlay: run surface, session status, and the live-debug tools. */
 export const devMode = {
     title: "Dev Mode",
+    agentHeldCapsule: "{client} is using Dev Mode",
+    agentHeldFallbackClient: "Agent",
+    agentHeldReadOnly: "Read-only for now",
+    agentTakeOver: "Take over",
+    agentTakenOverCapsule: "You took over Dev Mode",
+    agentTakenOverPaused: "{client} is paused",
+    agentHandBack: "Continue",
     dismiss: "Dismiss",
     surfaceUnavailable: "Surface not available",
     waitingPayload: "Waiting for Dev Mode payload…",

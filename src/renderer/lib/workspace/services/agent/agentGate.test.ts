@@ -124,3 +124,25 @@ describe("agentWriteBlocked", () => {
         expect(live?.message).toMatch(/Stopped after importing 2 of 5 file\(s\)\.$/);
     });
 });
+
+describe("gateAgentCall after the author took Dev Mode over", () => {
+    const takenOver = { paused: true, pausedBy: "devModeTakeover" as const };
+
+    it("refuses game acts and writes with the take-over, telling the agent to wait", () => {
+        for (const patch of [{ write: false, drivesGame: true }, { write: true }]) {
+            const result = gateAgentCall(input({ ...patch, ...takenOver }));
+            expect(code(result)).toBe("paused");
+            expect(result && !result.ok ? result.error.message : "").toContain("taken over Dev Mode");
+            expect(result && !result.ok ? result.error.hint : "").toContain("tells you to continue");
+        }
+    });
+
+    it("still lets reads through", () => {
+        expect(code(gateAgentCall(input({ write: false, ...takenOver })))).toBeNull();
+    });
+
+    it("keeps the switch's own wording for the author's pause", () => {
+        const result = gateAgentCall(input({ write: false, drivesGame: true, paused: true, pausedBy: "author" }));
+        expect(result && !result.ok ? result.error.message : "").not.toContain("taken over");
+    });
+});

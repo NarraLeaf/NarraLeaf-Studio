@@ -1,5 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
-import { normalizeLocale, setLocaleContributions } from "@shared/i18n";
+import { loadBuiltinCatalog, normalizeLocale, setLocaleContributions } from "@shared/i18n";
 import { LOCALIZED_COMMANDS_KEY } from "@/lib/settings/commandLanguageOptions";
 import { commandI18nStore } from "./commandLocale";
 import { deviceDefaultLocale } from "./deviceLocale";
@@ -75,6 +75,9 @@ export async function initI18n(): Promise<void> {
     } catch (error) {
         console.warn("[i18n] Failed to load language preference; using default.", error);
     }
+    // The windows built without every catalog fetch the interface language here, so the first paint
+    // is already in it rather than in English for a frame. Resolves at once in every other window.
+    await loadBuiltinCatalog(i18nStore.getLocale());
 
     try {
         const result = await getInterface().app.state.getGlobalState(LOCALIZED_COMMANDS_KEY);

@@ -63,6 +63,20 @@ export function live2dStagingDir(cacheRoot: string, archiveSha256: string): stri
     return path.join(cacheRoot, CacheNamespace.PuppetRuntimes, "live2d", archiveSha256);
 }
 
+/**
+ * `base` joined with archive-relative `relative`, refusing anything that would land outside `base`.
+ * The archive reader already refuses such names; this is the second gate at the point of writing.
+ */
+export function archivePathInside(base: string, relative: string): string {
+    const resolvedBase = path.resolve(base);
+    const target = path.resolve(resolvedBase, ...relative.split("/"));
+    const offset = path.relative(resolvedBase, target);
+    if (!offset || offset === ".." || offset.startsWith(`..${path.sep}`) || path.isAbsolute(offset)) {
+        throw new Error(`Refusing to unpack an archive entry outside its directory: ${JSON.stringify(relative)}`);
+    }
+    return target;
+}
+
 async function writeFileEnsuringDir(target: string, data: string | Buffer): Promise<void> {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, data);
@@ -235,7 +249,7 @@ export async function buildLive2DRuntime(
     for (const [relative, entry] of found.framework) {
         const bytes = readArchiveEntry(archive, entry);
         frameworkHeaderSource ??= bytes.toString("utf-8");
-        await writeFileEnsuringDir(path.join(staging, "sdk", "framework", ...relative.split("/")), bytes);
+        await writeFileEnsuringDir(archivePathInside(path.join(staging, "sdk", "framework"), relative), bytes);
     }
 
     const shaderSources = new Map<string, string>();
@@ -292,7 +306,7 @@ export async function buildLive2DRuntime(
     await fs.rm(path.join(request.targetDir, LICENSE_DIR_NAME), { recursive: true, force: true });
     for (const [relative, entry] of found.licenses) {
         await writeFileEnsuringDir(
-            path.join(request.targetDir, LICENSE_DIR_NAME, ...relative.split("/")),
+            archivePathInside(path.join(request.targetDir, LICENSE_DIR_NAME), relative),
             readArchiveEntry(archive, entry),
         );
     }

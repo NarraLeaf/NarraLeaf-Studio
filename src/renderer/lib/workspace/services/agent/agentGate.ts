@@ -28,6 +28,8 @@ export type AgentGateInput = {
     policy: AgentSessionPolicy;
     /** The author paused agents from the status bar. */
     paused: boolean;
+    /** Why: the switch itself, or the author taking over the Dev Mode the agent was play-testing in. */
+    pausedBy?: "author" | "devModeTakeover" | null;
     /** `getProjectWriteFreeze()` at the moment of the call. */
     freeze: WorkspaceFreeze | null;
     /** A Team live session is running in this window, or being entered or left. */
@@ -36,6 +38,13 @@ export type AgentGateInput = {
 
 /** Null when the call may run; otherwise the refusal to answer with. */
 export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
+    if (input.paused && input.pausedBy === "devModeTakeover" && (input.write || input.drivesGame)) {
+        return agentRefusal(
+            "paused",
+            "The author has taken over Dev Mode from you and paused the agent.",
+            "Stop and wait until the author tells you to continue (they resume you from Studio's status bar, or with Continue in the Dev Mode window, which also hands Dev Mode back to you). Do not start Dev Mode again before then. Read tools keep working; the game and the project may have changed when you come back, so look again first.",
+        );
+    }
     if (!input.write) {
         if (input.drivesGame && input.paused) {
             return agentRefusal(

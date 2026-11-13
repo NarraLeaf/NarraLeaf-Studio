@@ -12,7 +12,7 @@ import {
     UI_NAVIGATION_SLOT_PRESET_BINDINGS,
     UI_NAVIGATION_SLOTS,
 } from "@shared/types/ui-editor/navigation";
-import { resolveInputHints, type InputHintContext } from "./inputHints";
+import { resolveInputHints, sameJsonValue, type InputHintContext } from "./inputHints";
 
 const DISMISS: UIInputActionDef = { id: "dismiss", name: "Close", bindings: [{ kind: "key", key: "Escape" }, { kind: "gamepad", button: "B" }] };
 const BACKLOG: UIInputActionDef = { id: "backlog", name: "Log", bindings: [{ kind: "gamepad", button: "LB" }] };
@@ -87,5 +87,20 @@ describe("the hints on the stage", () => {
     it("moves, confirms and leaves while the player is in the stage's controls", () => {
         const controls = { ...stage, navigation: { scope: "controls" as const, targets: 6, stageControlsAvailable: false } };
         expect(summary(resolveInputHints(context({ ...controls, storyAdvances: true })))).toEqual(["select:D-pad Up", "confirm:A", "back:B"]);
+    });
+});
+
+describe("sameJsonValue", () => {
+    it("agrees with comparing the JSON text, for the snapshots the bar is fed", () => {
+        const snapshot = { device: "gamepad", controller: "xbox", hints: [{ id: "confirm", label: { kind: "word", word: "confirm" }, bindings: [{ code: "A" }] }] };
+        const copy = JSON.parse(JSON.stringify(snapshot));
+        expect(sameJsonValue(snapshot, copy)).toBe(true);
+        expect(sameJsonValue(null, null)).toBe(true);
+        expect(sameJsonValue(snapshot, null)).toBe(false);
+        copy.hints[0].bindings[0].code = "B";
+        expect(sameJsonValue(snapshot, copy)).toBe(false);
+        expect(sameJsonValue({ a: [1, 2] }, { a: [1, 2, 3] })).toBe(false);
+        expect(sameJsonValue({ a: 1, b: undefined }, { a: 1 })).toBe(true);
+        expect(sameJsonValue([], {})).toBe(false);
     });
 });

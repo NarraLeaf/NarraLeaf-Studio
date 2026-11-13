@@ -4,7 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Services } from "@/lib/workspace/services/services";
 import type { AgentFollowService, AgentFollowState } from "@/lib/workspace/services/agent/AgentFollowService";
-import { useWorkspace } from "../../context/WorkspaceContext";
+import { useWorkspace } from "../../context";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { agentStatusCellShown } from "./useAgentActive";
 import { useAgentQuickState } from "./useAgentQuickState";
@@ -60,7 +60,7 @@ export function AgentStatusEntry() {
     }
 
     const label = state.paused
-        ? t("workspace.agent.status.paused")
+        ? t(state.pausedBy === "devModeTakeover" ? "workspace.agent.status.pausedTakeover" : "workspace.agent.status.paused")
         : state.activity
             ? state.activity.target
                 ? t("workspace.agent.status.editing", { name: state.activity.target })

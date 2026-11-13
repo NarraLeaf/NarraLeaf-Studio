@@ -23,6 +23,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { OfficeReadResult } from "@shared/manuscript/officeRead";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
@@ -319,6 +320,12 @@ export interface RendererPreloadedInterface {
      * not got, and because what comes back is a range list rather than a thirty-megabyte face.
      */
     probeFontCoverage(path: string): Promise<RequestStatus<{ result: FontCoverageResult }>>;
+    /** Script documents: read a .docx/.xlsx for import, write a .docx or a PDF for export. */
+    manuscript: {
+        readOffice(path: string): Promise<RequestStatus<{ result: OfficeReadResult }>>;
+        writeDocx(path: string, parts: { name: string; content: string }[]): Promise<RequestStatus<Record<string, never>>>;
+        printPdf(path: string, html: string, footerHtml: string): Promise<RequestStatus<Record<string, never>>>;
+    };
     /**
      * Converting a media file, polled the way a production build is.
      *
@@ -730,11 +737,24 @@ export interface RendererPreloadedInterface {
     };
 
     devMode: {
-        launch(projectPath: string, entry: DevModeEntry): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** `agent`: launched by an agent's play-test, which then holds the session (see `IPCEventType.devModeLaunch`). */
+        launch(projectPath: string, entry: DevModeEntry, options?: { agent?: boolean; agentClient?: string }): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** From the Dev Mode window: the author takes over the session an agent holds. */
+        takeOverFromAgent(projectPath: string): Promise<RequestStatus<{ takenOver: boolean }>>;
+        /** In the workspace: the author took this project's Dev Mode over from the agent. */
+        onAgentTakenOver(handler: (payload: { projectPath: string }) => void): AppEventToken;
+        /** From the Dev Mode window: hand a session the author took over back to the agent. */
+        handBackToAgent(projectPath: string): Promise<RequestStatus<{ handedBack: boolean }>>;
+        /** In the workspace: the author handed this project's Dev Mode back to the agent. */
+        onAgentHandedBack(handler: (payload: { projectPath: string }) => void): AppEventToken;
+        /** From the workspace: the author resumed the agent another way; the window stops offering the hand-back. */
+        endAgentTakeover(projectPath: string): Promise<RequestStatus<{ ended: boolean }>>;
+        /** Show the project's Dev Mode window and bring it forward. */
+        reveal(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
         /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */
         stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus; agentHeld: boolean }>>;
         /**
          * The stage inside the Dev Mode window, sized the way a packaged game sizes its own.
          *
@@ -786,6 +806,8 @@ export interface RendererPreloadedInterface {
         agentControl(projectPath: string, action: DevModeAgentAction): Promise<RequestStatus<DevModeAgentResult>>;
         /** Dev Mode window: answer the play-test actions main forwards to it. */
         onAgentDrive(handler: (payload: { action: DevModeAgentAction }) => Promise<RequestStatus<DevModeAgentResult>>): AppEventToken;
+        /** Whether an agent holds this Dev Mode window's session; sent on every change and once the window is ready. */
+        onAgentHoldChanged(handler: (payload: { held: boolean; client?: string; takenOver?: boolean }) => void): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         /**
@@ -1597,6 +1619,10 @@ export interface RendererPreloadedInterface {
     clipboard: {
         writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
         readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
+        /** The clipboard's plain text; `null` when it holds none. Read by the blueprint canvas's text paste. */
+        readPlainText(): Promise<RequestStatus<{ text: string | null }>>;
+        /** Put plain text on the clipboard, replacing what is there. Written by the blueprint canvas's Copy as Text. */
+        writePlainText(text: string): Promise<RequestStatus<{ stored: boolean }>>;
     };
 
     /**

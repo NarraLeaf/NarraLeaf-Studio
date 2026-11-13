@@ -304,6 +304,18 @@ export const settings = {
             label: "UI template registry URL",
             description: "Where the template store looks for its index.",
         },
+        autoSnapshotEnabled: {
+            label: "Automatic scene snapshots",
+            description: "Keeps a copy of every changed scene at a regular interval, shown in the Scene History panel.",
+        },
+        autoSnapshotInterval: {
+            label: "Automatic snapshot interval",
+            description: "How long after the first unrecorded change a snapshot is taken.",
+        },
+        autoSnapshotKeep: {
+            label: "Recent automatic snapshots kept",
+            description: "Per scene. Older automatic snapshots are thinned to one a day for two weeks; manual snapshots are never removed.",
+        },
         checkpointInterval: {
             label: "Automatic checkpoint interval",
             description:

@@ -94,6 +94,35 @@ component); `surfaceId` is that page's id. One naming another page or Game UI is
 put the blueprint on the page that changes, and give it something to read: game state (Get Dialog
 Text, Get Choice Count, Is Dialog Waiting) or a variable the other page sets.
 
+## Pasting the text into the editor
+
+When there is no MCP connection - an author asking a chat assistant, say - the same text can be
+pasted straight onto a blueprint canvas in Studio. Ctrl/Cmd+V with this format on the clipboard adds
+its nodes and edges to the graph open in that editor:
+
+- Accepted: a whole block (`blueprint` line plus one layer), one `event` / `function` layer, or bare
+  node, `<-` and `->` lines. Markdown code fences around it are ignored.
+- **One layer per paste.** The `owner=` line and the layer keyword are not used: the nodes go into
+  the open graph and are checked against that blueprint's owner, as if drawn there. A node the
+  palette does not offer on that owner is refused.
+- A paste adds nodes, never members. A `var` line must name a variable the blueprint already has,
+  and Get / Set Local may name one by its name. Any other `var` refuses the paste.
+- Any error refuses the whole paste and adds nothing; a notification gives the first problem in the
+  compiler's own words, with its line number counted in the pasted text.
+- The nodes get fresh ids and keep their `@x,y` (or the automatic layout), shifted by the usual paste
+  offset. The paste is one undo step.
+- Nodes copied in Studio take precedence: text is read only when the clipboard holds no copied nodes.
+
+Text written for pasting needs no `owner=` or `id=`, so give the author the layer body - the node,
+`<-` and `->` lines - and name the blueprint and layer it belongs in.
+
+The other way round, **Copy as Text** on a node's right-click menu (Ctrl/Cmd+Shift+C by default)
+puts the selected nodes on the clipboard as a bare body: each node named after the last part of its
+type (`log`, `log2`), with its fields and `@x,y`, then the edges among them. A Get / Set Local names
+its variable, and a `var` line above the nodes gives that variable's type. Wires to nodes outside the
+selection are left out. When an author pastes graph text into a question, it is most likely this; an
+answer in the same shape can be pasted straight back.
+
 ## Nodes you will reach for
 
 Verify each with `blueprint_node` - pins and fields change.

@@ -1,6 +1,6 @@
 # Agent instructions
 
-This folder holds the NarraLeaf game-making skill, and a skill for porting Ren'Py games.
+This folder holds the NarraLeaf game-making skill.
 
 When the user wants to make, adapt, port or finish a visual novel in NarraLeaf Studio - or when the
 NarraLeaf Studio MCP tools are available (`agent_status`, `story_apply`, `ui_patch` …):
@@ -14,9 +14,9 @@ NarraLeaf Studio MCP tools are available (`agent_status`, `story_apply`, `ui_pat
    as described in `README.md`.
 
 When the user wants to bring an existing Ren'Py game (a `game/` folder with `.rpy` scripts) into
-NarraLeaf Studio, read `narraleaf-port-renpy/SKILL.md` as well and follow it; it builds on the steps
-of `narraleaf-make-game`. Ren'Py porting is still being tested: tell the user it is not stable yet,
-and report the differences you could not resolve.
+NarraLeaf Studio, the porting skill `narraleaf-port-renpy` is not in this folder any more: it lives
+in [Ren2Leaf](https://github.com/MewBaka/Ren2Leaf), with the wizard that prepares the hand-over
+pack. Tell the user where to get it; it builds on the steps of `narraleaf-make-game`.
 
 The user watches every edit live in Studio. Write one scene or one page pass per call, announce big
 steps first, and never overwrite after a `stale_revision` refusal without reading again.

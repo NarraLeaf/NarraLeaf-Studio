@@ -46,14 +46,19 @@ export const HELP_TOPIC_IDS = [
     "storyScene",
     "storyCommands",
     "storyVariables",
+    "renameRefactor",
     "storyExpressions",
     "storyFlow",
     "storyScript",
     "storyPaste",
+    "storyManuscript",
     "sceneSnapshot",
+    "sceneHistory",
     "storyMotion",
     "stageTimeline",
+    "stagePlacement",
     "dictionary",
+    "storyComments",
     "dictionaryMarks",
     "assets",
     "assetSources",
@@ -245,7 +250,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "storyVariables",
         section: "story",
         clip: true,
-        related: ["storyCommands", "storyExpressions", "sceneSnapshot"],
+        related: ["storyCommands", "storyExpressions", "sceneSnapshot", "renameRefactor"],
+    },
+    {
+        id: "renameRefactor",
+        section: "story",
+        related: ["storyVariables", "storyExpressions", "undo"],
     },
     {
         id: "storyExpressions",
@@ -271,6 +281,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         shortcuts: ["story.paste-plain"],
         related: ["storyScene", "characters", "storyScript"],
     },
+    // Script documents: Word, Fountain and spreadsheet scripts in, a readable PDF or Word script out.
+    {
+        id: "storyManuscript",
+        section: "story",
+        related: ["storyPaste", "storyScript", "voice"],
+    },
     {
         id: "sceneSnapshot",
         section: "story",
@@ -278,10 +294,20 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["storyVariables", "runModes"],
     },
     {
+        id: "sceneHistory",
+        section: "story",
+        related: ["storyScene", "studioSettings"],
+    },
+    {
         id: "dictionary",
         section: "story",
         clip: true,
         related: ["dictionaryMarks", "spellcheck", "storyScene"],
+    },
+    {
+        id: "storyComments",
+        section: "story",
+        related: ["storyScene", "versionControl"],
     },
     {
         id: "dictionaryMarks",
@@ -308,6 +334,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "story",
         clip: true,
         related: ["storyScene", "voice", "storyMotion"],
+    },
+    {
+        id: "stagePlacement",
+        section: "story",
+        related: ["storyScene", "storyMotion", "undo"],
     },
 
     // --- Content --------------------------------------------------------------
@@ -473,6 +504,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "blueprint.pan",
             "blueprint.copy",
             "blueprint.paste",
+            "blueprint.copy-as-text",
             "blueprint.undo",
         ],
         related: ["scripts", "uiBindings", "uiSurfaces", "storyVariables"],
