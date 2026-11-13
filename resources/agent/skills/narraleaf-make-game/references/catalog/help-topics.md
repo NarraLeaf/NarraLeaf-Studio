@@ -604,6 +604,24 @@ The stage timeline lists the stage after every row of the current scene, in the 
 
 相关主题 · Related：场景与行 · Scenes and rows、配音 · Voice-over、故事动效 · Story Motion
 
+### 在舞台上摆放对象 · Placing objects on the stage
+
+光标位于显示或移动角色、图片的行时，故事预览在该对象上显示操控框；拖动操控框或其角柄，即改写该行设定的位置与缩放
+
+- 拖动操控框移动对象：中心吸附到舞台中线与三分线，边缘吸附到舞台边缘与安全区；按住 Shift 只沿一个方向移动，按住 Cmd 或 Ctrl 暂停吸附；预览标题栏的磁铁按钮可关闭吸附
+- 拖动角柄缩放：对角保持不动并保持比例；按住 Shift 分别缩放两轴，按住 Alt 以中心缩放
+- 松开指针时写入该行，一次拖动为一步撤销；按 Esc 取消拖动
+- 仅隐藏对象、更换表情或播放动作的行不能摆放，预览会注明原因
+
+With the cursor on a row that shows or moves a character or an image, the story preview draws a box around that object. Dragging the box or its corners rewrites the position and size the row states.
+
+- Drag the box to move the object. Its centre snaps to the middle and thirds of the stage, and its edges snap to the stage edges and the safe area. Hold Shift to keep to one axis, and Cmd or Ctrl to move without snapping. The magnet button in the preview header turns snapping off.
+- Drag a corner to resize. The opposite corner stays in place and the proportions are kept. Hold Shift to resize each axis on its own, and Alt to resize about the centre.
+- The row is written when the pointer is released, and one drag is one undo step. Esc cancels a drag.
+- A row that only hides, changes an expression or plays a motion cannot be placed, and the preview names the reason.
+
+相关主题 · Related：场景与行 · Scenes and rows、故事动效 · Story Motion、撤销 · Undo and redo
+
 ## 内容 · Content
 
 ### 资产 · Assets
