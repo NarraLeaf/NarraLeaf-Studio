@@ -242,6 +242,17 @@ type Token = {
     quoted?: boolean;
 };
 
+/**
+ * The tokens of a source, with their spans - for tools that rewrite one reference in place (the
+ * rename refactor) and must leave every other character the author typed exactly as it was.
+ * Issues are dropped: a caller that needs them parses.
+ */
+export type StoryExpressionToken = Readonly<Token>;
+
+export function lexStoryExpression(source: string): StoryExpressionToken[] {
+    return tokenize(source, []);
+}
+
 /** Multi-character operators first - otherwise `>=` tokenizes as `>` then `=`. */
 const OPERATORS = ["==", "!=", "<=", ">=", "&&", "||", "+", "-", "*", "/", "%", "<", ">", "!"] as const;
 

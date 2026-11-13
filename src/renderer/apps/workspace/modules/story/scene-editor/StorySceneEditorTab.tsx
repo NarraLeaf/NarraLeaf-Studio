@@ -41,6 +41,7 @@ import { useStoryRowReveal } from "./useStoryRowReveal";
 import { useRowFilterChange } from "./useRowFilterChange";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
+import { useStoryRowRefactorMenu } from "../../refactor/useStoryRowRefactorMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
     isSameStoryBlockSelection,
@@ -1836,6 +1837,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
+    const storyRowRefactorMenu = useStoryRowRefactorMenu();
     const densityMenu = useContextMenu();
     /**
      * The row filter's panel, anchored to its toolbar button rather than to the pointer: it is a set of
@@ -2366,6 +2368,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         // Reading history writes nothing, so it stays live on a frozen project; restoring from the
         // dialog is what the freeze guards.
         { id: "row-history", label: t("sceneHistory.rowMenu"), onClick: () => setRowHistoryTarget({ storyId: document.id, sceneId: scene.id, blockId: menuTarget }) },
+        // Rename / find references for what the row names: its variables, or the label it declares.
+        ...storyRowRefactorMenu({
+            block: scene.blocks[menuTarget],
+            storyId: document.id,
+            sceneId: scene.id,
+            variables: editor.commandContext.variables,
+            writeRow: () => freeze.menuRow(),
+        }),
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
