@@ -38,6 +38,7 @@ import { JoinByPasscode } from "./ServerLiveSessions";
 import { ServerPeople } from "./ServerPeople";
 import { ServerProjectDetailView } from "./ServerProjectDetail";
 import { revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
+import { ServerProblemState } from "./ServerProblemState";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -452,7 +453,9 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                             size="sm"
                             variant="primary"
                             className="shrink-0"
-                            disabled={creating}
+                            // A server that did not answer the list will not take a project
+                            // either, so the button waits for the list to arrive.
+                            disabled={creating || reading || problem !== null}
                             onClick={() => void newProject()}
                             data-servers-action="new-project"
                         >
@@ -673,7 +676,7 @@ function ProjectList({
         <div className="min-h-0 flex-1 overflow-y-auto">
             {reading && <p className="px-3 py-2 text-xs text-fg-subtle">{t("launcher.servers.loading")}</p>}
             {!reading && problem !== null && (
-                <p className="px-3 py-2 text-xs text-danger">{t(problem)}</p>
+                <ServerProblemState problem={problem} />
             )}
             {!reading && problem === null && projects?.length === 0 && (
                 <p className="px-3 py-2 text-xs text-fg-subtle">{t("launcher.servers.noProjects")}</p>

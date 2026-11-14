@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils/cn";
 import type { TranslationKey } from "@shared/i18n";
 import { serverProblemFromTeam } from "@shared/types/vcs";
 import type { VcsServerMember } from "@shared/types/vcs";
+import { ServerProblemState } from "./ServerProblemState";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -73,7 +74,7 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
                     </p>
                 )}
                 {problem !== null && (
-                    <p className="px-3 py-2 text-xs text-danger">{t(problem)}</p>
+                    <ServerProblemState problem={problem} />
                 )}
                 {members?.length === 0 && (
                     <p className="px-3 py-2 text-xs text-fg-subtle">
