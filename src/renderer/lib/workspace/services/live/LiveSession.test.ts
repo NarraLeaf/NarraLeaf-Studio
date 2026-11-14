@@ -3444,4 +3444,48 @@ describe("a live session", () => {
             expect(guest.config.appTags.tags[0]?.name).toBe("Demo");
         });
     });
+
+    describe("moving onto a newer revision, and who is where", () => {
+        it("records the host's work, reopens on it, and brings the guest along", async () => {
+            await openRoom();
+            await joinRoom();
+            expect(guest.session.getView().phase).toBe("active");
+
+            const failure = await host.session.rebase();
+            expect(failure).toBeNull();
+            await drain(world.bus);
+            expect(host.session.getView().role).toBe("host");
+            expect(host.session.getView().session?.id).toBe("room-2");
+
+            // The guest heard "moving" from the host, saw the old room close, and went looking.
+            for (let tries = 0; tries < 40 && guest.session.getView().session?.id !== "room-2"; tries++) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await drain(world.bus);
+            }
+            expect(guest.session.getView().session?.id).toBe("room-2");
+            expect(guest.session.getView().role).toBe("guest");
+        });
+
+        it("ignores a move announced by anybody but the host", async () => {
+            await openRoom();
+            await joinRoom();
+            // A guest cannot move the room: its "moving" is dropped, and nothing follows it.
+            world.bus.say("room-1", { kind: "moving" }, "instance-guest", accountOf("instance-guest"));
+            await drain(world.bus);
+            expect(host.session.getView().session?.id).toBe("room-1");
+            expect(guest.session.getView().session?.id).toBe("room-1");
+        });
+
+        it("tells each window where the others are, and carries chat", async () => {
+            await openRoom();
+            await joinRoom();
+            host.session.setCursor("story:" + host.storyId, `${host.sceneId}/row-1`);
+            expect(guest.session.sendChat("hello")).toBe(true);
+            await drain(world.bus);
+            expect(guest.session.getPresence().cursors.map(cursor => [cursor.instance, cursor.element])).toEqual([
+                ["instance-host", `${host.sceneId}/row-1`],
+            ]);
+            expect(host.session.getPresence().chat.map(line => [line.account, line.text])).toEqual([[accountOf("instance-guest"), "hello"]]);
+        });
+    });
 });

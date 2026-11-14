@@ -134,6 +134,11 @@ import {
  * sequence performed into a room that does not exist yet.
  */
 
+/** How long a member waits for the host's next room after being told the session is moving. */
+export const LIVE_MOVE_WAIT_MS = 120_000;
+/** How often it looks. */
+const LIVE_MOVE_POLL_MS = 1_500;
+
 /** What a running session holds. Null while this window is in none. */
 type ActiveSession = {
     /** Who is where in the room, and what has been said. See {@link LivePresence}. */
@@ -306,6 +311,55 @@ export class LiveSession {
      */
     private waitingToBeLetIn: (() => void) | null = null;
     public constructor(private readonly deps: LiveSessionDeps) {}
+
+    /* ------------------------------------------------------------------ moving on */
+
+    /** A room this guest was told it is moving from, and whose host to follow. See {@link rebase}. */
+    private following: { host: string; from: string; project: string; rooms: LiveRooms; until: number } | null = null;
+
+    /**
+     * Move the session onto a newer revision. **The host's act.**
+     *
+     * A session opens on one revision and carries only what changed since, so the longer it runs
+     * the longer a newcomer's catch-up and the further the room stands from what version control
+     * holds; and a member whose tree has moved past the room cannot join it at all. Re-basing is the
+     * way out: record what the session holds and push it (which leaving does anyway), close this
+     * room, and open another on that version. Members are told first, so each of them joins the
+     * new room as soon as this one closes - and joining adopts the new revision, which already
+     * holds everything the session did.
+     */
+    public async rebase(): Promise<LiveEntryFailure | null> {
+        const session = this.active;
+        if (!session || session.role !== "host" || this.view.phase !== "active") {
+            return null;
+        }
+        const storyId = session.storyId;
+        const title = session.room.title;
+        const rule = session.room.rule;
+        session.rooms.say(session.room.id, { kind: "moving" });
+        await this.leave();
+        return this.open({
+            storyId,
+            ...(title === undefined ? {} : { title }),
+            ...(rule === undefined ? {} : { rule }),
+        });
+    }
+
+    /** After the host closed a room it said it was moving from: find its next room and join it. */
+    private async followMove(): Promise<void> {
+        const move = this.following;
+        this.following = null;
+        if (!move || this.active !== null) return;
+        while (this.deps.now() < move.until && this.active === null) {
+            const listed = await move.rooms.list(move.project).catch(() => null);
+            const next = listed?.ok ? listed.value.find(room => room.openedByInstance === move.host && room.id !== move.from) : undefined;
+            if (next) {
+                await this.join({ session: next });
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, LIVE_MOVE_POLL_MS));
+        }
+    }
 
     /* ------------------------------------------------------------------ presence */
 
@@ -1685,7 +1739,7 @@ export class LiveSession {
             }
             // For a guest this is the host's window having gone. For a host it is its own room
             // closing, which is the same ending seen from the other side.
-            void this.end(session.role === "host" ? "left" : "host-left");
+            void this.end(session.role === "host" ? "left" : "host-left").then(() => this.followMove());
             return;
         }
         if (event.kind === "live-requested" || event.kind === "live-refused") {
@@ -1733,6 +1787,19 @@ export class LiveSession {
 
     private onMessage(session: ActiveSession, payload: unknown, from: string, account: string): void {
         if (this.active === session && isLivePresenceMessage(payload)) {
+            if (payload.kind === "moving") {
+                // Only the host may move the room, and the stamp on the message is the server's.
+                if (session.role === "guest" && from === session.room.openedByInstance) {
+                    this.following = {
+                        host: from,
+                        from: session.room.id,
+                        project: session.project.repositoryId,
+                        rooms: session.rooms,
+                        until: this.deps.now() + LIVE_MOVE_WAIT_MS,
+                    };
+                }
+                return;
+            }
             // Beside the session rather than through it: no order, no host, no answer.
             session.presence?.receive(payload, from, account);
             return;

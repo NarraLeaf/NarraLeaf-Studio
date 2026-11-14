@@ -39,6 +39,8 @@ export type LiveSessionSurface = {
      * way in, on the surface that cannot clone.
      */
     leave: () => void;
+    /** Move the room onto a newer revision, taking everyone along. Host only. */
+    rebase: () => void;
     /**
      * Change how people get into the running room. Host only.
      *
@@ -89,6 +91,7 @@ export function useLiveSession(): LiveSessionSurface {
         busy,
         open: useCallback(input => run(session => session.open(input)), [run]),
         leave: useCallback(() => run(session => session.leave()), [run]),
+        rebase: useCallback(() => run(session => session.rebase()), [run]),
         setRule: useCallback(
             (rule: TeamLiveJoinRule) => service?.setRule(rule) ?? Promise.resolve(false),
             [service],

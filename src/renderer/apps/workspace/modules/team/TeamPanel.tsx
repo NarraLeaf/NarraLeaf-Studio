@@ -12,6 +12,7 @@ import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { TeamCollaboration } from "./TeamCollaboration";
+import { TeamRequestsSection } from "./TeamRequests";
 import { teamServerFace } from "./teamFace";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
@@ -292,6 +293,8 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                             />
                         )}
                     </div>
+
+                    <TeamRequestsSection />
 
                     {/* A refusal that belongs to something pressed in here. The picker draws its
                         own, over the top of this, so the two are never read at once. */}

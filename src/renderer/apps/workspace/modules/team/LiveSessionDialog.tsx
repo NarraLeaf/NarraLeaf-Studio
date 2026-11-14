@@ -401,6 +401,14 @@ function InSession({ team, live }: {
                 )}
                 {/* Whose room this is decides whether there is anything here to change. */}
                 {view.role === "host" && <HowPeopleJoin live={live} />}
+                {view.role === "host" && view.phase === "active" && (
+                    <div className="flex items-center justify-between gap-2 text-2xs text-fg-subtle">
+                        <span>{t("workspace.shell.team.liveRebaseHint")}</span>
+                        <Button size="sm" variant="secondary" data-live-act="rebase" disabled={live.busy} onClick={live.rebase}>
+                            {t("workspace.shell.team.liveRebase")}
+                        </Button>
+                    </div>
+                )}
                 {/* ⚠ The dot in the title bar points HERE, so the answer has to be here. The
                     notice that carries it is the fast path and is gone once it is answered or
                     once the author was somewhere else; without this, a host who missed it would

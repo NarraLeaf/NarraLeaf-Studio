@@ -283,6 +283,11 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return this.session?.sendChat(text) ?? false;
     }
 
+    /** Move the session onto a newer revision; the host's act. See {@link LiveSession.rebase}. */
+    public async rebase(): Promise<LiveEntryFailure | null> {
+        return (await this.session?.rebase()) ?? null;
+    }
+
     /** Whether a session owns this story document right now. See {@link LiveSession.ownsStory}. */
     public ownsStory(storyId: StoryId): boolean {
         return this.session?.ownsStory(storyId) ?? false;

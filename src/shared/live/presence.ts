@@ -30,7 +30,14 @@ export type LiveChat = {
     text: string;
 };
 
-export type LivePresenceMessage = LiveCursor | LiveChat;
+/**
+ * The host saying the room is about to move to a newer revision: it is recording what the session
+ * holds, closing this room and opening another on that version. A member that hears it from the
+ * host (the server's stamp says who sent it) joins the host's next room once this one closes.
+ */
+export type LiveMoving = { kind: "moving" };
+
+export type LivePresenceMessage = LiveCursor | LiveChat | LiveMoving;
 
 /** The most one chat line may be. A sentence or a pasted line of dialogue, not a document. */
 export const LIVE_CHAT_TEXT_LIMIT = 2000;
@@ -49,6 +56,7 @@ export function isLivePresenceMessage(value: unknown): value is LivePresenceMess
         return (message.document === null || shortText(message.document, ADDRESS_LIMIT))
             && (message.element === undefined || shortText(message.element, ADDRESS_LIMIT));
     }
+    if (message.kind === "moving") return true;
     if (message.kind === "chat") {
         return shortText(message.id, 64) && shortText(message.text, LIVE_CHAT_TEXT_LIMIT);
     }

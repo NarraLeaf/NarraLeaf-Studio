@@ -85,6 +85,7 @@ export class LivePresence {
     }
 
     receive(message: LivePresenceMessage, from: string, account: string): void {
+        if (message.kind === "moving") return; // the session's business, not presence's
         if (message.kind === "chat") {
             if (this.seenLines.has(message.id)) return;
             this.seenLines.add(message.id);

@@ -68,6 +68,12 @@ export type TeamCapability =
     | "todos"
     /** Mentions, replies and assignments, kept until read. */
     | "notifications"
+    /** Asking a member to review a range of versions, and their verdict. */
+    | "reviews"
+    /** Names on revisions that a project can be read at. */
+    | "milestones"
+    /** Operators may have the server post its events elsewhere. */
+    | "webhooks"
     /** Threads and comments anchored in a project. */
     | "comments"
     /** Which installations are connected, and what each has open. */
@@ -192,6 +198,16 @@ export function teamProjectMembersTopic(projectId: string): string {
 /** The to-dos shown to one project's members. */
 export function teamProjectTodosTopic(projectId: string): string {
     return `project:${projectId}/todos`;
+}
+
+/** One project's review requests. */
+export function teamProjectReviewsTopic(projectId: string): string {
+    return `project:${projectId}/reviews`;
+}
+
+/** One project's milestones. */
+export function teamProjectMilestonesTopic(projectId: string): string {
+    return `project:${projectId}/milestones`;
 }
 
 /** The signed-in account's own to-dos. Only that account may subscribe. */
@@ -430,6 +446,12 @@ export interface TeamTodo {
     body?: string;
     status: "open" | "doing" | "done";
     visibility: "private" | "project";
+    /** What it asks for. Absent from a server older than kinds, where everything is a task. */
+    kind?: "task" | "asset" | "translation" | "voice";
+    /** The language a translation or voice to-do is about. */
+    locale?: string;
+    /** The asset that answered an asset request. */
+    asset?: string;
     dueAt?: number;
     createdAt: number;
     updatedAt: number;
@@ -445,7 +467,7 @@ export type TeamTodosEvent =
 /** One notification, as `notifications.list` answers. */
 export interface TeamNotification {
     id: number;
-    kind: "mention" | "reply" | "assigned";
+    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered";
     project?: string;
     ref?: string;
     actor?: string;
@@ -684,6 +706,16 @@ export const TeamMethod = {
     todosCreate: "todos.create",
     todosUpdate: "todos.update",
     todosDelete: "todos.delete",
+    reviewsList: "reviews.list",
+    reviewsCreate: "reviews.create",
+    reviewsUpdate: "reviews.update",
+    milestonesList: "milestones.list",
+    milestonesCreate: "milestones.create",
+    milestonesDelete: "milestones.delete",
+    adminWebhooksList: "admin.webhooks.list",
+    adminWebhooksCreate: "admin.webhooks.create",
+    adminWebhooksDelete: "admin.webhooks.delete",
+    adminWebhooksTest: "admin.webhooks.test",
     notificationsList: "notifications.list",
     notificationsRead: "notifications.read",
     membersList: "members.list",

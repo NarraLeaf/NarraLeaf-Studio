@@ -44,6 +44,8 @@ import {
     teamProjectLiveTopic,
     teamProjectMembersTopic,
     teamProjectTodosTopic,
+    teamProjectReviewsTopic,
+    teamProjectMilestonesTopic,
     teamAccountTodosTopic,
     teamAccountNotificationsTopic,
     teamProjectOverlayTopic,
@@ -85,6 +87,9 @@ const CAPABILITIES: TeamCapability[] = [
     "activity",
     "todos",
     "notifications",
+    "reviews",
+    "milestones",
+    "webhooks",
     "project-history",
     "blobs",
 ];
@@ -130,7 +135,9 @@ describe("the protocol contract", () => {
             "projectClients",
             "projectLive",
             "projectMembers",
+            "projectMilestones",
             "projectOverlay",
+            "projectReviews",
             "projectThreads",
             "projectTodos",
             "projects",
@@ -154,6 +161,8 @@ describe("the protocol contract", () => {
             contract.topics["projectMembers"]?.replace("{project}", "abc"),
         );
         expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
+        expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
+        expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
         expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
         expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));

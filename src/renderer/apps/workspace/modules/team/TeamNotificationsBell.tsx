@@ -72,6 +72,12 @@ export function TeamNotificationsBell() {
 
     const follow = (notification: TeamNotification) => {
         void teamCall(remoteOrigin, TeamMethod.notificationsRead, { ids: [notification.id] });
+        if ((notification.kind === "review-requested" || notification.kind === "review-answered") && notification.project) {
+            // A review is read and answered in the web console, where the range and its threads are.
+            void getInterface().app.openExternal(`${remoteOrigin}/console/p/${encodeURIComponent(notification.project)}/reviews`);
+            setOpen(false);
+            return;
+        }
         const thread = notification.ref === undefined
             ? undefined
             : service?.listThreads().find(candidate => candidate.teamThreadId === notification.ref);

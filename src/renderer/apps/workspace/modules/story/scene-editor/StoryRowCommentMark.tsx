@@ -30,6 +30,7 @@ import {
     type StoryCommentPopoverTarget,
 } from "../../story-comments/storyCommentsState";
 import { StoryCommentThreadView } from "../../story-comments/StoryCommentThreadView";
+import { RowAssetRequest } from "../../team/TeamRequests";
 import type { StoryBlock } from "@shared/types/story";
 import { getSegmentSlot, plainSegment, segmentPlainText } from "./storyFindReplace";
 import { Services } from "@/lib/workspace/services/services";
@@ -218,6 +219,7 @@ function StoryRowCommentPopover(props: { target: StoryCommentPopoverTarget; anch
                 }}
                 {...(applySuggestion === null ? {} : { onApplySuggestion: applySuggestion })}
             />
+            <RowAssetRequest storyId={props.target.storyId} sceneId={props.target.sceneId} blockId={props.target.blockId} />
         </div>,
         doc.body,
     );
