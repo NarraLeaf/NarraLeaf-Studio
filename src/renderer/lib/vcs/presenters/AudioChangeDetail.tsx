@@ -524,10 +524,11 @@ function usePlayback(host: AudioHost): Playback {
 /**
  * What a track says when it has no waveform in it.
  *
- * Three facts and they stay three: a file past the ceiling, bytes no decoder here would take, and
- * a read that has not finished.
+ * A file past a preview limit, bytes the decoder refused, and a read in progress have distinct
+ * messages.
  */
 function stateKey(side: AudioSide): TranslationKey {
+    if (side.oversized) return "documentDiff.presenter.audio.tooLong";
     if (side.status === "tooLarge") return "documentDiff.presenter.audio.tooLarge";
     if (side.status === "failed" || side.status === "unsupported" || side.broken) {
         return "documentDiff.presenter.audio.unreadable";

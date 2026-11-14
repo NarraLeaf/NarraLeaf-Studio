@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { createVersionedAssetBytesSource, VERSIONED_ASSET_LIMITS } from "./versionedAssetBytes";
 
@@ -175,6 +176,30 @@ describe("refusals", () => {
 
         expect(refusals).toEqual([BACKGROUND]);
     });
+
+    it.each([utf8("{"), utf8("[]"), null])(
+        "reports an unreadable metadata shard as a failure",
+        async shard => {
+            const source = createVersionedAssetBytesSource({
+                id: "rev",
+                read: path => path === IMAGE_SHARD ? Promise.resolve(shard) : readerOver({})(path),
+            });
+
+            expect((await source.read(BACKGROUND, AssetType.Image)).kind).toBe("failed");
+        },
+    );
+
+    it.each([utf8("{"), utf8("[]"), null])(
+        "reports an unreadable asset-set document as a failure",
+        async sets => {
+            const source = createVersionedAssetBytesSource({
+                id: "rev",
+                read: path => path === ASSET_SETS ? Promise.resolve(sets) : readerOver({})(path),
+            });
+
+            expect((await source.read("title-art", AssetType.Image)).kind).toBe("failed");
+        },
+    );
 });
 
 describe("the budget", () => {
@@ -272,6 +297,36 @@ describe("the budget", () => {
         expect((await settled).map(result => result.kind)).toEqual(["bytes", "bytes", "bytes", "bytes"]);
         expect(peak).toBe(2);
     });
+
+    it("reserves a released slot for an already queued read", async () => {
+        const pending: (() => void)[] = [];
+        let inFlight = 0;
+        let peak = 0;
+        let firstRead!: Promise<Uint8Array>;
+        const read = vi.fn(() => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            const result = new Promise<Uint8Array>(resolve => pending.push(() => {
+                inFlight -= 1;
+                resolve(filled(1));
+            }));
+            if (!firstRead) firstRead = result;
+            return result;
+        });
+        const source = createVersionedAssetBytesSource({ id: "rev", read, limits: { maxConcurrentReads: 1 } });
+        const avatar = (key: string) => source.read(characterAvatarAssetId("character", key), AssetType.Image);
+        const first = avatar("one");
+        const second = avatar("two");
+        const third = firstRead.then(() => avatar("three"));
+
+        pending.shift()!();
+        for (let step = 0; step < 10; step += 1) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            pending.splice(0).forEach(finish => finish());
+        }
+        await Promise.all([first, second, third]);
+        expect(peak).toBe(1);
+    });
 });
 
 describe("dispose", () => {
@@ -283,5 +338,21 @@ describe("dispose", () => {
         expect((await source.read(BACKGROUND, AssetType.Image)).kind).toBe("failed");
         expect(onRefusal).not.toHaveBeenCalled();
         expect(source.retainedBytes).toBe(0);
+    });
+
+    it("does not start queued reads after the comparison closes", async () => {
+        let finishFirst!: (bytes: Uint8Array) => void;
+        const firstRead = new Promise<Uint8Array>(resolve => { finishFirst = resolve; });
+        const read = vi.fn()
+            .mockReturnValueOnce(firstRead)
+            .mockResolvedValue(filled(2));
+        const source = createVersionedAssetBytesSource({ id: "rev", read, limits: { maxConcurrentReads: 1 } });
+        const pending = ["one", "two", "three"].map(key => source.read(characterAvatarAssetId("character", key), AssetType.Image));
+
+        source.dispose();
+        finishFirst(filled(1));
+        await Promise.all(pending);
+
+        expect(read).toHaveBeenCalledTimes(1);
     });
 });

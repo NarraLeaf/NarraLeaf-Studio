@@ -49,6 +49,8 @@ export interface SplitRowAction {
 export type SplitRowActionResolver = (row: DocumentChangeRow, half: ComparisonHalf) => SplitRowAction | null;
 
 export interface ComparisonElementsInput {
+    /** The comparison tab that owns a selection. */
+    readonly comparisonId: string;
     readonly entry: DocumentDiffEntry | null;
     /** Repository-relative path of the document being compared. */
     readonly path: string;
@@ -102,7 +104,7 @@ export function useComparisonElements(input: ComparisonElementsInput): SplitRowA
     }, [uiService]);
 
     /**
-     * A selection into this comparison does not outlive the tab that made it.
+     * A selection into this comparison does not outlive its entry or the tab that made it.
      *
      * The rail would otherwise keep drawing an element of a version nobody is looking at any more,
      * with no surface on screen it belongs to. Only this comparison's own selection is cleared, so
@@ -117,12 +119,12 @@ export function useComparisonElements(input: ComparisonElementsInput): SplitRowA
             const current = store.getSelection();
             if (
                 current.type === COMPARISON_ELEMENT_SELECTION_TYPE
-                && current.data.documentPath === input.path
+                && current.data.comparisonId === input.comparisonId
             ) {
                 store.setSelection({ type: null, data: null });
             }
         };
-    }, [uiService, input.path]);
+    }, [uiService, input.comparisonId, input.entry]);
 
     const resolve = useCallback<SplitRowActionResolver>(
         (row, half) => {
@@ -131,6 +133,7 @@ export function useComparisonElements(input: ComparisonElementsInput): SplitRowA
                 return null;
             }
             const next = buildComparisonElementSelection({
+                comparisonId: input.comparisonId,
                 documentPath: input.path,
                 half,
                 versionLabel: half === "base" ? input.baseLabel : input.headLabel,
@@ -151,7 +154,7 @@ export function useComparisonElements(input: ComparisonElementsInput): SplitRowA
                 label: input.labelFor(next.element.name ?? next.element.type),
             };
         },
-        [uiService, input.path, input.baseLabel, input.headLabel, input.labelFor, base.document, head.document, selection],
+        [uiService, input.comparisonId, input.path, input.baseLabel, input.headLabel, input.labelFor, base.document, head.document, selection],
     );
 
     return isUIDocument ? resolve : undefined;

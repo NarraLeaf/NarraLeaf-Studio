@@ -18,7 +18,7 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     useTranslation: () => ({
         t: (key: string, params?: Record<string, unknown>) =>
             (params ? `${key}(${Object.values(params).join(",")})` : key),
-        has: () => false,
+        has: (key: string) => key === "brand.presetName.primary",
         tn: (key: string) => key,
         locale: "en",
     }),
@@ -138,6 +138,23 @@ describe("two columns of colour", () => {
 
         await waitFor(() => expect(container.textContent).toContain("documentDiff.presenter.brand.added"));
         expect(container.textContent).toContain("documentDiff.presenter.brand.removed");
+    });
+
+    it("names colours as the project palette does", () => {
+        sideStates.set("before", palette([
+            { id: "primary", value: "#111111" },
+            { id: "custom123", name: "Sunset", value: "#222222" },
+        ]));
+        sideStates.set("after", palette([
+            { id: "primary", value: "#333333" },
+            { id: "custom123", name: "Sunset", value: "#444444" },
+        ]));
+
+        const { container } = draw();
+
+        expect(container.textContent).toContain("brand.presetName.primary");
+        expect(container.textContent).toContain("Sunset");
+        expect(container.textContent).not.toContain("custom123");
     });
 
     it("says a value that lands on no colour rather than drawing an empty block", async () => {

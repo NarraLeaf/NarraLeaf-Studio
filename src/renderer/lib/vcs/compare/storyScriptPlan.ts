@@ -33,10 +33,8 @@ import { changeMaskTone, maskColumns, type ChangeMaskTone } from "../presenters/
  *
  * # Only the scenes that changed
  *
- * A project's story is longer than a comparison, and forty unchanged scenes of script between two
- * edits is a wall to scroll rather than an answer. A scene appears when a change lands in it, and
- * then it appears whole, because the line before and the line after are what make a changed line
- * readable.
+ * A scene appears when a change lands in it, with its neighbouring lines for context. A story
+ * present on only one side shows all of its scenes.
  */
 
 /** One block as one version reads it. Each half draws its own, so nothing here is shared. */
@@ -148,7 +146,7 @@ export function buildStoryScriptPlan(
 
     let blocks = 0;
     for (const sceneId of mergeOrder(orderedScenes(base), orderedScenes(head))) {
-        if (!placement.scenes.has(sceneId)) {
+        if (base && head && !placement.scenes.has(sceneId)) {
             continue;
         }
         const baseScene = base?.scenes?.[sceneId] ?? null;
@@ -223,7 +221,13 @@ function placeRows(rows: readonly DocumentChangeRow[]): RowPlacement {
             continue;
         }
         scenes.add(key.sceneId);
-        stops.add(key.slot);
+        // A heading or line can carry one navigation stop. Keep additional changes to the same
+        // subject as change rows so their labels and values remain visible.
+        if (stops.has(key.slot)) {
+            unplaced.push(row);
+        } else {
+            stops.add(key.slot);
+        }
         const tone = changeMaskTone(row.change);
         const held = tones.get(key.slot);
         if (held === undefined || TONE_RANK[tone] > TONE_RANK[held]) {
