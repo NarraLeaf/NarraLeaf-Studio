@@ -125,6 +125,20 @@ export interface TeamAccount {
     operator: boolean;
 }
 
+/**
+ * What an account says about itself, as `account.profile.get` answers.
+ *
+ * `avatarUrl` is a path on the server (`/api/team/v1/avatars/{username}/{sha256}.{ext}`), served
+ * only to a signed-in caller - a renderer reads it through `team.avatar`, never directly.
+ */
+export interface TeamAccountProfile {
+    username: string;
+    displayName: string;
+    /** A line the account wrote about itself. Absent where it wrote none. */
+    bio?: string;
+    avatarUrl?: string;
+}
+
 /** What a server says before anything is asked of it. */
 export interface TeamHelloFrame {
     t: "hello";

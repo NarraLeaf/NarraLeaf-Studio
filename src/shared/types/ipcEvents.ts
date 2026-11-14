@@ -560,6 +560,15 @@ export enum IPCEventType {
      * here rather than adding a seventh.
      */
     teamTransfer = "team.transfer",
+    /**
+     * One account's avatar image, read by the main process and handed back as a `data:` URL.
+     *
+     * A server serves avatars only to a signed-in caller, and a renderer never touches the network
+     * or the token, so the main process reads the image with the session's token and carries the
+     * bytes across. The path is the `avatarUrl` the server put in a profile, and it is checked
+     * against the one shape avatars are served under before anything is fetched.
+     */
+    teamAvatar = "team.avatar",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1952,6 +1961,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Host,
         data: TeamTransferRequest,
         response: TeamTransferOutcome;
+    };
+    [IPCEventType.teamAvatar]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; path: string },
+        response: { dataUrl: string | null };
     };
 };
 

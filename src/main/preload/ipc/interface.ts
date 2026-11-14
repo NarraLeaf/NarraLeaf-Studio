@@ -901,6 +901,9 @@ export const IPCInterface: RendererPreloadedInterface = {
          */
         transfer: (request: TeamTransferRequest) =>
             ipcClient.invoke(IPCEventType.teamTransfer, request) as Promise<RequestStatus<TeamTransferOutcome>>,
+        /** An account's avatar, as a `data:` URL, or null. `path` is the profile's `avatarUrl`. */
+        avatar: (remoteOrigin: string, path: string) =>
+            ipcClient.invoke(IPCEventType.teamAvatar, { remoteOrigin, path }) as Promise<RequestStatus<{ dataUrl: string | null }>>,
     },
 
     gameBuild: {

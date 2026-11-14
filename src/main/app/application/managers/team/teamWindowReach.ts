@@ -62,7 +62,8 @@ export type TeamAsk =
     | { op: "connections" }
     | { op: "call"; method: string }
     | { op: "subscribe" }
-    | { op: "transfer" };
+    | { op: "transfer" }
+    | { op: "avatar" };
 
 /**
  * The calls that only take back something this window said, and are answered even where the project

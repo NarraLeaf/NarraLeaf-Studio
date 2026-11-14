@@ -878,6 +878,11 @@ export const workspace = {
             viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
             dismiss: "了解",
         },
+        account: {
+            manage: "Team を管理",
+            online: "オンライン {count}",
+            onlineEmpty: "オンラインのメンバーはいません",
+        },
         notifications: {
             label: "通知",
             empty: "通知はない",

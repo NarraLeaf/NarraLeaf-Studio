@@ -161,6 +161,8 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.statusBar.hiddenItems": string[];
     /** The search pill in the title bar. With it hidden the command palette grows its own input. */
     "ui.titleBarSearch.visible": boolean;
+    /** Whether the signed-in Team account is drawn in the workspace title bar while connected. */
+    "ui.teamAvatar.visible": boolean;
     /**
      * Watermark background. `ui.backgroundImage` is a *file name* inside the userData/backgrounds
      * cache, never a path - the main process resolves it by basename so a renderer cannot steer
@@ -629,6 +631,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,
+    "ui.teamAvatar.visible": true,
     // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
     // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through
     // readBackgroundSettings - which necessarily carries the fallbacks. Repeating them here would

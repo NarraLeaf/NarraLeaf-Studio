@@ -1,5 +1,6 @@
 import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/settings/models";
 import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MENU_BAR_MODES } from "@/lib/settings/menuBarOptions";
+import { TEAM_AVATAR_VISIBLE_DEFAULT, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
@@ -1282,6 +1283,28 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The search box in the middle of the title bar.",
         descriptionKey: "settings.items.titleBarSearchVisible.description",
         defaultValue: true,
+    },
+    {
+        // Read by the workspace title bar (`TeamAccountAvatar`). Only meaningful while a window has
+        // a session with a Team server, so the row stays disabled until this machine is signed in
+        // to one: without an account there is nothing for it to show or hide.
+        key: TEAM_AVATAR_VISIBLE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show Team avatar",
+        labelKey: "settings.items.teamAvatarVisible.label",
+        description: "Your Team account in the title bar, while a project is connected to a Team server.",
+        descriptionKey: "settings.items.teamAvatarVisible.description",
+        defaultValue: TEAM_AVATAR_VISIBLE_DEFAULT,
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const listed = await getInterface().vcs.listServers().catch(() => null);
+            const signedIn = listed?.success === true && listed.data.servers.length > 0;
+            return signedIn
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.teamAvatarVisible.noServer" };
+        },
     },
     {
         // Nothing is stored under this key - the background's own settings (image, opacity, fill,

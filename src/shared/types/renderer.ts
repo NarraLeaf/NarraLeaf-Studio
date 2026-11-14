@@ -1332,6 +1332,11 @@ export interface RendererPreloadedInterface {
          * happen in the main process - see `@shared/types/teamTransfer`.
          */
         transfer(request: TeamTransferRequest): Promise<RequestStatus<TeamTransferOutcome>>;
+        /**
+         * An account's avatar, as a `data:` URL, or null where it has none or it could not be read.
+         * `path` is the `avatarUrl` the server put in a profile; the token stays in the main process.
+         */
+        avatar(remoteOrigin: string, path: string): Promise<RequestStatus<{ dataUrl: string | null }>>;
     };
 
     gameBuild: {

@@ -368,6 +368,11 @@ export const settings = {
             description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
             unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
         },
+        teamAvatarVisible: {
+            label: "Team のアバターを表示",
+            description: "プロジェクトが Team サーバーに接続しているとき、タイトルバーに Team アカウントのアバターを表示",
+            noServer: "Team サーバーにサインインすると使用可能",
+        },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
             description: "タイトルバー中央の検索欄",

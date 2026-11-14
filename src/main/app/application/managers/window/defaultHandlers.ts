@@ -39,6 +39,7 @@ import {
 } from "./handlers/vcsAction";
 import { VcsUseServerSessionHandler } from "./handlers/vcsServerSessionAction";
 import {
+    TeamAvatarHandler,
     TeamCallHandler,
     TeamConnectionsHandler,
     TeamOpenHandler,
@@ -557,6 +558,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new TeamUnsubscribeHandler(),
         // The sixth, and the only one that carries bytes rather than a question.
         new TeamTransferHandler(),
+        // An account's face, read with the session's token. See TeamAvatarHandler.
+        new TeamAvatarHandler(),
     new VcsSignInWithPasswordHandler(),
     new VcsSignInWithBrowserHandler(),
         new VcsPublishProjectHandler(),

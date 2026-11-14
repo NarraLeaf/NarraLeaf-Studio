@@ -352,6 +352,11 @@ export const settings = {
             description: "标题栏中「文件」「帮助」以及各面板菜单的位置",
             unsupportedPlatform: "在 macOS 上，这些菜单位于系统菜单栏",
         },
+        teamAvatarVisible: {
+            label: "显示 Team 头像",
+            description: "工程连接到 Team 服务器时，在标题栏显示你的 Team 账号头像",
+            noServer: "连接到 Team 服务器后可用",
+        },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
             description: "标题栏中间的搜索框",

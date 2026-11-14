@@ -374,6 +374,11 @@ export const settings = {
             description: "Where the File, Help and panel menus live in the title bar.",
             unsupportedPlatform: "On macOS these menus are on the system menu bar.",
         },
+        teamAvatarVisible: {
+            label: "Show Team avatar",
+            description: "Your Team account in the title bar, while a project is connected to a Team server.",
+            noServer: "Available once you are signed in to a Team server.",
+        },
         titleBarSearchVisible: {
             label: "Show title bar search box",
             description: "The search box in the middle of the title bar.",

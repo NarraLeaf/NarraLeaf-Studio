@@ -45,6 +45,7 @@ import { windowProjectPath } from "../../utils/windowProject";
 import { readSessionUses, sessionStanding, SESSION_USES_KEY } from "../vcs/serverSessionScope";
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
+import { fetchAvatar, isAvatarPath } from "./avatarRequest";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
 import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
@@ -95,6 +96,9 @@ function keyOf(subscription: Subscription): string {
     return `${subscription.remoteOrigin}\n${subscription.topic}`;
 }
 
+/** How many avatars {@link TeamManager.avatar} keeps. */
+const AVATAR_CACHE_LIMIT = 128;
+
 export class TeamManager {
     private readonly clients = new Map<string, TeamClientLike>();
 
@@ -117,6 +121,15 @@ export class TeamManager {
      * and two windows on one project must not carry the same file twice.
      */
     private readonly files: TeamTransfers;
+
+    /**
+     * Avatars already read, as `data:` URLs, keyed by server and path.
+     *
+     * Kept for as long as Studio runs because an avatar's path is its content hash: a changed
+     * picture is a new path, so nothing here can go stale. Bounded so a server with a great many
+     * people cannot grow it without limit; the oldest entry goes first.
+     */
+    private readonly avatars = new Map<string, Promise<string | null>>();
 
     constructor(app: BaseApp, servers: () => VcsServerSession[], stands: TeamStandIns = {}) {
         this.app = app;
@@ -215,6 +228,36 @@ export class TeamManager {
         const client = this.clients.get(remoteOrigin);
         if (client === undefined) return { ok: true, value: {} };
         return await client.call(method, params);
+    }
+
+    /**
+     * One account's avatar, as a `data:` URL, or null.
+     *
+     * Read with the session's token because a server serves avatars only to a signed-in caller.
+     * A failed read is not remembered, so a server that was briefly away is asked again next time.
+     */
+    avatar(remoteOrigin: string, path: string): Promise<string | null> {
+        if (!isAvatarPath(path)) return Promise.resolve(null);
+        const server = this.servers().find((each) => each.remoteOrigin === remoteOrigin);
+        const token = server === undefined ? null : this.tokenFor(remoteOrigin);
+        if (server === undefined || token === null) return Promise.resolve(null);
+
+        const key = `${remoteOrigin}\n${path}`;
+        const held = this.avatars.get(key);
+        if (held !== undefined) return held;
+        const reading = fetchAvatar({ authUrl: server.authUrl, token, userDataDir: this.app.getUserDataDir(), path })
+            .catch(() => null)
+            .then((dataUrl) => {
+                if (dataUrl === null) this.avatars.delete(key);
+                return dataUrl;
+            });
+        this.avatars.set(key, reading);
+        while (this.avatars.size > AVATAR_CACHE_LIMIT) {
+            const oldest = this.avatars.keys().next().value;
+            if (oldest === undefined) break;
+            this.avatars.delete(oldest);
+        }
+        return reading;
     }
 
     /* ------------------------------------------------------------------ who may ask */

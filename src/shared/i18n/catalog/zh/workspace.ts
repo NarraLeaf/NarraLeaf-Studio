@@ -863,6 +863,11 @@ export const workspace = {
             viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
             dismiss: "知道了",
         },
+        account: {
+            manage: "管理 Team",
+            online: "在线 {count}",
+            onlineEmpty: "暂无在线成员",
+        },
         notifications: {
             label: "通知",
             empty: "没有通知",

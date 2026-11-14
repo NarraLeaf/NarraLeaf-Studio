@@ -271,3 +271,25 @@ async function withinAssetContent(window: AppWindow, file: string): Promise<bool
     const props = window.getProps() as { projectPath?: string } | undefined;
     return fileIsInAssetContent(props?.projectPath, file);
 }
+
+/**
+ * One account's avatar, as a `data:` URL.
+ *
+ * Asked of the same reach as a call: a workspace for the server its project uses the sign-in at,
+ * the launcher as the account. The path is the profile's `avatarUrl` and is held to the shape
+ * avatars are served under before anything is fetched - see `avatarRequest.ts`.
+ */
+export class TeamAvatarHandler extends IPCHandler<IPCEventType.teamAvatar> {
+    readonly name = IPCEventType.teamAvatar;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, path: avatarPath }: IPCEvents[IPCEventType.teamAvatar]["data"],
+    ): Promise<RequestStatus<{ dataUrl: string | null }>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, remoteOrigin, { op: "avatar" });
+            return { dataUrl: await window.app.getTeamManager().avatar(remoteOrigin, avatarPath) };
+        });
+    }
+}

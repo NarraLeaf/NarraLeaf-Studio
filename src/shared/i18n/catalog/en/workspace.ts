@@ -952,6 +952,11 @@ export const workspace = {
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",
             dismiss: "Got it",
         },
+        account: {
+            manage: "Manage Team",
+            online: "Online {count}",
+            onlineEmpty: "Nobody is online",
+        },
         notifications: {
             label: "Notifications",
             empty: "No notifications",

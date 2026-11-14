@@ -16,6 +16,7 @@
 import { getInterface } from "@/lib/app/bridge";
 import {
     TeamMethod,
+    type TeamAccountProfile,
     type TeamAnchor,
     type TeamClientInstance,
     type TeamComment,
@@ -380,6 +381,51 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Mem
     const from = record(answered.value);
     if (members === null || from === null) return unreadable();
     return { ok: true, value: { members, total: count(from, "total") ?? members.length } };
+}
+
+/* ---------------------------------------------------------------- profiles */
+
+/** One profile, or null because what arrived was not one. */
+export function readProfile(value: unknown): TeamAccountProfile | null {
+    const from = record(value);
+    const inner = from === null ? null : (record(from["profile"]) ?? from);
+    if (inner === null) return null;
+    const username = text(inner, "username");
+    if (username === undefined) return null;
+    const bio = text(inner, "bio");
+    const avatarUrl = text(inner, "avatarUrl");
+    return {
+        username,
+        displayName: text(inner, "displayName") ?? username,
+        ...(bio === undefined ? {} : { bio }),
+        ...(avatarUrl === undefined ? {} : { avatarUrl }),
+    };
+}
+
+/** An account's profile: the caller's own when `username` is absent. */
+export async function getProfile(
+    remoteOrigin: string,
+    username?: string,
+): Promise<TeamOutcome<TeamAccountProfile>> {
+    const answered = await teamCall(
+        remoteOrigin,
+        TeamMethod.accountProfileGet,
+        username === undefined ? {} : { username },
+    );
+    if (!answered.ok) return answered;
+    const profile = readProfile(answered.value);
+    return profile === null ? unreadable() : { ok: true, value: profile };
+}
+
+/**
+ * An avatar as something an `<img>` can draw, or null.
+ *
+ * Read by the main process with the session's token - the server serves avatars to signed-in
+ * callers only, and this window never touches the network.
+ */
+export async function readAvatar(remoteOrigin: string, avatarUrl: string): Promise<string | null> {
+    const answered = await getInterface().team.avatar(remoteOrigin, avatarUrl).catch(() => null);
+    return answered?.success ? answered.data.dataUrl : null;
 }
 
 /* ---------------------------------------------------------------- conversations */

@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
+import { LiveSessionDialogHost, StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -940,12 +940,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                     controlBar={
                         <>
-                            {/* Who is in this project with you, left of the window's own controls -
-                                where an application puts the people you are in a document with. It is
-                                the only always-visible statement that a live session is running, and a
-                                session outlives every tab. */}
+                            {/* The Team side of the window, left of its own controls: notifications,
+                                and the signed-in account - drawn only while this window has a session
+                                with a Team server. The live session dialog has no control of its own
+                                here any more; the host only keeps it reachable from the frozen strip
+                                and the collaboration panel. */}
                             <TeamNotificationsBell />
-                            <LiveSessionPresence />
+                            <TeamAccountAvatar />
+                            <LiveSessionDialogHost />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}
                             <UpdateIndicator />

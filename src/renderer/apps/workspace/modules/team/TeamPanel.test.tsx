@@ -368,7 +368,7 @@ describe("what the server answered", () => {
      * It was one row here, with the only deliberate act in the panel drawn smaller than the address
      * above it, behind two clicks, in a dialog that is shut for the whole of a working day. A
      * session is a mode the window is in and it outlives every tab, so it belongs to the title bar
-     * and to a surface of its own - `LiveSessionPresence` and `LiveSessionDialog`, whose own file
+     * and to a surface of its own - `LiveSessionDialogHost` and `LiveSessionDialog`, whose own file
      * holds everything that used to be pinned here.
      */
     it("says nothing about live sessions", () => {
