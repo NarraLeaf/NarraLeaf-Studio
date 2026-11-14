@@ -18,7 +18,8 @@
     "milestones",
     "webhooks",
     "project-history",
-    "blobs"
+    "blobs",
+    "documents"
   ],
   "errorCodes": [
     "unknown-method",
@@ -82,6 +83,14 @@
     "live.requestJoin",
     "live.answerJoin",
     "live.say",
+    "doc.head",
+    "doc.effects",
+    "doc.base",
+    "doc.files",
+    "doc.file",
+    "doc.intent",
+    "doc.snapshot",
+    "doc.restore",
     "overlay.list",
     "overlay.put",
     "overlay.drop",
@@ -113,6 +122,7 @@
     "projectTodos": "project:{project}/todos",
     "projectReviews": "project:{project}/reviews",
     "projectMilestones": "project:{project}/milestones",
+    "projectDoc": "project:{project}/doc",
     "accountTodos": "account:{account}/todos",
     "accountNotifications": "account:{account}/notifications",
     "live": "live:{session}",
@@ -142,6 +152,7 @@
     "suggestion": 65536,
     "overlayBody": 65536,
     "livePayload": 16384,
+    "docIntent": 98304,
     "instanceField": 256,
     "pageBytes": 1048576,
     "answerBytes": 2097152

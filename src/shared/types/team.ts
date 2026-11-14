@@ -104,7 +104,14 @@ export type TeamCapability =
      * without it answers 404 to the transfer endpoints, so importing an asset during a
      * session against one is a file that never arrives.
      */
-    | "blobs";
+    | "blobs"
+    /**
+     * The server is the authority over a team project's documents: every edit is an intent
+     * (`doc.intent`) the server applies and publishes on the project's `doc` topic, and the
+     * history versions are snapshots it commits. Opening a team project on such a server is
+     * following that topic - there is no room to open or join.
+     */
+    | "documents";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -210,6 +217,11 @@ export function teamProjectMilestonesTopic(projectId: string): string {
     return `project:${projectId}/milestones`;
 }
 
+/** One project's applied edits, saved versions and restores (the `documents` capability). */
+export function teamProjectDocTopic(projectId: string): string {
+    return `project:${projectId}/doc`;
+}
+
 /** The signed-in account's own to-dos. Only that account may subscribe. */
 export function teamAccountTodosTopic(accountId: string): string {
     return `account:${accountId}/todos`;
@@ -289,6 +301,9 @@ export const TEAM_LIVE_PAYLOAD_LIMIT = 16 * 1024;
 
 /** The most any single field describing an installation may be. */
 export const TEAM_INSTANCE_FIELD_LIMIT = 256;
+
+/** The most one `doc.intent` may carry, as JSON: its document address and its operation. */
+export const TEAM_DOC_INTENT_LIMIT = 96 * 1024;
 
 /**
  * The most a server sends in one answer, and so the least this build's reader may hold.
@@ -749,6 +764,15 @@ export const TeamMethod = {
     /** Answer somebody who asked, which only the room's opener may do. */
     liveAnswerJoin: "live.answerJoin",
     liveSay: "live.say",
+    // A team project's documents, with the server as their authority (`documents`).
+    docHead: "doc.head",
+    docEffects: "doc.effects",
+    docBase: "doc.base",
+    docFiles: "doc.files",
+    docFile: "doc.file",
+    docIntent: "doc.intent",
+    docSnapshot: "doc.snapshot",
+    docRestore: "doc.restore",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
     overlayDrop: "overlay.drop",

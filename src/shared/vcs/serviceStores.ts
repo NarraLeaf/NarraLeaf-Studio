@@ -66,6 +66,12 @@ export const SERVICE_STORE_LOCATIONS = {
      */
     merge_decisions: "studio",
     /**
+     * Where this window stands in a team project its Team server holds: the last seq applied, and
+     * while it is offline the copy it last agreed on with the server. Studio state: the project's
+     * content is the server's, and this is only how far this machine has followed it.
+     */
+    team_docs: "studio",
+    /**
      * The project's characters - profiles, appearances, groups. Content the author
      * wrote, and the single largest thing in `editor/services/`. Moving it would take
      * the cast out of version control, which is the exact failure the default above is

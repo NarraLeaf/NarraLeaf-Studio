@@ -896,3 +896,30 @@ export function countAppTagReferences(
     }
     return counts;
 }
+
+/**
+ * A whole app-tag document brought to the shape it is kept in: the tags normalized, and each
+ * project-level default deleted rather than left empty when it says nothing. The editor's service
+ * and the Team server's project authority both end here, so the two keep one document.
+ */
+export function normalizeAppTagDocument(document: ProjectAppTagDocument): void {
+    document.tags = normalizeProjectAppTags(document.tags);
+    const pluginConfig = normalizeAppTagPluginConfig(document.pluginConfig);
+    if (hasAppTagPluginConfig(pluginConfig)) {
+        document.pluginConfig = pluginConfig;
+    } else {
+        delete document.pluginConfig;
+    }
+    const reachableScenes = normalizeAppTagReachableScenes(document.reachableScenes);
+    if (hasAppTagReachableScenes(reachableScenes)) {
+        document.reachableScenes = reachableScenes;
+    } else {
+        delete document.reachableScenes;
+    }
+    const endingSurfaceId = normalizeAppTagEndingSurfaceId(document.endingSurfaceId);
+    if (endingSurfaceId) {
+        document.endingSurfaceId = endingSurfaceId;
+    } else {
+        delete document.endingSurfaceId;
+    }
+}

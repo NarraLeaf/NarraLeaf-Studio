@@ -29,6 +29,7 @@ import {
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
+    TEAM_DOC_INTENT_LIMIT,
     TEAM_OVERLAY_BODY_LIMIT,
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
@@ -46,6 +47,7 @@ import {
     teamProjectTodosTopic,
     teamProjectReviewsTopic,
     teamProjectMilestonesTopic,
+    teamProjectDocTopic,
     teamAccountTodosTopic,
     teamAccountNotificationsTopic,
     teamProjectOverlayTopic,
@@ -92,6 +94,7 @@ const CAPABILITIES: TeamCapability[] = [
     "webhooks",
     "project-history",
     "blobs",
+    "documents",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
@@ -133,6 +136,7 @@ describe("the protocol contract", () => {
             "live",
             "project",
             "projectClients",
+            "projectDoc",
             "projectLive",
             "projectMembers",
             "projectMilestones",
@@ -163,6 +167,7 @@ describe("the protocol contract", () => {
         expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
         expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
         expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
+        expect(teamProjectDocTopic("abc")).toBe(contract.topics["projectDoc"]?.replace("{project}", "abc"));
         expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
         expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
@@ -184,6 +189,7 @@ describe("the protocol contract", () => {
             "anchorField",
             "answerBytes",
             "commentBody",
+            "docIntent",
             "instanceField",
             "livePayload",
             "overlayBody",
@@ -196,6 +202,7 @@ describe("the protocol contract", () => {
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
         expect(TEAM_LIVE_PAYLOAD_LIMIT).toBe(contract.limits["livePayload"]);
+        expect(TEAM_DOC_INTENT_LIMIT).toBe(contract.limits["docIntent"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
         expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
 
