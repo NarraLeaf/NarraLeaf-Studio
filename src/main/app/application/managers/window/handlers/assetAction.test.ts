@@ -338,6 +338,34 @@ describe("AssetExportToFolderHandler", () => {
         }
     });
 
+    it.runIf(process.platform === "darwin" || process.platform === "linux")("stops a bundle export when its opened directory is moved", async () => {
+        const bundle = path.join(project, "assets", "content", "moving-bundle");
+        const source = path.join(bundle, "model.json");
+        const target = path.join(exportDir, "model");
+        const outside = path.join(root, "moved-bundle");
+        await fs.mkdir(bundle, { recursive: true });
+        await fs.writeFile(source, "model");
+        const originalStat = fs.stat.bind(fs);
+        let swapped = false;
+        const probe = vi.spyOn(fs, "stat").mockImplementation(async (...args: Parameters<typeof fs.stat>) => {
+            if (!swapped && String(args[0]) === source) {
+                swapped = true;
+                await fs.rename(target, outside);
+            }
+            return originalStat(...args);
+        });
+        try {
+            const result = await handler.handle(makeWindow(), {
+                entries: [{ sourcePath: bundle, relativePath: "model", isDirectory: true }],
+            });
+            expect(swapped).toBe(true);
+            expect(result).toMatchObject({ success: true, data: { exportedCount: 0, failures: [expect.anything()] } });
+            await expect(fs.access(path.join(outside, "model.json"))).rejects.toThrow();
+        } finally {
+            probe.mockRestore();
+        }
+    });
+
     it("requires recursive read access before exporting a bundle", async () => {
         const bundle = path.join(project, "assets", "content", "m1");
         await fs.mkdir(bundle, { recursive: true });
