@@ -22,9 +22,9 @@ export type FileStorageLifetime = "once" | "session";
 let getDarwinHandlePath: ((fd: number, command: number, kind: string, output: Buffer) => number) | undefined;
 let getWindowsHandlePath: ((fd: number) => string | null) | undefined;
 
-function windowsPathFromFileHandle(fd: number): string | null {
+async function windowsPathFromFileHandle(fd: number): Promise<string | null> {
     if (!getWindowsHandlePath) {
-        const koffi = require("koffi") as typeof import("koffi");
+        const koffi = await import("koffi");
         const getOsHandle = koffi.load(null).func("uv_get_osfhandle", "intptr_t", ["int"]);
         const getFinalPath = koffi.load("kernel32.dll").func(
             "GetFinalPathNameByHandleW", "uint32_t", ["intptr_t", "void *", "uint32_t", "uint32_t"],
@@ -248,7 +248,7 @@ export class StorageManager extends Manager {
             let openedPath: string;
             if (process.platform === "darwin") {
                 if (!getDarwinHandlePath) {
-                    const koffi = require("koffi") as typeof import("koffi");
+                    const koffi = await import("koffi");
                     getDarwinHandlePath = koffi.load(null).func("fcntl", "int", ["int", "int", "..."]);
                 }
                 const buffer = Buffer.alloc(1024);
@@ -257,7 +257,7 @@ export class StorageManager extends Manager {
             } else if (process.platform === "linux") {
                 openedPath = await fs.realpath(`/proc/self/fd/${handle.fd}`);
             } else if (process.platform === "win32") {
-                const resolved = windowsPathFromFileHandle(handle.fd);
+                const resolved = await windowsPathFromFileHandle(handle.fd);
                 if (!resolved) return false;
                 openedPath = resolved;
             } else {
