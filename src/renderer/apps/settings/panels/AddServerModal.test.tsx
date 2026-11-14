@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsServerDiscovery, VcsServerSession } from "@shared/types/vcs";
-import { AddServerModal, type PasswordSignIn } from "./AddServerModal";
+import { AddServerModal, type BrowserSignIn, type PasswordSignIn } from "./AddServerModal";
 
 /**
  * Adding a server, from an address to a sentence about what was joined.
@@ -131,7 +131,11 @@ function submit(): void {
 }
 
 /** Open the dialog and carry it as far as the identity step. */
-async function reachIdentity(capabilities: string[], signInWithPassword?: PasswordSignIn) {
+async function reachIdentity(
+    capabilities: string[],
+    signInWithPassword?: PasswordSignIn,
+    signInWithBrowser?: BrowserSignIn,
+) {
     bridge.probeServer.mockResolvedValue({
         success: true,
         data: { kind: "ready", address: ADDRESS, discovery: discovery(capabilities) },
@@ -141,6 +145,7 @@ async function reachIdentity(capabilities: string[], signInWithPassword?: Passwo
             onClose={onClose}
             onAdded={onAdded}
             {...(signInWithPassword ? { signInWithPassword } : {})}
+            {...(signInWithBrowser ? { signInWithBrowser } : {})}
         />,
     );
     type("field-address", ADDRESS);
@@ -488,6 +493,46 @@ describe("leaving", () => {
         submit();
 
         expect(onClose).toHaveBeenCalledTimes(1);
+        expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
+describe("signing in through the browser", () => {
+    const WITH_OAUTH = [...WITH_PASSWORD, "oauth"];
+
+    it("leads with the browser where the server offers it, and keeps the others a click away", async () => {
+        await reachIdentity(WITH_OAUTH);
+
+        expect(seam("identity-browser")).not.toBeNull();
+        expect(seam("use-password")).not.toBeNull();
+        expect(seam("use-token")).not.toBeNull();
+        fireEvent.click(seam("use-password")!);
+        expect(seam("identity-password")).not.toBeNull();
+        expect(seam("use-browser")).not.toBeNull();
+    });
+
+    it("never offers the browser to a server that did not say it can", async () => {
+        await reachIdentity(WITH_PASSWORD);
+        expect(seam("identity-browser")).toBeNull();
+        expect(seam("use-browser")).toBeNull();
+    });
+
+    it("stores the server with the token the browser brought back", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session("Blackwood Studio"), servers: [] } });
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        const browser = vi.fn<BrowserSignIn>(() => Promise.resolve({ ok: true, token: "browser-token" }));
+        await reachIdentity(WITH_OAUTH, undefined, browser);
+
+        submit();
+
+        await waitFor(() => expect(bridge.addServer).toHaveBeenCalledWith(AUTH, ORIGIN, "browser-token", expect.anything()));
+        expect(browser).toHaveBeenCalledWith({ authUrl: AUTH });
+    });
+
+    it("says the person denied it, and stores nothing", async () => {
+        await reachIdentity(WITH_OAUTH, undefined, () => Promise.resolve({ ok: false, reason: "denied" }));
+        submit();
+        await waitFor(() => expect(seam("problem")?.textContent).toBe("settings.servers.browserProblems.denied"));
         expect(bridge.addServer).not.toHaveBeenCalled();
     });
 });

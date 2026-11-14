@@ -1,5 +1,7 @@
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
+import os from "os";
 import path from "path";
+import { shell } from "electron";
 import type {
     VcsAvailability,
     VcsBlobRequest,
@@ -16,6 +18,7 @@ import type {
     VcsMergeSideChoice,
     VcsMergeState,
     VcsPasswordSignInOutcome,
+    VcsBrowserSignInOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsRepositoryInfo,
@@ -92,7 +95,15 @@ import {
     listServerProjectsOverSession,
     type TeamSessionCall,
 } from "./serverProjectsSession";
-import { forgetServerToken, recallServerToken, rememberServerToken } from "./serverTokens";
+import {
+    forgetServerRefreshToken,
+    forgetServerToken,
+    recallServerRefreshToken,
+    recallServerToken,
+    rememberServerRefreshToken,
+    rememberServerToken,
+} from "./serverTokens";
+import { refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
 // Pure policy over the global state, with nothing of Lore's in it: which project may act as which
 // account. See that module's header for the rule.
 import {
@@ -525,6 +536,15 @@ const STORE_OPEN_TIMEOUT_MS = 2_000;
  */
 const MAX_CACHED_REVISION_DIFFS = 24;
 
+/** How long after start the first renewal pass runs. */
+const RENEW_FIRST_DELAY_MS = 15_000;
+/** How often renewal looks again. */
+const RENEW_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** A browser sign-in is renewed once its token has less than this left. */
+const RENEW_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long a refresh token waits for `addServer` before it is dropped. */
+const PENDING_REFRESH_MS = 10 * 60 * 1000;
+
 /**
  * A session with what the server said about itself written onto it.
  *
@@ -596,7 +616,31 @@ export class VcsManager extends Manager {
         // Nothing eager. Probing availability would load a 29MB native library on
         // every launch for a feature many projects never touch, and opening a
         // store takes Lore's exclusive repository lock. Both wait for first use.
+        //
+        // The one thing started here is renewing browser sign-ins, which reads two
+        // sealed values and asks a server only when a token is near its end.
+        const renew = (): void => {
+            void this.renewServerTokens().catch((error: unknown) => {
+                this.app.logger.warn("[Vcs] Renewing sign-ins failed:", error instanceof Error ? error.message : String(error));
+            });
+        };
+        this.renewal = setTimeout(renew, RENEW_FIRST_DELAY_MS);
+        this.renewal.unref?.();
+        this.renewalTimer = setInterval(renew, RENEW_INTERVAL_MS);
+        this.renewalTimer.unref?.();
     }
+
+    /** The first renewal pass, a little after start so it never competes with the launch. */
+    private renewal: NodeJS.Timeout | undefined;
+    /** The renewal passes after it. */
+    private renewalTimer: NodeJS.Timeout | undefined;
+
+    /**
+     * Refresh tokens from browser sign-ins, held between the browser handing a token back
+     * and `addServer` learning which server it is for. Keyed by the token, which is the one
+     * thing both calls have; dropped after a few minutes either way.
+     */
+    private readonly pendingRefresh = new Map<string, { refreshToken: string; at: number }>();
 
     /** Whether this host can run version control at all, and why not if it cannot. */
     public async getAvailability(): Promise<VcsAvailability> {
@@ -2344,6 +2388,15 @@ export class VcsManager extends Manager {
         // Sealed here rather than at the sign-in, because this is the one path that
         // has the token and knows which server it turned out to be for. A machine
         // that cannot seal keeps none, and the calls that want one say so.
+        // A browser sign-in brought a refresh token with it; a pasted or password token did
+        // not, and replacing a browser sign-in with one of those ends the old refresh token.
+        const pending = this.pendingRefresh.get(options.token);
+        this.pendingRefresh.delete(options.token);
+        if (pending !== undefined) {
+            rememberServerRefreshToken(this.app.getGlobalState(), signedIn.remoteOrigin, pending.refreshToken);
+        } else {
+            forgetServerRefreshToken(this.app.getGlobalState(), signedIn.remoteOrigin);
+        }
         if (!rememberServerToken(this.app.getGlobalState(), signedIn.remoteOrigin, options.token)) {
             this.app.logger.warn(
                 "[Vcs] Kept no token for", signedIn.remoteOrigin,
@@ -2429,6 +2482,7 @@ export class VcsManager extends Manager {
             .filter((other) => other.remoteOrigin !== stored.remoteOrigin);
         this.writeStoredServerSessions(servers);
         forgetServerToken(this.app.getGlobalState(), stored.remoteOrigin);
+        forgetServerRefreshToken(this.app.getGlobalState(), stored.remoteOrigin);
         // Every project's answer about this server goes with it, the noes included. A server added
         // again later is a new question for each project, asked about whichever account it is then.
         this.app.getGlobalState().set(SESSION_USES_KEY, withoutSessionUsesAt(this.sessionUses(), stored.remoteOrigin));
@@ -2465,6 +2519,67 @@ export class VcsManager extends Manager {
             outcome.ok ? "accepted" : outcome.reason,
         );
         return outcome;
+    }
+
+    /**
+     * Sign in through the system browser, on a server that offers it (`oauth`).
+     *
+     * Answers the token exactly as a password sign-in does, so the caller adds the server
+     * with it the same way. The refresh token that came with it is held here until that
+     * happens, and sealed beside the token then.
+     */
+    public async signInWithBrowser(authUrl: string): Promise<VcsBrowserSignInOutcome> {
+        const outcome = await signInWithBrowser({
+            authUrl,
+            deviceName: `${os.hostname().replace(/\.local$/, "")}`,
+            userDataDir: this.app.getUserDataDir(),
+            openExternal: (url) => shell.openExternal(url),
+        });
+        this.app.logger.info("[Vcs] Browser sign-in", authUrl, outcome.ok ? "accepted" : outcome.reason);
+        if (!outcome.ok) return outcome;
+        const now = Date.now();
+        for (const [token, held] of this.pendingRefresh) {
+            if (now - held.at > PENDING_REFRESH_MS) this.pendingRefresh.delete(token);
+        }
+        this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: now });
+        return { ok: true, token: outcome.token };
+    }
+
+    /**
+     * Renew every browser sign-in whose token is near its end.
+     *
+     * The refresh token is spent by the call, so the new pair is sealed before anything
+     * else happens. A server that refuses has signed this device out — from its console,
+     * or by revoking the account's tokens — and the refresh token is dropped: the next
+     * thing that needs the server asks the person to sign in again, as it would have.
+     */
+    public async renewServerTokens(now: number = Date.now()): Promise<void> {
+        const state = this.app.getGlobalState();
+        for (const session of this.storedServerSessions()) {
+            const refreshToken = recallServerRefreshToken(state, session.remoteOrigin);
+            if (refreshToken === null) continue;
+            const token = recallServerToken(state, session.remoteOrigin);
+            const expires = token === null ? null : tokenExpiry(token);
+            if (expires !== null && expires - now > RENEW_BEFORE_MS) continue;
+
+            const renewed = await refreshWithServer({
+                authUrl: session.authUrl,
+                refreshToken,
+                userDataDir: this.app.getUserDataDir(),
+            });
+            if (!renewed.ok) {
+                if (renewed.reason === "refused") {
+                    forgetServerRefreshToken(state, session.remoteOrigin);
+                    this.app.logger.warn("[Vcs] The sign-in to", session.remoteOrigin, "was ended by the server");
+                }
+                continue;
+            }
+            rememberServerRefreshToken(state, session.remoteOrigin, renewed.refreshToken);
+            rememberServerToken(state, session.remoteOrigin, renewed.token);
+            this.app.logger.info("[Vcs] Renewed the sign-in to", session.remoteOrigin);
+            // The version-control backend holds a copy of its own; hand it the new one.
+            await this.presentStoredToken(session).catch(() => false);
+        }
     }
 
     /**

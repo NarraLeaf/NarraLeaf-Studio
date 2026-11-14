@@ -501,6 +501,17 @@ export const settings = {
         passwordLabel: "Password",
         useToken: "Use an access token instead",
         usePassword: "Use a username and password instead",
+        useBrowser: "Sign in with the browser instead",
+        browserLead: "{name}'s sign-in page opens in your browser. Sign in and allow Studio, and you come back here.",
+        browserSignIn: "Sign in with browser",
+        browserWaiting: "Finish signing in in your browser…",
+        browserProblems: {
+            denied: "The sign-in was denied in the browser.",
+            timeout: "The browser sign-in took too long. Try again.",
+            refused: "The server did not accept this sign-in. Try again.",
+            unreachable: "The server could not be reached.",
+            unknown: "The browser sign-in did not finish.",
+        },
         // ONE sentence for every refusal, because the server sends one: an unknown
         // username, a wrong password, a disabled account and a service account are the
         // same answer on the wire, and copy that told them apart would be telling a

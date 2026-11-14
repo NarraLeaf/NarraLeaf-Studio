@@ -29,6 +29,12 @@ import type { TranslationKey } from "@shared/i18n";
 const PASSWORD_SIGN_IN_CAPABILITY = "password-sign-in";
 
 /**
+ * The capability a server answers with when Studio may sign in through the browser
+ * instead. Where it is offered it is the first thing shown: nothing secret is typed here.
+ */
+const OAUTH_CAPABILITY = "oauth";
+
+/**
  * The sentence for each way a token can be refused.
  *
  * The backend reports four unrelated transport failures with one string, so the reason
@@ -109,6 +115,28 @@ export type PasswordSignIn = (request: PasswordSignInRequest) => Promise<Passwor
 export const passwordSignInUnavailable: PasswordSignIn = () =>
     Promise.resolve({ ok: false, reason: "unavailable" });
 
+/** Why a browser sign-in did not finish. */
+export type BrowserSignInProblem = "denied" | "timeout" | "unreachable" | "refused" | "unknown";
+
+export type BrowserSignInOutcome =
+    | { ok: true; token: string }
+    | { ok: false; reason: BrowserSignInProblem };
+
+/** How the browser sign-in is carried out. Taken as a parameter, like the password one. */
+export type BrowserSignIn = (request: { authUrl: string }) => Promise<BrowserSignInOutcome>;
+
+/** What a browser sign-in comes to with nothing to carry it. */
+export const browserSignInUnavailable: BrowserSignIn = () =>
+    Promise.resolve({ ok: false, reason: "unknown" });
+
+const BROWSER_PROBLEM_KEYS: Record<BrowserSignInProblem, TranslationKey> = {
+    denied: "settings.servers.browserProblems.denied",
+    timeout: "settings.servers.browserProblems.timeout",
+    refused: "settings.servers.browserProblems.refused",
+    unreachable: "settings.servers.browserProblems.unreachable",
+    unknown: "settings.servers.browserProblems.unknown",
+};
+
 /** The sentence for each way a password can fail to become a token. */
 const PASSWORD_PROBLEM_KEYS: Record<PasswordSignInProblem, TranslationKey> = {
     // One sentence for four refusals, because the server sends one.
@@ -170,6 +198,13 @@ export interface AddServerModalProps {
     onAdded?: (session: VcsServerSession) => void;
     /** How a password becomes a token. See {@link PasswordSignIn}. */
     signInWithPassword?: PasswordSignIn;
+    /** How a browser sign-in becomes a token. See {@link BrowserSignIn}. */
+    signInWithBrowser?: BrowserSignIn;
+    /**
+     * An address to start with, from a `narraleaf://team/connect` link. Only filled in:
+     * the person still reaches it, sees what it is and signs in, as with a typed one.
+     */
+    initialAddress?: string | undefined;
 }
 
 /**
@@ -198,16 +233,18 @@ export function AddServerModal({
     onClose,
     onAdded,
     signInWithPassword = passwordSignInUnavailable,
+    signInWithBrowser = browserSignInUnavailable,
+    initialAddress,
 }: AddServerModalProps) {
     const { t, tn } = useTranslation();
     const [stage, setStage] = useState<Stage>({ kind: "address" });
-    const [address, setAddress] = useState("");
+    const [address, setAddress] = useState(initialAddress ?? "");
     const [token, setToken] = useState("");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    // Whether the reader asked for the token instead. Only ever consulted where a
-    // password is on offer at all, so a server that wants a token needs no answer here.
-    const [tokenChosen, setTokenChosen] = useState(false);
+    // Which way of signing in the reader picked, where they picked one. Unpicked, the
+    // first the server offers is shown: the browser, then a password, then a token.
+    const [chosen, setChosen] = useState<"browser" | "password" | "token" | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<TranslationKey | null>(null);
     // The project count lands after its step is already drawn, and the dialog can be gone
@@ -220,7 +257,15 @@ export function AddServerModal({
 
     const offersPassword = stage.kind === "identity"
         && stage.discovery.capabilities.includes(PASSWORD_SIGN_IN_CAPABILITY);
-    const method: "password" | "token" = offersPassword && !tokenChosen ? "password" : "token";
+    const offersBrowser = stage.kind === "identity"
+        && stage.discovery.capabilities.includes(OAUTH_CAPABILITY);
+    const offered: ("browser" | "password" | "token")[] = [
+        ...(offersBrowser ? ["browser" as const] : []),
+        ...(offersPassword ? ["password" as const] : []),
+        "token",
+    ];
+    const method: "browser" | "password" | "token" =
+        chosen !== null && offered.includes(chosen) ? chosen : (offered[0] ?? "token");
 
     /**
      * Ask the server what it holds, once it is stored.
@@ -349,6 +394,21 @@ export function AddServerModal({
         setBusy(false);
     }, [busy, password, signInWithPassword, stage, storeServer, username]);
 
+    const addWithBrowser = useCallback(async () => {
+        if (stage.kind !== "identity" || busy) return;
+        setBusy(true);
+        setError(null);
+        const outcome = await signInWithBrowser({ authUrl: stage.discovery.auth.url })
+            .catch((): BrowserSignInOutcome => ({ ok: false, reason: "unknown" }));
+        if (!outcome.ok) {
+            setError(BROWSER_PROBLEM_KEYS[outcome.reason]);
+            setBusy(false);
+            return;
+        }
+        await storeServer(stage.discovery, outcome.token);
+        setBusy(false);
+    }, [busy, signInWithBrowser, stage, storeServer]);
+
     const submitOnEnter = (run: () => Promise<void>) => (event: KeyboardEvent) => {
         if (event.key === "Enter") {
             event.preventDefault();
@@ -439,7 +499,15 @@ export function AddServerModal({
                             address: stage.address,
                         })}
                     </p>
-                    {method === "password" ? (
+                    {method === "browser" ? (
+                        <div data-servers-seam="identity-browser" className="flex flex-col gap-2">
+                            <p className="text-xs text-fg-muted">
+                                {t(busy ? "settings.servers.browserWaiting" : "settings.servers.browserLead", {
+                                    name: stage.discovery.name,
+                                })}
+                            </p>
+                        </div>
+                    ) : method === "password" ? (
                         <div data-servers-seam="identity-password" className="flex flex-col gap-2">
                             <div>
                                 {/* Named on the control rather than through `htmlFor`: `FieldLabel`
@@ -495,26 +563,29 @@ export function AddServerModal({
                         </div>
                     )}
                     {sentence}
-                    {offersPassword && (
+                    {offered.filter(other => other !== method).map(other => (
                         <Button
+                            key={other}
                             size="sm"
                             variant="ghost"
                             className="-ml-2 self-start"
-                            data-servers-seam={method === "password" ? "use-token" : "use-password"}
+                            data-servers-seam={`use-${other}`}
                             disabled={busy}
                             onClick={() => {
                                 // The sentence on screen was about the half being left, and a
                                 // password typed into it has no business outliving it.
                                 setError(null);
                                 setPassword("");
-                                setTokenChosen(method === "password");
+                                setChosen(other);
                             }}
                         >
-                            {t(method === "password"
-                                ? "settings.servers.useToken"
-                                : "settings.servers.usePassword")}
+                            {t(other === "browser"
+                                ? "settings.servers.useBrowser"
+                                : other === "password"
+                                    ? "settings.servers.usePassword"
+                                    : "settings.servers.useToken")}
                         </Button>
-                    )}
+                    ))}
                 </div>
             );
         }
@@ -544,6 +615,18 @@ export function AddServerModal({
     function footer() {
         if (stage.kind === "joined" || stage.kind === "no-account") {
             return doneButton;
+        }
+        if (stage.kind === "identity" && method === "browser") {
+            return (
+                <>
+                    {leaveButton}
+                    {submitButton(
+                        busy ? "settings.servers.browserWaiting" : "settings.servers.browserSignIn",
+                        !busy,
+                        addWithBrowser,
+                    )}
+                </>
+            );
         }
         if (stage.kind === "identity" && method === "password") {
             return (

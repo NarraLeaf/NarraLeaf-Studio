@@ -50,7 +50,7 @@ import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Button } from "@/lib/components/elements/Button";
-import { ServerRow, serverDisplayName, serverHost, signInWithPassword, useServers } from "@/lib/vcs/servers";
+import { ServerRow, serverDisplayName, serverHost, signInWithBrowser, signInWithPassword, useServers } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import { getInterface } from "@/lib/app/bridge";
 import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
@@ -1269,6 +1269,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                     }}
                     onClose={() => setAdding(false)}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
 

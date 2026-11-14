@@ -17,6 +17,7 @@ import type {
     VcsLocalRepository,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsBrowserSignInOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsServerSession,
@@ -682,6 +683,22 @@ export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSig
     ): Promise<RequestStatus<VcsPasswordSignInOutcome>> {
         return this.tryUse(async () =>
             window.app.getVcsManager().signInWithPassword(authUrl, username, password));
+    }
+}
+
+/**
+ * Sign in through the system browser. See `vcs/serverOAuth.ts`: nothing crosses this
+ * boundary but the endpoint going in and a token coming out.
+ */
+export class VcsSignInWithBrowserHandler extends IPCHandler<IPCEventType.vcsSignInWithBrowser> {
+    readonly name = IPCEventType.vcsSignInWithBrowser;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl }: IPCEvents[IPCEventType.vcsSignInWithBrowser]["data"],
+    ): Promise<RequestStatus<VcsBrowserSignInOutcome>> {
+        return this.tryUse(async () => window.app.getVcsManager().signInWithBrowser(authUrl));
     }
 }
 

@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, FieldLabel } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import { ServerRow, signInWithPassword } from "@/lib/vcs/servers";
+import { ServerRow, signInWithBrowser, signInWithPassword } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { useOnboardingServers } from "../onboardingServers";
@@ -88,6 +88,7 @@ export function TeamStep() {
                     onAdded={() => void reload()}
                     onClose={leave}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
         </div>

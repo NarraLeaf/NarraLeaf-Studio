@@ -1,5 +1,6 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
+import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 import type { ProjectTrustRecord } from "./projectTrust";
 import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
@@ -123,6 +124,7 @@ import type {
     VcsServerDescription,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsBrowserSignInOutcome,
     VcsPublishOutcome,
     VcsProjectServerSession,
     VcsServerSession,
@@ -173,6 +175,8 @@ export enum IPCEventType {
     appWindowControlAbility = "app.window.getControlAbility",
     appWindowGetFullscreen = "app.window.getFullscreen",
     appWindowFullscreenChanged = "app.window.fullscreenChanged",
+    appDeepLink = "app.deepLink",
+    appTakeDeepLink = "app.takeDeepLink",
     appWindowProps = "app.window.props",
     appInfo = "app.info",
     appClaimExperimentalNotice = "app.claimExperimentalNotice",
@@ -504,6 +508,7 @@ export enum IPCEventType {
     vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsSignInWithPassword = "vcs.signInWithPassword",
+    vcsSignInWithBrowser = "vcs.signInWithBrowser",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
@@ -766,6 +771,26 @@ export type IPCEvents = {
         consumer: IPCType.Client,
         data: { isFullscreen: boolean },
         response: never;
+    };
+    /**
+     * A `narraleaf://` link reached Studio while the home screen was open. Sent to the
+     * launcher only; see `shared/utils/teamDeepLink.ts` for what a link may ask.
+     */
+    [IPCEventType.appDeepLink]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { link: TeamDeepLink },
+        response: never;
+    };
+    /**
+     * The link that opened the home screen, if one did — asked once as it mounts, because a
+     * link that launched Studio arrives before there is a window to send it to.
+     */
+    [IPCEventType.appTakeDeepLink]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { link: TeamDeepLink | null };
     };
     [IPCEventType.appWindowProps]: {
         type: IPCMessageType.request,
@@ -1742,6 +1767,18 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { authUrl: string; username: string; password: string },
         response: VcsPasswordSignInOutcome;
+    };
+    /**
+     * Sign in through the system browser, on a server that announces `oauth`.
+     *
+     * **Goes to the network and opens the browser**, then waits — up to five minutes —
+     * for the person to approve there. Answers a token as the password sign-in does.
+     */
+    [IPCEventType.vcsSignInWithBrowser]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string };
+        response: VcsBrowserSignInOutcome;
     };
     /**
      * Put the project that is open on to a server: register it, connect it, send it.

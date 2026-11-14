@@ -1,4 +1,5 @@
 import { Namespace } from "@shared/types/ipc";
+import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -70,7 +71,7 @@ import type {
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type {
     RendererAgentBridgeBootstrapInterface,
     RendererAgentBridgeInterface,
@@ -450,6 +451,9 @@ export const IPCInterface: RendererPreloadedInterface = {
         launchProjectWizard: (props: WindowProps[WindowAppType.ProjectWizard]) =>
             ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>,
         promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
+        takeDeepLink: () => ipcClient.invoke(IPCEventType.appTakeDeepLink, {}),
+        onDeepLink: (handler: (payload: { link: TeamDeepLink }) => void) =>
+            ipcClient.onMessage(IPCEventType.appDeepLink, handler),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
@@ -829,6 +833,8 @@ export const IPCInterface: RendererPreloadedInterface = {
          */
         signInWithPassword: (authUrl: string, username: string, password: string) =>
             ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
+        signInWithBrowser: (authUrl: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignInWithBrowser, { authUrl }) as Promise<RequestStatus<VcsBrowserSignInOutcome>>,
         /**
          * Put this project on to a server: register it, connect it, send it.
          *

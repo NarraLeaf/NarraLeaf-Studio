@@ -110,3 +110,64 @@ export function forgetServerToken(state: TokenStore, remoteOrigin: string): void
     delete tokens[remoteOrigin];
     state.set(KEY, tokens);
 }
+
+/* ------------------------------------------------------------- refresh tokens */
+
+/**
+ * Where the sealed refresh tokens live, beside the tokens and keyed the same way.
+ *
+ * Only a server signed in to through the browser has one. It is what lets the token be
+ * renewed without asking the person again, and it is spent on each use — so the one kept
+ * here is always the latest.
+ */
+const REFRESH_KEY = "versionControl.serverRefreshTokens";
+
+/** The two operations the refresh store needs, under its own key. */
+export interface RefreshTokenStore {
+    get: (key: "versionControl.serverRefreshTokens") => unknown;
+    set: (key: "versionControl.serverRefreshTokens", value: Record<string, string>) => void;
+}
+
+function sealedRefreshTokens(state: RefreshTokenStore): Record<string, string> {
+    const stored: unknown = state.get(REFRESH_KEY);
+    if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return {};
+    return Object.fromEntries(
+        Object.entries(stored as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    );
+}
+
+export function rememberServerRefreshToken(
+    state: RefreshTokenStore,
+    remoteOrigin: string,
+    refreshToken: string,
+    sealer: SecretSealer = electronSealer,
+): boolean {
+    if (!sealer.isEncryptionAvailable()) return false;
+    const tokens = sealedRefreshTokens(state);
+    tokens[remoteOrigin] = sealer.encryptString(refreshToken).toString("base64");
+    state.set(REFRESH_KEY, tokens);
+    return true;
+}
+
+export function recallServerRefreshToken(
+    state: RefreshTokenStore,
+    remoteOrigin: string,
+    sealer: SecretSealer = electronSealer,
+): string | null {
+    const sealed = sealedRefreshTokens(state)[remoteOrigin];
+    if (sealed === undefined || !sealer.isEncryptionAvailable()) return null;
+    try {
+        const token = sealer.decryptString(Buffer.from(sealed, "base64"));
+        return token === "" ? null : token;
+    } catch {
+        return null;
+    }
+}
+
+export function forgetServerRefreshToken(state: RefreshTokenStore, remoteOrigin: string): void {
+    const tokens = sealedRefreshTokens(state);
+    if (!(remoteOrigin in tokens)) return;
+    delete tokens[remoteOrigin];
+    state.set(REFRESH_KEY, tokens);
+}
