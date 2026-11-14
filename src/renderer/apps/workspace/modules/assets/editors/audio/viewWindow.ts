@@ -54,5 +54,6 @@ export function ensureVisible(view: SampleRange, totalSamples: number, sample: n
         return view;
     }
     const span = view.end - view.start;
-    return clampView({ start: sample - Math.round(span * 0.1), end: sample + span }, totalSamples);
+    const start = sample - Math.round(span * 0.1);
+    return clampView({ start, end: start + span }, totalSamples);
 }

@@ -1,20 +1,20 @@
-import type { PsdBakeTarget, PsdFingerprintSlot } from "@shared/types/psdImport";
-import { joinPath, type ImportPlan, type PsdLeaf } from "@shared/utils/psdLayerPlan";
+import type { PsdBakeTarget, PsdFingerprintSlot, PsdLayerReference } from "@shared/types/psdImport";
+import { matchPsdFingerprintSlots, psdLayerKey, psdLayerReference, type ImportPlan, type PsdLeaf } from "@shared/utils/psdLayerPlan";
 import type { CharacterAppearance } from "./CharacterAppearance";
 
 /** The asset a baked PSD layer became, by its layer path. */
-export type BakedAssetLookup = (path: string[]) => string | null;
+export type BakedAssetLookup = (ref: PsdLayerReference) => string | null;
 
 /** What a slot is called, for naming the baked files and therefore the assets. */
 function slotLabels(plan: ImportPlan): Map<string, { slot: string; tag?: string }> {
     const labels = new Map<string, { slot: string; tag?: string }>();
     for (const slot of plan.slots) {
         if (slot.kind === "constant") {
-            labels.set(joinPath(slot.leaf.path), { slot: slot.name });
+            labels.set(psdLayerKey(slot.leaf), { slot: slot.name });
             continue;
         }
         for (const option of slot.options) {
-            labels.set(joinPath(option.leaf.path), { slot: slot.axis, tag: option.tag });
+            labels.set(psdLayerKey(option.leaf), { slot: slot.axis, tag: option.tag });
         }
     }
     return labels;
@@ -35,7 +35,7 @@ export function nameBakeTargets(
     const labels = slotLabels(plan);
     const prefix = characterName.trim() || "character";
     return targets.map(target => {
-        const label = labels.get(joinPath(target.path));
+        const label = labels.get(psdLayerKey(target));
         if (!label) return target;
         return { ...target, name: [prefix, label.slot, label.tag].filter(Boolean).join("_") };
     });
@@ -46,25 +46,27 @@ function artLeaves(plan: ImportPlan): PsdLeaf[] {
     return plan.slots.flatMap(slot => (slot.kind === "constant" ? [slot.leaf] : slot.options.map(o => o.leaf)));
 }
 
-/**
- * How much of this import lands on layers that already exist.
- *
- * The wizard shows this before anything is baked, because "12 layers refreshed" and "12 layers
- * added" are very different things to be about to do to a character.
- */
-export function summarisePlan(
-    appearance: CharacterAppearance,
-    plan: ImportPlan,
-): { created: number; refreshed: number } {
-    let refreshed = 0;
-    for (const leaf of artLeaves(plan)) {
-        if (appearance.findPsdSlot(leaf.path)) refreshed += 1;
+/** Prepare one mapping for the preview, asset refresh and character update. */
+export function preparePsdImport(appearance: CharacterAppearance, plan: ImportPlan) {
+    const leaves = artLeaves(plan);
+    const matches = matchPsdFingerprintSlots(appearance.getPsdFingerprint()?.slots ?? [], leaves);
+    for (const [key, slot] of matches) {
+        const layer = appearance.getLayer(slot.layerId);
+        const axis = layer?.axisId ? appearance.getAxis(layer.axisId) : null;
+        if (!layer || (slot.tagId ? !axis?.tags.some(tag => tag.id === slot.tagId) : Boolean(layer.axisId))) {
+            matches.delete(key);
+        }
     }
-    return { created: artLeaves(plan).length - refreshed, refreshed };
+    return {
+        summary: { created: leaves.length - matches.size, refreshed: matches.size },
+        refreshTargets: (bakeNames: ReadonlyMap<string, string>, assetNameOf: (assetId: string) => string | null) =>
+            psdRefreshTargets(appearance, leaves, matches, bakeNames, assetNameOf),
+        apply: (assetIdOf: BakedAssetLookup) => applyPsdPlan(appearance, plan, matches, assetIdOf),
+    };
 }
 
 /**
- * The image each layer of this import already has, by layer path (`joinPath`), for a re-import to
+ * The image each layer of this import already has, by PSD layer key, for a re-import to
  * write the layer's new bytes into instead of importing a second file beside it.
  *
  * A layer qualifies when the fingerprint still recognises its slot and the slot still shows the image
@@ -75,24 +77,24 @@ export function summarisePlan(
  * and a slot the author has since pointed at another image, which a re-import must never write over.
  * An image two slots share is refreshed once.
  */
-export function psdRefreshTargets(
+function psdRefreshTargets(
     appearance: CharacterAppearance,
-    plan: ImportPlan,
+    leaves: PsdLeaf[],
+    matches: ReadonlyMap<string, PsdFingerprintSlot>,
     bakeNames: ReadonlyMap<string, string>,
     assetNameOf: (assetId: string) => string | null,
 ): Map<string, string> {
-    const recorded = new Map((appearance.getPsdFingerprint()?.slots ?? []).map(slot => [joinPath(slot.path), slot.assetId]));
     const claimed = new Set<string>();
     const targets = new Map<string, string>();
-    for (const leaf of artLeaves(plan)) {
-        const key = joinPath(leaf.path);
-        const hit = appearance.findPsdSlot(leaf.path);
+    for (const leaf of leaves) {
+        const key = psdLayerKey(leaf);
+        const hit = matches.get(key);
         const layer = hit ? appearance.getLayer(hit.layerId) : null;
         const current = hit?.tagId ? layer?.options?.[hit.tagId] : layer?.assetId;
         if (!current || claimed.has(current)) {
             continue;
         }
-        const madeHere = recorded.get(key);
+        const madeHere = hit?.assetId;
         const ours = madeHere !== undefined
             ? madeHere === current
             : isBakedName(assetNameOf(current), bakeNames.get(key));
@@ -124,28 +126,30 @@ function isBakedName(assetName: string | null, bakeName: string | undefined): bo
  * The returned slots become the new fingerprint, so the next import can do the same again. Each
  * records the image it was given, which is what lets the next import refresh that image in place.
  */
-export function applyPsdPlan(
+function applyPsdPlan(
     appearance: CharacterAppearance,
     plan: ImportPlan,
+    matches: ReadonlyMap<string, PsdFingerprintSlot>,
     assetIdOf: BakedAssetLookup,
 ): PsdFingerprintSlot[] {
     const built: PsdFingerprintSlot[] = [];
+    const findSlot = (leaf: PsdLeaf) => matches.get(psdLayerKey(leaf));
 
     for (const slot of plan.slots) {
         if (slot.kind === "constant") {
-            const existing = appearance.findPsdSlot(slot.leaf.path);
+            const existing = findSlot(slot.leaf);
             const layerId = existing?.layerId ?? appearance.createLayer(slot.name)?.id;
             if (!layerId) continue;
-            const assetId = assetIdOf(slot.leaf.path);
+            const assetId = assetIdOf(slot.leaf);
             appearance.setLayerAsset(layerId, assetId);
-            built.push({ path: slot.leaf.path, layerId, ...(assetId ? { assetId } : {}) });
+            built.push({ ...psdLayerReference(slot.leaf), layerId, ...(assetId ? { assetId } : {}) });
             continue;
         }
 
         // Every tag of an axis feeds the same Studio layer, so any option that still reconnects
         // identifies the layer the whole group belongs to.
         const reconnected = slot.options
-            .map(option => appearance.findPsdSlot(option.leaf.path))
+            .map(option => findSlot(option.leaf))
             .find(hit => hit?.tagId);
         let layerId = reconnected?.layerId ?? null;
         let axisId = layerId ? appearance.getLayer(layerId)?.axisId ?? null : null;
@@ -159,14 +163,14 @@ export function applyPsdPlan(
         }
 
         for (const option of slot.options) {
-            const hit = appearance.findPsdSlot(option.leaf.path);
+            const hit = findSlot(option.leaf);
             // A tag added to the PSD since the last import is added to the axis rather than
             // ignored; `createTag` is what keeps every layer on the axis listing it too.
             const tagId = hit?.tagId ?? appearance.createTag(axisId, option.tag)?.id;
             if (!tagId) continue;
-            const assetId = assetIdOf(option.leaf.path);
+            const assetId = assetIdOf(option.leaf);
             appearance.setLayerOption(layerId, tagId, assetId);
-            built.push({ path: option.leaf.path, layerId, tagId, ...(assetId ? { assetId } : {}) });
+            built.push({ ...psdLayerReference(option.leaf), layerId, tagId, ...(assetId ? { assetId } : {}) });
         }
     }
 

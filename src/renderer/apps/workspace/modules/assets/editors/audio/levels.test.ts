@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AudioClip } from "./audioClip";
-import { integratedLoudness, kWeightingFilters, measureLevels } from "./levels";
+import { integratedLoudness, kWeightingFilters, measureLevels, measureLevelsInSlices } from "./levels";
 
 function sine(options: { seconds: number; amplitude: number; frequency?: number; sampleRate?: number }): Float32Array {
     const sampleRate = options.sampleRate ?? 48000;
@@ -125,5 +125,22 @@ describe("measureLevels", () => {
         samples.fill(1, (1 << 17) - 2, (1 << 17) + 3);
         const levels = measureLevels({ sampleRate: 48000, channels: [samples] });
         expect(levels.clippedRuns).toBe(1);
+    });
+});
+
+describe("measureLevelsInSlices", () => {
+    it("finishes across event-loop turns without advancing timers", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout"] });
+        let clock = 0;
+        const now = vi.spyOn(performance, "now").mockImplementation(() => { clock += 10; return clock; });
+        try {
+            const clip = { sampleRate: 48000, channels: [new Float32Array((1 << 17) + 1)] };
+            const result = measureLevelsInSlices(clip, new AbortController().signal);
+            expect(vi.getTimerCount()).toBe(0);
+            expect((await result)?.peakDb).toBe(-Infinity);
+        } finally {
+            now.mockRestore();
+            vi.useRealTimers();
+        }
     });
 });

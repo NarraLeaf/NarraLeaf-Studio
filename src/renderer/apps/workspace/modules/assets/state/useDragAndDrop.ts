@@ -217,28 +217,6 @@ export function useDragAndDrop({
         setDropTargetId(null);
     }, []);
     
-    // When dragging over an internal item or external files, mark current item as potential drop target
-    const handleDragOverItem = useCallback((event: DragEvent, targetId: string) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        // The looser of the two, because this only lights a target up: the drop itself asks the
-        // guard that matches what is being dropped, and a target that never lit would make filing a
-        // row inside a session look broken rather than refused.
-        if (freeze.frozen && libraryFreeze.frozen) {
-            return;
-        }
-        const isExternalFiles = event.dataTransfer.types.includes("Files");
-        // Files dragged over from the other assets panel are filed here, not copied: see
-        // `dropFromOtherPanel`.
-        const isOtherPanelAssetDrag = isWorkspaceAssetDragEvent(event.dataTransfer) && !draggedItem;
-
-        if (draggedItem || isExternalFiles || isOtherPanelAssetDrag) {
-            setDropTargetId(targetId);
-            event.dataTransfer.dropEffect = draggedItem || isOtherPanelAssetDrag ? "move" : "copy";
-        }
-    }, [draggedItem, freeze, libraryFreeze]);
-
     /**
      * File the assets another assets panel is dragging into a folder of this one.
      *
@@ -405,7 +383,6 @@ export function useDragAndDrop({
         handleDragEnd,
         handlePanelDragOver,
         handlePanelDragLeave,
-        handleDragOverItem,
         handleDropOnItem,
     };
 }

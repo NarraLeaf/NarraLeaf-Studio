@@ -180,4 +180,34 @@ describe("AssetOrderManager takes the no-grant write route", () => {
         expect(!result.ok && result.error.code).toBe(FsRejectErrorCode.INVALID_PATH);
         expect(manager.listMissingCategories()).toContain(AssetCategory.Image);
     });
+
+    it("retries a failed update to an existing order with the same rows", async () => {
+        const manager = await new AssetOrderManager(createContext()).init();
+        await manager.write(AssetCategory.Image, ["a"], []);
+        privilegedFs.writeFileNoFollowOrCreate.mockResolvedValueOnce({
+            success: true,
+            data: { ok: false, error: { code: FsRejectErrorCode.NO_SPACE, message: "disk full" } },
+        });
+
+        expect((await manager.write(AssetCategory.Image, ["a", "b"], [])).ok).toBe(false);
+        expect(JSON.parse(disk.get(IMAGE_ORDER)!)).toEqual({ assetIds: ["a"], groupIds: [] });
+        await manager.write(AssetCategory.Image, ["a", "b"], []);
+
+        expect(hostWrites()).toEqual([IMAGE_ORDER, IMAGE_ORDER, IMAGE_ORDER]);
+        expect(JSON.parse(disk.get(IMAGE_ORDER)!)).toEqual({ assetIds: ["a", "b"], groupIds: [] });
+    });
+
+    it("retries a frozen update to an existing order after the thaw", async () => {
+        const manager = await new AssetOrderManager(createContext()).init();
+        await manager.write(AssetCategory.Image, ["a"], []);
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+
+        const refused = await manager.write(AssetCategory.Image, ["a", "b"], []);
+        expect(refused.ok && refused.refused).toBe(true);
+        thawProjectWrites();
+        await manager.write(AssetCategory.Image, ["a", "b"], []);
+
+        expect(hostWrites()).toEqual([IMAGE_ORDER, IMAGE_ORDER]);
+        expect(JSON.parse(disk.get(IMAGE_ORDER)!)).toEqual({ assetIds: ["a", "b"], groupIds: [] });
+    });
 });

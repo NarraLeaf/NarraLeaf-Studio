@@ -99,7 +99,7 @@ export class ImageService extends AssetServiceBase {
         return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : 'unknown';
     }
 
-    private detectImageFormat(buffer: Uint8Array): string {
+    private detectImageFormat(buffer: Uint8Array): string | null {
         // Check magic bytes for common image formats
         if (buffer.length >= 4) {
             const header = buffer.subarray(0, 4);
@@ -141,7 +141,6 @@ export class ImageService extends AssetServiceBase {
             }
         }
 
-        // Fallback to unknown
-        return 'unknown';
+        return null;
     }
 }
