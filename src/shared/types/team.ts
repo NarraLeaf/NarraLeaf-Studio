@@ -711,6 +711,11 @@ export const TeamMethod = {
     projectsMembersList: "projects.members.list",
     projectsMembersSet: "projects.members.set",
     projectsMembersRemove: "projects.members.remove",
+    projectsUpdate: "projects.update",
+    projectsWebhooksList: "projects.webhooks.list",
+    projectsWebhooksCreate: "projects.webhooks.create",
+    projectsWebhooksDelete: "projects.webhooks.delete",
+    projectsWebhooksTest: "projects.webhooks.test",
     accountDevicesList: "account.devices.list",
     accountDevicesRevoke: "account.devices.revoke",
     accountProfileGet: "account.profile.get",
@@ -780,6 +785,7 @@ export const TeamMethod = {
     // decisions and its health. Announced by the `admin` capability and refused to anybody
     // who is not an operator. Named here because the contract names them and this list is
     // the whole of it; Studio calls none of them.
+    adminDocumentsStatus: "admin.documents.status",
     adminUsersList: "admin.users.list",
     adminUsersCreate: "admin.users.create",
     adminUsersDisable: "admin.users.disable",

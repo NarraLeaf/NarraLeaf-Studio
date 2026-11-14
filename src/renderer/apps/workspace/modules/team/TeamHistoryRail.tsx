@@ -13,6 +13,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { teamProjectDocTopic } from "@shared/types/team";
 import type { VcsServerRevision } from "@shared/types/vcs";
 import { useWorkspace } from "../../context";
+import { CommitTodoPicker, useCommitTodos } from "./CommitTodos";
 import { VERSION_RAIL_COLLAPSED_WIDTH, VERSION_RAIL_EXPANDED_WIDTH } from "../../components/layout/versionRailModel";
 
 /** What a screen needs to know about a team project followed through its server. */
@@ -115,6 +116,10 @@ export function TeamHistoryRail({
     const [older, setOlder] = useState<VcsServerRevision[]>([]);
     const [more, setMore] = useState(false);
     const [comparison, setComparison] = useState<{ revision: VcsServerRevision; rows: TeamVersionComparison[] } | null>(null);
+    // A version saved by hand finishes the to-dos ticked for it, as a commit did before team
+    // projects were held by their server.
+    const commitTodos = useCommitTodos();
+    const [todoProblem, setTodoProblem] = useState(0);
 
     const read = useCallback(
         () => listProjectHistory(target?.remoteOrigin ?? "", target?.project ?? "", { limit: PAGE }),
@@ -163,9 +168,13 @@ export function TeamHistoryRail({
 
     const save = () => run(async () => {
         const trimmed = label.trim();
-        await service.saveVersion(trimmed === "" ? undefined : trimmed);
+        const saved = await service.saveVersion(trimmed === "" ? undefined : trimmed);
         setLabel("");
         history.refresh();
+        // Nothing changed since the last version means no new revision: the ticks wait for one.
+        if (saved.ok && saved.value.revision !== undefined) {
+            setTodoProblem(await commitTodos.finish(saved.value.revision));
+        }
     });
 
     const restore = (revision: VcsServerRevision) => run(async () => {
@@ -285,9 +294,15 @@ export function TeamHistoryRail({
                         onChange={event => setLabel(event.target.value)}
                         disabled={busy || !online}
                     />
+                    <CommitTodoPicker controller={commitTodos} disabled={busy || !online} />
                     <Button size="sm" variant="primary" disabled={busy || !online} onClick={() => void save()}>
                         {t("workspace.shell.team.docs.saveVersion")}
                     </Button>
+                    {todoProblem > 0 && (
+                        <p className="text-2xs text-warning">
+                            {t("workspace.shell.team.commitTodos.failed", { count: String(todoProblem) })}
+                        </p>
+                    )}
                 </section>
             )}
 
