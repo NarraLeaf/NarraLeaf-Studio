@@ -749,6 +749,7 @@ export const TeamMethod = {
     clientsAnnounce: "clients.announce",
     clientsWithdraw: "clients.withdraw",
     clientsList: "clients.list",
+    serverPing: "server.ping",
     liveList: "live.list",
     liveOpen: "live.open",
     liveJoin: "live.join",

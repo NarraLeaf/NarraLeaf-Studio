@@ -78,6 +78,7 @@
     "clients.announce",
     "clients.withdraw",
     "clients.list",
+    "server.ping",
     "live.list",
     "live.open",
     "live.join",
