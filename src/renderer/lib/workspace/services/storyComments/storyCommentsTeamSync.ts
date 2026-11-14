@@ -31,7 +31,13 @@ import type { StoryCommentRemoteThread, StoryCommentsService } from "./StoryComm
 export interface StoryCommentsTeamTransport {
     listThreads(page: { document?: string; before?: string }): Promise<{ threads: TeamThread[]; cursor?: string } | null>;
     getThread(thread: string): Promise<{ thread: TeamThread; comments: TeamComment[] } | null>;
-    createThread(input: { anchor: TeamAnchor; body: string; clientId: string }): Promise<{ thread: TeamThread; opening?: TeamComment } | null>;
+    createThread(input: {
+        anchor: TeamAnchor;
+        body: string;
+        clientId: string;
+        kind?: "comment" | "suggestion";
+        suggestion?: string;
+    }): Promise<{ thread: TeamThread; opening?: TeamComment } | null>;
     reply(input: { thread: string; body: string; clientId: string }): Promise<TeamComment | null>;
     resolve(thread: string, resolved: boolean): Promise<boolean>;
     /** Make a project to-do; answers its id. Optional: a server without `todos` has none. */
@@ -73,6 +79,7 @@ export function remoteStoryThread(thread: TeamThread, comments: readonly TeamCom
         ...(thread.resolvedBy === undefined ? {} : { resolvedBy: authorOf(thread.resolvedBy) }),
         ...(thread.resolvedAt === undefined ? {} : { resolvedAt: thread.resolvedAt }),
         createdAt: thread.createdAt,
+        ...(thread.kind === "suggestion" && comments[0]?.suggestion !== undefined ? { suggestion: comments[0].suggestion } : {}),
         comments: comments
             // A withdrawn comment has no body left to show; the conversation keeps its shape on the
             // server, and here it is simply not drawn.
@@ -186,6 +193,7 @@ export class StoryCommentsTeamSync {
                     anchor: storyCommentAnchor(thread),
                     body: first.body,
                     clientId: thread.id,
+                    ...(thread.suggestion === undefined ? {} : { kind: "suggestion" as const, suggestion: thread.suggestion }),
                 });
                 if (created === null) continue;
                 teamThreadId = created.thread.id;

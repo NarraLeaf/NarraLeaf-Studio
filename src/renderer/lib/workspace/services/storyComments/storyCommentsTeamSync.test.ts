@@ -102,8 +102,15 @@ function fakeServer() {
             const known = byClient.get(input.clientId);
             if (known !== undefined) return { thread: threads.get(known)!, opening: comments.get(known)![0] };
             const id = `t${next++}`;
-            const thread: TeamThread = { id, project: "p", anchor: input.anchor, kind: "comment", status: "open", createdAt: 1, updatedAt: 1, comments: 1 };
-            const opening: TeamComment = { id: `c${next++}`, thread: id, author: "ada", body: input.body, createdAt: 1 };
+            const thread: TeamThread = { id, project: "p", anchor: input.anchor, kind: input.kind ?? "comment", status: "open", createdAt: 1, updatedAt: 1, comments: 1 };
+            const opening: TeamComment = {
+                id: `c${next++}`,
+                thread: id,
+                author: "ada",
+                body: input.body,
+                createdAt: 1,
+                ...(input.suggestion === undefined ? {} : { suggestion: input.suggestion }),
+            };
             threads.set(id, thread);
             comments.set(id, [opening]);
             byClient.set(input.clientId, id);
@@ -145,6 +152,46 @@ describe("the story-row anchor", () => {
         expect(storyRowOfAnchor({ document: "story:main", element: "scene/row" })).toEqual({ storyId: "main", sceneId: "scene", blockId: "row" });
         expect(storyRowOfAnchor({ document: "ui:main", element: "scene/row" })).toBeNull();
         expect(storyRowOfAnchor({ document: "story:main", element: "row" })).toBeNull();
+    });
+});
+
+describe("suggested edits", () => {
+    it("open a thread carrying the row's new text, which taking resolves; a later one replaces an untaken one", async () => {
+        const { service } = await createHarness();
+        const thread = service.createThread({ ...row, text: "Hello.", body: "warmer?", suggestion: "Hello there!" })!;
+        expect(thread.suggestion).toBe("Hello there!");
+
+        const again = service.createThread({ ...row, body: "or this", suggestion: "Hi!" })!;
+        expect(again.id).toBe(thread.id);
+        expect(service.getThread(thread.id)!.suggestion).toBe("Hi!");
+
+        expect(service.markSuggestionApplied(thread.id)).toBe(true);
+        const taken = service.getThread(thread.id)!;
+        expect(taken.resolved).toBe(true);
+        expect(taken.suggestionAppliedAt).toBeDefined();
+
+        const plain = service.createThread({ ...row, blockId: "block-2", body: "just a note" })!;
+        expect(service.markSuggestionApplied(plain.id)).toBe(false);
+    });
+
+    it("travel to Team as a suggestion thread, and come back from one", async () => {
+        const { service } = await createHarness();
+        const server = fakeServer();
+        service.createThread({ ...row, body: "warmer?", suggestion: "Hello there!" });
+        const sync = new StoryCommentsTeamSync(service, server.transport);
+        await sync.push();
+        expect(server.threads.get("t1")!.kind).toBe("suggestion");
+        expect(server.comments.get("t1")![0]!.suggestion).toBe("Hello there!");
+
+        await server.transport.createThread({
+            anchor: { document: "story:story", element: "scene/block-7" },
+            body: "from the web",
+            clientId: "web-2",
+            kind: "suggestion",
+            suggestion: "Better line.",
+        });
+        await sync.pullAll();
+        expect(service.listThreads().find(thread => thread.blockId === "block-7")!.suggestion).toBe("Better line.");
     });
 });
 

@@ -84,6 +84,14 @@ export type StoryCommentThread = {
      * anchored to the same row, which the web console's board shows and can assign.
      */
     teamTodoId?: string;
+    /**
+     * What the row should say instead, when the thread opened as a suggested edit: plain text, the
+     * whole of the row's line. Somebody who may edit the story takes it with one press, which
+     * writes it as an ordinary edit and resolves the thread.
+     */
+    suggestion?: string;
+    /** When the suggestion was taken. Epoch ms. */
+    suggestionAppliedAt?: number;
 };
 
 /**

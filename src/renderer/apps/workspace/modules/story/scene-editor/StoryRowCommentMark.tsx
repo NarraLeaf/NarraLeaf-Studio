@@ -31,7 +31,11 @@ import {
 } from "../../story-comments/storyCommentsState";
 import { StoryCommentThreadView } from "../../story-comments/StoryCommentThreadView";
 import type { StoryBlock } from "@shared/types/story";
-import { getSegmentSlot, segmentPlainText } from "./storyFindReplace";
+import { getSegmentSlot, plainSegment, segmentPlainText } from "./storyFindReplace";
+import { Services } from "@/lib/workspace/services/services";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { StoryBlockId, StoryId, StorySceneId } from "@shared/types/story";
+import { useWorkspace } from "../../../context";
 import { describeBlock } from "./storySceneBlockUtils";
 
 /** What a thread opened on this row remembers of it: the words, or the row's own one-line description. */
@@ -45,6 +49,43 @@ export function storyRowCommentText(block: StoryBlock): string {
     } catch {
         return "";
     }
+}
+
+/**
+ * What writes a suggestion into its row, or null where nothing can: no story service, or a row with
+ * no line of text. The write is an ordinary story edit (it goes through a live session's sink like
+ * any other), so it is undone the way any edit is.
+ */
+export function suggestionWriter(
+    storyService: StoryService | null,
+    target: { storyId: string; sceneId: string; blockId: string },
+): ((suggestion: string) => boolean) | null {
+    if (!storyService) return null;
+    const read = () => {
+        try {
+            return storyService.getStoryDocument(target.storyId as StoryId).scenes[target.sceneId as StorySceneId]?.blocks[target.blockId as StoryBlockId] ?? null;
+        } catch {
+            return null;
+        }
+    };
+    const block = read();
+    if (!block || !getSegmentSlot(block)) return null;
+    return suggestion => {
+        const now = read();
+        const slot = now ? getSegmentSlot(now) : null;
+        if (!slot) return false;
+        try {
+            storyService.updateBlock(
+                target.storyId as StoryId,
+                target.sceneId as StorySceneId,
+                target.blockId as StoryBlockId,
+                slot.withSegment(plainSegment(slot.segment, suggestion)).payload,
+            );
+            return true;
+        } catch {
+            return false;
+        }
+    };
 }
 
 const POPOVER_WIDTH = 320;
@@ -99,6 +140,13 @@ export function StoryRowCommentMark(props: { storyId: string; sceneId: string; b
 function StoryRowCommentPopover(props: { target: StoryCommentPopoverTarget; anchorRef: React.RefObject<HTMLButtonElement | null> }) {
     const service = useStoryCommentsService();
     const thread = useStoryCommentThreadForBlock(props.target.blockId);
+    const { context } = useWorkspace();
+    let storyService: StoryService | null = null;
+    try {
+        storyService = context?.services.get<StoryService>(Services.Story) ?? null;
+    } catch {
+        storyService = null;
+    }
     const freeze = useFreezeGuard(storyCommentsSpec.pathFor());
     const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -142,6 +190,7 @@ function StoryRowCommentPopover(props: { target: StoryCommentPopoverTarget; anch
         return null;
     }
     const scopeId = storySceneHistoryScope(props.target.storyId, props.target.sceneId);
+    const applySuggestion = suggestionWriter(storyService, props.target);
     return createPortal(
         <div
             ref={panelRef}
@@ -163,9 +212,11 @@ function StoryRowCommentPopover(props: { target: StoryCommentPopoverTarget; anch
                 autoFocus
                 readOnly={freeze.frozen}
                 readOnlyReason={freeze.reason}
-                onCreate={(body, todo) => {
-                    service.createThread({ ...props.target, body, todo }, { scopeId });
+                rowText={props.target.text}
+                onCreate={(body, todo, suggestion) => {
+                    service.createThread({ ...props.target, body, todo, ...(suggestion === undefined ? {} : { suggestion }) }, { scopeId });
                 }}
+                {...(applySuggestion === null ? {} : { onApplySuggestion: applySuggestion })}
             />
         </div>,
         doc.body,

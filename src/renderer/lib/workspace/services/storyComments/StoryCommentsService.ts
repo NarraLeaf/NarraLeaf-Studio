@@ -55,6 +55,8 @@ export type StoryCommentRemoteThread = {
     resolvedBy?: StoryCommentAuthor;
     resolvedAt?: number;
     createdAt: number;
+    /** What the thread suggests the row says instead, where it opened as a suggestion. */
+    suggestion?: string;
     comments: Array<{
         teamCommentId: string;
         author: StoryCommentAuthor;
@@ -72,6 +74,8 @@ export type StoryCommentThreadInput = {
     text?: string;
     body: string;
     todo?: boolean;
+    /** The row's new text, for a suggested edit. */
+    suggestion?: string;
 };
 
 /**
@@ -215,8 +219,18 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             return null;
         }
         const existing = this.threadForBlock(input.blockId);
+        const suggestion = input.suggestion?.trim() ? input.suggestion : undefined;
         if (existing && !existing.resolved) {
-            return this.reply(existing.id, body, options);
+            const replied = this.reply(existing.id, body, options);
+            if (replied && suggestion !== undefined) {
+                // One row, one conversation: a suggestion made where a thread is open becomes that
+                // thread's suggestion, replacing an older one nobody took.
+                const next: StoryCommentThread = { ...replied, suggestion };
+                delete next.suggestionAppliedAt;
+                this.commit(replied.id, next, "storyComments.history.reply", options);
+                return next;
+            }
+            return replied;
         }
         const now = Date.now();
         const comment: StoryComment = { id: this.newId(), author: this.currentAuthor(), body, createdAt: now };
@@ -231,6 +245,7 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             resolved: false,
             createdAt: now,
             comments: [comment],
+            ...(suggestion === undefined ? {} : { suggestion }),
         };
         this.commit(thread.id, thread, "storyComments.history.create", options);
         return thread;
@@ -395,6 +410,8 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             comments,
             teamThreadId: remote.teamThreadId,
             ...(local?.teamTodoId ? { teamTodoId: local.teamTodoId } : {}),
+            ...(remote.suggestion !== undefined ? { suggestion: remote.suggestion } : local?.suggestion !== undefined ? { suggestion: local.suggestion } : {}),
+            ...(local?.suggestionAppliedAt === undefined ? {} : { suggestionAppliedAt: local.suggestionAppliedAt }),
         };
         const next: StoryCommentThread = remote.resolved
             ? {
@@ -405,6 +422,25 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             : base;
         if (local && JSON.stringify(local) === JSON.stringify(next)) return;
         this.write(id, next);
+    }
+
+    /**
+     * Record that a thread's suggestion was taken: the row now says it, so the thread is resolved.
+     * The edit itself is the story's own, made by the caller, and undone the story's way.
+     */
+    public markSuggestionApplied(threadId: string, options: StoryCommentEditOptions = {}): boolean {
+        const thread = this.getThread(threadId);
+        if (!thread || thread.suggestion === undefined) return false;
+        const now = Date.now();
+        const next: StoryCommentThread = {
+            ...thread,
+            suggestionAppliedAt: now,
+            resolved: true,
+            resolvedBy: this.currentAuthor(),
+            resolvedAt: now,
+        };
+        this.commit(threadId, next, "storyComments.history.resolve", options);
+        return true;
     }
 
     /** Write out anything the auto-save timer still owes, and wait for it. */
