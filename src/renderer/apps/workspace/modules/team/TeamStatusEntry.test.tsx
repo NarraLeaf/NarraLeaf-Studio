@@ -48,10 +48,22 @@ vi.mock("@/lib/app/bridge", () => ({
     }),
 }));
 
+// The cell follows the latency preference and times the server through these; neither is what
+// these assertions are about, except the one that says where the figure goes.
+vi.mock("@/lib/settings/useGlobalSetting", () => ({ useGlobalSetting: () => true }));
+const latency = vi.hoisted(() => ({ current: null as { median: number; last: number } | null }));
+vi.mock("@/lib/team/useTeamLatency", async importOriginal => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTeamLatency: () => latency.current,
+}));
+
 const surface = vi.hoisted(() => ({ current: {} as VersionSurface }));
 vi.mock("../../hooks/useVersionSurface", () => ({ useVersionSurface: () => surface.current }));
 
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    latency.current = null;
+});
 
 const ONE = "lore://one.example.lan:41337";
 
@@ -160,5 +172,20 @@ describe("the Team cell", () => {
         expect(isTeamPresenceReachable()).toBe(true);
         act(() => openTeamPresence());
         expect(document.querySelector("[data-team-panel]")).not.toBeNull();
+    });
+});
+
+describe("the round trip", () => {
+    it("goes beside the server's name, coloured by how far", () => {
+        latency.current = { median: 420, last: 380 };
+        cell({ serverSession: signedIn() });
+        const figure = document.querySelector("[data-team-latency]");
+        expect(figure?.getAttribute("data-team-latency")).toBe("bad");
+        expect(figure?.className).toContain("text-danger");
+    });
+
+    it("is not drawn while there is no figure", () => {
+        cell({ serverSession: signedIn() });
+        expect(document.querySelector("[data-team-latency]")).toBeNull();
     });
 });

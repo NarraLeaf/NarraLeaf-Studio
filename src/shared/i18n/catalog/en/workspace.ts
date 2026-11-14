@@ -951,6 +951,10 @@ export const workspace = {
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",
             dismiss: "Got it",
         },
+        latency: {
+            value: "{ms} ms",
+            title: "Round trip to the server: median of the last 5 is {median} ms, the last was {last} ms",
+        },
         account: {
             history: "Version history",
             manage: "Manage Team",

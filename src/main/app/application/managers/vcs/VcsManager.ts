@@ -82,6 +82,7 @@ import {
     rememberAcceptedAuthority,
     runAuthorityInstall,
 } from "./authorityTrust";
+import { configureLoreAuthStore } from "./loreAuthStore";
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
@@ -614,6 +615,10 @@ export class VcsManager extends Manager {
     }
 
     public async initialize(): Promise<void> {
+        // Before anything can reach the library: it reads where its token store is on every
+        // call, and on macOS the answer is a directory of Studio's own. See `loreAuthStore.ts`.
+        configureLoreAuthStore(this.app.getUserDataDir());
+
         // Nothing eager. Probing availability would load a 29MB native library on
         // every launch for a feature many projects never touch, and opening a
         // store takes Lore's exclusive repository lock. Both wait for first use.
@@ -2120,7 +2125,8 @@ export class VcsManager extends Manager {
      * as `available` - so the panel can offer it by name instead of saying nobody is signed in. It
      * never asks: see {@link useServerSession} for the one call here that does.
      *
-     * A purely local read: no socket, so a panel may ask on opening.
+     * A local read, so a panel may ask on opening - except where the backend has lost a sign-in
+     * Studio still holds, when the token is presented again (see {@link confirmStoredSession}).
      */
     public async getServerSession(projectPath: string): Promise<VcsProjectServerSession> {
         return this.serialize(projectPath, async () => {
@@ -2256,7 +2262,7 @@ export class VcsManager extends Manager {
         }
         await fs.access(target);
 
-        const outcome = await runAuthorityInstall(authorityInstallPlan(target, await readAuthorityHost(target)));
+        const outcome = await runAuthorityInstall(authorityInstallPlan(target));
         if (outcome.installed) {
             // The platform's store has it now, and this process cannot see it there: node
             // read that store once, when it first needed it, and answers from that reading
@@ -2266,7 +2272,9 @@ export class VcsManager extends Manager {
             await rememberAcceptedAuthority(this.app.getUserDataDir(), target);
         }
         this.app.logger.info(
-            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
+            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust",
+            "the authority presented by", (await readAuthorityHost(target)) ?? "an unrecorded server", "from", target,
+            outcome.installed ? "" : `- ${outcome.output}`,
         );
         return outcome;
     }
@@ -2850,6 +2858,13 @@ export class VcsManager extends Manager {
             (entry) => entry.userId === stored.account.userId && entry.authUrl === stored.authUrl,
         );
         if (present) return stored;
+
+        // The backend has lost it, and Studio still holds the token it was signed in with: hand
+        // that over again before concluding anything. This is the state the backend's store is in
+        // after moving (see `loreAuthStore.ts`) or after another tool cleared it, and dropping
+        // the record there would sign the author out of a server that would still accept them.
+        // It reaches the server, which nothing else here does - but only on this path, once.
+        if (await this.presentStoredToken(stored).catch(() => false)) return stored;
 
         this.writeStoredServerSessions(
             this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),

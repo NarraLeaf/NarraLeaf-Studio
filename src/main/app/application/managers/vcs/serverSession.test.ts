@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isVcsSignInAddress, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import type { VcsServerAuthority } from "@shared/types/vcs";
-import { authorityInstallPlan, trustScopeHost } from "./authorityTrust";
+import { authorityInstallPlan, runAuthorityInstall, trustScopeHost } from "./authorityTrust";
 import {
     VcsSignInError,
     decodeServerAccount,
@@ -331,15 +331,20 @@ describe("the install plan", () => {
         if (process.platform === "darwin") expect(plan.argv).not.toContain("-d");
     });
 
-    it("scopes the trust to the server's name where the platform can", () => {
-        const plan = authorityInstallPlan(certificate, "team.example.com");
-        if (process.platform === "darwin") {
-            expect(plan.argv).toEqual(expect.arrayContaining(["-p", "ssl", "-s", "team.example.com"]));
-            expect(plan.argv[plan.argv.length - 1]).toBe(certificate);
-            expect(plan.command).toContain("-p ssl -s team.example.com");
-        }
-        // Without a host the install is unscoped, as before.
-        expect(authorityInstallPlan(certificate).argv).not.toContain("-s");
+    it("on macOS, puts the certificate in the login keychain and checks that it took", () => {
+        if (process.platform !== "darwin") return;
+        const plan = authorityInstallPlan(certificate);
+        // Without the certificate in a keychain, macOS 26 writes a trust setting nothing can
+        // find and reports success.
+        expect(plan.prepare?.slice(0, 3)).toEqual(["security", "import", certificate]);
+        expect(plan.prepare?.[4]).toMatch(/Library\/Keychains\/login\.keychain-db$/);
+        expect(plan.argv).toEqual(expect.arrayContaining(["-k", plan.prepare?.[4]]));
+        expect(plan.argv[plan.argv.length - 1]).toBe(certificate);
+        expect(plan.verify?.slice(0, 2)).toEqual(["security", "verify-cert"]);
+        expect(plan.verify).toContain(certificate);
+        // A trust setting limited to a host name was never seen to work with the client library.
+        expect(plan.argv).not.toContain("-s");
+        expect(plan.command).toContain("security import");
     });
 
     it("only scopes to something a policy can name", () => {
@@ -350,6 +355,33 @@ describe("the install plan", () => {
         expect(trustScopeHost("a b")).toBeNull();
         expect(trustScopeHost("")).toBeNull();
         expect(trustScopeHost(null)).toBeNull();
+    });
+});
+
+/** An install counts only once the platform agrees it took. */
+describe("running the install plan", () => {
+    const exit = (code: number): string[] => [process.execPath, "-e", `process.exit(${code})`];
+
+    it("is installed when the command and its check both succeed, whatever the preparation said", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", prepare: exit(1), argv: exit(0), verify: exit(0),
+        });
+        expect(outcome.installed).toBe(true);
+    });
+
+    it("is not installed when the command succeeds and the check does not", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", argv: exit(0), verify: exit(1),
+        });
+        expect(outcome.installed).toBe(false);
+        expect(outcome.output).toMatch(/still not trusted/);
+    });
+
+    it("is not installed when the command fails, and the check is not run", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", argv: exit(1), verify: exit(0),
+        });
+        expect(outcome.installed).toBe(false);
     });
 });
 
