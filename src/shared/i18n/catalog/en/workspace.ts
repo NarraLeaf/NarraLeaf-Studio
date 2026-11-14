@@ -862,6 +862,11 @@ export const workspace = {
         // room right now: a control that appears only once everything is in place cannot be used
         // to find out what is missing, so it goes inert and says which answer it is waiting for.
         livePresence: "Live session",
+        commitTodos: {
+            title: "Finished by this version",
+            hint: "Ticked to-dos are marked done after the commit, with the version that finished them",
+            failed: "The version was recorded, but {count} to-dos could not be marked done",
+        },
         roleNotice: {
             reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",

@@ -10,7 +10,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
-import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsStatus, VcsSyncState } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCommitResult, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { TranslationKey } from "@shared/i18n";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
@@ -290,7 +290,11 @@ export interface VersionSurface {
      * discarded once it is recorded somewhere - a failed commit that cleared the author's words
      * would lose the only copy of them. Failures are reported through {@link failure} as well.
      */
-    commit: (message: string) => Promise<boolean>;
+    /**
+     * Record a version. `onRecorded` hears the revision once it exists, before the re-reads that
+     * follow it - for what hangs off the commit itself, such as finishing the to-dos ticked beside it.
+     */
+    commit: (message: string, onRecorded?: (result: VcsCommitResult) => void) => Promise<boolean>;
     /** Show a past revision in the real editors, freezing project data. Slow; sets `busy`. */
     showRevision: (revision: RevisionId, label?: string) => void;
     /**
@@ -804,7 +808,7 @@ export function useVersionSurface(): VersionSurface {
         });
     }, [services]);
 
-    const commit = useCallback(async (message: string): Promise<boolean> => {
+    const commit = useCallback(async (message: string, onRecorded?: (result: VcsCommitResult) => void): Promise<boolean> => {
         if (!services) {
             return false;
         }
@@ -812,7 +816,8 @@ export function useVersionSurface(): VersionSurface {
         setFailure(null);
         try {
             try {
-                await services.versionControl.commit({ message });
+                const recorded = await services.versionControl.commit({ message });
+                onRecorded?.(recorded);
             } catch (thrown) {
                 if (alive.current) setFailure(describeFailure(thrown));
                 return false;

@@ -434,6 +434,8 @@ export interface TeamTodo {
     createdAt: number;
     updatedAt: number;
     doneAt?: number;
+    /** The revision that finished it, where it was ticked off in a commit. */
+    doneRevision?: string;
 }
 
 export type TeamTodosEvent =

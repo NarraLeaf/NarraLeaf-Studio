@@ -86,6 +86,7 @@ import {
 import { registerVersionRailBridge, VERSION_COMMIT_MESSAGE_ATTRIBUTE } from "./versionRailController";
 import { AuthorIdentity } from "./AuthorIdentity";
 import { openTeamPresence } from "../../modules/team/teamPresenceController";
+import { CommitTodoPicker, useCommitTodos } from "../../modules/team/CommitTodos";
 
 interface VersionRailProps {
     surface: VersionSurface;
@@ -870,6 +871,8 @@ const CHANGE_TINTS: Record<VcsChangeKind, string> = {
 export function CommitForm({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const [message, setMessage] = useState("");
+    const commitTodos = useCommitTodos();
+    const [todoProblem, setTodoProblem] = useState<number>(0);
     const frozen = surface.frozen !== null;
     const present = isCommitFormPresent({ state: surface.state, frozen });
     // The same count the section below draws, from the same builder - the two disagreeing about
@@ -887,7 +890,12 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
         if (!enabled) {
             return;
         }
-        void surface.commit(message).then(recorded => {
+        setTodoProblem(0);
+        void surface.commit(message, result => {
+            // After the version exists and without holding the form: the to-dos are told which
+            // revision finished them, and any that refuse are said once below the button.
+            void commitTodos.finish(result.revision).then(setTodoProblem);
+        }).then(recorded => {
             if (recorded) setMessage("");
         });
     };
@@ -936,6 +944,7 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                 {...{ [VERSION_COMMIT_MESSAGE_ATTRIBUTE]: "" }}
                 className="text-2xs"
             />
+            <CommitTodoPicker controller={commitTodos} disabled={surface.busy === "commit"} />
             <button
                 type="button"
                 onClick={submit}
@@ -947,6 +956,11 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                     : <GitCommitHorizontal className="h-3 w-3" />}
                 {t("workspace.shell.versionControl.commit")}
             </button>
+            {todoProblem > 0 && (
+                <p className="mt-1 text-2xs text-warning">
+                    {t("workspace.shell.team.commitTodos.failed", { count: String(todoProblem) })}
+                </p>
+            )}
         </div>
     );
 }
