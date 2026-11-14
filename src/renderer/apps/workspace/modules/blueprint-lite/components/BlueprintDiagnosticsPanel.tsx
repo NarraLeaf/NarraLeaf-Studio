@@ -21,11 +21,17 @@ type Props = {
 
 export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], onPickProblem }: Props) {
     const { t, tn } = useTranslation();
-    const flaggedNodes = new Set(
-        diagnostics.flatMap(d => (d.target?.kind === "node" && d.target.nodeId ? [d.target.nodeId] : [])),
-    );
+    const flaggedNodes = new Map<string, Set<string>>();
+    for (const diagnostic of diagnostics) {
+        if (diagnostic.target?.kind !== "node") continue;
+        const { graphId, nodeId } = diagnostic.target;
+        const nodes = flaggedNodes.get(graphId) ?? new Set<string>();
+        nodes.add(nodeId);
+        flaggedNodes.set(graphId, nodes);
+    }
     const checks = problems
-        .filter(entry => !(entry.location.kind === "blueprint" && entry.location.nodeId && flaggedNodes.has(entry.location.nodeId)))
+        .filter(entry => !(entry.location.kind === "blueprint" && entry.location.graphId && entry.location.nodeId
+            && flaggedNodes.get(entry.location.graphId)?.has(entry.location.nodeId)))
         .slice()
         .sort((a, b) => LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity]);
 

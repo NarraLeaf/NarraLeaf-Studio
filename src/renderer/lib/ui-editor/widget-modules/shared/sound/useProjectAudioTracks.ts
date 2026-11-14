@@ -20,11 +20,19 @@ export function useProjectAudioTracks(): readonly ProjectAudioTrack[] {
         [context],
     );
 
-    useEffect(() => trackService?.onTracksChanged(() => setRevision(value => value + 1)), [trackService]);
+    useEffect(() => {
+        if (!trackService) {
+            return;
+        }
+        const unsubscribe = trackService.onTracksChanged(() => setRevision(value => value + 1));
+        // A track may have changed after render and before the subscription was installed.
+        setRevision(value => value + 1);
+        return unsubscribe;
+    }, [trackService]);
 
     return useMemo(
         () => trackService?.listTracks() ?? [...BUILTIN_AUDIO_TRACKS],
-        // `revision` is the subscription's only job: the service mutates its list in place.
+        // The service owns the list, so its change event invalidates this snapshot.
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [trackService, revision],
     );

@@ -9,6 +9,7 @@ import {
     type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import { useHostDocument } from "@/lib/components/layout/hostWindow";
 import { getTooltipDelay, placeTooltip, TOOLTIP_BUBBLE_CLASS } from "@/lib/tooltip";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
@@ -191,6 +192,7 @@ export const BlueprintWireEmphasis = forwardRef<BlueprintWireEmphasisHandle, { c
         // The gestures that put every other tooltip away put this one away too, and stop one that is
         // still waiting: a press on a wire is a click or the start of a double-click, not a pause.
         const hovering = hover !== null;
+        useDismissWhenHidden(() => hoverWire(null), hovering);
         useEffect(() => {
             if (!hovering) {
                 return undefined;

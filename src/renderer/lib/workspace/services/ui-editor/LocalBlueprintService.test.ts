@@ -387,9 +387,83 @@ describe("LocalBlueprintService saved variables (M-VAR registry)", () => {
         // A different scope's node param is a different identity space; it must not be touched.
         expect(nodes?.getPersistent?.params?.persistentVariableId).toBe(persistent.id);
     });
+
+    it("restores references in another blueprint when a saved-variable deletion is undone", () => {
+        const { service, graphDocument, registryService } = createHarness();
+        const saved = service.createSavedRegistryVariable("bp-main", { name: "Route" });
+        const other = graphBlueprint("bp-other");
+        other.owner = { kind: "surfaceMain", surfaceId: "other-page" };
+        other.graphs.events.mouseClick.graph!.nodes = {
+            get: { id: "get", type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: saved.id } },
+        };
+        graphDocument.blueprintDocument.blueprints[other.id] = other;
+        graphDocument.blueprintDocument.ownerRecords["surfaceMain:other-page"] = { blueprintId: other.id };
+
+        service.deleteSavedRegistryVariable("bp-main", saved.id);
+        expect(other.graphs.events.mouseClick.graph?.nodes?.get.params?.savedVariableId).toBeUndefined();
+        other.graphs.events.mouseClick.graph!.nodes!.get = {
+            ...other.graphs.events.mouseClick.graph!.nodes!.get,
+            params: { ...other.graphs.events.mouseClick.graph!.nodes!.get.params, note: "edited after deletion" },
+        };
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(graphDocument.blueprintDocument.blueprints[other.id].graphs.events.mouseClick.graph?.nodes?.get.params?.savedVariableId)
+            .toBe(saved.id);
+        expect(graphDocument.blueprintDocument.blueprints[other.id].graphs.events.mouseClick.graph?.nodes?.get.params?.note)
+            .toBe("edited after deletion");
+        expect(registryService.getRegistry().entries[saved.id]).toBeDefined();
+        expect(service.redoBlueprint("bp-main")).toBe(true);
+        expect(graphDocument.blueprintDocument.blueprints[other.id].graphs.events.mouseClick.graph?.nodes?.get.params?.savedVariableId)
+            .toBeUndefined();
+        expect(registryService.getRegistry().entries[saved.id]).toBeUndefined();
+    });
+
+    it("undoes a persistent deletion without replacing unrelated variable or node edits", () => {
+        const { service, graphDocument, registryService } = createHarness();
+        const deleted = service.createPersistentVariable("bp-main", { name: "Volume" });
+        const retained = service.createPersistentVariable("bp-main", { name: "Other" });
+        const other = graphBlueprint("bp-other");
+        other.owner = { kind: "surfaceMain", surfaceId: "other-page" };
+        other.graphs.events.mouseClick.graph!.nodes = {
+            get: { id: "get", type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET, params: {
+                persistentVariableId: deleted.id,
+                [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "number",
+            } },
+        };
+        graphDocument.blueprintDocument.blueprints[other.id] = other;
+        graphDocument.blueprintDocument.ownerRecords["surfaceMain:other-page"] = { blueprintId: other.id };
+        service.deletePersistentVariable("bp-main", deleted.id);
+        registryService.renameEntry(retained.id, "Changed elsewhere");
+        other.graphs.events.mouseClick.graph!.nodes!.get = {
+            ...other.graphs.events.mouseClick.graph!.nodes!.get,
+            params: { note: "later" },
+        };
+
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(registryService.getRegistry().entries[retained.id].name).toBe("Changed elsewhere");
+        expect(other.graphs.events.mouseClick.graph?.nodes?.get.params).toEqual({
+            note: "later",
+            persistentVariableId: deleted.id,
+            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "number",
+        });
+        expect(service.redoBlueprint("bp-main")).toBe(true);
+        expect(other.graphs.events.mouseClick.graph?.nodes?.get.params).toEqual({ note: "later" });
+        expect(registryService.getRegistry().entries[retained.id].name).toBe("Changed elsewhere");
+    });
 });
 
 describe("LocalBlueprintService history", () => {
+    it("registers blueprint history again after the workspace is reopened", () => {
+        const { service, historyService } = createHarness();
+        service.createBlueprintVariable("bp-main", { name: "First" });
+        service.dispose({} as never);
+        historyService.dispose({} as never);
+
+        service.createBlueprintVariable("bp-main", { name: "Second" });
+        expect(service.canUndoBlueprint("bp-main")).toBe(true);
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(Object.values(service.getBlueprintDocument().blueprints["bp-main"].members!.variables).map(variable => variable.name))
+            .toEqual(["First"]);
+    });
     it("seeds widget value blueprints with an init layer only", () => {
         const { service, graphDocument } = createHarness();
 
@@ -904,5 +978,20 @@ describe("a new script's file", () => {
         const { service, written } = createHarness({ filesOnDisk: ["/project/scripts/surface-a.ts"] });
         await expect(createStarterScriptFile(service, "Surface A")).resolves.toBe("scripts/surface-a-2.ts");
         expect([...written.keys()]).toEqual(["/project/scripts/surface-a-2.ts"]);
+    });
+
+    it("types a component widget's starter for the widget it belongs to", async () => {
+        const { service, uidoc, written } = createHarness();
+        uidoc.document.components = [{
+            id: "component-a",
+            name: "Card",
+            rootElementId: "component-button",
+            elements: { "component-button": { ...buttonElement(), id: "component-button", parentId: null } },
+        }];
+        const create = (service as unknown as {
+            createStarterScriptFile(owner: { kind: "componentWidgetMain"; componentId: string; elementId: string }, name: string): Promise<string>;
+        }).createStarterScriptFile.bind(service);
+        await create({ kind: "componentWidgetMain", componentId: "component-a", elementId: "component-button" }, "Card");
+        expect(written.get("/project/scripts/card.ts")).toContain('ComponentWidgetCtx<"nl.button">');
     });
 });

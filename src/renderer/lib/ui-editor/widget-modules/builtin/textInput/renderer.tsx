@@ -87,7 +87,17 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
-    const v = resolveButtonVisualProps(element, p.appearance ?? undefined, resolveCtx);
+    const v = resolveButtonVisualProps({
+        ...element,
+        props: {
+            ...element.props,
+            fontAssetId: p.fontAssetId,
+            fontSize: p.fontSize,
+            fontWeight: p.fontWeight,
+            color: p.color,
+            lineHeight: p.lineHeight,
+        },
+    }, p.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveButtonAppearanceTransitions(p.appearance ?? undefined, resolveCtx);
     const rl = buttonResolvedVisualToRectangleLike(v);
 
@@ -193,7 +203,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
 
     const handleChange = useCallback(
         (event: ChangeEvent<HTMLInputElement>) => {
-            if (!canRunInteraction) {
+            if (!canRunInteraction || interactionDisabled) {
                 return;
             }
             const next = clampTextInputValue(coerceInputModeText(p.inputMode, event.target.value), p.maxLength);
@@ -204,12 +214,12 @@ export function TextInputRenderer(props: WidgetRendererProps) {
                 event.target.value = applied;
             }
         },
-        [canRunInteraction, p.inputMode, p.maxLength, setRuntimeValue],
+        [canRunInteraction, interactionDisabled, p.inputMode, p.maxLength, setRuntimeValue],
     );
 
     const handleKeyDown = useCallback(
         (event: KeyboardEvent<HTMLInputElement>) => {
-            if (!canRunInteraction || !blueprintRuntime || event.key !== "Enter") {
+            if (!canRunInteraction || interactionDisabled || !blueprintRuntime || event.key !== "Enter") {
                 return;
             }
             // The Enter that confirms an IME conversion is not the player submitting. Naming the
@@ -226,7 +236,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
                 value: valueRef.current,
             });
         },
-        [blueprintRuntime, canRunInteraction, dispatchEvent],
+        [blueprintRuntime, canRunInteraction, dispatchEvent, interactionDisabled],
     );
 
     const displayPlaceholder = useLocalizedWidgetText({
@@ -236,7 +246,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         localizationKey: p.placeholderLocalizationKey ?? undefined,
     });
 
-    const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
+    const { cssFamily: editorFontFamily } = useEditorFontFamily(v.fontAssetId);
     const textShadow = effectTextShadowStoredToCss(v.effects.effectTextShadow);
     const resolvedCursor =
         interactionDisabled
@@ -277,7 +287,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     // Resolved rather than handed to CSS as stored: the field's colour can be a brand link, and an
     // `nlbrand:` token in a `color` declaration is dropped by the browser, leaving the input to
     // inherit whatever is behind it.
-    const inputColor = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
+    const inputColor = colorValueToCss(parseColorValue(v.color, { hex: "#FFFFFF", alpha: 1 }));
 
     const inputStyle: CSSProperties = {
         flex: 1,
@@ -289,11 +299,11 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         outline: "none",
         background: "transparent",
         boxSizing: "border-box",
-        fontSize: p.fontSize,
-        fontWeight: p.fontWeight,
+        fontSize: v.fontSize,
+        fontWeight: v.fontWeight,
         color: inputColor,
         textAlign: p.textAlign,
-        lineHeight: p.lineHeight,
+        lineHeight: v.lineHeight,
         cursor: "inherit",
         fontFamily: editorFontFamily ?? "inherit",
         ...(textShadow ? { textShadow } : {}),
@@ -311,7 +321,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
             // Max length is measured in code points ("👍" counts once), which the DOM attribute
             // cannot express — `clampTextInputValue` owns the limit instead.
             readOnly={!canRunInteraction || p.readOnly}
-            disabled={p.disabled}
+            disabled={interactionDisabled}
             tabIndex={canRunInteraction ? undefined : -1}
             aria-hidden={canRunInteraction ? undefined : true}
             autoComplete="off"

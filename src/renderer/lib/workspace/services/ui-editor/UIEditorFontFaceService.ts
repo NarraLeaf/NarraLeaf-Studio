@@ -12,6 +12,7 @@ export type EditorFontAcquireResult =
 type FontEntry = {
     refCount: number;
     readonly cssFamily: string;
+    revision: number;
     loaded?: {
         blobUrl: string;
         fontFace: FontFace;
@@ -80,9 +81,10 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
             u();
         }
         this.unsubscribers = [];
-        for (const id of [...this.entries.keys()]) {
-            this.invalidate(id);
+        for (const entry of this.entries.values()) {
+            this.teardownLoaded(entry);
         }
+        this.entries.clear();
         this.assetsService = null;
     }
 
@@ -94,32 +96,31 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
 
         let entry = this.entries.get(assetId);
         if (!entry) {
-            entry = { refCount: 0, cssFamily: cssFamilyForAssetId(assetId) };
+            entry = { refCount: 0, cssFamily: cssFamilyForAssetId(assetId), revision: 0 };
             this.entries.set(assetId, entry);
         }
         entry.refCount += 1;
 
-        if (entry.loaded) {
-            return { ok: true, cssFamily: entry.cssFamily };
-        }
-
-        if (!entry.loading) {
-            entry.loading = this.loadIntoEntry(assetId, entry).finally(() => {
-                const current = this.entries.get(assetId);
-                if (current) {
-                    current.loading = undefined;
-                }
-            });
-        }
-
-        const result = await entry.loading;
-        if (!result.ok) {
-            entry.refCount -= 1;
-            if (entry.refCount <= 0) {
-                this.entries.delete(assetId);
+        while (true) {
+            if (entry.loaded) {
+                return { ok: true, cssFamily: entry.cssFamily };
             }
+            const revision = entry.revision;
+            const result = await this.ensureLoading(assetId, entry);
+            if (this.entries.get(assetId) !== entry) {
+                return { ok: false, error: "Font load aborted" };
+            }
+            if (entry.revision !== revision) {
+                continue;
+            }
+            if (!result.ok) {
+                entry.refCount -= 1;
+                if (entry.refCount <= 0) {
+                    this.entries.delete(assetId);
+                }
+            }
+            return result;
         }
-        return result;
     }
 
     public release(assetId: string): void {
@@ -139,8 +140,29 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
         if (!entry) {
             return;
         }
+        entry.revision += 1;
         this.teardownLoaded(entry);
-        this.entries.delete(assetId);
+        entry.loading = undefined;
+        if (entry.refCount > 0) {
+            void this.ensureLoading(assetId, entry);
+        }
+    }
+
+    private ensureLoading(assetId: string, entry: FontEntry): Promise<EditorFontAcquireResult> {
+        if (!entry.loading) {
+            const loading = this.loadIntoEntry(assetId, entry, entry.revision)
+                .catch((error: unknown): EditorFontAcquireResult => ({
+                    ok: false,
+                    error: error instanceof Error ? error.message : String(error),
+                }))
+                .finally(() => {
+                    if (entry.loading === loading) {
+                        entry.loading = undefined;
+                    }
+                });
+            entry.loading = loading;
+        }
+        return entry.loading;
     }
 
     private teardownLoaded(entry: FontEntry): void {
@@ -156,7 +178,7 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
         entry.loaded = undefined;
     }
 
-    private async loadIntoEntry(assetId: string, entry: FontEntry): Promise<EditorFontAcquireResult> {
+    private async loadIntoEntry(assetId: string, entry: FontEntry, revision: number): Promise<EditorFontAcquireResult> {
         const assetsService = this.assetsService;
         if (!assetsService) {
             return { ok: false, error: "Assets service not ready" };
@@ -194,7 +216,7 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
             return { ok: false, error: "Font format is not supported in the editor" };
         }
 
-        if (this.entries.get(assetId) !== entry) {
+        if (this.entries.get(assetId) !== entry || entry.revision !== revision) {
             return { ok: false, error: "Font load aborted" };
         }
 
@@ -223,7 +245,7 @@ export class UIEditorFontFaceService extends Service<UIEditorFontFaceService> im
             };
         }
 
-        if (this.entries.get(assetId) !== entry) {
+        if (this.entries.get(assetId) !== entry || entry.revision !== revision) {
             try {
                 void document.fonts.delete(fontFace);
             } catch {

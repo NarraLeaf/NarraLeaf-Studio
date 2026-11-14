@@ -2,7 +2,6 @@ import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "
 import type { TranslationKey } from "@shared/i18n";
 import { ownerKeyBelongsToComponent, ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import type { UIComponentDefinition, UIDocument, UIElement, UILayout, UISurface } from "@shared/types/ui-editor/document";
-import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     buildUIComponentEditorSurfaceId,
     readUIComponentEditorSurfaceComponentId,
@@ -26,6 +25,7 @@ import { UIDocumentService } from "./UIDocumentService";
 import { UIGraphService } from "./UIGraphService";
 import { UIBlueprintLifecycleCoordinator } from "./UIBlueprintLifecycleCoordinator";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
+import { collectComponentPlacements } from "./componentRootSwap";
 
 export type UIEditorBlueprintSurfaceSnapshot = {
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
@@ -59,19 +59,17 @@ export type UIEditorComponentDocumentSnapshot = {
      * The exception to "the record and nothing else": making an element the root changes the
      * definition's size, and each placement is given a new box so it keeps drawing what it drew
      * (`promoteElementToComponentRoot`). Taking that step back has to give the boxes back with the
-     * record, or every placement would draw the old definition squeezed into the new box. Absent on
-     * every other step, so no other undo touches a page.
+     * record, or every placement would draw the old definition squeezed into the new box. This
+     * includes placements inside other definitions. Absent on every other step.
      */
     placements?: Record<string, UILayout>;
 };
 
-/** Where every placement of `componentId` on the project's pages stands, for a snapshot's `placements`. */
+/** Where every placement of `componentId` stands, for a snapshot's `placements`. */
 export function captureUIComponentPlacements(document: UIDocument, componentId: string): Record<string, UILayout> {
     const out: Record<string, UILayout> = {};
-    for (const element of Object.values(document.elements)) {
-        if (getUIComponentLink(element)?.componentId === componentId) {
-            out[element.id] = cloneBlueprint(element.layout);
-        }
+    for (const { element } of collectComponentPlacements(document, componentId)) {
+        out[element.id] = cloneBlueprint(element.layout);
     }
     return out;
 }
@@ -327,11 +325,12 @@ export function applyUIDocumentComponentSnapshot(
     }
     next.components = components;
     restoreNamedUIStructs(next, target.structs);
-    for (const [elementId, layout] of Object.entries(target.placements ?? {})) {
-        const placement = next.elements[elementId];
-        // Still a placement of this definition: one unlinked since keeps the box it has now.
-        if (placement && getUIComponentLink(placement)?.componentId === target.componentId) {
-            placement.layout = cloneBlueprint(layout);
+    if (target.placements) {
+        for (const { element } of collectComponentPlacements(next, target.componentId)) {
+            const layout = target.placements[element.id];
+            if (layout) {
+                element.layout = cloneBlueprint(layout);
+            }
         }
     }
     return next;

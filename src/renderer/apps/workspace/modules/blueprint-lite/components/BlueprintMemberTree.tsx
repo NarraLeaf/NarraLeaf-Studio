@@ -83,7 +83,7 @@ function countForGraph(
     let warnings = 0;
     for (const d of diagnostics) {
         const t = d.target;
-        if (!t || t.kind !== "graph" || t.graphKind !== kind || t.graphId !== graphId) {
+        if (!t || (t.kind !== "graph" && t.kind !== "node") || t.graphKind !== kind || t.graphId !== graphId) {
             continue;
         }
         if (d.severity === "error") {
@@ -160,12 +160,17 @@ function BlueprintVariableRow({
 }) {
     const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
+    const cancelRenameRef = useRef(false);
 
     useEffect(() => {
         setDraftName(v.name);
     }, [v.id, v.name]);
 
     const commitName = useCallback(() => {
+        if (cancelRenameRef.current) {
+            cancelRenameRef.current = false;
+            return;
+        }
         const next = draftName.trim();
         if (!next) {
             setDraftName(v.name);
@@ -234,6 +239,7 @@ function BlueprintVariableRow({
                         e.currentTarget.blur();
                     } else if (e.key === "Escape") {
                         e.preventDefault();
+                        cancelRenameRef.current = true;
                         setDraftName(v.name);
                         e.currentTarget.blur();
                     }
@@ -296,12 +302,17 @@ function BlueprintPersistentVariableRow({
 }) {
     const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
+    const cancelRenameRef = useRef(false);
 
     useEffect(() => {
         setDraftName(v.name);
     }, [v.id, v.name]);
 
     const commitName = useCallback(() => {
+        if (cancelRenameRef.current) {
+            cancelRenameRef.current = false;
+            return;
+        }
         const next = draftName.trim();
         if (!next) {
             setDraftName(v.name);
@@ -366,6 +377,7 @@ function BlueprintPersistentVariableRow({
                         e.currentTarget.blur();
                     } else if (e.key === "Escape") {
                         e.preventDefault();
+                        cancelRenameRef.current = true;
                         setDraftName(v.name);
                         e.currentTarget.blur();
                     }

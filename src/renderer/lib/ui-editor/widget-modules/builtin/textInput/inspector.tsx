@@ -1,5 +1,6 @@
 import { useLayoutEffect } from "react";
 import { AlignCenter, AlignLeft, AlignRight, Baseline, Type } from "lucide-react";
+import { isAppearanceModel, type AppearanceRowValue, type TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import type { UITextInputMode } from "@shared/types/ui-editor/textInput";
 import type {
     ColorValue,
@@ -17,6 +18,7 @@ import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/
 import {
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
+    patchTextAppearanceDefaultRows,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
@@ -46,7 +48,19 @@ function getLiveTextInputProps(data: UIInspectorData): TextInputWidgetProps {
 
 function patchTextInput(data: UIInspectorData, partial: Partial<TextInputWidgetProps>): void {
     const live = liveElement(data);
-    data.documentService.updateElementProps(live.id, patchTextInputProps(live, partial));
+    const patch = patchTextInputProps(live, partial);
+    const next = getTextInputProps({ ...live, props: { ...live.props, ...patch } });
+    const rows: Partial<Record<TextAppearancePropertyKey, AppearanceRowValue>> = {};
+    for (const key of ["fontAssetId", "fontSize", "fontWeight", "color", "lineHeight"] as const) {
+        if (key in partial) {
+            rows[key] = next[key] ?? null;
+        }
+    }
+    if (Object.keys(rows).length > 0 && isAppearanceModel(next.appearance) && isUsableAppearanceModel(next.appearance)) {
+        const appearance = ensureButtonAppearanceHasAllKeys(next.appearance, textInputButtonBaselineProps(next));
+        patch.appearance = patchTextAppearanceDefaultRows(appearance, rows);
+    }
+    data.documentService.updateElementProps(live.id, patch);
 }
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds. */

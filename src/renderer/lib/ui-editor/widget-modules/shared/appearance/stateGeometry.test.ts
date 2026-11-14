@@ -175,4 +175,48 @@ describe("splitStateAwareLayoutPatches", () => {
             });
         }
     });
+
+    it("keeps the other coordinate when a single position field migrates a legacy motion", () => {
+        const document = documentWith({ appearance: offsetModel(0) }, {
+            stateMotions: [{ state: UI_SWITCH_ON_VARIANT_ID, target: "thumb", offsetX: 24, offsetY: 12, durationMs: 240, easing: "circOut" }],
+        });
+
+        const split = splitStateAwareLayoutPatches(document, ON, { thumb: { x: 35 } });
+        const on = split.appearancePatches.thumb.variants.find(variant => variant.id === UI_SWITCH_ON_VARIANT_ID)!;
+        expect(on.propertyGroups.find(group => group.key === "transformOffsetX")?.rows[0].value).toBe(32);
+        expect(on.propertyGroups.find(group => group.key === "transformOffsetY")?.rows[0].value).toBe(12);
+        expect(split.stateMotionPatches.switch).toEqual([]);
+    });
+
+    it("keeps the legacy timing when the migrated variant needs new offset groups", () => {
+        const model: AppearanceModel = {
+            defaultVariantId: "v-default",
+            variants: [{ id: "v-default", name: "Default", propertyGroups: [] }],
+        };
+        const document = documentWith({ appearance: model }, {
+            stateMotions: [{ state: UI_SWITCH_ON_VARIANT_ID, target: "thumb", offsetX: 24, offsetY: 12, durationMs: 240, easing: "circOut" }],
+        });
+        const next = splitStateAwareLayoutPatches(document, ON, { thumb: { x: 35 } }).appearancePatches.thumb;
+        const on = next.variants.find(variant => variant.id === UI_SWITCH_ON_VARIANT_ID)!;
+        for (const key of ["transformOffsetX", "transformOffsetY"]) {
+            expect(on.propertyGroups.find(group => group.key === key)?.transition).toEqual({
+                type: "tween", durationMs: 240, delayMs: 0, easing: "circOut",
+            });
+        }
+    });
+
+    it("removes every migrated motion when one gesture moves multiple parts of the same host", () => {
+        const motion = (target: string, offsetX: number) => ({
+            state: UI_SWITCH_ON_VARIANT_ID, target, offsetX, offsetY: 0, durationMs: 240, easing: "circOut",
+        });
+        const document = documentWith({ appearance: offsetModel(0) }, {
+            stateMotions: [motion("thumb", 24), motion("other", 8), motion("untouched", 3)],
+        });
+        document.elements.other = { ...document.elements.thumb, id: "other", name: "other" };
+
+        const split = splitStateAwareLayoutPatches(document, ON, { thumb: { x: 35 }, other: { x: 19 } });
+        expect(split.stateMotionPatches.switch).toEqual([motion("untouched", 3)]);
+        expect(variantOffsetX(split.appearancePatches.thumb, UI_SWITCH_ON_VARIANT_ID)).toBe(32);
+        expect(variantOffsetX(split.appearancePatches.other, UI_SWITCH_ON_VARIANT_ID)).toBe(16);
+    });
 });

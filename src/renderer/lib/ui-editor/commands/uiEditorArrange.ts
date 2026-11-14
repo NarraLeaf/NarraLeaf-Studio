@@ -252,7 +252,38 @@ export function uiEditorArrange(
     const byParent = groupMoversByParent(doc0, movers0);
     let changed = false;
 
-    if (op === "bringToFront" || op === "sendToBack") {
+    documentService.runSurfaceHistoryTransaction(surfaceId, () => {
+        if (op === "bringToFront" || op === "sendToBack") {
+            for (const [parentId, ids] of byParent) {
+                const doc = documentService.getDocument();
+                const parent = doc.elements[parentId];
+                if (!parent) {
+                    continue;
+                }
+                const ordered = sortElementIdsByPreorder(doc, effectiveRoot, ids);
+                const moverSet = new Set(ordered);
+                if (op === "bringToFront") {
+                    if (moversAlreadyAtFrontEnd(parent.childrenIds, moverSet)) {
+                        continue;
+                    }
+                    const r = documentService.moveElementsInSurface(surfaceId, ordered, parentId, null);
+                    if (r.ok) {
+                        changed = true;
+                    }
+                } else {
+                    const firstNonMover = parent.childrenIds.find(cid => !moverSet.has(cid));
+                    if (firstNonMover == null || moversAlreadyAtBack(parent.childrenIds, moverSet)) {
+                        continue;
+                    }
+                    const r = documentService.moveElementsInSurface(surfaceId, ordered, parentId, firstNonMover);
+                    if (r.ok) {
+                        changed = true;
+                    }
+                }
+            }
+            return;
+        }
+
         for (const [parentId, ids] of byParent) {
             const doc = documentService.getDocument();
             const parent = doc.elements[parentId];
@@ -260,45 +291,16 @@ export function uiEditorArrange(
                 continue;
             }
             const ordered = sortElementIdsByPreorder(doc, effectiveRoot, ids);
-            const moverSet = new Set(ordered);
-            if (op === "bringToFront") {
-                if (moversAlreadyAtFrontEnd(parent.childrenIds, moverSet)) {
-                    continue;
-                }
-                const r = documentService.moveElementsInSurface(surfaceId, ordered, parentId, null);
-                if (r.ok) {
-                    changed = true;
-                }
-            } else {
-                const firstNonMover = parent.childrenIds.find(cid => !moverSet.has(cid));
-                if (firstNonMover == null || moversAlreadyAtBack(parent.childrenIds, moverSet)) {
-                    continue;
-                }
-                const r = documentService.moveElementsInSurface(surfaceId, ordered, parentId, firstNonMover);
-                if (r.ok) {
-                    changed = true;
-                }
+            const next =
+                op === "bringForward"
+                    ? computeBringForwardOrder(parent.childrenIds, ordered)
+                    : computeSendBackwardOrder(parent.childrenIds, ordered);
+            if (next == null) {
+                continue;
             }
+            documentService.reorderChildren(parentId, next);
+            changed = true;
         }
-        return changed;
-    }
-
-    for (const [parentId, ids] of byParent) {
-        const doc = documentService.getDocument();
-        const parent = doc.elements[parentId];
-        if (!parent) {
-            continue;
-        }
-        const ordered = sortElementIdsByPreorder(doc, effectiveRoot, ids);
-        const next =
-            op === "bringForward"
-                ? computeBringForwardOrder(parent.childrenIds, ordered)
-                : computeSendBackwardOrder(parent.childrenIds, ordered);
-        if (next == null) {
-            continue;
-        }
-        documentService.reorderChildren(parentId, next);
-        changed = true;
-    }
+    });
     return changed;
 }
