@@ -42,6 +42,10 @@ import {
     teamLiveTopic,
     teamProjectClientsTopic,
     teamProjectLiveTopic,
+    teamProjectMembersTopic,
+    teamProjectTodosTopic,
+    teamAccountTodosTopic,
+    teamAccountNotificationsTopic,
     teamProjectOverlayTopic,
     teamProjectThreadsTopic,
     teamProjectTopic,
@@ -77,6 +81,10 @@ const CAPABILITIES: TeamCapability[] = [
     "overlay",
     "admin",
     "password-sign-in",
+    "oauth",
+    "activity",
+    "todos",
+    "notifications",
     "project-history",
     "blobs",
 ];
@@ -111,6 +119,8 @@ describe("the protocol contract", () => {
         // four that arrived with the management family would have been four names Studio
         // never learned, and nothing here would have said so.
         expect(Object.keys(contract.topics).slice().sort()).toEqual([
+            "accountNotifications",
+            "accountTodos",
             "adminKeys",
             "adminRefusals",
             "adminSettings",
@@ -119,8 +129,10 @@ describe("the protocol contract", () => {
             "project",
             "projectClients",
             "projectLive",
+            "projectMembers",
             "projectOverlay",
             "projectThreads",
+            "projectTodos",
             "projects",
         ]);
 
@@ -138,6 +150,12 @@ describe("the protocol contract", () => {
         expect(teamProjectLiveTopic("abc")).toBe(
             contract.topics["projectLive"]?.replace("{project}", "abc"),
         );
+        expect(teamProjectMembersTopic("abc")).toBe(
+            contract.topics["projectMembers"]?.replace("{project}", "abc"),
+        );
+        expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
+        expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
+        expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
 
         // Compared rather than built: these name the server, not a project or a session,
