@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React, { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createPortal } from "react-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Accordion, AccordionItem } from "./Accordion";
 
 type ResizeCallback = () => void;
@@ -140,5 +141,87 @@ describe("AccordionItem focus tint", () => {
         const outside = screen.getByRole("button", { name: "outside" });
         fireEvent.blur(button, { relatedTarget: outside });
         expect(tinted("a")).toBe(false);
+    });
+});
+
+describe("Accordion keyboard activation", () => {
+    it("toggles the header reached by Tab after another header was clicked", () => {
+        const onOpenChange = vi.fn();
+        render(
+            <Accordion openItems={[]} onOpenChange={onOpenChange} disableAnimation>
+                <AccordionItem id="a" title="a">first</AccordionItem>
+                <AccordionItem id="b" title="b">second</AccordionItem>
+            </Accordion>,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "a" }));
+        onOpenChange.mockClear();
+
+        const second = screen.getByRole("button", { name: "b" });
+        act(() => second.focus());
+        fireEvent.keyDown(second, { key: "Enter" });
+
+        expect(onOpenChange).toHaveBeenCalledWith(["b"]);
+    });
+
+    it("leaves an action button's Enter to that button", () => {
+        const onOpenChange = vi.fn();
+        const action = vi.fn();
+        render(
+            <Accordion openItems={[]} onOpenChange={onOpenChange} disableAnimation>
+                <AccordionItem id="a" title="a" actions={<button onClick={action}>add</button>}>first</AccordionItem>
+            </Accordion>,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "a" }));
+        onOpenChange.mockClear();
+
+        const button = screen.getByRole("button", { name: "add" });
+        act(() => button.focus());
+        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+        act(() => button.dispatchEvent(event));
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it("walks the current accordion's headers without entering a nested accordion", () => {
+        const onOpenChange = vi.fn();
+        render(
+            <Accordion openItems={["a"]} onOpenChange={onOpenChange} disableAnimation>
+                <AccordionItem id="a" title="a">
+                    <Accordion disableAnimation>
+                        <AccordionItem id="nested" title="nested">nested body</AccordionItem>
+                    </Accordion>
+                </AccordionItem>
+                <AccordionItem id="b" title="b">second</AccordionItem>
+            </Accordion>,
+        );
+        const first = screen.getByRole("button", { name: "a" });
+        act(() => first.focus());
+        fireEvent.click(first);
+        onOpenChange.mockClear();
+        fireEvent.keyDown(first, { key: "ArrowDown" });
+        fireEvent.keyDown(first, { key: "Enter" });
+
+        expect(onOpenChange).toHaveBeenCalledWith(["a", "b"]);
+    });
+
+    it("handles header keys in the window containing the accordion", () => {
+        const frame = document.createElement("iframe");
+        document.body.appendChild(frame);
+        const doc = frame.contentDocument!;
+        const onOpenChange = vi.fn();
+        const view = render(createPortal(
+            <Accordion openItems={[]} onOpenChange={onOpenChange} disableAnimation>
+                <AccordionItem id="a" title="a">first</AccordionItem>
+            </Accordion>,
+            doc.body,
+        ));
+        const button = doc.querySelector("button")!;
+        act(() => button.focus());
+        fireEvent.keyDown(button, { key: "Enter" });
+
+        expect(onOpenChange).toHaveBeenCalledWith(["a"]);
+        view.unmount();
+        frame.remove();
     });
 });

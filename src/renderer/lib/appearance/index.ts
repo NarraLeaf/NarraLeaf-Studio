@@ -1,5 +1,5 @@
-import { getInterface } from "@/lib/app/bridge";
 import { normalizeAccentColor } from "@shared/constants/accent";
+import { observeGlobalSettings } from "@/lib/settings/observeGlobalSettings";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
 import { UI_FONT_FAMILY_KEY, UI_FONT_VAR, uiFontCssFamily } from "@/lib/settings/uiFontOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
@@ -20,7 +20,7 @@ import { setTooltipDelay } from "@/lib/tooltip";
  * whatever the person who built it prefers locally.
  */
 
-let subscribed = false;
+let observer: ReturnType<typeof observeGlobalSettings> | null = null;
 
 /** Listeners for the motion preference, for the React side (see `MotionConfig` in renderApp). */
 const motionListeners = new Set<(reduced: boolean) => void>();
@@ -107,43 +107,20 @@ export function subscribeReduceMotion(listener: (reduced: boolean) => void): () 
 }
 
 export async function initAppearance(): Promise<void> {
-    const state = getInterface().app.state;
-
-    try {
-        const [accent, uiFont, motion, tooltipDelay] = await Promise.all([
-            state.getGlobalState("ui.accentColor"),
-            state.getGlobalState(UI_FONT_FAMILY_KEY),
-            state.getGlobalState("ui.reduceMotion"),
-            state.getGlobalState(TOOLTIP_DELAY_KEY),
-        ]);
-        if (accent.success) {
-            applyAccentColor(accent.data.value);
-        }
-        if (uiFont.success) {
-            applyUIFontFamily(uiFont.data.value);
-        }
-        if (motion.success) {
-            applyReduceMotion(motion.data.value);
-        }
-        if (tooltipDelay.success) {
-            applyTooltipDelay(tooltipDelay.data.value);
-        }
-    } catch (error) {
-        console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
-    }
-
-    if (!subscribed) {
-        subscribed = true;
-        state.onGlobalStateChanged?.((change) => {
-            if (change.key === "ui.accentColor") {
-                applyAccentColor(change.value);
-            } else if (change.key === UI_FONT_FAMILY_KEY) {
-                applyUIFontFamily(change.value);
-            } else if (change.key === "ui.reduceMotion") {
-                applyReduceMotion(change.value);
-            } else if (change.key === TOOLTIP_DELAY_KEY) {
-                applyTooltipDelay(change.value);
+    observer ??= observeGlobalSettings(
+        ["ui.accentColor", UI_FONT_FAMILY_KEY, "ui.reduceMotion", TOOLTIP_DELAY_KEY],
+        (key, value) => {
+            if (key === "ui.accentColor") {
+                applyAccentColor(value);
+            } else if (key === UI_FONT_FAMILY_KEY) {
+                applyUIFontFamily(value);
+            } else if (key === "ui.reduceMotion") {
+                applyReduceMotion(value);
+            } else if (key === TOOLTIP_DELAY_KEY) {
+                applyTooltipDelay(value);
             }
-        });
-    }
+        },
+        (_key, error) => console.warn("[appearance] Failed to load an appearance preference.", error),
+    );
+    await observer.ready;
 }

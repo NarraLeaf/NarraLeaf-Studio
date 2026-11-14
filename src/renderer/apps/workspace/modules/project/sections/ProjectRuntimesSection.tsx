@@ -117,7 +117,12 @@ export function ProjectRuntimesSection({ uiService }: ProjectSectionProps) {
         if (!confirmed) {
             return;
         }
-        await removePuppetRuntime(context.project, row.backend).catch(() => undefined);
+        try {
+            await removePuppetRuntime(context.project, row.backend);
+        } catch (error) {
+            console.warn("[project runtimes] removal failed", error);
+            uiService.showNotification(t("assets.delete.failedTitle"), "error");
+        }
         refresh();
     }, [context, refresh, t, uiService]);
 
@@ -165,6 +170,9 @@ export function ProjectRuntimesSection({ uiService }: ProjectSectionProps) {
                         <button
                             type="button"
                             className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
+                            aria-label={row.state.status === "installed"
+                                ? t("characters.editor.puppet.reinstall")
+                                : t("characters.editor.puppet.install")}
                             onClick={() => setInstalling(
                                 row.known ? { kind: "known", id: row.known.id } : { kind: "custom", suggestedName: row.backend },
                             )}
@@ -178,6 +186,7 @@ export function ProjectRuntimesSection({ uiService }: ProjectSectionProps) {
                             <button
                                 type="button"
                                 className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-danger disabled:opacity-40"
+                                aria-label={t("characters.editor.runtime.remove")}
                                 onClick={() => void remove(row)}
                                 {...freeze.writes(false, t("characters.editor.runtime.remove"))}
                             >

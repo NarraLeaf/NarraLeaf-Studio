@@ -4,6 +4,7 @@ import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FLOATING_OWN_KEYS_ATTRIBUTE, openFloatingLayerCount, useFloatingLayer, type FloatingFocusScope } from "./floatingLayer";
+import { HostWindowProvider } from "./hostWindow";
 
 /**
  * The contract every floating layer keeps (see `useFloatingLayer`): focus moves in on open, Escape
@@ -287,5 +288,60 @@ describe("a popover whose focus stayed on its trigger", () => {
         fireEvent.keyDown(trigger, { key: "Escape" });
         expect(view.queryByTestId("panel")).toBeNull();
         expect(inspector).not.toHaveBeenCalled();
+    });
+});
+
+describe("a layer in another window", () => {
+    function DetachedLayer({ ownKeys, onCancel }: { ownKeys?: boolean; onCancel: () => void }) {
+        const [open, setOpen] = useState(false);
+        const panelRef = useRef<HTMLDivElement | null>(null);
+        useFloatingLayer({ open, onClose: () => setOpen(false), panelRef, scope: "trap" });
+        return (
+            <>
+                <button type="button" onClick={() => setOpen(true)}>open detached layer</button>
+                {open ? (
+                    <div ref={panelRef}>
+                        <input
+                            aria-label="detached draft"
+                            {...(ownKeys ? { [FLOATING_OWN_KEYS_ATTRIBUTE]: "" } : {})}
+                            onKeyDown={event => {
+                                if (event.key === "Escape" && ownKeys) {
+                                    event.stopPropagation();
+                                    onCancel();
+                                    setOpen(false);
+                                }
+                            }}
+                        />
+                    </div>
+                ) : null}
+            </>
+        );
+    }
+
+    it.each([false, true])("returns focus and lets the input handle its own Escape: %s", ownKeys => {
+        const frame = document.createElement("iframe");
+        document.body.appendChild(frame);
+        const hostWindow = frame.contentWindow!;
+        const doc = hostWindow.document;
+        const onCancel = vi.fn();
+        const view = render(createPortal(
+            <HostWindowProvider window={hostWindow} windowKey="detached">
+                <DetachedLayer ownKeys={ownKeys} onCancel={onCancel} />
+            </HostWindowProvider>,
+            doc.body,
+        ));
+        const trigger = doc.querySelector("button")!;
+        trigger.focus();
+        fireEvent.click(trigger);
+        const input = doc.querySelector("input")!;
+        expect(doc.activeElement).toBe(input);
+
+        fireEvent.keyDown(input, { key: "Escape" });
+
+        expect(doc.querySelector("input")).toBeNull();
+        expect(onCancel).toHaveBeenCalledTimes(ownKeys ? 1 : 0);
+        expect(doc.activeElement).toBe(trigger);
+        view.unmount();
+        frame.remove();
     });
 });

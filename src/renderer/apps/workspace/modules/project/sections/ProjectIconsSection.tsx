@@ -116,21 +116,31 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
             return;
         }
 
-        releaseUrls();
         const loaded: Partial<Record<ProjectIconOutputId | "master", string>> = {};
-        if (persisted.master) {
-            const url = await toObjectUrl(projectService, persisted.master.path, persisted.master.mediaType);
-            if (url) {
-                loaded.master = url;
+        try {
+            if (persisted.master) {
+                const url = await toObjectUrl(projectService, persisted.master.path, persisted.master.mediaType);
+                if (url) {
+                    loaded.master = url;
+                }
             }
-        }
-        for (const [id, bake] of Object.entries(persisted.baked)) {
-            const url = await toObjectUrl(projectService, bake.path, "image/png");
-            if (url) {
-                loaded[id as ProjectIconOutputId] = url;
+            for (const [id, bake] of Object.entries(persisted.baked)) {
+                const url = await toObjectUrl(projectService, bake.path, "image/png");
+                if (url) {
+                    loaded[id as ProjectIconOutputId] = url;
+                }
             }
+        } catch (error) {
+            Object.values(loaded).forEach(url => { if (url) URL.revokeObjectURL(url); });
+            throw error;
         }
-        urlsRef.current = Object.values(loaded).filter((url): url is string => !!url);
+        const urls = Object.values(loaded).filter((url): url is string => !!url);
+        if (!mounted.current) {
+            urls.forEach(url => URL.revokeObjectURL(url));
+            return;
+        }
+        releaseUrls();
+        urlsRef.current = urls;
         setPreviews(loaded);
     }, [freeze.frozen, onConfigChange, projectService, releaseUrls]);
 

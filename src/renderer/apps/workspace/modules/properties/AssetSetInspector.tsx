@@ -1,21 +1,16 @@
 /**
- * The inspector for one asset set: its axes, and what the library currently answers for them.
+ * The inspector for one asset set: its axis, and what the library currently answers for it.
  *
- * Two halves, and the order is deliberate. The axes come first because they are the declaration - the
- * thing the author edits - and the variant list under them is the reading, which changes only because
- * the declaration or the library did. An author who moves an axis sees the list below rebuild, which
- * is the whole feedback loop this panel exists to close.
+ * The axis declaration comes first, followed by the resolved variants. Changing the axis or the
+ * library updates the list below it.
  *
  * ## Where the refusal lives
  *
- * A build axis may not sit inside a runtime one (see `@shared/types/assetSet`). This panel refuses
- * the move rather than reporting it afterwards: the arrangement has no build that satisfies it, so
- * there is no state worth letting the document reach. `AssetSetService.setAxes` refuses it a second
- * time, which is what holds if a set is ever edited from somewhere this panel is not.
+ * A build axis may not sit inside a runtime one (see `@shared/types/assetSet`). This panel checks
+ * the selected axis against its parent before writing; `AssetSetService.setAxis` applies the same
+ * rule to writes from other callers.
  *
- * The refusal is shown as a sentence under the axis list and the control stays where it was. It is
- * not a disabled button: which moves are legal depends on the other axes, so a permanently greyed
- * arrow would be greyed on rows where the move is fine.
+ * A refused choice is explained under the axis selector, which continues to show the stored kind.
  *
  * ## The variant list is where a hole gets filled
  *
@@ -58,9 +53,6 @@ import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
-import { Services } from "@/lib/workspace/services/services";
-import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
-import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
 import { useAssetSetNaming } from "@/apps/workspace/modules/assets/state/useAssetSetNaming";
 import {
@@ -160,27 +152,6 @@ export function AssetSetInspector({
     // The document changes under this panel whenever a sub-set is made or renamed, and what a value
     // resolves to depends on it.
     const [revision, setRevision] = useState(0);
-    /**
-     * What each kind ranges over in this project.
-     *
-     * Read here rather than stored on the set, because switching kinds has to re-state the promise:
-     * a set that was language-shaped and is now edition-shaped promises editions.
-     */
-    const localeValues = useMemo(() => {
-        try {
-            return context!.services.get<LocalizationService>(Services.Localization)
-                .getConfiguration().locales.map(locale => locale.code);
-        } catch {
-            return [];
-        }
-    }, [context]);
-    const editionValues = useMemo(() => {
-        try {
-            return context!.services.get<AppTagService>(Services.AppTags).listTags().map(tag => tag.id);
-        } catch {
-            return [];
-        }
-    }, [context]);
     useEffect(() => service.onSetsChanged(() => setRevision(current => current + 1)), [service]);
     const [picking, setPicking] = useState<AssetSetCell | null>(null);
     const pickerAnchor = useRef<HTMLElement | null>(null);
@@ -216,12 +187,6 @@ export function AssetSetInspector({
     );
 
     /**
-     * Write a new axis list, refusing an arrangement that has no build.
-     *
-     * The flag is cleared by every accepted write, so the sentence goes away as soon as the author
-     * does something the model allows - rather than staying until they select something else.
-     */
-    /**
      * Change what this set varies by.
      *
      * The values come with the kind, read off the project - so switching a set from languages to
@@ -229,7 +194,7 @@ export function AssetSetInspector({
      * edition axis.
      */
     const patchAxis = useCallback((kind: AssetSetAxisKind) => {
-        const next = makeAssetSetAxis(kind, kind === "locale" ? localeValues : editionValues);
+        const next = makeAssetSetAxis(kind, [...(kind === "locale" ? naming.locales : naming.editions).keys()]);
         const parent = assetSetParent(set, sets);
         if (parent && !isLegalNesting(parent.set.axis, next)) {
             setBlocked(true);
@@ -237,7 +202,7 @@ export function AssetSetInspector({
         }
         setBlocked(false);
         service.setAxis(set.id, next);
-    }, [service, set, sets]);
+    }, [naming, service, set, sets]);
 
     /** Which value everything else falls back to. The one thing a set has to be told. */
     const patchFallback = useCallback((value: string) => {

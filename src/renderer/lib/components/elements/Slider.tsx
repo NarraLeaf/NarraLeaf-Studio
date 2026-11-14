@@ -18,6 +18,8 @@ export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
     disabled?: boolean;
 }
 
+const VALUE_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"];
+
 /**
  * Range slider.
  *
@@ -51,10 +53,13 @@ export function Slider({
             value={clamp(value)}
             disabled={disabled}
             onChange={(event) => onValueChange?.(clamp(Number(event.target.value)))}
-            // Pointer release and keyboard both land on change/keyUp; `input` already
-            // covered the live updates, so these only mark the end of an interaction.
+            // The live updates precede the release that commits the gesture.
             onPointerUp={(event) => onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))}
-            onKeyUp={(event) => onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))}
+            onKeyUp={(event) => {
+                if (VALUE_KEYS.includes(event.key)) {
+                    onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)));
+                }
+            }}
             {...props}
         />
     );

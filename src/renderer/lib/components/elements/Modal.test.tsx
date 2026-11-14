@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useFloatingLayer } from "@/lib/components/layout";
+import { HostWindowProvider, useFloatingLayer } from "@/lib/components/layout";
 import { Modal } from "./Modal";
 
 /**
@@ -71,5 +71,72 @@ describe("a dialog's backdrop", () => {
         render(<Dialog onClose={onClose} />);
         pressBackdrop();
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("modal scroll locking", () => {
+    it("keeps the background locked until the last open dialog closes", () => {
+        document.body.style.overflow = "auto";
+        const dialogs = (outer: boolean, inner: boolean) => (
+            <>
+                <Modal isOpen={outer} onClose={() => undefined} title="Parent">parent</Modal>
+                <Modal isOpen={inner} onClose={() => undefined} title="Child">child</Modal>
+            </>
+        );
+        const view = render(dialogs(true, false));
+        expect(document.body.style.overflow).toBe("hidden");
+
+        view.rerender(dialogs(true, true));
+        view.rerender(dialogs(true, false));
+        expect(document.body.style.overflow).toBe("hidden");
+
+        view.rerender(dialogs(false, false));
+        expect(document.body.style.overflow).toBe("auto");
+        view.unmount();
+        document.body.style.overflow = "";
+    });
+
+    it("does not unlock another dialog when a closed dialog unmounts", () => {
+        const view = render(
+            <>
+                <Modal isOpen onClose={() => undefined}>open</Modal>
+                <Modal isOpen={false} onClose={() => undefined}>closed</Modal>
+            </>,
+        );
+        view.rerender(<Modal isOpen onClose={() => undefined}>open</Modal>);
+        expect(document.body.style.overflow).toBe("hidden");
+    });
+
+    it("keeps scroll locks independent between windows", () => {
+        const frame = document.createElement("iframe");
+        document.body.appendChild(frame);
+        const hostWindow = frame.contentWindow!;
+        const doc = hostWindow.document;
+        document.body.style.overflow = "auto";
+        doc.body.style.overflow = "scroll";
+        const dialogs = (mainOpen: boolean, detachedOpen: boolean) => (
+            <>
+                <Modal isOpen={mainOpen} onClose={() => undefined}>main</Modal>
+                {createPortal(
+                    <HostWindowProvider window={hostWindow} windowKey="detached">
+                        <Modal isOpen={detachedOpen} onClose={() => undefined}>detached</Modal>
+                    </HostWindowProvider>,
+                    doc.body,
+                )}
+            </>
+        );
+        const view = render(dialogs(true, true));
+        expect(document.body.style.overflow).toBe("hidden");
+        expect(doc.body.style.overflow).toBe("hidden");
+
+        view.rerender(dialogs(false, true));
+        expect(document.body.style.overflow).toBe("auto");
+        expect(doc.body.style.overflow).toBe("hidden");
+        view.rerender(dialogs(false, false));
+        expect(doc.body.style.overflow).toBe("scroll");
+
+        view.unmount();
+        frame.remove();
+        document.body.style.overflow = "";
     });
 });

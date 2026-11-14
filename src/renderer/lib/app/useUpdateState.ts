@@ -19,16 +19,18 @@ export function useUpdateState(): UpdateState | null {
 
     useEffect(() => {
         let mounted = true;
+        let receivedChange = false;
+        const token = getInterface().app.update.onStateChanged(next => {
+            receivedChange = true;
+            setState(next);
+        });
         void getInterface().app.update.getState()
             .then(result => {
-                if (mounted && result.success) {
+                if (mounted && !receivedChange && result.success) {
                     setState(result.data.state);
                 }
             })
             .catch(() => undefined);
-        const token = getInterface().app.update.onStateChanged(next => {
-            setState(next);
-        });
         return () => {
             mounted = false;
             token?.cancel();

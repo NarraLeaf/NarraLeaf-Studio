@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { getInterface } from "@/lib/app/bridge";
+import { observeGlobalSettings } from "@/lib/settings/observeGlobalSettings";
 
 /**
  * Developer options (`app.developerMode`), read as a per-window store.
@@ -31,7 +31,7 @@ export const DEVELOPER_MODE_KEY = "app.developerMode" as const;
 export const DEVELOPER_MODE_DEFAULT = false;
 
 let enabled: boolean = DEVELOPER_MODE_DEFAULT;
-let subscribed = false;
+let observer: ReturnType<typeof observeGlobalSettings> | null = null;
 const listeners = new Set<() => void>();
 
 function apply(value: unknown): void {
@@ -70,25 +70,12 @@ export function useDeveloperMode(): boolean {
  * refuses to start, and the broadcast subscription below still corrects it the moment it changes.
  */
 export async function initDeveloperMode(): Promise<void> {
-    const state = getInterface().app.state;
-
-    try {
-        const result = await state.getGlobalState(DEVELOPER_MODE_KEY);
-        if (result.success) {
-            apply(result.data.value);
-        }
-    } catch (error) {
-        console.warn("[developer] Failed to load developer options; leaving them off.", error);
-    }
-
-    if (!subscribed) {
-        subscribed = true;
-        state.onGlobalStateChanged?.((change) => {
-            if (change.key === DEVELOPER_MODE_KEY) {
-                apply(change.value);
-            }
-        });
-    }
+    observer ??= observeGlobalSettings(
+        [DEVELOPER_MODE_KEY],
+        (_key, value) => apply(value),
+        (_key, error) => console.warn("[developer] Failed to load developer options.", error),
+    );
+    await observer.ready;
 }
 
 /**

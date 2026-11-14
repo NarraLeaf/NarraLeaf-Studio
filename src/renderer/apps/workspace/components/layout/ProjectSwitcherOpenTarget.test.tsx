@@ -118,4 +118,12 @@ describe("picking a project in the switcher", () => {
         await waitFor(() => expect(dialog()).not.toBeNull());
         expect(recents.openRecent).not.toHaveBeenCalled();
     });
+
+    it("asks when the window lookup rejects", async () => {
+        bridge.isProjectOpen.mockRejectedValue(new Error("lookup unavailable"));
+        pickElsewhere();
+
+        await waitFor(() => expect(dialog()).not.toBeNull());
+        expect(recents.openRecent).not.toHaveBeenCalled();
+    });
 });

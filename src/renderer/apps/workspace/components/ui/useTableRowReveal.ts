@@ -80,7 +80,7 @@ export function useTableRowReveal(input: {
     }, [requestToken, requestUnitId]);
 
     useEffect(() => {
-        if (!pending) {
+        if (!pending || (requestToken !== null && requestToken !== pending.token)) {
             return;
         }
         const step = planTableRowReveal({
@@ -96,7 +96,7 @@ export function useTableRowReveal(input: {
             showAll();
             setPending({ ...pending, filtersCleared: true });
         }
-    }, [pending, indexOf, inTable, showAll, scrollToIndex]);
+    }, [pending, requestToken, indexOf, inTable, showAll, scrollToIndex]);
 
     const pendingToken = pending?.token ?? null;
     useEffect(() => {
