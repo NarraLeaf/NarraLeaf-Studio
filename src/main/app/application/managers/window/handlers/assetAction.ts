@@ -157,9 +157,9 @@ type RelativeExportCalls = {
 let relativeExportCalls: RelativeExportCalls | undefined;
 
 /** Open and create children relative to an already opened directory. */
-function getRelativeExportCalls(): RelativeExportCalls {
+async function getRelativeExportCalls(): Promise<RelativeExportCalls> {
     if (relativeExportCalls) return relativeExportCalls;
-    const koffi = require("koffi") as typeof import("koffi");
+    const koffi = await import("koffi");
     const libc = koffi.load(null);
     const openat = libc.func("openat", "int", ["int", "str", "int", "..."]);
     const mkdirat = libc.func("int mkdirat(int directory, const char *name, uint32_t mode)");
@@ -190,7 +190,7 @@ async function withExportParent<T>(
     expectedRoot: { dev: number; ino: number },
     action: (directory: number) => Promise<T>,
 ): Promise<T> {
-    const calls = getRelativeExportCalls();
+    const calls = await getRelativeExportCalls();
     const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
     const root = await fs.open(exportDir, unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY);
     const opened: number[] = [];
@@ -221,7 +221,7 @@ async function copyFileIntoDirectory(source: string, directory: number, name: st
     const mode = (await fs.stat(source)).mode & 0o777;
     const flags = unpatchedFs.constants.O_WRONLY | unpatchedFs.constants.O_CREAT
         | unpatchedFs.constants.O_EXCL | unpatchedFs.constants.O_NOFOLLOW;
-    const fd = getRelativeExportCalls().openat(directory, name, flags, mode);
+    const fd = (await getRelativeExportCalls()).openat(directory, name, flags, mode);
     await pipeline(
         unpatchedFs.createReadStream(source),
         unpatchedFs.createWriteStream("", { fd, autoClose: true }),
@@ -229,7 +229,7 @@ async function copyFileIntoDirectory(source: string, directory: number, name: st
 }
 
 async function copyTreeIntoDirectory(source: string, directory: number): Promise<void> {
-    const calls = getRelativeExportCalls();
+    const calls = await getRelativeExportCalls();
     const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
     for (const entry of await fs.readdir(source, { withFileTypes: true })) {
         const child = path.join(source, entry.name);
@@ -252,7 +252,7 @@ async function copyTreeIntoDirectory(source: string, directory: number): Promise
 }
 
 async function copyToAvailableRelativeExportPath(source: string, directory: number, base: string, isDirectory: boolean): Promise<void> {
-    const calls = getRelativeExportCalls();
+    const calls = await getRelativeExportCalls();
     const ext = path.extname(base);
     const stem = ext ? base.slice(0, -ext.length) : base;
     for (let index = 0; index < 1000; index += 1) {
