@@ -272,7 +272,7 @@ export function blueprintTargetsCommand(targets: UiDocumentTargets, options: { s
     return io.finish(0);
 }
 
-/** `blueprint list [search]`. `withGraphs` leaves out the blueprints that hold no node. */
+/** `blueprint list [search]`. `withGraphs` keeps blueprints with nodes or script layers. */
 export function blueprintListCommand(
     document: BlueprintDocument,
     options: { search?: string; withGraphs?: boolean; json?: boolean } = {},
@@ -297,7 +297,7 @@ export function blueprintListCommand(
     // it stays whether or not a node was ever dropped into it. They are noise to everything but a
     // census, and they outnumber the rest six to one in the shipped skeleton.
     if (options.withGraphs === true) {
-        rows = rows.filter(row => row.nodes > 0);
+        rows = rows.filter(row => row.nodes > 0 || row.scripts > 0);
     }
     if (options.json === true) {
         io.out(JSON.stringify(rows, null, 2));
@@ -312,12 +312,12 @@ export function blueprintListCommand(
         .map(
             row =>
                 `${row.name.padEnd(nameWidth)}  ${String(row.nodes).padStart(4)} nodes  `
-                + `${row.events} event(s)  ${row.ownerKey}`,
+                + `${row.events} event(s)${row.scripts > 0 ? `  ${row.scripts} script(s)` : ""}  ${row.ownerKey}`,
         )
         .join("\n");
     io.out(
         `${table}\n\n${rows.length} shown of ${all.length}; `
-            + `${all.filter(row => row.nodes > 0).length} carry a graph (--with-graphs).`,
+            + `${all.filter(row => row.nodes > 0 || row.scripts > 0).length} carry a graph or script (--with-graphs).`,
     );
     return io.finish(0);
 }
@@ -512,7 +512,7 @@ function quoteAll(names: readonly string[]): string {
 }
 
 function countGraphs(blueprint: Blueprint, kind: "events" | "functions"): number {
-    return Object.keys(blueprint.graphs[kind] ?? {}).length;
+    return Object.values(blueprint.graphs[kind] ?? {}).filter(graph => "graph" in graph && graph.graph !== undefined).length;
 }
 
 export function countNodes(blueprint: Blueprint): number {

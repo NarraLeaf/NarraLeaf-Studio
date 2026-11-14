@@ -84,21 +84,28 @@ function isOwnedBy(blueprint: Blueprint, componentId: string): boolean {
 function describeContent(blueprint: Blueprint): string[] {
     let nodes = 0;
     let scripts = 0;
+    let emptyGraphs = 0;
     for (const pool of [blueprint.graphs?.events, blueprint.graphs?.functions, blueprint.graphs?.macros]) {
         for (const layer of Object.values(pool ?? {})) {
-            nodes += Object.keys(layer.graph?.nodes ?? {}).length;
+            const layerNodes = Object.keys(layer.graph?.nodes ?? {}).length;
+            nodes += layerNodes;
             if ((layer as { script?: unknown }).script) {
                 scripts += 1;
+            } else if (layer.graph) {
+                emptyGraphs += layerNodes === 0 ? 1 : 0;
             }
         }
     }
     const variables = Object.keys(blueprint.members?.variables ?? {}).length;
+    const fields = Object.keys(blueprint.members?.fields ?? {}).length;
     const functions = Object.keys(blueprint.members?.functions ?? {}).length;
     const bindings = Object.keys(blueprint.bindings ?? {}).length;
     const out: string[] = [];
     if (nodes > 0) out.push(`${nodes} node(s)`);
     if (scripts > 0) out.push(`${scripts} script layer(s)`);
+    if (emptyGraphs > 0) out.push(`${emptyGraphs} empty graph layer(s)`);
     if (variables > 0) out.push(`${variables} variable(s)`);
+    if (fields > 0) out.push(`${fields} field(s)`);
     if (functions > 0) out.push(`${functions} Fn(s)`);
     if (bindings > 0) out.push(`${bindings} binding(s)`);
     return out;

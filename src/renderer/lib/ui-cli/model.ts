@@ -15,7 +15,7 @@
  */
 
 import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
+import { isEmptyBlueprint } from "@services/ui-editor/blueprint/ownerRecords";
 import { normalizeLocalizationConfiguration, normalizeLocalizationKeysDocument } from "@shared/types/localization";
 import {
     UI_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -106,19 +106,6 @@ export type BlueprintIndex = {
     /** Blueprint ids by the element they hang off, whether as a widget's own graph or a value. */
     byElement: Map<string, { id: string; name: string; owner: BlueprintOwnerRef; empty?: boolean }[]>;
 };
-
-/** A blueprint with no node and no script: what a widget is given the first time its graph is opened. */
-function isEmptyBlueprint(blueprint: BlueprintDocument["blueprints"][string]): boolean {
-    const graphs = blueprint.graphs;
-    for (const pool of [graphs?.events, graphs?.functions]) {
-        for (const graph of Object.values(pool ?? {})) {
-            if (Object.keys(graph.graph?.nodes ?? {}).length > 0) {
-                return false;
-            }
-        }
-    }
-    return listScriptLayers(graphs).length === 0;
-}
 
 /**
  * Which blueprints exist and which element each hangs off.
