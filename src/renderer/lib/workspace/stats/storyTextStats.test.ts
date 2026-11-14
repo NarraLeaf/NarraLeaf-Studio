@@ -76,4 +76,13 @@ describe("countSceneTextStats", () => {
     it("counts CJK by character, matching what an author counting 字 expects", () => {
         expect(countSceneTextStats(sceneOf([choiceOption("o", "留下来")])).words).toBe(3);
     });
+
+    it("counts supplementary Han in dialogue and choice text", () => {
+        const stats = countSceneTextStats(sceneOf([
+            dialogue("d", "𠀀𠀀"),
+            choiceOption("o", "𰀀丽"),
+        ]));
+        expect(stats.words).toBe(4);
+        expect(stats.lines).toBe(2);
+    });
 });

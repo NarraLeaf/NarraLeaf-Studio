@@ -54,6 +54,7 @@ export class RecentColorsService extends Service<RecentColorsService> {
     private ready = false;
     private dirty = false;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    private writeQueue: Promise<void> = Promise.resolve();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const serviceAssets = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
@@ -91,16 +92,20 @@ export class RecentColorsService extends Service<RecentColorsService> {
         };
     }
 
-    public override dispose(_ctx: WorkspaceContext): void {
+    public override async dispose(_ctx: WorkspaceContext): Promise<void> {
         if (this.saveTimer) {
             clearTimeout(this.saveTimer);
             this.saveTimer = null;
         }
-        // flush() captures the current colors synchronously before the reset below.
-        void this.flush();
-        this.ready = false;
-        this.colors = [];
-        this.emitChange();
+        try {
+            await this.flush();
+        } finally {
+            this.ready = false;
+            this.dirty = false;
+            this.colors = [];
+            this.writeQueue = Promise.resolve();
+            this.emitChange();
+        }
     }
 
     private markDirty(): void {
@@ -132,19 +137,23 @@ export class RecentColorsService extends Service<RecentColorsService> {
         this.emitChange();
     }
 
-    private async flush(): Promise<void> {
+    private flush(): Promise<void> {
         if (!this.dirty || !this.ready) {
-            return;
+            return this.writeQueue;
         }
         this.dirty = false;
         const serviceAssets = this.getServiceAssets();
         const data: RecentColorsStore = { version: 1, colors: this.colors };
         // Reported by the save-status surface, not here: see `PanelStateService.flush`.
-        await serviceAssets.writeStore(
-            RecentColorsService.Namespace,
-            data,
-            storeWrite("workspace.shell.save.stores.recentColors", "notRetried"),
-        );
+        const write = this.writeQueue.catch(() => undefined).then(async () => {
+            await serviceAssets.writeStore(
+                RecentColorsService.Namespace,
+                data,
+                storeWrite("workspace.shell.save.stores.recentColors", "notRetried"),
+            );
+        });
+        this.writeQueue = write;
+        return write;
     }
 
     private getServiceAssets(): ServiceAssetsService {

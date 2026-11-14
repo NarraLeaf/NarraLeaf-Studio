@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
-import { rankSpeakers, scanStories } from "./projectStatsSnapshot";
+import type { WorkspaceContext } from "../services/services";
+import { computeTotalWordCount, rankSpeakers, scanStories } from "./projectStatsSnapshot";
 
 type DialogueSpec = { characterId?: string; speakerName?: string };
 
@@ -44,6 +45,20 @@ function documentOf(scenes: StoryScene[]): StoryDocument {
         scenes: Object.fromEntries(scenes.map(scene => [scene.id, scene])),
     } as unknown as StoryDocument;
 }
+
+describe("computeTotalWordCount", () => {
+    it("refuses a partial total when a story cannot be read", async () => {
+        const story = {
+            listStories: () => [{ id: "readable" }, { id: "unreadable" }],
+            loadStory: async (id: string) => {
+                if (id === "unreadable") throw new Error("story unavailable");
+                return documentOf([sceneOf("s", [narration("n", "𠀀𠀀")])]);
+            },
+        };
+        const ctx = { services: { get: () => story } } as unknown as WorkspaceContext;
+        await expect(computeTotalWordCount(ctx)).rejects.toThrow("story unavailable");
+    });
+});
 
 /** The cast the rows resolve against, as `readCast` hands it over. */
 function cast(names: Record<string, string>): (id: string) => string | undefined {
@@ -132,6 +147,17 @@ describe("scanStories speaker tallies", () => {
         expect(scan.speakers.get("id:c1")?.words).toBe(3);
         // Every spoken word is in the project total, and narration is the difference.
         expect(spoken).toBe(scan.totalWords - 3);
+    });
+
+    it("includes every supplementary Han character in project and speaker totals", () => {
+        const scan = scanStories([
+            documentOf([sceneOf("s1", [
+                dialogue("a", "𠀀𠀀", { characterId: "c1" }),
+                narration("n", "𰀀丽"),
+            ])]),
+        ]);
+        expect(scan.speakers.get("id:c1")?.words).toBe(2);
+        expect(scan.totalWords).toBe(4);
     });
 });
 

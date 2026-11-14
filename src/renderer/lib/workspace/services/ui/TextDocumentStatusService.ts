@@ -19,7 +19,7 @@ import type { TextDocumentCommands, TextDocumentEntry, TextDocumentStatus } from
  * plan file wakes the four status cells and nothing else.
  */
 export class TextDocumentStatusService {
-    private documents = new Map<string, TextDocumentEntry>();
+    private documents = new Map<string, { entry: TextDocumentEntry }>();
     private listeners = new Set<() => void>();
 
     /**
@@ -30,11 +30,11 @@ export class TextDocumentStatusService {
      * it - leaving the status bar permanently blank for a document that is on screen.
      */
     public register(status: TextDocumentStatus, commands: TextDocumentCommands): () => void {
-        const entry: TextDocumentEntry = { status, commands };
-        this.documents.set(status.tabId, entry);
+        const registration = { entry: { status, commands } };
+        this.documents.set(status.tabId, registration);
         this.emit();
         return () => {
-            if (this.documents.get(status.tabId) === entry) {
+            if (this.documents.get(status.tabId) === registration) {
                 this.documents.delete(status.tabId);
                 this.emit();
             }
@@ -46,27 +46,28 @@ export class TextDocumentStatusService {
      * a late update from a tab that has just unmounted is normal, not an error.
      */
     public update(tabId: string, patch: Partial<Omit<TextDocumentStatus, "tabId">>): void {
-        const entry = this.documents.get(tabId);
-        if (!entry) {
+        const registration = this.documents.get(tabId);
+        if (!registration) {
             return;
         }
-        this.documents.set(tabId, { commands: entry.commands, status: { ...entry.status, ...patch } });
+        const { entry } = registration;
+        registration.entry = { commands: entry.commands, status: { ...entry.status, ...patch } };
         this.emit();
     }
 
     /** Replace a tab's command implementations, which close over state the tab re-creates. */
     public setCommands(tabId: string, commands: TextDocumentCommands): void {
-        const entry = this.documents.get(tabId);
-        if (!entry) {
+        const registration = this.documents.get(tabId);
+        if (!registration) {
             return;
         }
-        this.documents.set(tabId, { status: entry.status, commands });
+        registration.entry = { status: registration.entry.status, commands };
         // No `emit`: the commands are read at click time, never rendered, so waking the cells here
         // would re-render them on every keystroke (the save closure changes with the buffer).
     }
 
     public get(tabId: string): TextDocumentEntry | undefined {
-        return this.documents.get(tabId);
+        return this.documents.get(tabId)?.entry;
     }
 
     public has(tabId: string): boolean {

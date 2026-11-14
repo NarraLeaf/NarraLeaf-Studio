@@ -128,6 +128,13 @@ describe("compileMatcher - whole word", () => {
         expect(found("おはようございます", "おはよう", { wholeWord: true })).toEqual([]);
     });
 
+    it("recognises supplementary-plane letters and numbers at either edge", () => {
+        expect(found("𠀀猫", "猫", { wholeWord: true })).toEqual([]);
+        expect(found("猫𠀀", "猫", { wholeWord: true })).toEqual([]);
+        expect(found("𝟡cat", "cat", { wholeWord: true })).toEqual([]);
+        expect(found("💬cat💬", "cat", { wholeWord: true })).toEqual(["cat"]);
+    });
+
     it("applies in regex mode as well as plain mode", () => {
         expect(found("cat catalog", "c.t", { wholeWord: true, regex: true })).toEqual(["cat"]);
     });

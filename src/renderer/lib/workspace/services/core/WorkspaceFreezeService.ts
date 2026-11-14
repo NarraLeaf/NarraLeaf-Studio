@@ -62,6 +62,7 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
     private unobserve: (() => void) | null = null;
     /** Held for as long as a past revision is on screen; see {@link showRevision}. */
     private releaseSource: (() => void) | null = null;
+    private pendingRevisionRequests = 0;
     /**
      * How many callers are keeping the workspace in the view it is in; see {@link holdRelease}.
      *
@@ -96,6 +97,7 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         // Same argument for the read side: a source installed for the project that just closed would
         // answer this one's reads out of a repository it has nothing to do with.
         this.dropSource();
+        this.pendingRevisionRequests = 0;
         // And the same for a hold: one left over from an operation on the project that just closed
         // would leave this one unable to leave a revision view, for a rewrite that is long over.
         this.releaseHolds = 0;
@@ -111,11 +113,13 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         reportFreezeToHost(getProjectWriteFreeze()?.reason ?? null);
     }
 
-    public override dispose(_ctx: WorkspaceContext): void {
+    public override async dispose(ctx: WorkspaceContext): Promise<void> {
+        await ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload).whenIdle();
         this.unobserve?.();
         this.unobserve = null;
         thawProjectWrites();
         this.dropSource();
+        this.pendingRevisionRequests = 0;
         this.releaseHolds = 0;
         this.events.clear();
     }
@@ -156,14 +160,25 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
             // already showing - inert for no reason, with no way for the author to tell why.
             throw new Error("showRevision needs a revision source; use thaw() to return to the working tree.");
         }
+        const ctx = this.getContext();
         const projectPath = this.projectPath();
-        await this.freeze({ kind: "revision", revision: source.origin.revision, label });
-        // Replaces whatever was installed, so revision -> revision is one step and cannot leave the
-        // previous one's documents readable underneath.
-        this.dropSource();
-        this.releaseSource = pushProjectDocumentSource(projectPath, source);
-        const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
-        return reload.reload("revision", source);
+        const revision = source.origin.revision;
+        const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
+        const reload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+        this.pendingRevisionRequests += 1;
+        try {
+            return await reload.reload("revision", source, {
+                key: `revision:${revision}`,
+                prepare: () => saveStatus.flushAll(),
+                start: () => {
+                    freezeProjectWrites({ projectPath, reason: { kind: "revision", revision, label } });
+                    this.dropSource();
+                    this.releaseSource = pushProjectDocumentSource(projectPath, source);
+                },
+            });
+        } finally {
+            this.pendingRevisionRequests = Math.max(0, this.pendingRevisionRequests - 1);
+        }
     }
 
     /**
@@ -201,13 +216,13 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         }
         const projectPath = this.projectPath();
         freezeProjectWrites({ projectPath, reason: { kind: "merge" } });
-        setMergeConflictReads(projectPath, conflicts);
-        // A revision the author happened to be browsing when the merge arrived: the source goes
-        // before the read, for the reason `thaw` gives - otherwise the pass meant to show the merge
-        // would answer out of that revision instead.
-        this.dropSource();
         const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
-        return reload.reload("restore");
+        return reload.reload("restore", undefined, {
+            start: () => {
+                setMergeConflictReads(projectPath, conflicts);
+                this.dropSource();
+            },
+        });
     }
 
     /**
@@ -267,10 +282,11 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
      * Void rather than async, because this is called straight from UI handlers (the command palette,
      * the version rail) and a click has nothing to await. The ordering that matters is not the
      * caller's: writes stay refused from here until the reload has finished, held by the reload
-     * itself, so nothing can be written from pre-thaw memory in between.
+     * itself, so nothing can be written from pre-thaw memory in between. If another view is still
+     * loading, it keeps its source until its pass ends and the working-tree reload starts.
      */
     public thaw(): void {
-        if (!this.isFrozen()) {
+        if (!this.isFrozen() && this.pendingRevisionRequests === 0) {
             // Nothing was refused, so nothing is holding a value the disk has not got. Re-reading
             // anyway would drop the undo stacks and remount every editor tab for no reason.
             return;
@@ -294,15 +310,13 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
             return;
         }
         const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
-        // The revision goes first, and it goes before the latch: from here on every read answers from
-        // the disk, so the reload below re-reads the working tree - which is the point of it. Ordered
-        // the other way round, the pass meant to replace historical memory would read the history back
-        // in and then unfreeze on top of it.
-        this.dropSource();
-        // Arm the hold before the latch comes off, so the two refusals meet with no gap. Ordered the
-        // other way round, an auto-save timer landing in between is exactly the write this prevents.
-        const reloading = reload.reload("thaw");
-        thawProjectWrites();
+        const reloading = reload.reload("thaw", undefined, {
+            key: "thaw",
+            start: () => {
+                this.dropSource();
+                thawProjectWrites();
+            },
+        });
         void reloading.catch(error => {
             // `reload` collects per-participant failures rather than throwing, so reaching here means
             // the machinery itself broke. The workspace is writable either way, which is why this is
