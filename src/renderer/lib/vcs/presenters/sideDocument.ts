@@ -19,11 +19,8 @@ import { comparisonSideKey, type ComparisonSide } from "./comparisonSide";
  * went through in the main process - so a document this refuses is one the change list also could
  * not read, rather than a second opinion drawn from a renderer.
  *
- * **No migration runs.** `uiDocumentSpec.parse` and `uiGraphsSpec.parse` are shape gates; the
- * eleven interface migrations live on `UIDocumentService` and cannot be reached from here (they need
- * a service to run at all). A document written by an older Studio is therefore drawn as it was
- * written, which is the honest thing for a picture of the past to do, and is why nothing here writes
- * anything back.
+ * Each spec owns its reading rules. The UI and blueprint specs check the stored shape without
+ * migrating it; the story spec migrates and normalises in memory. This hook never writes a version.
  */
 
 export type SideDocumentStatus =

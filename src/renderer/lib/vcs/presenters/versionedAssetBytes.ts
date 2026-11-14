@@ -1,9 +1,11 @@
 import {
-    normalizeProjectAssetSets,
     resolveAssetSetMember,
     type AssetSet,
     type AssetSetCandidate,
 } from "@shared/types/assetSet";
+import { assetSetsSpec } from "@shared/documents/specs/assetSets";
+import { assetsMetadataSpec } from "@shared/documents/specs/assetsMetadata";
+import type { DocumentSpec } from "@shared/documents/types";
 import { isValidAssetStorageId } from "@shared/utils/assetStorageId";
 import { characterAvatarBakePath, parseCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import type {
@@ -14,6 +16,7 @@ import type {
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { bitmapMediaType } from "./bitmapPreview";
+import { parseSideDocument } from "./sideDocument";
 
 /**
  * Every picture on a historical page, read from the version that page came from.
@@ -188,19 +191,41 @@ export function createVersionedAssetBytesSource(
     async function withSlot<T>(work: () => Promise<T>): Promise<T> {
         if (active >= limits.maxConcurrentReads) {
             await new Promise<void>(resolve => waiting.push(resolve));
+        } else {
+            active += 1;
         }
-        active += 1;
+        if (disposed) {
+            throw new Error("This comparison is no longer on screen");
+        }
         try {
             return await work();
         } finally {
-            active -= 1;
-            waiting.shift()?.();
+            const next = waiting.shift();
+            if (next) {
+                next();
+            } else {
+                active -= 1;
+            }
         }
     }
 
     /* ------------------------------------------------------------------ */
     /* The two documents a resolution needs                                */
     /* ------------------------------------------------------------------ */
+
+    async function readOptionalDocument<T>(path: string, spec: DocumentSpec<T>): Promise<T | null> {
+        let bytes: Uint8Array | null;
+        try {
+            bytes = await withSlot(() => options.read(path));
+        } catch {
+            // The version reader reports missing paths by throwing.
+            return null;
+        }
+        if (bytes === null) {
+            throw new Error(`File is past the read ceiling: ${path}`);
+        }
+        return parseSideDocument(spec, path, bytes);
+    }
 
     let setsAtVersion: Promise<readonly AssetSet[]> | null = null;
 
@@ -213,15 +238,8 @@ export function createVersionedAssetBytesSource(
      */
     function loadSets(): Promise<readonly AssetSet[]> {
         setsAtVersion ??= (async () => {
-            try {
-                const bytes = await withSlot(() => options.read(ASSET_SETS_PATH));
-                if (bytes === null) {
-                    return [];
-                }
-                return normalizeProjectAssetSets(JSON.parse(decodeUtf8(bytes))).sets;
-            } catch {
-                return [];
-            }
+            const document = await readOptionalDocument(ASSET_SETS_PATH, assetSetsSpec);
+            return document?.sets ?? [];
         })();
         return setsAtVersion;
     }
@@ -240,33 +258,16 @@ export function createVersionedAssetBytesSource(
         if (!held) {
             held = (async () => {
                 const records = new Map<string, AssetSetCandidate>();
-                try {
-                    const bytes = await withSlot(() => options.read(shardPath(type)));
-                    if (bytes === null) {
-                        return records;
-                    }
-                    const raw: unknown = JSON.parse(decodeUtf8(bytes));
-                    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-                        return records;
-                    }
-                    for (const [id, entry] of Object.entries(raw as Record<string, unknown>)) {
-                        if (typeof entry !== "object" || entry === null) {
-                            continue;
-                        }
-                        const tags = (entry as { tags?: unknown }).tags;
-                        records.set(id, {
-                            id,
-                            // The shard's own file name, exactly as the document spec reads it: an
-                            // entry's `type` field is authored data, and a half-written record has
-                            // been seen to disagree with the file it is in.
-                            type,
-                            tags: Array.isArray(tags)
-                                ? tags.filter((tag): tag is string => typeof tag === "string")
-                                : [],
-                        });
-                    }
-                } catch {
-                    // A version with no shard of this type. Nothing of this type existed then.
+                const shard = await readOptionalDocument(shardPath(type), assetsMetadataSpec);
+                for (const [id, entry] of Object.entries(shard?.assets ?? {})) {
+                    const tags = entry.tags;
+                    records.set(id, {
+                        id,
+                        type,
+                        tags: Array.isArray(tags)
+                            ? tags.filter((tag): tag is string => typeof tag === "string")
+                            : [],
+                    });
                 }
                 return records;
             })();
@@ -442,6 +443,7 @@ export function createVersionedAssetBytesSource(
         read,
         dispose() {
             disposed = true;
+            waiting.splice(0).forEach(resolve => resolve());
             cache.clear();
             shardsAtVersion.clear();
             setsAtVersion = null;
@@ -451,14 +453,6 @@ export function createVersionedAssetBytesSource(
             return retained;
         },
     };
-}
-
-/**
- * Fatal rather than lenient, for `sideDocument.ts`'s reason: a decoder that substitutes U+FFFD
- * turns a truncated file into one that parses to something nobody wrote.
- */
-function decodeUtf8(bytes: Uint8Array): string {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
 /**

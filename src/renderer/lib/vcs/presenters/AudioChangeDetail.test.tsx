@@ -27,6 +27,16 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
+vi.mock("@shared/utils/mediaHeader", async importOriginal => {
+    const actual = await importOriginal<typeof import("@shared/utils/mediaHeader")>();
+    return {
+        ...actual,
+        readMediaHeader: (bytes: Uint8Array) => bytes[0] === 80
+            ? { durationMs: 600_000, sampleRate: 96_000, channels: 2 }
+            : actual.readMediaHeader(bytes),
+    };
+});
+
 const sideStates = vi.hoisted(() => new Map<string, unknown>());
 const ABSENT = { status: "absent", value: null, size: 0, error: null };
 vi.mock("./comparisonSide", () => ({
@@ -310,5 +320,17 @@ describe("when a sound cannot be shown", () => {
         // Both tracks are there: dropping the one with no waveform in it would leave the reason
         // nowhere on screen.
         expect(container.textContent).toContain("documentDiff.presenter.audio.tooLarge");
+    });
+
+    it("says a side is too long when the other side can be decoded", async () => {
+        decoded.set(1, new FakeAudioBuffer(3));
+        sideStates.set("before", ready(1));
+        sideStates.set("after", ready(80));
+
+        const { container } = draw();
+
+        await waitFor(() => expect(container.querySelectorAll("canvas")).toHaveLength(1));
+        expect(container.textContent).toContain("documentDiff.presenter.audio.tooLong");
+        expect(container.textContent).not.toContain("documentDiff.rows.loading");
     });
 });
