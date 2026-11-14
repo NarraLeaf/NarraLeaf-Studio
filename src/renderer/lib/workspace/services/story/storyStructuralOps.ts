@@ -349,9 +349,8 @@ export function planSceneMerge(
     // Document order, so the list reads the way the outline does rather than the way the scene table
     // happens to be keyed.
     for (const scene of listScenesInDocumentOrder(document)) {
-        scene.rootBlockIds.forEach((blockId, index) => {
-            const block = scene.blocks[blockId];
-            if (block?.kind !== "jump" || block.payload.targetSceneId !== mergedSceneId) {
+        listSceneBlocksInDocumentOrder(scene).forEach((block, index) => {
+            if (block.kind !== "jump" || block.payload.targetSceneId !== mergedSceneId) {
                 return;
             }
             if (block.id === droppedJumpBlockId) {

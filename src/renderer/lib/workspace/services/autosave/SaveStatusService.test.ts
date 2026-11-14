@@ -398,6 +398,26 @@ describe("what the save-failure notice says", () => {
         expect(close).toHaveBeenCalledWith("toast-1");
     });
 
+    it("keeps a shared background notice until each scheduled operation ends", async () => {
+        const { service, emitWrite, showSticky, close } = await makeHarness();
+        const first = { active: true, attempts: 0 };
+        const second = { active: true, attempts: 0 };
+        const report = (owner: typeof first): FsWriteReport => ({
+            name: { store: "sceneHistory.panelTitle" }, afterFailure: "backgroundRetried", owner,
+        });
+
+        emitWrite(failure("/project/a.json", FsRejectErrorCode.IO_ERROR, report(first)));
+        emitWrite(failure("/project/b.json", FsRejectErrorCode.IO_ERROR, report(second)));
+        expect(showSticky).toHaveBeenCalledOnce();
+        expect(service.getStatus()).toBe("clean");
+        service.endBackgroundWrites(first);
+        expect(close).not.toHaveBeenCalled();
+        emitWrite(failure("/project/a.json", FsRejectErrorCode.IO_ERROR, report(first)));
+        expect(showSticky).toHaveBeenCalledOnce();
+        service.endBackgroundWrites(second);
+        expect(close).toHaveBeenCalledWith("toast-1");
+    });
+
     it("keeps a failure that comes and goes as one entry in the notification centre", async () => {
         const notifications = new NotificationService(new UIStore());
         const { emitWrite } = await makeHarness({ notifications });

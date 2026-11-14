@@ -134,7 +134,7 @@ export class DebouncedSaver {
     public async abandon(): Promise<void> {
         this.discardDebt();
         if (this.inFlight) {
-            await this.inFlight;
+            await this.inFlight.catch(() => undefined);
         }
         this.discardDebt();
     }
@@ -207,7 +207,7 @@ export class DebouncedSaver {
 
     private enqueue(): Promise<void> {
         // Chain onto whatever is still running so two writes to one document cannot interleave.
-        const previous = this.inFlight ?? Promise.resolve();
+        const previous = this.inFlight?.catch(() => undefined) ?? Promise.resolve();
         const result = previous.then(async () => {
             this.setState("saving");
             try {
@@ -230,16 +230,16 @@ export class DebouncedSaver {
             this.syncIdleState();
         });
 
-        // `guard` is the settled-and-swallowed view of the same work: it is what other callers wait
-        // on, so a rejected save cannot surface as an unhandled rejection through the chain.
-        const guard: Promise<void> = result
-            .catch(() => undefined)
-            .finally(() => {
-                if (this.inFlight === guard) {
-                    this.inFlight = null;
-                }
-            });
-        this.inFlight = guard;
+        // Keep the original result so a flush joining this write observes its failure. The next
+        // write still waits for settlement, and the rejection handler also prevents an unhandled
+        // rejection when a timer started the write.
+        this.inFlight = result;
+        const finish = () => {
+            if (this.inFlight === result) {
+                this.inFlight = null;
+            }
+        };
+        void result.then(finish, finish);
 
         return result;
     }

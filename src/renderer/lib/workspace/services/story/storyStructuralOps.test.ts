@@ -262,6 +262,22 @@ describe("planSceneMerge / applySceneMerge", () => {
         expect(untouched.kind === "jump" && untouched.payload.targetSceneId).toBe("b");
     });
 
+    it("refuses a merge when a nested jump targets the scene, using the displayed row number", () => {
+        const nested = jump("nested", "b");
+        nested.parentId = "box";
+        const doc = document([
+            scene("a", "A", [narration("r1", "one"), jump("j1", "b")]),
+            scene("b", "B", [narration("r2", "two")]),
+            scene("c", "C", [narration("r3", "three"), container("box", ["nested"]), nested], ["r3", "box"]),
+        ]);
+
+        const plan = planSceneMerge(doc, "a", "b")!;
+        expect(plan.blockers).toEqual([{ kind: "jump", sceneName: "C", row: 3 }]);
+        applySceneMerge(doc, plan);
+        expect(doc.scenes.b).toBeDefined();
+        expect(doc.scenes.c.blocks.nested).toEqual(nested);
+    });
+
     it("refuses when the story's entry pointer names the scene", () => {
         const doc = document([
             scene("a", "A", [narration("r1", "one")]),

@@ -15,7 +15,7 @@ import { UIService } from "../core/UIService";
 import { describeWriteFailureReason } from "../core/writeFailureReason";
 import { NotificationType } from "../ui/types";
 import type { DebouncedSaver, SaveState } from "./DebouncedSaver";
-import type { SavedFileName } from "./writeReport";
+import type { BackgroundWriteOwner, SavedFileName } from "./writeReport";
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 
@@ -96,12 +96,12 @@ export function describeSaveFailureTitle(name: SavedFileName | undefined, t: Tra
  * had gone to. The console line keeps it in full.
  */
 export function describeSaveFailureDetail(
-    failure: Pick<SaveFailure, "code" | "transient"> & { retried: boolean },
+    failure: Pick<SaveFailure, "code" | "transient"> & { retried: boolean; backgroundOnly?: boolean },
     t: Translate = translate,
 ): string {
     const retry = t(!failure.retried
         ? "workspace.shell.save.failedDetailNotSaved"
-        : failure.transient
+        : failure.backgroundOnly || failure.transient
             ? "workspace.shell.save.failedDetailTransient"
             : "workspace.shell.save.failedDetailPermanent");
     const reason = describeWriteFailureReason(failure, t);
@@ -178,6 +178,7 @@ export function describeUnreadableDocumentDetail(
 type FailureNotice = {
     id: string;
     paths: Set<string>;
+    owners: Set<BackgroundWriteOwner>;
 };
 
 /**
@@ -198,6 +199,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
     private readonly savers = new Map<string, RegisteredSaver>();
     /** Open editors holding words the documents have not been told about. See {@link registerPendingEdit}. */
     private readonly pendingEdits = new Set<() => void>();
+    private readonly reloadPreparations = new Set<() => Promise<void>>();
     private readonly failures = new Map<string, SaveFailure>();
     /**
      * Sticky notices for failed writes, by what they say. One failing file raises one notice rather
@@ -252,6 +254,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.corruptToasts.clear();
         this.frozenToast = null;
         this.pendingEdits.clear();
+        this.reloadPreparations.clear();
         this.notifyChanged();
     }
 
@@ -290,6 +293,12 @@ export class SaveStatusService extends Service<SaveStatusService> {
         return () => {
             this.pendingEdits.delete(settle);
         };
+    }
+
+    /** Stop a background operation and wait for its in-flight writes before re-reading the project. */
+    public onPrepareForReload(prepare: () => Promise<void>): () => void {
+        this.reloadPreparations.add(prepare);
+        return () => { this.reloadPreparations.delete(prepare); };
     }
 
     /**
@@ -381,7 +390,10 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * evidence they recovered.
      */
     public async prepareForReload(): Promise<void> {
-        await Promise.allSettled([...this.savers.values()].map(entry => entry.saver.abandon()));
+        await Promise.allSettled([
+            ...[...this.savers.values()].map(entry => entry.saver.abandon()),
+            ...[...this.reloadPreparations].map(prepare => Promise.resolve().then(prepare)),
+        ]);
         for (const [path, id] of [...this.corruptToasts]) {
             this.corruptToasts.delete(path);
             this.getNotifications()?.close(id);
@@ -540,6 +552,21 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * the ones a saver owns.
      */
     private handleWriteOutcome(outcome: FsWriteOutcome): void {
+        if (outcome.report?.afterFailure === "backgroundRetried") {
+            const { owner, name } = outcome.report;
+            // One successful file does not complete a multi-file snapshot or a manual write to it.
+            if (!owner.active || outcome.ok) return;
+            const code = outcome.error?.code ?? FsRejectErrorCode.UNKNOWN;
+            const message = outcome.error?.message ?? "";
+            owner.attempts += 1;
+            this.logStorage("error", translate("workspace.shell.save.consoleFailed", {
+                path: outcome.path, code, error: message, attempt: String(owner.attempts),
+            }));
+            this.raiseNotice(outcome.path, name, {
+                code, transient: TRANSIENT_FS_ERROR_CODES.has(code), retried: true,
+            }, owner);
+            return;
+        }
         if (outcome.ok) {
             this.clearFailure(outcome.path);
             return;
@@ -599,21 +626,22 @@ export class SaveStatusService extends Service<SaveStatusService> {
         path: string,
         name: SavedFileName | undefined,
         detail: { code: FsRejectErrorCode; transient: boolean; retried: boolean },
+        owner?: BackgroundWriteOwner,
     ): void {
         const title = describeSaveFailureTitle(name);
-        // A notice that offers a retry and one that says nothing will be retried are two different
-        // statements even under one title, so they are never merged.
-        const key = `${detail.retried ? "retried" : "notRetried"}|${title}`;
+        // Immediate retry, background-only retry, and no retry have different actions and wording.
+        const key = `${owner ? "backgroundRetried" : detail.retried ? "retried" : "notRetried"}|${title}`;
         const existing = this.notices.get(key);
         if (existing) {
-            existing.paths.add(path);
+            if (owner) existing.owners.add(owner);
+            else existing.paths.add(path);
             return;
         }
         const notifications = this.getNotifications();
         if (!notifications) {
             return;
         }
-        const text = describeSaveFailureDetail(detail);
+        const text = describeSaveFailureDetail({ ...detail, backgroundOnly: !!owner });
         const id = notifications.showSticky({
             type: NotificationType.Error,
             message: title,
@@ -625,7 +653,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
             coalesceKey: `save-failed|${key}|${text}`,
             // Only where something will write the file again. For a write nothing retries, the
             // button would flush every saver, none of which writes this file.
-            actions: detail.retried
+            actions: detail.retried && !owner
                 ? [
                     {
                         label: translate("workspace.shell.save.retry"),
@@ -636,7 +664,19 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 ]
                 : undefined,
         });
-        this.notices.set(key, { id, paths: new Set([path]) });
+        this.notices.set(key, { id, paths: new Set(owner ? [] : [path]), owners: new Set(owner ? [owner] : []) });
+    }
+
+    /** Finish or cancel a scheduled operation without claiming that a cancelled write succeeded. */
+    public endBackgroundWrites(owner: BackgroundWriteOwner): void {
+        owner.active = false;
+        for (const [key, notice] of [...this.notices]) {
+            if (!notice.owners.delete(owner)) continue;
+            if (notice.paths.size === 0 && notice.owners.size === 0) {
+                this.notices.delete(key);
+                this.getNotifications()?.close(notice.id);
+            }
+        }
     }
 
     /**
@@ -651,7 +691,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 continue;
             }
             noticed = true;
-            if (notice.paths.size === 0) {
+            if (notice.paths.size === 0 && notice.owners.size === 0) {
                 this.notices.delete(key);
                 this.getNotifications()?.close(notice.id);
             }

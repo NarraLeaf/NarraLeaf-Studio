@@ -26,16 +26,14 @@ import { isTextRun } from "./richText";
 const CHIP_PLACEHOLDER = " ";
 
 /**
- * The plain text handed to the checker, with the unit offset of every character in it.
+ * The plain text handed to the checker, with the unit offset of every UTF-16 code unit in it.
  *
  * `unitAt` is one entry longer than `text`: the last is the total unit count, so an exclusive end
  * offset maps without a special case.
  *
- * The two coordinate systems are genuinely different, and conflating them is the bug this exists to
- * prevent. The checker counts characters; the editor counts *units*, where an inline chip is one
- * unit and no characters at all. `richRunsToPlain` drops chips entirely, so an offset taken from
- * that string and spent in the unit model lands further and further left the more chips a line
- * holds - and the string built here is deliberately not that one.
+ * The checker returns UTF-16 offsets. The editor counts text in the same units and an inline chip as
+ * one unit, whereas `richRunsToPlain` drops chips entirely. The placeholder keeps checked offsets
+ * aligned with the editor's unit model.
  *
  * Because {@link CHIP_PLACEHOLDER} is exactly one character, `unitAt` currently comes out as the
  * identity. That is the property the placeholder was chosen for, not an accident to lean on: the map
@@ -51,8 +49,8 @@ export function buildSpellcheckText(runs: readonly StoryRichRun[]): { text: stri
     for (const run of runs) {
         if (isTextRun(run)) {
             const annotated = Boolean(run.marks?.ruby);
-            for (const character of run.text) {
-                text += character;
+            text += run.text;
+            for (let index = 0; index < run.text.length; index += 1) {
                 unitAt.push(unit);
                 rubyAt.push(annotated);
                 unit += 1;

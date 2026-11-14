@@ -45,7 +45,7 @@ export function StoryRowHistoryModal(props: {
         [context, isInitialized],
     );
     const [includeRevisions, setIncludeRevisions] = useState(false);
-    const [state, setState] = useState<{ versions: RowVersion[]; revisionsFailed: boolean } | null>(null);
+    const [state, setState] = useState<{ versions: RowVersion[]; revisionsFailed: boolean } | "error" | null>(null);
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -61,6 +61,10 @@ export function StoryRowHistoryModal(props: {
         setState(null);
         void history.rowHistory(target.storyId, target.sceneId, target.blockId, { includeRevisions }).then(result => {
             if (alive) setState(result);
+        }).catch(error => {
+            if (!alive) return;
+            console.warn("[SceneHistory] could not read line history", error);
+            setState("error");
         });
         return () => {
             alive = false;
@@ -78,13 +82,18 @@ export function StoryRowHistoryModal(props: {
         if (!history || !target || !version.block) return;
         setBusy(true);
         try {
-            const ok = await history.restoreRowVersion(target.storyId, target.sceneId, version.block);
+            const result = await history.restoreRowVersion(target.storyId, target.sceneId, version.block);
             const ui = context?.services.get<UIService>(Services.UI);
-            if (ok) {
+            if (result.status === "ok") {
                 onClose();
-            } else {
+            } else if (result.status === "row-missing") {
                 ui?.showNotification(t("sceneHistory.rowGone"), "warning");
+            } else if (result.status !== "save-reported") {
+                ui?.showNotification(t("assets.textEditor.actionFailed"), "error");
             }
+        } catch (error) {
+            console.warn("[SceneHistory] could not restore line", error);
+            context?.services.get<UIService>(Services.UI).showNotification(t("assets.textEditor.actionFailed"), "error");
         } finally {
             setBusy(false);
         }
@@ -120,6 +129,8 @@ export function StoryRowHistoryModal(props: {
                 </Checkbox>
                 {state === null ? (
                     <div className="text-xs text-fg-subtle">{t("sceneHistory.loading")}</div>
+                ) : state === "error" ? (
+                    <div className="text-xs text-danger">{t("workspace.shell.save.unreadableTitle", { name: t("sceneHistory.panelTitle") })}</div>
                 ) : (
                     <>
                         {state.revisionsFailed ? <div className="text-xs text-warning">{t("sceneHistory.revisionsFailed")}</div> : null}

@@ -93,7 +93,7 @@ function quoteIfNeeded(name: string): string {
 }
 
 /** Split on spaces, keeping `'…'`, `"…"` (JSON string escapes) and `key='…'` as one token each. */
-function tokenize(text: string): string[] | null {
+export function tokenizeSceneDirective(text: string): string[] | null {
     const tokens: string[] = [];
     let index = 0;
     while (index < text.length) {
@@ -360,7 +360,7 @@ function readBackground(
     if (directive.value.trim().toLowerCase() === SETTING_NONE) {
         return null;
     }
-    const tokens = tokenize(directive.value);
+    const tokens = tokenizeSceneDirective(directive.value);
     if (!tokens || tokens.length !== 1) {
         diagnostics.push(errorAt(
             "file.bad_setting",
@@ -382,7 +382,7 @@ function readMusic(
     if (directive.value.trim().toLowerCase() === SETTING_NONE) {
         return null;
     }
-    const tokens = tokenize(directive.value);
+    const tokens = tokenizeSceneDirective(directive.value);
     if (!tokens || tokens.length === 0) {
         diagnostics.push(errorAt(
             "file.bad_setting",

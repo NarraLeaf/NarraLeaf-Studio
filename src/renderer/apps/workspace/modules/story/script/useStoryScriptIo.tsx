@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { listSceneIdsInDocumentOrder, type StoryDocument, type StoryId, type StorySceneId } from "@shared/types/story";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { useTranslation } from "@/lib/i18n";
 import { exportStoryScript, parseStoryScript, planStoryScriptImport } from "@/lib/story/script/storyScriptCodec";
 import type { StoryScriptExportMode, StoryScriptImportPlan } from "@/lib/story/script/storyScriptTypes";
@@ -224,6 +225,11 @@ export function useStoryScriptIo(): StoryScriptIo {
 
     const runImport = useCallback(() => {
         if (!context || !importRequest) {
+            return;
+        }
+        if (getProjectWriteFreeze() !== null) {
+            report(t("workspace.shell.freeze.unavailable"));
+            setImportRequest(null);
             return;
         }
         setBusy(true);
