@@ -122,6 +122,18 @@ function find(name: string): Promise<HTMLElement> {
     });
 }
 
+/** Unfold the footer's other ways of signing in, where they are folded. */
+function openOthers(): void {
+    const toggle = seam("other-methods-toggle");
+    if (toggle !== null && toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+}
+
+/** Pick another way of signing in from the footer's folded list. */
+function choose(name: string): void {
+    openOthers();
+    fireEvent.click(seam(name)!);
+}
+
 function type(name: string, value: string): void {
     fireEvent.change(seam(name)!, { target: { value } });
 }
@@ -166,6 +178,7 @@ describe("which identity a server asks for", () => {
         expect(seam("field-token")).not.toBeNull();
         expect(seam("identity-password")).toBeNull();
         // No way to switch either: there is nothing on the other side of it.
+        expect(seam("other-methods")).toBeNull();
         expect(seam("use-password")).toBeNull();
         expect(seam("use-token")).toBeNull();
     });
@@ -178,17 +191,18 @@ describe("which identity a server asks for", () => {
         expect(seam("field-password")).not.toBeNull();
         // Both are on offer, and the token is the one behind a press.
         expect(seam("identity-token")).toBeNull();
+        openOthers();
         expect(seam("use-token")).not.toBeNull();
     });
 
     it("switches to the token and back", async () => {
         await reachIdentity(WITH_PASSWORD, mints);
 
-        fireEvent.click(seam("use-token")!);
+        choose("use-token");
         expect(seam("identity-token")).not.toBeNull();
         expect(seam("identity-password")).toBeNull();
 
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect(seam("identity-password")).not.toBeNull();
         expect(seam("identity-token")).toBeNull();
     });
@@ -201,11 +215,11 @@ describe("which identity a server asks for", () => {
         submit();
         await find("problem");
 
-        fireEvent.click(seam("use-token")!);
+        choose("use-token");
         // The sentence was about the half that has just been left.
         expect(seam("problem")).toBeNull();
 
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect((seam("field-password") as HTMLInputElement).value).toBe("");
         expect((seam("field-username") as HTMLInputElement).value).toBe("ada");
     });
@@ -504,16 +518,19 @@ describe("signing in through the browser", () => {
         await reachIdentity(WITH_OAUTH);
 
         expect(seam("identity-browser")).not.toBeNull();
+        openOthers();
         expect(seam("use-password")).not.toBeNull();
         expect(seam("use-token")).not.toBeNull();
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect(seam("identity-password")).not.toBeNull();
+        openOthers();
         expect(seam("use-browser")).not.toBeNull();
     });
 
     it("never offers the browser to a server that did not say it can", async () => {
         await reachIdentity(WITH_PASSWORD);
         expect(seam("identity-browser")).toBeNull();
+        openOthers();
         expect(seam("use-browser")).toBeNull();
     });
 

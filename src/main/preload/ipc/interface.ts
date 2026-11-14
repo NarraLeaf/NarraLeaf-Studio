@@ -71,7 +71,7 @@ import type {
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type {
     RendererAgentBridgeBootstrapInterface,
     RendererAgentBridgeInterface,
@@ -835,6 +835,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
         signInWithBrowser: (authUrl: string) =>
             ipcClient.invoke(IPCEventType.vcsSignInWithBrowser, { authUrl }) as Promise<RequestStatus<VcsBrowserSignInOutcome>>,
+        completeBrowserSignIn: (callbackUrl: string) =>
+            ipcClient.invoke(IPCEventType.vcsCompleteBrowserSignIn, { callbackUrl }) as Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>>,
         /**
          * Put this project on to a server: register it, connect it, send it.
          *

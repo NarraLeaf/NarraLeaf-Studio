@@ -19,6 +19,7 @@ import type {
     VcsMergeState,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsRepositoryInfo,
@@ -103,7 +104,7 @@ import {
     rememberServerRefreshToken,
     rememberServerToken,
 } from "./serverTokens";
-import { refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
+import { completeBrowserSignIn, refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
 // Pure policy over the global state, with nothing of Lore's in it: which project may act as which
 // account. See that module's header for the rule.
 import {
@@ -2543,6 +2544,16 @@ export class VcsManager extends Manager {
         }
         this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: now });
         return { ok: true, token: outcome.token };
+    }
+
+    /**
+     * Hand the waiting browser sign-in the address its browser was sent back to, for when
+     * that redirect never reached Studio. See `completeBrowserSignIn` in `serverOAuth.ts`.
+     */
+    public completeBrowserSignIn(callbackUrl: string): VcsBrowserCallbackOutcome {
+        const outcome = completeBrowserSignIn(callbackUrl);
+        this.app.logger.info("[Vcs] Browser sign-in callback by hand", outcome);
+        return outcome;
     }
 
     /**

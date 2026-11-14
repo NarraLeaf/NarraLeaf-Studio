@@ -62,6 +62,28 @@ function landingPage(ok: boolean): string {
         + `<div style="text-align:center"><p>${zh}</p><p style="color:#9aa3ae">${en}</p></div>`;
 }
 
+/**
+ * The sign-in waiting for its redirect, as something a callback address can be handed to.
+ *
+ * Set while {@link awaitRedirect} waits and cleared when it stops. The loopback redirect is
+ * the usual way back, but a browser can fail to reach it - a proxy, a blocked port, an
+ * extension - and then the address it was sent to is still sitting in its address bar. That
+ * address is the same answer, so it is taken here and checked exactly as the listener would.
+ */
+let deliverCallback: ((url: URL) => "accepted" | "mismatch") | null = null;
+
+/** Hand a callback address over by hand. See {@link deliverCallback}. */
+export function completeBrowserSignIn(callbackUrl: string): "accepted" | "mismatch" | "none" {
+    if (deliverCallback === null) return "none";
+    let url: URL;
+    try {
+        url = new URL(callbackUrl.trim());
+    } catch {
+        return "mismatch";
+    }
+    return deliverCallback(url);
+}
+
 /** Wait for one redirect to the loopback listener, then stop listening. */
 function awaitRedirect(
     server: http.Server,
@@ -74,12 +96,23 @@ function awaitRedirect(
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            if (deliverCallback === deliver) deliverCallback = null;
             // Let the landing page reach the browser before the socket goes.
             setTimeout(() => server.close(), 200);
             resolve(value);
         };
         const timer = setTimeout(() => finish({ error: "timeout" }), BROWSER_TIMEOUT_MS);
         signal?.addEventListener("abort", () => finish({ error: "timeout" }), { once: true });
+        // The same checks as the listener's, for an address pasted by hand. Only an address that
+        // carries this sign-in's state ends the wait: anything else leaves it waiting.
+        const deliver = (url: URL): "accepted" | "mismatch" => {
+            if (url.pathname !== "/callback" || url.searchParams.get("state") !== state) return "mismatch";
+            const code = url.searchParams.get("code");
+            if (code !== null && code !== "") finish({ code });
+            else finish({ error: url.searchParams.get("error") === "access_denied" ? "denied" : "unknown" });
+            return "accepted";
+        };
+        deliverCallback = deliver;
         server.on("request", (incoming, response) => {
             const url = new URL(incoming.url ?? "/", "http://127.0.0.1");
             if (url.pathname !== "/callback") {

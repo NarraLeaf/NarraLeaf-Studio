@@ -112,7 +112,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -1236,6 +1236,11 @@ export interface RendererPreloadedInterface {
          * five minutes). Hand the token to {@link addServer} exactly as a password sign-in's.
          */
         signInWithBrowser(authUrl: string): Promise<RequestStatus<VcsBrowserSignInOutcome>>;
+        /**
+         * Hand the waiting {@link signInWithBrowser} the address the browser was sent back
+         * to, when that redirect did not reach Studio by itself.
+         */
+        completeBrowserSignIn(callbackUrl: string): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>>;
         /**
          * Put this project on a server: register it, connect it, send it.
          *

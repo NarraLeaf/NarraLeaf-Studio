@@ -458,6 +458,16 @@ export const settings = {
         useToken: "改用访问令牌",
         usePassword: "改用用户名和密码",
         useBrowser: "改用浏览器登录",
+        otherMethods: "其他登录方式",
+        // 浏览器没能自动回到 Studio 时（代理、端口被拦、扩展改写），回调地址仍停在浏览器地址栏里，
+        // 粘贴进来等同于回调本身。
+        browserCallback: {
+            done: "我已完成登录",
+            label: "回调地址",
+            hint: "如果浏览器没有自动返回，请复制浏览器地址栏中的完整地址并粘贴到此处",
+            mismatch: "该地址不是本次登录的回调地址",
+            gone: "本次登录已结束，请重新登录",
+        },
         browserLead: "将在浏览器中打开 {name} 的登录页。登录并允许后，会自动回到这里。",
         browserSignIn: "在浏览器中登录",
         browserWaiting: "请在浏览器中完成登录…",

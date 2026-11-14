@@ -125,6 +125,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsBrowserCallbackOutcome,
     VcsPublishOutcome,
     VcsProjectServerSession,
     VcsServerSession,
@@ -509,6 +510,7 @@ export enum IPCEventType {
     vcsForgetServer = "vcs.forgetServer",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsSignInWithBrowser = "vcs.signInWithBrowser",
+    vcsCompleteBrowserSignIn = "vcs.completeBrowserSignIn",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
@@ -1788,6 +1790,17 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { authUrl: string };
         response: VcsBrowserSignInOutcome;
+    };
+    /**
+     * Hand the waiting browser sign-in the address the browser was sent back to, pasted by
+     * the person when the redirect did not reach Studio by itself. The waiting
+     * `vcs.signInWithBrowser` call is what answers the token.
+     */
+    [IPCEventType.vcsCompleteBrowserSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: { callbackUrl: string };
+        response: { outcome: VcsBrowserCallbackOutcome };
     };
     /**
      * Put the project that is open on to a server: register it, connect it, send it.

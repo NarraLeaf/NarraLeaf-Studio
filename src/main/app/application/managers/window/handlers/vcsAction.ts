@@ -18,6 +18,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsServerSession,
@@ -699,6 +700,19 @@ export class VcsSignInWithBrowserHandler extends IPCHandler<IPCEventType.vcsSign
         { authUrl }: IPCEvents[IPCEventType.vcsSignInWithBrowser]["data"],
     ): Promise<RequestStatus<VcsBrowserSignInOutcome>> {
         return this.tryUse(async () => window.app.getVcsManager().signInWithBrowser(authUrl));
+    }
+}
+
+/** Hand the waiting browser sign-in a callback address pasted by the person. */
+export class VcsCompleteBrowserSignInHandler extends IPCHandler<IPCEventType.vcsCompleteBrowserSignIn> {
+    readonly name = IPCEventType.vcsCompleteBrowserSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { callbackUrl }: IPCEvents[IPCEventType.vcsCompleteBrowserSignIn]["data"],
+    ): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>> {
+        return this.tryUse(async () => ({ outcome: window.app.getVcsManager().completeBrowserSignIn(callbackUrl) }));
     }
 }
 

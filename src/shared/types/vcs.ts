@@ -1336,6 +1336,16 @@ export type VcsBrowserSignInOutcome =
     | { ok: false; reason: VcsBrowserSignInReason };
 
 /**
+ * What handing over a callback address by hand came to, for a browser sign-in whose
+ * redirect never reached Studio on its own.
+ *
+ * - `accepted`: it was this sign-in's answer; the waiting sign-in goes on with it.
+ * - `mismatch`: there is a sign-in waiting, and this address is not its answer.
+ * - `none`: nothing is waiting - it finished, timed out, or never started.
+ */
+export type VcsBrowserCallbackOutcome = "accepted" | "mismatch" | "none";
+
+/**
  * What a server could read inside one project's own file.
  *
  * **`readable` is the whole of it, and false is an ordinary answer.** A server records a

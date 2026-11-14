@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronDown } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { listProjects } from "@/lib/team";
@@ -10,7 +11,9 @@ import {
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
+import { cn } from "@/lib/utils/cn";
 import type {
+    VcsBrowserCallbackOutcome,
     VcsServerAuthority,
     VcsServerDiscovery,
     VcsServerSession,
@@ -129,6 +132,25 @@ export type BrowserSignIn = (request: { authUrl: string }) => Promise<BrowserSig
 export const browserSignInUnavailable: BrowserSignIn = () =>
     Promise.resolve({ ok: false, reason: "unknown" });
 
+/**
+ * Hands the waiting browser sign-in the address its browser was sent back to, for when the
+ * loopback redirect did not reach Studio by itself. Taken as a parameter like the other two.
+ */
+export type BrowserCallback = (callbackUrl: string) => Promise<VcsBrowserCallbackOutcome>;
+
+/** The bridge call, and `none` wherever it cannot be made. */
+export const browserCallbackOverBridge: BrowserCallback = async (callbackUrl) => {
+    const answer = await getInterface().vcs.completeBrowserSignIn(callbackUrl).catch(() => null);
+    return answer?.success ? answer.data.outcome : "none";
+};
+
+/**
+ * How long the browser sign-in waits on its own before offering to be finished by hand.
+ * Long enough for the usual round trip through an already signed-in browser, short enough
+ * that somebody whose redirect went nowhere is not left staring at a greyed-out button.
+ */
+const BROWSER_MANUAL_AFTER_MS = 5000;
+
 const BROWSER_PROBLEM_KEYS: Record<BrowserSignInProblem, TranslationKey> = {
     denied: "settings.servers.browserProblems.denied",
     timeout: "settings.servers.browserProblems.timeout",
@@ -200,6 +222,8 @@ export interface AddServerModalProps {
     signInWithPassword?: PasswordSignIn;
     /** How a browser sign-in becomes a token. See {@link BrowserSignIn}. */
     signInWithBrowser?: BrowserSignIn;
+    /** How a pasted callback address reaches the waiting sign-in. See {@link BrowserCallback}. */
+    completeBrowserSignIn?: BrowserCallback;
     /**
      * An address to start with, from a `narraleaf://team/connect` link. Only filled in:
      * the person still reaches it, sees what it is and signs in, as with a typed one.
@@ -234,6 +258,7 @@ export function AddServerModal({
     onAdded,
     signInWithPassword = passwordSignInUnavailable,
     signInWithBrowser = browserSignInUnavailable,
+    completeBrowserSignIn = browserCallbackOverBridge,
     initialAddress,
 }: AddServerModalProps) {
     const { t, tn } = useTranslation();
@@ -247,6 +272,17 @@ export function AddServerModal({
     const [chosen, setChosen] = useState<"browser" | "password" | "token" | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<TranslationKey | null>(null);
+    // The other ways of signing in, folded away in the footer until asked for.
+    const [othersOpen, setOthersOpen] = useState(false);
+    // The browser sign-in has waited long enough to offer finishing it by hand, and whether
+    // the reader took that offer - which brings up the field the callback address goes in.
+    const [browserSlow, setBrowserSlow] = useState(false);
+    const [manual, setManual] = useState(false);
+    const [callback, setCallback] = useState("");
+    const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        if (slowTimer.current !== null) clearTimeout(slowTimer.current);
+    }, []);
     // The project count lands after its step is already drawn, and the dialog can be gone
     // by then - it is the one answer nothing waits for.
     const alive = useRef(true);
@@ -394,12 +430,28 @@ export function AddServerModal({
         setBusy(false);
     }, [busy, password, signInWithPassword, stage, storeServer, username]);
 
+    const endBrowserWait = useCallback(() => {
+        if (slowTimer.current !== null) clearTimeout(slowTimer.current);
+        slowTimer.current = null;
+        setBrowserSlow(false);
+        setManual(false);
+        setCallback("");
+    }, []);
+
     const addWithBrowser = useCallback(async () => {
         if (stage.kind !== "identity" || busy) return;
         setBusy(true);
         setError(null);
+        setOthersOpen(false);
+        endBrowserWait();
+        slowTimer.current = setTimeout(() => {
+            slowTimer.current = null;
+            if (alive.current) setBrowserSlow(true);
+        }, BROWSER_MANUAL_AFTER_MS);
         const outcome = await signInWithBrowser({ authUrl: stage.discovery.auth.url })
             .catch((): BrowserSignInOutcome => ({ ok: false, reason: "unknown" }));
+        if (!alive.current) return;
+        endBrowserWait();
         if (!outcome.ok) {
             setError(BROWSER_PROBLEM_KEYS[outcome.reason]);
             setBusy(false);
@@ -407,7 +459,23 @@ export function AddServerModal({
         }
         await storeServer(stage.discovery, outcome.token);
         setBusy(false);
-    }, [busy, signInWithBrowser, stage, storeServer]);
+    }, [busy, endBrowserWait, signInWithBrowser, stage, storeServer]);
+
+    /**
+     * Finish the waiting browser sign-in with the address pasted by hand.
+     *
+     * An accepted address ends nothing here: the waiting `addWithBrowser` call is what gets
+     * the token, and it carries on from where it was as if the redirect had arrived.
+     */
+    const submitCallback = useCallback(async () => {
+        const pasted = callback.trim();
+        if (!pasted) return;
+        setError(null);
+        const outcome = await completeBrowserSignIn(pasted).catch((): VcsBrowserCallbackOutcome => "none");
+        if (!alive.current) return;
+        if (outcome === "mismatch") setError("settings.servers.browserCallback.mismatch");
+        else if (outcome === "none") setError("settings.servers.browserCallback.gone");
+    }, [callback, completeBrowserSignIn]);
 
     const submitOnEnter = (run: () => Promise<void>) => (event: KeyboardEvent) => {
         if (event.key === "Enter") {
@@ -506,6 +574,25 @@ export function AddServerModal({
                                     name: stage.discovery.name,
                                 })}
                             </p>
+                            {busy && manual && (
+                                <div>
+                                    <FieldLabel as="div">{t("settings.servers.browserCallback.label")}</FieldLabel>
+                                    <Input
+                                        data-servers-seam="field-callback"
+                                        aria-label={t("settings.servers.browserCallback.label")}
+                                        fullWidth
+                                        autoFocus
+                                        spellCheck={false}
+                                        value={callback}
+                                        onChange={event => setCallback(event.target.value)}
+                                        onKeyDown={submitOnEnter(submitCallback)}
+                                        placeholder="http://127.0.0.1:…/callback?…"
+                                    />
+                                    <p className="mt-1.5 text-xs text-fg-subtle">
+                                        {t("settings.servers.browserCallback.hint")}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     ) : method === "password" ? (
                         <div data-servers-seam="identity-password" className="flex flex-col gap-2">
@@ -563,29 +650,6 @@ export function AddServerModal({
                         </div>
                     )}
                     {sentence}
-                    {offered.filter(other => other !== method).map(other => (
-                        <Button
-                            key={other}
-                            size="sm"
-                            variant="ghost"
-                            className="-ml-2 self-start"
-                            data-servers-seam={`use-${other}`}
-                            disabled={busy}
-                            onClick={() => {
-                                // The sentence on screen was about the half being left, and a
-                                // password typed into it has no business outliving it.
-                                setError(null);
-                                setPassword("");
-                                setChosen(other);
-                            }}
-                        >
-                            {t(other === "browser"
-                                ? "settings.servers.useBrowser"
-                                : other === "password"
-                                    ? "settings.servers.usePassword"
-                                    : "settings.servers.useToken")}
-                        </Button>
-                    ))}
                 </div>
             );
         }
@@ -612,25 +676,88 @@ export function AddServerModal({
         );
     }
 
+    const others = stage.kind === "identity" ? offered.filter(other => other !== method) : [];
+
+    /**
+     * The other ways of signing in, folded into one control at the start of the footer.
+     *
+     * Only one way is in use at a time, and the dialog opens on the one the server put first,
+     * so the rest are a fallback rather than a choice to make every time: one quiet control
+     * that opens upward, instead of a stack of links between the explanation and the buttons.
+     */
+    const otherMethods = others.length > 0 && (
+        <div className="relative mr-auto" data-servers-seam="other-methods">
+            {othersOpen && (
+                <div
+                    role="menu"
+                    className="absolute bottom-full left-0 z-10 mb-1 min-w-44 rounded-md border border-edge bg-surface-raised py-1 shadow-lg"
+                >
+                    {others.map(other => (
+                        <button
+                            key={other}
+                            type="button"
+                            role="menuitem"
+                            data-servers-seam={`use-${other}`}
+                            className="flex w-full items-center px-3 py-1.5 text-left text-sm text-fg-muted transition-colors duration-150 hover:bg-fill hover:text-fg"
+                            onClick={() => {
+                                // The sentence on screen was about the half being left, and a
+                                // password typed into it has no business outliving it.
+                                setError(null);
+                                setPassword("");
+                                setOthersOpen(false);
+                                setChosen(other);
+                            }}
+                        >
+                            {t(other === "browser"
+                                ? "settings.servers.useBrowser"
+                                : other === "password"
+                                    ? "settings.servers.usePassword"
+                                    : "settings.servers.useToken")}
+                        </button>
+                    ))}
+                </div>
+            )}
+            <Button
+                size="sm"
+                variant="ghost"
+                className="-ml-2"
+                aria-expanded={othersOpen}
+                disabled={busy}
+                data-servers-seam="other-methods-toggle"
+                onClick={() => setOthersOpen(open => !open)}
+            >
+                <span>{t("settings.servers.otherMethods")}</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", othersOpen && "rotate-180")} />
+            </Button>
+        </div>
+    );
+
     function footer() {
         if (stage.kind === "joined" || stage.kind === "no-account") {
             return doneButton;
         }
         if (stage.kind === "identity" && method === "browser") {
+            // Waiting, then - once the redirect has had its few seconds - an offer to finish by
+            // hand, then the field that offer brought up and the button that sends it.
+            const button = !busy
+                ? submitButton("settings.servers.browserSignIn", true, addWithBrowser)
+                : manual
+                    ? submitButton("settings.servers.continue", callback.trim().length > 0, submitCallback)
+                    : browserSlow
+                        ? submitButton("settings.servers.browserCallback.done", true, async () => setManual(true))
+                        : submitButton("settings.servers.browserWaiting", false, addWithBrowser);
             return (
                 <>
+                    {otherMethods}
                     {leaveButton}
-                    {submitButton(
-                        busy ? "settings.servers.browserWaiting" : "settings.servers.browserSignIn",
-                        !busy,
-                        addWithBrowser,
-                    )}
+                    {button}
                 </>
             );
         }
         if (stage.kind === "identity" && method === "password") {
             return (
                 <>
+                    {otherMethods}
                     {leaveButton}
                     {submitButton(
                         busy ? "settings.servers.signingIn" : "settings.servers.signIn",
@@ -643,6 +770,7 @@ export function AddServerModal({
         if (stage.kind === "identity") {
             return (
                 <>
+                    {otherMethods}
                     {leaveButton}
                     {submitButton(
                         busy ? "settings.servers.adding" : "settings.servers.add",
