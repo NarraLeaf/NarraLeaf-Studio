@@ -797,6 +797,22 @@ LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:4150
 `certificate`：不是缺陷，是这台机器不认识那个新 CA。可行的做法是**整份复制一台已经被信任的台子**
 （`tls/` 一起复制——证书按主机名签、跟端口无关），端口整组错开再起。
 
+⚠ **macOS 上的两个坑（2026-11-15 修）**：
+
+- **信任按钮必须先把证书导入登录钥匙串。** macOS 26 上 `security add-trusted-cert -r trustRoot <crt>`
+  （不带 `-k`）会要密码、退出码 0，但只写了一条信任设置，证书本身不在任何钥匙串里，客户端库建链时找不到，
+  界面仍报「本机不信任该地址出示的证书」。现在的顺序是 `security import` → `add-trusted-cert -k <login>`
+  → `security verify-cert -c <crt> -l -L -q`，校验不过就不算装好、也不拷进 `vcs-authorities/accepted/`。
+  信任**不再限定主机名**（`-p ssl -s <host>`）：限定版从没被验证能用（作者手里坏掉的那次就是它），
+  Rust TLS 栈读钥匙串根证书时常跳过按主机名限定的设置；实测能用的只有不限定的写法。
+- **Lore 的令牌库在 macOS 上放在 `<userData>/lore-auth`，密钥存文件（`LORE_AUTH_STORE=fallback`）。**
+  Lore 0.8.5 默认把封令牌的密钥放在登录钥匙串（`com.epicgames.urc` / `lore_encryption_key`），
+  而且**每封一次令牌就把带递增 nonce 的密钥重写一次钥匙串**；Studio 是 ad-hoc 签名，钥匙串记不住授权，
+  于是登录、续期、重新出示令牌时反复弹「允许访问钥匙串」。见 `loreAuthStore.ts`。换目录后 Lore 那边是空的，
+  靠 `withServerSession` 和 `confirmStoredSession` 用 Studio 自己封存的令牌重新出示补回来，不会把作者登出。
+  Studio 自己的 `safeStorage`（`NarraLeaf Studio Safe Storage`）每次启动最多读一次，升级后仍会问一次——
+  那个只有换成固定团队签名才能消掉。
+
 ❗ **每条远端 spec 都会在服务器上留一个项目登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
 测试进程没有 Team 会话）。所以跑之前先复制一份台子、跑完把复制的那份整个删掉，比事后去共用台子上
 一条条摘干净省事得多。真要摘：`DELETE FROM projects WHERE ...`，就是 `projects.forget` 做的事。
