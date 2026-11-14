@@ -873,6 +873,18 @@ export const workspace = {
             minutes: "for {minutes} min",
             dismiss: "Got it",
         },
+        liveChat: {
+            title: "Session chat",
+            open: "Open session chat",
+            close: "Collapse",
+            placeholder: "Say something…",
+            send: "Send",
+            empty: "Nobody has said anything yet",
+            nobodyElse: "You are the only one here",
+            follow: "Follow {name}: go wherever they go",
+            stopFollowing: "Stop following {name}",
+            followingShort: "following",
+        },
         roleNotice: {
             reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",

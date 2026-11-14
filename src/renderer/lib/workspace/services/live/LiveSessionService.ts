@@ -1,3 +1,4 @@
+import { EMPTY_LIVE_PRESENCE, type LivePresenceSnapshot } from "@/lib/live/livePresence";
 import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
@@ -263,6 +264,23 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
 
     public onChanged(handler: (view: LiveSessionView) => void): () => void {
         return this.session?.onChanged(handler) ?? (() => undefined);
+    }
+
+    /** Where the others in the room are, and the chat. See {@link LiveSession.getPresence}. */
+    public getPresence(): LivePresenceSnapshot {
+        return this.session?.getPresence() ?? EMPTY_LIVE_PRESENCE;
+    }
+
+    public onPresenceChanged(handler: (presence: LivePresenceSnapshot) => void): () => void {
+        return this.session?.onPresenceChanged(handler) ?? (() => undefined);
+    }
+
+    public setCursor(document: string | null, element?: string): void {
+        this.session?.setCursor(document, element);
+    }
+
+    public sendChat(text: string): boolean {
+        return this.session?.sendChat(text) ?? false;
     }
 
     /** Whether a session owns this story document right now. See {@link LiveSession.ownsStory}. */

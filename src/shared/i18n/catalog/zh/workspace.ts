@@ -784,6 +784,18 @@ export const workspace = {
             minutes: "已经 {minutes} 分钟",
             dismiss: "知道了",
         },
+        liveChat: {
+            title: "会话聊天",
+            open: "打开会话聊天",
+            close: "收起",
+            placeholder: "说点什么…",
+            send: "发送",
+            empty: "还没有人说话",
+            nobodyElse: "会话里只有你",
+            follow: "跟随 {name}：TA 去哪里你就去哪里",
+            stopFollowing: "停止跟随 {name}",
+            followingShort: "跟随中",
+        },
         roleNotice: {
             reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
             viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",

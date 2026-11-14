@@ -108,7 +108,7 @@ import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserTyp
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
-import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
+import { StoryRowClaimMark, useStoryRowClaim, useStoryRowCursor } from "./storyRowClaims";
 import { diagnoseRow } from "./storyRowDiagnostics";
 import { RowProblemMark } from "./RowProblemMark";
 import { StoryRowCommentMark } from "./StoryRowCommentMark";
@@ -396,6 +396,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
      * row of the screenful costs a subscription apiece.
      */
     const claimedBy = useStoryRowClaim(blockId);
+    const cursorBy = useStoryRowCursor(blockId);
 
     return (
         <div
@@ -753,6 +754,8 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     // name stands down and leaves the monogram.
                     quiet={showRowActions}
                 />
+            ) : cursorBy !== null ? (
+                <StoryRowClaimMark account={cursorBy} onArtwork={controlsOverArtwork} quiet={showRowActions} cursor />
             ) : null}
         </div>
     );

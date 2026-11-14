@@ -4,6 +4,7 @@ import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
+import type { LivePresenceSnapshot } from "@/lib/live/livePresence";
 import { storyRowClaimKey } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import { useWorkspace } from "../../../context";
@@ -34,6 +35,8 @@ export type StoryRowClaims = Readonly<Record<StoryBlockId, string>>;
 const NO_CLAIMS: StoryRowClaims = {};
 
 const StoryRowClaimsContext = createContext<StoryRowClaims>(NO_CLAIMS);
+/** Rows somebody else in the live session has their cursor on, block id to account. */
+const StoryRowCursorsContext = createContext<StoryRowClaims>(NO_CLAIMS);
 
 /**
  * The claims on one story, kept as one value that only changes when it would read differently.
@@ -51,6 +54,25 @@ export function StoryRowClaimsProvider({ storyId, children }: {
         [context, isInitialized],
     );
     const [claims, setClaims] = useState<StoryRowClaims>(NO_CLAIMS);
+    const [cursors, setCursors] = useState<StoryRowClaims>(NO_CLAIMS);
+
+    useEffect(() => {
+        if (!service) {
+            setCursors(NO_CLAIMS);
+            return;
+        }
+        const read = () => setCursors(previous => {
+            const next = othersCursors(service.getView(), service.getPresence(), storyId);
+            return signatureOf(next) === signatureOf(previous) ? previous : next;
+        });
+        read();
+        const stopPresence = service.onPresenceChanged(read);
+        const stopView = service.onChanged(read);
+        return () => {
+            stopPresence();
+            stopView();
+        };
+    }, [service, storyId]);
 
     useEffect(() => {
         if (!service) {
@@ -70,7 +92,11 @@ export function StoryRowClaimsProvider({ storyId, children }: {
         return service.onChanged(read);
     }, [service, storyId]);
 
-    return <StoryRowClaimsContext.Provider value={claims}>{children}</StoryRowClaimsContext.Provider>;
+    return (
+        <StoryRowClaimsContext.Provider value={claims}>
+            <StoryRowCursorsContext.Provider value={cursors}>{children}</StoryRowCursorsContext.Provider>
+        </StoryRowClaimsContext.Provider>
+    );
 }
 
 /** The rows and their holders, flattened, so two sets can be compared as one value. */
@@ -84,6 +110,30 @@ function signatureOf(claims: StoryRowClaims): string {
 /** Who holds this row, or null when nobody else does. */
 export function useStoryRowClaim(blockId: StoryBlockId): string | null {
     return useContext(StoryRowClaimsContext)[blockId] ?? null;
+}
+
+/** Who else has their cursor on this row, by account, or null. */
+export function useStoryRowCursor(blockId: StoryBlockId): string | null {
+    return useContext(StoryRowCursorsContext)[blockId] ?? null;
+}
+
+/**
+ * The rows of one story the other people in the room are on, from their cursors. Only windows still
+ * in the room count, and the first to arrive on a row keeps it.
+ */
+export function othersCursors(view: LiveSessionView, presence: LivePresenceSnapshot, storyId: StoryId | undefined): StoryRowClaims {
+    if (storyId === undefined || !view.session) {
+        return NO_CLAIMS;
+    }
+    const inRoom = new Set(view.session.members.map(member => member.instance));
+    const document = `story:${storyId}`;
+    const rows: Record<StoryBlockId, string> = {};
+    for (const cursor of [...presence.cursors].sort((a, b) => a.at - b.at)) {
+        if (cursor.document !== document || cursor.element === undefined || !inRoom.has(cursor.instance)) continue;
+        const blockId = cursor.element.slice(cursor.element.indexOf("/") + 1) as StoryBlockId;
+        if (blockId && rows[blockId] === undefined) rows[blockId] = cursor.account;
+    }
+    return rows;
 }
 
 /**
@@ -163,18 +213,20 @@ function selfAccount(view: LiveSessionView): string | null {
  * goes when the pointer arrives, because that is when the corner is needed and when the tooltip is
  * one moment away.
  */
-export function StoryRowClaimMark({ account, onArtwork, quiet }: {
+export function StoryRowClaimMark({ account, onArtwork, quiet, cursor }: {
     account: string;
     /** The row's trailing edge is a background strip rather than the page. See `.nl-on-media`. */
     onArtwork?: boolean;
     /** The pointer is on this row, so the name stands down and leaves the corner to the actions. */
     quiet?: boolean;
+    /** Somebody is on the row rather than writing it: a ring instead of a filled monogram. */
+    cursor?: boolean;
 }) {
     const { t } = useTranslation();
     return (
         <span
-            data-story-row-claim={account}
-            data-tip={t("story.live.rowClaimed", { name: account })}
+            {...(cursor ? { "data-story-row-cursor": account } : { "data-story-row-claim": account })}
+            data-tip={t(cursor ? "story.live.rowCursor" : "story.live.rowClaimed", { name: account })}
             className={[
                 // No `pointer-events-none`: the tooltip is resolved by hit-testing the pointer,
                 // so a mark the pointer passes through is a mark with no name on it.
@@ -187,8 +239,13 @@ export function StoryRowClaimMark({ account, onArtwork, quiet }: {
             )}
             <span
                 aria-hidden
-                className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-2xs font-medium leading-none text-white"
-                style={{ backgroundColor: nameMonogramColor(account) }}
+                className={[
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-2xs font-medium leading-none",
+                    cursor ? "border-2 bg-transparent" : "text-white",
+                ].join(" ")}
+                style={cursor
+                    ? { borderColor: nameMonogramColor(account), color: nameMonogramColor(account) }
+                    : { backgroundColor: nameMonogramColor(account) }}
             >
                 {nameInitials(account).slice(0, 1)}
             </span>

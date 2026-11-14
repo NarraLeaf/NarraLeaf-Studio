@@ -51,6 +51,8 @@ vi.mock("@/apps/workspace/context", () => {
                     world.listeners.add(handler);
                     return () => world.listeners.delete(handler);
                 },
+                getPresence: () => ({ cursors: [], chat: [] }),
+                onPresenceChanged: () => () => undefined,
             }
             : null),
     };
@@ -256,5 +258,26 @@ describe("what the mark costs the row", () => {
         render(<StoryRowClaimMark account="bob" onArtwork />);
         // The same class the row's own hover controls take when they land on the strip.
         expect(document.querySelector("[data-story-row-claim]")?.className).toContain("nl-on-media");
+    });
+});
+
+describe("which rows somebody else is on", () => {
+    it("reads rows of this story from the cursors of windows still in the room, first come first", async () => {
+        const { othersCursors } = await import("./storyRowClaims");
+        const view = {
+            session: { members: [{ instance: "w1", account: "bob" }, { instance: "w2", account: "cy" }] },
+        } as unknown as LiveSessionView;
+        const presence = {
+            chat: [],
+            cursors: [
+                { instance: "w2", account: "cy", document: "story:s1", element: "c1/b1", at: 2 },
+                { instance: "w1", account: "bob", document: "story:s1", element: "c1/b1", at: 1 },
+                { instance: "w1", account: "bob", document: "story:s2", element: "c9/b9", at: 3 },
+                { instance: "gone", account: "dee", document: "story:s1", element: "c1/b2", at: 4 },
+                { instance: "w2", account: "cy", document: "story:s1", at: 5 },
+            ],
+        };
+        expect(othersCursors(view, presence, "s1" as never)).toEqual({ b1: "bob" });
+        expect(othersCursors({ session: null } as unknown as LiveSessionView, presence, "s1" as never)).toEqual({});
     });
 });

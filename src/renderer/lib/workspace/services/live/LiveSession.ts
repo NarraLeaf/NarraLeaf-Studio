@@ -1,3 +1,5 @@
+import { isLivePresenceMessage } from "@shared/live/presence";
+import { EMPTY_LIVE_PRESENCE, LivePresence, type LivePresenceSnapshot } from "@/lib/live/livePresence";
 import {
     CLAIM_REASSERT_MS,
     LiveClaimStore,
@@ -134,6 +136,8 @@ import {
 
 /** What a running session holds. Null while this window is in none. */
 type ActiveSession = {
+    /** Who is where in the room, and what has been said. See {@link LivePresence}. */
+    presence?: LivePresence;
     room: TeamLiveSession;
     rooms: LiveRooms;
     project: LiveProjectIdentity;
@@ -302,6 +306,37 @@ export class LiveSession {
      */
     private waitingToBeLetIn: (() => void) | null = null;
     public constructor(private readonly deps: LiveSessionDeps) {}
+
+    /* ------------------------------------------------------------------ presence */
+
+    private readonly presenceListeners = new Set<(presence: LivePresenceSnapshot) => void>();
+
+    /** Where the others in the room are, and the chat. Empty outside a session. */
+    public getPresence(): LivePresenceSnapshot {
+        return this.active?.presence?.get() ?? EMPTY_LIVE_PRESENCE;
+    }
+
+    public onPresenceChanged(handler: (presence: LivePresenceSnapshot) => void): () => void {
+        this.presenceListeners.add(handler);
+        return () => {
+            this.presenceListeners.delete(handler);
+        };
+    }
+
+    /** Say where this window is: a document in anchor terms and, optionally, the row or node in it. */
+    public setCursor(document: string | null, element?: string): void {
+        this.active?.presence?.setCursor(document, element);
+    }
+
+    /** Say something to the room. False for a line that was not sent (empty, too long, no room). */
+    public sendChat(text: string): boolean {
+        return this.active?.presence?.say(text) ?? false;
+    }
+
+    private emitPresence(): void {
+        const presence = this.getPresence();
+        for (const listener of this.presenceListeners) listener(presence);
+    }
 
     /* ------------------------------------------------------------------- reading */
 
@@ -1361,8 +1396,17 @@ export class LiveSession {
             });
         }
 
+        session.presence = new LivePresence({
+            self: session.self,
+            send: message => session.rooms.say(session.room.id, message),
+            changed: () => {
+                if (this.active === session) this.emitPresence();
+            },
+            now: () => this.deps.now(),
+        });
         session.stopListening = input.rooms.listen(input.room.id, (payload, from, account) =>
             this.onMessage(session, payload, from, account));
+        session.presence.hello();
         session.stopWatching = input.rooms.watch(input.project.repositoryId, event =>
             this.onRoomEvent(session, event));
         this.deps.story.setSink(this.sinkFor(session));
@@ -1460,6 +1504,7 @@ export class LiveSession {
             return;
         }
         this.active = null;
+        this.emitPresence();
         this.patch({ phase: "leaving" });
         // First, so nothing the author does next can become an intent for a room this window is on
         // its way out of.
@@ -1687,6 +1732,11 @@ export class LiveSession {
     /* -------------------------------------------------------------- the messages */
 
     private onMessage(session: ActiveSession, payload: unknown, from: string, account: string): void {
+        if (this.active === session && isLivePresenceMessage(payload)) {
+            // Beside the session rather than through it: no order, no host, no answer.
+            session.presence?.receive(payload, from, account);
+            return;
+        }
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.

@@ -799,6 +799,18 @@ export const workspace = {
             minutes: "{minutes} 分前から",
             dismiss: "OK",
         },
+        liveChat: {
+            title: "セッションチャット",
+            open: "セッションチャットを開く",
+            close: "閉じる",
+            placeholder: "メッセージを入力…",
+            send: "送信",
+            empty: "まだ発言はありません",
+            nobodyElse: "参加者はあなただけです",
+            follow: "{name} をフォロー：相手の移動先に一緒に移動します",
+            stopFollowing: "{name} のフォローをやめる",
+            followingShort: "フォロー中",
+        },
         roleNotice: {
             reviewer: "このプロジェクトではレビュアー：閲覧・コメント・ToDo はできるが、コミットや送信はできない",
             viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
