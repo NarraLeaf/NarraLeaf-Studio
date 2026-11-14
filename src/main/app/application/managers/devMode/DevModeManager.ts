@@ -134,6 +134,8 @@ export class DevModeManager {
     private readonly sessions = new Map<string, DevModeSession>();
     /** Serializes launch/stop/reload per project, so a quick stop-then-start cannot interleave. */
     private readonly operations = new Map<string, Promise<DevModeStatus>>();
+    /** Per-project stop generation invalidates launches queued before that stop. */
+    private readonly stopGenerations = new Map<string, number>();
     /** In-flight snapshot removal per project. See {@link discardSnapshot} for why it must be shared. */
     private readonly snapshotDiscards = new Map<string, Promise<void>>();
     private readonly bundleSource: DevModeBundleSource;
@@ -314,12 +316,21 @@ export class DevModeManager {
         const requestedAt = Date.now();
         const agent = options.agent === true;
         const client = agent ? options.client : undefined;
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt, agent, client));
+        const key = this.projectKey(projectPath);
+        const generation = this.stopGenerations.get(key) ?? 0;
+        return this.enqueue(projectPath, () => {
+            if ((this.stopGenerations.get(key) ?? 0) !== generation) {
+                return Promise.resolve("idle");
+            }
+            return this.launchNow(projectPath, entry, requestedAt, agent, client);
+        });
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
+        const key = this.projectKey(projectPath);
+        this.stopGenerations.set(key, (this.stopGenerations.get(key) ?? 0) + 1);
         return this.enqueue(projectPath, async () => {
-            const session = this.sessions.get(this.projectKey(projectPath));
+            const session = this.sessions.get(key);
             if (!session) {
                 return "idle";
             }
@@ -336,8 +347,8 @@ export class DevModeManager {
      * window it owns is closing anyway.
      */
     public async stopAll(): Promise<void> {
-        const projects = [...this.sessions.values()].map(session => session.projectPath);
-        await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
+        const projects = new Set([...this.sessions.keys(), ...this.operations.keys()]);
+        await Promise.allSettled([...projects].map(projectPath => this.stop(projectPath)));
     }
 
     /**
@@ -1148,6 +1159,7 @@ export class DevModeManager {
         const tracked = next.finally(() => {
             if (this.operations.get(key) === tracked) {
                 this.operations.delete(key);
+                this.stopGenerations.delete(key);
             }
         });
         this.operations.set(key, tracked);

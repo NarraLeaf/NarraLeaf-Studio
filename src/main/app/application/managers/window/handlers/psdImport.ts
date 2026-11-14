@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { app } from "electron";
 import { psdTempRoot } from "../../storage/cacheInventory";
@@ -10,6 +10,12 @@ import { IPCHandler } from "./IPCHandler";
 import type { PsdBakedLayer, PsdDocument } from "@shared/types/psdImport";
 import { bakePsdLayers, readPsdDocument } from "@/app/application/managers/psdImportManager";
 import { FsRejectErrorCode } from "@shared/types/os";
+
+function denied(filePath: string): Error {
+    return Object.assign(new Error(`File system access is not allowed for path: ${filePath}`), {
+        code: FsRejectErrorCode.PERMISSION_DENIED,
+    });
+}
 
 /**
  * Pick a PSD and read its layer tree.
@@ -28,12 +34,17 @@ export class PsdOpenHandler extends IPCHandler<IPCEventType.psdOpen> {
             title: t("dialogs.file.title.importPsd"),
             properties: ["openFile"],
             filters: [{ name: t("dialogs.file.filter.photoshop"), extensions: ["psd", "psb"] }],
+            securityScopedBookmarks: true,
         });
         if (result.canceled || result.filePaths.length === 0) {
             return this.success({ filePath: null, document: null });
         }
         const filePath = result.filePaths[0];
         try {
+            window.app.storageManager.grantFileSystemAccess(window, filePath, "read", false, result.bookmarks?.[0]);
+            if (!(await window.app.storageManager.isPathAllowed(window, filePath, "read"))) {
+                return this.failed(denied(filePath));
+            }
             const document = await readPsdDocument(window.getApp(), filePath);
             return this.success({ filePath, document });
         } catch (error: unknown) {
@@ -63,9 +74,7 @@ export class PsdReadHandler extends IPCHandler<IPCEventType.psdRead> {
             return this.failed(new Error("Not a Photoshop document (.psd or .psb)."));
         }
         if (!(await window.app.storageManager.isPathAllowed(window, filePath, "read"))) {
-            return this.failed(
-                new Error(`${FsRejectErrorCode.PERMISSION_DENIED}: file system access is not allowed for path: ${filePath}`),
-            );
+            return this.failed(denied(filePath));
         }
         try {
             return this.success({ document: await readPsdDocument(window.getApp(), filePath) });
@@ -80,40 +89,51 @@ export class PsdBakeHandler extends IPCHandler<IPCEventType.psdBake> {
     readonly name = IPCEventType.psdBake;
     readonly type = IPCMessageType.request;
 
-    /**
-     * The directory the previous bake in this window wrote to.
-     *
-     * Baked layers cannot be deleted when this call returns - the renderer reads them back
-     * afterwards, through the ordinary file import the grant below exists for. So they are
-     * dropped when the *next* bake starts instead, which is provably safe: one window drives one
-     * import wizard, so a second bake means the first one's files are done with. That leaves at
-     * most one directory behind per window per session, and `sweepPsdTempDirectories` clears
-     * those at the next startup.
-     *
-     * Before this, every PSD ever imported left a directory of full-canvas PNGs in the system
-     * temp folder forever.
-     */
-    private previousOutputDir: string | null = null;
+    /** Baked files remain readable until their owning window closes. */
+    private readonly outputs = new WeakMap<AppWindow, { directories: Set<string>; closed: boolean }>();
+
+    private outputsFor(window: AppWindow): { directories: Set<string>; closed: boolean } {
+        const existing = this.outputs.get(window);
+        if (existing) return existing;
+        const state = { directories: new Set<string>(), closed: false };
+        this.outputs.set(window, state);
+        window.onClose(() => {
+            state.closed = true;
+            for (const directory of state.directories) {
+                void fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+            }
+        });
+        return state;
+    }
 
     public async handle(
         window: AppWindow,
         { request }: IPCEvents[IPCEventType.psdBake]["data"],
     ): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>> {
-        // The renderer never names a directory: it would be refused by the storage manager anyway,
-        // and the temp location is the main process's business. The grant is what lets the asset
-        // library read the baked files straight back in through its normal file import.
-        const outputDir = path.join(psdTempRoot(app.getPath("temp")), String(Date.now()));
-        const stale = this.previousOutputDir;
-        this.previousOutputDir = outputDir;
-        if (stale) {
-            await fs.rm(stale, { recursive: true, force: true }).catch(() => undefined);
+        if (typeof request?.filePath !== "string" || !(await window.app.storageManager.isPathAllowed(window, request.filePath, "read"))) {
+            return this.failed(denied(String(request?.filePath)));
         }
+        const state = this.outputsFor(window);
+        let outputDir: string | undefined;
+        let keep = false;
         try {
+            const root = psdTempRoot(app.getPath("temp"));
+            await fs.mkdir(root, { recursive: true });
+            outputDir = await fs.mkdtemp(path.join(root, "bake-"));
+            state.directories.add(outputDir);
+            if (state.closed) throw new Error("Window closed during PSD import.");
             const layers = await bakePsdLayers(window.getApp(), { ...request, outputDir });
+            if (state.closed) throw new Error("Window closed during PSD import.");
             window.app.storageManager.grantFileSystemAccess(window, outputDir, "read", true, undefined, "session");
+            keep = true;
             return this.success({ layers });
         } catch (error: unknown) {
             return this.failed(error);
+        } finally {
+            if (outputDir && (!keep || state.closed)) {
+                state.directories.delete(outputDir);
+                await fs.rm(outputDir, { recursive: true, force: true }).catch(() => undefined);
+            }
         }
     }
 }

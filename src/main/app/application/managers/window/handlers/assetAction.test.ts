@@ -56,6 +56,10 @@ function makeWindow(overrides: { protectedPath?: boolean } = {}) {
                     const target = path.resolve(fsPath);
                     return target === project || target.startsWith(`${project}${path.sep}`);
                 }),
+                isPathTreeAllowed: vi.fn(async (_window: unknown, fsPath: string) => {
+                    const target = path.resolve(fsPath);
+                    return target === project || target.startsWith(`${project}${path.sep}`);
+                }),
             },
         },
     } as unknown as AppWindowLike;
@@ -192,6 +196,160 @@ describe("AssetExportToFolderHandler", () => {
         await expect(fs.readFile(path.join(exportDir, "room-1.png"), "utf8")).resolves.toBe("room-bytes");
     });
 
+    it("keeps concurrent exports from overwriting the same name", async () => {
+        const first = await shard("a1", "first");
+        const second = await shard("a2", "second");
+        const target = path.join(exportDir, "room.png");
+        const originalAccess = fs.access.bind(fs);
+        let count = 0;
+        let release: (() => void) | undefined;
+        const bothChecked = new Promise<void>(resolve => { release = resolve; });
+        const access = vi.spyOn(fs, "access").mockImplementation(async candidate => {
+            if (String(candidate) === target && count < 2) {
+                count += 1;
+                if (count === 2) release?.();
+                await bothChecked;
+                throw Object.assign(new Error("not found"), { code: "ENOENT" });
+            }
+            return originalAccess(candidate);
+        });
+        try {
+            const results = await Promise.all([first, second].map(sourcePath => handler.handle(makeWindow(), {
+                entries: [{ sourcePath, relativePath: "room.png" }],
+            })));
+            expect(results.every(result => result.success && result.data.exportedCount === 1)).toBe(true);
+            const contents = await Promise.all(["room.png", "room-1.png"].map(name => fs.readFile(path.join(exportDir, name), "utf8")));
+            expect(contents.sort()).toEqual(["first", "second"]);
+        } finally {
+            access.mockRestore();
+        }
+    });
+
+    it("gives concurrent bundle exports distinct folders", async () => {
+        const bundles = ["a", "b"].map(name => path.join(project, "assets", "content", name));
+        for (const [index, bundle] of bundles.entries()) {
+            await fs.mkdir(bundle, { recursive: true });
+            await fs.writeFile(path.join(bundle, "model.json"), String(index));
+        }
+
+        const results = await Promise.all(bundles.map(sourcePath => handler.handle(makeWindow(), {
+            entries: [{ sourcePath, relativePath: "model", isDirectory: true }],
+        })));
+        expect(results.every(result => result.success && result.data.exportedCount === 1)).toBe(true);
+        const contents = await Promise.all(["model", "model-1"].map(name => fs.readFile(path.join(exportDir, name, "model.json"), "utf8")));
+        expect(contents.sort()).toEqual(["0", "1"]);
+    });
+
+    it("does not follow a directory link outside the chosen folder", async () => {
+        const outside = path.join(root, "outside");
+        await fs.mkdir(outside);
+        await fs.symlink(outside, path.join(exportDir, "link"), process.platform === "win32" ? "junction" : "dir");
+
+        const result = await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: await shard("a1", "room-bytes"), relativePath: "link/room.png" }],
+        });
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 0 } });
+        await expect(fs.access(path.join(outside, "room.png"))).rejects.toThrow();
+    });
+
+    it("does not write outside when an export parent is replaced after its check", async () => {
+        const outside = path.join(root, "outside");
+        const parent = path.join(exportDir, "folder");
+        await fs.mkdir(outside);
+        await fs.mkdir(parent);
+        const source = await shard("race", "room-bytes");
+        const originalOpen = fs.open.bind(fs);
+        const originalLstat = fs.lstat.bind(fs);
+        let swapped = false;
+        const swap = async () => {
+            if (swapped) return;
+            swapped = true;
+            await fs.rename(parent, `${parent}-original`);
+            await fs.symlink(outside, parent, process.platform === "win32" ? "junction" : "dir");
+        };
+        const openProbe = vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+            const result = await originalOpen(...args);
+            if (process.platform !== "win32" && String(args[0]) === exportDir) await swap();
+            return result;
+        });
+        const statProbe = vi.spyOn(fs, "lstat").mockImplementation(async (...args: Parameters<typeof fs.lstat>) => {
+            const result = await originalLstat(...args);
+            if (process.platform === "win32" && String(args[0]) === parent) await swap();
+            return result;
+        });
+        try {
+            await handler.handle(makeWindow(), {
+                entries: [{ sourcePath: source, relativePath: "folder/room.png" }],
+            });
+            expect(swapped).toBe(true);
+            await expect(fs.access(path.join(outside, "room.png"))).rejects.toThrow();
+        } finally {
+            openProbe.mockRestore();
+            statProbe.mockRestore();
+        }
+    });
+
+    it.runIf(process.platform === "darwin" || process.platform === "linux")("does not write through a replaced selected export directory", async () => {
+        const outside = path.join(root, "outside");
+        await fs.mkdir(outside);
+        const source = await shard("root-race", "room-bytes");
+        const originalOpen = fs.open.bind(fs);
+        let swapped = false;
+        const openProbe = vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+            if (String(args[0]) === exportDir && !swapped) {
+                swapped = true;
+                await fs.rename(exportDir, `${exportDir}-original`);
+                await fs.symlink(outside, exportDir, process.platform === "win32" ? "junction" : "dir");
+            }
+            return originalOpen(...args);
+        });
+        try {
+            const result = await handler.handle(makeWindow(), {
+                entries: [{ sourcePath: source, relativePath: "room.png" }],
+            });
+            expect(swapped).toBe(true);
+            expect(result).toMatchObject({ success: true, data: { exportedCount: 0 } });
+            await expect(fs.access(path.join(outside, "room.png"))).rejects.toThrow();
+        } finally {
+            openProbe.mockRestore();
+        }
+    });
+
+    it.runIf(process.platform === "darwin" || process.platform === "linux")("does not write into a parent moved outside after opening it", async () => {
+        const parent = path.join(exportDir, "folder");
+        const outside = path.join(root, "moved-outside");
+        await fs.mkdir(parent);
+        const source = await shard("move-race", "room-bytes");
+        const originalStat = fs.stat.bind(fs);
+        let swapped = false;
+        const probe = vi.spyOn(fs, "stat").mockImplementation(async (...args: Parameters<typeof fs.stat>) => {
+            if (!swapped && String(args[0]) === source) {
+                swapped = true;
+                await fs.rename(parent, outside);
+            }
+            return originalStat(...args);
+        });
+        try {
+            await handler.handle(makeWindow(), { entries: [{ sourcePath: source, relativePath: "folder/room.png" }] });
+            expect(swapped).toBe(true);
+            await expect(fs.access(path.join(outside, "room.png"))).rejects.toThrow();
+        } finally {
+            probe.mockRestore();
+        }
+    });
+
+    it("requires recursive read access before exporting a bundle", async () => {
+        const bundle = path.join(project, "assets", "content", "m1");
+        await fs.mkdir(bundle, { recursive: true });
+        await fs.writeFile(path.join(bundle, "model.json"), "{}");
+        const window = makeWindow();
+        vi.mocked(window.app.storageManager.isPathTreeAllowed).mockResolvedValue(false);
+
+        const result = await handler.handle(window, { entries: [{ sourcePath: bundle, relativePath: "model", isDirectory: true }] });
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 0 } });
+        await expect(fs.access(path.join(exportDir, "model"))).rejects.toThrow();
+    });
+
     it("refuses a source the window has no read grant for", async () => {
         const outside = path.join(root, "secret.txt");
         await fs.writeFile(outside, "not-yours", "utf8");
@@ -235,6 +393,20 @@ describe("AssetExportToFolderHandler", () => {
 
         expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
         await expect(fs.readFile(path.join(exportDir, "hero", "textures", "skin.png"), "utf8")).resolves.toBe("px");
+    });
+
+    it.runIf(process.platform === "darwin" || process.platform === "linux")("keeps a bundle's relative internal links usable after export", async () => {
+        const bundle = path.join(project, "model");
+        await fs.mkdir(path.join(bundle, "textures"), { recursive: true });
+        await fs.writeFile(path.join(bundle, "textures", "skin.png"), "px");
+        await fs.symlink("textures", path.join(bundle, "alias"), "dir");
+
+        const result = await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: bundle, relativePath: "hero", isDirectory: true }],
+        });
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
+        await fs.rename(bundle, `${bundle}-original`);
+        await expect(fs.readFile(path.join(exportDir, "hero", "alias", "skin.png"), "utf8")).resolves.toBe("px");
     });
 
     it("refuses a folder inside protected Studio storage", async () => {

@@ -31,6 +31,7 @@ function fakeHost(overrides: Partial<ScreenWakeLockHost> = {}) {
             visible = next;
             listener?.();
         },
+        setVisibleWithoutEvent: (next: boolean) => { visible = next; },
     };
 }
 
@@ -93,6 +94,77 @@ describe("installScreenWakeLock", () => {
         keeper.setRequested(false);
         await settle();
         expect(fake.released).toEqual([1]);
+    });
+
+    it("requests a fresh lock when the tab returns before an interrupted request rejects", async () => {
+        let rejectFirst!: (reason: unknown) => void;
+        let attempts = 0;
+        const fake = fakeHost({
+            request: () => {
+                attempts += 1;
+                if (attempts === 1) {
+                    return new Promise((_resolve, reject) => { rejectFirst = reject; });
+                }
+                return Promise.resolve({ release: async () => undefined });
+            },
+        });
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        fake.setVisible(false);
+        fake.setVisible(true);
+        rejectFirst(new DOMException("The document became hidden", "NotAllowedError"));
+        await settle();
+
+        expect(attempts).toBe(2);
+        expect(fake.warned).toEqual([]);
+    });
+
+    it("replaces a lock granted after the tab was hidden and shown again", async () => {
+        let grantFirst!: (sentinel: ScreenWakeLockSentinel) => void;
+        let attempts = 0;
+        let staleReleased = false;
+        const fake = fakeHost({
+            request: () => {
+                attempts += 1;
+                if (attempts === 1) {
+                    return new Promise(resolve => { grantFirst = resolve; });
+                }
+                return Promise.resolve({ release: async () => undefined });
+            },
+        });
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        fake.setVisible(false);
+        fake.setVisible(true);
+        grantFirst({ release: async () => { staleReleased = true; } });
+        await settle();
+
+        expect(staleReleased).toBe(true);
+        expect(attempts).toBe(2);
+    });
+
+    it("retries after a request rejects before the hidden-page event is delivered", async () => {
+        let rejectFirst!: (reason: unknown) => void;
+        let attempts = 0;
+        const fake = fakeHost({
+            request: () => {
+                attempts += 1;
+                if (attempts === 1) {
+                    return new Promise((_resolve, reject) => { rejectFirst = reject; });
+                }
+                return Promise.resolve({ release: async () => undefined });
+            },
+        });
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        fake.setVisibleWithoutEvent(false);
+        rejectFirst(new DOMException("The document became hidden", "NotAllowedError"));
+        await settle();
+        fake.setVisible(true);
+        await settle();
+
+        expect(attempts).toBe(2);
+        expect(fake.warned).toEqual([]);
     });
 
     it("stays silent in a browser without the API", async () => {

@@ -1,6 +1,8 @@
 import type { FileHandle } from "fs/promises";
-import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
+import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
+import { pipeline } from "stream/promises";
+import { getSystemErrorName } from "util";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
@@ -121,18 +123,194 @@ async function nameWithExtension(source: string, name: string, isDirectory: bool
     }
 }
 
-/** A free path next to `target`, suffixing the stem rather than overwriting what is already there. */
-async function resolveAvailableExportPath(target: string): Promise<string> {
+/** Create the target's parent directories without following links below the selected folder. */
+async function ensureExportParent(exportDir: string, target: string): Promise<void> {
+    const relative = path.relative(exportDir, path.dirname(target));
+    let current = exportDir;
+    for (const segment of relative.split(path.sep).filter(Boolean)) {
+        current = path.join(current, segment);
+        try {
+            await fs.mkdir(current);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+        if (!(await fs.lstat(current)).isDirectory()) {
+            throw new Error("An export folder is not a directory.");
+        }
+    }
+}
+
+async function recheckExportParent(exportDir: string, target: string): Promise<void> {
+    const [root, parent] = await Promise.all([fs.realpath(exportDir), fs.realpath(path.dirname(target))]);
+    const relative = path.relative(root, parent);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error("An export folder is outside the selected folder.");
+    }
+}
+
+type RelativeExportCalls = {
+    openat: (directory: number, name: string, flags: number, mode: number) => number;
+    mkdirat: (directory: number, name: string, mode: number) => void;
+    symlinkat: (target: string, directory: number, name: string) => void;
+};
+
+let relativeExportCalls: RelativeExportCalls | undefined;
+
+/** Open and create children relative to an already opened directory. */
+function getRelativeExportCalls(): RelativeExportCalls {
+    if (relativeExportCalls) return relativeExportCalls;
+    const koffi = require("koffi") as typeof import("koffi");
+    const libc = koffi.load(null);
+    const openat = libc.func("openat", "int", ["int", "str", "int", "..."]);
+    const mkdirat = libc.func("int mkdirat(int directory, const char *name, uint32_t mode)");
+    const symlinkat = libc.func("int symlinkat(const char *target, int directory, const char *name)");
+    const check = (result: number, name: string): number => {
+        if (result >= 0) return result;
+        const errno = koffi.errno();
+        let code: string;
+        try {
+            code = getSystemErrorName(-errno);
+        } catch {
+            code = "UNKNOWN";
+        }
+        throw Object.assign(new Error(`${code}: cannot create or open ${name}`), { code });
+    };
+    relativeExportCalls = {
+        openat: (directory, name, flags, mode) => check(openat(directory, name, flags, "int", mode), name),
+        mkdirat: (directory, name, mode) => { check(mkdirat(directory, name, mode), name); },
+        symlinkat: (target, directory, name) => { check(symlinkat(target, directory, name), name); },
+    };
+    return relativeExportCalls;
+}
+
+/** Owns a chain of directory descriptors for one export entry. */
+async function withExportParent<T>(
+    exportDir: string,
+    target: string,
+    expectedRoot: { dev: number; ino: number },
+    action: (directory: number) => Promise<T>,
+): Promise<T> {
+    const calls = getRelativeExportCalls();
+    const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
+    const root = await fs.open(exportDir, unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY);
+    const opened: number[] = [];
+    try {
+        const actualRoot = await root.stat();
+        if (actualRoot.dev !== expectedRoot.dev || actualRoot.ino !== expectedRoot.ino) {
+            throw new Error("The selected export folder changed.");
+        }
+        let directory = root.fd;
+        const relative = path.relative(exportDir, path.dirname(target));
+        for (const segment of relative.split(path.sep).filter(Boolean)) {
+            try {
+                calls.mkdirat(directory, segment, 0o777);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+            }
+            directory = calls.openat(directory, segment, flags, 0);
+            opened.push(directory);
+        }
+        return await action(directory);
+    } finally {
+        for (const directory of opened.reverse()) unpatchedFs.closeSync(directory);
+        await root.close();
+    }
+}
+
+async function copyFileIntoDirectory(source: string, directory: number, name: string): Promise<void> {
+    const mode = (await fs.stat(source)).mode & 0o777;
+    const flags = unpatchedFs.constants.O_WRONLY | unpatchedFs.constants.O_CREAT
+        | unpatchedFs.constants.O_EXCL | unpatchedFs.constants.O_NOFOLLOW;
+    const fd = getRelativeExportCalls().openat(directory, name, flags, mode);
+    await pipeline(
+        unpatchedFs.createReadStream(source),
+        unpatchedFs.createWriteStream("", { fd, autoClose: true }),
+    );
+}
+
+async function copyTreeIntoDirectory(source: string, directory: number): Promise<void> {
+    const calls = getRelativeExportCalls();
+    const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
+    for (const entry of await fs.readdir(source, { withFileTypes: true })) {
+        const child = path.join(source, entry.name);
+        if (entry.isSymbolicLink()) {
+            calls.symlinkat(await fs.readlink(child), directory, entry.name);
+        } else if (entry.isDirectory()) {
+            calls.mkdirat(directory, entry.name, (await fs.stat(child)).mode & 0o777);
+            const nested = calls.openat(directory, entry.name, flags, 0);
+            try {
+                await copyTreeIntoDirectory(child, nested);
+            } finally {
+                unpatchedFs.closeSync(nested);
+            }
+        } else if (entry.isFile()) {
+            await copyFileIntoDirectory(child, directory, entry.name);
+        } else {
+            throw new Error(`Cannot export this type of file: ${child}`);
+        }
+    }
+}
+
+async function copyToAvailableRelativeExportPath(source: string, directory: number, base: string, isDirectory: boolean): Promise<void> {
+    const calls = getRelativeExportCalls();
+    const ext = path.extname(base);
+    const stem = ext ? base.slice(0, -ext.length) : base;
+    for (let index = 0; index < 1000; index += 1) {
+        const name = index === 0 ? base : `${stem}-${index}${ext}`;
+        if (isDirectory) {
+            try {
+                calls.mkdirat(directory, name, 0o777);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+                throw error;
+            }
+            const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
+            const nested = calls.openat(directory, name, flags, 0);
+            try {
+                await copyTreeIntoDirectory(source, nested);
+            } finally {
+                unpatchedFs.closeSync(nested);
+            }
+            return;
+        }
+        try {
+            await copyFileIntoDirectory(source, directory, name);
+            return;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+    }
+    throw new Error(`Unable to choose a free name for "${base}" in the selected folder.`);
+}
+
+/** Copy to a name reserved by this operation, suffixing it when another entry already exists. */
+async function copyToAvailableExportPath(source: string, target: string, isDirectory: boolean): Promise<void> {
     const dir = path.dirname(target);
     const base = path.basename(target);
     const ext = path.extname(base);
     const stem = ext ? base.slice(0, -ext.length) : base;
     for (let index = 0; index < 1000; index += 1) {
         const candidate = index === 0 ? target : path.join(dir, `${stem}-${index}${ext}`);
+        if (isDirectory) {
+            try {
+                await fs.mkdir(candidate);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+                throw error;
+            }
+            const children = await fs.readdir(source);
+            for (const child of children) {
+                await fs.cp(path.join(source, child), path.join(candidate, child), {
+                    recursive: true, errorOnExist: true, force: false,
+                });
+            }
+            return;
+        }
         try {
-            await fs.access(candidate);
-        } catch {
-            return candidate;
+            await fs.copyFile(source, candidate, unpatchedFs.constants.COPYFILE_EXCL);
+            return;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
         }
     }
     throw new Error(`Unable to choose a free name for "${base}" in the selected folder.`);
@@ -193,6 +371,9 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 selection.bookmarks?.[0],
                 "session",
             );
+            const expectedRoot = process.platform === "darwin" || process.platform === "linux"
+                ? await fs.stat(exportDir)
+                : undefined;
 
             const failures: AssetExportFailure[] = [];
             let exportedCount = 0;
@@ -201,7 +382,10 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 const relativePath = typeof entry?.relativePath === "string" ? entry.relativePath : "";
                 try {
                     const source = path.resolve(entry.sourcePath);
-                    if (!await window.app.storageManager.isPathAllowed(window, source, "read")) {
+                    const readable = entry.isDirectory === true
+                        ? await window.app.storageManager.isPathTreeAllowed(window, source, "read")
+                        : await window.app.storageManager.isPathAllowed(window, source, "read");
+                    if (!readable) {
                         throw new Error("This file is outside the project and was not exported.");
                     }
 
@@ -212,13 +396,17 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                     if (!target) {
                         throw new Error("That name does not point anywhere inside the chosen folder.");
                     }
+                    if (await window.app.storageManager.isPathProtected(target)) {
+                        throw new Error("Selected location is inside protected Studio storage.");
+                    }
 
-                    await fs.mkdir(path.dirname(target), { recursive: true });
-                    const destination = await resolveAvailableExportPath(target);
-                    if (entry.isDirectory) {
-                        await fs.cp(source, destination, { recursive: true, errorOnExist: true, force: false });
+                    if (expectedRoot) {
+                        await withExportParent(exportDir, target, expectedRoot, directory =>
+                            copyToAvailableRelativeExportPath(source, directory, path.basename(target), entry.isDirectory === true));
                     } else {
-                        await fs.copyFile(source, destination);
+                        await ensureExportParent(exportDir, target);
+                        await recheckExportParent(exportDir, target);
+                        await copyToAvailableExportPath(source, target, entry.isDirectory === true);
                     }
                     exportedCount += 1;
                 } catch (error) {

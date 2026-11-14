@@ -241,6 +241,9 @@ export function createWeatherRenderPool(
                 },
                 (error: unknown) => {
                     inFlight -= 1;
+                    if (closed) {
+                        return;
+                    }
                     failure ??= error instanceof Error ? error : new Error(String(error));
                     announce();
                 },

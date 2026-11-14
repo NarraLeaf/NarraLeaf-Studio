@@ -150,7 +150,7 @@ function findEocd(buffer: Buffer): number {
 /** Pull zip64 replacement values out of a central-directory extra field. */
 function applyZip64Extra(
     extra: Buffer,
-    values: { uncompressedSize: number; compressedSize: number; localHeaderOffset: number },
+    values: { uncompressedSize: number; compressedSize: number; localHeaderOffset: number; diskNumber: number },
 ): void {
     let offset = 0;
     while (offset + 4 <= extra.length) {
@@ -170,6 +170,13 @@ function applyZip64Extra(
             }
             if (values.localHeaderOffset === 0xffffffff) {
                 values.localHeaderOffset = readUInt64(extra, cursor);
+                cursor += 8;
+            }
+            if (values.diskNumber === 0xffff) {
+                if (cursor + 4 > offset + 4 + size || cursor + 4 > extra.length) {
+                    throw new Error("Incomplete zip64 entry disk number");
+                }
+                values.diskNumber = extra.readUInt32LE(cursor);
                 cursor += 8;
             }
             return;
@@ -193,23 +200,36 @@ export function parseZipIndex(buffer: Buffer): ZipIndex {
     let zip64 = false;
 
     const diskNumber = buffer.readUInt16LE(eocdOffset + 4);
-    if (diskNumber !== 0 && diskNumber !== 0xffff) {
+    const directoryDisk = buffer.readUInt16LE(eocdOffset + 6);
+    const entriesOnDisk = buffer.readUInt16LE(eocdOffset + 8);
+    if ((diskNumber !== 0 && diskNumber !== 0xffff)
+        || (directoryDisk !== 0 && directoryDisk !== 0xffff)
+        || entriesOnDisk !== entryCount) {
         throw new Error("Multi-disk zip archives are not supported");
     }
 
     const locatorOffset = eocdOffset - 20;
     if (
-        (entryCount === 0xffff || centralDirectoryOffset === 0xffffffff || centralDirectorySize === 0xffffffff)
+        (diskNumber === 0xffff || directoryDisk === 0xffff || entryCount === 0xffff
+            || centralDirectoryOffset === 0xffffffff || centralDirectorySize === 0xffffffff)
         || (locatorOffset >= 0 && buffer.readUInt32LE(locatorOffset) === ZIP64_LOCATOR_SIGNATURE)
     ) {
         if (locatorOffset < 0 || buffer.readUInt32LE(locatorOffset) !== ZIP64_LOCATOR_SIGNATURE) {
             throw new Error("Saturated EOCD fields without a zip64 locator");
+        }
+        if (buffer.readUInt32LE(locatorOffset + 4) !== 0 || buffer.readUInt32LE(locatorOffset + 16) !== 1) {
+            throw new Error("Multi-disk zip archives are not supported");
         }
         const zip64EocdOffset = readUInt64(buffer, locatorOffset + 8);
         if (buffer.readUInt32LE(zip64EocdOffset) !== ZIP64_EOCD_SIGNATURE) {
             throw new Error("zip64 end-of-central-directory signature mismatch");
         }
         entryCount = readUInt64(buffer, zip64EocdOffset + 32);
+        if (buffer.readUInt32LE(zip64EocdOffset + 16) !== 0
+            || buffer.readUInt32LE(zip64EocdOffset + 20) !== 0
+            || readUInt64(buffer, zip64EocdOffset + 24) !== entryCount) {
+            throw new Error("Multi-disk zip archives are not supported");
+        }
         centralDirectorySize = readUInt64(buffer, zip64EocdOffset + 40);
         centralDirectoryOffset = readUInt64(buffer, zip64EocdOffset + 48);
         zip64 = true;
@@ -233,6 +253,7 @@ export function parseZipIndex(buffer: Buffer): ZipIndex {
             compressedSize: buffer.readUInt32LE(cursor + 20),
             uncompressedSize: buffer.readUInt32LE(cursor + 24),
             localHeaderOffset: buffer.readUInt32LE(cursor + 42),
+            diskNumber: buffer.readUInt16LE(cursor + 34),
         };
         const nameLength = buffer.readUInt16LE(cursor + 28);
         const extraLength = buffer.readUInt16LE(cursor + 30);
@@ -244,6 +265,9 @@ export function parseZipIndex(buffer: Buffer): ZipIndex {
             cursor + CENTRAL_HEADER_SIZE + nameLength + extraLength,
         );
         applyZip64Extra(extra, values);
+        if (values.diskNumber !== 0) {
+            throw new Error("Multi-disk zip archives are not supported");
+        }
         entries.push({
             name,
             method,

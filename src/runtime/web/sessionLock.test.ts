@@ -28,7 +28,7 @@ function lockManager(): SessionLockManager & { release: () => void; held: () => 
                     const at = waiting.indexOf(entry);
                     if (at >= 0) {
                         waiting.splice(at, 1);
-                        reject(new Error("AbortError"));
+                        reject(options.signal?.reason);
                     }
                 });
             });
@@ -62,6 +62,15 @@ describe("claimGameSession", () => {
         await expect(claim).resolves.toBe("taken");
     });
 
+    it("recognises the timeout signal's rejection reason", async () => {
+        const signal = AbortSignal.abort(new DOMException("Timed out", "TimeoutError"));
+        const locks: SessionLockManager = {
+            request: () => Promise.reject(signal.reason),
+        };
+        await expect(claimGameSession({ ...host(locks), timeoutSignal: () => signal }))
+            .resolves.toBe("taken");
+    });
+
     it("waits rather than refusing, so a reload takes the lock the old page is letting go of", async () => {
         // The page that reloads is the same document twice: for a moment the outgoing one still
         // holds the lock. An immediate answer would tell the player their game is open elsewhere.
@@ -83,5 +92,22 @@ describe("claimGameSession", () => {
             }),
         };
         await expect(claimGameSession(host(refusing))).resolves.toBe("granted");
+    });
+
+    it("grants the session when the browser rejects the request without a timeout", async () => {
+        const refusing: SessionLockManager = {
+            request: vi.fn(() => Promise.reject(new DOMException("Access denied", "SecurityError"))),
+        };
+        await expect(claimGameSession(host(refusing))).resolves.toBe("granted");
+    });
+
+    it("does not turn a security rejection into a timeout when the signal also aborts", async () => {
+        const refusing: SessionLockManager = {
+            request: vi.fn(() => Promise.reject(new DOMException("Access denied", "SecurityError"))),
+        };
+        const page = host(refusing);
+        const claim = claimGameSession(page);
+        page.abort();
+        await expect(claim).resolves.toBe("granted");
     });
 });

@@ -48,6 +48,8 @@ export function installScreenWakeLock(host: ScreenWakeLockHost): ScreenWakeLockK
     let held: ScreenWakeLockSentinel | null = null;
     /** True while a request is in flight, so a burst of changes asks once. */
     let asking = false;
+    /** A pending request no longer describes the current visible, advancing session. */
+    let requestInvalidated = false;
     /** What the game last asked for. */
     let requested = false;
     /**
@@ -69,6 +71,9 @@ export function installScreenWakeLock(host: ScreenWakeLockHost): ScreenWakeLockK
 
     const sync = async (): Promise<void> => {
         if (!wanted()) {
+            if (asking) {
+                requestInvalidated = true;
+            }
             drop();
             return;
         }
@@ -76,20 +81,26 @@ export function installScreenWakeLock(host: ScreenWakeLockHost): ScreenWakeLockK
             return;
         }
         asking = true;
+        requestInvalidated = false;
         try {
             const sentinel = await request();
             // The tab can go away, or the story stop moving, while the request is in flight; the
             // lock granted for a moment that has passed is exactly the one this must not keep.
-            if (wanted()) {
+            if (!requestInvalidated && wanted()) {
                 held = sentinel;
             } else {
                 void sentinel.release().catch(() => undefined);
             }
         } catch (error) {
-            refused = true;
-            host.warn(`[GameRuntime] The screen cannot be kept awake in this browser: ${describe(error)}`);
+            if (!requestInvalidated && wanted()) {
+                refused = true;
+                host.warn(`[GameRuntime] The screen cannot be kept awake in this browser: ${describe(error)}`);
+            }
         } finally {
             asking = false;
+            if (requestInvalidated && wanted()) {
+                void sync();
+            }
         }
     };
 

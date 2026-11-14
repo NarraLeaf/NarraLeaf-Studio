@@ -83,36 +83,39 @@ export async function writeArtifactDigests(
     // installer just written, which for a multi-platform release is gigabytes. The list is the
     // artifacts, and it is complete before the first hash begins.
     const counted = countBuildStep(artifacts.length, "file");
-    for (const artifact of artifacts) {
-        // Advanced however this iteration leaves: an artifact skipped for being a directory, a
-        // duplicate or a previous run's sums file is one this pass is finished with.
-        try {
-            const resolved = path.resolve(artifact);
-            if (seen.has(resolved)) {
-                continue;
-            }
-            seen.add(resolved);
-            const name = artifactDigestName(resolved, outputDir);
-            if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
-                continue;
-            }
-            let stats;
+    try {
+        for (const artifact of artifacts) {
+            // Advanced however this iteration leaves: an artifact skipped for being a directory, a
+            // duplicate or a previous run's sums file is one this pass is finished with.
             try {
-                stats = await fs.stat(resolved);
-            } catch {
-                log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
-                continue;
+                const resolved = path.resolve(artifact);
+                if (seen.has(resolved)) {
+                    continue;
+                }
+                seen.add(resolved);
+                const name = artifactDigestName(resolved, outputDir);
+                if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
+                    continue;
+                }
+                let stats;
+                try {
+                    stats = await fs.stat(resolved);
+                } catch {
+                    log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
+                    continue;
+                }
+                if (!stats.isFile()) {
+                    continue;
+                }
+                entries.push({ name, sha256: await sha256OfFile(resolved) });
+                files.push(resolved);
+            } finally {
+                counted.advance();
             }
-            if (!stats.isFile()) {
-                continue;
-            }
-            entries.push({ name, sha256: await sha256OfFile(resolved) });
-            files.push(resolved);
-        } finally {
-            counted.advance();
         }
+    } finally {
+        counted.end();
     }
-    counted.end();
     if (entries.length === 0) {
         return { path: null, files };
     }

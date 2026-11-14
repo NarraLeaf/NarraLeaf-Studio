@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { clipboard } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -28,23 +29,81 @@ function isClipboardWindow(window: AppWindow): boolean {
     return window.getWindowType() === WindowAppType.Workspace;
 }
 
+type UiPublication = {
+    id: number;
+    kind: "ui-elements" | "ui-surfaces";
+    window: WeakRef<AppWindow>;
+    clipboard: string;
+};
+
+let nextUiPublicationId = 0;
+let uiPublication: UiPublication | null = null;
+
+/** A delayed copy may replace the clipboard only while its original contents are still present. */
+function clipboardFingerprint(): string {
+    const hash = createHash("sha256");
+    const add = (value: string | Buffer) => {
+        const bytes = typeof value === "string" ? Buffer.from(value, "utf8") : value;
+        hash.update(`${bytes.length}:`);
+        hash.update(bytes);
+    };
+    const formats = clipboard.availableFormats().sort();
+    for (const format of formats) {
+        add(format);
+        add(clipboard.readBuffer(format));
+    }
+    add(clipboard.readText());
+    add(clipboard.readHTML());
+    add(clipboard.readRTF());
+    const image = clipboard.readImage();
+    if (!image.isEmpty()) {
+        add(image.toPNG());
+    }
+    return hash.digest("hex");
+}
+
 export class ClipboardWriteEditorSelectionHandler extends IPCHandler<IPCEventType.clipboardWriteEditorSelection> {
     readonly name = IPCEventType.clipboardWriteEditorSelection;
     readonly type = IPCMessageType.request;
 
     public handle(
         window: AppWindow,
-        { kind, payload }: IPCEvents[IPCEventType.clipboardWriteEditorSelection]["data"],
-    ): RequestStatus<{ stored: boolean }> {
+        { kind, payload, operation, publicationId }: IPCEvents[IPCEventType.clipboardWriteEditorSelection]["data"],
+    ): RequestStatus<{ stored: boolean; publicationId?: number }> {
         if (!isClipboardWindow(window) || !isStudioClipboardKind(kind) || typeof payload !== "string") {
             return this.success({ stored: false });
+        }
+        if (operation === "begin") {
+            if (kind !== "ui-elements" && kind !== "ui-surfaces") {
+                return this.success({ stored: false });
+            }
+            const id = ++nextUiPublicationId;
+            uiPublication = null;
+            try {
+                uiPublication = { id, kind, window: new WeakRef(window), clipboard: clipboardFingerprint() };
+                return this.success({ stored: false, publicationId: id });
+            } catch (error) {
+                window.app.logger.warn(`[Clipboard] could not observe clipboard: ${String(error)}`);
+                return this.success({ stored: false });
+            }
         }
         const buffer = Buffer.from(payload, "utf8");
         if (buffer.byteLength === 0 || buffer.byteLength > STUDIO_CLIPBOARD_MAX_BYTES) {
             return this.success({ stored: false });
         }
         try {
+            if (publicationId !== undefined) {
+                const publication = uiPublication;
+                if (!publication || publication.id !== publicationId || publication.kind !== kind || publication.window.deref() !== window) {
+                    return this.success({ stored: false });
+                }
+                uiPublication = null;
+                if (publication.clipboard !== clipboardFingerprint()) {
+                    return this.success({ stored: false });
+                }
+            }
             clipboard.writeBuffer(STUDIO_CLIPBOARD_FORMATS[kind], buffer);
+            uiPublication = null;
             return this.success({ stored: true });
         } catch (error) {
             // A clipboard another application is holding open is a transient platform condition,
@@ -132,6 +191,7 @@ export class ClipboardWritePlainTextHandler extends IPCHandler<IPCEventType.clip
         }
         try {
             clipboard.writeText(text);
+            uiPublication = null;
             return this.success({ stored: true });
         } catch (error) {
             window.app.logger.warn(`[Clipboard] could not write plain text: ${String(error)}`);

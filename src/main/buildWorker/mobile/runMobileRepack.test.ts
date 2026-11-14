@@ -393,6 +393,24 @@ describe("runMobileRepack against the real shell templates", () => {
         expect(MAX_PAYLOAD_BYTES).toBeLessThan(bufferConstants.MAX_LENGTH);
     });
 
+    it("preserves an existing file beside the IPA when signing fails", async () => {
+        const job = await makeJob();
+        delete job.android;
+        const outputDir = await tempDir("nls-out-");
+        const existingPath = path.join(outputDir, `${job.ios!.outputName}.unsigned`);
+        await fs.writeFile(existingPath, "existing author file");
+        job.ios!.signing = {
+            p12File: path.join(outputDir, "missing.p12"),
+            p12Password: "",
+            provisioningProfileFile: path.join(outputDir, "missing.mobileprovision"),
+            toolPath: path.join(outputDir, "missing-zsign"),
+        };
+
+        await expect(runMobileRepack(job, outputDir, log, MTIME)).rejects.toThrow(/provisioning profile/i);
+        expect(await fs.readFile(existingPath, "utf8")).toBe("existing author file");
+        expect((await fs.readdir(outputDir)).sort()).toEqual([`${job.ios!.outputName}.unsigned`]);
+    });
+
     it("refuses an icon slot the template does not have", async () => {
         // The manifest and the template disagreeing must fail, not silently
         // ship the placeholder icon the author tried to replace.

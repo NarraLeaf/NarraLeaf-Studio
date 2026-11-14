@@ -193,6 +193,12 @@ export async function runMobileRepack(
 ): Promise<string[]> {
     const artifacts: string[] = [];
     const files = await collectSiteFiles(job.sourceDir);
+    if (job.android) {
+        assertPayloadFits(files, "Android");
+    }
+    if (job.ios) {
+        assertPayloadFits(files, "iOS");
+    }
     await fs.mkdir(outputDir, { recursive: true });
     // Built once and shared by both platforms: sealing the payload twice would be wasted work, and
     // the bytes are identical anyway.
@@ -200,7 +206,6 @@ export async function runMobileRepack(
 
     if (job.android) {
         const { android } = job;
-        assertPayloadFits(files, "Android");
         log("info", `repacking the Android shell (${describeSiteFiles(files.length)})...`);
         const signingIdentity = await resolveAndroidIdentity(
             android.signing,
@@ -250,7 +255,6 @@ export async function runMobileRepack(
 
     if (job.ios) {
         const { ios } = job;
-        assertPayloadFits(files, "iOS");
         log("info", `repacking the iOS shell (${describeSiteFiles(files.length)})...`);
         const ipa = await repackIpa({
             templateAppZip: await fs.readFile(ios.templateAppZipPath),
@@ -274,14 +278,12 @@ export async function runMobileRepack(
             log("info", `wrote ${ios.outputName} (${formatSize(ipa.length)}); the package is unsigned`);
             artifacts.push(outputPath);
         } else {
-            // zsign reads one file and writes another, so the repack's output is
-            // staged beside the final artifact - same directory, hence the same
-            // volume, and a game's payload is far too large to route through the
-            // temp dir. It is removed whichever way the signing goes.
-            const unsignedPath = `${outputPath}.unsigned`;
-            await fs.writeFile(unsignedPath, ipa);
-            log("info", `signing ${ios.outputName} (${formatSize(ipa.length)})...`);
+            // Stage the unsigned package on the output volume under a unique name.
+            const stagingDir = await fs.mkdtemp(path.join(outputDir, ".nls-ipa-input-"));
             try {
+                const unsignedPath = path.join(stagingDir, "unsigned.ipa");
+                await fs.writeFile(unsignedPath, ipa);
+                log("info", `signing ${ios.outputName} (${formatSize(ipa.length)})...`);
                 const result = await signIpa({
                     tool: { available: true, path: ios.signing.toolPath },
                     unsignedIpaPath: unsignedPath,
@@ -299,7 +301,7 @@ export async function runMobileRepack(
                         + "registered to it; any other device will refuse the package");
                 }
             } finally {
-                await fs.rm(unsignedPath, { force: true });
+                await fs.rm(stagingDir, { recursive: true, force: true });
             }
             artifacts.push(outputPath);
         }

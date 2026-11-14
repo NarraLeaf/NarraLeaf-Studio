@@ -23,13 +23,13 @@ import type { RuntimeLogSink } from "./runtimeLog";
  * Both are now taken over here.
  *
  * **An exception ends the game, as the box always said it would.** It is recorded (`[Crash]` and the
- * stack in `game.log`, a `runtime-error` to a watching test); what the player would lose is written
- * out, with a budget so that a store that cannot finish does not hold the process; the game's own box
- * is shown, once; and the process exits with `GAME_EXIT_CODES.crashed`. Taking the event over also
+ * stack in `game.log`, a `runtime-error` to a watching test); pending writes are given time to
+ * finish, with a budget so that a store that cannot finish does not hold the process; the game's own
+ * box is shown, once; and the process exits with `GAME_EXIT_CODES.crashed`. Taking the event over also
  * silences Electron's stack box, whose listener stands aside once another one is registered. The
- * order - write, then tell, then go - is the one Studio's own main process uses when it crashes: the
- * box waits for a click, and nothing written after it is safe from a player who kills the process
- * instead of clicking. The same ending serves a game window that will not stay up (see
+ * order - wait for writes, then tell, then go - is the one Studio's own main process uses when it
+ * crashes: the box waits for a click, and nothing written after it is safe from a player who kills
+ * the process instead of clicking. The same ending serves a game window that will not stay up (see
  * `windowCrashHandling`), through {@link createCrashTeardown}: one way for a running game to crash.
  *
  * **A rejection is recorded and is not fatal.** It is almost always one operation that failed - a
@@ -75,9 +75,8 @@ export interface MainProcessErrorHost {
 export interface CrashTeardownHost {
     log: RuntimeLogSink;
     /**
-     * Write out what the player would otherwise lose - the save and persistence stores' pending
-     * writes. Settles when they are on disk or have failed; never waited on for longer than
-     * {@link crashFlushBudgetMs}.
+     * Wait for the save and persistence stores' pending writes to settle, whether they succeed or
+     * fail. Never waited on for longer than {@link crashFlushBudgetMs}.
      */
     flushForCrash(): Promise<unknown>;
     /** How long a crash waits for {@link flushForCrash} before it goes without it. */
@@ -157,23 +156,23 @@ export function createCrashTeardown(host: CrashTeardownHost): (headline: string)
     };
 }
 
-/** Write out what can be written in the budget, tell the player, and exit with the crash code. */
+/** Wait for pending writes within the budget, tell the player, and exit with the crash code. */
 async function endAfterCrash(host: CrashTeardownHost, headline: string): Promise<void> {
     const wait = host.wait ?? defaultWait;
-    let outcome: "written" | "timed-out" | "failed" = "failed";
+    let outcome: "settled" | "timed-out" | "failed" = "failed";
     try {
         outcome = await Promise.race([
             Promise.resolve()
                 .then(() => host.flushForCrash())
-                .then(() => "written" as const, () => "failed" as const),
+                .then(() => "settled" as const, () => "failed" as const),
             wait(host.crashFlushBudgetMs).then(() => "timed-out" as const),
         ]);
     } catch {
         // A flush that could not even be asked for; the log line below says so.
     }
     try {
-        host.log("error", outcome === "written"
-            ? `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); what was waiting to be saved was written first.`
+        host.log("error", outcome === "settled"
+            ? `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); finished waiting for pending save operations.`
             : outcome === "timed-out"
                 ? `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); gave up waiting ${host.crashFlushBudgetMs}ms for what was waiting to be saved.`
                 : `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); what was waiting to be saved could not be written.`);
