@@ -120,6 +120,31 @@ describe("the project's own names, as types", () => {
         expect(declared.length).toBe(new Set(declared).size);
     });
 
+    it("keeps element context aliases distinct across repeated and overlapping names", () => {
+        const rendered = renderProjectDeclarations(facts({
+            surfaces: [
+                { id: "title", name: "Title", elements: [
+                    { id: "a", name: "Start", type: "nl.button" },
+                    { id: "b", name: "Start", type: "nl.slider" },
+                    { id: "c", name: "Menu Start", type: "nl.button" },
+                ] },
+                { id: "menu", name: "Title Menu", elements: [
+                    { id: "d", name: "Start", type: "nl.slider" },
+                ] },
+            ],
+            components: [{ id: "component", name: "Title", elements: [
+                { id: "e", name: "Start", type: "nl.text" },
+            ] }],
+        }));
+        expect(rendered).toContain('type TitleStartCtx = WidgetCtx<"nl.button">;');
+        expect(rendered).toContain('type TitleStart2Ctx = WidgetCtx<"nl.slider">;');
+        expect(rendered).toContain('type TitleMenuStartCtx = WidgetCtx<"nl.button">;');
+        expect(rendered).toContain('type TitleMenuStart2Ctx = WidgetCtx<"nl.slider">;');
+        expect(rendered).toContain('type Title2StartCtx = ComponentWidgetCtx<"nl.text">;');
+        const declared = [...rendered.matchAll(/^ {4}type (\w+) =/gm)].map(match => match[1]);
+        expect(declared.length).toBe(new Set(declared).size);
+    });
+
     it("declares the module a script imports its types from", () => {
         expect(renderProjectDeclarations(EMPTY)).toContain('declare module "@narraleaf/script" {');
     });

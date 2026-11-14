@@ -72,9 +72,8 @@ const XLIFF_TO_STATE: Record<string, string> = {
  *
  * Two escapes beyond the usual three. `\r` goes numeric because XML parsers are
  * required to normalize literal CRLF to LF, which would silently rewrite every
- * line a Windows author typed. A leading or trailing newline goes numeric
- * because a pretty-printing tool would otherwise be indistinguishable from
- * content, and the reader below trims exactly that shape.
+ * line a Windows author typed. Leading and trailing newlines also go numeric so
+ * they remain explicit character data in translation tools.
  */
 function encodeSegment(text: string): string {
     return escapeXmlText(text)
@@ -87,8 +86,7 @@ function encodeSegment(text: string): string {
  * Undo a pretty-printer's indentation, and nothing else.
  *
  * Only text that both starts and ends on its own line is trimmed - the shape a
- * formatter produces and content never does, because {@link encodeSegment}
- * writes those newlines as entities.
+ * formatter produces. Elements with `xml:space="preserve"` retain all text.
  */
 function decodeSegment(raw: string): string {
     return /^[ \t]*\r?\n/.test(raw) && /\r?\n[ \t]*$/.test(raw) ? raw.trim() : raw;
@@ -232,7 +230,9 @@ function decodeInline(node: XmlElement): string {
 }
 
 function elementText(element: XmlElement | undefined): string {
-    return element ? decodeSegment(decodeInline(element)) : "";
+    if (!element) return "";
+    const text = decodeInline(element);
+    return element.preserveSpace ? text : decodeSegment(text);
 }
 
 export function serializeTranslationXliff(document: TranslationExchangeDocument): string {

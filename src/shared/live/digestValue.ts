@@ -27,7 +27,7 @@ export function pruneUndefined(value: unknown): unknown {
     if (value === null || typeof value !== "object") {
         return value;
     }
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = Object.create(null);
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
         if (entry !== undefined) {
             out[key] = pruneUndefined(entry);

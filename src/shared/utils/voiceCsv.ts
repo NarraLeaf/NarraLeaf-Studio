@@ -152,8 +152,7 @@ export function parseVoiceCsv(text: string): ParsedVoiceCsv {
     const rows: VoiceCsvRow[] = [];
     const problems: ExchangeProblem[] = [];
     table.rows.forEach((cells, lineIndex) => {
-        // The row number a spreadsheet shows beside it: the header is row 1.
-        const row = lineIndex + 2;
+        const row = table.rowNumbers[lineIndex];
         const unitId = table.cell(cells, idColumn).trim();
         if (!unitId) {
             problems.push({ code: "missingId", at: { row } });

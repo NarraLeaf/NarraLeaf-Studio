@@ -271,6 +271,14 @@ describe("which units a blueprint delta changed, and their fingerprints", () => 
         expect(uiBlueprintDigest(edited, "bp-2")).toBe(uiBlueprintDigest(document(), "bp-2"));
     });
 
+    it("includes every JSON key in a node's parameters", () => {
+        const first = clone(document());
+        const second = clone(document());
+        eventGraph(first).graph!.nodes!["n-1"].params = JSON.parse('{"data":{"__proto__":{"value":1}}}');
+        eventGraph(second).graph!.nodes!["n-1"].params = JSON.parse('{"data":{"__proto__":{"value":2}}}');
+        expect(uiBlueprintDigest(first, "bp-1")).not.toBe(uiBlueprintDigest(second, "bp-1"));
+    });
+
     it("gives an absent blueprint a value rather than no digest", () => {
         const without = clone(document());
         delete without.blueprintDocument.blueprints["bp-2"];

@@ -185,11 +185,29 @@ function richText(xml: string): string {
     return text;
 }
 
+const XLSX_MAX_ROWS = 1_048_576;
+const XLSX_MAX_COLUMNS = 16_384;
+
+function checkedRowIndex(value: string): number {
+    const row = Number(value);
+    if (!/^\d+$/.test(value) || !Number.isSafeInteger(row) || row < 1 || row > XLSX_MAX_ROWS) {
+        throw new Error("Invalid worksheet row");
+    }
+    return row - 1;
+}
+
 function columnIndex(reference: string): number {
-    const letters = /^[A-Z]+/.exec(reference.toUpperCase())?.[0] ?? "";
+    const match = /^([A-Z]+)(\d+)$/i.exec(reference);
+    if (!match) {
+        throw new Error("Invalid worksheet cell reference");
+    }
+    checkedRowIndex(match[2]);
     let index = 0;
-    for (const letter of letters) {
+    for (const letter of match[1].toUpperCase()) {
         index = index * 26 + (letter.charCodeAt(0) - 64);
+        if (index > XLSX_MAX_COLUMNS) {
+            throw new Error("Invalid worksheet column");
+        }
     }
     return index - 1;
 }
@@ -200,7 +218,10 @@ function readSheetRows(sheetXml: string, sharedStrings: string[]): string[][] {
     let nextRow = 0;
     for (const rowMatch of data.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
         const declared = attribute(rowMatch[1], "r");
-        const rowIndex = declared ? Number(declared) - 1 : nextRow;
+        const rowIndex = declared === undefined ? nextRow : checkedRowIndex(declared);
+        if (rowIndex >= XLSX_MAX_ROWS) {
+            throw new Error("Invalid worksheet row");
+        }
         while (rows.length < rowIndex) {
             rows.push([]);
         }
@@ -208,7 +229,10 @@ function readSheetRows(sheetXml: string, sharedStrings: string[]): string[][] {
         let nextColumn = 0;
         for (const cell of (rowMatch[2] ?? "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
             const reference = attribute(cell[1], "r");
-            const column = reference ? columnIndex(reference) : nextColumn;
+            const column = reference === undefined ? nextColumn : columnIndex(reference);
+            if (column >= XLSX_MAX_COLUMNS) {
+                throw new Error("Invalid worksheet column");
+            }
             nextColumn = column + 1;
             const type = attribute(cell[1], "t");
             const inner = cell[2] ?? "";

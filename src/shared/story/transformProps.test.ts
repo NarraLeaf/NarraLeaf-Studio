@@ -39,6 +39,17 @@ describe("the structured filter", () => {
         expect(parseStoryFilter("none")).toEqual({ filter: {} });
     });
 
+    it("preserves a negative hue angle when converting a filter for the engine", () => {
+        const parsed = parseStoryFilter("hue-rotate(-45deg)");
+        expect(parsed).toEqual({ filter: { hueRotate: -45 } });
+        expect(storyTransformPropsToNlr(parsed)).toEqual({ filter: "hue-rotate(-45deg)" });
+    });
+
+    it("keeps unsupported angle and length units as raw CSS", () => {
+        expect(parseStoryFilter("hue-rotate(45%)")).toEqual({ filterRaw: "hue-rotate(45%)" });
+        expect(parseStoryFilter("blur(2)")).toEqual({ filterRaw: "blur(2)" });
+    });
+
     it("refuses a chain the record cannot hold, and says so by handing back the raw string", () => {
         // Out of canonical order: storing it structurally would re-emit it reordered, which is a
         // different picture. A parse that silently changed what a document looks like is worse than

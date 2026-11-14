@@ -138,7 +138,13 @@ export function buildUIListItemInstanceKey(
     listElementId: string,
     itemKey: string,
 ): string {
-    return appendUIInstanceKeySegment(outerInstanceKey, `${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-${itemKey}`);
+    const row = itemKey.replaceAll("%", "%25").replaceAll("\0", "%00");
+    return appendUIInstanceKeySegment(outerInstanceKey, `${UI_LIST_ITEM_INSTANCE_PREFIX}${encodeListInstanceId(listElementId)}-${row}`);
+}
+
+/** Keep a list id's hyphens and percent signs distinct from the separator before its row key. */
+function encodeListInstanceId(listElementId: string): string {
+    return listElementId.replaceAll("%", "%25").replaceAll("-", "%2D");
 }
 
 /** Whether a single key segment is a list row's, of whichever list. */
@@ -148,7 +154,7 @@ export function isUIListItemInstanceSegment(segment: string): boolean {
 
 /** Whether a single key segment is a row of this list. */
 export function isUIListItemInstanceSegmentOf(segment: string, listElementId: string): boolean {
-    return segment.startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-`);
+    return segment.startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${encodeListInstanceId(listElementId)}-`);
 }
 
 /** Whether an instance key names a row of this list, so an event leaving the list can shed it. */
@@ -210,11 +216,11 @@ export function isUIListScrolledToEnd(metrics: UIListScrollMetrics): boolean {
 
 /** The one definition of "as far as this axis goes", so progress and Scroll End cannot disagree. */
 function isAtUIListScrollEnd(offset: number, maxOffset: number): boolean {
-    return maxOffset <= 0 || offset >= maxOffset - 1;
+    return maxOffset <= 0 || (offset > 0 && offset >= maxOffset - 1);
 }
 /** Whether those metrics sit at the near end. The mirror of {@link isUIListScrolledToEnd}. */
 export function isUIListScrolledToStart(metrics: UIListScrollMetrics): boolean {
-    return metrics.maxOffset <= 0 || metrics.offset <= 1;
+    return metrics.maxOffset <= 0 || (metrics.offset < metrics.maxOffset && metrics.offset <= 1);
 }
 
 /**

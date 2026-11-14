@@ -24,6 +24,8 @@ export type XmlElement = {
     name: string;
     /** Attribute names keep their prefix (`xml:space`), values are entity-decoded. */
     attributes: Record<string, string>;
+    /** The effective `xml:space` setting, inherited from the parent. */
+    preserveSpace: boolean;
     children: XmlNode[];
 };
 
@@ -43,15 +45,12 @@ export function decodeXmlEntities(text: string): string {
         return text;
     }
     return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g, (match, entity: string) => {
-        if (entity.startsWith("#x") || entity.startsWith("#X")) {
-            const code = Number.parseInt(entity.slice(2), 16);
-            return Number.isFinite(code) ? String.fromCodePoint(code) : match;
-        }
         if (entity.startsWith("#")) {
-            const code = Number.parseInt(entity.slice(1), 10);
-            return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+            const hexadecimal = entity.startsWith("#x");
+            const code = Number.parseInt(entity.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+            return code <= 0x10ffff ? String.fromCodePoint(code) : match;
         }
-        return NAMED_ENTITIES[entity] ?? match;
+        return Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, entity) ? NAMED_ENTITIES[entity] : match;
     });
 }
 
@@ -230,13 +229,16 @@ export function parseXml(text: string): XmlElement | null {
         if (!nameMatch) {
             continue;
         }
+        const attributes = parseAttributes(body.slice(nameMatch[0].length));
+        const parent = stack[stack.length - 1];
+        const space = attributes["xml:space"];
         const element: XmlElement = {
             kind: "element",
             name: localName(nameMatch[0]),
-            attributes: parseAttributes(body.slice(nameMatch[0].length)),
+            attributes,
+            preserveSpace: space === "preserve" || (space !== "default" && parent?.preserveSpace === true),
             children: [],
         };
-        const parent = stack[stack.length - 1];
         if (parent) {
             parent.children.push(element);
         } else if (!root) {
