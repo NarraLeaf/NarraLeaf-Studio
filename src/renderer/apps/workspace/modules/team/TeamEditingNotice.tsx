@@ -61,7 +61,7 @@ export function TeamEditingNotice() {
             </span>
             <button
                 type="button"
-                className="shrink-0 rounded px-2 py-0.5 text-fg-muted hover:bg-fill hover:text-fg"
+                className="shrink-0 rounded-md px-2 py-0.5 text-fg-muted hover:bg-fill hover:text-fg"
                 onClick={() => setDismissed(current => new Set([...current, document]))}
             >
                 {t("workspace.shell.team.editingNotice.dismiss")}

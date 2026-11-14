@@ -100,7 +100,7 @@ export function TeamNotificationsBell() {
                 <span className="relative flex">
                     <Bell className="h-4 w-4" />
                     {state.unread > 0 && (
-                        <span className="absolute -right-1.5 -top-1.5 min-w-[14px] rounded-full bg-danger px-1 text-center text-[9px] leading-[14px] text-white ring-2 ring-surface-sunken">
+                        <span className="absolute -right-1.5 -top-1.5 min-w-[14px] rounded-full bg-danger px-1 text-center text-2xs leading-[14px] text-white ring-2 ring-surface-sunken">
                             {state.unread > 99 ? "99+" : state.unread}
                         </span>
                     )}
@@ -113,7 +113,7 @@ export function TeamNotificationsBell() {
                         {state.unread > 0 && (
                             <button
                                 type="button"
-                                className="rounded px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill hover:text-fg"
+                                className="rounded-md px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={() => void teamCall(remoteOrigin, TeamMethod.notificationsRead, { all: true })}
                             >
                                 {t("workspace.shell.team.notifications.markAllRead")}

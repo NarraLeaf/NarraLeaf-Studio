@@ -208,7 +208,7 @@ export function LiveSessionChat() {
         >
             <div className="flex items-center justify-between border-b border-edge px-3 py-2">
                 <span className="font-medium">{t("workspace.shell.team.liveChat.title")}</span>
-                <button type="button" aria-label={t("workspace.shell.team.liveChat.close")} onClick={() => setOpen(false)} className="rounded p-0.5 text-fg-muted hover:bg-fill">
+                <button type="button" aria-label={t("workspace.shell.team.liveChat.close")} onClick={() => setOpen(false)} className="rounded-md p-0.5 text-fg-muted hover:bg-fill">
                     <X className="h-3.5 w-3.5" />
                 </button>
             </div>
@@ -262,9 +262,9 @@ export function LiveSessionChat() {
                     placeholder={t("workspace.shell.team.liveChat.placeholder")}
                     aria-label={t("workspace.shell.team.liveChat.placeholder")}
                     maxLength={2000}
-                    className="min-w-0 flex-1 rounded border border-edge bg-surface px-2 py-1 text-xs"
+                    className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-2 py-1 text-xs"
                 />
-                <button type="submit" disabled={draft.trim() === ""} className="rounded bg-primary px-2 text-on-primary disabled:opacity-50">
+                <button type="submit" disabled={draft.trim() === ""} className="rounded-md bg-primary px-2 text-on-primary disabled:opacity-50">
                     {t("workspace.shell.team.liveChat.send")}
                 </button>
             </form>

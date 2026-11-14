@@ -18,7 +18,7 @@ import { useTeamProjectSurface } from "./TeamProjectContext";
 type Member = { username: string; displayName: string };
 type Revision = { id: string; message?: string };
 
-const field = "w-full rounded border border-edge bg-surface px-2 py-1 text-xs text-fg";
+const field = "w-full rounded-md border border-edge bg-surface px-2 py-1 text-xs text-fg";
 const label = "flex flex-col gap-0.5 text-2xs text-fg-subtle";
 
 function useProject() {
@@ -108,7 +108,7 @@ export function ReviewRequestForm() {
                     </select>
                 </label>
             </div>
-            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
+            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
                 {t("workspace.shell.team.requests.sendReview")}
             </button>
             <Sent text={said} />
@@ -167,7 +167,7 @@ export function LanguageAssignmentForm() {
                 <option value="">{t("workspace.shell.team.requests.nobodyYet")}</option>
                 {members.map(member => <option key={member.username} value={member.username}>{member.displayName || member.username}</option>)}
             </select>
-            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
+            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
                 {t("workspace.shell.team.requests.assign")}
             </button>
             <Sent text={said} />
@@ -260,7 +260,7 @@ export function RowAssetRequest(props: { storyId: string; sceneId: string; block
                     <option value="">{t("workspace.shell.team.requests.nobodyYet")}</option>
                     {members.map(member => <option key={member.username} value={member.username}>{member.displayName || member.username}</option>)}
                 </select>
-                <button type="button" disabled={title.trim() === ""} onClick={() => void send()} className="shrink-0 rounded bg-primary px-2 text-2xs text-on-primary disabled:opacity-50">
+                <button type="button" disabled={title.trim() === ""} onClick={() => void send()} className="shrink-0 rounded-md bg-primary px-2 text-2xs text-on-primary disabled:opacity-50">
                     {t("workspace.shell.team.requests.sendAsset")}
                 </button>
             </div>

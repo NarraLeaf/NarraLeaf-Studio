@@ -267,7 +267,7 @@ export function StoryCommentThreadView(props: {
                 </ul>
             ) : null}
             {thread?.suggestion !== undefined ? (
-                <div className="mt-1.5 rounded border border-edge-subtle bg-fill/40 p-1.5" data-story-comment-suggestion="">
+                <div className="mt-1.5 rounded-md border border-edge-subtle bg-fill/40 p-1.5" data-story-comment-suggestion="">
                     <div className="mb-0.5 text-2xs text-fg-subtle">{t("storyComments.suggestedText")}</div>
                     <div className="whitespace-pre-wrap break-words text-xs text-fg">{thread.suggestion}</div>
                     <div className="mt-1 flex justify-end">

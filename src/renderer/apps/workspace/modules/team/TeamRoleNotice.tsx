@@ -25,7 +25,7 @@ export function TeamRoleNotice() {
             <span>{t(role === "reviewer" ? "workspace.shell.team.roleNotice.reviewer" : "workspace.shell.team.roleNotice.viewer")}</span>
             <button
                 type="button"
-                className="shrink-0 rounded px-2 py-0.5 text-fg-muted hover:bg-fill hover:text-fg"
+                className="shrink-0 rounded-md px-2 py-0.5 text-fg-muted hover:bg-fill hover:text-fg"
                 onClick={() => setDismissed(true)}
             >
                 {t("workspace.shell.team.roleNotice.dismiss")}
