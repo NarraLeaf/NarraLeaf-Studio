@@ -188,7 +188,7 @@ async function withExportParent<T>(
     exportDir: string,
     target: string,
     expectedRoot: { dev: number; ino: number },
-    action: (directory: number) => Promise<T>,
+    action: (directory: number, directoryPath: string, check: (fd: number, directoryPath: string) => void) => Promise<T>,
 ): Promise<T> {
     const calls = await getRelativeExportCalls();
     const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
@@ -210,48 +210,69 @@ async function withExportParent<T>(
             directory = calls.openat(directory, segment, flags, 0);
             opened.push(directory);
         }
-        return await action(directory);
+        // Check after asynchronous source reads and immediately before creating each entry. A
+        // directory can still be moved concurrently between this check and the system call.
+        const check = (fd: number, directoryPath: string): void => {
+            const rootPath = unpatchedFs.realpathSync(exportDir);
+            const rootStat = unpatchedFs.statSync(rootPath);
+            const parentPath = unpatchedFs.realpathSync(directoryPath);
+            const relativeParent = path.relative(rootPath, parentPath);
+            const parentStat = unpatchedFs.statSync(parentPath);
+            const openedStat = unpatchedFs.fstatSync(fd);
+            if (rootStat.dev !== expectedRoot.dev || rootStat.ino !== expectedRoot.ino
+                || relativeParent === ".." || relativeParent.startsWith(`..${path.sep}`) || path.isAbsolute(relativeParent)
+                || parentStat.dev !== openedStat.dev || parentStat.ino !== openedStat.ino) {
+                throw new Error("The export folder changed.");
+            }
+        };
+        return await action(directory, path.dirname(target), check);
     } finally {
         for (const directory of opened.reverse()) unpatchedFs.closeSync(directory);
         await root.close();
     }
 }
 
-async function copyFileIntoDirectory(source: string, directory: number, name: string): Promise<void> {
+async function copyFileIntoDirectory(source: string, directory: number, directoryPath: string, name: string, check: (fd: number, directoryPath: string) => void): Promise<void> {
     const mode = (await fs.stat(source)).mode & 0o777;
     const flags = unpatchedFs.constants.O_WRONLY | unpatchedFs.constants.O_CREAT
         | unpatchedFs.constants.O_EXCL | unpatchedFs.constants.O_NOFOLLOW;
-    const fd = (await getRelativeExportCalls()).openat(directory, name, flags, mode);
+    const calls = await getRelativeExportCalls();
+    check(directory, directoryPath);
+    const fd = calls.openat(directory, name, flags, mode);
     await pipeline(
         unpatchedFs.createReadStream(source),
         unpatchedFs.createWriteStream("", { fd, autoClose: true }),
     );
 }
 
-async function copyTreeIntoDirectory(source: string, directory: number): Promise<void> {
+async function copyTreeIntoDirectory(source: string, directory: number, directoryPath: string, check: (fd: number, directoryPath: string) => void): Promise<void> {
     const calls = await getRelativeExportCalls();
     const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
     for (const entry of await fs.readdir(source, { withFileTypes: true })) {
         const child = path.join(source, entry.name);
         if (entry.isSymbolicLink()) {
-            calls.symlinkat(await fs.readlink(child), directory, entry.name);
+            const link = await fs.readlink(child);
+            check(directory, directoryPath);
+            calls.symlinkat(link, directory, entry.name);
         } else if (entry.isDirectory()) {
-            calls.mkdirat(directory, entry.name, (await fs.stat(child)).mode & 0o777);
+            const mode = (await fs.stat(child)).mode & 0o777;
+            check(directory, directoryPath);
+            calls.mkdirat(directory, entry.name, mode);
             const nested = calls.openat(directory, entry.name, flags, 0);
             try {
-                await copyTreeIntoDirectory(child, nested);
+                await copyTreeIntoDirectory(child, nested, path.join(directoryPath, entry.name), check);
             } finally {
                 unpatchedFs.closeSync(nested);
             }
         } else if (entry.isFile()) {
-            await copyFileIntoDirectory(child, directory, entry.name);
+            await copyFileIntoDirectory(child, directory, directoryPath, entry.name, check);
         } else {
             throw new Error(`Cannot export this type of file: ${child}`);
         }
     }
 }
 
-async function copyToAvailableRelativeExportPath(source: string, directory: number, base: string, isDirectory: boolean): Promise<void> {
+async function copyToAvailableRelativeExportPath(source: string, directory: number, directoryPath: string, base: string, isDirectory: boolean, check: (fd: number, directoryPath: string) => void): Promise<void> {
     const calls = await getRelativeExportCalls();
     const ext = path.extname(base);
     const stem = ext ? base.slice(0, -ext.length) : base;
@@ -259,6 +280,7 @@ async function copyToAvailableRelativeExportPath(source: string, directory: numb
         const name = index === 0 ? base : `${stem}-${index}${ext}`;
         if (isDirectory) {
             try {
+                check(directory, directoryPath);
                 calls.mkdirat(directory, name, 0o777);
             } catch (error) {
                 if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
@@ -267,14 +289,14 @@ async function copyToAvailableRelativeExportPath(source: string, directory: numb
             const flags = unpatchedFs.constants.O_RDONLY | unpatchedFs.constants.O_DIRECTORY | unpatchedFs.constants.O_NOFOLLOW;
             const nested = calls.openat(directory, name, flags, 0);
             try {
-                await copyTreeIntoDirectory(source, nested);
+                await copyTreeIntoDirectory(source, nested, path.join(directoryPath, name), check);
             } finally {
                 unpatchedFs.closeSync(nested);
             }
             return;
         }
         try {
-            await copyFileIntoDirectory(source, directory, name);
+            await copyFileIntoDirectory(source, directory, directoryPath, name, check);
             return;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
@@ -401,8 +423,8 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                     }
 
                     if (expectedRoot) {
-                        await withExportParent(exportDir, target, expectedRoot, directory =>
-                            copyToAvailableRelativeExportPath(source, directory, path.basename(target), entry.isDirectory === true));
+                        await withExportParent(exportDir, target, expectedRoot, (directory, directoryPath, check) =>
+                            copyToAvailableRelativeExportPath(source, directory, directoryPath, path.basename(target), entry.isDirectory === true, check));
                     } else {
                         await ensureExportParent(exportDir, target);
                         await recheckExportParent(exportDir, target);
