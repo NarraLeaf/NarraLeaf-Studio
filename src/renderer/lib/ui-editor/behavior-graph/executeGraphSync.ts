@@ -1,10 +1,9 @@
 /**
  * Synchronous behavior-graph interpreter.
  *
- * `executeGraph` (async) wraps every node in `Promise.resolve(...)`, so even an all-synchronous graph
- * only settles on a microtask - unusable where a value must be produced in the same tick (e.g. a
- * NarraLeaf-React dynamic `Word`, which is `(ctx) => value`). This is a faithful, synchronous fork of
- * that loop for the restricted case of an async-free graph: if any node's `execute` returns a thenable,
+ * `executeGraph` returns a promise, while some callers need a value in the same tick (e.g. a
+ * NarraLeaf-React dynamic `Word`, which is `(ctx) => value`). This is a synchronous fork of that loop
+ * for the restricted case of an async-free graph: if any node's `execute` returns a thenable,
  * we throw `AsyncNodeInSyncGraphError` instead of silently dropping the result. Keep this in step with
  * `executeGraph` when the execution model changes. Comments in English per project convention.
  */
@@ -17,7 +16,8 @@ import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type { BehaviorNodeExecuteResult, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
 import { translate } from "@/lib/i18n";
-import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { unpublishBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { createGraphExecutionFrame, writeGraphNodeOutputs } from "./graphExecutionFrame";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import type { ExecuteGraphResult } from "./GraphExecutor";
 
@@ -64,6 +64,7 @@ export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraph
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
     const blueprintLocals = options.blueprintLocals ?? {};
+    const executionFrame = createGraphExecutionFrame(graph.id);
     const valueResult: ExecuteGraphResult = { returnValueSet: false, returnValue: undefined };
     const valueExecution = {
         returnValue: (value: unknown) => {
@@ -102,6 +103,7 @@ export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraph
             params: node.params ?? {},
             hostAdapter,
             blueprintLocals,
+            executionFrame,
             eventName: options.eventName,
             eventPayload: options.eventPayload,
             executionOwner: options.executionOwner,
@@ -110,14 +112,21 @@ export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraph
         };
         context.resolveInput = pinId => resolveBehaviorNodeInput(context, pinId);
 
-        const raw = definition.execute(context);
-        if (isThenable(raw)) {
-            throw new AsyncNodeInSyncGraphError(node.type, node.id);
+        let result: BehaviorNodeExecuteResult | void;
+        try {
+            const raw = definition.execute(context);
+            if (isThenable(raw)) {
+                // The node has already started; observe a later rejection after refusing its async result.
+                void Promise.resolve(raw).catch(() => undefined);
+                throw new AsyncNodeInSyncGraphError(node.type, node.id);
+            }
+            result = raw as BehaviorNodeExecuteResult | void;
+        } finally {
+            unpublishBlueprintNodeOutputValues(blueprintLocals, node.id, executionFrame);
         }
-        const result = raw as BehaviorNodeExecuteResult | void;
 
         if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
-            writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
+            writeGraphNodeOutputs(executionFrame, blueprintLocals, node, result.outputValues ?? {});
         }
 
         const nextPorts = resolveNextPorts(result);

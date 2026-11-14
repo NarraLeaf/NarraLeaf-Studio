@@ -26,6 +26,7 @@ import {
     getUIComponentLink,
     isLinkedUIComponentElement,
     readUIComponentParamType,
+    resolveUIComponentParams,
     type UIComponentParam,
     type UIElementValueBinding,
     type UIPageParam,
@@ -44,7 +45,7 @@ import {
     type UITextMigrationChange,
 } from "@shared/types/ui-editor/textSourceMigration";
 import { readUITextSite, uiTextSitesOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
-import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
+import { findUIComponentHoldingElement, resolveUIComponentTextParams } from "@shared/types/ui-editor/componentTextParams";
 import {
     mapCopiedUIComponentDefaultUnits,
     mapCopiedUIPageDefaultUnits,
@@ -131,6 +132,7 @@ import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditor
 import {
     cloneWidgetMainBlueprintForPaste,
     cloneWidgetValueBlueprintForPaste,
+    remapCopiedBlueprintReferences,
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
 import { setPrivateOwnerBlueprint } from "./blueprint/ownerRecords";
@@ -164,6 +166,7 @@ import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
+    BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
@@ -182,6 +185,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 import {
@@ -578,6 +582,7 @@ function cloneBlueprintForSurfaceDuplicate(
     const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(source), ctx);
     cloned.id = newBlueprintId;
     cloned.owner = owner;
+    remapCopiedBlueprintReferences(cloned, ctx.blueprintIdMap);
     return cloned;
 }
 
@@ -682,7 +687,7 @@ function sanitizeComponentName(name: string | undefined, fallback: string): stri
 function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
     const graphs = blueprint.graphs;
     const collections = [graphs.events ?? {}, graphs.functions ?? {}];
-    return collections.some(collection =>
+    return Object.values(graphs.events ?? {}).some(entry => Boolean(entry.script)) || collections.some(collection =>
         Object.values(collection).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0),
     );
 }
@@ -695,20 +700,54 @@ function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
  * the component worth placing: an author who selects a working save slot and asks for a component
  * should get a working save slot, not a picture of one.
  *
- * `valueBindings` does not survive, and that is deliberate rather than an oversight. A value binding
- * inside a component instance is cached without the instance in its key, so every placement would
- * read one entry - twelve slots showing the same line of text, with nothing to suggest why. Dropping
- * the binding leaves a visibly empty field instead, which an author can see and fix. Restore this
- * once the value runtime is keyed per instance.
+ * List-row bindings travel with the item template. A component parameter binding also stays when
+ * copied within its own definition. Blueprint Value and page parameter bindings belong to the page.
  */
-function stripElementForComponentDefinition(element: UIElement): UIElement {
+function stripElementForComponentDefinition(
+    element: UIElement,
+    options: { preserveComponentLink?: boolean; preserveComponentParam?: boolean } = {},
+): UIElement {
     const next = cloneJson(element);
-    if (next.extra?.componentLink) {
+    if (!options.preserveComponentLink && next.extra?.componentLink) {
         const { componentLink: _componentLink, ...rest } = next.extra;
         next.extra = Object.keys(rest).length > 0 ? rest : undefined;
     }
-    delete next.valueBindings;
+    const bindings = Object.entries(next.valueBindings ?? {}).filter(([, binding]) =>
+        binding.kind === "listItemField" || (options.preserveComponentParam && binding.kind === "componentParam"));
+    if (bindings.length > 0) {
+        next.valueBindings = Object.fromEntries(bindings);
+    } else {
+        delete next.valueBindings;
+    }
     return next;
+}
+
+/** Keep a copied widget's structural part pointers on its copied children. */
+function remapCopiedPartPointers(
+    element: UIElement,
+    sourceElements: Readonly<Record<string, UIElement>>,
+    elementIdMap: Readonly<Record<string, string>>,
+): void {
+    if (!element.props) {
+        return;
+    }
+    const scrollbar = element.props.scrollbar;
+    if (isListLikeWidgetType(element.type) && scrollbar && typeof scrollbar === "object" && !Array.isArray(scrollbar)) {
+        const record = scrollbar as Record<string, unknown>;
+        for (const key of ["trackElementId", "thumbElementId"]) {
+            const id = record[key];
+            if (typeof id === "string" && element.childrenIds.includes(id) && elementIdMap[id]) {
+                record[key] = elementIdMap[id];
+            }
+        }
+    }
+    for (const childId of element.childrenIds) {
+        const slot = getUIStructuralChildSlot(element.type, sourceElements[childId]?.extra);
+        const prop = slot ? getUIStructuralSlotPointerProp(element.type, slot) : null;
+        if (prop && element.props[prop] === childId && elementIdMap[childId]) {
+            element.props[prop] = elementIdMap[childId];
+        }
+    }
 }
 
 function collectComponentSubtreeElementIds(elements: Record<string, UIElement>, rootElementId: string): string[] {
@@ -1118,30 +1157,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /**
      * Write `document` now instead of waiting for the auto-save.
      *
-     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
-     * cancels the saver's pending write because it supersedes it, and without handing it back the
-     * change would wait for the author's next edit - while the save-failure notice, told this file
-     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
-     * written while the project opens has nothing for the saver to write, and its failure fails the
-     * open.
+     * Loaded documents use the same saver as automatic writes, so manual saves, retries and shutdown
+     * flushes wait for each other. A seed written while the project opens is written directly, since
+     * the saver has no current document yet and a failure must fail the open.
      */
     public async save(document: UIDocument): Promise<void> {
-        try {
+        if (document !== this.document) {
+            await this.autoSaver.flush();
             await this.writeDocument(document);
-        } catch (error) {
-            if (this.document) {
-                this.autoSaver.schedule();
-            }
-            throw error;
+            return;
         }
+        this.autoSaver.schedule();
+        await this.autoSaver.flush();
     }
 
     private async writeDocument(document: UIDocument): Promise<void> {
+        const current = this.document;
+        const revision = this.revision;
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
-        // This write supersedes whatever the timer was going to do.
-        this.autoSaver.cancel();
         const updated: UIDocument = {
             ...document,
             meta: {
@@ -1154,10 +1189,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }
-        this.document = updated;
-        this.lastSavedRevision = this.revision;
-        this.setDirty(false);
-        this.events.emit("documentChanged", this.document);
+        this.lastSavedRevision = revision;
+        if (this.document === current && this.revision === revision) {
+            this.document = updated;
+            this.setDirty(false);
+            this.events.emit("documentChanged", this.document);
+        }
     }
 
     /**
@@ -1697,10 +1734,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         idMap: Readonly<Record<string, string>>,
         skip: readonly { elementId: string; prop: string }[],
         carried: CarriedTranslations | undefined,
-        extra?: ReadonlyMap<string, string>,
+        extra?: Iterable<readonly [string, string]>,
     ): void {
-        const units = new Map([...mapCopiedUITextUnits(table, idMap, skip), ...(extra ?? [])]);
-        if (units.size === 0) {
+        const batches = [mapCopiedUITextUnits(table, idMap, skip)];
+        for (const [source, target] of extra ?? []) {
+            let batch = batches.find(candidate => !candidate.has(source) || candidate.get(source) === target);
+            if (!batch) {
+                batch = new Map<string, string>();
+                batches.push(batch);
+            }
+            batch.set(source, target);
+        }
+        const sourceUnits = [...new Set(batches.flatMap(batch => [...batch.keys()]))];
+        if (sourceUnits.length === 0) {
             return;
         }
         let localization: LocalizationService;
@@ -1718,13 +1764,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
         void (async () => {
             try {
-                const translations = carried ?? await readProjectTranslations(localization, [...units.keys()]);
+                const translations = carried ?? await readProjectTranslations(localization, sourceUnits);
                 if (!translations) {
                     return;
                 }
-                const plan = planCarriedTranslations(translations, units, new Set(readProjectLocales(localization)));
-                if (plan.carried > 0) {
-                    await writeCarriedTranslations(createCarriedTranslationPort(localization, isFrozen), plan);
+                const locales = new Set(readProjectLocales(localization));
+                const port = createCarriedTranslationPort(localization, isFrozen);
+                for (const batch of batches) {
+                    const plan = planCarriedTranslations(translations, batch, locales);
+                    if (plan.carried > 0 && (await writeCarriedTranslations(port, plan)).frozen) {
+                        break;
+                    }
                 }
             } catch (error) {
                 console.warn("[UIDocumentService] could not carry the copied widgets' translations", error);
@@ -2121,31 +2171,38 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         const existing = this.getDocument().elements[elementId]?.valueBindings?.[propPath];
-        if (existing?.kind === "blueprintValue") {
-            this.clearElementBlueprintValueBinding(elementId, propPath);
-        }
-        this.mutateDocument(document => {
-            const element = document.elements[elementId];
-            if (!element) {
-                return;
+        const apply = () => {
+            if (existing?.kind === "blueprintValue") {
+                this.clearElementBlueprintValueBinding(elementId, propPath);
             }
-            if (!binding) {
-                if (!element.valueBindings) {
+            this.mutateDocument(document => {
+                const element = document.elements[elementId];
+                if (!element) {
                     return;
                 }
-                delete element.valueBindings[propPath];
-                if (Object.keys(element.valueBindings).length === 0) {
-                    delete element.valueBindings;
+                if (!binding) {
+                    if (!element.valueBindings) {
+                        return;
+                    }
+                    delete element.valueBindings[propPath];
+                    if (Object.keys(element.valueBindings).length === 0) {
+                        delete element.valueBindings;
+                    }
+                    return;
                 }
-                return;
-            }
-            element.valueBindings = {
-                ...(element.valueBindings ?? {}),
-                [propPath]: binding,
-            };
-        }, {
-            history: surfaceId ? { surfaceId } : false,
-        });
+                element.valueBindings = {
+                    ...(element.valueBindings ?? {}),
+                    [propPath]: binding,
+                };
+            }, {
+                history: surfaceId ? { surfaceId } : false,
+            });
+        };
+        if (existing?.kind === "blueprintValue" && surfaceId) {
+            this.runSurfaceHistoryTransaction(surfaceId, apply);
+        } else {
+            apply();
+        }
     }
 
     public ensureElementBlueprintValueBinding(
@@ -2185,7 +2242,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 },
             };
         }, { history: false });
-        if (historyService && beforeHistory) {
+        if (historyService && beforeHistory && this.historySuppressionDepth === 0) {
             historyService.record({
                 surfaceId,
                 before: beforeHistory,
@@ -2218,7 +2275,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 delete element.valueBindings;
             }
         }, { history: false });
-        if (historyService && beforeHistory) {
+        if (historyService && beforeHistory && this.historySuppressionDepth === 0) {
             historyService.record({
                 surfaceId,
                 before: beforeHistory,
@@ -3960,6 +4017,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         /** The source surfaces that arrived, in the order they did. */
         const arrivedSources: UISurface[] = [];
 
+        // Definitions can contain Page widgets, so their targets need ids before the definitions
+        // are copied, just as references between the imported pages do.
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const surfaceIdMap: Record<string, string> = {};
+        for (const sourceSurface of importable) {
+            surfaceIdMap[sourceSurface.id] = uuidService.generate();
+        }
+
         // Components first: a surface element that is an instance of one carries the
         // source component's id, so the map has to exist before any surface is walked.
         const { componentIdMap, importedComponents } = this.importTemplateComponents(
@@ -3967,17 +4032,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             sourceBlueprintDocument,
             input.assetIdMap,
             arrivedIds,
+            surfaceIdMap,
         );
-
-        // Then every surface's new id, before any of them is copied. A template's
-        // surfaces reference each other (an nl.frame embeds a sibling), and the
-        // surface holding the reference is copied before the one it points at, so
-        // the target's id has to already exist when the first one is walked.
-        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const surfaceIdMap: Record<string, string> = {};
-        for (const sourceSurface of importable) {
-            surfaceIdMap[sourceSurface.id] = uuidService.generate();
-        }
 
         for (const sourceSurface of importable) {
             let placement = resolveImportedSurfacePlacement(input.placement, sourceSurface);
@@ -4131,6 +4187,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         assetIdMap?: Record<string, string>,
         /** Filled with each copied element's new id, by its id in the source. */
         idSink?: Record<string, string>,
+        surfaceIdMap?: Record<string, string>,
     ): { componentIdMap: Record<string, string>; importedComponents: UIComponentDefinition[] } {
         const sourceComponents = sourceDocument.components ?? [];
         if (sourceComponents.length === 0) {
@@ -4148,6 +4205,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const now = new Date().toISOString();
         const componentIdMap: Record<string, string> = {};
         const importedComponents: UIComponentDefinition[] = [];
+        for (const source of sourceComponents) {
+            if (source.elements?.[source.rootElementId]) {
+                componentIdMap[source.id] = uuidService.generate();
+            }
+        }
         // Seeded from what is already here and grown as we go, so two components
         // arriving under the same name in one template do not collide with each other.
         const takenNames = new Set((this.getDocument().components ?? []).map(component => component.name));
@@ -4161,7 +4223,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 console.warn(`[UIDocumentService] template component "${source.name}" skipped (no root element)`);
                 continue;
             }
-            const newComponentId = uuidService.generate();
+            const newComponentId = componentIdMap[source.id];
             const elementIdMap: Record<string, string> = {};
             for (const elementId of Object.keys(source.elements)) {
                 elementIdMap[elementId] = uuidService.generate();
@@ -4186,7 +4248,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const remapContext: SurfaceDuplicateRemapContext = {
                 oldSurfaceId: buildUIComponentEditorSurfaceId(source.id),
                 newSurfaceId: buildUIComponentEditorSurfaceId(newComponentId),
-                surfaceIdMap: { [buildUIComponentSurfaceId(source.id)]: buildUIComponentSurfaceId(newComponentId) },
+                surfaceIdMap: {
+                    ...surfaceIdMap,
+                    [buildUIComponentSurfaceId(source.id)]: buildUIComponentSurfaceId(newComponentId),
+                },
                 elementIdMap,
                 blueprintIdMap,
                 assetIdMap,
@@ -4226,7 +4291,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 createdAt: now,
                 updatedAt: now,
             };
-            componentIdMap[source.id] = newComponentId;
             importedComponents.push(component);
 
             if (sourceBlueprintDocument) {
@@ -4244,6 +4308,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     }
                     const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBlueprint), remapContext);
                     cloned.id = newBlueprintId;
+                    remapCopiedBlueprintReferences(cloned, blueprintIdMap);
                     cloned.owner = {
                         kind: "componentWidgetMain",
                         componentId: newComponentId,
@@ -4505,10 +4570,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     public getComponentUsageCount(componentId: string): number {
         let count = 0;
-        for (const element of Object.values(this.getDocument().elements)) {
-            const link = getUIComponentLink(element);
-            if (link?.componentId === componentId) {
-                count += 1;
+        const document = this.getDocument();
+        for (const elements of [document.elements, ...(document.components ?? []).map(component => component.elements)]) {
+            for (const element of Object.values(elements)) {
+                if (getUIComponentLink(element)?.componentId === componentId) {
+                    count += 1;
+                }
             }
         }
         return count;
@@ -4620,7 +4687,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!source) {
                     continue;
                 }
-                const copy = stripElementForComponentDefinition(source);
+                const copy = stripElementForComponentDefinition(source, { preserveComponentLink: true });
+                remapCopiedPartPointers(copy, document.elements, elementIdMap);
                 copy.id = newId;
                 copy.parentId = oldId === sourceRootId
                     ? null
@@ -4664,7 +4732,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!source) {
                     continue;
                 }
-                const copy = stripElementForComponentDefinition(source);
+                const copy = stripElementForComponentDefinition(source, { preserveComponentLink: true });
+                remapCopiedPartPointers(copy, document.elements, elementIdMap);
                 copy.id = newId;
                 copy.parentId = topLevelIds.includes(oldId)
                     ? rootElementId
@@ -4740,6 +4809,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
                 const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBlueprint), remapContext) as Blueprint;
                 cloned.id = newBlueprintId;
+                remapCopiedBlueprintReferences(cloned, blueprintIdMap);
                 cloned.owner = { kind: "componentWidgetMain", componentId, elementId: newElementId };
                 carried.push({ ownerKey: componentWidgetMainOwnerKey(componentId, newElementId), blueprint: cloned });
             }
@@ -4764,6 +4834,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(doc => {
             doc.components = [...(doc.components ?? []), component];
         }, { history: false });
+        this.carryCopiedTranslations(document.elements, elementIdMap, [], undefined);
         if (carried.length > 0) {
             localBp?.applyBlueprintMutation(bpDoc => {
                 for (const { ownerKey, blueprint } of carried) {
@@ -5040,6 +5111,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const elements: Record<string, UIElement> = {};
         for (const [oldId, element] of Object.entries(source.elements)) {
             const copy = cloneJson(element);
+            remapCopiedPartPointers(copy, source.elements, idMap);
             copy.id = idMap[oldId];
             copy.parentId = element.parentId ? idMap[element.parentId] ?? null : null;
             copy.childrenIds = element.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
@@ -5084,13 +5156,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!newElementId) {
                     continue;
                 }
-                const cloned = cloneJson(sourceBp) as Blueprint;
+                const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBp), {
+                    oldSurfaceId: buildUIComponentSurfaceId(source.id),
+                    newSurfaceId: buildUIComponentSurfaceId(newComponentId),
+                    elementIdMap: idMap,
+                    blueprintIdMap,
+                    surfaceIdMap: {
+                        [buildUIComponentEditorSurfaceId(source.id)]: buildUIComponentEditorSurfaceId(newComponentId),
+                    },
+                });
                 cloned.id = newBpId;
                 cloned.owner = {
                     kind: "componentWidgetMain",
                     componentId: newComponentId,
                     elementId: newElementId,
                 };
+                remapCopiedBlueprintReferences(cloned, blueprintIdMap);
                 if (cloned.bindings) {
                     for (const binding of Object.values(cloned.bindings)) {
                         if (binding.target.kind === "widgetProp") {
@@ -5535,9 +5616,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /**
      * Make an element its definition's root, taking off the container it sat alone in.
      *
-     * One step in the definition's history, and the one step there that reaches the pages: every
-     * placement is given the box the element took up inside it (`promoteElementToComponentRoot`), and
-     * taking the step back gives the boxes back with the definition.
+     * One step in the definition's history. Every placement on a page or inside another definition
+     * is given the box the element took up inside it (`promoteElementToComponentRoot`); undo restores
+     * those boxes together with the definition.
      */
     public promoteComponentElementToRoot(componentId: string, elementId: string): boolean {
         const component = this.getComponent(componentId);
@@ -5764,7 +5845,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!newId) {
                     continue;
                 }
-                const copy = stripElementForComponentDefinition(source);
+                const copy = stripElementForComponentDefinition(source, {
+                    preserveComponentParam: payload.sourceSurfaceId === buildUIComponentEditorSurfaceId(componentId),
+                });
+                remapCopiedPartPointers(copy, payload.elements, elementIdMap);
                 copy.id = newId;
                 const isTop = payload.topLevelElementIds.includes(oldId);
                 copy.parentId = isTop
@@ -5877,6 +5961,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!component || !sourceRoot) {
             return [];
         }
+        const historyService = this.getHistoryService();
+        const beforeHistory = surfaceId && historyService && this.historySuppressionDepth === 0
+            ? historyService.captureSnapshot(surfaceId)
+            : null;
+        const componentParams = resolveUIComponentParams(component, link);
+        const componentTexts = resolveUIComponentTextParams(component, link, instance.id);
+        const replacedTextSites: { elementId: string; prop: string }[] = [];
+        const parameterTranslations: Array<readonly [string, string]> = [];
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const idMap: Record<string, string> = {
             [sourceRoot.id]: instance.id,
@@ -5915,7 +6007,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!idMap[oldId]) {
                     continue;
                 }
-                const copy = cloneJson(source);
+                let copy = cloneJson(source);
+                remapCopiedPartPointers(copy, liveComponent.elements, idMap);
                 copy.id = idMap[oldId];
                 copy.parentId = oldId === liveRoot.id
                     ? liveInstance.parentId
@@ -5925,6 +6018,32 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 copy.childrenIds = source.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+                    for (const [prop, binding] of Object.entries(copy.valueBindings ?? {})) {
+                        if (binding.kind !== "componentParam") {
+                            continue;
+                        }
+                        const site = uiTextSitesOf(copy.type).find(item => item.textProp === prop && item.role === "words");
+                        if (!site) {
+                            continue;
+                        }
+                        if (!readUITextSite(copy, site).key) {
+                            const value = componentTexts[binding.paramId];
+                            copy = uiTextSiteWithOwnWords(copy, site, value?.text ?? "");
+                            if (site.marksProp) {
+                                delete copy.props?.[site.marksProp];
+                            }
+                            if (value?.key && site.keyProp) {
+                                copy.props![site.keyProp] = value.key;
+                            } else if (value) {
+                                parameterTranslations.push([value.unitId, uiTextUnitId(copy.id, prop)]);
+                            }
+                        }
+                        replacedTextSites.push({ elementId: oldId, prop });
+                        delete copy.valueBindings![prop];
+                    }
+                    if (Object.keys(copy.valueBindings ?? {}).length === 0) {
+                        delete copy.valueBindings;
+                    }
                 }
                 carryCopiedElementNavigation(copy, idMap);
                 if (oldId === liveRoot.id) {
@@ -5933,17 +6052,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         ...liveInstance.layout,
                     };
                     copy.name = liveInstance.name;
-                    if (copy.extra?.componentLink) {
-                        const { componentLink: _removed, ...rest } = copy.extra;
-                        copy.extra = Object.keys(rest).length > 0 ? rest : undefined;
-                    }
                 }
                 doc.elements[copy.id] = copy;
             }
             normalizeFlowChildLayouts(doc, materializedIds);
-        }, {
-            history: surfaceId ? { surfaceId } : false,
-        });
+        }, { history: false });
         if (surfaceId && localBp) {
             localBp.applyBlueprintMutation(bpDoc => {
                 for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
@@ -5965,6 +6078,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         oldBlueprintId: oldBpId,
                         newBlueprintIdForSourceRemap: newBpId,
                     });
+                    remapCopiedBlueprintReferences(cloned, blueprintIdMap);
+                    for (const pool of [cloned.graphs.events, cloned.graphs.functions, cloned.graphs.macros]) {
+                        for (const entry of Object.values(pool ?? {})) {
+                            for (const node of Object.values(entry.graph?.nodes ?? {})) {
+                                if (node.type === BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM) {
+                                    const paramId = String(node.params?.paramId ?? "").trim();
+                                    node.type = BLUEPRINT_NODE_TYPE_LITERAL_STRING;
+                                    node.params = { value: componentParams[paramId] ?? "" };
+                                }
+                            }
+                        }
+                    }
                     bpDoc.blueprints[newBpId] = cloned;
                     setPrivateOwnerBlueprint(
                         bpDoc,
@@ -5974,6 +6099,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             });
         }
+        if (surfaceId && historyService && beforeHistory) {
+            historyService.record({ surfaceId, before: beforeHistory, after: historyService.captureSnapshot(surfaceId) });
+        }
+        this.carryCopiedTranslations(component.elements, idMap, replacedTextSites, undefined, parameterTranslations);
         return materializedIds;
     }
 
@@ -6159,6 +6288,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 const newId = elementIdMap[oldId];
                 const isTop = payload.topLevelElementIds.includes(oldId);
                 const copy = JSON.parse(JSON.stringify(oldEl)) as UIElement;
+                remapCopiedPartPointers(copy, payload.elements, elementIdMap);
                 copy.id = newId;
                 if (isTop) {
                     copy.parentId = targetParentId;
@@ -6259,6 +6389,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     oldBlueprintId: oldBpId,
                     newBlueprintIdForSourceRemap: newBpId,
                 });
+                remapCopiedBlueprintReferences(cloned, blueprintIdMap);
                 bpDoc.blueprints[newBpId] = cloned;
                 setPrivateOwnerBlueprint(
                     bpDoc,
@@ -6286,6 +6417,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     newOwnerElementId: newElementId,
                     propPath: owner.propPath,
                 });
+                remapCopiedBlueprintReferences(cloned, blueprintIdMap);
                 bpDoc.blueprints[newBpId] = cloned;
                 setPrivateOwnerBlueprint(
                     bpDoc,

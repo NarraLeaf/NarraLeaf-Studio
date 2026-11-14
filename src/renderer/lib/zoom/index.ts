@@ -1,4 +1,4 @@
-import { getInterface } from "@/lib/app/bridge";
+import { observeGlobalSettings } from "@/lib/settings/observeGlobalSettings";
 import { zoomPercentToFactor } from "@shared/constants/zoom";
 
 /**
@@ -14,28 +14,17 @@ import { zoomPercentToFactor } from "@shared/constants/zoom";
  * the zoom factor, so this reads the setting and follows the main process's
  * broadcast - the same pattern the i18n locale uses.
  */
-let subscribed = false;
+let observer: ReturnType<typeof observeGlobalSettings> | null = null;
 
 function apply(percent: unknown): void {
     document.documentElement.style.setProperty("--nl-zoom", String(zoomPercentToFactor(percent)));
 }
 
 export async function initZoom(): Promise<void> {
-    try {
-        const result = await getInterface().app.state.getGlobalState("ui.zoomPercent");
-        if (result.success) {
-            apply(result.data.value);
-        }
-    } catch (error) {
-        console.warn("[zoom] Failed to load the zoom preference; using 100%.", error);
-    }
-
-    if (!subscribed) {
-        subscribed = true;
-        getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (change.key === "ui.zoomPercent") {
-                apply(change.value);
-            }
-        });
-    }
+    observer ??= observeGlobalSettings(
+        ["ui.zoomPercent"],
+        (_key, value) => apply(value),
+        (_key, error) => console.warn("[zoom] Failed to load the zoom preference.", error),
+    );
+    await observer.ready;
 }

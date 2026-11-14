@@ -238,8 +238,8 @@ export class PreviewManager {
      * macOS and Linux it is reparented and outlives Studio entirely.
      */
     public async stopAll(): Promise<void> {
-        const projects = [...this.sessions.values()].map(session => session.projectPath);
-        await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
+        const projects = new Set([...this.sessions.keys(), ...this.launchAttempts.keys()]);
+        await Promise.allSettled([...projects].map(projectPath => this.stop(projectPath)));
     }
 
     /**

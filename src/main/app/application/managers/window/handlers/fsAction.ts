@@ -27,6 +27,13 @@ async function ensurePathAllowed<T>(window: AppWindow, fsPath: string, mode: "re
     return unauthorizedPathResult<T>(fsPath);
 }
 
+async function ensureTreeAllowed<T>(window: AppWindow, fsPath: string, mode: "read" | "write"): Promise<FsRequestResult<T> | null> {
+    if (await window.app.storageManager.isPathTreeAllowed(window, fsPath, mode)) {
+        return null;
+    }
+    return unauthorizedPathResult<T>(fsPath);
+}
+
 async function ensurePathsAllowed<T>(window: AppWindow, mode: "read" | "write", ...paths: string[]): Promise<FsRequestResult<T> | null> {
     for (const fsPath of paths) {
         const denied = await ensurePathAllowed<T>(window, fsPath, mode);
@@ -93,7 +100,7 @@ export class FsDirectorySizeHandler extends IPCHandler<IPCEventType.fsDirectoryS
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDirectorySize]["data"]): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>> {
-        const denied = await ensurePathAllowed<DirectorySizeResult>(window, path, "read");
+        const denied = await ensureTreeAllowed<DirectorySizeResult>(window, path, "read");
         if (denied) return this.success(denied);
 
         // Shares the build's measurement (`Fs.directorySize`); the asset overview reads this once
@@ -140,6 +147,13 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
                 window.app.storageManager.cleanup(hash);
                 return this.success(accessResult as FsRequestResult<string>);
             }
+            if (!accessResult.data) {
+                window.app.storageManager.cleanup(hash);
+                return this.success({
+                    ok: false,
+                    error: { code: FsRejectErrorCode.NOT_A_FILE, message: "Path is not a file: " + path },
+                });
+            }
 
             // File is available for reading, mark as ready
             window.app.storageManager.updateStatus(hash, 'ready');
@@ -165,16 +179,15 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
  * Issue a directory grant: one hash under which every file in `path` is readable as
  * `app://fs/{hash}/{relative/path}`.
  *
- * The authorization is the same one a file read passes - the directory itself must already be
- * inside a granted root - and the per-request containment check in the protocol handler is what
- * keeps the grant from widening beyond that directory.
+ * The window must already hold a recursive read grant over the directory, since the resulting
+ * hash lets it request any descendant.
  */
 export class FsRequestReadDirHandler extends IPCHandler<IPCEventType.fsRequestReadDir> {
     readonly name = IPCEventType.fsRequestReadDir;
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsRequestReadDir]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
-        const denied = await ensurePathAllowed<string>(window, path, "read");
+        const denied = await ensureTreeAllowed<string>(window, path, "read");
         if (denied) return this.success(denied);
 
         const existsResult = await Fs.isDirExists(path);
@@ -191,10 +204,24 @@ export class FsRequestReadDirHandler extends IPCHandler<IPCEventType.fsRequestRe
             });
         }
 
-        const hash = window.app.storageManager.allocateDirectoryHash(path, window.getWebContents().id);
-        window.app.logger.debug(`[fs.readDir] path="${path}"`);
-
-        return this.success({ ok: true, data: hash });
+        try {
+            const physicalRoot = await unpatchedFsPromises.realpath(path);
+            const physicalDenied = await ensureTreeAllowed<string>(window, physicalRoot, "read");
+            if (physicalDenied) return this.success(physicalDenied);
+            const hash = await window.app.storageManager.allocateDirectoryHash(path, window.getWebContents().id, physicalRoot);
+            window.app.logger.debug(`[fs.readDir] path="${path}"`);
+            return this.success({ ok: true, data: hash });
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException | null)?.code;
+            return this.success({ ok: false, error: {
+                code: code === "ENOENT" ? FsRejectErrorCode.NOT_FOUND
+                    : code === "EACCES" || code === "EPERM" ? FsRejectErrorCode.PERMISSION_DENIED
+                    : code === "ENOTDIR" ? FsRejectErrorCode.NOT_A_DIR
+                    : code === "EIO" ? FsRejectErrorCode.IO_ERROR
+                    : FsRejectErrorCode.UNKNOWN,
+                message: error instanceof Error ? error.message : String(error),
+            } });
+        }
     }
 }
 
@@ -236,7 +263,11 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
             // next to their document on every single save, tripped the project watchers, and raced
             // with itself when two saves overlapped.
             const writable = await Fs.isWritableDir(dirPath);
-            if (!writable.ok || !writable.data) {
+            if (!writable.ok) {
+                window.app.storageManager.cleanup(hash);
+                return this.success(writable);
+            }
+            if (!writable.data) {
                 window.app.storageManager.cleanup(hash);
                 return this.success({
                     ok: false,
@@ -328,7 +359,7 @@ export class FsDeleteDirHandler extends IPCHandler<IPCEventType.fsDeleteDir> {
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDeleteDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
-        const denied = await ensurePathAllowed<void>(window, path, "write");
+        const denied = await ensureTreeAllowed<void>(window, path, "write");
         if (denied) return this.success(denied);
 
         const result = await Fs.deleteDir(path);
@@ -340,11 +371,19 @@ export class FsRenameHandler extends IPCHandler<IPCEventType.fsRename> {
     readonly name = IPCEventType.fsRename;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow, { oldPath, newName, isDir }: IPCEvents[IPCEventType.fsRename]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { oldPath, newName }: IPCEvents[IPCEventType.fsRename]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
         const path = require('path');
         const newPath = path.join(path.dirname(oldPath), newName);
         const denied = await ensurePathsAllowed<void>(window, "write", oldPath, newPath);
         if (denied) return this.success(denied);
+        const directory = await Fs.isDir(oldPath);
+        if (!directory.ok) return this.success(directory);
+        if (directory.data) {
+            const sourceDenied = await ensureTreeAllowed<void>(window, oldPath, "write");
+            if (sourceDenied) return this.success(sourceDenied);
+            const targetDenied = await ensureTreeAllowed<void>(window, newPath, "write");
+            if (targetDenied) return this.success(targetDenied);
+        }
 
         const result = await Fs.rename(oldPath, newPath);
         return this.success(result);
@@ -371,9 +410,9 @@ export class FsCopyDirHandler extends IPCHandler<IPCEventType.fsCopyDir> {
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsCopyDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
-        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        const readDenied = await ensureTreeAllowed<void>(window, src, "read");
         if (readDenied) return this.success(readDenied);
-        const writeDenied = await ensurePathAllowed<void>(window, dest, "write");
+        const writeDenied = await ensureTreeAllowed<void>(window, dest, "write");
         if (writeDenied) return this.success(writeDenied);
 
         const result = await Fs.copyDir(src, dest);
@@ -390,6 +429,16 @@ export class FsMoveFileHandler extends IPCHandler<IPCEventType.fsMoveFile> {
         if (readDenied) return this.success(readDenied);
         const writeDenied = await ensurePathsAllowed<void>(window, "write", src, dest);
         if (writeDenied) return this.success(writeDenied);
+        const directory = await Fs.isDir(src);
+        if (!directory.ok) return this.success(directory);
+        if (directory.data) {
+            const sourceReadDenied = await ensureTreeAllowed<void>(window, src, "read");
+            if (sourceReadDenied) return this.success(sourceReadDenied);
+            const sourceWriteDenied = await ensureTreeAllowed<void>(window, src, "write");
+            if (sourceWriteDenied) return this.success(sourceWriteDenied);
+            const targetDenied = await ensureTreeAllowed<void>(window, dest, "write");
+            if (targetDenied) return this.success(targetDenied);
+        }
 
         const result = await Fs.moveFile(src, dest);
         return this.success(result);
@@ -401,10 +450,12 @@ export class FsMoveDirHandler extends IPCHandler<IPCEventType.fsMoveDir> {
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsMoveDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
-        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        const readDenied = await ensureTreeAllowed<void>(window, src, "read");
         if (readDenied) return this.success(readDenied);
-        const writeDenied = await ensurePathsAllowed<void>(window, "write", src, dest);
-        if (writeDenied) return this.success(writeDenied);
+        const sourceDenied = await ensureTreeAllowed<void>(window, src, "write");
+        if (sourceDenied) return this.success(sourceDenied);
+        const targetDenied = await ensureTreeAllowed<void>(window, dest, "write");
+        if (targetDenied) return this.success(targetDenied);
 
         const result = await Fs.moveDir(src, dest);
         return this.success(result);
@@ -646,7 +697,8 @@ export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
 
             // Check if file exists
             const existsResult = await Fs.isFileExists(path);
-            if (!existsResult.ok || !existsResult.data) {
+            if (!existsResult.ok) return this.success(existsResult);
+            if (!existsResult.data) {
                 return this.success({
                     ok: false,
                     error: {
@@ -658,7 +710,8 @@ export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
 
             // Check if it's actually a file
             const isFileResult = await Fs.isFile(path);
-            if (!isFileResult.ok || !isFileResult.data) {
+            if (!isFileResult.ok) return this.success(isFileResult);
+            if (!isFileResult.data) {
                 return this.success({
                     ok: false,
                     error: {

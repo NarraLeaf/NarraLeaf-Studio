@@ -36,8 +36,8 @@ import {
  * queueing a duplicate behind it.
  *
  * Promotion is the other half. An `idle` task that someone starts waiting on becomes `blocking` and
- * moves to the front of the queue; if it is already running it simply changes its label, because
- * there is nothing better to do with work that is already half done.
+ * moves ahead of idle work, behind any blocking work already queued. If it is already running it
+ * simply changes its label, because there is nothing better to do with work that is already half done.
  *
  * ## Withdrawal is the third half, and the reason a caller may name itself
  *
@@ -202,7 +202,7 @@ export class StudioTaskScheduler {
             }
             entry.claims.delete(claim.owner);
             if (entry.claims.size === 0 && !entry.unclaimed) {
-                this.cancel(entry.key);
+                this.cancelEntry(entry);
             }
         }
     }
@@ -278,6 +278,13 @@ export class StudioTaskScheduler {
         if (!entry) {
             return;
         }
+        this.cancelEntry(entry);
+    }
+
+    private cancelEntry(entry: Entry): void {
+        if (entry.cancelled || (entry.snapshot.status !== "queued" && entry.snapshot.status !== "running")) {
+            return;
+        }
         entry.cancelled = true;
         entry.stop?.();
         // A task already under way settles where it is: the run function sees `cancelled` and
@@ -319,15 +326,15 @@ export class StudioTaskScheduler {
     }
 
     private find(key: string): Entry | null {
-        if (this.active?.key === key) {
+        if (this.active?.key === key && !this.active.cancelled && this.active.snapshot.status === "running") {
             return this.active;
         }
         for (const entry of this.live) {
-            if (entry.key === key) {
+            if (entry.key === key && !entry.cancelled) {
                 return entry;
             }
         }
-        return this.queue.find(entry => entry.key === key) ?? null;
+        return this.queue.find(entry => entry.key === key && !entry.cancelled) ?? null;
     }
 
     private join<T>(entry: Entry): Promise<StudioTaskOutcome<T>> {
@@ -340,7 +347,8 @@ export class StudioTaskScheduler {
         const index = this.queue.indexOf(entry);
         if (index > 0) {
             this.queue.splice(index, 1);
-            this.queue.unshift(entry);
+            const firstIdle = this.queue.findIndex(item => item.snapshot.priority === "idle");
+            this.queue.splice(firstIdle === -1 ? this.queue.length : firstIdle, 0, entry);
         }
         this.publish();
     }

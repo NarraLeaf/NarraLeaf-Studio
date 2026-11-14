@@ -54,11 +54,20 @@ export function resolveComponentRootPromotionRefusal(
     return null;
 }
 
-/** Every element on the project's pages that places this definition. */
-export function collectComponentPlacementIds(document: UIDocument, componentId: string): string[] {
-    return Object.values(document.elements)
-        .filter(element => getUIComponentLink(element)?.componentId === componentId)
-        .map(element => element.id);
+/** Every placement of a definition, with the element table that owns it. */
+export function collectComponentPlacements(
+    document: UIDocument,
+    componentId: string,
+): Array<{ element: UIElement; elements: Record<string, UIElement> }> {
+    const placements: Array<{ element: UIElement; elements: Record<string, UIElement> }> = [];
+    for (const elements of [document.elements, ...(document.components ?? []).map(component => component.elements)]) {
+        for (const element of Object.values(elements)) {
+            if (getUIComponentLink(element)?.componentId === componentId) {
+                placements.push({ element, elements });
+            }
+        }
+    }
+    return placements;
 }
 
 /** The box a layout draws, whatever the signs of its size. */
@@ -76,8 +85,9 @@ function drawnBox(layout: UILayout): { x: number; y: number; width: number; heig
  *
  * The definition becomes the element's size. A placement draws the definition scaled to its own box,
  * so each placement on the pages is given the box the element took up inside it: the element is
- * drawn where it was and at the size it was, and the container's empty margin goes. A placement whose
- * parent lays it out (a stack, a list) keeps its position, which is its parent's to give.
+ * drawn where it was and at the size it was, and the container's empty margin goes. Placements on
+ * pages and inside other definitions follow the same rule. A placement whose parent lays it out
+ * (a stack, a list) keeps its position, which is its parent's to give.
  *
  * Returns false and changes nothing when the element cannot be the root
  * ({@link resolveComponentRootPromotionRefusal}).
@@ -94,14 +104,10 @@ export function promoteElementToComponentRoot(document: UIDocument, componentId:
     const frameWidth = Math.max(1, frame.width);
     const frameHeight = Math.max(1, frame.height);
 
-    for (const placementId of collectComponentPlacementIds(document, componentId)) {
-        const placement = document.elements[placementId];
-        if (!placement) {
-            continue;
-        }
+    for (const { element: placement, elements } of collectComponentPlacements(document, componentId)) {
         const scaleX = placement.layout.width / frameWidth;
         const scaleY = placement.layout.height / frameHeight;
-        const parent = placement.parentId ? document.elements[placement.parentId] : undefined;
+        const parent = placement.parentId ? elements[placement.parentId] : undefined;
         const laidOutByParent = parent != null && isUIFlowLayoutParentElement(parent);
         placement.layout = roundUILayoutGeometryFields({
             ...placement.layout,

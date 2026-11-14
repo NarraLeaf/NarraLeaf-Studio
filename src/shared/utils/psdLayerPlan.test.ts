@@ -7,6 +7,7 @@ import {
     IMPORT_LAYER_WARNING,
     isUnsupportedBlend,
     planImport,
+    psdLayerKey,
     toBakeTargets,
     unsupportedBlends,
 } from "./psdLayerPlan";
@@ -232,6 +233,44 @@ describe("unsupportedBlends and hidden layers", () => {
     it("does not ask about a layer that is being dropped anyway", () => {
         const leaves = flattenLeaves([leaf("Scratch", ["Scratch"], { hidden: true, blendMode: "multiply" })]);
         expect(unsupportedBlends(leaves)).toEqual([]);
+    });
+
+    it("keeps blend decisions for same-named layers independent", () => {
+        const leaves = flattenLeaves([
+            leaf("Body", ["Body"]),
+            leaf("Shade", ["Shade"], { blendMode: "multiply", occurrence: 0 }),
+            leaf("Shade", ["Shade"], { blendMode: "multiply", occurrence: 1 }),
+        ]);
+        const plan = planImport(leaves, {
+            [psdLayerKey(leaves[1])]: "merge",
+            [psdLayerKey(leaves[2])]: "skip",
+        });
+
+        expect(plan.dropped.map(entry => entry.leaf.occurrence)).toEqual([1]);
+        expect(toBakeTargets(plan)).toEqual([{
+            path: ["Body"], mergeFrom: [{ path: ["Shade"], occurrence: 0, clip: false }],
+        }]);
+    });
+
+    it("distinguishes repeated paths and literal separators in layer keys", () => {
+        const refs = [
+            { path: ["Body"], occurrence: 0 },
+            { path: ["Body"], occurrence: 1 },
+            { path: ["Body~20"] },
+            { path: ["A/B"] },
+            { path: ["A", "B"] },
+        ];
+        expect(new Set(refs.map(psdLayerKey)).size).toBe(refs.length);
+    });
+
+    it("attaches a merge to a layer named like an object property", () => {
+        const plan = planImport(flattenLeaves([
+            leaf("constructor", ["constructor"]),
+            leaf("Shade", ["Shade"], { blendMode: "multiply" }),
+        ]), { Shade: "merge" });
+        expect(toBakeTargets(plan)).toEqual([{
+            path: ["constructor"], mergeFrom: [{ path: ["Shade"], clip: false }],
+        }]);
     });
 });
 

@@ -8,19 +8,10 @@
  * Filenames are for humans in the booth - they can drift when scenes are
  * renamed or lines reordered, and a booth may swap spaces for underscores. The
  * recording script always carries the line's authoritative unit id alongside,
- * and audio matching goes through {@link matchKeyForFilename}, which reduces a
- * name to its letters and digits so cosmetic punctuation differences never
- * break a link.
- *
- * "Letters and digits" is meant in the Unicode sense and that is not a detail.
- * The key used to be `[^a-z0-9]`, which deletes every CJK character - so with
- * the default `{scene}_{index}_{character}` pattern a Japanese project's
- * `序章_001_優希` and `第一章_001_優希` both reduced to `001`, collided, and were
- * dropped as ambiguous. Batch import matched *nothing* on any multi-scene
- * Japanese or Chinese project, which is most voiced projects. Names are also
- * NFKC-normalised, because a booth on macOS hands back decomposed filenames
- * that look identical and would not otherwise match.
- * Comments in English per project convention.
+ * and audio matching goes through {@link matchKeyForFilename}. Matching keeps
+ * Unicode letters, numbers and their combining marks, and uses NFKC so composed
+ * and decomposed spellings of the same name match despite cosmetic punctuation
+ * and emoji presentation marks.
  */
 
 export type VoiceNameTokens = {
@@ -39,7 +30,8 @@ export type VoiceNameTokens = {
 const RESERVED_CHARS = /["|<>:?*]/g;
 const SEPARATORS = /[\\/]+/g;
 const WHITESPACE = /\s+/g;
-const NON_ALNUM = /[^\p{L}\p{N}]+/gu;
+const MATCHABLE_CHARACTERS = /[\p{L}\p{N}]\p{M}*/gu;
+const EMOJI_PRESENTATION_MARKS = /[\uFE0E\uFE0F\u20E3]/g;
 
 /** Every pattern token, including the aliases the type's own field names imply. */
 export const VOICE_NAME_TOKENS = ["scene", "index", "character", "locale", "unit", "unitId"] as const;
@@ -84,7 +76,7 @@ export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): s
     };
     const replaced = pattern.replace(/\{(\w+)\}/g, (whole, token: string) => {
         const key = token.toLowerCase();
-        return key in values ? values[key] : whole;
+        return Object.hasOwn(values, key) ? values[key] : whole;
     });
     return normalizeRelativePath(replaced) || sanitizeSegment(tokens.unitId);
 }
@@ -100,19 +92,18 @@ export const VOICE_AUDIO_EXTENSIONS: readonly string[] = [
 
 const AUDIO_EXTENSION = new RegExp(`\\.(?:${VOICE_AUDIO_EXTENSIONS.join("|")})$`, "i");
 
-/** The last path segment, NFKC-normalised, lower-cased, and stripped to Unicode letters and digits. */
+/** The last path segment, normalised to letters, numbers, and their combining marks. */
 function reduceToMatchKey(name: string): string {
     const base = name.replace(/\\+/g, "/").split("/").pop() ?? name;
-    return base.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
+    return base.normalize("NFKC").toLowerCase().replace(EMOJI_PRESENTATION_MARKS, "")
+        .match(MATCHABLE_CHARACTERS)?.join("") ?? "";
 }
 
 /**
  * Reduce a line's expected name - {@link formatVoiceFilename}'s answer, which has no extension -
  * to the key a file is matched against.
  *
- * Nothing is dropped from it: a dot in an expected name is part of a name. A speaker called
- * `Ms. Hara` gives `…_Ms.Hara`, and reading `.Hara` as an extension made the line expect
- * `…_ms` and match no file at all.
+ * A dot in an expected name belongs to the name: `…_Ms.Hara` matches `…_Ms.Hara.wav`.
  */
 export function matchKeyForVoiceName(name: string): string {
     return reduceToMatchKey(name);
@@ -121,8 +112,8 @@ export function matchKeyForVoiceName(name: string): string {
 /**
  * Reduce a file name, or an audio asset's library name, to a stable match key: the basename with a
  * known audio extension dropped ({@link VOICE_AUDIO_EXTENSIONS}), NFKC-normalised, lower-cased, and
- * stripped to Unicode letters and digits, so spaces/underscores/dashes, full-width punctuation,
- * decomposed CJK and folder layout never affect matching. Compared against
+ * stripped to Unicode letters, numbers, and their combining marks. Cosmetic punctuation,
+ * equivalent Unicode spellings and folder layout do not affect matching. Compared against
  * {@link matchKeyForVoiceName} of the line's expected name.
  *
  * Only an audio extension is dropped. Any other dot is part of the name, which is what lets

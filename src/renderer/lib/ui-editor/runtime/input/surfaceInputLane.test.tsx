@@ -400,6 +400,33 @@ describe("a touch gesture on a lane", () => {
         fireEvent.click(leafNode!);
         expect(dispatchSurfaceInputAction.mock.calls[1]?.[0]).toMatchObject({ source: "pointer" });
     });
+
+    it("reports a passed tap as touch on both surfaces", () => {
+        class TestPointerEvent extends MouseEvent {
+            readonly pointerType: string;
+
+            constructor(type: string, init: MouseEventInit & { pointerType?: string } = {}) {
+                super(type, init);
+                this.pointerType = init.pointerType ?? "";
+            }
+        }
+        vi.stubGlobal("PointerEvent", TestPointerEvent);
+        const front = renderSurface({ actions: [{ actionId: "advance", consume: false }], runtimeScopeId: "front" });
+        const behind = renderSurface({ actions: [{ actionId: "advance" }], runtimeScopeId: "behind" });
+        const ownerDocument = front.leafNode!.ownerDocument as Document & { elementsFromPoint?: unknown };
+        const original = ownerDocument.elementsFromPoint;
+        ownerDocument.elementsFromPoint = () => [front.leafNode!, behind.leafNode!];
+        try {
+            fireEvent(front.leafNode!, new TestPointerEvent("click", {
+                bubbles: true, clientX: 10, clientY: 10, pointerType: "touch",
+            }));
+            expect(front.dispatchSurfaceInputAction.mock.calls[0]?.[0]).toMatchObject({ source: "touch" });
+            expect(behind.dispatchSurfaceInputAction.mock.calls[0]?.[0]).toMatchObject({ source: "touch" });
+        } finally {
+            ownerDocument.elementsFromPoint = original;
+            vi.unstubAllGlobals();
+        }
+    });
 });
 
 /**

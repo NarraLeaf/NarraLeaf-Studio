@@ -6,6 +6,18 @@ describe("resolveUIListScrollMetrics", () => {
         expect(resolveUIListScrollMetrics(400, 1000, 0)).toEqual({ offset: 0, maxOffset: 600, progress: 0 });
     });
 
+    it("keeps the ends distinct when the scroll range is one pixel", () => {
+        const top = resolveUIListScrollMetrics(400, 401, 0);
+        const bottom = resolveUIListScrollMetrics(400, 401, 1);
+
+        expect(top.progress).toBe(0);
+        expect(isUIListScrolledToStart(top)).toBe(true);
+        expect(isUIListScrolledToEnd(top)).toBe(false);
+        expect(bottom.progress).toBe(1);
+        expect(isUIListScrolledToStart(bottom)).toBe(false);
+        expect(isUIListScrolledToEnd(bottom)).toBe(true);
+    });
+
     it("reads 1 at the bottom of a list that scrolls", () => {
         expect(resolveUIListScrollMetrics(400, 1000, 600)).toEqual({ offset: 600, maxOffset: 600, progress: 1 });
     });

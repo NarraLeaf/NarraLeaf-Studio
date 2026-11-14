@@ -155,8 +155,13 @@ export class AssetSetService extends Service<AssetSetService> {
             );
         }
         this.autoSaver.cancel();
+        const current = this.document;
         const updated = normalizeProjectAssetSets(document);
         await saveDocument(assetSetsSpec, this.storage(), assetSetsSpec.pathFor(), updated);
+        // A later edit owns the live document and its scheduled save while this write is in flight.
+        if (this.document !== current) {
+            return;
+        }
         this.document = updated;
         this.setDirty(false);
         this.events.emit("setsChanged", this.listSets());

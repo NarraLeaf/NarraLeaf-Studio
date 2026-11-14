@@ -41,6 +41,8 @@ function emptyOrders(): Record<AssetCategory, AssetOrderDocument> {
  */
 export class AssetOrderManager {
     private orders: Record<AssetCategory, AssetOrderDocument> = emptyOrders();
+    /** Last order read from or successfully written to disk, used to decide whether to skip a write. */
+    private writtenOrders: Record<AssetCategory, AssetOrderDocument> = emptyOrders();
     /** Categories with no readable order file, i.e. the ones this open has to write. */
     private readonly missingCategories = new Set<AssetCategory>();
 
@@ -49,6 +51,7 @@ export class AssetOrderManager {
 
     async init(): Promise<this> {
         this.orders = emptyOrders();
+        this.writtenOrders = emptyOrders();
         this.missingCategories.clear();
 
         const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
@@ -57,6 +60,7 @@ export class AssetOrderManager {
             const result = await filesystemService.readJSON<unknown>(path);
             if (result.ok) {
                 this.orders[category] = parseAssetOrderDocument(result.data);
+                this.writtenOrders[category] = this.orders[category];
             } else {
                 // Absent or unparseable: no opinion about order. The group shard's own key order
                 // stands in, which is what every build before this file shipped already showed the
@@ -103,10 +107,10 @@ export class AssetOrderManager {
      */
     public async write(category: AssetCategory, assetIds: readonly string[], groupIds: readonly string[]): Promise<FsRequestResult<void>> {
         const document: AssetOrderDocument = { assetIds: [...assetIds], groupIds: [...groupIds] };
-        if (!this.missingCategories.has(category) && sameOrder(this.orders[category], document)) {
+        this.orders[category] = document;
+        if (!this.missingCategories.has(category) && sameOrder(this.writtenOrders[category], document)) {
             return { ok: true, data: void 0 };
         }
-        this.orders[category] = document;
 
         const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
         // `writeFileNoFollowOrCreate`, not `write`. This used to say `write` because the only
@@ -129,6 +133,7 @@ export class AssetOrderManager {
         // is a lie about the disk that costs the author's row order: the recovery from key order is
         // only available until some later open rewrites the shard sorted.
         if (result.ok && result.refused !== true) {
+            this.writtenOrders[category] = document;
             this.missingCategories.delete(category);
         }
         return result;

@@ -33,8 +33,8 @@ function sleep(ms) {
 // --- running the checks --------------------------------------------------------------------------
 
 /**
- * A run of assertions. `check` records and prints; `summary` reports green/red counts and exits
- * non-zero when anything is red, so a scenario is a command whose exit code means something.
+ * A run of assertions. `check` records and prints; `summary` reports green/red counts and returns
+ * them so the scenario can set its exit code.
  */
 function createRun() {
     const results = [];
@@ -215,7 +215,7 @@ async function clickNamed(driver, selector, nameRe, options = {}) {
     for (let i = 0; i < tries; i += 1) {
         const now = await probe(driver, selector, nameRe, flags, nth);
         if (!now.found) { last = now; await sleep(200); continue; }
-        if (last && last.found && last.x === now.x && last.y === now.y && last.w === now.w) {
+        if (last && last.found && last.x === now.x && last.y === now.y && last.w === now.w && last.h === now.h) {
             if (!now.reachable) throw new Error(`unreachable: "${nameRe}" — ${now.why}`);
             await driver.click(now.cx + dx, now.cy + dy);
             return now;

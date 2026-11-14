@@ -410,7 +410,7 @@ export const help = {
         stageTimeline: {
             title: "Stage timeline",
             body:
-                "The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per object, one column per row. The ruler numbers only the rows of dialogue and narration.\n"
+                "The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per supported object, one column per row. The ruler numbers only the rows of dialogue and narration.\n"
                 + "\n"
                 + "- Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.\n"
                 + "- A bar means the object is on stage, and a new expression or picture starts a new block. A change that keeps the name, such as a move or a zoom, shows as a diamond on the object it changes.\n"

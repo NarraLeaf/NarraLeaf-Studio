@@ -58,6 +58,10 @@ function openDetail(): void {
     fireEvent.click(screen.getByLabelText("widgetChrome.effects.editEffect"));
 }
 
+function addButton(): HTMLButtonElement {
+    return document.querySelector('button[aria-label="widgetChrome.effects.addEffect"]')!;
+}
+
 /**
  * The one control inside the panel, whichever shape the numeric input took - it swaps itself for a
  * popover trigger in a narrow column, and a portalled panel is always narrow.
@@ -95,5 +99,61 @@ describe("EffectsStackEditor", () => {
         // `:disabled` rather than the `disabled` property: a control inside a disabled fieldset
         // matches the pseudo-class while its own attribute stays false.
         expect(detailControl().matches(":disabled")).toBe(true);
+    });
+
+    it("does not carry a pending effect to another element", () => {
+        const onChange = vi.fn();
+        const view = render(
+            <EffectsStackEditor values={normalizeElementEffectValues({})} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="first" />,
+        );
+        fireEvent.click(screen.getAllByRole("button", { name: "widgetChrome.effects.addEffect" })[0]!);
+        fireEvent.click(screen.getByRole("option", { name: "widgetAppearance.effectKinds.blur" }));
+        expect(addButton().matches(":disabled")).toBe(false);
+
+        view.rerender(
+            <EffectsStackEditor values={normalizeElementEffectValues({ effectBlur: 4 })} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="second" />,
+        );
+        const add = addButton();
+        expect(add.matches(":disabled")).toBe(true);
+        fireEvent.click(add);
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("clears a pending effect when it becomes enabled elsewhere", () => {
+        const onChange = vi.fn();
+        const view = render(
+            <EffectsStackEditor values={normalizeElementEffectValues({})} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="first" />,
+        );
+        fireEvent.click(screen.getAllByRole("button", { name: "widgetChrome.effects.addEffect" })[0]!);
+        fireEvent.click(screen.getByRole("option", { name: "widgetAppearance.effectKinds.blur" }));
+        view.rerender(
+            <EffectsStackEditor values={normalizeElementEffectValues({ effectBlur: 4 })} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="first" />,
+        );
+        expect(addButton().matches(":disabled")).toBe(true);
+        view.rerender(
+            <EffectsStackEditor values={normalizeElementEffectValues({})} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="first" />,
+        );
+        expect(addButton().matches(":disabled")).toBe(true);
+    });
+
+    it("closes the detail panel when the edited element changes", () => {
+        const onChange = vi.fn();
+        const view = render(
+            <EffectsStackEditor values={normalizeElementEffectValues({ effectBlur: 4 })} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="first" />,
+        );
+        openDetail();
+        expect(document.querySelector("fieldset")).not.toBeNull();
+        view.rerender(
+            <EffectsStackEditor values={normalizeElementEffectValues({ effectBlur: 7 })} onChange={onChange}
+                supportedKinds={SUPPORTED} draftResetKey="second" />,
+        );
+        expect(document.querySelector("fieldset")).toBeNull();
+        expect(onChange).not.toHaveBeenCalled();
     });
 });

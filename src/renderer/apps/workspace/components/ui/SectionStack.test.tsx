@@ -188,6 +188,49 @@ describe("SectionStack", () => {
         expect(onSizes).toHaveBeenLastCalledWith({ list: 390, library: 150, actions: 50 });
     });
 
+    it("settles a drag when the window loses focus", () => {
+        const onSizes = vi.fn();
+        const { container } = render(<Panel onSizes={onSizes} />);
+        const [, between] = sashes(container);
+        fireEvent.mouseDown(between!, { button: 0, clientY: 400 });
+        fireEvent.mouseMove(document, { buttons: 1, clientY: 420 });
+        expect(document.body.querySelector(".cursor-row-resize")).not.toBeNull();
+
+        fireEvent.blur(window);
+        expect(onSizes).toHaveBeenCalledTimes(1);
+        expect(onSizes).toHaveBeenCalledWith({ list: 390, library: 120, actions: 80 });
+        expect(document.body.querySelector(".cursor-row-resize")).toBeNull();
+
+        fireEvent.mouseUp(document, { button: 0 });
+        expect(onSizes).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not drag a seam with a secondary mouse button", () => {
+        const onSizes = vi.fn();
+        const { container } = render(<Panel onSizes={onSizes} />);
+        const [, between] = sashes(container);
+        fireEvent.mouseDown(between!, { button: 2, clientY: 400 });
+        fireEvent.mouseMove(document, { buttons: 2, clientY: 420 });
+        fireEvent.mouseUp(document, { button: 2, clientY: 420 });
+        expect(onSizes).not.toHaveBeenCalled();
+        expect(bodyHeight(container, "library")).toBe("100px");
+        expect(bodyHeight(container, "actions")).toBe("100px");
+    });
+
+    it("continues a primary drag when another mouse button is released", () => {
+        const onSizes = vi.fn();
+        const { container } = render(<Panel onSizes={onSizes} />);
+        const [, between] = sashes(container);
+        fireEvent.mouseDown(between!, { button: 0, clientY: 400 });
+        fireEvent.mouseMove(document, { buttons: 1, clientY: 410 });
+        fireEvent.mouseUp(document, { button: 2, buttons: 1, clientY: 410 });
+        expect(onSizes).not.toHaveBeenCalled();
+        fireEvent.mouseMove(document, { buttons: 1, clientY: 420 });
+        fireEvent.mouseUp(document, { button: 0, clientY: 420 });
+        expect(onSizes).toHaveBeenCalledTimes(1);
+        expect(onSizes).toHaveBeenCalledWith({ list: 390, library: 120, actions: 80 });
+    });
+
     it("puts the two bodies beside a seam back to their defaults on a double-click", () => {
         const onSizes = vi.fn();
         const { container } = render(<Panel initialSizes={{ list: 390, library: 150, actions: 50 }} onSizes={onSizes} />);

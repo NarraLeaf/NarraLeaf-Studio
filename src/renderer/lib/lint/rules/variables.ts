@@ -500,7 +500,9 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                     // One finding per undeclared variable per scene, anchored at its first live use:
                     // a variable deleted out from under twenty rows is one mistake, not twenty.
                     const reported = new Set<string>();
-                    for (const use of collectVariableUses(scene, liveBlocks(scene))) {
+                    // Notes are editor-only and their interpolations are never evaluated by the game.
+                    const runtimeBlocks = liveBlocks(scene).filter(block => block.kind !== "note");
+                    for (const use of collectVariableUses(scene, runtimeBlocks)) {
                         const declared =
                             use.ref.scope === "scene"
                                 ? Boolean(sceneDefs[use.ref.variableId])

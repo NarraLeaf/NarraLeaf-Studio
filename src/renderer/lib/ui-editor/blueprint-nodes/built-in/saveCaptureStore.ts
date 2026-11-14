@@ -34,38 +34,56 @@ export const MAX_LIVE_SAVE_CAPTURES = 8;
 
 type SaveCaptureStore = {
     captures: Map<string, unknown>;
-    /** Monotonic within one execution; ids only ever have to be unique inside this store. */
-    nextId: number;
+    pending: number;
 };
+
+let fallbackCaptureSequence = 0;
+
+function newCaptureId(nodeId: string): string {
+    const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}-${++fallbackCaptureSequence}`;
+    return `${nodeId}#${id}`;
+}
 
 function readStore(blueprintLocals: Record<string, unknown>): SaveCaptureStore {
     const existing = blueprintLocals[SAVE_CAPTURE_STORE_KEY] as SaveCaptureStore | undefined;
     if (existing) {
         return existing;
     }
-    const created: SaveCaptureStore = { captures: new Map(), nextId: 1 };
+    const created: SaveCaptureStore = { captures: new Map(), pending: 0 };
     blueprintLocals[SAVE_CAPTURE_STORE_KEY] = created;
     return created;
 }
 
-/** How many captures this execution is already holding. `Current Game` refuses past the cap. */
+/** How many completed captures this execution is holding. */
 export function countLiveSaveCaptures(blueprintLocals: Record<string, unknown>): number {
     return readStore(blueprintLocals).captures.size;
 }
 
 export function isSaveCaptureLimitReached(blueprintLocals: Record<string, unknown>): boolean {
-    return countLiveSaveCaptures(blueprintLocals) >= MAX_LIVE_SAVE_CAPTURES;
+    const store = readStore(blueprintLocals);
+    return store.captures.size + store.pending >= MAX_LIVE_SAVE_CAPTURES;
 }
 
-/** Take ownership of a serialized run and return the slot that names it. */
+/** Reserve space before the asynchronous capture begins; release it when the attempt settles. */
+export function reserveSaveCapture(blueprintLocals: Record<string, unknown>): (() => void) | null {
+    if (isSaveCaptureLimitReached(blueprintLocals)) {
+        return null;
+    }
+    const store = readStore(blueprintLocals);
+    store.pending += 1;
+    return () => { store.pending -= 1; };
+}
+
+/** Take ownership of a serialized run and return a slot unique across executions. */
 export function storeSaveCapture(
     blueprintLocals: Record<string, unknown>,
     nodeId: string,
     savedGame: unknown,
 ): BlueprintSaveSlot {
     const store = readStore(blueprintLocals);
-    const id = `${nodeId}#${store.nextId}`;
-    store.nextId += 1;
+    const id = newCaptureId(nodeId);
     store.captures.set(id, savedGame);
     // Non-null: the id above is always a non-empty string.
     return toBlueprintSaveSlot("run", id)!;

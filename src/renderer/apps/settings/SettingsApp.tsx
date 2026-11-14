@@ -299,24 +299,28 @@ export function SettingsApp() {
      * "Customize keyboard shortcuts" sends `keybindings.overrides`) or a category key; anything
      * unrecognized is ignored and the window opens on its first category as usual.
      */
-    const applyHighlight = useCallback((highlight: string | undefined) => {
+    const applyHighlight = useCallback((highlight: string | undefined): boolean => {
         if (!highlight) {
-            return;
+            return false;
         }
         const setting = getSettingByKey(highlight);
         if (setting) {
+            setSearchQuery("");
             setSelectedCategory(setting.category);
             setSelectedSettingId(setting.key);
             setExpandedCategories(prev => new Set(prev).add(setting.category));
             setCategoryScrollSignal(value => value + 1);
-            return;
+            return true;
         }
         if (categories.some(category => category.key === highlight)) {
+            setSearchQuery("");
             setSelectedCategory(highlight);
             setSelectedSettingId(undefined);
             setExpandedCategories(prev => new Set(prev).add(highlight));
             setCategoryScrollSignal(value => value + 1);
+            return true;
         }
+        return false;
     }, [categories]);
 
     /**
@@ -342,15 +346,18 @@ export function SettingsApp() {
     // (main focuses the existing window rather than stacking a second one).
     useEffect(() => {
         let mounted = true;
+        let pushed = false;
+        const token = getInterface().app.onSettingsHighlight?.(highlight => {
+            if (applyHighlight(highlight)) pushed = true;
+        });
         void getInterface()
             .getWindowProps<WindowAppType.Settings>()
             .then(result => {
-                if (mounted && result.success) {
+                if (mounted && !pushed && result.success) {
                     applyHighlight(result.data?.highlight);
                 }
             })
             .catch(() => undefined);
-        const token = getInterface().app.onSettingsHighlight?.(highlight => applyHighlight(highlight));
         return () => {
             mounted = false;
             token?.cancel();

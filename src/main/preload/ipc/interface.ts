@@ -1105,8 +1105,10 @@ export const IPCInterface: RendererPreloadedInterface = {
     },
 
     clipboard: {
-        writeEditorSelection: (kind: StudioClipboardKind, payload: string) =>
-            ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload }),
+        beginUiPublication: (kind: "ui-elements" | "ui-surfaces") =>
+            ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload: "", operation: "begin" }),
+        writeEditorSelection: (kind: StudioClipboardKind, payload: string, publicationId?: number) =>
+            ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload, publicationId }),
         readEditorSelection: (kind: StudioClipboardKind) =>
             ipcClient.invoke(IPCEventType.clipboardReadEditorSelection, { kind }),
         readPlainText: () =>

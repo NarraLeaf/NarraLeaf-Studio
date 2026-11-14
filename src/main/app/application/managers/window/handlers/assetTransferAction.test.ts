@@ -5,20 +5,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WindowAppType } from "@shared/types/window";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "@shared/types/assetTransfer";
 import { StorageManager } from "../../storageManager";
+import { PluginPermissionManager } from "../../pluginPermissionManager";
+import { FileSystemHashHandler } from "../../protocol/fileSystemHandler";
+import { Fs } from "@shared/utils/fs";
 import type { AppWindow } from "../appWindow";
 import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./assetTransferAction";
-import { FsCopyDirHandler, FsListHandler } from "./fsAction";
+import { AssetExportToFolderHandler } from "./assetAction";
+import { PrivilegedFsCallHandler } from "./privilegedAction";
+import {
+    FsCopyDirHandler,
+    FsDeleteDirHandler,
+    FsDirectorySizeHandler,
+    FsListHandler,
+    FsMoveDirHandler,
+    FsMoveFileHandler,
+    FsRenameHandler,
+    FsRequestReadDirHandler,
+} from "./fsAction";
+
+const { showOpenDialog } = vi.hoisted(() => ({ showOpenDialog: vi.fn() }));
 
 vi.mock("electron", () => ({
     app: {
         startAccessingSecurityScopedResource: vi.fn(() => vi.fn()),
     },
-    dialog: { showOpenDialog: vi.fn() },
+    dialog: { showOpenDialog },
     net: { request: vi.fn() },
 }));
 
 vi.mock("@shared/utils/persistentState", () => ({
-    PersistentState: class { },
+    PersistentState: class {
+        private store: Record<string, unknown>;
+        constructor(config: { defaults: Record<string, unknown> }) { this.store = structuredClone(config.defaults); }
+        getItem(key: string) { return this.store[key]; }
+        setItem(key: string, value: unknown) { this.store[key] = value; }
+    },
 }));
 
 const offerHandler = new AssetTransferOfferHandler();
@@ -26,6 +47,7 @@ const redeemHandler = new AssetTransferRedeemHandler();
 
 let tempDir: string;
 let storageManager: StorageManager;
+let pluginPermissionManager: PluginPermissionManager;
 /** The project the copy comes out of, and one the pasting window owns instead. */
 let sourceProject: string;
 let targetProject: string;
@@ -41,10 +63,18 @@ function makeWindow(
     projectPath: string,
 ): AppWindow {
     return {
+        win: {},
         getWindowType: () => windowType,
         getProps: () => ({ projectPath }),
         getWebContents: () => ({ id: webContentsId }),
-        app: { storageManager },
+        getApp: () => ({
+            hasExperimentalCondition: () => false,
+            getCommandLineBuild: () => false,
+            getCommandLineCheck: () => false,
+            globalState: { get: (key: string) => key === "app.language" ? "en" : undefined },
+        }),
+        refuseUnattendedPrompt: () => undefined,
+        app: { storageManager, pluginPermissionManager, logger: { debug: vi.fn() } },
     } as unknown as AppWindow;
 }
 
@@ -107,6 +137,248 @@ beforeEach(async () => {
         logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
         hasExperimentalCondition: () => false,
     } as any);
+    pluginPermissionManager = new PluginPermissionManager(path.join(tempDir, "user-data"));
+});
+
+describe("recursive file operations", () => {
+    it("does not export into protected storage below the selected folder", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const source = await asset(sourceProject, "exported", "author asset");
+        const userData = path.join(tempDir, "user-data");
+        await fs.mkdir(path.join(userData, "plugins"), { recursive: true });
+        showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [userData], bookmarks: [] });
+        const result = await new AssetExportToFolderHandler().handle(window, {
+            entries: [{ sourcePath: source, relativePath: "plugins/exported.txt" }],
+        });
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 0 } });
+        await expect(fs.access(path.join(userData, "plugins", "exported.txt"))).rejects.toThrow();
+    });
+
+    it("refuses protected descendants through the privileged filesystem facade", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const userData = path.join(tempDir, "user-data");
+        const secret = path.join(userData, "plugins", "private.txt");
+        await fs.mkdir(path.dirname(secret), { recursive: true });
+        await fs.writeFile(secret, "private plugin data");
+        storageManager.grantFileSystemAccess(window, userData, "readwrite", true);
+        const destination = path.join(sourceProject, "copied-data");
+
+        const result = await new PrivilegedFsCallHandler().handle(window, {
+            actor: { kind: "facade", id: "default" }, operation: "copyDir", src: userData, dest: destination,
+        });
+        expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.access(path.join(destination, "plugins", "private.txt"))).rejects.toThrow();
+    });
+
+    it("does not let a plugin turn a non-recursive grant into a tree copy", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(tempDir, "outside", "model"));
+        const destination = path.join(sourceProject, "copy");
+        storageManager.grantFileSystemAccess(window, model.root, "read", false);
+        const plugin = { id: "plugin.test", version: "1.0.0" };
+        for (const [index, grant] of [
+            { path: model.root, mode: "read" as const, recursive: false },
+            { path: sourceProject, mode: "write" as const, recursive: true },
+        ].entries()) {
+            const request = { kind: "filesystem" as const, plugin, requestId: `grant-${index}`, persistence: "temporary" as const, ...grant };
+            pluginPermissionManager.grantPermission(request, { requestId: request.requestId, approved: true });
+        }
+        const result = await new PrivilegedFsCallHandler().handle(window, {
+            actor: { kind: "plugin", pluginId: plugin.id, version: plugin.version }, operation: "copyDir", src: model.root, dest: destination,
+        });
+        expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.access(destination)).rejects.toThrow();
+    });
+
+    it("lets a plugin copy a tree when both plugin and window grants are recursive", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(tempDir, "outside", "model"));
+        const destination = path.join(sourceProject, "copy");
+        storageManager.grantFileSystemAccess(window, model.root, "read", true);
+        const plugin = { id: "plugin.test", version: "1.0.0" };
+        for (const [index, grant] of [
+            { path: model.root, mode: "read" as const, recursive: true },
+            { path: sourceProject, mode: "write" as const, recursive: true },
+        ].entries()) {
+            const request = { kind: "filesystem" as const, plugin, requestId: `grant-${index}`, persistence: "temporary" as const, ...grant };
+            pluginPermissionManager.grantPermission(request, { requestId: request.requestId, approved: true });
+        }
+        const result = await new PrivilegedFsCallHandler().handle(window, {
+            actor: { kind: "plugin", pluginId: plugin.id, version: plugin.version }, operation: "copyDir", src: model.root, dest: destination,
+        });
+        expect(result).toMatchObject({ success: true, data: { ok: true } });
+        await expect(fs.readFile(path.join(destination, "hiyori.2048", "texture_00.png"), "utf8")).resolves.toBe("png-bytes");
+    });
+
+    it("lets a plugin follow an internal link in its recursive grant", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const allowed = path.join(sourceProject, "allowed");
+        const inside = path.join(allowed, "content");
+        await fs.mkdir(inside, { recursive: true });
+        await fs.writeFile(path.join(inside, "asset.txt"), "author asset");
+        await fs.symlink(inside, path.join(allowed, "alias"), process.platform === "win32" ? "junction" : "dir");
+        const plugin = { id: "plugin.test", version: "1.0.0" };
+        for (const [index, grant] of [
+            { path: allowed, mode: "read" as const, recursive: true },
+            { path: sourceProject, mode: "write" as const, recursive: true },
+        ].entries()) {
+            const request = { kind: "filesystem" as const, plugin, requestId: `grant-${index}`, persistence: "temporary" as const, ...grant };
+            pluginPermissionManager.grantPermission(request, { requestId: request.requestId, approved: true });
+        }
+        const destination = path.join(sourceProject, "copied-asset.txt");
+        const result = await new PrivilegedFsCallHandler().handle(window, {
+            actor: { kind: "plugin", pluginId: plugin.id, version: plugin.version }, operation: "copyFile",
+            src: path.join(allowed, "alias", "asset.txt"), dest: destination,
+        });
+        expect(result).toMatchObject({ success: true, data: { ok: true } });
+        await expect(fs.readFile(destination, "utf8")).resolves.toBe("author asset");
+    });
+
+    it("does not copy a tree containing protected Studio storage", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const userData = path.join(tempDir, "user-data");
+        const secret = path.join(userData, "plugins", "private.txt");
+        await fs.mkdir(path.dirname(secret), { recursive: true });
+        await fs.writeFile(secret, "private plugin data");
+        storageManager.grantFileSystemAccess(window, userData, "read", true);
+
+        expect(await storageManager.isPathAllowed(window, secret, "read")).toBe(false);
+        const destination = path.join(sourceProject, "copied-data");
+        const result = await new FsCopyDirHandler().handle(window, { src: userData, dest: destination });
+        expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.access(path.join(destination, "plugins", "private.txt"))).rejects.toThrow();
+    });
+
+    it("serves internal links but refuses links outside a directory hash", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(sourceProject, "model"));
+        const outside = path.join(tempDir, "outside");
+        await fs.mkdir(outside);
+        await fs.writeFile(path.join(outside, "secret.txt"), "outside secret");
+        await fs.symlink(outside, path.join(model.root, "escape"), process.platform === "win32" ? "junction" : "dir");
+        await fs.symlink(path.dirname(model.texture), path.join(model.root, "inside"), process.platform === "win32" ? "junction" : "dir");
+
+        const granted = await new FsRequestReadDirHandler().handle(window, { path: model.root });
+        expect(granted.success && granted.data.ok).toBe(true);
+        if (!granted.success || !granted.data.ok) throw new Error("Directory grant failed");
+        const handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
+        const hash = granted.data.data;
+        const get = (name: string) => handler.handle({ url: `app://fs/${hash}/${name}`, method: "GET" } as Request);
+        const internal = await get("inside/texture_00.png");
+        expect(internal.statusCode).toBe(200);
+        expect(Buffer.isBuffer(internal.data) && internal.data.toString()).toBe("png-bytes");
+        expect((await get("escape/secret.txt")).statusCode).toBe(403);
+    });
+
+    it("refuses a file replaced after directory hash resolution", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(sourceProject, "model"));
+        const outside = path.join(tempDir, "outside");
+        await fs.mkdir(outside);
+        await fs.writeFile(path.join(outside, "texture_00.png"), "outside secret");
+        const physicalTexture = await fs.realpath(model.texture);
+        const granted = await new FsRequestReadDirHandler().handle(window, { path: model.root });
+        if (!granted.success || !granted.data.ok) throw new Error("Directory grant failed");
+        const handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
+        const originalOpen = Fs.openForRead.bind(Fs);
+        let swapped = false;
+        const probe = vi.spyOn(Fs, "openForRead").mockImplementation(async file => {
+            if (file === physicalTexture) {
+                swapped = true;
+                const parent = path.dirname(model.texture);
+                await fs.rename(parent, `${parent}-original`);
+                await fs.symlink(outside, parent, process.platform === "win32" ? "junction" : "dir");
+            }
+            return originalOpen(file);
+        });
+        try {
+            const response = await handler.handle({ url: `app://fs/${granted.data.data}/hiyori.2048/texture_00.png`, method: "GET" } as Request);
+            expect(swapped).toBe(true);
+            expect(response.statusCode).toBe(403);
+        } finally {
+            probe.mockRestore();
+        }
+    });
+
+    it("does not mint a directory hash when its root is replaced after authorization", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(sourceProject, "model"));
+        const outside = path.join(tempDir, "outside");
+        await fs.mkdir(outside);
+        await fs.writeFile(path.join(outside, "secret.txt"), "outside secret");
+        const originalCheck = Fs.isDirExists.bind(Fs);
+        let swapped = false;
+        const probe = vi.spyOn(Fs, "isDirExists").mockImplementation(async candidate => {
+            const result = await originalCheck(candidate);
+            if (candidate === model.root) {
+                swapped = true;
+                await fs.rename(model.root, `${model.root}-original`);
+                await fs.symlink(outside, model.root, process.platform === "win32" ? "junction" : "dir");
+            }
+            return result;
+        });
+        try {
+            const result = await new FsRequestReadDirHandler().handle(window, { path: model.root });
+            expect(swapped).toBe(true);
+            expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        } finally {
+            probe.mockRestore();
+        }
+    });
+
+    it("does not turn a non-recursive read grant into access to a directory tree", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(tempDir, "outside", "model"));
+        const destination = path.join(sourceProject, "copy");
+        storageManager.grantFileSystemAccess(window, model.root, "read", false);
+
+        for (const result of [
+            await new FsRequestReadDirHandler().handle(window, { path: model.root }),
+            await new FsDirectorySizeHandler().handle(window, { path: model.root }),
+            await new FsCopyDirHandler().handle(window, { src: model.root, dest: destination }),
+        ]) {
+            expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        }
+        await expect(fs.access(destination)).rejects.toThrow();
+    });
+
+    it("does not delete or move a tree through a non-recursive write grant", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(tempDir, "outside", "model"));
+        storageManager.grantFileSystemAccess(window, model.root, "readwrite", false);
+
+        const deleted = await new FsDeleteDirHandler().handle(window, { path: model.root });
+        expect(deleted).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        const moved = await new FsMoveDirHandler().handle(window, { src: model.root, dest: path.join(sourceProject, "moved") });
+        expect(moved).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.readFile(model.texture, "utf8")).resolves.toBe("png-bytes");
+    });
+
+    it("does not copy a tree under a non-recursive destination grant", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(sourceProject, "model"));
+        const destination = path.join(tempDir, "outside", "copy");
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        storageManager.grantFileSystemAccess(window, destination, "write", false);
+
+        const result = await new FsCopyDirHandler().handle(window, { src: model.root, dest: destination });
+        expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.access(destination)).rejects.toThrow();
+    });
+
+    it("does not move a directory by claiming it is a file", async () => {
+        const window = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const model = await bundle(path.join(tempDir, "outside", "model"));
+        const renamed = path.join(tempDir, "outside", "renamed");
+        storageManager.grantFileSystemAccess(window, model.root, "readwrite", false);
+        storageManager.grantFileSystemAccess(window, renamed, "write", false);
+
+        const result = await new FsRenameHandler().handle(window, { oldPath: model.root, newName: "renamed", isDir: false });
+        expect(result).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        const moved = await new FsMoveFileHandler().handle(window, { src: model.root, dest: path.join(sourceProject, "moved") });
+        expect(moved).toMatchObject({ success: true, data: { ok: false, error: { code: "PERMISSION_DENIED" } } });
+        await expect(fs.readFile(model.texture, "utf8")).resolves.toBe("png-bytes");
+    });
 });
 
 afterEach(async () => {

@@ -8,9 +8,9 @@ import type { BundleEntry, BundleTree } from "../macBundle/bundleTree";
  * Both halves are assembled from the same game (same payload, same plists), so they differ only in
  * machine code - and in the one file Electron ships under an architecture's name in each,
  * `v8_context_snapshot.<arch>.bin`, which a universal app carries both of. A Mach-O file that differs
- * becomes a universal image of the two, x86_64 first as lipo and the signer expect; a file that is
- * the same in both is kept once. Anything else differing means the halves were not built alike, and
- * stops the build rather than shipping one half's copy for both machines.
+ * becomes a universal image of the two, x86_64 first as lipo and the signer expect. Identical files
+ * are kept once when they can serve both architectures. Anything else differing means the halves
+ * were not built alike, and stops the build rather than shipping one half's copy for both machines.
  */
 export function mergeUniversalBundle(x64: BundleTree, arm64: BundleTree): BundleTree {
     const merged: BundleTree = new Map();
@@ -18,10 +18,17 @@ export function mergeUniversalBundle(x64: BundleTree, arm64: BundleTree): Bundle
         const intel = x64.get(path);
         const silicon = arm64.get(path);
         if (!intel || !silicon) {
-            merged.set(path, (intel ?? silicon) as BundleEntry);
+            const entry = (intel ?? silicon) as BundleEntry;
+            if (entry.kind === "file" && machOKind(entry.data) === "thin") {
+                throw new Error(`${path} is a single-architecture image missing from the other half of the app.`);
+            }
+            merged.set(path, entry);
             continue;
         }
         if (sameEntry(intel, silicon)) {
+            if (intel.kind === "file" && machOKind(intel.data) === "thin") {
+                throw new Error(`${path} is the same single-architecture image in both halves of the app; a universal app needs both architectures.`);
+            }
             merged.set(path, silicon);
             continue;
         }

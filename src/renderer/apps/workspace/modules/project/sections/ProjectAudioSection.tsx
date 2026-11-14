@@ -25,7 +25,7 @@
  * which is what the confirmation says out loud before the author commits.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { HelpTrigger } from "@/lib/help";
@@ -156,11 +156,13 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
     }, [trackService]);
 
     const removeTrack = useCallback(async (track: ProjectAudioTrack) => {
-        if (!trackService) {
+        if (!trackService || !context) {
             return;
         }
-        const uses = references[track.id] ?? 0;
-        const children = tracks.filter(entry => entry.parentId === track.id).length;
+        const counts = await countReferences(context, [track.id]);
+        const uses = counts[track.id] ?? 0;
+        setReferences(current => ({ ...current, [track.id]: uses }));
+        const children = trackService.listTracks().filter(entry => entry.parentId === track.id).length;
         const parentTrack = track.parentId === null ? undefined : trackService.getTrack(track.parentId);
         const parent = parentTrack ? audioTrackDisplayName(parentTrack, t) : t("project.audio.parentMaster");
         const detail = [
@@ -175,7 +177,7 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
         if (confirmed) {
             trackService.deleteTrack(track.id);
         }
-    }, [references, t, tn, trackService, tracks, uiService]);
+    }, [context, t, tn, trackService, uiService]);
 
     return (
         /*
@@ -523,12 +525,17 @@ function TrackNameField({
     onCommit: (name: string) => void;
 }) {
     const [draft, setDraft] = useState(name);
+    const abandoning = useRef(false);
 
     useEffect(() => {
         setDraft(name);
     }, [name]);
 
     const commit = useCallback(() => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const next = draft.trim();
         if (next && next !== name) {
             onCommit(next);
@@ -545,11 +552,13 @@ function TrackNameField({
             aria-label={label}
             className="w-full min-w-0"
             onChange={event => setDraft(event.target.value)}
+            onFocus={() => { abandoning.current = false; }}
             onBlur={commit}
             onKeyDown={event => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();
                 } else if (event.key === "Escape") {
+                    abandoning.current = true;
                     setDraft(name);
                     event.currentTarget.blur();
                 }

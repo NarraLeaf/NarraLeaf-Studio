@@ -13,7 +13,7 @@ import {
     serializeEditorSession,
 } from "../session/workspaceEditorSession";
 import { collectEditorGroups } from "../components/layout/editorCommandsModel";
-import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
 import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
 import { WELCOME_SHOWN_KEY, openWelcomeTab } from "../modules/welcome/openWelcomeTab";
 import {
@@ -25,7 +25,7 @@ import {
 const SAVE_DEBOUNCE_MS = 500;
 
 /** Dedupe restore per project session key when React Strict Mode runs effects twice */
-const restorePromisesBySessionKey = new Map<string, Promise<void>>();
+const restorePromisesBySessionKey = new Map<string, Promise<boolean>>();
 
 let restoreInProgressGlobal = false;
 
@@ -106,8 +106,10 @@ export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolea
                         openWelcomeTab(context);
                         await settingsService.set(WELCOME_SHOWN_KEY, true);
                     }
+                    return true;
                 } catch (error) {
                     console.error("[WorkspaceEditorSession] Failed to restore:", error);
+                    return false;
                 } finally {
                     restoreInProgressGlobal = false;
                 }
@@ -118,13 +120,25 @@ export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolea
             });
         }
 
-        return () => {};
     }, [enabled, context, uiService, settingsService, sessionSettingsKey, dashboardOpenProjectKey]);
 
     useEffect(() => {
         if (!enabled || !context || !uiService || !settingsService || !sessionSettingsKey) {
             return;
         }
+
+        const focusedGroupId = (focus: FocusContext): string | null => {
+            const groups = collectEditorGroups(uiService.getStore().getEditorLayout());
+            if (focus.area === FocusArea.EditorTabs) {
+                return groups.find(group => group.id === focus.targetId)?.id ?? null;
+            }
+            if (focus.area === FocusArea.Editor && focus.targetId) {
+                return groups.find(group => group.tabs.some(tab => tab.id === focus.targetId))?.id ?? null;
+            }
+            return null;
+        };
+        let lastFocusedGroupId = focusedGroupId(uiService.focus.getFocus());
+        let dirtyDuringRestore = false;
 
         const flushSave = async () => {
             if (saveTimerRef.current) {
@@ -136,17 +150,7 @@ export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolea
             }
             try {
                 const layout = uiService.getStore().getEditorLayout();
-                // Which pane the caret is in is part of the layout the user arranged, so it is
-                // restored alongside the splits rather than always landing in the first group.
-                const focus = uiService.focus.getFocus();
-                const activeGroup =
-                    focus.area === FocusArea.EditorTabs
-                        ? collectEditorGroups(layout).find(group => group.id === focus.targetId)
-                        : focus.area === FocusArea.Editor && focus.targetId
-                          ? collectEditorGroups(layout).find(group =>
-                                group.tabs.some(tab => tab.id === focus.targetId),
-                            )
-                          : undefined;
+                const activeGroup = collectEditorGroups(layout).find(group => group.id === lastFocusedGroupId);
                 await settingsService.set(sessionSettingsKey, serializeEditorSession(layout, activeGroup?.id ?? null));
             } catch (error) {
                 console.error("[WorkspaceEditorSession] Failed to save:", error);
@@ -155,6 +159,7 @@ export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolea
 
         const scheduleSave = () => {
             if (restoreInProgressGlobal) {
+                dirtyDuringRestore = true;
                 return;
             }
             if (saveTimerRef.current) {
@@ -171,12 +176,25 @@ export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolea
                 scheduleSave();
             }
         });
+        const unsubscribeFocus = uiService.focus.onFocusChange(focus => {
+            const groupId = focusedGroupId(focus);
+            if (groupId && groupId !== lastFocusedGroupId) {
+                lastFocusedGroupId = groupId;
+                scheduleSave();
+            }
+        });
+        // Changes during restore cannot be saved until its startup tabs are settled.
+        let mounted = true;
+        void restorePromisesBySessionKey.get(sessionSettingsKey)?.then(restored => {
+            if (mounted && restored && dirtyDuringRestore) scheduleSave();
+        });
 
         return () => {
+            mounted = false;
             unsubscribe();
+            unsubscribeFocus();
             if (saveTimerRef.current) {
-                clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = null;
+                void flushSave();
             }
         };
     }, [enabled, context, uiService, settingsService, sessionSettingsKey]);

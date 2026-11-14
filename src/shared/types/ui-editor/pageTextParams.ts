@@ -89,7 +89,7 @@ function readUIPageTextValue(
     giverId: string | undefined,
 ): UIComponentTextValue {
     const raw = Object.prototype.hasOwnProperty.call(given, param.name) ? given[param.name] : undefined;
-    if (raw !== undefined && raw !== null) {
+    if (raw !== undefined) {
         return {
             origin: "placement",
             text: String(coerceUIPageParamValue("text", raw)),

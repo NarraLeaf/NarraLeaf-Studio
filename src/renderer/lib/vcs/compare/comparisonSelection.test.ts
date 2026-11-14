@@ -64,6 +64,7 @@ describe("buildComparisonElementSelection", () => {
 
     it("is complete for an element only the older half holds", () => {
         const selection = buildComparisonElementSelection({
+            comparisonId: "comparison",
             documentPath: "ui/interface.json",
             half: "base",
             versionLabel: "#66",
@@ -82,6 +83,7 @@ describe("buildComparisonElementSelection", () => {
 
     it("finds the counterpart when both halves hold the element", () => {
         const selection = buildComparisonElementSelection({
+            comparisonId: "comparison",
             documentPath: "ui/interface.json",
             half: "head",
             versionLabel: "This project",
@@ -95,6 +97,7 @@ describe("buildComparisonElementSelection", () => {
 
     it("refuses a row whose element this half does not hold", () => {
         expect(buildComparisonElementSelection({
+            comparisonId: "comparison",
             documentPath: "ui/interface.json",
             half: "head",
             versionLabel: "This project",
@@ -104,6 +107,7 @@ describe("buildComparisonElementSelection", () => {
             counterpartDocument: documentWith(["title"]),
         })).toBeNull();
         expect(buildComparisonElementSelection({
+            comparisonId: "comparison",
             documentPath: "ui/interface.json",
             half: "head",
             versionLabel: "This project",
@@ -118,6 +122,7 @@ describe("buildComparisonElementSelection", () => {
 describe("isSameComparisonElement", () => {
     it("tells the two halves apart for one element", () => {
         const make = (half: "base" | "head") => buildComparisonElementSelection({
+            comparisonId: "comparison",
             documentPath: "ui/interface.json",
             half,
             versionLabel: half,

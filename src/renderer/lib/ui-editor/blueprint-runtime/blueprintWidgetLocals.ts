@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import {
     buildAccessibleBlueprintVariableOptions,
     createExplicitBlueprintVariableRef,
@@ -29,6 +30,10 @@ function cloneJsonValue<T>(value: T): T {
 }
 
 const store = new Map<string, Record<string, unknown>>();
+const dispatchRecords = new Map<string, Record<string, unknown> | undefined>();
+
+type WidgetRecordSnapshot = ReadonlyMap<string, Record<string, unknown>>;
+const WIDGET_RECORDS = Symbol("widget blueprint locals by drawing");
 
 /**
  * Key on the per-execution locals object holding the current blueprint's raw lifecycle record, so
@@ -44,12 +49,25 @@ export const BLUEPRINT_MEMO_RECORD_KEY = "__nlBlueprintMemoRecord";
 /** Prefix for Memo slots inside a blueprint's variable record; keeps them clear of author variables. */
 export const BLUEPRINT_MEMO_SLOT_PREFIX = "__nlMemo\0";
 
-function widgetVariableStoreKey(runtimeScopeId: string, elementId: string, blueprintId: string): string {
-    return `widget\0${runtimeScopeId}\0${elementId}\0${blueprintId}`;
+function widgetVariableStoreKey(runtimeScopeId: string, elementId: string, blueprintId: string, instanceKey?: string): string {
+    return `widget\0${runtimeScopeId}\0${instanceElementId(elementId, instanceKey)}\0${blueprintId}`;
 }
 
 function instanceElementId(elementId: string, elementInstanceKey?: string): string {
     return elementInstanceKey ? `${elementId}\0${elementInstanceKey}` : elementId;
+}
+
+function componentWidgetVariableStoreKey(
+    componentId: string,
+    elementId: string,
+    blueprintId: string,
+    runtimeScopeId?: string,
+    instanceKey?: string,
+): string {
+    const owner = instanceElementId(elementId, instanceKey);
+    return runtimeScopeId
+        ? `componentWidgetScope\0${runtimeScopeId}\0${componentId}\0${owner}\0${blueprintId}`
+        : `componentWidget\0${componentId}\0${owner}\0${blueprintId}`;
 }
 
 function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string, elementInstanceKey?: string): string {
@@ -61,13 +79,13 @@ function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string
         return `surface\0${runtimeScopeId ?? owner.surfaceId}\0${blueprint.id}`;
     }
     if (owner.kind === "widgetMain") {
-        return `widget\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${blueprint.id}`;
+        return widgetVariableStoreKey(runtimeScopeId ?? owner.surfaceId, owner.elementId, blueprint.id, elementInstanceKey);
     }
     if (owner.kind === "widgetValue") {
         return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${owner.propPath}\0${blueprint.id}`;
     }
     if (owner.kind === "componentWidgetMain") {
-        return `componentWidget\0${owner.componentId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${blueprint.id}`;
+        return componentWidgetVariableStoreKey(owner.componentId, owner.elementId, blueprint.id, runtimeScopeId, elementInstanceKey);
     }
     // The last owner kind, so it is not a test: a kind added to `BlueprintOwnerRef` without a branch
     // above would fail to compile here rather than silently share this one's key space.
@@ -75,10 +93,15 @@ function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string
 }
 
 function acquireVariableStore(key: string, bp: Blueprint): Record<string, unknown> {
-    let locals = store.get(key);
+    const dispatching = dispatchRecords.has(key);
+    let locals = dispatching ? dispatchRecords.get(key) : store.get(key);
     if (!locals) {
         locals = defaultLocalsFromBlueprint(bp);
-        store.set(key, locals);
+        if (dispatching) {
+            dispatchRecords.set(key, locals);
+        } else {
+            store.set(key, locals);
+        }
         return locals;
     }
     const defaults = defaultLocalsFromBlueprint(bp);
@@ -134,7 +157,7 @@ function defineVariableAccessor(
         set: value => {
             const previous = storeRef[variableId];
             storeRef[variableId] = value;
-            if (isStateWriteNoticeable(previous, value)) {
+            if (store.get(storeKey) === storeRef && isStateWriteNoticeable(previous, value)) {
                 announceBlueprintStateWrite(stateKey, observer?.origin);
             }
         },
@@ -162,6 +185,8 @@ export function acquireBlueprintExecutionLocals(input: {
     runtimeScopeId?: string;
     elementId?: string;
     elementInstanceKey?: string;
+    /** The caller's variable records, carried through nested Fn calls. */
+    callerLocals?: Record<string, unknown>;
     /** See {@link BlueprintVariableObserver}; only a value binding's evaluation passes one. */
     observer?: BlueprintVariableObserver;
 }): Record<string, unknown> {
@@ -172,6 +197,16 @@ export function acquireBlueprintExecutionLocals(input: {
 
     const out: Record<string, unknown> = {};
     const storesByBlueprintId = new Map<string, { key: string; record: Record<string, unknown> }>();
+    const inherited = (input.callerLocals as { [WIDGET_RECORDS]?: WidgetRecordSnapshot } | undefined)?.[WIDGET_RECORDS];
+    let widgetRecords: Map<string, Record<string, unknown>> | undefined;
+    const acquire = (key: string, bp: Blueprint) => {
+        const record = inherited?.get(key) ?? acquireVariableStore(key, bp);
+        if (bp.owner.kind === "widgetMain" || bp.owner.kind === "componentWidgetMain") {
+            widgetRecords ??= new Map(inherited);
+            widgetRecords.set(key, record);
+        }
+        return record;
+    };
     const options = buildAccessibleBlueprintVariableOptions({
         doc: input.blueprintDocument,
         currentBlueprintId: input.currentBlueprintId,
@@ -189,8 +224,18 @@ export function acquireBlueprintExecutionLocals(input: {
     const currentKey = blueprintVariableStoreKey(current, input.runtimeScopeId, input.elementInstanceKey);
     const currentRecord = current.owner.kind === "storyAction"
         ? defaultLocalsFromBlueprint(current)
-        : acquireVariableStore(currentKey, current);
+        : acquire(currentKey, current);
     storesByBlueprintId.set(input.currentBlueprintId, { key: currentKey, record: currentRecord });
+    if (current.owner.kind === "widgetValue") {
+        const ownerKey = encodeBlueprintOwnerKey({
+            kind: "widgetMain", surfaceId: current.owner.surfaceId, elementId: current.owner.elementId,
+        });
+        const ownerId = input.blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
+        const owner = ownerId ? input.blueprintDocument.blueprints[ownerId] : undefined;
+        if (owner?.owner.kind === "widgetMain") {
+            acquire(blueprintVariableStoreKey(owner, input.runtimeScopeId, input.elementInstanceKey), owner);
+        }
+    }
     Object.defineProperty(out, BLUEPRINT_MEMO_RECORD_KEY, {
         enumerable: false,
         configurable: true,
@@ -205,7 +250,7 @@ export function acquireBlueprintExecutionLocals(input: {
         let variableStore = storesByBlueprintId.get(option.blueprintId);
         if (!variableStore) {
             const key = blueprintVariableStoreKey(bp, input.runtimeScopeId, input.elementInstanceKey);
-            variableStore = { key, record: acquireVariableStore(key, bp) };
+            variableStore = { key, record: acquire(key, bp) };
             storesByBlueprintId.set(option.blueprintId, variableStore);
         }
         const explicitKey = createExplicitBlueprintVariableRef(option.blueprintId, option.variableId);
@@ -213,6 +258,12 @@ export function acquireBlueprintExecutionLocals(input: {
         if (option.blueprintId === input.currentBlueprintId) {
             defineVariableAccessor(out, option.variableId, variableStore.record, variableStore.key, option.variableId, input.observer);
         }
+    }
+
+    // Each invocation owns its snapshot. A nested Fn inherits its caller's drawings and adds its
+    // own, while another invocation can independently acquire a newer drawing with the same key.
+    if (widgetRecords || inherited) {
+        Object.defineProperty(out, WIDGET_RECORDS, { value: widgetRecords ?? inherited });
     }
 
     return out;
@@ -233,6 +284,116 @@ export function resolveBlueprintLocalValue(input: {
     }
     const key = parsed.explicit ? createExplicitBlueprintVariableRef(parsed.blueprintId, parsed.variableId) : parsed.variableId;
     return input.blueprintLocals[key];
+}
+
+type WidgetLocalsOwner = {
+    surfaceId: string;
+    elementId: string;
+    blueprintId: string;
+    runtimeScopeId?: string;
+    componentId?: string;
+    instanceKey?: string;
+};
+
+type WidgetLocalsLifetime = {
+    holders: number;
+    pendingUnmounts: number;
+    record?: Record<string, unknown>;
+};
+const widgetLocalsLifetimes = new Map<string, WidgetLocalsLifetime>();
+
+function forgetVariableStore(key: string): void {
+    if (store.delete(key)) {
+        announceBlueprintStateWrite(blueprintVariableRecordStateKey(key));
+    }
+}
+
+/** Release records created by calls to drawings that have no lifecycle holder in this scope. */
+export function releaseUnheldBlueprintWidgetLocalsForScope(runtimeScopeId: string): void {
+    const prefixes = [`widget\0${runtimeScopeId}\0`, `componentWidgetScope\0${runtimeScopeId}\0`];
+    for (const key of store.keys()) {
+        if (prefixes.some(prefix => key.startsWith(prefix)) && !widgetLocalsLifetimes.has(key)) {
+            forgetVariableStore(key);
+        }
+    }
+}
+
+/**
+ * Hold one drawing's locals while it is mounted and while its Unmount handler is running.
+ *
+ * A scope may draw the same widget more than once, so the last holder releases it. A drawing that
+ * mounts again while an older Unmount is waiting starts a new record; the old handler retains the
+ * record it already acquired and its eventual completion cannot release the new one.
+ */
+export function holdBlueprintWidgetLocals(owner: WidgetLocalsOwner): {
+    retire: () => void;
+    runUnmount: (dispatch: () => Promise<void> | undefined) => Promise<void> | undefined;
+    release: (unmount?: Promise<unknown>) => void;
+} {
+    const { surfaceId, elementId, blueprintId, runtimeScopeId, componentId, instanceKey } = owner;
+    const key = componentId
+        ? componentWidgetVariableStoreKey(componentId, elementId, blueprintId, runtimeScopeId, instanceKey)
+        : widgetVariableStoreKey(runtimeScopeId ?? surfaceId, elementId, blueprintId, instanceKey);
+    let lifetime = widgetLocalsLifetimes.get(key);
+    if (!lifetime || lifetime.holders === 0) {
+        if (lifetime) {
+            lifetime.record = store.get(key);
+            forgetVariableStore(key);
+        }
+        lifetime = { holders: 0, pendingUnmounts: 0 };
+        widgetLocalsLifetimes.set(key, lifetime);
+    }
+    const held = lifetime;
+    held.holders += 1;
+    let retired = false;
+    let released = false;
+    const retire = () => {
+        if (!retired) {
+            retired = true;
+            held.holders -= 1;
+            held.pendingUnmounts += 1;
+        }
+    };
+    return {
+        retire,
+        runUnmount: dispatch => {
+            if (widgetLocalsLifetimes.get(key) === held) {
+                return dispatch();
+            }
+            const alreadyDispatching = dispatchRecords.has(key);
+            const previous = dispatchRecords.get(key);
+            dispatchRecords.set(key, held.record);
+            try {
+                return dispatch();
+            } finally {
+                held.record = dispatchRecords.get(key);
+                if (alreadyDispatching) {
+                    dispatchRecords.set(key, previous);
+                } else {
+                    dispatchRecords.delete(key);
+                }
+            }
+        },
+        release: unmount => {
+            if (released) {
+                return;
+            }
+            released = true;
+            retire();
+            const finish = () => {
+                held.pendingUnmounts -= 1;
+                if (held.holders === 0 && held.pendingUnmounts === 0 && widgetLocalsLifetimes.get(key) === held) {
+                    widgetLocalsLifetimes.delete(key);
+                    forgetVariableStore(key);
+                }
+            };
+            if (unmount) {
+                void unmount.then(finish, finish);
+            } else {
+                finish();
+            }
+        },
+    };
 }
 
 /**
@@ -256,15 +417,14 @@ export function releaseBlueprintWidgetLocals(
 ): void {
     const prefixes = [`widget\0${runtimeScopeId ?? surfaceId}\0${elementId}\0`];
     if (options?.componentId) {
-        prefixes.push(`componentWidget\0${options.componentId}\0${elementId}\0`);
+        prefixes.push(runtimeScopeId
+            ? `componentWidgetScope\0${runtimeScopeId}\0${options.componentId}\0${elementId}\0`
+            : `componentWidget\0${options.componentId}\0${elementId}\0`);
     }
     const suffix = `\0${blueprintId}`;
     for (const key of [...store.keys()]) {
         if (key.endsWith(suffix) && prefixes.some(prefix => key.startsWith(prefix))) {
-            store.delete(key);
-            // The next read gets the defaults back, which is a write as far as anyone showing one of
-            // these variables is concerned.
-            announceBlueprintStateWrite(blueprintVariableRecordStateKey(key));
+            forgetVariableStore(key);
         }
     }
 }

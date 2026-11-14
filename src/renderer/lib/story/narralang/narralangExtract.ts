@@ -279,6 +279,9 @@ function transformSlots(
     const slots: NarralangSlots = {};
     const placement = placementWordFor(ref.to?.position);
     if (placement) {
+        if (ref.clipReveal || Object.entries(ref.to ?? {}).some(([key, value]) => key !== "position" && value !== undefined)) {
+            ctx.report(blockId, "customTransform");
+        }
         slots.placement = asWord(placement);
     } else if (!isEmptyStoryTransformProps(ref.to) || ref.clipReveal) {
         const word = transitionWordForTransform(context, ref);
@@ -995,6 +998,14 @@ function displayableShape(
     // same classification the command line's `t=` reader does - the dialect did not change, only what
     // it reads back from.
     const effect = displayableEffectShape(ctx, block, payload, subject);
+    if (effect) {
+        const ref = payload.transform;
+        const channels = Object.values(ref?.to ?? {}).filter(value => value !== undefined).length
+            + (ref?.clipReveal ? 1 : 0);
+        if (channels > 1) {
+            ctx.report(block.id, "customTransform");
+        }
+    }
     return effect ?? {
         form: "statement",
         verb: "displayableTransform",

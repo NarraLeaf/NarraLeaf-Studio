@@ -96,6 +96,8 @@ export class BlueprintPersistenceSetValueHandler extends IPCHandler<IPCEventType
             const store = createStore(window, await requireWindowProjectStore(window, data.projectRef));
             if (data.value === undefined) {
                 store.removeItem(data.key);
+            } else if (data.key === "constructor" || data.key === "prototype") {
+                store.setReservedLiteralItem(data.key, data.value);
             } else {
                 store.setItem(data.key, data.value);
             }

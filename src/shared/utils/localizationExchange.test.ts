@@ -248,6 +248,40 @@ describe("xliff specifics", () => {
         expect(parsed.rows[0].target).toBe(" leading space is mine ");
     });
 
+    it("preserves leading and trailing newlines in exported text and notes", () => {
+        const original = row({
+            source: "\nFirst ‹1›line‹/1›\n",
+            target: "\r\n译文\r\n",
+            context: "\nScene\n",
+            note: "\nNote\n",
+            status: "translated",
+        });
+        const text = serializeTranslationExchange("xliff", document([original]));
+
+        expect(parse(text).rows).toEqual([original]);
+    });
+
+    it("inherits xml:space and honours an element's default override", () => {
+        const parsed = parse(`<xliff xml:space="preserve"><file><body>
+  <trans-unit id="t-1">
+    <source>\n  Keep this newline\n</source>
+    <target xml:space="default">\n  Trim the indentation\n</target>
+  </trans-unit>
+</body></file></xliff>`);
+        expect(parsed.rows[0]).toMatchObject({
+            source: "\n  Keep this newline\n",
+            target: "Trim the indentation",
+        });
+    });
+
+    it("keeps unreadable character references without discarding the other translations", () => {
+        const parsed = parse(`<xliff><file><body>
+  <trans-unit id="a"><source>A</source><target>&#x110000; &constructor;</target></trans-unit>
+  <trans-unit id="b"><source>B</source><target>Kept</target></trans-unit>
+</body></file></xliff>`);
+        expect(parsed.rows.map(({ target }) => target)).toEqual(["&#x110000; &constructor;", "Kept"]);
+    });
+
     it("refuses a file that is not XLIFF, and says so", () => {
         expect(parse("<html><body>nope</body></html>").problems).toEqual([{ code: "notFormat", format: "xliff" }]);
         expect(parse("not xml at all").problems).toEqual([{ code: "notFormat", format: "xliff" }]);
@@ -271,6 +305,19 @@ describe("po specifics", () => {
     it("writes paragraphs in the multi-line form PO editors display", () => {
         const text = serializeTranslationExchange("po", document([row({ unitId: "t-1", source: "one\ntwo", target: "" })]));
         expect(text).toContain("msgid \"\"\n\"one\\n\"\n\"two\"\n");
+    });
+
+    it("preserves indentation and trailing spaces in context and translator notes", () => {
+        const original = row({
+            source: "Hello",
+            target: "Hi",
+            status: "translated",
+            context: "  Scene\n    Direction  ",
+            note: "  First take\n    Speak softly  ",
+        });
+        const text = serializeTranslationExchange("po", document([original]));
+
+        expect(parse(text).rows).toEqual([original]);
     });
 
     it("reads a file from another tool: no status comment, fuzzy, obsolete entries", () => {
@@ -327,6 +374,13 @@ describe("json specifics", () => {
         const text = serializeTranslationExchange("json", document([row({ unitId: "t-1", source: "Hi", target: "嗨", status: "translated" })]));
         expect(JSON.parse(text)).toMatchObject({ format: "narraleaf-translation", sourceLocale: "en", targetLocale: "zh-CN", project: "My Game" });
         expect(parse(text).rows).toEqual([row({ unitId: "t-1", source: "Hi", target: "嗨", status: "translated" })]);
+    });
+
+    it("round-trips every nonempty translation unit id", () => {
+        const rows = [row({ unitId: "__proto__", source: "Hello", target: "こんにちは" })];
+        const text = serializeTranslationExchange("json", document(rows));
+        expect(Object.keys(JSON.parse(text).units)).toEqual(["__proto__"]);
+        expect(parse(text).rows).toEqual(rows);
     });
 
     it("reads a bare id-to-translation map", () => {

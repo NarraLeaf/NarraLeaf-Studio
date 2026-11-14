@@ -174,4 +174,16 @@ describe("readSaveMetadataFields", () => {
             expect(readSaveMetadataFields(fields, stored)).toEqual({ f1: "Prologue", f2: 0 });
         }
     });
+
+    it("uses the default for a field named Constructor when an older save has no such key", () => {
+        const constructorField = field({
+            id: "f-constructor",
+            name: "Constructor",
+            storageKey: deriveSaveSchemaStorageKey("Constructor", "f-constructor", []),
+            defaultValue: "Prologue",
+        });
+        expect(readSaveMetadataFields([constructorField], {})).toEqual({ "f-constructor": "Prologue" });
+        expect(readSaveMetadataFields([constructorField], { constructor: "Chapter 2" }))
+            .toEqual({ "f-constructor": "Chapter 2" });
+    });
 });

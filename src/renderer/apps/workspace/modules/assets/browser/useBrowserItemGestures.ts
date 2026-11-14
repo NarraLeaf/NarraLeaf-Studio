@@ -42,7 +42,6 @@ export function useBrowserItemGestures({
         handleDragStart,
         handleAssetSetDragStart,
         handleDragEnd,
-        isMultiSelectMode,
     } = useAssetsPanelContext();
 
     // Left to bubble: the panel takes focus from the press (which is what scopes its shortcuts), and
@@ -56,7 +55,7 @@ export function useBrowserItemGestures({
             case "asset": {
                 const multi = event.ctrlKey || event.metaKey || event.shiftKey;
                 handleItemSelect(item.asset.id, false, event);
-                handleAssetClick(item.asset, multi || isMultiSelectMode);
+                handleAssetClick(item.asset, multi);
                 return;
             }
             case "set":
@@ -65,7 +64,7 @@ export function useBrowserItemGestures({
             default:
                 return;
         }
-    }, [handleAssetClick, handleAssetSetSelect, handleGroupFocus, handleItemSelect, isMultiSelectMode]);
+    }, [handleAssetClick, handleAssetSetSelect, handleGroupFocus, handleItemSelect]);
 
     const onOpen = useCallback((item: AssetBrowserItem) => {
         switch (item.kind) {

@@ -44,6 +44,8 @@ import {
 } from "@/lib/ui-editor/runtime/navigation/focusNavigation";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import type { KeyboardOwner } from "./keyboardOwner";
+import type { LayerStackController } from "./layers/LayerStackController";
+import { resolveCompositeInput } from "./layers/compositeInput";
 
 function ownerSurfaces(owner: KeyboardOwner): readonly AmbientSurfaceTarget[] {
     if ("stage" in owner) {
@@ -76,6 +78,36 @@ export type NavigationBack = {
     canGoBack: () => boolean;
     goBack: () => void;
 };
+
+/** Back follows the composite's keyboard owner, then the page stack. */
+export function createNavigationBack(input: {
+    layers: Pick<LayerStackController, "getState" | "hide">;
+    pageStack: () => readonly { surfaceId: string }[];
+    isDrawable: (surfaceId: string) => boolean;
+    goBackPage: () => Promise<void>;
+}): NavigationBack {
+    const topModalLayer = () => {
+        const layers = input.layers.getState().filter(layer => input.isDrawable(layer.surfaceId));
+        const owner = resolveCompositeInput({ pageEntries: [], activePageKey: null, layers }).keyboardOwnerKey;
+        return layers.find(layer => layer.key === owner) ?? null;
+    };
+    return {
+        canGoBack: () => {
+            const layer = topModalLayer();
+            if (layer) return layer.dismissible;
+            const stack = input.pageStack();
+            return stack.length > 1 && stack[stack.length - 1]!.surfaceId !== stack[0]!.surfaceId;
+        },
+        goBack: () => {
+            const layer = topModalLayer();
+            if (layer) {
+                if (layer.dismissible) input.layers.hide(layer.key);
+                return;
+            }
+            void input.goBackPage().catch(() => undefined);
+        },
+    };
+}
 
 /**
  * Whether Back has somewhere to go from what holds the keys. Never from the stage, where the story

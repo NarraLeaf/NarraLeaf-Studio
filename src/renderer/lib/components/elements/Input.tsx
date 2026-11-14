@@ -218,19 +218,22 @@ export function InputGroup({
     className?: string;
     children: React.ReactNode;
 }) {
+    const generatedId = React.useId();
     const inputVariant = error ? "error" : "default";
+    const child = React.isValidElement<{ id?: string; variant?: InputVariant }>(children) ? children : null;
+    const inputId = child?.props.id ?? generatedId;
 
     return (
         <div className={cn("space-y-1", className)}>
             {label && (
-                <label className="block text-sm font-medium text-fg">
+                <label htmlFor={inputId} className="block text-sm font-medium text-fg">
                     {label}
                     {required && <span className="text-danger ml-1">*</span>}
                 </label>
             )}
             <div>
-                {React.isValidElement(children)
-                    ? React.cloneElement(children, { variant: inputVariant } as any)
+                {child
+                    ? React.cloneElement(child, { variant: inputVariant, ...(label ? { id: inputId } : {}) })
                     : children
                 }
             </div>

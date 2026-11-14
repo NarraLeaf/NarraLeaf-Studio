@@ -133,6 +133,39 @@ afterEach(async () => {
 });
 
 describe("a story launch while Dev Mode is already open", () => {
+    it("stops a queued launch during application shutdown", async () => {
+        const launch = devMode.launch(root, SURFACE_ENTRY);
+
+        await devMode.stopAll();
+        await launch;
+
+        expect(devMode.getStatus(root)).toBe("idle");
+        expect(launchedWindows).toHaveLength(0);
+    });
+
+    it("stops all launches queued before shutdown and permits a later launch", async () => {
+        const first = devMode.launch(root, SURFACE_ENTRY);
+        const second = devMode.launch(root, STORY_ENTRY);
+        const stopped = devMode.stopAll();
+        await Promise.all([first, second, stopped]);
+
+        expect(launchedWindows).toHaveLength(0);
+        await expect(devMode.launch(root, SURFACE_ENTRY)).resolves.toBe("running");
+        expect(launchedWindows).toHaveLength(1);
+    });
+
+    it("keeps launch and stop requests ordered when more than one stop is queued", async () => {
+        const beforeFirstStop = devMode.launch(root, SURFACE_ENTRY);
+        const firstStop = devMode.stop(root);
+        const beforeSecondStop = devMode.launch(root, STORY_ENTRY);
+        const secondStop = devMode.stop(root);
+        const afterSecondStop = devMode.launch(root, SURFACE_ENTRY);
+
+        await Promise.all([beforeFirstStop, firstStop, beforeSecondStop, secondStop, afterSecondStop]);
+        expect(launchedWindows).toHaveLength(1);
+        expect(devMode.getStatus(root)).toBe("running");
+    });
+
     it("keeps the window it has instead of building another", async () => {
         await expect(devMode.launch(root, SURFACE_ENTRY)).resolves.toBe("running");
         expect(launchedWindows).toHaveLength(1);

@@ -1,5 +1,6 @@
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { fnv1a64BytesHex } from "@shared/utils/contentHash";
+import { pruneUndefined } from "./digestValue";
 import type {
     Blueprint,
     BlueprintDocument,
@@ -675,22 +676,6 @@ function sameJsonValue(left: unknown, right: unknown): boolean {
 
 function definedKeys(value: Record<string, unknown>): string[] {
     return Object.keys(value).filter(key => value[key] !== undefined);
-}
-
-function pruneUndefined(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(pruneUndefined);
-    }
-    if (value === null || typeof value !== "object") {
-        return value;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        if (entry !== undefined) {
-            out[key] = pruneUndefined(entry);
-        }
-    }
-    return out;
 }
 
 function hash(content: unknown): string {

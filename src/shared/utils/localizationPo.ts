@@ -215,7 +215,7 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
             currentKey = null;
             return;
         }
-        const statusLine = entry.extracted.find(line => line.startsWith(STATUS_COMMENT));
+        const statusLine = entry.extracted.find(line => line.trimStart().startsWith(STATUS_COMMENT))?.trimStart();
         const target = values.msgstr ?? "";
         const status = statusLine
             ? statusLine.slice(STATUS_COMMENT.length).trim().toLowerCase()
@@ -223,7 +223,7 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
                 : target ? "translated" : "";
         rows.push({
             unitId,
-            context: entry.extracted.filter(line => !line.startsWith(STATUS_COMMENT)).join("\n"),
+            context: entry.extracted.filter(line => !line.trimStart().startsWith(STATUS_COMMENT)).join("\n"),
             source: values.msgid ?? "",
             target,
             status,
@@ -251,14 +251,15 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
                 // references it any more.
                 continue;
             }
+            const comment = rawLine.trimStart();
             if (line.startsWith("#.")) {
-                entry.extracted.push(line.slice(2).trim());
+                entry.extracted.push(comment.slice(2).replace(/^ /, ""));
             } else if (line.startsWith("#:")) {
                 entry.references.push(...line.slice(2).trim().split(/\s+/).filter(Boolean));
             } else if (line.startsWith("#,")) {
                 entry.flags.push(...line.slice(2).split(",").map(flag => flag.trim()).filter(Boolean));
             } else if (!line.startsWith("#|")) {
-                entry.notes.push(line.slice(1).trim());
+                entry.notes.push(comment.slice(1).replace(/^ /, ""));
             }
             continue;
         }

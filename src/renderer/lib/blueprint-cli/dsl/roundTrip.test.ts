@@ -72,6 +72,22 @@ describe("blueprint text format round trip", () => {
         expect(blueprints.length).toBeGreaterThan(100);
     });
 
+    it("reads JSON string escapes in a variable and preserves control characters through show and apply", () => {
+        const source = String.raw`blueprint B owner=globalMain id=bp
+    var greeting type=string default="\u4f60\u597d\b\f" id=greeting
+`;
+        const parsed = parseBlueprintText(source);
+        expect(parsed.diagnostics).toEqual([]);
+        const first = compileBlueprintDocument(parsed.document).blueprints[0];
+        expect(first.members?.variables.greeting.defaultValue).toBe("你好\b\f");
+
+        const printed = printBlueprint(first);
+        const reprinted = parseBlueprintText(printed);
+        expect(reprinted.diagnostics).toEqual([]);
+        const second = compileBlueprintDocument(reprinted.document).blueprints[0];
+        expect(second.members?.variables.greeting.defaultValue).toBe("你好\b\f");
+    });
+
     it("compiles every printed blueprint without an error", () => {
         const failures: string[] = [];
         for (const blueprint of blueprints) {

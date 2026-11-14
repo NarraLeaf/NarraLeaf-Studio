@@ -70,7 +70,7 @@ export function useAssetBlobUrl<T extends AssetType>(
                 urlRef.current = null;
             }
         };
-    }, [context, asset?.id, asset?.hash]);
+    }, [context, asset?.id, asset?.hash, mimeType]);
 
     return state;
 }

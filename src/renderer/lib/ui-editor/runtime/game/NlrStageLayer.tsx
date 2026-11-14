@@ -24,14 +24,32 @@ export type NlrStageSession = {
 const devToolsWithStaticId = DevTools as typeof DevTools & { setStaticId?: unknown };
 const STAGE_VISUAL_READY_TIMEOUT_MS = 1500;
 
-function nextAnimationFrame(): Promise<void> {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+function nextAnimationFrame(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+        return Promise.resolve();
+    }
+    return new Promise(resolve => {
+        const done = () => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+        };
+        const frame = requestAnimationFrame(done);
+        const abort = () => {
+            cancelAnimationFrame(frame);
+            done();
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+    });
 }
 
-export async function waitForPaintFrames(count: number): Promise<void> {
-    for (let i = 0; i < count; i += 1) {
-        await nextAnimationFrame();
+async function waitForFrames(count: number, signal?: AbortSignal): Promise<void> {
+    for (let i = 0; i < count && !signal?.aborted; i += 1) {
+        await nextAnimationFrame(signal);
     }
+}
+
+export function waitForPaintFrames(count: number): Promise<void> {
+    return waitForFrames(count);
 }
 
 function extractCssImageUrls(value: string): string[] {
@@ -62,31 +80,42 @@ function collectCssImageUrls(root: HTMLElement): string[] {
     return Array.from(urls);
 }
 
-async function waitForImageElement(image: HTMLImageElement): Promise<void> {
+async function waitForImageElement(image: HTMLImageElement, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
     if (!image.complete) {
         await new Promise<void>(resolve => {
             const done = () => {
                 image.removeEventListener("load", done);
                 image.removeEventListener("error", done);
+                signal.removeEventListener("abort", done);
                 resolve();
             };
             image.addEventListener("load", done, { once: true });
             image.addEventListener("error", done, { once: true });
+            signal.addEventListener("abort", done, { once: true });
         });
     }
-    if (image.complete && image.naturalWidth > 0) {
+    if (!signal.aborted && image.complete && image.naturalWidth > 0) {
         await image.decode().catch(() => undefined);
     }
 }
 
-async function waitForImageUrl(url: string): Promise<void> {
+async function waitForImageUrl(url: string, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
     const image = new window.Image();
     await new Promise<void>(resolve => {
-        image.onload = () => resolve();
-        image.onerror = () => resolve();
+        const done = () => {
+            image.onload = null;
+            image.onerror = null;
+            signal.removeEventListener("abort", done);
+            resolve();
+        };
+        image.onload = done;
+        image.onerror = done;
+        signal.addEventListener("abort", done, { once: true });
         image.src = url;
     });
-    if (image.complete && image.naturalWidth > 0) {
+    if (!signal.aborted && image.complete && image.naturalWidth > 0) {
         await image.decode().catch(() => undefined);
     }
 }
@@ -155,10 +184,10 @@ function isPaintingOnStage(image: HTMLImageElement, root: HTMLElement): boolean 
  * still up. Once anything on the stage is loaded and actually painting there is something worth
  * revealing, so it goes, still-changing or not.
  */
-async function waitForStageOpeningFrame(root: HTMLElement): Promise<void> {
+async function waitForStageOpeningFrame(root: HTMLElement, signal: AbortSignal): Promise<void> {
     let previous: string | null = null;
     let stable = 0;
-    for (;;) {
+    while (!signal.aborted) {
         const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
         const signature = images
             .map(image => `${image.currentSrc || image.src}|${image.complete ? "1" : "0"}`)
@@ -171,17 +200,18 @@ async function waitForStageOpeningFrame(root: HTMLElement): Promise<void> {
         if (stable === 0 && images.some(image => isPaintingOnStage(image, root))) {
             return;
         }
-        await nextAnimationFrame();
+        await nextAnimationFrame(signal);
     }
 }
 
-async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promise<void> {
+async function waitForStageVisualReady(root: HTMLElement, warm: boolean, signal: AbortSignal): Promise<void> {
     // One frame so React has committed the scene and the elements/backgrounds below are the ones
     // that will actually paint.
-    await waitForPaintFrames(1);
+    await waitForFrames(1, signal);
     // ...and then as many more as the scene needs to put its opening frame up, because the
     // first commit is not the last one (see STAGE_SETTLE_FRAMES).
-    await waitForStageOpeningFrame(root);
+    await waitForStageOpeningFrame(root, signal);
+    if (signal.aborted) return;
     const imageElements = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
     // The CSS sweep runs `getComputedStyle` over the entire stage subtree — a forced style recalc
     // whose whole purpose is catching sources the preloader did not know about. On a stage that was
@@ -190,8 +220,8 @@ async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promis
     // skip it there and pay only for the element awaits below.
     const cssImageUrls = warm ? [] : collectCssImageUrls(root);
     await Promise.all([
-        ...imageElements.map(waitForImageElement),
-        ...cssImageUrls.map(waitForImageUrl),
+        ...imageElements.map(image => waitForImageElement(image, signal)),
+        ...cssImageUrls.map(url => waitForImageUrl(url, signal)),
     ]);
     // Then let the decoded result reach a painted frame: `AspectScaleImage` renders at 0×0 until
     // its load handler measures the bitmap and sets state, so the reveal has to outlast that
@@ -200,7 +230,7 @@ async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promis
     // — its loads fired in the frame above, and the caller's single post-race frame covers the
     // commit. That is the whole budget after the button press: two frames.
     if (!warm) {
-        await waitForPaintFrames(2);
+        await waitForFrames(2, signal);
     }
 }
 
@@ -220,14 +250,19 @@ export async function waitForStageVisualReadyWithTimeout(
     options?: { warm?: boolean },
 ): Promise<void> {
     let timeoutId: number | null = null;
-    await Promise.race([
-        waitForStageVisualReady(root, options?.warm === true),
-        new Promise<void>(resolve => {
-            timeoutId = window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
-        }),
-    ]);
-    if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
+    const abort = new AbortController();
+    try {
+        await Promise.race([
+            waitForStageVisualReady(root, options?.warm === true, abort.signal),
+            new Promise<void>(resolve => {
+                timeoutId = window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+        }
+        abort.abort();
     }
     await waitForPaintFrames(1);
 }

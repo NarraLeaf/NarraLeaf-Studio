@@ -85,7 +85,7 @@ export function useAutoFitFontSize<TBox extends HTMLElement, TText extends HTMLE
     const textNodeRef = useRef<TText | null>(null);
     const [fitted, setFitted] = useState<number | null>(null);
     const [boxNode, setBoxNode] = useState<TBox | null>(null);
-    const measuredBoxRef = useRef(0);
+    const measuredBoxRef = useRef<{ width: number; height: number } | null>(null);
 
     const boxRef = useCallback((node: TBox | null) => {
         boxNodeRef.current = node;
@@ -101,12 +101,14 @@ export function useAutoFitFontSize<TBox extends HTMLElement, TText extends HTMLE
         if (!box || !text) {
             return;
         }
-        const availableBlock = vertical ? box.clientWidth : box.clientHeight;
-        const availableInline = vertical ? box.clientHeight : box.clientWidth;
+        const width = box.clientWidth;
+        const height = box.clientHeight;
+        measuredBoxRef.current = { width, height };
+        const availableBlock = vertical ? width : height;
+        const availableInline = vertical ? height : width;
         if (availableBlock <= 0 || availableInline <= 0) {
             return;
         }
-        measuredBoxRef.current = availableBlock;
         const ceiling = fontSize;
         const floor = clampFloor(minFontSize, ceiling);
         const restore = text.style.fontSize;
@@ -138,8 +140,10 @@ export function useAutoFitFontSize<TBox extends HTMLElement, TText extends HTMLE
             typeof ResizeObserver === "undefined"
                 ? null
                 : new ResizeObserver(() => {
-                      const current = vertical ? boxNode.clientWidth : boxNode.clientHeight;
-                      if (Math.abs(current - measuredBoxRef.current) > FIT_TOLERANCE_PX) {
+                      const measured = measuredBoxRef.current;
+                      if (!measured ||
+                          Math.abs(boxNode.clientWidth - measured.width) > FIT_TOLERANCE_PX ||
+                          Math.abs(boxNode.clientHeight - measured.height) > FIT_TOLERANCE_PX) {
                           measure();
                       }
                   });

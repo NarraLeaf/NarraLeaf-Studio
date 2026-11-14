@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { precompressWebSite } from "./precompressWebSite";
 
 let workDir: string;
@@ -126,5 +126,46 @@ describe("precompressWebSite", () => {
         await write("assets/sprite.webp", noise());
 
         await expect(precompressWebSite(sourceDir, targetDir)).resolves.toMatchObject({ files: 0 });
+    });
+
+    it("waits for active files to finish before reporting a failure", async () => {
+        const failing = path.join(sourceDir, "failing.js");
+        const slow = path.join(sourceDir, "slow.js");
+        await write("failing.js", text());
+        await write("slow.js", text());
+
+        let releaseSlow!: () => void;
+        let slowStarted!: () => void;
+        let failureRaised!: () => void;
+        const slowGate = new Promise<void>(resolve => { releaseSlow = resolve; });
+        const started = new Promise<void>(resolve => { slowStarted = resolve; });
+        const failed = new Promise<void>(resolve => { failureRaised = resolve; });
+        const readFile = fs.readFile.bind(fs);
+        const spy = vi.spyOn(fs, "readFile").mockImplementation((async (file: Parameters<typeof fs.readFile>[0]) => {
+            if (file === slow) {
+                slowStarted();
+                await slowGate;
+            } else if (file === failing) {
+                await started;
+                failureRaised();
+                throw new Error("could not read file");
+            }
+            return readFile(file);
+        }) as typeof fs.readFile);
+
+        const operation = precompressWebSite(sourceDir, targetDir);
+        let settled = false;
+        const observed = operation.then(() => { settled = true; }, () => { settled = true; });
+        try {
+            await failed;
+            await new Promise(resolve => setImmediate(resolve));
+            expect(settled).toBe(false);
+        } finally {
+            releaseSlow();
+            await observed;
+            spy.mockRestore();
+        }
+        await expect(operation).rejects.toThrow("could not read file");
+        await expect(fs.stat(path.join(targetDir, "slow.js.br"))).resolves.toBeTruthy();
     });
 });

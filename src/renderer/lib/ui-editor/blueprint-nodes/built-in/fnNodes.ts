@@ -81,7 +81,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
             ],
         },
         inspectorParams: [{ key: BLUEPRINT_NODE_PARAM_FN_NAME, label: "Fn Name", kind: "string" }],
-        // Args are seeded into blueprintLocals by the dispatcher before execution starts.
+        // The dispatcher supplies argument values to this invocation's entry frame.
         execute: () => ({ nextPort: "then" }),
     },
     {
@@ -179,6 +179,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
                 callerListItemScope: ctx.listItemScope,
                 signal: ctx.signal,
                 callerExecutionId: ctx.trace?.executionId,
+                callerLocals: ctx.blueprintLocals,
                 valueExecution: valueTrackingOf(ctx),
             });
             return { outputValues: result.returns, nextPort: "next" };

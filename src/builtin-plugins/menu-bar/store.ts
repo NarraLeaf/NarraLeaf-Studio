@@ -88,8 +88,8 @@ function mapItems(
  * lower half of one row and the upper half of the next are the same place, and an index is the only
  * way to say that once. See the drop model the whole app shares.
  *
- * The index is read against the list with the dragged row already taken out, which is what makes
- * dragging downwards land where the line was drawn rather than one row short.
+ * The index names a gap in the original list, including the dragged row. Removing that row shifts
+ * later gaps back by one, so a downward drop lands where the line was drawn.
  */
 function moveToGapWithin(items: MenuBarItem[], path: MenuBarPath, gapIndex: number): MenuBarItem[] {
     const [head, ...rest] = path;
@@ -103,7 +103,10 @@ function moveToGapWithin(items: MenuBarItem[], path: MenuBarPath, gapIndex: numb
     return reorderToGap(items, head ?? "", gapIndex);
 }
 
-/** The list with `id` lifted out and put back at `gapIndex`, or the same list when nothing moves. */
+/**
+ * The list with `id` moved to the specified gap in the original list, or the same list when nothing
+ * moves.
+ */
 function reorderToGap<T extends { id: string }>(items: T[], id: string, gapIndex: number): T[] {
     const from = items.findIndex(item => item.id === id);
     if (from < 0) {

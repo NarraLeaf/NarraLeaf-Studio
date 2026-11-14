@@ -162,14 +162,14 @@ function teardownHarness(options: TeardownOptions = {}) {
 }
 
 describe("createCrashTeardown", () => {
-    it("writes the stores out, then tells the player once, then closes the game with the crash code", async () => {
+    it("waits for pending saves, then tells the player once and closes with the crash code", async () => {
         const probe = teardownHarness();
         probe.end("boom");
         await probe.exited;
 
         expect(probe.order).toEqual([
             "flush",
-            `log:[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); what was waiting to be saved was written first.`,
+            `log:[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); finished waiting for pending save operations.`,
             "box:boom",
             `exit:${GAME_EXIT_CODES.crashed}`,
         ]);

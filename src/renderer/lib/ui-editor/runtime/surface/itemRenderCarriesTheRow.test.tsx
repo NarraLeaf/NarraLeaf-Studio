@@ -10,7 +10,7 @@
  *
  * Comments in English per project convention.
  */
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
@@ -54,7 +54,7 @@ const document: UIDocument = {
             itemStructId: "entry",
             itemKeyFieldId: "f-id",
         }),
-        tile: element("tile", "nl.box", "grid", [], { listSlot: "itemTemplate" }),
+        tile: element("tile", "nl.container", "grid", [], { listSlot: "itemTemplate" }),
     },
 };
 
@@ -74,24 +74,34 @@ function mount(dispatched: Dispatched[]) {
             hostApi: {},
         },
     } as unknown as UIHostAdapter;
-    return render(
+    const rendererRegistry = new ElementRendererRegistry([
+        { type: "nl.root", render: props => <>{props.children}</> },
+        { type: "nl.container", render: () => <div /> },
+        { type: "nl.list", render: props => <ListRenderer {...props} /> },
+    ]);
+    const tree = (currentDocument: UIDocument) => (
         <WidgetRuntimeStateProvider>
             <SurfaceElementTree
-                document={document}
+                document={currentDocument}
                 surface={surface}
-                rootElement={document.elements.root!}
-                rendererRegistry={
-                    new ElementRendererRegistry([
-                        { type: "nl.root", render: props => <>{props.children}</> },
-                        { type: "nl.box", render: () => <div /> },
-                        { type: "nl.list", render: props => <ListRenderer {...props} /> },
-                    ])
-                }
+                rootElement={currentDocument.elements.root!}
+                rendererRegistry={rendererRegistry}
                 hostAdapter={hostAdapter}
                 editorChrome={false}
             />
-        </WidgetRuntimeStateProvider>,
+        </WidgetRuntimeStateProvider>
     );
+    const view = render(tree(document));
+    return {
+        ...view,
+        showItems: (items: { id: string }[]) => view.rerender(tree({
+            ...document,
+            elements: {
+                ...document.elements,
+                grid: { ...document.elements.grid!, props: { ...document.elements.grid!.props, items } },
+            },
+        })),
+    };
 }
 
 beforeAll(() => {
@@ -128,5 +138,21 @@ describe("a list's Item Render", () => {
         const render = dispatched.find(entry => entry.eventName === "itemRender" && entry.options?.listItemScope?.key === "cg-2");
         expect(render?.options?.instanceKey).toBeDefined();
         expect(render?.options?.instanceKey).toBe(click?.options?.instanceKey);
+    });
+});
+
+describe("a list row's lifecycle", () => {
+    it("sends Unmount only for the row removed after a reorder", async () => {
+        const dispatched: Dispatched[] = [];
+        const view = mount(dispatched);
+        await waitFor(() => expect(dispatched.filter(event => event.elementId === "tile" && event.eventName === "init")).toHaveLength(2));
+
+        view.showItems([{ id: "cg-2" }, { id: "cg-1" }, { id: "cg-3" }]);
+        expect(dispatched.filter(event => event.elementId === "tile" && event.eventName === "unmount")).toEqual([]);
+        await waitFor(() => expect(dispatched.filter(event => event.elementId === "tile" && event.eventName === "init")).toHaveLength(3));
+
+        view.showItems([{ id: "cg-2" }, { id: "cg-3" }]);
+        const unmounts = dispatched.filter(event => event.elementId === "tile" && event.eventName === "unmount");
+        expect(unmounts.map(event => [event.options?.listItemScope?.key, event.options?.listItemScope?.index])).toEqual([["cg-1", 1]]);
     });
 });

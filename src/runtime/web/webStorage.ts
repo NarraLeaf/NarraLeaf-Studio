@@ -11,6 +11,15 @@ const DB_VERSION = 1;
 const SAVES_STORE = "saves";
 const PERSISTENCE_STORE = "persistence";
 
+/** Treat malformed stored metadata as an unreadable save, as the desktop store does. */
+function parseStoredSaveRecord(value: unknown): DevModeSaveRecord | null {
+    try {
+        return parseRuntimeSaveRecord(value);
+    } catch {
+        return null;
+    }
+}
+
 /**
  * IndexedDB-backed saves and persistence for the web runtime shell. Mirrors
  * the desktop stores in src/runtime/main/runtimeStorage.ts through the shared
@@ -51,7 +60,7 @@ export class WebGameStorage {
     public async readSave(id: string): Promise<DevModeSaveRecord | null> {
         const normalizedId = normalizeRuntimeSaveId(id);
         const value = await this.run(SAVES_STORE, "readonly", store => store.get(normalizedId));
-        return parseRuntimeSaveRecord(value);
+        return parseStoredSaveRecord(value);
     }
 
     public async listSaveIds(): Promise<string[]> {
@@ -68,7 +77,7 @@ export class WebGameStorage {
         const values = await this.run(SAVES_STORE, "readonly", store => store.getAll());
         const headers: DevModeSaveHeader[] = [];
         for (const value of values) {
-            const record = parseRuntimeSaveRecord(value);
+            const record = parseStoredSaveRecord(value);
             if (record) {
                 headers.push(devModeSaveHeaderOf(record));
             }
@@ -96,11 +105,9 @@ export class WebGameStorage {
             const keysRequest = store.getAllKeys();
             const valuesRequest = store.getAll();
             tx.oncomplete = () => {
-                const result: Record<string, unknown> = {};
-                keysRequest.result.forEach((key, index) => {
-                    result[String(key)] = valuesRequest.result[index];
-                });
-                resolve(result);
+                resolve(Object.fromEntries(
+                    keysRequest.result.map((key, index) => [String(key), valuesRequest.result[index]]),
+                ));
             };
             tx.onabort = () => reject(tx.error ?? new Error("Persistence read aborted"));
             tx.onerror = () => reject(tx.error ?? new Error("Persistence read failed"));
@@ -126,7 +133,7 @@ export class WebGameStorage {
     }
 
     private openDb(): Promise<IDBDatabase> {
-        this.dbPromise ??= new Promise((resolve, reject) => {
+        this.dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
             const request = indexedDB.open(this.dbName, DB_VERSION);
             request.onupgradeneeded = () => {
                 const db = request.result;
@@ -139,6 +146,9 @@ export class WebGameStorage {
             };
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error ?? new Error("Failed to open the game save database"));
+        }).catch((error: unknown) => {
+            this.dbPromise = null;
+            throw error;
         });
         return this.dbPromise;
     }

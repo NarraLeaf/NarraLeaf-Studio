@@ -56,7 +56,7 @@ export function SceneHistoryPanel() {
         };
     }, [context, isInitialized]);
 
-    const [entries, setEntries] = useState<SceneHistoryEntryMeta[] | null>(null);
+    const [entries, setEntries] = useState<SceneHistoryEntryMeta[] | "error" | null>(null);
     const [filter, setFilter] = useState<KindFilter>("all");
     const [comparing, setComparing] = useState<{ id: string; snapshot: StoryScene } | null>(null);
     const [document, setDocument] = useState<StoryDocument | null>(null);
@@ -68,10 +68,20 @@ export function SceneHistoryPanel() {
             setEntries(null);
             return;
         }
+        setEntries(null);
         let alive = true;
-        const read = () => void services.history.listEntries(storyId, sceneId).then(list => {
-            if (alive) setEntries(list);
-        });
+        let latestRead = 0;
+        const read = () => {
+            const readId = ++latestRead;
+            void services.history.listEntries(storyId, sceneId).then(list => {
+                if (alive && readId === latestRead) setEntries(list);
+            }).catch(error => {
+                if (!alive || readId !== latestRead) return;
+                console.warn("[SceneHistory] could not read history", error);
+                setComparing(null);
+                setEntries("error");
+            });
+        };
         read();
         const off = services.history.onChanged(event => {
             if (event.storyId === storyId && event.sceneId === sceneId) read();
@@ -102,7 +112,7 @@ export function SceneHistoryPanel() {
     ], [t]);
 
     const shown = useMemo(
-        () => (entries ?? []).filter(entry => filter === "all" || entry.kind === filter),
+        () => (Array.isArray(entries) ? entries : []).filter(entry => filter === "all" || entry.kind === filter),
         [entries, filter],
     );
 
@@ -110,8 +120,13 @@ export function SceneHistoryPanel() {
         if (!services || !storyId || !sceneId) return;
         setBusy(true);
         try {
-            const entry = await services.history.createManualSnapshot(storyId, sceneId);
-            if (!entry) services.ui.showNotification(t("sceneHistory.unchanged"), "info");
+            const result = await services.history.createManualSnapshot(storyId, sceneId);
+            if (result.status !== "ok" && result.status !== "save-reported") {
+                services.ui.showNotification(t("assets.textEditor.actionFailed"), "error");
+            }
+        } catch (error) {
+            console.warn("[SceneHistory] could not save snapshot", error);
+            services.ui.showNotification(t("assets.textEditor.actionFailed"), "error");
         } finally {
             setBusy(false);
         }
@@ -121,10 +136,30 @@ export function SceneHistoryPanel() {
         if (!services || !storyId || !sceneId) return;
         setBusy(true);
         try {
-            const ok = await services.history.restoreSceneSnapshot(storyId, sceneId, entry.id);
-            services.ui.showNotification(t(ok ? "sceneHistory.restored" : "sceneHistory.restoreFailed"), ok ? "success" : "error");
+            const result = await services.history.restoreSceneSnapshot(storyId, sceneId, entry.id);
+            if (result.status === "ok") {
+                services.ui.showNotification(t("sceneHistory.restored"), "success");
+            } else if (result.status !== "save-reported") {
+                services.ui.showNotification(t("sceneHistory.restoreFailed"), "error");
+            }
+        } catch (error) {
+            console.warn("[SceneHistory] could not restore snapshot", error);
+            services.ui.showNotification(t("sceneHistory.restoreFailed"), "error");
         } finally {
             setBusy(false);
+        }
+    }, [services, storyId, sceneId, t]);
+
+    const deleteEntry = useCallback(async (entry: SceneHistoryEntryMeta) => {
+        if (!services || !storyId || !sceneId) return;
+        try {
+            const result = await services.history.deleteEntry(storyId, sceneId, entry.id);
+            if (result.status !== "ok" && result.status !== "save-reported") {
+                services.ui.showNotification(t("assets.textEditor.actionFailed"), "error");
+            }
+        } catch (error) {
+            console.warn("[SceneHistory] could not delete snapshot", error);
+            services.ui.showNotification(t("assets.textEditor.actionFailed"), "error");
         }
     }, [services, storyId, sceneId, t]);
 
@@ -165,6 +200,8 @@ export function SceneHistoryPanel() {
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {entries === null ? (
                     <div className="p-3 text-2xs text-fg-subtle">{t("sceneHistory.loading")}</div>
+                ) : entries === "error" ? (
+                    <div className="p-3 text-2xs text-danger">{t("workspace.shell.save.unreadableTitle", { name: t("sceneHistory.panelTitle") })}</div>
                 ) : shown.length === 0 ? (
                     <EmptyState
                         size="sm"
@@ -213,7 +250,7 @@ export function SceneHistoryPanel() {
                                             aria-label={t("sceneHistory.delete")}
                                             data-tip={t("sceneHistory.delete")}
                                             disabled={busy}
-                                            onClick={() => void services?.history.deleteEntry(storyId, sceneId, entry.id)}
+                                            onClick={() => void deleteEntry(entry)}
                                             className="hover:text-danger"
                                         >
                                             <Trash2 className="h-3.5 w-3.5" />

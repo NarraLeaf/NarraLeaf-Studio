@@ -109,8 +109,8 @@
 | Or | `blueprint.boolean.or` | **已实现**。布尔或。 |
 | Not | `blueprint.boolean.not` | **已实现**。布尔取反。 |
 | Xor | `blueprint.boolean.xor` | **已实现**。布尔异或。 |
-| Equal | `blueprint.compare.equal` | **已实现**。严格相等，使用 JavaScript `===`。 |
-| Not Equal | `blueprint.compare.notEqual` | **已实现**。严格不相等，使用 JavaScript `!==`。 |
+| Equal | `blueprint.compare.equal` | **已实现**。按内容比较值；列表逐项比较，对象按字段比较，不转换类型。 |
+| Not Equal | `blueprint.compare.notEqual` | **已实现**。按相同的值比较规则判断不相等。 |
 | Greater Than | `blueprint.compare.greaterThan` | **已实现**。判断 a 是否大于 b。 |
 | Greater Than Or Equal | `blueprint.compare.greaterThanOrEqual` | **已实现**。判断 a 是否大于等于 b。 |
 | Less Than | `blueprint.compare.lessThan` | **已实现**。判断 a 是否小于 b。 |

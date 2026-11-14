@@ -116,30 +116,26 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     /**
      * Write `document` now instead of waiting for the auto-save.
      *
-     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
-     * cancels the saver's pending write because it supersedes it, and without handing it back the
-     * change would wait for the author's next edit - while the save-failure notice, told this file
-     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
-     * written while the project opens has nothing for the saver to write, and its failure fails the
-     * open.
+     * Loaded documents use the same saver as automatic writes, so manual saves, retries and shutdown
+     * flushes wait for each other. A seed written while the project opens is written directly, since
+     * the saver has no current document yet and a failure must fail the open.
      */
     public async save(document: UIGraphDocument): Promise<void> {
-        try {
+        if (document !== this.document) {
+            await this.autoSaver.flush();
             await this.writeDocument(document);
-        } catch (error) {
-            if (this.document) {
-                this.autoSaver.schedule();
-            }
-            throw error;
+            return;
         }
+        this.autoSaver.schedule();
+        await this.autoSaver.flush();
     }
 
     private async writeDocument(document: UIGraphDocument): Promise<void> {
+        const current = this.document;
+        const revision = this.revision;
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureGraphDir();
         const documentPath = this.getDocumentPath();
-        // This write supersedes whatever the timer was going to do.
-        this.autoSaver.cancel();
         const updated: UIGraphDocument = {
             ...document,
             meta: {
@@ -160,10 +156,12 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }
-        this.document = updated;
-        this.lastSavedRevision = this.revision;
-        this.setDirty(false);
-        this.events.emit("graphsChanged", this.document);
+        this.lastSavedRevision = revision;
+        if (this.document === current && this.revision === revision) {
+            this.document = updated;
+            this.setDirty(false);
+            this.events.emit("graphsChanged", this.document);
+        }
     }
 
     public getDocument(): UIGraphDocument {

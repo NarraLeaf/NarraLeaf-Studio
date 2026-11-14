@@ -100,4 +100,47 @@ describe("blueprint widget lifecycle locals", () => {
         releaseBlueprintWidgetLocals("surface", "other", "bp");
         expect(acquireFor("el")[VARIABLE_ID]).toBe(5);
     });
+
+    it("carries a drawing's record into its calls without changing independent acquisitions", () => {
+        const bp = blueprint("bp-execution-lifetime", { kind: "widgetMain", surfaceId: "surface", elementId: "el" });
+        const doc = documentWith(bp);
+        const acquire = (instance: string, callerLocals?: Record<string, unknown>) => acquireBlueprintExecutionLocals({
+            blueprintDocument: doc,
+            currentBlueprintId: bp.id,
+            runtimeScopeId: "scope-execution-lifetime",
+            elementInstanceKey: instance,
+            callerLocals,
+        });
+        const old = acquire("row-a");
+        old[VARIABLE_ID] = 11;
+        releaseBlueprintWidgetLocals("surface", "el", bp.id, "scope-execution-lifetime");
+        acquire("row-a")[VARIABLE_ID] = 22;
+        acquire("row-b")[VARIABLE_ID] = 33;
+
+        expect(acquire("row-a", old)[VARIABLE_ID]).toBe(11);
+        expect(acquire("row-a")[VARIABLE_ID]).toBe(22);
+        expect(acquire("row-b", old)[VARIABLE_ID]).toBe(33);
+        releaseBlueprintWidgetLocals("surface", "el", bp.id, "scope-execution-lifetime");
+    });
+
+    it("lets concurrent calls from one execution hold different generations of another drawing", () => {
+        const caller = blueprint("bp-snapshot-caller", { kind: "widgetMain", surfaceId: "surface", elementId: "caller" });
+        const target = blueprint("bp-snapshot-target", { kind: "widgetMain", surfaceId: "surface", elementId: "target" });
+        const doc = documentWith(caller);
+        doc.blueprints[target.id] = target;
+        const acquire = (bp: Blueprint, callerLocals?: Record<string, unknown>) => acquireBlueprintExecutionLocals({
+            blueprintDocument: doc, currentBlueprintId: bp.id, runtimeScopeId: "scope-snapshots", callerLocals,
+        });
+        const parent = acquire(caller);
+        const old = acquire(target, parent);
+        old[VARIABLE_ID] = 11;
+        releaseBlueprintWidgetLocals("surface", "target", target.id, "scope-snapshots");
+        const current = acquire(target, parent);
+        current[VARIABLE_ID] = 22;
+
+        expect(acquire(target, old)[VARIABLE_ID]).toBe(11);
+        expect(acquire(target, current)[VARIABLE_ID]).toBe(22);
+        releaseBlueprintWidgetLocals("surface", "caller", caller.id, "scope-snapshots");
+        releaseBlueprintWidgetLocals("surface", "target", target.id, "scope-snapshots");
+    });
 });

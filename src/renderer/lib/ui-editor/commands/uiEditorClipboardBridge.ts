@@ -29,6 +29,12 @@ import {
     countUnresolvedUiFrameTargets,
     isUiPasteFromAnotherProject,
 } from "./uiEditorForeignPaste";
+import {
+    beginUiClipboardPublication,
+    finishUiClipboardPublication,
+    isCurrentUiClipboardPublication,
+    isUiClipboardPublicationPending,
+} from "./uiClipboardPublication";
 
 /**
  * The workspace half of the interface editor's clipboard.
@@ -40,8 +46,8 @@ import {
  * The services are read off the document service's own workspace context rather than threaded down
  * from the editor tab: copy, cut and paste are reached from a keybinding, a canvas menu and an
  * outline menu, and each of those would otherwise have to carry four services it has no other use
- * for. A context that cannot be read at all - the component editor's document adapter is a stand-in
- * object, not a service - degrades to the in-window clipboard, which is what that editor had.
+ * for. The component editor's document adapter forwards its project context. When a context cannot
+ * be read, copy and paste use the in-window clipboard.
  */
 
 const CLIPBOARD_KIND = "ui-elements" as const;
@@ -172,38 +178,38 @@ async function carryTextKeys(
  * Deliberately not awaited by the gesture that starts it. The in-window clipboard is already filled
  * by the time this runs, so the copy has happened; what is left is one round trip to vouch for the
  * files the selection references and one to hand the payload to the platform clipboard, and making
- * Ctrl+C wait for either would be a pause with nothing to show for it. A copy whose grant has not
- * come back yet still reaches other windows - as a payload with no manifest, which is exactly what
- * a paste already handles when the copying window has closed.
+ * Ctrl+C wait for either would be a pause with nothing to show for it. The local snapshot is available
+ * immediately; the platform clipboard receives the enriched payload when preparation finishes.
  */
 export function publishUiClipboard(
     environment: UiClipboardEnvironment,
     payload: UIEditorClipboardPayload,
 ): void {
+    const publication = beginUiClipboardPublication(CLIPBOARD_KIND, payload.copyId);
     void (async () => {
-        const assets = await offerClipboardAssetGrant(
-            environment,
-            collectUiClipboardAssetIds(payload, environment.resolveAssetPins),
-        );
-        const textKeys = await environment.carryTextKeys(listUITextKeysNamed(payload.elements));
-        const translations = await environment.carryTranslations(listUITextOwnUnits(payload.elements).map(unit => unit.unitId));
-        // The offer is folded into the payload the clipboard receives and into the one this window
-        // holds, so a same-window paste and a cross-window paste describe the same copy.
-        const published: UIEditorClipboardPayload = {
-            ...payload,
-            ...(assets ? { assets } : {}),
-            ...(textKeys ? { textKeys } : {}),
-            ...(translations ? { translations } : {}),
-        };
-        if (getUiEditorClipboard()?.copyId === payload.copyId) {
-            setUiEditorClipboard(published);
-        }
         try {
-            await getInterface().clipboard.writeEditorSelection(CLIPBOARD_KIND, JSON.stringify(published));
+            const assets = await offerClipboardAssetGrant(
+                environment,
+                collectUiClipboardAssetIds(payload, environment.resolveAssetPins),
+            );
+            const textKeys = await environment.carryTextKeys(listUITextKeysNamed(payload.elements));
+            const translations = await environment.carryTranslations(listUITextOwnUnits(payload.elements).map(unit => unit.unitId));
+            const publicationId = await publication.reservation;
+            if (publicationId === null || !isCurrentUiClipboardPublication(publication) || getUiEditorClipboard()?.copyId !== payload.copyId) {
+                return;
+            }
+            const published: UIEditorClipboardPayload = {
+                ...payload,
+                ...(assets ? { assets } : {}),
+                ...(textKeys ? { textKeys } : {}),
+                ...(translations ? { translations } : {}),
+            };
+            setUiEditorClipboard(published);
+            await getInterface().clipboard.writeEditorSelection(CLIPBOARD_KIND, JSON.stringify(published), publicationId);
         } catch (error) {
-            // A copy that raised a dialog because the platform clipboard was busy would be a fault
-            // report for pressing Ctrl+C. The window keeps its own copy either way.
             console.warn("[uiClipboard] could not publish the copied selection", error);
+        } finally {
+            finishUiClipboardPublication(publication);
         }
     })();
 }
@@ -230,13 +236,16 @@ export type UiPasteSource = {
 export async function resolveUiPasteSource(documentService: UIDocumentService): Promise<UiPasteSource | null> {
     const inMemory = getUiEditorClipboard();
     const environment = readUiClipboardEnvironment(documentService);
-    if (!environment) {
-        return inMemory ? { payload: inMemory, foreign: false, environment: null } : null;
+    if (!environment || isUiClipboardPublicationPending(CLIPBOARD_KIND, inMemory?.copyId)) {
+        return inMemory ? { payload: inMemory, foreign: false, environment } : null;
     }
     const fromClipboard = await readSystemClipboardPayload();
-    const payload = !fromClipboard || (inMemory?.copyId && fromClipboard.copyId === inMemory.copyId)
-        ? inMemory
-        : fromClipboard;
+    const current = getUiEditorClipboard();
+    const payload = current !== inMemory
+        ? current
+        : (!fromClipboard || (inMemory?.copyId && fromClipboard.copyId === inMemory.copyId)
+            ? inMemory
+            : fromClipboard);
     if (!payload) {
         return null;
     }
@@ -262,8 +271,12 @@ export async function resolveUiPasteSource(documentService: UIDocumentService): 
  * {@link resolveUiPasteSource} gives.
  */
 export async function refreshUiClipboardFromSystem(): Promise<void> {
+    const previous = getUiEditorClipboard();
+    if (isUiClipboardPublicationPending(CLIPBOARD_KIND, previous?.copyId)) {
+        return;
+    }
     const payload = await readSystemClipboardPayload();
-    if (payload && payload.copyId !== getUiEditorClipboard()?.copyId) {
+    if (previous === getUiEditorClipboard() && payload && payload.copyId !== previous?.copyId) {
         setUiEditorClipboard(payload);
     }
 }

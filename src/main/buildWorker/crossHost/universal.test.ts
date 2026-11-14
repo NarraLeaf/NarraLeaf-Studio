@@ -48,4 +48,20 @@ describe("mergeUniversalBundle", () => {
 
         expect(() => mergeUniversalBundle(x64, arm64)).toThrow(/Info\.plist differs/);
     });
+
+    it("refuses the same single-architecture image in both halves", () => {
+        const { x64, arm64 } = halves();
+        const game = "Game.app/Contents/MacOS/Game";
+        const intel = x64.get(game) as { kind: "file"; mode: number; data: Buffer };
+        arm64.set(game, { ...intel, data: Buffer.from(intel.data) });
+
+        expect(() => mergeUniversalBundle(x64, arm64)).toThrow(/Game.*same.*single-architecture/);
+    });
+
+    it("refuses a single-architecture image missing from the other half", () => {
+        const { x64, arm64 } = halves();
+        arm64.delete("Game.app/Contents/MacOS/Game");
+
+        expect(() => mergeUniversalBundle(x64, arm64)).toThrow(/Game.*missing.*half/);
+    });
 });

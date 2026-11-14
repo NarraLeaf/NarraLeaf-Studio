@@ -69,9 +69,21 @@ export function isWordCharacter(character: string | undefined): boolean {
     return character !== undefined && WORD_CHARACTER.test(character);
 }
 
+/** The character ending immediately before a UTF-16 offset may occupy two code units. */
+export function isWordCharacterBefore(text: string, offset: number): boolean {
+    const last = text.charCodeAt(offset - 1);
+    const first = text.charCodeAt(offset - 2);
+    if (last >= 0xdc00 && last <= 0xdfff && first >= 0xd800 && first <= 0xdbff) {
+        return isWordCharacter(text.slice(offset - 2, offset));
+    }
+    return isWordCharacter(text[offset - 1]);
+}
+
 /** A hit qualifies when neither side of it touches a word character. String edges count as edges. */
 function isWholeWordAt(text: string, start: number, end: number): boolean {
-    return !isWordCharacter(text[start - 1]) && !isWordCharacter(text[end]);
+    const next = text.codePointAt(end);
+    return !isWordCharacterBefore(text, start)
+        && !isWordCharacter(next === undefined ? undefined : String.fromCodePoint(next));
 }
 
 function escapeLiteral(query: string): string {

@@ -6,6 +6,7 @@ import { i18nStore } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import {
     normalizeUIInputHintsProps,
+    uiInputHintLabelKeyProp,
     uiInputHintLabelProp,
     UI_INPUT_HINT_WORDS,
     type UIInputHintsProps,
@@ -148,7 +149,10 @@ export function createInputHintsInspector(ctx: InspectorContext) {
                                 const own = (liveProps(d) as Record<string, unknown>)[uiInputHintLabelProp(word)];
                                 return typeof own === "string" ? own : "";
                             },
-                            setValue: (d: D, value: string) => patch(d, { [uiInputHintLabelProp(word)]: value }),
+                            setValue: (d: D, value: string) => patch(d, {
+                                [uiInputHintLabelProp(word)]: value,
+                                [uiInputHintLabelKeyProp(word)]: undefined,
+                            }),
                         })),
                     }),
                 ],

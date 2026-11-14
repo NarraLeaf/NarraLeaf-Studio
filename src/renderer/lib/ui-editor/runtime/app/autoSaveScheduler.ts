@@ -46,15 +46,17 @@ export type AutoSaveSchedulerDeps = {
     getConfig: () => AutoSaveConfiguration;
     /** True while a playthrough is running and can be serialized. */
     isPlaying: () => boolean;
-    /** Write one autosave into the given reserved id. */
-    write: (id: string, reason: AutoSaveWriteReason) => Promise<void>;
+    /** Changes whenever a new playthrough is entered or a save is loaded. */
+    playthrough: () => number;
+    /** Call `captured` when the snapshot is taken; false means nothing reached the store. */
+    write: (id: string, reason: AutoSaveWriteReason, captured: () => void, isCurrent: () => boolean) => Promise<void | false>;
     /** Every reserved autosave currently stored, in any order. */
     listStored: () => Promise<AutoSaveEntry[]>;
     log: (level: AutoSaveLogLevel, message: string) => void;
 };
 
 export class AutoSaveScheduler {
-    /** Set when the story advanced; cleared by a successful write. */
+    /** Story movement not yet included in the current snapshot or last successful save. */
     private storyAdvanced = false;
     /** Next ring slot to overwrite, or null until resolved from what is stored. */
     private cursor: number | null = null;
@@ -83,7 +85,7 @@ export class AutoSaveScheduler {
         if (!this.deps.getConfig().enabled || !this.deps.isPlaying()) {
             return;
         }
-        await this.runWrite({ reason: "scheduled" });
+        await this.runWrite({ reason: "scheduled", playthrough: this.deps.playthrough() });
     }
 
     /**
@@ -95,24 +97,49 @@ export class AutoSaveScheduler {
      * Rejects when no game is running, matching every other save node.
      */
     public async writeNow(): Promise<void> {
-        // Let an in-flight scheduled write finish first rather than racing it
-        // into the same slot; its failure is not this caller's problem.
-        await this.inFlight?.catch(() => undefined);
         if (!this.deps.isPlaying()) {
             throw needsRunningGame("blueprint.node.autoSave");
         }
-        await this.runWrite({ reason: "requested", rethrow: true });
+        const playthrough = this.deps.playthrough();
+        // Each request waits for earlier writes before choosing its ring slot.
+        while (this.inFlight) {
+            await this.inFlight;
+        }
+        if (!this.deps.isPlaying() || this.deps.playthrough() !== playthrough) {
+            throw autoSaveSuperseded();
+        }
+        await this.runWrite({ reason: "requested", rethrow: true, playthrough });
     }
 
-    private async runWrite(options: { reason: AutoSaveWriteReason; rethrow?: boolean }): Promise<void> {
+    private async runWrite(options: { reason: AutoSaveWriteReason; playthrough: number; rethrow?: boolean }): Promise<void> {
         const config = this.deps.getConfig();
+        const isCurrent = () => this.deps.isPlaying() && this.deps.playthrough() === options.playthrough;
         const task = (async () => {
             const slot = (await this.resolveCursor(config)) % config.slots;
-            await this.deps.write(autoSaveSlotId(slot), options.reason);
+            if (!isCurrent()) {
+                if (options.rethrow) throw autoSaveSuperseded();
+                return;
+            }
+            let capturedAdvance = this.storyAdvanced;
+            this.storyAdvanced = false;
+            const captured = () => {
+                capturedAdvance ||= this.storyAdvanced;
+                this.storyAdvanced = false;
+            };
+            try {
+                const written = await this.deps.write(autoSaveSlotId(slot), options.reason, captured, isCurrent);
+                if (written === false) {
+                    this.storyAdvanced ||= capturedAdvance;
+                    if (options.rethrow) throw autoSaveSuperseded();
+                    return;
+                }
+            } catch (error) {
+                this.storyAdvanced ||= capturedAdvance;
+                throw error;
+            }
             // Only on success: a failed write must not consume the slot it never
             // reached, and must leave the flag up so the next tick retries.
             this.cursor = slot + 1;
-            this.storyAdvanced = false;
         })();
         this.inFlight = task.then(() => undefined, () => undefined);
         try {
@@ -172,4 +199,8 @@ export class AutoSaveScheduler {
         this.cursor = target;
         return target;
     }
+}
+
+export function autoSaveSuperseded(): Error {
+    return new Error("Auto save was cancelled because the playthrough changed.");
 }

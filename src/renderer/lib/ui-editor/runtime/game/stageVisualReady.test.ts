@@ -153,4 +153,54 @@ describe("waitForStageVisualReadyWithTimeout", () => {
         await flush(16);
         expect(settled).toBe(true);
     });
+
+    it("stops checking the stage after the reveal timeout", async () => {
+        vi.useFakeTimers();
+        try {
+            vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+                frames += 1;
+                return window.setTimeout(() => callback(0), 16) as unknown as number;
+            });
+            const root = document.createElement("div");
+            const image = document.createElement("img");
+            Object.defineProperty(image, "complete", { value: false });
+            root.appendChild(image);
+            document.body.appendChild(root);
+
+            const ready = waitForStageVisualReadyWithTimeout(root, { warm: true });
+            await vi.advanceTimersByTimeAsync(1600);
+            await ready;
+            const framesAtReveal = frames;
+            await vi.advanceTimersByTimeAsync(160);
+            expect(frames).toBe(framesAtReveal);
+        } finally {
+            vi.clearAllTimers();
+            vi.useRealTimers();
+        }
+    });
+
+    it("releases CSS image probe handlers when the reveal times out", async () => {
+        vi.useFakeTimers();
+        try {
+            const probe: { current: { onload: (() => void) | null; onerror: (() => void) | null } | null } = { current: null };
+            vi.stubGlobal("Image", class {
+                public complete = false;
+                public naturalWidth = 0;
+                public onload: (() => void) | null = null;
+                public onerror: (() => void) | null = null;
+                constructor() { probe.current = this; }
+                set src(_value: string) { /* The image never finishes loading. */ }
+            });
+
+            const ready = waitForStageVisualReadyWithTimeout(makeStage());
+            await vi.advanceTimersByTimeAsync(1600);
+            await ready;
+            expect(probe.current).not.toBeNull();
+            expect(probe.current?.onload).toBeNull();
+            expect(probe.current?.onerror).toBeNull();
+        } finally {
+            vi.clearAllTimers();
+            vi.useRealTimers();
+        }
+    });
 });

@@ -277,13 +277,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     const effectiveWidgetRuntimePatches = getWidgetRuntimePatches?.() ?? widgetRuntimePatches;
     const shellRef = useRef<HTMLDivElement | null>(null);
 
-    /**
-     * What this surface does with input that lands on it.
-     *
-     * `capture` unless the author said otherwise, which is what every surface written before the
-     * field existed already did - so an old document routes exactly as it used to. `none` takes the
-     * surface out of input altogether, keyboard included: it is drawn, and nothing else.
-     */
+    /** Whether the host currently gives this surface pointer and keyboard input. */
     const laneInteractive = interactive;
     const laneKeyboardInteractive = keyboardInteractive;
     const actionVocabulary = document.actions;
@@ -325,9 +319,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * does not wait for the element graphs to finish, and deliberately makes no promise that it
      * would: two graphs started by one click are two graphs, not a sequence.
      *
-     * Stopping is `stopPropagation` on the way out plus, for `pass`, a copy of the event aimed at
-     * whatever the browser paints behind this surface. An action with `consume` (the default) ends
-     * the walk wherever the mode would have carried it.
+     * The input stops here unless an action answers with `consume` off. In that case a copy is
+     * aimed at whatever the browser paints behind this surface; a consuming action ends the walk.
      *
      * **The game's global blueprint answers first.** The first lane an input lands on offers it to
      * the global blueprint before firing anything of its own - once per physical input, so neither

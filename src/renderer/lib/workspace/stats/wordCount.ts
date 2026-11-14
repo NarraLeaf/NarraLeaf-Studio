@@ -9,9 +9,9 @@
  * Punctuation is excluded from both sides.
  */
 
-// Han, Hiragana, Katakana, Hangul, and the CJK compatibility/extension blocks in common use.
+// Unified and compatibility ideographs, Hiragana, Katakana, and Hangul syllables.
 const CJK_PATTERN =
-    /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]|[\ud840-\ud868\ud86a-\ud86c\ud86f-\ud872][\udc00-\udfff]/gu;
+    /[\p{Unified_Ideograph}\u3040-\u30ff\uf900-\ufaff\uac00-\ud7af\u{2f800}-\u{2fa1f}]/gu;
 
 // A run of letters/digits, allowing internal apostrophes and hyphens ("don't", "well-known").
 const WORD_PATTERN = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;

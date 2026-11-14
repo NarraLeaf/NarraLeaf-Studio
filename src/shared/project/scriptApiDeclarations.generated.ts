@@ -1719,6 +1719,8 @@ declare module "@narraleaf/script" {
     		callerListItemScope?: UIListItemScope | null;
     		signal?: AbortSignal;
     		callerExecutionId?: string;
+    		/** The caller's variable records, including the drawings held by its invocation. */
+    		callerLocals?: Record<string, unknown>;
     		/**
     		 * The caller's value-binding bookkeeping, when the caller is a binding being evaluated: what
     		 * the body reads is what the binding shows, so the body records its reads where the caller's

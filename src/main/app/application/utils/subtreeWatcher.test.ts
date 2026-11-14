@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, unlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import * as path from "path";
 import { watchSubtree, type SubtreeWatcher } from "./subtreeWatcher";
@@ -121,6 +121,19 @@ describe("watchSubtree", () => {
         await writeFile(path.join(root, "ab", "cd", "shard.bin"), "two");
         await new Promise(resolve => setTimeout(resolve, 300));
         expect(reported).toEqual([]);
+    });
+
+    it("reports deletion of a child whose name matches the watched root", async () => {
+        const root = await makeTree();
+        const child = path.join(root, path.basename(root));
+        await writeFile(child, "asset");
+        const reported: string[] = [];
+        await armed(root, reported);
+
+        await unlink(child);
+        await waitFor(reported, child);
+
+        expect(reported).toContain(child);
     });
 
     it("answers null for a root that is not there, so the caller keeps its chokidar list", () => {

@@ -44,8 +44,8 @@ export async function collectGameProgressVariables(
 ): Promise<Record<string, unknown>> {
     const values: Record<string, unknown> = {};
     for (const def of defs) {
-        const storageKey = def?.storageKey?.trim();
-        if (!storageKey || Object.prototype.hasOwnProperty.call(values, storageKey)) {
+        const storageKey = def?.storageKey;
+        if (!storageKey?.trim() || Object.prototype.hasOwnProperty.call(values, storageKey)) {
             continue;
         }
         let value: unknown;
@@ -56,7 +56,12 @@ export async function collectGameProgressVariables(
             continue;
         }
         if (value !== undefined) {
-            values[storageKey] = value;
+            Object.defineProperty(values, storageKey, {
+                value,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            });
         }
     }
     return values;
@@ -76,8 +81,8 @@ export function applyGameProgressVariables(
 ): string[] {
     const applied: string[] = [];
     for (const def of defs) {
-        const storageKey = def?.storageKey?.trim();
-        if (!storageKey || applied.includes(storageKey)) {
+        const storageKey = def?.storageKey;
+        if (!storageKey?.trim() || applied.includes(storageKey)) {
             continue;
         }
         if (!Object.prototype.hasOwnProperty.call(values, storageKey)) {

@@ -202,6 +202,50 @@ describe("createSoundTransport between sessions", () => {
     });
 });
 
+describe("createSoundTransport pending playback", () => {
+    it("does not start a clip whose transport was disposed while its asset was resolving", async () => {
+        let resolveUrl = (_url: string) => undefined as void;
+        const url = new Promise<string>(resolve => { resolveUrl = resolve; });
+        const playSound = vi.fn(async () => ({ stop: vi.fn() }));
+        const transport = createSoundTransport({
+            getLiveGame: () => ({ playSound }) as unknown as LiveGame,
+            resolveAssetUrl: () => url,
+            createSound: input => input,
+            log: () => undefined,
+        });
+
+        const pending = transport.play({ assetId: "a1" });
+        await Promise.resolve();
+        transport.dispose();
+        resolveUrl("blob:clip");
+
+        expect(await pending).toBeNull();
+        expect(playSound).not.toHaveBeenCalled();
+    });
+
+    it("stops a clip that finishes starting after Stop All", async () => {
+        let finish = (_token: { stop: () => void }) => undefined as void;
+        let started = () => undefined as void;
+        const waiting = new Promise<{ stop: () => void }>(resolve => { finish = resolve; });
+        const startedPlaying = new Promise<void>(resolve => { started = resolve; });
+        const stop = vi.fn();
+        const transport = createSoundTransport({
+            getLiveGame: () => ({ playSound: () => { started(); return waiting; } }) as unknown as LiveGame,
+            resolveAssetUrl: () => "blob:clip",
+            createSound: input => input,
+            log: () => undefined,
+        });
+
+        const pending = transport.play({ assetId: "a1" });
+        await startedPlaying;
+        await transport.stop(null, 0);
+        finish({ stop });
+
+        expect(await pending).toBeNull();
+        expect(stop).toHaveBeenCalledOnce();
+    });
+});
+
 /**
  * A gain set on the asset balances the clip against the project's others. Every volume this
  * transport writes replaces the token's outright, so the gain has to be in each of them - and in

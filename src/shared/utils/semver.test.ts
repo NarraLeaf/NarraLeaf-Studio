@@ -36,6 +36,28 @@ describe("compareSemver", () => {
         expect(compareSemver("1.0.0-1", "1.0.0-alpha")).toBe(-1);
     });
 
+    it("orders numeric prerelease identifiers beyond JavaScript's safe integer range", () => {
+        const older = "1.0.0-20261114123456788";
+        const newer = "1.0.0-20261114123456789";
+        expect(compareSemver(older, newer)).toBe(-1);
+        expect(compareSemver(newer, older)).toBe(1);
+        expect(classifyCompatibility(newer, older)).toBe("outdated");
+        expect(satisfiesRange(older, `>=${newer}`)).toBe(false);
+    });
+
+    it("compares large core version numbers and range ceilings exactly", () => {
+        const older = "9007199254740992";
+        const newer = "9007199254740993";
+        expect(compareSemver(`${older}.0.0`, `${newer}.0.0`)).toBe(-1);
+        expect(compareSemver(`1.${older}.0`, `1.${newer}.0`)).toBe(-1);
+        expect(compareSemver(`1.0.${older}`, `1.0.${newer}`)).toBe(-1);
+        expect(classifyCompatibility(`${older}.0.0`, `${newer}.0.0`)).toBe("incompatible");
+        expect(satisfiesRange(`${newer}.0.0`, `^${older}.0.0`)).toBe(false);
+        expect(satisfiesRange(`0.${newer}.0`, `^0.${older}.0`)).toBe(false);
+        expect(satisfiesRange(`0.0.${newer}`, `^0.0.${older}`)).toBe(false);
+        expect(satisfiesRange(`1.${newer}.0`, `~1.${older}.0`)).toBe(false);
+    });
+
     it("sorts unparseable versions first", () => {
         expect(compareSemver("garbage", "1.0.0")).toBe(-1);
         expect(compareSemver("1.0.0", "garbage")).toBe(1);

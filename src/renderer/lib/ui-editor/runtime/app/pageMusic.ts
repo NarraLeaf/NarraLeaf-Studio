@@ -236,6 +236,9 @@ export function createPageMusicController<THandle>(player: PageMusicPlayer<THand
                 }
                 entry.handle = handle;
                 entry.settled = true;
+                if (handle !== null && cue.volume !== entry.cue.volume) {
+                    player.setVolume(handle, entry.cue.volume, entry.cue.fadeMs);
+                }
             },
             () => {
                 if (current === entry) {

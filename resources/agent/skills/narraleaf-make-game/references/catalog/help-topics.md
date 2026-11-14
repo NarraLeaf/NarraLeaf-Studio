@@ -582,7 +582,7 @@ A motion is a reusable movement: a character sliding in, a picture fading, the c
 
 ### 舞台时间轴 · Stage timeline
 
-舞台时间轴按执行顺序列出当前场景中每一行执行后的舞台：每个对象一条轨道，每一行一列；标尺只标出对白与旁白的行号
+舞台时间轴按执行顺序列出当前场景中每一行执行后的舞台：每个支持的对象一条轨道，每一行一列；标尺只标出对白与旁白的行号
 
 - 轨道包括背景、角色、图片与文本、环境效果、镜头、音乐与音效；从未出现的对象不显示
 - 色块表示对象在场，换表情或换图片时另起一块；名称不变的修改在被修改的对象上以菱形标出，例如移动或缩放
@@ -592,7 +592,7 @@ A motion is a reusable movement: a character sliding in, a picture fading, the c
 - 条件按预览的方式求值；跳转、结局与退出之后的行不显示
 - 按住 Ctrl 或 Command 滚动滚轮可缩放时间轴
 
-The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per object, one column per row. The ruler numbers only the rows of dialogue and narration.
+The stage timeline lists the stage after every row of the current scene, in the order the rows run: one lane per supported object, one column per row. The ruler numbers only the rows of dialogue and narration.
 
 - Lanes cover the background, characters, images and text, ambience effects, the camera, music and sounds. Objects that never appear are not shown.
 - A bar means the object is on stage, and a new expression or picture starts a new block. A change that keeps the name, such as a move or a zoom, shows as a diamond on the object it changes.

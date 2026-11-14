@@ -465,6 +465,25 @@ describe("variables/undeclared", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toMatchObject({ blockId: "b1" });
     });
+
+    it("ignores interpolations in notes and anchors an error on the live line", () => {
+        const missing: StoryVariableRef = { scope: "scene", variableId: "missing" };
+        const note = (id: string): BlockSpec => ({
+            id,
+            kind: "note",
+            payload: { text: { textId: `t-${id}`, value: "", role: "note", rich: [{ interpolation: { kind: "variable", target: missing } }] } },
+        });
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [
+                scene("notes-only", "Notes", [note("note-only")]),
+                scene("with-line", "Story", [note("note-first"), interpolatingLine("line", missing)]),
+            ])],
+        });
+
+        const findings = run("variables/undeclared", ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "with-line", blockId: "line" });
+    });
 });
 
 // --- variables/unused -------------------------------------------------------

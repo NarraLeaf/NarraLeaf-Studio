@@ -517,6 +517,8 @@ export function RectangleChromeRenderer({
         displayUrl &&
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
+    const tileNeedsLayer =
+        activeMode === "tile" && (!props.fillVisible || normalizedFillOpacity < 1 || fillOpacityAnimated);
 
     /**
      * Whether anything inside this chrome paints at a negative z-index - the fill layer, or an image
@@ -540,7 +542,8 @@ export function RectangleChromeRenderer({
      */
     const paintsBelowContent =
         fillLayerActive ||
-        (shouldRenderImage && Boolean(displayUrl) && Boolean(activeMode) && activeMode !== "tile" && !isCropEditing);
+        (shouldRenderImage && Boolean(displayUrl) && Boolean(activeMode) &&
+            (activeMode !== "tile" || tileNeedsLayer) && !isCropEditing);
     if (paintsBelowContent) {
         Object.assign(style, FILL_LAYER_ROOT_STYLE);
     }
@@ -557,7 +560,7 @@ export function RectangleChromeRenderer({
           ? "visible"
           : "hidden";
 
-    if (shouldRenderImage && activeMode === "tile" && displayUrl) {
+    if (shouldRenderImage && activeMode === "tile" && displayUrl && !tileNeedsLayer) {
         Object.assign(style, {
             backgroundImage: `url(${displayUrl})`,
             backgroundRepeat: "repeat",
@@ -631,8 +634,36 @@ export function RectangleChromeRenderer({
     );
 
     const renderImage = () => {
-        if (!shouldRenderImage || !displayUrl || !activeMode || activeMode === "tile") {
+        if (!shouldRenderImage || !displayUrl || !activeMode) {
             return null;
+        }
+        if (activeMode === "tile") {
+            if (!tileNeedsLayer) {
+                return null;
+            }
+            // The fill needs its own opacity so hiding it never hides the widget's children.
+            const tileStyle: CSSProperties = {
+                position: "absolute",
+                inset: 0,
+                zIndex: -1,
+                pointerEvents: "none",
+                backgroundImage: `url(${displayUrl})`,
+                backgroundRepeat: "repeat",
+                backgroundSize: "auto",
+                backgroundPosition: "top left",
+            };
+            return imageMotionActive ? (
+                <motion.div
+                    aria-hidden="true"
+                    data-ui-image-fill-mode="tile"
+                    style={tileStyle}
+                    initial={false}
+                    animate={imageAnimate}
+                    transition={imageTransition}
+                />
+            ) : (
+                <div aria-hidden="true" data-ui-image-fill-mode="tile" style={{ ...tileStyle, ...imageAnimate }} />
+            );
         }
         const imagePointerEvents = activeMode === "crop" || isCropEditing ? "auto" : "none";
         /*

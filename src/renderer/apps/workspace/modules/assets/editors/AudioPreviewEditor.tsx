@@ -59,6 +59,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { cn } from "@/lib/utils/cn";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { useFollowedAsset } from "./useFollowedAsset";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -159,7 +160,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     // frozen. The markers and the gain are the only things here written back to the asset record,
     // so they are the only things the freeze refuses.
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
-    const asset = payload?.asset;
+    const asset = useFollowedAsset(payload?.asset);
 
     const [metadata, setMetadata] = useState<AssetData<AssetType.Audio>["metadata"] | null>(null);
     const [loading, setLoading] = useState(true);

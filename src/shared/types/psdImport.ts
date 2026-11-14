@@ -5,10 +5,18 @@
  * only plain data crosses between them.
  */
 
-/** One entry of the PSD's layer tree, geometry only — pixels never cross until a bake is asked for. */
-export type PsdLayerNode = {
+/** The name path and, when needed, the identity of one drawable PSD layer. */
+export type PsdLayerReference = {
     /** Position in the tree, top-level first. Stable across re-imports; this is the reconnect key. */
     path: string[];
+    /** Zero-based position among layers with this same path, present when that path is repeated. */
+    occurrence?: number;
+    /** The PSD's own layer id, when present and unique among drawable layers. */
+    sourceId?: number;
+};
+
+/** One entry of the PSD's layer tree, geometry only — pixels never cross until a bake is asked for. */
+export type PsdLayerNode = PsdLayerReference & {
     name: string;
     /** Absent for a group. Document coordinates. */
     bounds?: { left: number; top: number; right: number; bottom: number };
@@ -45,8 +53,7 @@ export type BlendResolution = "merge" | "skip";
  * author's choice — the PSD says so — which is why it rides along with the merge rather than being
  * one more thing the wizard asks about.
  */
-export type PsdMergeSource = {
-    path: string[];
+export type PsdMergeSource = PsdLayerReference & {
     clip?: boolean;
 };
 
@@ -55,8 +62,7 @@ export type PsdMergeSource = {
  * its own blend mode — which is what makes a `multiply` shadow survive an import into an engine that
  * only stacks.
  */
-export type PsdBakeTarget = {
-    path: string[];
+export type PsdBakeTarget = PsdLayerReference & {
     mergeFrom?: PsdMergeSource[];
     /**
      * What to call the baked file, before sanitising. The asset library takes an asset's name from
@@ -78,8 +84,7 @@ export type PsdBakeJob = PsdBakeRequest & {
     outputDir: string;
 };
 
-export type PsdBakedLayer = {
-    path: string[];
+export type PsdBakedLayer = PsdLayerReference & {
     name: string;
     /**
      * Where the baked PNG was written: full document size, contents at their document position.
@@ -96,8 +101,7 @@ export type PsdBakedLayer = {
  * everything the author can do in Studio afterwards, because Studio renames ids-first and never
  * writes back to the PSD.
  */
-export type PsdFingerprintSlot = {
-    path: string[];
+export type PsdFingerprintSlot = PsdLayerReference & {
     /** The Studio layer this PSD layer feeds. */
     layerId: string;
     /** The tag it feeds, when that layer is bound to an axis. Absent for a constant layer. */

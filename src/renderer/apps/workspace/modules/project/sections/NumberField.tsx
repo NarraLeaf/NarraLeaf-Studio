@@ -33,23 +33,28 @@ export function NumberField({
     // still holds the typed draft - putting the draft back is only visible from the next render - so
     // without this the edit Escape abandons was the one that got stored.
     const abandoning = useRef(false);
+    // A stored value can change while the author is typing, including when an earlier write fails.
+    const edited = useRef(false);
 
-    // Follow the stored value when it changes underneath us - a rejected write
-    // rolls back, and the field has to roll back with it.
+    // Follow the stored value unless there is a newer, unsent edit in the field.
     useEffect(() => {
-        setDraft(String(value));
+        if (!edited.current) {
+            setDraft(String(value));
+        }
     }, [value]);
 
     const commit = () => {
+        edited.current = false;
         if (abandoning.current) {
             abandoning.current = false;
             return;
         }
-        const parsed = Number.parseInt(draft, 10);
-        if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+        const parsed = draft.trim() === "" ? NaN : Number(draft);
+        if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
             setDraft(String(value));
             return;
         }
+        setDraft(String(parsed));
         if (parsed !== value) {
             onCommit(parsed);
         }
@@ -72,7 +77,10 @@ export function NumberField({
                 disabled={disabled}
                 aria-label={ariaLabel}
                 className={`${width} text-right`}
-                onChange={event => setDraft(event.target.value)}
+                onChange={event => {
+                    edited.current = true;
+                    setDraft(event.target.value);
+                }}
                 onFocus={() => {
                     abandoning.current = false;
                 }}
@@ -82,6 +90,7 @@ export function NumberField({
                         event.currentTarget.blur();
                     } else if (event.key === "Escape") {
                         abandoning.current = true;
+                        edited.current = false;
                         setDraft(String(value));
                         event.currentTarget.blur();
                     }

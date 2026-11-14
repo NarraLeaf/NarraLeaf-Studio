@@ -39,6 +39,8 @@ export const COMPARISON_ELEMENT_SELECTION_TYPE = "comparisonElement";
 export type ComparisonHalf = "base" | "head";
 
 export interface ComparisonElementSelection {
+    /** The comparison tab that owns this selection. */
+    readonly comparisonId: string;
     /** Repository-relative path of the document being compared. Identity, not a read address. */
     readonly documentPath: string;
     readonly half: ComparisonHalf;
@@ -96,6 +98,7 @@ export function comparisonElementAddress(change: DocumentChange): ComparisonElem
  * pressable.
  */
 export function buildComparisonElementSelection(input: {
+    readonly comparisonId: string;
     readonly documentPath: string;
     readonly half: ComparisonHalf;
     readonly versionLabel: string;
@@ -109,6 +112,7 @@ export function buildComparisonElementSelection(input: {
         return null;
     }
     return {
+        comparisonId: input.comparisonId,
         documentPath: input.documentPath,
         half: input.half,
         versionLabel: input.versionLabel,
@@ -130,7 +134,8 @@ export function isSameComparisonElement(
     if (!a || !b) {
         return false;
     }
-    return a.documentPath === b.documentPath
+    return a.comparisonId === b.comparisonId
+        && a.documentPath === b.documentPath
         && a.half === b.half
         && a.surfaceId === b.surfaceId
         && a.elementId === b.elementId;

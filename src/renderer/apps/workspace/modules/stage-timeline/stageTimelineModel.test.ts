@@ -101,6 +101,64 @@ describe("walkStoryStageTimeline", () => {
 });
 
 describe("buildStageTimelineModel", () => {
+    it("does not expose an image's generated object name when its asset is missing", () => {
+        const id = "a3247f0e-5f4b-4567-88bb-cdef01234567";
+        const document = documentOf([
+            block("show", "action", { action: "image", operation: "show", objectName: id, assetId: "missing" }),
+        ], ["show"]);
+        const scene = document.scenes["scene-1"];
+        const walk = walkStoryStageTimeline({ document, sceneId: "scene-1" });
+        const model = buildStageTimelineModel({ walk, scene, names: { ...NAMES, asset: () => null } });
+
+        expect(model.lanes).toHaveLength(1);
+        expect(model.lanes[0].kind).toBe("image");
+        expect(model.lanes[0].name).not.toContain(id);
+    });
+
+    it("uses resolved asset names for generated object names and leaves missing names empty", () => {
+        const imageId = "a3247f0e-5f4b-4567-88bb-cdef01234567";
+        const soundId = "b3247f0e-5f4b-4567-88bb-cdef01234567";
+        const vfxId = "c3247f0e-5f4b-4567-88bb-cdef01234567";
+        const characterId = "d3247f0e-5f4b-4567-88bb-cdef01234567";
+        const textId = "e3247f0e-5f4b-4567-88bb-cdef01234567";
+        const document = documentOf([
+            block("image", "action", { action: "image", operation: "show", objectName: imageId, assetId: "poster" }),
+            block("sound", "action", { action: "audio", operation: "playSound", objectName: soundId, assetId: "missing" }),
+            block("vfx", "action", { action: "vfx", operation: "create", objectName: vfxId, assetId: "missing" }),
+            block("show-vfx", "action", { action: "vfx", operation: "show", objectName: vfxId }),
+            block("character", "action", { action: "character", operation: "enter", characterId }),
+            block("text", "action", { action: "text", operation: "create", objectName: textId, text: "Hello" }),
+            block("show-text", "action", { action: "text", operation: "show", objectName: textId }),
+        ], ["image", "sound", "vfx", "show-vfx", "character", "text", "show-text"]);
+        const scene = document.scenes["scene-1"];
+        const walk = walkStoryStageTimeline({ document, sceneId: "scene-1" });
+        const names = { ...NAMES, asset: (id: string) => id === "poster" ? "Poster" : null };
+        const model = buildStageTimelineModel({ walk, scene, names });
+
+        expect(model.lanes.map(lane => [lane.kind, lane.name])).toEqual([
+            ["character", ""],
+            ["image", "Poster"],
+            ["text", ""],
+            ["vfx", ""],
+            ["sound", ""],
+        ]);
+    });
+
+    it("does not display generated IDs returned as asset or character names", () => {
+        const id = "a3247f0e-5f4b-4567-88bb-cdef01234567";
+        const characterId = "b3247f0e-5f4b-4567-88bb-cdef01234567";
+        const document = documentOf([
+            block("image", "action", { action: "image", operation: "show", objectName: id, assetId: "poster" }),
+            block("character", "action", { action: "character", operation: "enter", characterId }),
+        ], ["image", "character"]);
+        const scene = document.scenes["scene-1"];
+        const walk = walkStoryStageTimeline({ document, sceneId: "scene-1" });
+        const model = buildStageTimelineModel({ walk, scene, names: { ...NAMES, asset: () => id, character: () => id } });
+
+        expect(model.lanes.map(lane => lane.name)).toEqual(["", ""]);
+        expect(model.lanes.flatMap(lane => lane.cells.map(cell => cell.label))).not.toContain(id);
+    });
+
     it("gives every row a column and a character one lane", () => {
         const document = documentOf([
             say("a"),
@@ -153,6 +211,19 @@ describe("buildStageTimelineModel", () => {
         expect(model.lanes[1].cells[1].image).toBeNull();
     });
 
+    it("shows the scene's opening background until a row changes it", () => {
+        const document = documentOf([
+            say("first"),
+            block("change", "action", { action: "setBackground", assetId: "hall" }),
+            say("last"),
+        ], ["first", "change", "last"]);
+        document.scenes["scene-1"].defaultBackgroundAssetId = "room";
+        const background = modelOf(document).lanes.find(lane => lane.kind === "background")!;
+
+        expect(background.cells.map(cell => cell.label)).toEqual(["asset:room", "asset:hall", "asset:hall"]);
+        expect(background.cells.map(cell => cell.image)).toEqual(["room", "hall", "hall"]);
+    });
+
     it("spans a looping sound and marks a one-shot only where it starts", () => {
         const document = documentOf([
             block("rain", "action", { action: "audio", operation: "playSound", objectName: "rain", assetId: "rain-clip", loop: true }),
@@ -166,6 +237,16 @@ describe("buildStageTimelineModel", () => {
         const bang = model.lanes.find(lane => lane.id === "sound:bang")!;
         expect(rain.cells.map(cell => cell.present)).toEqual([true, true, true, true, false]);
         expect(bang.cells.map(cell => cell.present)).toEqual([false, false, true, false, false]);
+    });
+
+    it("does not mark a sound before the row that declares its handle", () => {
+        const document = documentOf([
+            block("early", "action", { action: "audio", operation: "playSound", objectName: "bell" }),
+            block("declare", "action", { action: "audio", operation: "playSound", objectName: "bell", assetId: "bell-clip" }),
+        ], ["early", "declare"]);
+        const sound = modelOf(document).lanes.find(lane => lane.kind === "sound")!;
+
+        expect(sound.cells.map(cell => cell.present)).toEqual([false, true]);
     });
 
     it("draws the camera only while it is away from its neutral pose", () => {
@@ -241,6 +322,7 @@ describe("timeline helpers", () => {
         const scene = document.scenes["scene-1"];
         expect(stageTimelineThrough(scene, "one", new Map([["menu", "opt-2"]]))).toEqual(["one"]);
         expect(stageTimelineThrough(scene, null, new Map([["menu", "opt-2"]]))).toEqual(["opt-2"]);
+        expect(stageTimelineThrough(scene, "menu", new Map([["menu", "opt-2"]]))).toEqual(["opt-2"]);
         // A cursor outside every option leaves the path alone.
         expect(stageTimelineThrough(scene, "menu", new Map())).toEqual([]);
     });

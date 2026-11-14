@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
+import { useDismissWhenHidden, useFloatingLayer, useHostVisible, useHostWindow } from "@/lib/components/layout";
 import {
     createContext,
     useCallback,
@@ -73,7 +73,7 @@ function stopFlowNodePointerBubble(e: { stopPropagation: () => void }) {
 }
 
 function pathKey(path: JsonPath): string {
-    return path.length === 0 ? "$" : path.map(segment => String(segment)).join(".");
+    return JSON.stringify(path);
 }
 
 function toElement(target: EventTarget | null): Element | null {
@@ -135,11 +135,12 @@ function NumberValueInput({ value, onChange }: { value: number; onChange: (next:
             size="sm"
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
+            onBlur={() => setDraft(String(value))}
             onChange={e => {
                 const next = e.target.value;
                 setDraft(next);
                 const n = Number(next);
-                if (Number.isFinite(n)) {
+                if (next.trim().length > 0 && Number.isFinite(n)) {
                     onChange(n);
                 }
             }}
@@ -619,8 +620,9 @@ function JsonEditorPortal({
 }) {
     const { t, tn } = useTranslation();
     const hostWindow = useHostWindow();
+    const hostVisible = useHostVisible();
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["$"]));
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set([pathKey([])]));
     const [mode, setMode] = useState<"tree" | "raw">("tree");
     const [rawDraft, setRawDraft] = useState(() => formatRawJson(root));
     const [rawError, setRawError] = useState<string | null>(null);
@@ -629,7 +631,7 @@ function JsonEditorPortal({
         () => `json-editor-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`,
         [reactId],
     );
-    const style = usePortalPanelStyle(true, triggerRef);
+    const style = usePortalPanelStyle(hostVisible, triggerRef);
 
     useEffect(() => {
         if (mode === "tree") {
@@ -665,16 +667,19 @@ function JsonEditorPortal({
     // closes it, and closing gives focus back to its edit button. The wheel turning outside it
     // closes it too, since it pans the canvas the node sits on. Every way out commits a raw draft
     // first, and a draft that does not parse keeps the editor open with its error showing.
+    useDismissWhenHidden(closeFromExternalInteraction);
     useFloatingLayer({
-        open: true,
+        open: hostVisible,
         onClose: closeFromExternalInteraction,
         panelRef,
         ownerRefs: [triggerRef],
         initialFocus: panelRef,
         closeOnOutsideWheel: true,
+        dismissWhenHidden: false,
     });
 
     useEffect(() => {
+        if (!hostVisible) return;
         const onPointerDown = (event: PointerEvent) => {
             if (!isJsonEditorTarget(event.target, panelRef.current, triggerRef.current, scopeId)) {
                 closeFromExternalInteraction();
@@ -684,7 +689,7 @@ function JsonEditorPortal({
         return () => {
             hostWindow.removeEventListener("pointerdown", onPointerDown);
         };
-    }, [closeFromExternalInteraction, scopeId, triggerRef]);
+    }, [closeFromExternalInteraction, hostVisible, hostWindow, scopeId, triggerRef]);
 
     const toggleMode = () => {
         if (mode === "raw") {
@@ -703,6 +708,7 @@ function JsonEditorPortal({
         <div
             ref={panelRef}
             data-blueprint-json-editor-scope={scopeId}
+            hidden={!hostVisible}
             className="rounded-md border border-edge bg-surface-raised p-2 text-xs text-fg shadow-2xl"
             style={style}
             onMouseDownCapture={stopFlowNodePointerBubble}

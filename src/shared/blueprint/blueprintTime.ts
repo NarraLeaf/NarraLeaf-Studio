@@ -31,6 +31,9 @@ const FIXED_UNIT_MS: Record<string, number> = {
     weeks: 604_800_000,
 };
 
+const DAYS_BEFORE_MONTH = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334] as const;
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
 /** The value an unusable timestamp resolves to, so a broken input reads as the epoch, not as NaN. */
 export const BLUEPRINT_TIME_INVALID = 0;
 
@@ -102,19 +105,21 @@ export function makeBlueprintTime(input: {
     second?: number;
     millisecond?: number;
 }): number {
-    const date = new Date(
-        toInt(input.year),
-        toInt(input.month) - 1,
-        toInt(input.day),
-        toInt(input.hour ?? 0),
-        toInt(input.minute ?? 0),
-        toInt(input.second ?? 0),
-        toInt(input.millisecond ?? 0),
-    );
-    // Years 0-99 mean 1900-1999 to the Date constructor. An author typing 50 means the year 50.
     const year = toInt(input.year);
+    const month = toInt(input.month) - 1;
+    const day = toInt(input.day);
+    const hour = toInt(input.hour ?? 0);
+    const minute = toInt(input.minute ?? 0);
+    const second = toInt(input.second ?? 0);
+    const millisecond = toInt(input.millisecond ?? 0);
+    const date = new Date(
+        year, month, day, hour, minute, second, millisecond,
+    );
+    // setFullYear accepts years 0-99 without interpreting them as 1900-1999. Supply the original
+    // month and day as well, so their rollover and leap-day calculation use the intended year.
     if (year >= 0 && year <= 99) {
-        date.setFullYear(year);
+        date.setFullYear(year, month, day);
+        date.setHours(hour, minute, second, millisecond);
     }
     const ms = date.getTime();
     return Number.isFinite(ms) ? clampTimestamp(ms) : BLUEPRINT_TIME_INVALID;
@@ -123,19 +128,19 @@ export function makeBlueprintTime(input: {
 /** Break a moment into local calendar fields. */
 export function blueprintTimeParts(timestamp: number): BlueprintTimeParts {
     const date = new Date(toBlueprintTimestamp(timestamp));
-    const startOfYear = new Date(date.getFullYear(), 0, 1).getTime();
+    const year = date.getFullYear();
+    const month = date.getMonth();
     return {
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
+        year,
+        month: month + 1,
         day: date.getDate(),
         hour: date.getHours(),
         minute: date.getMinutes(),
         second: date.getSeconds(),
         millisecond: date.getMilliseconds(),
         weekday: date.getDay(),
-        // Counted from local midnights rather than by dividing, so a day that a DST shift made 23 or
-        // 25 hours long still counts as one day.
-        dayOfYear: Math.round((startOfDayMs(date.getTime()) - startOfDayMs(startOfYear)) / 86_400_000) + 1,
+        // A calendar ordinal is independent of daylight-saving and other local clock changes.
+        dayOfYear: DAYS_BEFORE_MONTH[month] + date.getDate() + (month > 1 && isLeapYear(year) ? 1 : 0),
     };
 }
 
@@ -456,7 +461,11 @@ function startOfDayMs(ms: number): number {
 }
 
 function daysInMonth(year: number, monthIndex: number): number {
-    return new Date(year, monthIndex + 1, 0).getDate();
+    return monthIndex === 1 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[monthIndex];
+}
+
+function isLeapYear(year: number): boolean {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function toInt(value: number): number {

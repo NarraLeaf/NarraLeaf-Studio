@@ -19,6 +19,7 @@
 import { isBuiltinUIStructId, resolveUIStruct } from "./builtinStructs";
 import type { UIDocument, UIElement, UIElementId, UIElementValueBinding } from "./document";
 import { findOwningListItemTemplate } from "./listItemContext";
+import { getUIPageParams } from "./pageParams";
 import type { UIStructDef, UIStructField, UIStructId } from "./struct";
 import { normalizeUIStructDef, structsAreCompatible } from "./struct";
 
@@ -80,9 +81,18 @@ export function listUIStructOwnerIds(
     return out;
 }
 
+/** Shapes named by page list parameters, which own their declarations independently of widgets. */
+function* pageStructIds(document: Pick<UIDocument, "surfaces">): Iterable<UIStructId> {
+    for (const surface of document.surfaces ?? []) {
+        for (const param of getUIPageParams(surface)) {
+            if (param.type === "list" && param.struct) yield param.struct;
+        }
+    }
+}
+
 /** Every struct id anything in the document still names. Built-ins are not in it - nothing stores them. */
 export function collectReachableUIStructIds(
-    document: Pick<UIDocument, "elements" | "components">,
+    document: Pick<UIDocument, "elements" | "components" | "surfaces">,
 ): Set<UIStructId> {
     const out = new Set<UIStructId>();
     for (const element of Object.values(document.elements ?? {})) {
@@ -97,12 +107,16 @@ export function collectReachableUIStructIds(
             }
         }
     }
+    // Page list parameters are document-level owners too. A page can hand rows to a list without
+    // any element naming the same struct, so pruning by element props alone would delete the shape
+    // while the page still declares it and leave its typed pin contract unresolved.
+    for (const id of pageStructIds(document)) out.add(id);
     return out;
 }
 
 /** The table with every shape nothing names any more removed. */
 export function pruneUIStructs(
-    document: Pick<UIDocument, "elements" | "components" | "structs">,
+    document: Pick<UIDocument, "elements" | "components" | "surfaces" | "structs">,
 ): Record<UIStructId, UIStructDef> {
     const reachable = collectReachableUIStructIds(document);
     const out: Record<UIStructId, UIStructDef> = {};
@@ -146,20 +160,18 @@ export type UIStructFieldsApplication = {
  *
  * Four cases, in the order they are tested:
  *
- *  1. **A built-in, or a shape nothing else names but the library already holds under another id** -
- *     reuse that id. Two lists that agree end up the same type, which is what lets one feed the
- *     other and what keeps a project from accumulating a shape per widget.
- *  2. **The owner is alone with this shape** - write the fields where they are. Ids stay put, so
+ *  1. **The owner is alone with this shape** - write the fields where they are. Ids stay put, so
  *     every binding, pin and stored snapshot pointing at this shape keeps pointing at it.
- *  3. **Somebody else names it too** - mint a new id and hand it back for the owner to store. The
- *     other owners keep the shape they had, which is the promise the widget's inspector makes.
- *  4. **No shape yet** - mint one.
+ *  2. **Another list or page parameter names it, or it is built in** - mint a new id and hand it
+ *     back for the owner to store. Other owners keep the shape they had.
+ *  3. **No current shape and an identical shape exists** - reuse the existing id.
+ *  4. **No current or compatible shape** - mint one.
  *
  * The owner's own prop is NOT written here; the caller stores `structId`. Keeping the table and the
  * pointer as two writes is what lets a caller do both inside one document transaction.
  */
 export function applyUIStructFieldsForOwner(input: {
-    document: Pick<UIDocument, "elements" | "components" | "structs">;
+    document: Pick<UIDocument, "elements" | "components" | "surfaces" | "structs">;
     ownerElementId: UIElementId;
     currentStructId: string | null | undefined;
     fields: readonly UIStructField[];
@@ -169,19 +181,31 @@ export function applyUIStructFieldsForOwner(input: {
     const structs = { ...(document.structs ?? {}) };
     const currentId = typeof input.currentStructId === "string" ? input.currentStructId.trim() : "";
 
-    const reuseId = findCompatibleUIStructId(structs, fields, { exclude: currentId });
-    if (reuseId) {
-        return { structId: reuseId, structs, forked: false };
-    }
-
     const sharedWithOthers =
         currentId.length > 0 &&
         (isBuiltinUIStructId(currentId) ||
+            [...pageStructIds(document)].includes(currentId) ||
             listUIStructOwnerIds(document, currentId).some(id => id !== ownerElementId));
 
+    // Keep an owner's field ids stable while it is the sole user of its shape. A structurally
+    // compatible shape elsewhere may use different field ids; switching to it would leave this
+    // list's bindings and item key pointing at fields the new shape does not contain.
     if (currentId && structs[currentId] && !sharedWithOthers) {
         structs[currentId] = { id: currentId, fields: [...fields] };
         return { structId: currentId, structs, forked: false };
+    }
+
+    // Copy-on-write takes precedence over structural de-duplication: a shared shape must fork so
+    // the owner keeps the field identities its bindings already use.
+    if (currentId && sharedWithOthers) {
+        const nextId = generateId();
+        structs[nextId] = { id: nextId, fields: [...fields] };
+        return { structId: nextId, structs, forked: true };
+    }
+
+    const reuseId = findCompatibleUIStructId(structs, fields, { exclude: currentId });
+    if (reuseId) {
+        return { structId: reuseId, structs, forked: false };
     }
 
     const nextId = generateId();

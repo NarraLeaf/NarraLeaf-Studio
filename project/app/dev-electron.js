@@ -128,7 +128,8 @@ function broadcastReload(target = 'all') {
     /** Restart electron process */
     let electronProcess = null;
     let appStarted = false; // whether Electron has been started at least once
-    let restartingElectron = false; // whether the next exit is one we asked for
+    let stoppingElectron = null; // the process whose exit was requested by a rebuild
+    let restartRequested = false;
     let initialMainBuilt = false;
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
@@ -164,15 +165,15 @@ function broadcastReload(target = 'all') {
 
         // Debounce restarts by 300ms to avoid rapid successive restarts
         restartTimer = setTimeout(() => {
+            restartTimer = null;
+            restartRequested = true;
             if (electronProcess) {
+                if (stoppingElectron === electronProcess) return;
                 console.log('[dev] killing existing electron process...');
-                restartingElectron = true;
-                electronProcess.kill('SIGTERM');
-                // Give it a moment to fully shut down
-                setTimeout(() => {
-                    startElectron();
-                }, 100);
+                stoppingElectron = electronProcess;
+                stoppingElectron.kill('SIGTERM');
             } else {
+                restartRequested = false;
                 startElectron();
             }
         }, 300);
@@ -187,7 +188,7 @@ function broadcastReload(target = 'all') {
         // nothing there or — worse — attached to the default-port session owned by
         // another checkout and reloaded on its rebuilds. Forwarded args come last
         // so an explicit --dev-reload-port on the command line still wins.
-        electronProcess = spawn(electronBinary, [
+        const child = spawn(electronBinary, [
             mainEntry,
             '--dev',
             `--dev-reload-port=${DEV_RELOAD_PORT}`,
@@ -195,19 +196,38 @@ function broadcastReload(target = 'all') {
         ], {
             stdio: 'inherit',
         });
-        restartingElectron = false;
+        electronProcess = child;
 
         // Handle process events
-        electronProcess.on('error', (err) => {
+        child.on('error', (err) => {
             console.error('[dev] electron process error:', err);
+            // A failed spawn has no exit event. Release it so a later rebuild can retry.
+            if (electronProcess === child && child.pid === undefined) {
+                electronProcess = null;
+                if (stoppingElectron === child) {
+                    stoppingElectron = null;
+                    if (restartRequested && !restartTimer) {
+                        restartRequested = false;
+                        startElectron();
+                    }
+                }
+            }
         });
 
-        electronProcess.on('exit', (code, signal) => {
-            if (restartingElectron) {
+        child.on('exit', (code, signal) => {
+            if (electronProcess !== child) return;
+            electronProcess = null;
+            if (stoppingElectron === child) {
+                stoppingElectron = null;
                 console.log('[dev] electron process terminated by dev server');
+                // A new edit may still be within the debounce window. In that case its timer
+                // starts the replacement after the latest build instead.
+                if (restartRequested && !restartTimer) {
+                    restartRequested = false;
+                    startElectron();
+                }
                 return;
             }
-            electronProcess = null;
             if (code === 0) {
                 // Quitting Studio ends the session that launched it. Otherwise this process stays
                 // up holding DEV_RELOAD_PORT with no Electron behind it - the same state the
@@ -471,26 +491,43 @@ function broadcastReload(target = 'all') {
     ]);
 
     let builtInPluginRebuildTimer = null;
+    let builtInPluginBuildRunning = false;
+    let builtInPluginBuildQueued = false;
     const builtInPluginWatcher = chokidar.watch(builtInPluginsSourceRoot, {
         ignored: ignoreDotSegmentsBelow(builtInPluginsSourceRoot),
         ignoreInitial: true,
     });
 
+    async function rebuildBuiltInPluginsForDev() {
+        if (builtInPluginBuildRunning) {
+            builtInPluginBuildQueued = true;
+            return;
+        }
+        builtInPluginBuildRunning = true;
+        try {
+            const results = await buildBuiltInPlugins({ dev: true });
+            console.log(`[builtin-plugins] rebuilt (${results.length}).`);
+            if (appStarted) {
+                console.log('[builtin-plugins] broadcasting re-sync + workspace reload...');
+                broadcastReload('builtin-plugins');
+            }
+        } catch (error) {
+            console.error('[builtin-plugins] rebuild failed:', error);
+        } finally {
+            builtInPluginBuildRunning = false;
+            if (builtInPluginBuildQueued) {
+                builtInPluginBuildQueued = false;
+                void rebuildBuiltInPluginsForDev();
+            }
+        }
+    }
+
     builtInPluginWatcher.on('all', () => {
         if (builtInPluginRebuildTimer) {
             clearTimeout(builtInPluginRebuildTimer);
         }
-        builtInPluginRebuildTimer = setTimeout(async () => {
-            try {
-                const results = await buildBuiltInPlugins({ dev: true });
-                console.log(`[builtin-plugins] rebuilt (${results.length}).`);
-                if (appStarted) {
-                    console.log('[builtin-plugins] broadcasting re-sync + workspace reload...');
-                    broadcastReload('builtin-plugins');
-                }
-            } catch (error) {
-                console.error('[builtin-plugins] rebuild failed:', error);
-            }
+        builtInPluginRebuildTimer = setTimeout(() => {
+            void rebuildBuiltInPluginsForDev();
         }, 150);
     });
 

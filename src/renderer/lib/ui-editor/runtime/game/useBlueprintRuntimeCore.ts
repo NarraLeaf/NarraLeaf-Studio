@@ -116,7 +116,10 @@ export function useBlueprintRuntimeCore(
         // empty - the handler would simply not be found, with nothing anywhere reporting why. That
         // is what happened the first time this was driven for real.
         let cancelled = false;
-        void mountBlueprintCompiledScripts(bundle, onScriptIssue).then(() => {
+        const reportIssue = onScriptIssue
+            ? (issue: BlueprintScriptIssue) => { if (!cancelled) onScriptIssue(issue); }
+            : undefined;
+        void mountBlueprintCompiledScripts(bundle, reportIssue).then(() => {
             if (!cancelled) {
                 setSession(nextSession);
             }

@@ -27,6 +27,11 @@ describe("escaping", () => {
     it("decodes named and numeric entities, and leaves unknown ones", () => {
         expect(decodeXmlEntities("&lt;&#65;&#x4e2d;&amp;&nbsp;")).toBe("<A中&&nbsp;");
     });
+
+    it("keeps unrecognised names and out-of-range numeric references as text", () => {
+        expect(decodeXmlEntities("&constructor; &#1114112; &#x110000;"))
+            .toBe("&constructor; &#1114112; &#x110000;");
+    });
 });
 
 describe("parseXml", () => {

@@ -98,6 +98,50 @@ describe("SpriteCompositor", () => {
         await compositor.composite("c1|pose:a", ["x"]);
         expect(render).toHaveBeenCalledTimes(3);
     });
+
+    it("does not reuse or cache an in-flight picture after its character changes", async () => {
+        const revoked: string[] = [];
+        let nextUrl = 0;
+        globalThis.URL.createObjectURL = () => `blob:${++nextUrl}`;
+        globalThis.URL.revokeObjectURL = url => { revoked.push(url); };
+        let finishOld!: (bitmap: ImageBitmap) => void;
+        let finishNew!: (bitmap: ImageBitmap) => void;
+        const decode = vi.fn()
+            .mockImplementationOnce(() => new Promise<ImageBitmap>(resolve => { finishOld = resolve; }))
+            .mockImplementationOnce(() => new Promise<ImageBitmap>(resolve => { finishNew = resolve; }));
+        const compositor = new SpriteCompositor(decode, async () => new Blob());
+        const old = compositor.composite("c1|pose:p", ["old"]);
+        compositor.invalidate("c1|");
+        const current = compositor.composite("c1|pose:p", ["new"]);
+
+        finishOld({ width: 10, height: 10 } as ImageBitmap);
+        expect(await old).toBeNull();
+        expect(compositor.composite("c1|pose:p", ["new"])).toBe(current);
+        finishNew({ width: 20, height: 20 } as ImageBitmap);
+        const result = await current;
+
+        expect(result).toMatchObject({ width: 20, height: 20 });
+        expect(await compositor.composite("c1|pose:p", ["new"])).toBe(result);
+        expect(decode).toHaveBeenCalledTimes(2);
+        expect(revoked).toEqual(["blob:1"]);
+    });
+
+    it("releases a picture that finishes after the compositor is disposed", async () => {
+        const revoked: string[] = [];
+        globalThis.URL.createObjectURL = () => "blob:late";
+        globalThis.URL.revokeObjectURL = url => { revoked.push(url); };
+        let finish!: (bitmap: ImageBitmap) => void;
+        const compositor = new SpriteCompositor(
+            () => new Promise<ImageBitmap>(resolve => { finish = resolve; }),
+            async () => new Blob(),
+        );
+        const pending = compositor.composite("c1|pose:p", ["one"]);
+        compositor.dispose();
+        finish({ width: 10, height: 10 } as ImageBitmap);
+
+        expect(await pending).toBeNull();
+        expect(revoked).toEqual(["blob:late"]);
+    });
 });
 
 describe("occludedLayers", () => {

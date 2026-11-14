@@ -196,6 +196,11 @@ export function useManuscriptIo(): ManuscriptIo {
             const characterService = context.services.get<CharacterService>(Services.Character);
             const uuidService = context.services.get<UuidService>(Services.Uuid);
             await storyService.loadStory(request.storyId);
+            if (getProjectWriteFreeze() !== null) {
+                report(t("workspace.shell.freeze.unavailable"));
+                setImportRequest(null);
+                return;
+            }
 
             const created: Record<string, string> = {};
             for (const name of plan.charactersToCreate) {

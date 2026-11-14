@@ -111,8 +111,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
      * decide.
      */
     const requestOpen = useCallback(async (target: PendingOpen) => {
-        const answer = await getInterface().workspace.isProjectOpen(target.projectPath);
-        if (answer.success && answer.data.open) {
+        const answer = await getInterface().workspace.isProjectOpen(target.projectPath).catch(() => null);
+        if (answer?.success && answer.data.open) {
             openTarget(target, false);
             return;
         }

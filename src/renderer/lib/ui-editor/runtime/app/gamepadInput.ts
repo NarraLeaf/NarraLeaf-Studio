@@ -211,6 +211,7 @@ export function listenForGamepads(input: GameGamepadDispatch): () => void {
     const tracker = getSharedGamepadTracker();
     const hold = getSharedInputHoldTracker();
     let queue: Promise<void> = Promise.resolve();
+    let listening = true;
     const unsubHeld = tracker.onHeldButtons(buttons => {
         hold.setGamepadButtons(buttons);
     });
@@ -218,10 +219,11 @@ export function listenForGamepads(input: GameGamepadDispatch): () => void {
     const unsubEdge = tracker.onEdge(edge => {
         noteInputDevice("gamepad");
         repeat.edge(edge);
-        queue = queue.then(() => dispatchGameGamepad(input, edge)).catch(input.onError);
+        queue = queue.then(() => listening ? dispatchGameGamepad(input, edge) : undefined).catch(input.onError);
     });
     tracker.start();
     return () => {
+        listening = false;
         unsubEdge();
         unsubHeld();
         repeat.stop();

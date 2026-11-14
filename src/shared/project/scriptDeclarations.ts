@@ -154,20 +154,35 @@ function uniqueTypeNames(entries: readonly { name: string }[]): string[] {
     });
 }
 
-function surfaceBlock(surface: ScriptSurfaceFacts, typeName: string, componentScoped: boolean): string[] {
+/** Keep authored text inside its generated documentation comment. */
+function commentText(value: string): string {
+    return value.replace(/\*\//g, "* /").replace(/[\r\n\u2028\u2029]/g, " ");
+}
+
+function surfaceBlock(
+    surface: ScriptSurfaceFacts,
+    typeName: string,
+    componentScoped: boolean,
+    contextNames: Set<string>,
+): string[] {
     const ctx = componentScoped ? "ComponentWidgetCtx" : "WidgetCtx";
     const lines: string[] = [
-        `    /** Elements on ${JSON.stringify(surface.name)}. */`,
+        `    /** Elements on ${commentText(JSON.stringify(surface.name))}. */`,
         `    type ${typeName}Element = ${unionOf(surface.elements.map(element => element.id))};`,
     ];
     for (const [index, element] of surface.elements.entries()) {
         if (element.scriptable === false) {
             continue;
         }
-        const elementType = typeNameOf(element.name, index);
+        const base = `${typeName}${typeNameOf(element.name, index)}`;
+        let alias = `${base}Ctx`;
+        for (let n = 2; contextNames.has(alias); n += 1) {
+            alias = `${base}${n}Ctx`;
+        }
+        contextNames.add(alias);
         lines.push(
-            `    /** ${JSON.stringify(element.name)} - ${element.type}. */`,
-            `    type ${typeName}${elementType}Ctx = ${ctx}<${JSON.stringify(element.type)}>;`,
+            `    /** ${commentText(JSON.stringify(element.name))} - ${commentText(element.type)}. */`,
+            `    type ${alias} = ${ctx}<${JSON.stringify(element.type)}>;`,
         );
     }
     return lines;
@@ -222,7 +237,7 @@ function pluginWidgetLines(widgets: readonly ScriptPluginWidgetFacts[]): string[
         "    interface PluginScriptWidgets {",
     ];
     for (const widget of [...widgets].sort((a, b) => a.type.localeCompare(b.type))) {
-        lines.push(`        /** ${JSON.stringify(widget.displayName)} - from the plugin ${widget.pluginId}. */`);
+        lines.push(`        /** ${commentText(JSON.stringify(widget.displayName))} - from the plugin ${commentText(widget.pluginId)}. */`);
         lines.push(`        ${JSON.stringify(widget.type)}: {`);
         for (const event of widget.events) {
             if (event.builtin) {
@@ -248,8 +263,8 @@ function pluginWidgetLines(widgets: readonly ScriptPluginWidgetFacts[]): string[
  * current - cannot disagree about what it says.
  */
 export function renderProjectDeclarations(facts: ScriptProjectFacts): string {
-    const surfaceNames = uniqueTypeNames(facts.surfaces);
-    const componentNames = uniqueTypeNames(facts.components);
+    const names = uniqueTypeNames([...facts.surfaces, ...facts.components]);
+    const contextNames = new Set<string>();
 
     const lines: string[] = [
         HEADER,
@@ -279,10 +294,10 @@ export function renderProjectDeclarations(facts: ScriptProjectFacts): string {
 
     lines.push(...pluginWidgetLines(facts.pluginWidgets ?? []));
     for (const [index, surface] of facts.surfaces.entries()) {
-        lines.push(...surfaceBlock(surface, surfaceNames[index], false), "");
+        lines.push(...surfaceBlock(surface, names[index], false, contextNames), "");
     }
     for (const [index, component] of facts.components.entries()) {
-        lines.push(...surfaceBlock(component, componentNames[index], true), "");
+        lines.push(...surfaceBlock(component, names[facts.surfaces.length + index], true, contextNames), "");
     }
 
     lines.push("}", "");

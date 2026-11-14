@@ -101,6 +101,8 @@ export class LayerStackController {
     private readonly exitWaiters = new Set<() => void>();
     /** True between removing a mounted layer and the presence group reporting its exit done. */
     private exitPending = false;
+    /** Groups remain occupied until their rendered layers finish leaving. */
+    private readonly exitingGroups = new Set<string>();
     private seq = 0;
 
     public getState = (): readonly SurfaceLayerEntry[] => {
@@ -249,6 +251,7 @@ export class LayerStackController {
         // Nothing is left to animate out, so anything waiting on an exit is waiting on a frame that
         // will never come. A load clearing the stack must not strand a graph mid-`Hide Layer`.
         this.exitPending = false;
+        this.exitingGroups.clear();
         if (closed.length > 0 || wasExitPending) {
             this.publish();
         }
@@ -296,15 +299,22 @@ export class LayerStackController {
 
     /** {@link hide}, settling when the layer has finished animating out. */
     public async hideAndWaitForExit(key: string): Promise<boolean> {
+        const animating = this.hasRenderedLayer(layer => layer.key === key);
         const removed = this.hide(key);
-        await this.waitForExitComplete();
+        if (animating) {
+            await this.waitForExitComplete();
+        }
         return removed;
     }
 
     /** {@link hideGroup}, settling when the group has finished animating out. */
     public async hideGroupAndWaitForExit(group: string): Promise<boolean> {
+        const name = group.trim();
+        const animating = name !== "" && this.hasRenderedLayer(layer => layer.group === name);
         const removed = this.hideGroup(group);
-        await this.waitForExitComplete();
+        if (animating) {
+            await this.waitForExitComplete();
+        }
         return removed;
     }
 
@@ -319,6 +329,7 @@ export class LayerStackController {
     public notifyExitComplete(): void {
         const wasExitPending = this.exitPending;
         this.exitPending = false;
+        this.exitingGroups.clear();
         if (wasExitPending) {
             this.publish();
         }
@@ -327,7 +338,13 @@ export class LayerStackController {
     }
 
     private isGroupTaken(group: string): boolean {
-        return this.layers.some(layer => layer.group === group) || this.queued.some(layer => layer.group === group);
+        return this.exitingGroups.has(group)
+            || this.layers.some(layer => layer.group === group)
+            || this.queued.some(layer => layer.group === group);
+    }
+
+    private hasRenderedLayer(match: (layer: SurfaceLayerEntry) => boolean): boolean {
+        return this.layers.some(layer => match(layer) && !this.unrenderedKeys.has(layer.key));
     }
 
     private remove(match: (layer: SurfaceLayerEntry) => boolean, result: unknown): boolean {
@@ -350,6 +367,11 @@ export class LayerStackController {
         if (removed.length > 0) {
             if (animating) {
                 this.exitPending = true;
+                for (const layer of removed) {
+                    if (layer.group && !this.unrenderedKeys.has(layer.key)) {
+                        this.exitingGroups.add(layer.group);
+                    }
+                }
             }
             this.emit(this.layers.filter(layer => !match(layer)));
         } else {

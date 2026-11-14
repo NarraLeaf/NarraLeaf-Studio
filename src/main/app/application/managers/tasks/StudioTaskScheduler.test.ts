@@ -83,6 +83,83 @@ describe("StudioTaskScheduler", () => {
         expect(runs).toBe(1);
     });
 
+    it("keeps already blocking work ahead of a promoted queued task", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+        const order: string[] = [];
+        const running = scheduler.submit(task("running", async () => { await held.opened; }));
+        const idle = scheduler.submit(task("idle", async () => { order.push("promoted"); }));
+        const blocking = scheduler.submit({
+            ...task("blocking", async () => { order.push("blocking"); }),
+            priority: "blocking",
+        });
+        const promoted = scheduler.submit({
+            ...task("idle", async () => { throw new Error("must join existing work"); }),
+            priority: "blocking",
+        });
+
+        held.open();
+        await Promise.all([running, idle, blocking, promoted]);
+        expect(order).toEqual(["blocking", "promoted"]);
+    });
+
+    it("runs a fresh request for work whose cancellation is still in progress", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const stopping = gate();
+        let stops = 0;
+        let freshRuns = 0;
+        const stale = scheduler.submitAll([task("snow", async ({ onCancel }) => {
+            onCancel(() => { stops += 1; });
+            await stopping.opened;
+            return "stale";
+        })], { owner: "prebake", attempt: "1" });
+
+        await scheduler.submitAll([], { owner: "prebake", attempt: "2" });
+        const fresh = scheduler.submitAll([task("snow", async () => {
+            freshRuns += 1;
+            return "fresh";
+        })], { owner: "prebake", attempt: "3" });
+
+        stopping.open();
+        expect(await stale).toEqual([{ status: "cancelled" }]);
+        expect(await fresh).toEqual([{ status: "done", value: "fresh" }]);
+        expect(stops).toBe(1);
+        expect(freshRuns).toBe(1);
+    });
+
+    it("retires a cancelled claim without cancelling its replacement", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const stopping = gate();
+        let stops = 0;
+        const stale = scheduler.submitAll([task("snow", async ({ onCancel }) => {
+            onCancel(() => { stops += 1; });
+            await stopping.opened;
+        })], { owner: "prebake", attempt: "1" });
+        scheduler.cancel("snow");
+        const fresh = scheduler.submitAll([task("snow", async () => "fresh")], {
+            owner: "prebake",
+            attempt: "2",
+        });
+
+        stopping.open();
+        expect(await stale).toEqual([{ status: "cancelled" }]);
+        expect(await fresh).toEqual([{ status: "done", value: "fresh" }]);
+        expect(stops).toBe(1);
+    });
+
+    it("allows the next caller to request the same work immediately after completion", async () => {
+        const scheduler = new StudioTaskScheduler();
+        expect(await scheduler.submit(task("snow", async () => "first")))
+            .toEqual({ status: "done", value: "first" });
+
+        const again = scheduler.submit(task("snow", async () => "second"));
+        const result = await Promise.race([
+            again,
+            new Promise(resolve => setTimeout(() => resolve("timed out"), 100)),
+        ]);
+        expect(result).toEqual({ status: "done", value: "second" });
+    });
+
     it("reports what is happening, and what is behind it", async () => {
         const scheduler = new StudioTaskScheduler();
         const seen: StudioTaskOverview[] = [];

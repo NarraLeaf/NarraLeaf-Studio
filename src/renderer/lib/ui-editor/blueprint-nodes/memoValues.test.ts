@@ -14,7 +14,7 @@ function localsWithRecord(record: Record<string, unknown> = {}): Record<string, 
 describe("memo slots", () => {
     // The point of the node: one output, many consumers. Get Var cannot do this because a later Set
     // changes what the second consumer reads; a Memo has no second writer.
-    it("is the only data output allowed to fan out", () => {
+    it("allows a Memo result to fan out while a variable read does not", () => {
         expect(isBlueprintFanOutOutputPin(BLUEPRINT_NODE_TYPE_DATA_MEMO, "result")).toBe(true);
         expect(isBlueprintFanOutOutputPin(BLUEPRINT_NODE_TYPE_LOCAL_GET, "value")).toBe(false);
     });

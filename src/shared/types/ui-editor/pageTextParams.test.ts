@@ -9,6 +9,7 @@ import {
     uiTextPageParamOf,
 } from "./pageTextParams";
 import { listUIPageDefaultUnits, listUITextOwnUnits, mapCopiedUIPageDefaultUnits } from "./textUnitCopies";
+import { withUIPageParamDefaults } from "./pageParams";
 import { uiTextSiteOf } from "./textSource";
 import { uiTextSampleCauseOf } from "./textSample";
 
@@ -87,6 +88,16 @@ describe("what a page's text parameters hold", () => {
     it("translates words a Page widget gives through the widget's own unit, named by the parameter's name", () => {
         const texts = resolveUIPageTextParams(CONFIRM, { message: "Quit?" }, { opened: true, giverId: "embed" });
         expect(texts.values.message?.unitId).toBe("ui:embed.param.message");
+    });
+
+    it("shows the same text a blueprint reads when an opening supplies null", () => {
+        const given = { message: null };
+        const props = withUIPageParamDefaults(CONFIRM, given);
+        const texts = resolveUIPageTextParams(CONFIRM, given, { opened: true });
+
+        expect(props.message).toBe("");
+        expect(texts.values.message).toMatchObject({ origin: "placement", text: props.message });
+        expect(resolveUIPageTextParams(CONFIRM, {}, { opened: true }).values.message?.text).toBe("Are you sure?");
     });
 
     it("reads a page that declares nothing as giving nothing", () => {

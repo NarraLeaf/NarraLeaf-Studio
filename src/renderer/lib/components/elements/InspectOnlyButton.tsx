@@ -1,6 +1,7 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode, Ref } from "react";
 
 export interface InspectOnlyButtonProps {
+    id?: string;
     onClick: () => void;
     /** A second, non-primary way in - a blueprint entry opens its own window on a right click. */
     onContextMenu?: (event: MouseEvent<HTMLSpanElement>) => void;

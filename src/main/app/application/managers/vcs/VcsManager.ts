@@ -1966,7 +1966,11 @@ export class VcsManager extends Manager {
     public async getMergeBase(projectPath: string, a: string, b: string): Promise<string | undefined> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            const graph = await backend.readRevisionGraph(session.globals);
+            // The current-branch graph cannot contain the incoming tip of an ordinary
+            // cross-branch comparison. Read both ancestries before asking for their base;
+            // otherwise the revision reader must answer "no common ancestor" for a fork
+            // that has one and every caller inherits an add/add-shaped result.
+            const graph = await backend.readMergeGraph(session.globals, [a, b]);
             return backend.mergeBase(graph, a, b);
         });
     }

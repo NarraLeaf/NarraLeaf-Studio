@@ -9,7 +9,7 @@
 - studio 入口必须是 ESM，默认导出 `definePlugin({ setup(app) {} })`，从 `narraleaf-studio/plugin` 导入 API。
 - runtime 入口必须是 ESM，默认导出 `defineRuntimePlugin({ setup(app) {} })`，从 `narraleaf-studio/runtime` 导入 API。
 - Studio 只加载 manifest 声明的 entry 文件；开发者必须自己打包源码和依赖，每个 entry 都是自包含单文件。
-- studio 入口的 React 相关包使用 Studio host external；runtime 入口不提供 React。
+- 两种入口的 React 相关包都使用宿主提供的 host external；runtime 入口不提供 `react-dom/client`。
 - 所有插件贡献的 ID、widget type、blueprint node type、action id、panel id、keybinding id 都必须以插件 ID 为前缀。
 - 不要 import `@/...`、preload、`getInterface()`、Electron API 或 Node API。studio 入口需要特权能力时用 `app.privileged`；runtime 入口没有特权能力。
 

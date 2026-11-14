@@ -5,6 +5,8 @@ import type { ImportProgress } from "@/lib/workspace/services/assets/mgr/LocalAs
 export interface ImportQueueFailure {
     path: string;
     error?: string;
+    /** Retry through media triage before importing. */
+    needsMediaTriage?: boolean;
 }
 
 /** What the last (or current) import run is doing, and what it left behind. */

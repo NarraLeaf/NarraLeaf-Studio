@@ -45,6 +45,10 @@ function makeWindow(): AppWindowLike {
                     const target = path.resolve(fsPath);
                     return target === project || target.startsWith(`${project}${path.sep}`);
                 }),
+                isPathTreeAllowed: vi.fn(async (_window: unknown, fsPath: string) => {
+                    const target = path.resolve(fsPath);
+                    return target === project || target.startsWith(`${project}${path.sep}`);
+                }),
             },
         },
     } as unknown as AppWindowLike;

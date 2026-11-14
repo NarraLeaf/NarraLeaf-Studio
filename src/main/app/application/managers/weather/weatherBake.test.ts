@@ -318,6 +318,160 @@ describe("startWeatherBake", () => {
         expect(result.status).toBe("cancelled");
         await expect(fs.stat(target)).rejects.toBeTruthy();
     });
+
+    it("does not start an encoder after cancellation during directory setup", async () => {
+        let spawns = 0;
+        let closes = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), {
+            quality: "final",
+            spawnProcess: encoder.spawnProcess,
+            frameSource: { next: async () => null, close: () => { closes += 1; } },
+        });
+
+        handle.cancel();
+
+        expect(await handle.result).toEqual({ status: "cancelled" });
+        expect(spawns).toBe(0);
+        expect(closes).toBe(1);
+    });
+
+    it("reports directory setup failure and releases the frame source", async () => {
+        const parent = path.join(dir, "not-a-directory");
+        await fs.writeFile(parent, "file");
+        let spawns = 0;
+        let closes = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(parent, "snow.webm"), {
+            quality: "final",
+            spawnProcess: encoder.spawnProcess,
+            frameSource: { next: async () => null, close: () => { closes += 1; } },
+        });
+
+        await expect(handle.result).resolves.toMatchObject({ status: "error" });
+        expect(spawns).toBe(0);
+        expect(closes).toBe(1);
+    });
+
+    it("reports cancellation when directory setup also fails", async () => {
+        const parent = path.join(dir, "not-a-directory");
+        await fs.writeFile(parent, "file");
+        let spawns = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(parent, "snow.webm"), {
+            quality: "final",
+            spawnProcess: encoder.spawnProcess,
+        });
+
+        handle.cancel();
+
+        expect(await handle.result).toEqual({ status: "cancelled" });
+        expect(spawns).toBe(0);
+    });
+
+    it("stops drawing a pending frame when the bake is cancelled", async () => {
+        const encoder = fakeEncoder();
+        let releaseFrame: (frame: Uint8Array | null) => void = () => undefined;
+        let frameStarted: () => void = () => undefined;
+        const started = new Promise<void>(resolve => { frameStarted = resolve; });
+        const close = () => releaseFrame(null);
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), {
+            quality: "final",
+            spawnProcess: encoder.spawnProcess,
+            frameSource: {
+                next: () => new Promise(resolve => { releaseFrame = resolve; frameStarted(); }),
+                close,
+            },
+        });
+        await started;
+
+        handle.cancel();
+        const result = await Promise.race([
+            handle.result,
+            new Promise(resolve => setTimeout(() => resolve("timed out"), 100)),
+        ]);
+        close();
+
+        expect(result).toEqual({ status: "cancelled" });
+    });
+
+    it("releases a pending frame when the encoder exits", async () => {
+        const encoder = fakeEncoder();
+        let child: BakeChildProcess | null = null;
+        let releaseFrame: (frame: Uint8Array | null) => void = () => undefined;
+        let frameStarted: () => void = () => undefined;
+        const started = new Promise<void>(resolve => { frameStarted = resolve; });
+        let closes = 0;
+        // Closing the source need not settle an outstanding next(); encoder exit must wake it.
+        const close = () => { closes += 1; };
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), {
+            quality: "final",
+            spawnProcess: (binary, args) => {
+                child = encoder.spawnProcess(binary, args);
+                return child;
+            },
+            frameSource: {
+                next: () => new Promise(resolve => { releaseFrame = resolve; frameStarted(); }),
+                close,
+            },
+        });
+        await started;
+
+        (child as BakeChildProcess | null)?.kill("SIGTERM");
+        const result = await Promise.race([
+            handle.result,
+            new Promise(resolve => setTimeout(() => resolve("timed out"), 100)),
+        ]);
+        releaseFrame(null);
+
+        expect(result).toMatchObject({ status: "error", detail: "ffmpeg exited with no code" });
+        expect(closes).toBe(1);
+    });
+
+    it("does not write a frame that arrives just as the encoder exits", async () => {
+        const encoder = fakeEncoder({ writeOutput: false });
+        let child: BakeChildProcess | null = null;
+        let releaseFrame: (frame: Uint8Array) => void = () => undefined;
+        let frameStarted: () => void = () => undefined;
+        const started = new Promise<void>(resolve => { frameStarted = resolve; });
+        const handle = startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), {
+            quality: "final",
+            spawnProcess: (binary, args) => {
+                child = encoder.spawnProcess(binary, args);
+                return child;
+            },
+            frameSource: {
+                next: () => new Promise(resolve => { releaseFrame = resolve; frameStarted(); }),
+                close: () => undefined,
+            },
+        });
+        await started;
+
+        releaseFrame(Uint8Array.of(1));
+        (child as BakeChildProcess | null)?.kill("SIGTERM");
+
+        expect(await handle.result).toMatchObject({ status: "error", detail: "ffmpeg exited with no code" });
+        expect(encoder.chunks).toEqual([]);
+    });
+
+    it("reports a frame drawing failure and closes the source", async () => {
+        const encoder = fakeEncoder();
+        let closes = 0;
+        const target = path.join(dir, "snow.webm");
+        const handle = startWeatherBake("ffmpeg", SPEC, target, {
+            quality: "final",
+            spawnProcess: encoder.spawnProcess,
+            frameSource: {
+                next: async () => { throw new Error("frame drawing failed"); },
+                close: () => { closes += 1; },
+            },
+        });
+
+        expect(await handle.result).toMatchObject({ status: "error", detail: "frame drawing failed" });
+        expect(closes).toBe(1);
+        expect(encoder.chunks).toEqual([]);
+        await expect(fs.stat(target)).rejects.toBeTruthy();
+    });
 });
 
 describe("WeatherBakeManager", () => {
@@ -551,6 +705,26 @@ describe("WeatherBakeManager", () => {
         manager.abandon(claim);
 
         expect((await pending).failures.get(weatherBakeKey(SPEC))).toBe("cancelled");
+        expect(scheduler.getOverview().active).toBeNull();
+    });
+
+    it("does not start a bake cancelled while its cache is being checked", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        const controller = new AbortController();
+        let started = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { started += 1; } });
+        const claim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+        const pending = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null, claim },
+            { startBake: inThisProcess(encoder.spawnProcess), cancelled: () => controller.signal.aborted, ...withTool() },
+        );
+
+        controller.abort();
+        manager.abandon(claim);
+
+        expect((await pending).failures.get(weatherBakeKey(SPEC))).toBe("cancelled");
+        expect(started).toBe(0);
         expect(scheduler.getOverview().active).toBeNull();
     });
 

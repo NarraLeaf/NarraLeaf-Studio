@@ -104,7 +104,7 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlocks, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks, listSerializedBlocks } from "./storyForeignPaste";
 import { giveCopiedRowsTheirBlueprints } from "./storyRowBlueprints";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
@@ -3642,8 +3642,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
-        const clones = orderedRoots.map(rootId =>
-            cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap));
+        const clones = cloneSerializedBlocks(
+            orderedRoots.map(rootId => serializeBlockSubtree(scene, rootId)),
+            () => uuidService.generate(),
+            textIdMap,
+        );
         // The duplicate's blueprints are copies: the rows it was made from are still here and still
         // own theirs, and a duplicate sharing them would change the original when its graph is edited.
         if (blueprintService) {

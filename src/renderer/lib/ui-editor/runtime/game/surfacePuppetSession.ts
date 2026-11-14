@@ -327,11 +327,15 @@ export class SurfacePuppetMount {
         if (!session) {
             return;
         }
-        void Promise.resolve(session.apply(state)).catch((error: unknown) => {
-            // A backend that throws out of `apply` has usually been handed one bad name, which the
-            // engine treats as a warning rather than as a dead element. Same here.
+        const warn = (error: unknown) => {
             this.options.onWarn?.(messageOf(error));
-        });
+        };
+        try {
+            void Promise.resolve(session.apply(state)).catch(warn);
+        } catch (error) {
+            // A live model stays mounted when a pose cannot be applied.
+            warn(error);
+        }
     }
 
     public resize(size: PuppetSize): void {

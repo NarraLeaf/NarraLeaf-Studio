@@ -103,7 +103,7 @@ export function buildStageTimelineModel(input: {
     const { walk, scene, names } = input;
     const frames = walk.frames;
     const rowLanes = [
-        backgroundLane(frames, names),
+        backgroundLane(frames, scene, names),
         ...displayableLanes(frames, names),
         ...vfxLanes(frames, scene, names),
         cameraLane(frames),
@@ -173,18 +173,19 @@ function foldCells(
     return cells;
 }
 
-function backgroundLane(frames: readonly StageTimelineFrame[], names: StageTimelineNames): StageTimelineLane {
+function backgroundLane(frames: readonly StageTimelineFrame[], scene: StoryScene, names: StageTimelineNames): StageTimelineLane {
+    const initialAssetId = scene.defaultBackgroundAssetId?.trim();
     return {
         id: "background",
         kind: "background",
         name: "",
         marks: [],
         cells: foldCells(frames.length, index => {
-            const background = frames[index].background;
+            const background = frames[index].background ?? (initialAssetId ? { assetId: initialAssetId } : null);
             if (!background) {
                 return null;
             }
-            const label = background.assetId ? names.asset(background.assetId) : background.color ?? null;
+            const label = background.assetId ? authoredNameOrNull(names.asset(background.assetId)) : background.color ?? null;
             return { label, key: JSON.stringify(background), image: background.assetId ?? null };
         }),
     };
@@ -220,11 +221,11 @@ function displayableLanes(frames: readonly StageTimelineFrame[], names: StageTim
             };
         });
         const lane: StageTimelineLane = characterId
-            ? { id: `d:${key}`, kind: "character", name: names.character(characterId) ?? last.objectName, characterId, cells, marks: [] }
+            ? { id: `d:${key}`, kind: "character", name: authoredNameOrNull(names.character(characterId)) ?? authoredNameOrNull(last.objectName) ?? "", characterId, cells, marks: [] }
             : {
                 id: `d:${key}`,
                 kind: last.kind === "text" ? "text" : "image",
-                name: authoredNameOrNull(last.objectName) ?? sourceName(last.source, names) ?? last.objectName,
+                name: authoredNameOrNull(last.objectName) ?? sourceName(last.source, names) ?? "",
                 cells,
                 marks: [],
             };
@@ -257,11 +258,11 @@ function displayableLabel(source: StageSnapshotImageSource | undefined, text: st
             return null;
         }
         if (source.pose) {
-            return names.appearance(characterId, source.pose);
+            return authoredNameOrNull(names.appearance(characterId, source.pose));
         }
         const tags = Object.values(source.tags ?? {})
             .filter((value): value is string => typeof value === "string" && value.length > 0)
-            .map(tagId => names.appearance(characterId, tagId))
+            .map(tagId => authoredNameOrNull(names.appearance(characterId, tagId)))
             .filter((name): name is string => name !== null);
         return tags.length > 0 ? tags.join(" · ") : null;
     }
@@ -281,7 +282,7 @@ function spriteOf(source: StageSnapshotImageSource | undefined): StageTimelineSp
 
 function sourceName(source: StageSnapshotImageSource | undefined, names: StageTimelineNames): string | null {
     if (source?.type === "asset") {
-        return names.asset(source.assetId);
+        return authoredNameOrNull(names.asset(source.assetId));
     }
     if (source?.type === "color") {
         return source.color;
@@ -294,7 +295,7 @@ function vfxLanes(frames: readonly StageTimelineFrame[], scene: StoryScene, name
     return declared.map(record => ({
         id: `vfx:${record.objectName}`,
         kind: "vfx" as const,
-        name: authoredNameOrNull(record.objectName) ?? rowAssetName(scene.blocks[record.sourceBlockId], names) ?? record.objectName,
+        name: authoredNameOrNull(record.objectName) ?? rowAssetName(scene.blocks[record.sourceBlockId], names) ?? "",
         marks: [],
         cells: foldCells(frames.length, index => {
             const current = frames[index].vfx.find(candidate => candidate.objectName === record.objectName);
@@ -354,7 +355,7 @@ function musicLane(frames: readonly StageTimelineFrame[], scene: StoryScene, nam
                 return null;
             }
             const assetId = music.setBy ? rowAssetId(scene.blocks[music.setBy]) : scene.bgm?.assetId;
-            return { label: assetId ? names.asset(assetId) : null, key: music.setBy ?? "" };
+            return { label: assetId ? authoredNameOrNull(names.asset(assetId)) : null, key: music.setBy ?? "" };
         }),
     };
 }
@@ -374,15 +375,15 @@ function soundLanes(frames: readonly StageTimelineFrame[], scene: StoryScene, na
         return {
             id: `sound:${handle.objectName}`,
             kind: "sound" as const,
-            name: authoredNameOrNull(handle.objectName) ?? label ?? handle.objectName,
+            name: authoredNameOrNull(handle.objectName) ?? label ?? "",
             marks: [],
-        cells: foldCells(frames.length, index => {
+            cells: foldCells(frames.length, index => {
+                const current = frames[index].sounds.find(candidate => candidate.objectName === handle.objectName);
                 if (loops) {
-                    const current = frames[index].sounds.find(candidate => candidate.objectName === handle.objectName);
                     return current?.playing && !current.paused ? { label, key: "" } : null;
                 }
                 const block = scene.blocks[frames[index].blockId];
-                const starts = block?.kind === "action" && block.payload.action === "audio"
+                const starts = current?.playing && block?.kind === "action" && block.payload.action === "audio"
                     && block.payload.operation === "playSound" && soundStageObjectName(block.payload) === handle.objectName;
                 // Keyed by column so two starts in a row read as two marks rather than one span.
                 return starts ? { label, key: String(index) } : null;
@@ -403,7 +404,7 @@ function rowAssetId(block: StoryBlock | undefined): string | undefined {
 
 function rowAssetName(block: StoryBlock | undefined, names: StageTimelineNames): string | null {
     const assetId = rowAssetId(block);
-    return assetId ? names.asset(assetId) : null;
+    return assetId ? authoredNameOrNull(names.asset(assetId)) : null;
 }
 
 function spokenText(block: StoryBlock | undefined): string | null {
@@ -579,7 +580,7 @@ export function stageTimelineThrough(
     }
     const through: StoryBlockId[] = cursor && decides ? [cursor] : [];
     for (const [choiceId, optionId] of picks) {
-        if (!ancestors.has(choiceId) && scene.blocks[optionId]?.parentId === choiceId) {
+        if ((!ancestors.has(choiceId) || choiceId === cursor) && scene.blocks[optionId]?.parentId === choiceId) {
             through.push(optionId);
         }
     }

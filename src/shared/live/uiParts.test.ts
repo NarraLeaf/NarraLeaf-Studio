@@ -346,6 +346,14 @@ describe("the fingerprints", () => {
         expect(uiSurfaceDigest(moved, "s2")).toBe(uiSurfaceDigest(document(), "s2"));
     });
 
+    it("includes every JSON key in an element's properties", () => {
+        const first = clone(document());
+        const second = clone(document());
+        first.elements["btn-1"].props = JSON.parse('{"data":{"__proto__":{"value":1}}}');
+        second.elements["btn-1"].props = JSON.parse('{"data":{"__proto__":{"value":2}}}');
+        expect(uiSurfaceDigest(first, "s1")).not.toBe(uiSurfaceDigest(second, "s1"));
+    });
+
     it("gives an absent Surface a value rather than no digest", () => {
         // With the cast's record and against the scene's: deleting a Surface is an operation like
         // any other, and answering null would rule `unproven` on exactly the effect that proves two

@@ -60,7 +60,7 @@ import {
     type StoryBlueprintPasteMode,
 } from "./storyRowBlueprints";
 import {
-    cloneSerializedBlock,
+    cloneSerializedBlocks,
     exportBlockPlainText,
     getPasteAnchorId,
     flattenSerializedClone,
@@ -258,7 +258,7 @@ export function useStorySceneClipboardHandlers(params: {
             return null;
         }
         const textIds = new Map<string, string>();
-        const clones = roots.map(root => cloneSerializedBlock(root, () => uuidService.generate(), textIds));
+        const clones = cloneSerializedBlocks(roots, () => uuidService.generate(), textIds);
         return { clones, textIds };
     }, [params]);
 

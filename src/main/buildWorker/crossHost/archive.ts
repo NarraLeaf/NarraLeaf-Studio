@@ -69,7 +69,12 @@ export class FileZipOutput implements ZipOutput {
     }
 
     public async patch(offset: number, data: Buffer): Promise<void> {
-        await this.handle.write(data, 0, data.length, offset);
+        let written = 0;
+        while (written < data.length) {
+            const result = await this.handle.write(data, written, data.length - written, offset + written);
+            if (result.bytesWritten === 0) throw new Error("ZIP header write made no progress");
+            written += result.bytesWritten;
+        }
     }
 
     public async close(): Promise<void> {

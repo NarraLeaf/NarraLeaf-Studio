@@ -15,12 +15,7 @@ import { getFrameProps, type FrameWidgetProps } from "./helpers";
 const NO_PAGE_VALUE = "__nl-frame-no-page__";
 
 function patchFrameProps(data: UIInspectorData, patch: Partial<FrameWidgetProps>): void {
-    const current = getFrameProps(data.element);
-    data.documentService.updateElementProps(data.element.id, {
-        ...data.element.props,
-        ...current,
-        ...patch,
-    });
+    data.documentService.updateElementProps(data.element.id, patch);
 }
 
 const FrameParamsBlueprintValueField = createBlueprintValueField({
@@ -77,7 +72,8 @@ function FramePageParamsField({ data }: CustomFieldProps<UIInspectorData>) {
                         placeholder={uiPageParamDefaultValue(param)}
                         ariaLabel={param.name}
                         onCommit={next => {
-                            const nextParams = { ...given };
+                            const latest = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+                            const nextParams = { ...getFrameProps(latest).params };
                             if (next === null) {
                                 delete nextParams[param.name];
                             } else {

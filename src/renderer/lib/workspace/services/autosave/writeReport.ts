@@ -22,6 +22,8 @@ export type SavedFileName =
  *
  * - `retried`: an auto-saver still owes the file and keeps trying on its backoff (`DebouncedSaver`).
  *   The notice says so and offers "Retry now", and the status bar says a save is owed.
+ * - `backgroundRetried`: a scheduler retries an operation that can write a new path. Its owner
+ *   settles the notice, and the notice has no action because the saver registry cannot replay it.
  * - `notRetried`: nothing tries the write again and nothing else tells the author. The notice says
  *   the change was not saved, and offers no retry, because there is nothing for one to replay.
  * - `handledByWriter`: the code that wrote the file deals with the failure itself. Either the
@@ -29,16 +31,24 @@ export type SavedFileName =
  *   setting, an export, the text editor's save), or losing the write costs the author nothing worth
  *   telling them (a cache Studio rebuilds, the scratch copy a media probe reads). One console line.
  */
-export type WriteFailureFollowUp = "retried" | "notRetried" | "handledByWriter";
+export type WriteFailureFollowUp = "retried" | "backgroundRetried" | "notRetried" | "handledByWriter";
+type OrdinaryWriteFailureFollowUp = Exclude<WriteFailureFollowUp, "backgroundRetried">;
+
+/** A scheduled operation may retry with a different path; its owner settles the whole operation. */
+export type BackgroundWriteOwner = { active: boolean; attempts: number };
 
 /** Carried with a write to the save-status surface, which is the one place a failed write is reported. */
 export type FsWriteReport = {
     name: SavedFileName;
-    afterFailure: WriteFailureFollowUp;
+    afterFailure: OrdinaryWriteFailureFollowUp;
+} | {
+    name: SavedFileName;
+    afterFailure: "backgroundRetried";
+    owner: BackgroundWriteOwner;
 };
 
 /** A write to one of the project's stores. */
-export function storeWrite(store: TranslationKey, afterFailure: WriteFailureFollowUp): FsWriteReport {
+export function storeWrite(store: TranslationKey, afterFailure: OrdinaryWriteFailureFollowUp): FsWriteReport {
     return { name: { store }, afterFailure };
 }
 
@@ -50,7 +60,7 @@ export function storeWrite(store: TranslationKey, afterFailure: WriteFailureFoll
 export function itemWrite(
     item: string | null | undefined,
     store: TranslationKey,
-    afterFailure: WriteFailureFollowUp,
+    afterFailure: OrdinaryWriteFailureFollowUp,
 ): FsWriteReport {
     const name = item?.trim();
     return { name: name ? { item: name } : { store }, afterFailure };

@@ -33,7 +33,7 @@ const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
  * table from current usage and persists it - and is the one place, with the build
  * dialog's, where a plugin held back for its version is released.
  */
-export function ProjectDependenciesSection(_props: ProjectSectionProps) {
+export function ProjectDependenciesSection({ uiService }: ProjectSectionProps) {
     const { t } = useTranslation();
     // The on-open resolve is a preview and writes no manifest, so the table stays live while frozen;
     // Rescan is the one that persists.
@@ -56,14 +56,16 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
             return;
         }
         let active = true;
+        let changed = false;
         setBusy(true);
-        service.previewResolve()
-            .then(next => { if (active) setResolution(next); })
-            .catch(() => { if (active) setResolution(service.getResolution()); })
-            .finally(() => { if (active) setBusy(false); });
         const off = service.onResolutionChanged(() => {
+            changed = true;
             if (active) setResolution(service.getResolution());
         });
+        service.previewResolve()
+            .then(next => { if (active && !changed) setResolution(next); })
+            .catch(() => { if (active && !changed) setResolution(service.getResolution()); })
+            .finally(() => { if (active) setBusy(false); });
         return () => { active = false; off(); };
     }, [service]);
 
@@ -75,10 +77,12 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
         setBusy(true);
         try {
             setResolution(await rescanProjectDependencies(context));
+        } catch (error) {
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
         } finally {
             setBusy(false);
         }
-    }, [service, context, busy]);
+    }, [service, context, busy, uiService]);
 
     const entries = resolution?.entries ?? [];
 

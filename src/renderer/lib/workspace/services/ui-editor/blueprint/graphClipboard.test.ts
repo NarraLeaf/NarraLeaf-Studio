@@ -5,6 +5,8 @@ import {
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
 import {
@@ -127,6 +129,30 @@ describe("blueprint graph clipboard", () => {
             name: "score",
             valueType: "integer",
         });
+    });
+
+    it("keeps copied Get and Set nodes attached to their copied Var", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                declaration: { id: "declaration", type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR, params: { variableId: "score", name: "Score" } },
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "score" } },
+                set: { id: "set", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "score" } },
+                other: { id: "other", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "another" } },
+            },
+            edges: [],
+        };
+        const ids = ["new-var", "new-get", "new-set", "new-other"];
+        const result = pasteBlueprintGraphClipboardPayload({
+            ir,
+            payload: buildBlueprintGraphClipboardPayload(ir, ["declaration", "get", "set", "other"]),
+            generateId: () => ids.shift()!,
+            targetBlueprintId: "another-blueprint",
+        });
+
+        expect(result?.ir.nodes?.["new-var"].params?.variableId).toBe("new-var");
+        expect(result?.ir.nodes?.["new-get"].params?.variableId).toBe("new-var");
+        expect(result?.ir.nodes?.["new-set"].params?.variableId).toBe("new-var");
+        expect(result?.ir.nodes?.["new-other"].params?.variableId).toBe("another");
     });
 
     it("re-points a Call Fn at the pasted head when both are copied together", () => {

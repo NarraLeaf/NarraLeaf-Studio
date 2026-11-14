@@ -150,6 +150,49 @@ describe("createTextReadTracker", () => {
         expect(harness.tracker.isCurrentTextRead()).toBe(false);
     });
 
+    it("waits for the stored read set before persisting a line completed during the read", async () => {
+        let finish = (_value: unknown) => undefined as void;
+        const stored = new Promise<unknown>(resolve => { finish = resolve; });
+        const harness = createHarness({ persistenceGetAsync: () => stored });
+
+        harness.setDialog({ actionId: "new", ended: true });
+        harness.notify();
+        vi.advanceTimersByTime(60);
+        const writesBeforeRead = [...harness.persisted];
+        finish(["old"]);
+        await harness.tracker.whenLoaded;
+
+        expect(writesBeforeRead).toEqual([]);
+        expect(harness.persisted).toEqual([["new", "old"]]);
+    });
+
+    it("does not restore an old read set after it has been cleared", async () => {
+        let finish = (_value: unknown) => undefined as void;
+        const stored = new Promise<unknown>(resolve => { finish = resolve; });
+        const harness = createHarness({ persistenceGetAsync: () => stored });
+
+        harness.tracker.clearAll();
+        finish(["old"]);
+        await harness.tracker.whenLoaded;
+
+        expect(harness.persisted).toEqual([[]]);
+        expect(harness.tracker.hasRead("old")).toBe(false);
+    });
+
+    it("flushes a completed line after a pending read even if the tracker detached", async () => {
+        let finish = (_value: unknown) => undefined as void;
+        const stored = new Promise<unknown>(resolve => { finish = resolve; });
+        const harness = createHarness({ persistenceGetAsync: () => stored });
+
+        harness.setDialog({ actionId: "new", ended: true });
+        harness.notify();
+        harness.tracker.detach();
+        finish(["old"]);
+        await harness.tracker.whenLoaded;
+
+        expect(harness.persisted).toEqual([["new", "old"]]);
+    });
+
     it("debounces persistence and flushes pending writes on detach", async () => {
         const harness = createHarness();
         await harness.tracker.whenLoaded;

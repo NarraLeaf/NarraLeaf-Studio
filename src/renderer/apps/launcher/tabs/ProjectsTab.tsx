@@ -1,5 +1,4 @@
 
-import { getInterface } from "@/lib/app/bridge";
 import { RecentProjectMissingReason, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { ConfirmModal, ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements";
@@ -11,7 +10,7 @@ import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProj
 import { revealInFileManagerKey } from "@/lib/app/platform";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjectIcons, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
-import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
+import { createProjectFromWizard, launchProject, openProjectFromFolder, relocateRecentProject } from "../projectActions";
 import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
 
 export function ProjectsTab() {
@@ -66,11 +65,8 @@ export function ProjectsTab() {
         setIsOpening(true);
         setOperationError(null);
         try {
-            // Open workspace with the project path
-            await getInterface().workspace.launch(
-                { projectPath: project.path },
-                true // Close launcher window after opening workspace
-            );
+            const error = await launchProject({ projectPath: project.path });
+            if (error !== null) setOperationError(error || t("launcher.projects.errorOpenFolder"));
         } catch (error) {
             console.error("Error opening recent project:", error);
             setOperationError(error instanceof Error ? error.message : String(error));
@@ -94,6 +90,8 @@ export function ProjectsTab() {
                 setMissingTarget(null);
             }
             // Cancelled at the folder picker: leave the dialog up, the question still stands.
+        } catch (error) {
+            setMissingError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsRelocating(false);
         }
@@ -166,10 +164,15 @@ export function ProjectsTab() {
      */
     const handleAddProject = async () => {
         if (isBusy) return;
+        setIsOpening(true);
         setOperationError(null);
-        const error = await createProjectFromWizard();
-        if (error !== null) {
-            setOperationError(error || t("launcher.projects.errorCreate"));
+        try {
+            const error = await createProjectFromWizard();
+            if (error !== null) setOperationError(error || t("launcher.projects.errorCreate"));
+        } catch (error) {
+            setOperationError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setIsOpening(false);
         }
     };
 

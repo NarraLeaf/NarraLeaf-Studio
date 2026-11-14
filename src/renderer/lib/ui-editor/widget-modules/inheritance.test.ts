@@ -210,4 +210,25 @@ describe("applyInspectorOverrides", () => {
             warn.mockRestore();
         }
     });
+
+    it("recognises fields and sections at the root of the inherited schema", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const schema: PropertyEditorSchema<UIInspectorData> = {
+                id: "base",
+                fields: [{ id: "root.section", type: "section", title: "Root", fields: [marker("root.old"), marker("root.keep")] }],
+            };
+            const next = applyInspectorOverrides(schema, {
+                remove: ["root.old"],
+                patch: { "root.keep": { label: "Kept" } },
+                insert: [{ target: "root.section", fields: [marker("root.added")] }],
+            }, { id: "child" });
+            const section = next.fields[0] as SectionFieldDefinition<UIInspectorData>;
+            expect(section.fields.map(field => field.id)).toEqual(["root.keep", "root.added"]);
+            expect(section.fields[0]).toMatchObject({ label: "Kept" });
+            expect(warn).not.toHaveBeenCalled();
+        } finally {
+            warn.mockRestore();
+        }
+    });
 });

@@ -96,7 +96,7 @@ import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIDisplayableMotionValue } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
+import { publishBlueprintNodeOutputValues } from "../nodeOutputValues";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -425,9 +425,9 @@ function writeAnimationTokenOutput(
     if (!ctx.blueprintLocals) {
         return;
     }
-    writeBlueprintNodeOutputValues(ctx.blueprintLocals, ctx.node.id, {
+    publishBlueprintNodeOutputValues(ctx.blueprintLocals, ctx.node.id, {
         [DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID]: animation,
-    });
+    }, ctx.executionFrame);
 }
 
 function resolveElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], expectedElementType: string): string {
@@ -837,25 +837,36 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
                 return { rotate: motionValue(to) };
         }
     })();
-    const motion = await api.widget.animateDisplayable(elementId, {
-        id: animationToken.id,
-        target: targetMotion,
-        transition: {
-            type: "tween",
-            durationMs,
-            delayMs,
-            easing,
-        },
-        resetOnComplete,
-        commitLayoutOnComplete: shouldCommitAbsolutePositionOnComplete ? { [property]: to } : undefined,
-    });
-    const outputAnimation = toBlueprintAnimationToken(motion.id) ?? animationToken;
-    return {
-        nextPort: "next",
-        outputValues: {
-            [DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID]: outputAnimation,
-        },
+    const stopOnAbort = () => {
+        void Promise.resolve()
+            .then(() => api.widget.stopDisplayableAnimation(animationToken.id))
+            .catch(() => undefined);
     };
+    ctx.signal?.addEventListener("abort", stopOnAbort, { once: true });
+    if (ctx.signal?.aborted) stopOnAbort();
+    try {
+        const motion = await api.widget.animateDisplayable(elementId, {
+            id: animationToken.id,
+            target: targetMotion,
+            transition: {
+                type: "tween",
+                durationMs,
+                delayMs,
+                easing,
+            },
+            resetOnComplete,
+            commitLayoutOnComplete: shouldCommitAbsolutePositionOnComplete ? { [property]: to } : undefined,
+        });
+        const outputAnimation = toBlueprintAnimationToken(motion.id) ?? animationToken;
+        return {
+            nextPort: "next",
+            outputValues: {
+                [DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID]: outputAnimation,
+            },
+        };
+    } finally {
+        ctx.signal?.removeEventListener("abort", stopOnAbort);
+    }
 }
 
 async function stopDisplayableAnimation(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {

@@ -2,7 +2,8 @@ const esbuild = require('esbuild');
 
 /**
  * Generic helper to build & watch with esbuild.
- * Ensures onSuccess is called after initial build and on subsequent rebuilds.
+ * Calls onSuccess after each successful build. An initial failure closes the
+ * context and rejects so the dev session can release its reload port.
  * @param {import('esbuild').BuildOptions} options esbuild options
  * @param {() => void} onSuccess callback when build succeeds
  * @returns {Promise<import('esbuild').BuildContext>}
@@ -29,10 +30,13 @@ async function watchBuild(options, onSuccess = () => {}) {
       });
       build.onEnd((result) => {
         if (startTime) {
-          console.log(`[watch] build finished in ${Date.now() - startTime} ms`);
+          const status = result.errors.length ? 'failed' : 'finished';
+          console.log(`[watch] build ${status} in ${Date.now() - startTime} ms`);
         }
         settleFirst(result);
-        onSuccess();
+        if (result.errors.length === 0) {
+          onSuccess();
+        }
       });
     },
   };
@@ -46,7 +50,8 @@ async function watchBuild(options, onSuccess = () => {}) {
   await ctx.watch();
   const result = await firstBuild;
   if (result.errors.length) {
-    console.error('[watch] initial build failed', result.errors);
+    await ctx.dispose();
+    throw new Error(`[watch] initial build failed: ${result.errors.map(error => error.text).join('; ')}`);
   }
   return ctx;
 }

@@ -6,7 +6,7 @@ Dev Mode 是独立 window，用于从项目磁盘数据组装 bundle 并运行 U
 
 - 已有 `WindowAppType.DevMode` 和独立 renderer app。
 - Workspace 通过 `DevModeService` 调用 main IPC：launch、stop、reload、getStatus。
-- Main `DevModeManager` 维护单个 session，负责窗口创建/关闭、状态、bundle revision、watcher、reload debounce。
+- Main `DevModeManager` 按规范化的项目路径维护 session，每个项目最多一个，不同项目可同时运行。每个 session 管理自己的窗口、状态、bundle revision、watcher 和 reload debounce；同一项目的 launch、stop 和 reload 串行执行。
 - Dev Mode 启动时会读取磁盘上的 `editor/ui/uidoc.json` 和 `editor/ui/uigraphs.json`。
 - 项目脚本由主进程 `pipeline/scriptCompiler.ts` 用 esbuild 编译后随 bundle 发送；剧情由 renderer 侧 `GameApp` 通过 `compileStudioStoryToNlr` 编译执行，Dev Mode 与打包游戏共用这条运行时。
 - Dev Mode renderer 可接收 bundle、渲染 surface、执行 blueprint runtime、展示 session error 和 blueprint debug panel。

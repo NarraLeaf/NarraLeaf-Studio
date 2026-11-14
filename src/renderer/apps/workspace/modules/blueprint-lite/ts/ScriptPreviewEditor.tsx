@@ -64,6 +64,9 @@ export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
     const [source, setSource] = useState<string | null>(null);
     const [missing, setMissing] = useState(false);
     const [loading, setLoading] = useState(true);
+    const readRevision = useRef(0);
+    const sourceRef = useRef(source);
+    sourceRef.current = source;
 
     const projectPath = isInitialized && context ? context.project.getConfig().projectPath : null;
     const language = useMemo(() => (scriptLanguageOf(scriptRef) === "javascript" ? "javascript" : "typescript"), [scriptRef]);
@@ -72,9 +75,13 @@ export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
         if (!isInitialized || !context) {
             return;
         }
+        const revision = ++readRevision.current;
         setLoading(true);
         const fs = context.services.get<FileSystemService>(Services.FileSystem);
         const result = await fs.read(context.project.resolve(scriptRef.split("/")), "utf-8");
+        if (revision !== readRevision.current) {
+            return;
+        }
         setLoading(false);
         if (result.ok) {
             setMissing(false);
@@ -89,12 +96,14 @@ export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
     }, [context, isInitialized, scriptRef]);
 
     useEffect(() => {
+        setSource(null);
+        setMissing(false);
         void read();
+        return () => { readRevision.current += 1; };
     }, [read]);
 
-    // The disk owns this file, so what is on screen goes stale whenever the author saves in their
-    // own editor. Re-read when the tab comes back into view rather than watching, which would mean
-    // a second watcher over a directory Dev Mode already watches.
+    // The disk owns this file. Re-read when the window regains focus or becomes visible so a save
+    // made in the author's editor is reflected here.
     useEffect(() => {
         const onVisible = () => {
             if (document.visibilityState === "visible") {
@@ -123,7 +132,7 @@ export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
             studio.defineStudioMonacoTheme();
             const editor = studio.monaco.editor.create(host, {
                 ...studio.WORKER_FREE_EDITOR_OPTIONS,
-                value: source,
+                value: sourceRef.current ?? source,
                 language,
                 theme: studio.STUDIO_MONACO_THEME,
                 automaticLayout: true,

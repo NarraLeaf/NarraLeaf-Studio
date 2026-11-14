@@ -171,6 +171,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
     const monacoRef = useRef<typeof StudioMonaco | null>(null);
     const editorRef = useRef<StudioMonaco.monaco.editor.IStandaloneCodeEditor | null>(null);
     const saveTimerRef = useRef<number | null>(null);
+    const saveNeedsRetryRef = useRef(false);
     /**
      * Gutter and wrapping, from settings. Mirrored into a ref for the same reason `encoding` is:
      * the create effect must not list them, or changing a checkbox in the Settings window would
@@ -242,22 +243,27 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
     const save = useCallback(async () => {
         const model = editorRef.current?.getModel();
         if (!context || !asset || !model) {
-            return;
+            return false;
         }
         // A frozen workspace refuses writes by answering them as a no-op success, so a save that
         // went through would clear the dirty flag over bytes that never left memory - and this path
         // is reachable while frozen: a timer armed a moment before the freeze still flushes on
         // deactivation. The buffer stays dirty and stays on screen instead.
         if (freeze.frozen) {
-            return;
+            saveNeedsRetryRef.current = true;
+            return false;
         }
         const result = await context.services
             .get<AssetsService>(Services.Assets)
             .writeAssetTextContent(asset, model.getValue(), encodingRef.current);
         if (result.success) {
+            saveNeedsRetryRef.current = false;
             setModified(false);
+            return true;
         } else {
+            saveNeedsRetryRef.current = true;
             setError(result.error ?? t("assets.textEditor.saveFailed"));
+            return false;
         }
     }, [context, asset, setModified, t, freeze.frozen]);
 
@@ -273,11 +279,11 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
     /** Write now if a debounced save is outstanding - the deactivate and unmount path. */
     const flush = useCallback(async () => {
-        if (saveTimerRef.current === null) {
-            return;
+        if (saveTimerRef.current === null && !saveNeedsRetryRef.current) {
+            return true;
         }
         cancelPendingSave();
-        await saveRef.current();
+        return await saveRef.current();
     }, [cancelPendingSave]);
 
     const scheduleSave = useCallback(() => {
@@ -415,6 +421,14 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
         return () => {
             cancelled = true;
+            // The pending save reads the model synchronously, so start it before disposing the editor.
+            if (saveTimerRef.current !== null || saveNeedsRetryRef.current) {
+                if (saveTimerRef.current !== null) {
+                    window.clearTimeout(saveTimerRef.current);
+                }
+                saveTimerRef.current = null;
+                void saveRef.current();
+            }
             dispose?.();
         };
         // Created once for the life of the tab: a re-create would drop the undo stack and the
@@ -516,6 +530,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             // Loading swaps the model without firing a content change, so an open preview would
             // otherwise keep rendering the previous document.
             setPreviewText(text.data);
+            saveNeedsRetryRef.current = false;
             setModified(false);
             setLoading(false);
         })();
@@ -540,19 +555,6 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         }
         void flush();
     }, [active, flush]);
-
-    useEffect(
-        () => () => {
-            // Unmount: the timer dies with the component, so the write has to be started here. It
-            // is deliberately not awaited - there is nothing left to report to.
-            if (saveTimerRef.current !== null) {
-                window.clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = null;
-                void saveRef.current();
-            }
-        },
-        [],
-    );
 
     // ---- the commands the status bar invokes ---------------------------------
 
@@ -595,7 +597,9 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             void (async () => {
                 // Flush first: the buffer is still in the *old* encoding, and re-reading before
                 // writing would throw away whatever the last 400ms typed.
-                await flush();
+                if (!(await flush())) {
+                    return;
+                }
                 persistPreference("reopen-with", { encoding: next });
                 setReload(current => ({ token: current.token + 1, encoding: next }));
             })();

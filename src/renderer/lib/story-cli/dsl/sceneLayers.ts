@@ -42,7 +42,7 @@ import {
     STORY_LAYER_FOLLOW_MAX,
 } from "@shared/types/story";
 import { errorAt, warningAt, type StoryFileDiagnostic } from "./ast";
-import type { SceneSettingDirective } from "./sceneSettings";
+import { tokenizeSceneDirective, type SceneSettingDirective } from "./sceneSettings";
 
 export const DIRECTIVE_LAYER = "#layer";
 
@@ -89,35 +89,6 @@ function printDistance(follow: number): string {
 
 const INFINITY_WORD = "inf";
 
-/** `#layer` arguments: the name (bare, or quoted when it has spaces) and `key=value` settings. */
-function tokenize(text: string): string[] | null {
-    const tokens: string[] = [];
-    let index = 0;
-    while (index < text.length) {
-        if (/\s/.test(text[index])) {
-            index += 1;
-            continue;
-        }
-        let token = "";
-        while (index < text.length && !/\s/.test(text[index])) {
-            const quote = text[index];
-            if (quote === "'" || quote === "\"") {
-                const end = text.indexOf(quote, index + 1);
-                if (end < 0) {
-                    return null;
-                }
-                token += text.slice(index + 1, end);
-                index = end + 1;
-                continue;
-            }
-            token += text[index];
-            index += 1;
-        }
-        tokens.push(token);
-    }
-    return tokens;
-}
-
 /** A `distance=` value as a share: a number within range, or `inf`. Null when it is neither. */
 function readDistance(value: string): number | null {
     const word = value.trim().toLowerCase();
@@ -159,7 +130,7 @@ export function applySceneLayerDirectives(
     const stated: StorySceneLayer[] = [];
     let refused = false;
     for (const directive of directives) {
-        const tokens = tokenize(directive.value);
+        const tokens = tokenizeSceneDirective(directive.value);
         if (!tokens || tokens.length === 0) {
             diagnostics.push(errorAt("file.bad_setting", `${DIRECTIVE_LAYER} takes a layer name (quoted when it has spaces) and an optional distance=.`, directive.line));
             refused = true;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
@@ -205,6 +205,25 @@ describe("UIBlueprintLifecycleCoordinator with plugin widgets", () => {
 
         expect(ensuredWidgets.map(entry => entry.elementId)).toEqual(["rating-a"]);
         coordinator.dispose(context as any);
+    });
+
+    it("does not reconcile a queued widget registration after disposal", async () => {
+        const { coordinator, context, ensuredWidgets } = createHarness(pageWithRating());
+        const sync = vi.spyOn(coordinator, "syncFromUidoc");
+        coordinator.activate(context as any);
+        widgetModuleRegistry.register({
+            type: RATING,
+            displayName: "Rating",
+            icon: (() => null) as never,
+            logicApi: { supportsPrivateBlueprint: true, events: [], commands: [], readableState: [], writableProps: [] },
+            createDefaultElement: () => ({}),
+            render: () => null,
+        }, { ownerPluginId: PLUGIN_ID });
+        coordinator.dispose(context as any);
+        await Promise.resolve();
+
+        expect(sync).toHaveBeenCalledTimes(1);
+        expect(ensuredWidgets).toEqual([]);
     });
 
     it("keeps the blueprint of a plugin widget whose plugin is not loaded", () => {

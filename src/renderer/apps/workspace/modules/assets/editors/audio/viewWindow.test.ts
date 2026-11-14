@@ -74,4 +74,14 @@ describe("ensureVisible", () => {
         expect(2100).toBeGreaterThanOrEqual(view.start);
         expect(2100).toBeLessThan(view.end);
     });
+
+    it("keeps the same zoom as the playhead crosses multiple pages", () => {
+        let view = { start: 1000, end: 2000 };
+        for (const sample of [2100, 3100, 4100]) {
+            view = ensureVisible(view, TOTAL, sample);
+            expect(view.end - view.start).toBe(1000);
+            expect(sample).toBeGreaterThanOrEqual(view.start);
+            expect(sample).toBeLessThan(view.end);
+        }
+    });
 });
