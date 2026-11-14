@@ -10,11 +10,12 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { applyCompiled } from "./apply";
 import { checkProjectDocument, checkUiSource } from "./check";
-import type { BlueprintIndex } from "./project";
+import { indexBlueprintDocument, type BlueprintIndex } from "./model";
 
 function index(entries: { id: string; name: string; owner: BlueprintOwnerRef }[]): BlueprintIndex {
     const byId = new Map<string, { name: string; owner: BlueprintOwnerRef }>();
@@ -36,6 +37,126 @@ const SOURCE = `surface "S" id=s kind=appSurface size=8x6
 `;
 
 describe("checking a .ui file against the project", () => {
+    it("shows a blueprint with members or bindings as attached work", () => {
+        const index = indexBlueprintDocument({
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                fields: {
+                    id: "fields",
+                    name: "Fields",
+                    owner: { kind: "widgetMain", surfaceId: "s", elementId: "label" },
+                    graphs: { events: {}, functions: {} },
+                    members: { variables: {}, fields: { title: { id: "title", name: "Title" } }, functions: {} },
+                },
+                binding: {
+                    id: "binding",
+                    name: "Binding",
+                    owner: { kind: "widgetMain", surfaceId: "s", elementId: "label" },
+                    graphs: { events: {}, functions: {} },
+                    bindings: {
+                        title: {
+                            id: "title",
+                            target: { kind: "widgetProp", surfaceId: "s", elementId: "label", propPath: "text" },
+                            source: { kind: "field", blueprintId: "binding", fieldId: "title" },
+                            mode: "replace",
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        });
+        expect(index.byElement.get("label")?.map(item => item.empty)).toEqual([undefined, undefined]);
+    });
+
+    it("refuses two pages that give different elements the same id", () => {
+        const result = checkUiSource(`surface "First" id=first kind=appSurface size=8x6
+    Root: nl.root id=root1 @0,0 8x6
+        Original: nl.text id=shared @0,0 1x1
+surface "Second" id=second kind=appSurface size=8x6
+    Root: nl.root id=root2 @0,0 8x6
+        Copy: nl.text id=shared @0,0 1x1
+`);
+        expect(result.ok).toBe(false);
+        expect(result.diagnostics.map(item => item.code)).toContain("ui.element_id_in_use");
+    });
+
+    it("refuses two blocks that replace the same page", () => {
+        const result = checkUiSource(`surface "First" id=page kind=appSurface size=8x6
+    Root: nl.root id=root1 @0,0 8x6
+surface "Second" id=page kind=appSurface size=8x6
+    Root: nl.root id=root2 @0,0 8x6
+`);
+        expect(result.ok).toBe(false);
+        expect(result.diagnostics.map(item => item.code)).toContain("ui.duplicate_surface");
+    });
+
+    it("refuses to overwrite an element on a page the file does not edit", () => {
+        const first = checkUiSource(`surface "First" id=first kind=appSurface size=8x6
+    Root: nl.root id=root1 @0,0 8x6
+        Original: nl.text id=shared @0,0 1x1
+`);
+        const existing: UIDocument = { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} };
+        applyCompiled(existing, first.compiled!);
+        const second = checkUiSource(`surface "Second" id=second kind=appSurface size=8x6
+    Root: nl.root id=root2 @0,0 8x6
+        Copy: nl.text id=shared @0,0 1x1
+`, { existing });
+        expect(second.ok).toBe(false);
+        expect(second.diagnostics.map(item => item.code)).toContain("ui.element_id_in_use");
+        expect(existing.elements.shared.name).toBe("Original");
+    });
+
+    it("keeps component elements in the same project-wide id space", () => {
+        const first = checkUiSource(`surface "First" id=first kind=appSurface size=8x6
+    Root: nl.root id=root @0,0 8x6
+        Original: nl.text id=shared @0,0 1x1
+`);
+        const existing: UIDocument = { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} };
+        applyCompiled(existing, first.compiled!);
+        const second = checkUiSource(`component "Card" id=card size=8x6
+    Root: nl.container id=card-root @0,0 8x6
+        Copy: nl.text id=shared @0,0 1x1
+`, { existing });
+        expect(second.ok).toBe(false);
+        expect(second.diagnostics.map(item => item.code)).toContain("ui.element_id_in_use");
+    });
+
+    it("protects detached elements in an unedited component", () => {
+        const first = checkUiSource(`component "Card" id=card size=8x6
+    Root: nl.container id=card-root @0,0 8x6
+        Hidden: nl.text id=shared @0,0 1x1
+`);
+        const existing: UIDocument = { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} };
+        applyCompiled(existing, first.compiled!);
+        existing.components![0].elements["card-root"].childrenIds = [];
+        const second = checkUiSource(`surface "Page" id=page kind=appSurface size=8x6
+    Root: nl.root id=root @0,0 8x6
+        Copy: nl.text id=shared @0,0 1x1
+`, { existing });
+
+        expect(second.ok).toBe(false);
+        expect(second.diagnostics.map(item => item.code)).toContain("ui.element_id_in_use");
+    });
+
+    it("allows an element to move when both pages are replaced and only the destination keeps its id", () => {
+        const before = checkUiSource(`surface "First" id=first kind=appSurface size=8x6
+    Root: nl.root id=root1 @0,0 8x6
+        Original: nl.text id=shared @0,0 1x1
+surface "Second" id=second kind=appSurface size=8x6
+    Root: nl.root id=root2 @0,0 8x6
+`);
+        const existing: UIDocument = { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} };
+        applyCompiled(existing, before.compiled!);
+        const after = checkUiSource(`surface "First" id=first kind=appSurface size=8x6
+    Root: nl.root id=root1 @0,0 8x6
+surface "Second" id=second kind=appSurface size=8x6
+    Root: nl.root id=root2 @0,0 8x6
+        Original: nl.text id=shared @0,0 1x1
+`, { existing });
+        expect(after.ok).toBe(true);
+        expect(after.diagnostics.map(item => item.code)).not.toContain("ui.element_id_in_use");
+    });
+
     it("refuses a binding whose blueprint belongs to another element", () => {
         const result = checkUiSource(SOURCE, {
             blueprints: index([
@@ -76,7 +197,7 @@ describe("checking a .ui file against the project", () => {
             `surface "S" id=s kind=appSurface size=8x6\n    Root: nl.root @0,0 8x6\n        Gone: nl.button id=gone @0,0 1x1\n`,
         );
         const existing = {
-            schemaVersion: 12,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             id: "d",
             name: "d",
             surfaces: [(first.compiled as NonNullable<typeof first.compiled>).surfaces[0].surface],
@@ -96,7 +217,7 @@ describe("checking a document as it stands", () => {
     it("reports an element no surface reaches", () => {
         const diagnostics = checkProjectDocument(
             {
-                schemaVersion: 12,
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
                 id: "d",
                 name: "d",
                 surfaces: [
@@ -121,7 +242,7 @@ describe("checking a document as it stands", () => {
 
     it("reports a document with no page the game can boot into", () => {
         const diagnostics = checkProjectDocument(
-            { schemaVersion: 12, id: "d", name: "d", surfaces: [], elements: {} },
+            { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} },
             null,
         );
         expect(diagnostics.map(item => item.code)).toContain("ui.no_entry_page");
@@ -164,7 +285,7 @@ ${GALLERY}`;
         if (!compiled) {
             throw new Error("the fixture does not compile");
         }
-        const document: UIDocument = { schemaVersion: 12, id: "d", name: "d", surfaces: [], elements: {} };
+        const document: UIDocument = { schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, id: "d", name: "d", surfaces: [], elements: {} };
         applyCompiled(document, compiled);
         return document;
     }

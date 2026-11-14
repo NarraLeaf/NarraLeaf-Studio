@@ -152,6 +152,13 @@ function parseQuoted(text: string): string {
     if (text.length < 2 || text[text.length - 1] !== quote) {
         throw new BpValueError("unterminated quote");
     }
+    if (quote === '"') {
+        try {
+            return JSON.parse(text) as string;
+        } catch {
+            // Quoted values also accept the format's existing non-JSON escapes.
+        }
+    }
     const body = text.slice(1, -1);
     let out = "";
     for (let i = 0; i < body.length; i += 1) {
