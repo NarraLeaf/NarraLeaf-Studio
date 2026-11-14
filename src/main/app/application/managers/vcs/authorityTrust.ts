@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { readdirSync, readFileSync } from "fs";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { join } from "path";
 import tls from "tls";
@@ -31,7 +32,8 @@ import type { VcsServerAuthority } from "@shared/types/vcs";
  *     Windows 11. The operating system may still raise its own confirmation, which is
  *     why {@link authorityInstallPlan} says so.
  *   - macOS has the login keychain; `security` writes to it and asks for the account
- *     password in a window of its own.
+ *     password in a window of its own. It also reports success for an install that did
+ *     not take, so what it says is checked afterwards rather than believed.
  *   - Linux has no per-user store that other programs' TLS stacks read. What exists is
  *     a machine-wide directory needing root, so nothing is run and the commands are
  *     printed instead. The certificate is still written to this machine, which is the
@@ -46,6 +48,17 @@ export interface AuthorityInstallPlan {
     command: string;
     /** The program and its arguments, for the platforms it runs on. */
     argv: readonly string[];
+    /**
+     * Run before {@link argv}, and allowed to fail. On macOS it puts the certificate into
+     * the login keychain, and it fails when the certificate is already there, which is
+     * the state it exists to reach.
+     */
+    prepare?: readonly string[];
+    /**
+     * Run after {@link argv}; the install counts only if this exits 0. Present where the
+     * platform's own exit code cannot be trusted to mean the setting took.
+     */
+    verify?: readonly string[];
 }
 
 /** The file name the certificate is copied to where a path has to be typed. */
@@ -68,7 +81,7 @@ function quote(target: string): string {
 }
 
 /**
- * The host name an install may be limited to, or null when `host` is not one a policy can name.
+ * A host name as a trust policy would spell it, or null when `host` is not one a policy can name.
  * Brackets are taken off an IPv6 literal, which is how a URL spells it and not how a policy does.
  */
 export function trustScopeHost(host: string | null | undefined): string | null {
@@ -77,16 +90,21 @@ export function trustScopeHost(host: string | null | undefined): string | null {
     return /^[a-z0-9.:-]{1,253}$/.test(bare) && !bare.startsWith("-") ? bare : null;
 }
 
+/** The current account's login keychain, which is where a macOS install goes. */
+function loginKeychain(): string {
+    return path.join(os.homedir(), "Library", "Keychains", "login.keychain-db");
+}
+
 /**
  * What this platform does about a certificate at `certificatePath`.
  *
- * `host` is the server the author was shown. Where the platform can scope a trust setting, the
- * authority is trusted for TLS to that one name and nothing else, so its key cannot vouch for
- * any other site this account visits. macOS can (`-p ssl -s`); Windows' per-user Root store has no
- * such setting from the command line, and Linux installs nothing itself.
+ * The trust is not scoped to the server's name on any platform. macOS can scope it
+ * (`-p ssl -s <host>`), and did for a while, but no scoped install was ever seen to work: the
+ * one authors had left them typing their password and still being told the certificate was not
+ * trusted, and a Rust TLS stack reading the keychain's roots commonly skips a setting limited to
+ * a host name. The unscoped form is the one measured to work, so that is the one used.
  */
-export function authorityInstallPlan(certificatePath: string, host?: string | null): AuthorityInstallPlan {
-    const scope = trustScopeHost(host);
+export function authorityInstallPlan(certificatePath: string): AuthorityInstallPlan {
     switch (process.platform) {
         case "win32":
             // `-user` is the whole of the difference between this and an installation
@@ -98,18 +116,27 @@ export function authorityInstallPlan(certificatePath: string, host?: string | nu
                 argv: ["certutil", "-user", "-addstore", "Root", certificatePath],
             };
         case "darwin":
-            // Without `-d` this is the login keychain, which is the current user's.
+            // Without `-d` the trust setting is the current user's, not the machine's.
             // `-r trustRoot` is what makes it a trusted root rather than a certificate
             // the system merely holds a copy of.
             //
-            // `-p ssl -s <host>` scopes the trust setting: the authority is a root for TLS
-            // to the one server the author named, not for every name it could sign.
+            // **The certificate has to be in a keychain as well as trusted.** Measured on
+            // macOS 26: `add-trusted-cert` without `-k` asks for the password, exits 0 and
+            // writes a trust setting for a certificate no keychain holds, which nothing
+            // building a chain can find. So it is imported into the login keychain first
+            // (failing harmlessly when it is already there), the trust names that keychain,
+            // and `verify-cert` then says whether this account now trusts it - the only
+            // answer here that is not the tool's word for its own success.
             {
-                const scoped = scope ? ["-p", "ssl", "-s", scope] : [];
+                const keychain = loginKeychain();
                 return {
                     canInstall: true,
-                    command: `security add-trusted-cert -r trustRoot${scope ? ` -p ssl -s ${quote(scope)}` : ""} ${quote(certificatePath)}`,
-                    argv: ["security", "add-trusted-cert", "-r", "trustRoot", ...scoped, certificatePath],
+                    command:
+                        `security import ${quote(certificatePath)} -k ${quote(keychain)}; `
+                        + `security add-trusted-cert -r trustRoot -k ${quote(keychain)} ${quote(certificatePath)}`,
+                    prepare: ["security", "import", certificatePath, "-k", keychain],
+                    argv: ["security", "add-trusted-cert", "-r", "trustRoot", "-k", keychain, certificatePath],
+                    verify: ["security", "verify-cert", "-c", certificatePath, "-l", "-L", "-q"],
                 };
             }
         default:
@@ -167,7 +194,9 @@ export async function writeAuthorityCertificate(
     const target = path.join(directory, `${fingerprint.replaceAll(":", "").toLowerCase()}.crt`);
     await fs.writeFile(target, pem, "utf-8");
     // Beside the certificate rather than passed back through the renderer, which names only the
-    // file: the install scopes its trust to this host, and a renderer must not choose the host.
+    // file: which server presented it is this process's record, never the renderer's claim. The
+    // install is not scoped to it (see `authorityInstallPlan`); the log line saying what was
+    // trusted names it.
     const scope = trustScopeHost(host);
     if (scope) {
         await fs.writeFile(authorityHostPath(target), scope, "utf-8");
@@ -261,7 +290,23 @@ export async function runAuthorityInstall(plan: AuthorityInstallPlan): Promise<A
     if (!plan.canInstall || plan.argv.length === 0) {
         return { installed: false, output: "" };
     }
-    const [command, ...args] = plan.argv;
+    // Its failure is not reported: the one it is expected to have is "already there".
+    if (plan.prepare && plan.prepare.length > 0) await runCommand(plan.prepare);
+    const installed = await runCommand(plan.argv);
+    if (!installed.installed || !plan.verify || plan.verify.length === 0) return installed;
+    const verified = await runCommand(plan.verify);
+    if (verified.installed) return installed;
+    return {
+        installed: false,
+        output: [installed.output, verified.output, "The certificate is still not trusted by this account."]
+            .filter((line) => line.length > 0)
+            .join("\n"),
+    };
+}
+
+/** Run one program and say whether it exited 0, with what it printed on both streams. */
+async function runCommand(argv: readonly string[]): Promise<AuthorityInstallOutcome> {
+    const [command, ...args] = argv;
     return await new Promise<AuthorityInstallOutcome>((resolve) => {
         let output = "";
         // `shell: false`: every argument here is passed as one, so a certificate path
