@@ -18,7 +18,7 @@
  * then on - which is what the count beside Delete and the confirmation say before the author commits.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
@@ -330,11 +330,14 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
     }, [t, tagService]);
 
     const removeTag = useCallback(async (tag: ProjectAppTag) => {
-        if (!tagService) {
+        if (!tagService || !context) {
             return;
         }
-        const uses = references[tag.id]?.total ?? 0;
-        const cuts = references[tag.id]?.story ?? 0;
+        const counts = await countReferences(context, [tag.id]);
+        const current = counts[tag.id] ?? { total: 0, story: 0 };
+        setReferences(previous => ({ ...previous, [tag.id]: current }));
+        const uses = current.total;
+        const cuts = current.story;
         // The variant those references fall back to, read off the model rather than written into the
         // sentence, so the copy follows a rename.
         const fallback = { name: RELEASE_APP_TAG.name };
@@ -352,7 +355,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         if (confirmed) {
             tagService.deleteTag(tag.id);
         }
-    }, [references, t, tagService, tn, uiService]);
+    }, [context, t, tagService, tn, uiService]);
 
     return (
         <SettingsGroup
@@ -995,12 +998,17 @@ function CommittedInput({
     "data-tip"?: string;
 }) {
     const [draft, setDraft] = useState(value);
+    const abandoning = useRef(false);
 
     useEffect(() => {
         setDraft(value);
     }, [value]);
 
     const commit = useCallback(() => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const next = draft.trim();
         if (next !== value && (allowEmpty || next)) {
             onCommit(next);
@@ -1021,7 +1029,10 @@ function CommittedInput({
             className="w-full min-w-0"
             data-app-tag-field={handle}
             onChange={event => setDraft(event.target.value)}
-            onFocus={() => onFocusChange?.(true)}
+            onFocus={() => {
+                abandoning.current = false;
+                onFocusChange?.(true);
+            }}
             onBlur={() => {
                 onFocusChange?.(false);
                 commit();
@@ -1030,6 +1041,7 @@ function CommittedInput({
                 if (event.key === "Enter") {
                     event.currentTarget.blur();
                 } else if (event.key === "Escape") {
+                    abandoning.current = true;
                     setDraft(value);
                     event.currentTarget.blur();
                 }

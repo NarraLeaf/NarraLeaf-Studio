@@ -37,7 +37,7 @@ const bridge = vi.hoisted(() => ({
     getServerProject: vi.fn(),
     listServerProjectHistory: vi.fn(),
     launchSettings: vi.fn(),
-    launchWorkspace: vi.fn(() => Promise.resolve()),
+    launchWorkspace: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => Promise.resolve({ success: true })),
     launchProjectWizard: vi.fn<(props: unknown) => Promise<unknown>>(() => Promise.resolve({ success: true, data: null })),
     publishProject: vi.fn(),
 }));
@@ -299,6 +299,22 @@ describe("open, or get", () => {
         fireEvent.click(await find("[data-project-action='open']"));
         // The path the history remembers, spelled as the author has it - never the id.
         expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/Renamed Folder" }, true);
+    });
+
+    it("shows a local workspace launch failure", async () => {
+        bridge.launchWorkspace.mockResolvedValueOnce({ success: false, error: "open failed" });
+        open([project()], [{ path: "D:/games/Renamed Folder", name: "Renamed Folder", repositoryId: REPOSITORY }]);
+        await openPage();
+        fireEvent.click(await find("[data-project-action='open']"));
+        await waitFor(() => expect(screen.getByText("open failed")).toBeTruthy());
+    });
+
+    it("shows a wizard failure for a project that needs fetching", async () => {
+        bridge.launchProjectWizard.mockResolvedValueOnce({ success: false, error: "wizard failed" });
+        open([project()]);
+        await openPage();
+        fireEvent.click(await find("[data-project-action='get']"));
+        await waitFor(() => expect(screen.getByText("wizard failed")).toBeTruthy());
     });
 
     it("offers to fetch one whose name matches and whose repository does not", async () => {

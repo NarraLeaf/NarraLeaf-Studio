@@ -426,7 +426,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const handleEditorBodyClick = () => {
         if (!context || !group.focus) return;
         const uiService = context.services.get<UIService>(Services.UI);
-        uiService.focus.setFocus(FocusArea.Editor, group.focus);
+        const current = uiService.focus.getFocus();
+        if (current.area !== FocusArea.Editor || current.targetId !== group.focus) {
+            setActiveEditorTab(group.focus, group.id);
+        }
     };
 
     const handleCloseActiveTab = useCallback(() => {

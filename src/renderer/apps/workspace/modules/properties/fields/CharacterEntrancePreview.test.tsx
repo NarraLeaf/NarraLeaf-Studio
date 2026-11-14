@@ -218,4 +218,50 @@ describe("CharacterEntrancePreview", () => {
             position: { xalign: 0.25, yalign: 0.5463, yoffset: -50 },
         });
     });
+
+    it("does not commit a cancelled placement", async () => {
+        const onCommit = vi.fn();
+        const { box } = await mountWithPicture(characterWithArt("cancel-placement", { width: 800, height: 800 }), NARRA_DEFAULTS, onCommit);
+        box.getBoundingClientRect = () => ({
+            x: 0, y: 0, left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080, toJSON: () => ({}),
+        });
+        box.setPointerCapture = () => undefined;
+        fireEvent.pointerDown(box, { button: 0, pointerId: 1, clientX: 480, clientY: 540 });
+        fireEvent.pointerCancel(box, { pointerId: 1 });
+        fireEvent.pointerUp(box, { pointerId: 1 });
+        expect(onCommit).not.toHaveBeenCalled();
+    });
+
+    it("does not commit a cancelled zoom drag", async () => {
+        const onCommit = vi.fn();
+        const { box } = await mountWithPicture(characterWithArt("cancel-zoom", { width: 800, height: 800 }), NARRA_DEFAULTS, onCommit);
+        const handle = box.querySelector('[data-tip="characters.properties.entranceZoom"]')!;
+        fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 100 });
+        fireEvent.pointerMove(window, { pointerId: 1, clientX: 160 });
+        fireEvent.pointerCancel(window, { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+        expect(onCommit).not.toHaveBeenCalled();
+    });
+
+    it("does not commit a zoom drag after the selected character changes", async () => {
+        const onCommit = vi.fn();
+        const { box, view } = await mountWithPicture(characterWithArt("first-zoom", { width: 800, height: 800 }), NARRA_DEFAULTS, onCommit);
+        const handle = box.querySelector('[data-tip="characters.properties.entranceZoom"]')!;
+        fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 100 });
+        fireEvent.pointerMove(window, { pointerId: 1, clientX: 160 });
+        view.rerender(<CharacterEntrancePreview character={characterWithArt("second-zoom", { width: 800, height: 800 })} value={undefined} stageSize={STAGE} onCommit={onCommit} />);
+        fireEvent.pointerUp(window, { pointerId: 1 });
+        expect(onCommit).not.toHaveBeenCalled();
+    });
+
+    it("commits one zoom value when the drag completes", async () => {
+        const onCommit = vi.fn();
+        const { box } = await mountWithPicture(characterWithArt("completed-zoom", { width: 800, height: 800 }), NARRA_DEFAULTS, onCommit);
+        const handle = box.querySelector('[data-tip="characters.properties.entranceZoom"]')!;
+        fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 100 });
+        fireEvent.pointerMove(window, { pointerId: 1, clientX: 160 });
+        fireEvent.pointerUp(handle, { pointerId: 1 });
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        expect(onCommit).toHaveBeenCalledWith({ ...NARRA_DEFAULTS, zoom: 0.9573 });
+    });
 });

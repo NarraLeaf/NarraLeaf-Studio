@@ -14,7 +14,7 @@
  * nothing expanded until the author asks.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -96,23 +96,6 @@ export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
     );
 
     /**
-     * How many stories each DLC carries - the number the delete confirmation is about.
-     *
-     * Read off the library index, which the story service already holds: a story states which DLC it
-     * belongs to on its index entry, so this is a walk of a list the panel has rather than a read of
-     * every document.
-     */
-    const storyCounts = useMemo(() => {
-        const counts: Record<string, number> = {};
-        for (const story of services?.story.listStories() ?? []) {
-            if (story.dlcId) {
-                counts[story.dlcId] = (counts[story.dlcId] ?? 0) + 1;
-            }
-        }
-        return counts;
-    }, [services, dlcs]);
-
-    /**
      * Whether anything in the project names this DLC: a story marked for it, or a graph node that
      * picks it. Asked when an id change is committed rather than kept up to date, because a graph
      * edited in another tab changes the answer and this panel does not watch graphs.
@@ -155,17 +138,18 @@ export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
         if (!services) {
             return;
         }
+        const storyCount = services.story.listStories().filter(story => story.dlcId === dlc.id).length;
         const confirmed = await uiService?.showDestructiveConfirm(
             t("project.dlc.deleteConfirm", { name: dlc.name }),
             // The honest consequence: nothing marked for this DLC is rewritten, so those stories are
             // carried by the base build from now on.
-            tn("project.dlc.deleteDetail", storyCounts[dlc.id] ?? 0),
+            tn("project.dlc.deleteDetail", storyCount),
             t("project.dlc.delete"),
         );
         if (confirmed) {
             services.dlc.delete(dlc.id);
         }
-    }, [services, storyCounts, t, tn, uiService]);
+    }, [services, t, tn, uiService]);
 
     return (
         <SettingsGroup
@@ -379,12 +363,17 @@ function IdInput({
 }) {
     const { t } = useTranslation();
     const [draft, setDraft] = useState(dlc.id);
+    const abandoning = useRef(false);
 
     useEffect(() => {
         setDraft(dlc.id);
     }, [dlc.id]);
 
     const commit = useCallback(async () => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const next = draft.trim();
         if (!next || next === dlc.id || !service) {
             setDraft(dlc.id);
@@ -419,13 +408,20 @@ function IdInput({
             className="w-full min-w-0"
             data-dlc-field={`${dlc.id}:id`}
             onChange={event => setDraft(event.target.value)}
-            onFocus={() => onFocusChange?.(true)}
+            onFocus={() => {
+                abandoning.current = false;
+                onFocusChange?.(true);
+            }}
             onBlur={() => {
                 onFocusChange?.(false);
                 void commit();
             }}
             onKeyDown={event => {
                 if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                    abandoning.current = true;
+                    setDraft(dlc.id);
                     event.currentTarget.blur();
                 }
             }}
@@ -477,12 +473,17 @@ function CommittedInput({
     "data-tip"?: string;
 }) {
     const [draft, setDraft] = useState(value);
+    const abandoning = useRef(false);
 
     useEffect(() => {
         setDraft(value);
     }, [value]);
 
     const commit = useCallback(() => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const next = draft.trim();
         if (next && next !== value) {
             onCommit(next);
@@ -502,13 +503,20 @@ function CommittedInput({
             className="w-full min-w-0"
             data-dlc-field={handle}
             onChange={event => setDraft(event.target.value)}
-            onFocus={() => onFocusChange?.(true)}
+            onFocus={() => {
+                abandoning.current = false;
+                onFocusChange?.(true);
+            }}
             onBlur={() => {
                 onFocusChange?.(false);
                 commit();
             }}
             onKeyDown={event => {
                 if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                    abandoning.current = true;
+                    setDraft(value);
                     event.currentTarget.blur();
                 }
             }}

@@ -317,7 +317,8 @@ function layerHolding(doc: Document, node: Node | null): Layer | undefined {
 }
 
 function ownsKeys(target: EventTarget | null): boolean {
-    return target instanceof Element && !!target.closest(`[${FLOATING_OWN_KEYS_ATTRIBUTE}]`);
+    const node = target as Node | null;
+    return node?.nodeType === 1 && !!(node as Element).closest(`[${FLOATING_OWN_KEYS_ATTRIBUTE}]`);
 }
 
 /**
@@ -464,7 +465,7 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
         // Where focus goes back to: whatever had focus the moment the layer opened - for a layer opened
         // by a button, that button - unless it lies outside the owners, in which case the owners'
         // first focusable control (an owner is often a wrapper around the trigger, not the trigger).
-        const opener = doc.activeElement instanceof HTMLElement && doc.activeElement !== doc.body
+        const opener = doc.defaultView && doc.activeElement instanceof doc.defaultView.HTMLElement && doc.activeElement !== doc.body
             ? doc.activeElement
             : null;
         const returnTarget = (): HTMLElement | null => {

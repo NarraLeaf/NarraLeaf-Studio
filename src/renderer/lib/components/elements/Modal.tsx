@@ -79,6 +79,25 @@ const sizeStyles = {
     xl: "max-w-4xl",
 };
 
+const bodyScrollLocks = new WeakMap<Document, { count: number; overflow: string }>();
+
+function lockBodyScroll(doc: Document): () => void {
+    let lock = bodyScrollLocks.get(doc);
+    if (!lock) {
+        lock = { count: 0, overflow: doc.body.style.overflow };
+        bodyScrollLocks.set(doc, lock);
+        doc.body.style.overflow = "hidden";
+    }
+    lock.count += 1;
+    return () => {
+        lock.count -= 1;
+        if (lock.count === 0) {
+            doc.body.style.overflow = lock.overflow;
+            bodyScrollLocks.delete(doc);
+        }
+    };
+}
+
 /**
  * Modal shell aligned with workspace DialogContainer (layout, colors, motion).
  */
@@ -112,12 +131,8 @@ export function Modal({
         dismissWhenHidden: false,
     });
     useEffect(() => {
-        if (isOpen) {
-            doc.body.style.overflow = "hidden";
-        }
-        return () => {
-            doc.body.style.overflow = "unset";
-        };
+        if (!isOpen) return;
+        return lockBodyScroll(doc);
     }, [doc, isOpen]);
 
     if (!isOpen) return null;

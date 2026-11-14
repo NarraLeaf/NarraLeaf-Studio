@@ -5,6 +5,7 @@ import type { GlobalStateKeys } from "@shared/types/state/globalState";
 export function observeGlobalSettings(
     keys: readonly GlobalStateKeys[],
     receive: (key: GlobalStateKeys, value: unknown) => void,
+    onReadError?: (key: GlobalStateKeys, error: unknown) => void,
 ): { ready: Promise<void>; dispose(): void } {
     const wanted = new Set(keys);
     const pushed = new Set<GlobalStateKeys>();
@@ -21,8 +22,8 @@ export function observeGlobalSettings(
             if (!disposed && !pushed.has(key) && answer.success) {
                 receive(key, answer.data.value);
             }
-        } catch {
-            // Readers retain their last value when the bridge is unavailable.
+        } catch (error) {
+            onReadError?.(key, error);
         }
     })).then(() => undefined);
     return {

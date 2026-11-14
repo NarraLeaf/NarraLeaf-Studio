@@ -14,17 +14,19 @@ export function useWindowFullscreen(): boolean {
 
     useEffect(() => {
         let cancelled = false;
+        let receivedChange = false;
+
+        const token = getInterface().window.control.onFullscreenChanged(({ isFullscreen: next }) => {
+            receivedChange = true;
+            setIsFullscreen(next);
+        });
 
         void getInterface().window.control.getFullscreen().then(result => {
-            if (!cancelled && result.success) {
+            if (!cancelled && !receivedChange && result.success) {
                 setIsFullscreen(result.data.isFullscreen);
             }
         }).catch(() => {
             /* Keep the default (not fullscreen) if the query fails. */
-        });
-
-        const token = getInterface().window.control.onFullscreenChanged(({ isFullscreen: next }) => {
-            setIsFullscreen(next);
         });
 
         return () => {

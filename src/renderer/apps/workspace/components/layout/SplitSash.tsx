@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import {
     EDITOR_DEFAULT_SPLIT_RATIO,
@@ -48,6 +48,9 @@ export function SplitSash({
     label,
 }: SplitSashProps) {
     const isHorizontal = orientation === "horizontal";
+    const cancelDragRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => () => cancelDragRef.current?.(), []);
 
     const containerSize = useCallback(() => {
         const rect = containerRef.current?.getBoundingClientRect();
@@ -59,7 +62,7 @@ export function SplitSash({
 
     const handlePointerDown = useCallback(
         (e: React.PointerEvent<HTMLDivElement>) => {
-            if (e.button !== 0) {
+            if (e.button !== 0 || cancelDragRef.current) {
                 return;
             }
             e.preventDefault();
@@ -76,10 +79,11 @@ export function SplitSash({
 
             // A drag that leaves the sash would otherwise select text and flip the cursor over
             // whatever it passes; both are pinned for the duration.
-            const previousCursor = document.body.style.cursor;
-            const previousUserSelect = document.body.style.userSelect;
-            document.body.style.cursor = isHorizontal ? "col-resize" : "row-resize";
-            document.body.style.userSelect = "none";
+            const body = sash.ownerDocument.body;
+            const previousCursor = body.style.cursor;
+            const previousUserSelect = body.style.userSelect;
+            body.style.cursor = isHorizontal ? "col-resize" : "row-resize";
+            body.style.userSelect = "none";
 
             let latest = ratio;
 
@@ -96,18 +100,25 @@ export function SplitSash({
                 onPreview(latest);
             };
 
-            const onUp = () => {
+            const cancelDrag = () => {
                 sash.removeEventListener("pointermove", onMove);
                 sash.removeEventListener("pointerup", onUp);
                 sash.removeEventListener("pointercancel", onUp);
-                document.body.style.cursor = previousCursor;
-                document.body.style.userSelect = previousUserSelect;
+                sash.removeEventListener("lostpointercapture", onUp);
+                body.style.cursor = previousCursor;
+                body.style.userSelect = previousUserSelect;
+                cancelDragRef.current = null;
+            };
+            const onUp = () => {
+                cancelDrag();
                 onCommit(latest);
             };
 
+            cancelDragRef.current = cancelDrag;
             sash.addEventListener("pointermove", onMove);
             sash.addEventListener("pointerup", onUp);
             sash.addEventListener("pointercancel", onUp);
+            sash.addEventListener("lostpointercapture", onUp);
         },
         [containerRef, isHorizontal, onCommit, onPreview, ratio],
     );

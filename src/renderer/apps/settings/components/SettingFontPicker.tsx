@@ -158,18 +158,16 @@ export function SettingFontPicker({
         // selected row — dropping it would leave the trigger naming a font that nothing in the menu
         // claims is chosen, and the first arrow key would move "off" a selection that was never on.
         //
-        // It is only *labelled* missing once the list is known to be complete: with the enumeration
-        // refused or unsupported, an absent row means we did not look, not that the font is gone.
+        // Keep it present while the list is loading, but only label it missing once enumeration
+        // succeeds: a refusal or unsupported API does not say whether the font is installed.
         const unlisted =
             !stacks[value] &&
             value.trim().length > 0 &&
-            load.status !== "idle" &&
-            load.status !== "loading" &&
             !families.some(family => family.family === value);
         if (unlisted && (!needle || value.toLowerCase().includes(needle))) {
             result.push({
                 kind: "font",
-                key: `unlisted:${value}`,
+                key: `font:${value}`,
                 value,
                 label: value,
                 css: cssFor(value),

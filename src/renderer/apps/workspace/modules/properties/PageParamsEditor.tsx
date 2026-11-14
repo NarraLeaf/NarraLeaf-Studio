@@ -134,6 +134,8 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
     const params = getUIPageParams(live);
 
     const write = (next: UIPageParam[]) => data.documentService.setPageParams(surfaceId, next);
+    const replaceParam = (next: UIPageParam) =>
+        write(params.map(param => (param.id === next.id ? next : param)));
     const patchParam = (id: string, patch: Partial<UIPageParam>) =>
         write(params.map(param => (param.id === id ? { ...param, ...patch } : param)));
     const rename = (id: string, name: string) => {
@@ -151,11 +153,11 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
             type === "list" || param.defaultValue === undefined
                 ? undefined
                 : coerceUIPageParamValue(type, param.defaultValue);
-        patchParam(param.id, { ...rest, type, ...(carried === undefined ? {} : { defaultValue: carried }) });
+        replaceParam({ ...rest, type, ...(carried === undefined ? {} : { defaultValue: carried }) });
     };
     const reshape = (param: UIPageParam, struct: string) => {
         const { struct: _previous, ...rest } = param;
-        patchParam(param.id, struct ? { ...rest, struct } : rest);
+        replaceParam(struct ? { ...rest, struct } : rest);
     };
 
     const typeOptions = UI_PAGE_PARAM_TYPES.map(type => ({ value: type, label: formatBlueprintValueTypeLabel(type, t, "option") }));
@@ -242,7 +244,7 @@ export function SurfacePageParamsField({ data }: CustomFieldProps<SceneEditorCon
                                         disabled={freeze.frozen}
                                         onCommit={next => {
                                             const { defaultValue: _previous, ...rest } = param;
-                                            patchParam(param.id, next === null ? rest : { ...rest, defaultValue: next });
+                                            replaceParam(next === null ? rest : { ...rest, defaultValue: next });
                                         }}
                                     />
                                 </div>

@@ -79,6 +79,7 @@ function selectionFor(input: {
     there: UIElement[] | null;
 }) {
     const selection = buildComparisonElementSelection({
+        comparisonId: "comparison-1",
         documentPath: "ui/interface.json",
         half: input.half,
         versionLabel: "#66",
