@@ -773,6 +773,19 @@ export const workspace = {
         // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
         // 所以它改为置灰并说明自己在等哪一个答复。
         livePresence: "实时会话",
+        roleNotice: {
+            reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
+            viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
+            dismiss: "知道了",
+        },
+        notifications: {
+            label: "通知",
+            empty: "没有通知",
+            markAllRead: "全部标为已读",
+            mention: "{who} 在批注中提到了你",
+            reply: "{who} 回复了你参与的批注",
+            assigned: "{who} 指派了一个待办给你",
+        },
         liveConnecting: "正在连接该服务器",
         liveUnsupported: "该服务器不提供实时会话",
         liveNobody: "此项目没有进行中的实时会话",

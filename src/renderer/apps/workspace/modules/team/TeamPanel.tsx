@@ -5,7 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Modal } from "@/lib/components/elements/Modal";
-import { serverDisplayName, serverHost, signInWithPassword } from "@/lib/vcs/servers";
+import { serverDisplayName, serverHost, signInWithBrowser, signInWithPassword } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
@@ -134,6 +134,7 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                     onAdded={() => undefined}
                     onClose={() => setAdding(false)}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
 

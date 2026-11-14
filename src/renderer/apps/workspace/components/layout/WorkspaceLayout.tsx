@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionPresence, TeamProjectProvider } from "../../modules/team";
+import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamProjectProvider, TeamRoleNotice } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -869,6 +869,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     return (
         <TeamProjectProvider surface={versionSurface}>
+            <StoryCommentsTeamSyncMount />
+            <TeamRoleNotice />
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
@@ -927,6 +929,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 where an application puts the people you are in a document with. It is
                                 the only always-visible statement that a live session is running, and a
                                 session outlives every tab. */}
+                            <TeamNotificationsBell />
                             <LiveSessionPresence />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}

@@ -788,6 +788,19 @@ export const workspace = {
         // そろってから現れるコントロールでは何が足りないかを調べられないため、
         // 操作不可にしたうえで、どの答えを待っているかを示す。
         livePresence: "ライブセッション",
+        roleNotice: {
+            reviewer: "このプロジェクトではレビュアー：閲覧・コメント・ToDo はできるが、コミットや送信はできない",
+            viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
+            dismiss: "了解",
+        },
+        notifications: {
+            label: "通知",
+            empty: "通知はない",
+            markAllRead: "すべて既読にする",
+            mention: "{who} がコメントであなたに言及した",
+            reply: "{who} があなたの参加しているスレッドに返信した",
+            assigned: "{who} があなたに ToDo を割り当てた",
+        },
         liveConnecting: "そのサーバーに接続中",
         liveUnsupported: "そのサーバーはライブセッションに対応していない",
         liveNobody: "このプロジェクトに進行中のライブセッションはない",

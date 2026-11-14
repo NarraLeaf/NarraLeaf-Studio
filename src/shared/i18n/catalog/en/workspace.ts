@@ -862,6 +862,19 @@ export const workspace = {
         // room right now: a control that appears only once everything is in place cannot be used
         // to find out what is missing, so it goes inert and says which answer it is waiting for.
         livePresence: "Live session",
+        roleNotice: {
+            reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
+            viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",
+            dismiss: "Got it",
+        },
+        notifications: {
+            label: "Notifications",
+            empty: "No notifications",
+            markAllRead: "Mark all read",
+            mention: "{who} mentioned you in a comment",
+            reply: "{who} replied in a thread you are in",
+            assigned: "{who} gave you a to-do",
+        },
         liveConnecting: "Connecting to that server.",
         liveUnsupported: "That server does not offer live sessions.",
         liveNobody: "No live session on this project.",
