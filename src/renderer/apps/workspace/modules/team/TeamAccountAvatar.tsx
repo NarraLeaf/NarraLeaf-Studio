@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Settings2 } from "lucide-react";
+import { History, Settings2 } from "lucide-react";
 
 import { getInterface } from "@/lib/app/bridge";
-import { Button } from "@/lib/components/elements/Button";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
@@ -13,6 +12,7 @@ import { teamProjectClientsTopic, type TeamAccountProfile } from "@shared/types/
 import { TEAM_AVATAR_VISIBLE_DEFAULT, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
 import { useTeamDocuments } from "./TeamHistoryRail";
 import { useTeamProjectSurface } from "./TeamProjectContext";
+import { isTeamHistoryReachable, openTeamHistory } from "./teamHistoryController";
 import { isTeamPresenceReachable, openTeamPresence } from "./teamPresenceController";
 
 /**
@@ -23,11 +23,12 @@ import { isTeamPresenceReachable, openTeamPresence } from "./teamPresenceControl
  * author may still hide it (`ui.teamAvatar.visible`).
  *
  * **A ring for a team project.** The project followed through its server (`TeamDocumentsService`)
- * is the one place the account is *in* something with other people, so the face wears the accent
- * ring there and nowhere else.
+ * is the one place the account is *in* something with other people, so the face in the title bar
+ * wears the accent ring there and nowhere else. The face inside the card never does.
  *
- * Pressed, it shows the account's name and bio, who else is in the team project right now, and
- * the way into the same Team panel the status bar's corner cell opens.
+ * Pressed, it shows the account's name and bio and the way into the same Team panel the status
+ * bar's corner cell opens. In a team project it also lists who is online and opens the project's
+ * version history, which no longer keeps a strip of its own at the window's left edge.
  */
 export function TeamAccountAvatar() {
     const { t } = useTranslation();
@@ -84,7 +85,7 @@ export function TeamAccountAvatar() {
     const displayName = profile?.displayName ?? account.displayName ?? username;
 
     return (
-        <div ref={root} className="relative mr-1">
+        <div ref={root} className="relative ml-2">
             <button
                 type="button"
                 data-team-account={inTeamProject ? "team-project" : "connected"}
@@ -99,7 +100,9 @@ export function TeamAccountAvatar() {
                     username={username}
                     avatarUrl={profile?.avatarUrl}
                     className={cn(
-                        "h-6 w-6",
+                        // The same visual weight as the 16px glyphs beside it, inside the same 32px
+                        // square; the team project's ring stays inside that square too.
+                        "h-5 w-5",
                         inTeamProject && "ring-2 ring-primary ring-offset-1 ring-offset-surface-sunken",
                     )}
                 />
@@ -114,10 +117,7 @@ export function TeamAccountAvatar() {
                             remoteOrigin={remoteOrigin}
                             username={username}
                             avatarUrl={profile?.avatarUrl}
-                            className={cn(
-                                "h-10 w-10 text-sm",
-                                inTeamProject && "ring-2 ring-primary ring-offset-1 ring-offset-surface-overlay",
-                            )}
+                            className="h-10 w-10 text-sm"
                         />
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <span className="truncate text-sm font-medium text-fg">{displayName}</span>
@@ -134,26 +134,57 @@ export function TeamAccountAvatar() {
                         />
                     )}
 
-                    {isTeamPresenceReachable() && (
-                        <div className="mt-3 border-t border-edge pt-3">
-                            <Button
-                                size="sm"
-                                variant="secondary"
-                                className="w-full"
-                                data-team-account-act="manage"
-                                onClick={() => {
-                                    setOpen(false);
-                                    openTeamPresence();
-                                }}
-                            >
-                                <Settings2 className="h-3.5 w-3.5" />
-                                {t("workspace.shell.team.account.manage")}
-                            </Button>
+                    {(inTeamProject && isTeamHistoryReachable()) || isTeamPresenceReachable() ? (
+                        <div className="mt-3 flex flex-col gap-0.5 border-t border-edge pt-2">
+                            {inTeamProject && isTeamHistoryReachable() && (
+                                <MenuRow
+                                    act="history"
+                                    icon={<History className="h-4 w-4" />}
+                                    onClick={() => {
+                                        setOpen(false);
+                                        openTeamHistory();
+                                    }}
+                                >
+                                    {t("workspace.shell.team.account.history")}
+                                </MenuRow>
+                            )}
+                            {isTeamPresenceReachable() && (
+                                <MenuRow
+                                    act="manage"
+                                    icon={<Settings2 className="h-4 w-4" />}
+                                    onClick={() => {
+                                        setOpen(false);
+                                        openTeamPresence();
+                                    }}
+                                >
+                                    {t("workspace.shell.team.account.manage")}
+                                </MenuRow>
+                            )}
                         </div>
-                    )}
+                    ) : null}
                 </div>
             )}
         </div>
+    );
+}
+
+/** One act in the account menu, drawn as a menu row rather than a button. */
+function MenuRow({ act, icon, onClick, children }: {
+    act: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            data-team-account-act={act}
+            onClick={onClick}
+            className="flex min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-fg transition-colors cursor-default hover:bg-fill"
+        >
+            <span className="flex shrink-0 text-fg-muted">{icon}</span>
+            <span className="min-w-0 truncate">{children}</span>
+        </button>
     );
 }
 

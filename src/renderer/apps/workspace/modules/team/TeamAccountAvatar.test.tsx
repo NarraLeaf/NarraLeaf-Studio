@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamConnection } from "@shared/types/team";
 import { TeamAccountAvatar } from "./TeamAccountAvatar";
+import { registerTeamHistoryBridge } from "./teamHistoryController";
 import { registerTeamPresenceBridge } from "./teamPresenceController";
 
 /**
@@ -193,6 +194,36 @@ describe("the card", () => {
             fireEvent.click(container.querySelector("[data-team-account-act='manage']")!);
             expect(open).toHaveBeenCalledTimes(1);
             expect(container.querySelector("[data-team-account-card]")).toBeNull();
+        } finally {
+            forget();
+        }
+    });
+
+    it("never rings the face inside the card", async () => {
+        state.connection = ready();
+        state.documents = { view: {}, target: { remoteOrigin: ORIGIN, project: "p1" } };
+        const { container } = await draw();
+        fireEvent.click(container.querySelector("[data-team-account]")!);
+        const card = container.querySelector("[data-team-account-card]")!;
+        expect(card.firstElementChild?.innerHTML).not.toContain("ring-primary");
+    });
+
+    it("opens the version history in a team project, and offers no history elsewhere", async () => {
+        state.connection = ready();
+        const open = vi.fn();
+        const forget = registerTeamHistoryBridge({ open });
+        try {
+            const outside = await draw();
+            fireEvent.click(outside.container.querySelector("[data-team-account]")!);
+            expect(outside.container.querySelector("[data-team-account-act='history']")).toBeNull();
+            outside.unmount();
+
+            state.documents = { view: {}, target: { remoteOrigin: ORIGIN, project: "p1" } };
+            const inside = await draw();
+            fireEvent.click(inside.container.querySelector("[data-team-account]")!);
+            fireEvent.click(inside.container.querySelector("[data-team-account-act='history']")!);
+            expect(open).toHaveBeenCalledTimes(1);
+            expect(inside.container.querySelector("[data-team-account-card]")).toBeNull();
         } finally {
             forget();
         }

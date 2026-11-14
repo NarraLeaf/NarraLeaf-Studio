@@ -953,6 +953,7 @@ export const workspace = {
             dismiss: "Got it",
         },
         account: {
+            history: "Version history",
             manage: "Manage Team",
             online: "Online {count}",
             onlineEmpty: "Nobody is online",

@@ -54,12 +54,14 @@ import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { useDialogs } from "../../hooks/useUIService";
 import {
+    keepTeamHistoryCollapsed,
     readTeamHistoryCollapsed,
     teamHistoryWidth,
     TeamHistoryRail,
     TeamReconnectBar,
     useTeamDocuments,
 } from "../../modules/team/TeamHistoryRail";
+import { registerTeamHistoryBridge } from "../../modules/team/teamHistoryController";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -172,6 +174,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const dialogs = useDialogs();
     const teamDocuments = useTeamDocuments();
     const [teamHistoryCollapsed, setTeamHistoryCollapsed] = useState(readTeamHistoryCollapsed);
+    // The title bar's account menu opens the history; the fold is owned here, with its width.
+    const followingTeamProject = teamDocuments.view !== null;
+    useEffect(() => {
+        if (!followingTeamProject) {
+            return;
+        }
+        return registerTeamHistoryBridge({
+            open: () => {
+                keepTeamHistoryCollapsed(false);
+                setTeamHistoryCollapsed(false);
+            },
+        });
+    }, [followingTeamProject]);
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -476,7 +491,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel. A team project's
     // history takes the rail's place, at the rail's own two widths.
     const railWidth = teamDocuments.view !== null
-        ? teamHistoryWidth(teamHistoryCollapsed)
+        ? teamHistoryWidth(teamHistoryCollapsed, teamDocuments.previewing !== null)
         : versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
@@ -940,13 +955,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                     controlBar={
                         <>
-                            {/* The Team side of the window, left of its own controls: notifications,
-                                and the signed-in account - drawn only while this window has a session
-                                with a Team server. The live session dialog has no control of its own
-                                here any more; the host only keeps it reachable from the frozen strip
-                                and the collaboration panel. */}
+                            {/* Team notifications, left of the window's own controls. The live session
+                                dialog has no control of its own here any more; the host only keeps it
+                                reachable from the frozen strip and the collaboration panel. */}
                             <TeamNotificationsBell />
-                            <TeamAccountAvatar />
                             <LiveSessionDialogHost />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}
@@ -959,6 +971,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 onToggleRightSidebar={toggleRightSidebar}
                                 onToggleBottomPanel={toggleBottomPanel}
                             />
+                            {/* The signed-in Team account, last in the row: after the settings
+                                button, a step apart from the square controls it is not one of. */}
+                            <TeamAccountAvatar />
                         </>
                     }
                 />

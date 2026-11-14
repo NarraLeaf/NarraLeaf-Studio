@@ -879,6 +879,7 @@ export const workspace = {
             dismiss: "了解",
         },
         account: {
+            history: "バージョン履歴",
             manage: "Team を管理",
             online: "オンライン {count}",
             onlineEmpty: "オンラインのメンバーはいません",

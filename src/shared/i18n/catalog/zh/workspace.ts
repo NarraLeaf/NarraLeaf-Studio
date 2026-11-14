@@ -864,6 +864,7 @@ export const workspace = {
             dismiss: "知道了",
         },
         account: {
+            history: "历史版本",
             manage: "管理 Team",
             online: "在线 {count}",
             onlineEmpty: "暂无在线成员",
