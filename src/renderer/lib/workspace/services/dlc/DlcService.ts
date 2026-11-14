@@ -1,3 +1,4 @@
+import { applyDlcOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { dlcSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -363,42 +364,9 @@ export class DlcService extends Service<DlcService> implements IDlcService {
      * work. Inside a session, undo is sending the inverse of one's own last operation instead.
      */
     public applyLiveOp(op: LiveDlcOp): void {
-        const document = this.getDocument();
-        switch (op.op) {
-            case "create-dlc": {
-                const dlc = structuredClone(op.dlc) as ProjectDlc;
-                document.dlcs = hasDlc(document.dlcs, dlc.id)
-                    // A creation for a record already here is a retry that escaped the receipts.
-                    // Replacing rather than appending cannot produce two rows under one id.
-                    ? document.dlcs.map(entry => (entry.id === dlc.id ? dlc : entry))
-                    : insertLiveRecordBefore(document.dlcs, dlc, op.beforeId);
-                break;
-            }
-            case "update-dlc": {
-                if (!hasDlc(document.dlcs, op.dlcId)) {
-                    // The host refuses an update naming a record it cannot find, so reaching this is
-                    // this machine having missed the creation. Creating it here would hide that; the
-                    // digest on this very effect is what reports it.
-                    break;
-                }
-                const dlc = structuredClone(op.dlc) as ProjectDlc;
-                // In place, so a change of id keeps the row where the author is looking at it.
-                document.dlcs = document.dlcs.map(entry => (entry.id === op.dlcId ? dlc : entry));
-                break;
-            }
-            case "delete-dlc":
-                document.dlcs = document.dlcs.filter(entry => entry.id !== op.dlcId);
-                break;
-            default: {
-                // ⚠ The switch is exhaustive by construction, and this is what says so. Without it a
-                // verb added to `LiveDlcOp` with no case here would be a silent no-op: the effect
-                // would land on every other machine in the room and not on this one, and the digest
-                // would only find out one message later.
-                const unapplied: never = op;
-                return unapplied;
-            }
-        }
-        document.dlcs = normalizeProjectDlcs(document.dlcs);
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        applyDlcOpToDocument(this.getDocument(), structuredClone(op));
         this.commitMutation();
     }
 

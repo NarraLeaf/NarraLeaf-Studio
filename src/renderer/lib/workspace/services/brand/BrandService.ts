@@ -1,3 +1,4 @@
+import { applyBrandOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { brandSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -570,48 +571,19 @@ export class BrandService extends Service<BrandService> implements IBrandService
      * **Nothing here enters this author's undo stack**; see `DlcService.applyLiveOp`.
      */
     public applyLiveOp(op: LiveBrandOp): void {
-        switch (op.op) {
-            case "create-brand-color": {
-                const color = structuredClone(op.color) as BrandColor;
-                this.applyColorMutation(colors => (colors.some(entry => entry.id === color.id)
-                    // A creation for a colour already here is a retry that escaped the receipts.
-                    ? colors.map(entry => (entry.id === color.id ? color : entry))
-                    : insertLiveRecordBefore(colors, color, op.beforeId)));
-                return;
-            }
-            case "update-brand-color": {
-                if (!this.getColor(op.colorId)) {
-                    // The host refuses an update naming a colour it cannot find, so reaching this is
-                    // this machine having missed the creation. The digest on this effect reports it.
-                    return;
-                }
-                const color = structuredClone(op.color) as BrandColor;
-                this.applyColorMutation(colors => colors.map(entry => (entry.id === op.colorId ? color : entry)));
-                return;
-            }
-            case "delete-brand-color":
-                this.applyColorMutation(colors => colors.filter(entry => entry.id !== op.colorId));
-                return;
-            case "move-brand-color":
-                this.moveColorLocally(op.colorId, op.beforeId);
-                return;
-            case "set-brand-fonts": {
-                const fonts = structuredClone(op.fonts) as ProjectFontEntry[];
-                const document = this.getDocument();
-                document.fonts = normalizeProjectFontStack(fonts);
-                this.revision += 1;
-                this.setDirty(true);
-                this.autoSaver.schedule();
-                this.emitFontsChanged();
-                return;
-            }
-            default: {
-                // ⚠ The switch is exhaustive by construction, and this is what says so. A verb added
-                // with no case here would be a silent no-op: the effect would land on every other
-                // machine in the room and not on this one.
-                const unapplied: never = op;
-                return unapplied;
-            }
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        if (!applyBrandOpToDocument(this.getDocument(), structuredClone(op))) {
+            // An update naming a colour that is not here: a missed creation, which the digest reports.
+            return;
+        }
+        this.revision += 1;
+        this.setDirty(true);
+        this.autoSaver.schedule();
+        if (op.op === "set-brand-fonts") {
+            this.emitFontsChanged();
+        } else {
+            this.emitColorsChanged();
         }
     }
 

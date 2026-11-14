@@ -63,6 +63,15 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import { StoryDocumentJsonCache } from "./storyDocumentJson";
+import { applyStoryOpToDocument, storyOpSceneReach } from "@shared/story/applyStoryOp";
+import type { TeamStoryLibraryOp } from "@shared/authority/project";
+import {
+    applyStoryOpToLibrary,
+    parseStoryDocument,
+    parseStoryLibrary,
+    STORY_LIBRARY_PATH,
+    storyDocumentPath,
+} from "@shared/authority/storyFiles";
 import {
     createChapter as createStoryChapterModel,
     createEmptyStoryDocument,
@@ -136,6 +145,12 @@ export type StoryOpSink = {
      * else. Absent for every operation that derives nothing, which is all of them but a paste.
      */
     handle(storyId: StoryId, op: LiveStoryOp, derived?: LiveDerived): boolean;
+    /**
+     * Take making or removing a whole story, or decline it. Only a team project's sink offers this:
+     * a live session was always about stories that already existed, so its vocabulary has no such
+     * verb and a session leaves this absent - which keeps the ordinary behaviour.
+     */
+    library?(storyId: StoryId, op: TeamStoryLibraryOp): boolean;
 };
 
 /** See {@link StoryService.captureStoryStructure}. */
@@ -296,6 +311,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
             generateId: () => uuid.generate(),
         });
 
+        if (this.opSink?.library?.(storyId, { op: "create-story", entry, document }) === true) {
+            // Not here yet: the story appears when the server's effect for it comes back.
+            return entry;
+        }
+
         this.documents.set(storyId, document);
         // Owed before it is attempted. The eager write below is a floating promise whose failure is
         // only logged, and `ensureStoryDocumentDir` can reject before the write is even reached - so
@@ -369,18 +389,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyStoryName(storyId: StoryId, name: string): void {
+        const op: LiveStoryOp = { op: "rename-story", name };
+        // Both halves through the shared appliers the Team server runs: the library entry, and the
+        // document when it is loaded (one that is not is read with the new name next time).
         this.mutateLibrary(index => {
-            const target = index.stories.find(story => story.id === storyId);
-            if (target) {
-                target.name = name;
-                target.updatedAt = new Date().toISOString();
-            }
+            applyStoryOpToLibrary(index, storyId, op, { now: new Date().toISOString() });
         });
-        const document = this.documents.get(storyId);
-        if (document) {
-            this.mutateDocument(storyId, doc => {
-                doc.name = name;
-            });
+        if (this.documents.get(storyId)) {
+            this.applyOp(storyId, op);
         }
     }
 
@@ -397,6 +413,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const entry = this.getStoryEntry(storyId);
         if (!entry) {
             return false;
+        }
+        if (this.opSink?.library?.(storyId, { op: "delete-story" }) === true) {
+            // In a team project an undo is not this window's to record: the story goes when the
+            // server's effect comes back, and a saved version is how it comes back.
+            return true;
         }
         const document = await this.loadStory(storyId).catch(() => null);
         const index = this.getLibraryIndex();
@@ -437,6 +458,35 @@ export class StoryService extends Service<StoryService> implements IStoryService
             },
         });
         return true;
+    }
+
+    /**
+     * Apply making or removing a whole story as the Team server applied it. Not recorded in the
+     * author's undo, like every other arriving effect.
+     */
+    public applyTeamLibraryOp(storyId: StoryId, op: TeamStoryLibraryOp): void {
+        if (op.op === "create-story") {
+            if (this.getStoryEntry(storyId)) {
+                return;
+            }
+            const document = structuredClone(op.document);
+            this.documents.set(storyId, { ...document, id: storyId });
+            this.dirtyDocuments.add(storyId);
+            this.mutateLibrary(index => {
+                index.stories.push({ ...structuredClone(op.entry), id: storyId });
+                if (!index.defaultStoryId) {
+                    index.defaultStoryId = storyId;
+                }
+            });
+            void this.ensureStoryDocumentDir(storyId)
+                .then(() => this.writeStoryDocument(storyId, this.getStoryDocument(storyId)))
+                .catch(err => console.warn("[StoryService] failed to persist a story the team made", err));
+            this.events.emit("documentChanged", { storyId, document: this.getStoryDocument(storyId) });
+            return;
+        }
+        if (this.getStoryEntry(storyId)) {
+            this.removeStory(storyId);
+        }
     }
 
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
@@ -661,6 +711,73 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (failures.length > 0) {
             throw new RendererError(`Could not re-read ${failures.length} story document(s): ${failures.join("; ")}`);
         }
+    }
+
+    /**
+     * Copies of every loaded story document, for a team project going offline: what this window and
+     * its Team server last agreed on, which offline editing is later compared against.
+     */
+    public snapshotLoadedDocuments(): Record<StoryId, StoryDocument> {
+        const copies: Record<StoryId, StoryDocument> = {};
+        for (const [storyId, document] of this.documents) {
+            copies[storyId] = structuredClone(document);
+        }
+        return copies;
+    }
+
+    /**
+     * Put story documents back as given - a team project taking its offline edits out before it
+     * catches up and replays them as operations. Not recorded in the author's undo: nothing the
+     * author did is being undone, it is being re-sent.
+     */
+    public restoreTeamDocuments(stories: Record<StoryId, StoryDocument>): void {
+        for (const [storyId, document] of Object.entries(stories)) {
+            if (!this.documents.has(storyId)) {
+                continue;
+            }
+            this.documents.set(storyId, structuredClone(document));
+            this.mutateDocument(storyId, () => undefined);
+        }
+    }
+
+    /**
+     * Replace every story with the files of a version the Team server saved.
+     *
+     * What a window that does not know where it stands starts from: the library and every story
+     * document, parsed and migrated the way the server parsed them, written to disk, and drawn.
+     * Story files the version does not hold are left alone; a library entry with no document in
+     * the version is dropped from the library, because the version is the state that counts.
+     */
+    public async adoptTeamFiles(files: ReadonlyMap<string, string>): Promise<void> {
+        const libraryText = files.get(STORY_LIBRARY_PATH);
+        if (libraryText === undefined) {
+            return;
+        }
+        const library = parseStoryLibrary(libraryText);
+        const documents = new Map<StoryId, StoryDocument>();
+        for (const entry of library.stories) {
+            const text = files.get(storyDocumentPath(entry.id));
+            if (text !== undefined) {
+                documents.set(entry.id, parseStoryDocument(entry.id, text));
+            }
+        }
+        library.stories = library.stories.filter(entry => documents.has(entry.id));
+        this.index = library;
+        this.libraryIndexDirty = true;
+        this.documents.clear();
+        this.documentJson.clear();
+        this.invalidateSceneContentRevisions();
+        for (const [storyId, document] of documents) {
+            this.documents.set(storyId, document);
+            this.dirtyDocuments.add(storyId);
+        }
+        this.revision += 1;
+        this.setDirty(true);
+        this.events.emit("libraryChanged", library);
+        for (const [storyId, document] of documents) {
+            this.events.emit("documentChanged", { storyId, document });
+        }
+        await this.flush();
     }
 
     /**
@@ -1048,26 +1165,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         entry: StorySceneId | undefined,
     ): void {
         // Copies, because the records may have arrived inside a message the sender is still holding
-        // - the host keeps every effect it broadcast - and the document is edited in place.
-        const restored = (scenes ?? []).map(scene => this.cloneScene(scene));
-        const record = JSON.parse(JSON.stringify(chapter)) as StoryChapter;
-        this.mutateDocument(storyId, document => {
-            if (!document.chapters.some(item => item.id === record.id)) {
-                const at = beforeChapterId === null
-                    ? -1
-                    : document.chapters.findIndex(item => item.id === beforeChapterId);
-                if (at === -1) {
-                    document.chapters.push(record);
-                } else {
-                    document.chapters.splice(at, 0, record);
-                }
-            }
-            for (const scene of restored) {
-                document.scenes[scene.id] = scene;
-            }
-            if (entry !== undefined && document.scenes[entry]) {
-                document.entrySceneId = entry;
-            }
+        // - the host keeps every effect it broadcast - and the applier writes them in as they are.
+        this.applyOp(storyId, {
+            op: "create-chapter",
+            chapter: JSON.parse(JSON.stringify(chapter)) as StoryChapter,
+            beforeChapterId,
+            ...(scenes === undefined ? {} : { scenes: scenes.map(scene => this.cloneScene(scene)) }),
+            ...(entry === undefined ? {} : { entry }),
         });
     }
 
@@ -1085,17 +1189,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyChapterName(storyId: StoryId, chapterId: string, trimmed: string): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const chapter = document.chapters.find(item => item.id === chapterId);
-            if (!chapter) {
-                return;
-            }
-            chapter.name = trimmed;
-            chapter.meta = { ...chapter.meta, updatedAt: new Date().toISOString() };
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "rename-chapter", chapterId, name: trimmed });
     }
 
     /**
@@ -1125,22 +1219,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyChapterDelete(storyId: StoryId, chapterId: string): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const index = document.chapters.findIndex(chapter => chapter.id === chapterId);
-            if (index === -1) {
-                return;
-            }
-            const [chapter] = document.chapters.splice(index, 1);
-            chapter.sceneIds.forEach(sceneId => {
-                delete document.scenes[sceneId];
-            });
-            if (document.entrySceneId && !document.scenes[document.entrySceneId]) {
-                document.entrySceneId = this.firstSceneId(document);
-            }
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "delete-chapter", chapterId });
     }
 
     public moveChapter(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean {
@@ -1212,18 +1291,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * position, never a request to delete the chapter it says nothing about.
      */
     private applyChapterOrder(storyId: StoryId, chapterIds: readonly string[]): void {
-        this.mutateDocument(storyId, document => {
-            const byId = new Map(document.chapters.map(chapter => [chapter.id, chapter]));
-            const ordered: StoryChapter[] = [];
-            for (const id of chapterIds) {
-                const chapter = byId.get(id);
-                if (chapter) {
-                    ordered.push(chapter);
-                    byId.delete(id);
-                }
-            }
-            document.chapters = [...ordered, ...byId.values()];
-        });
+        this.applyOp(storyId, { op: "reorder-chapters", chapterIds });
     }
 
     /**
@@ -1414,30 +1482,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
         chapter: StoryChapter | undefined,
         entry: boolean,
     ): void {
-        this.mutateDocument(storyId, document => {
-            let target = chapterId === null
-                ? undefined
-                : document.chapters.find(item => item.id === chapterId);
-            if (!target && chapter) {
-                target = JSON.parse(JSON.stringify(chapter)) as StoryChapter;
-                document.chapters.push(target);
-            }
-            document.scenes[scene.id] = scene;
-            if (target) {
-                const at = beforeSceneId === null ? -1 : target.sceneIds.indexOf(beforeSceneId);
-                if (at === -1) {
-                    target.sceneIds.push(scene.id);
-                } else {
-                    target.sceneIds.splice(at, 0, scene.id);
-                }
-            } else {
-                // A scene no chapter claims - what an imported document can hold. Named in the list
-                // that orders those, because a scene in neither list is one the outline never draws.
-                document.unassignedSceneIds = [...(document.unassignedSceneIds ?? []), scene.id];
-            }
-            if (entry || !document.entrySceneId) {
-                document.entrySceneId = scene.id;
-            }
+        this.applyOp(storyId, {
+            op: "create-scene",
+            scene,
+            chapterId,
+            beforeSceneId,
+            // A copy: the applier files the chapter into the document as it is.
+            ...(chapter === undefined ? {} : { chapter: JSON.parse(JSON.stringify(chapter)) as StoryChapter }),
+            entry,
         });
     }
 
@@ -1455,23 +1507,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applySceneName(storyId: StoryId, sceneId: StorySceneId, trimmed: string): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene) {
-                return;
-            }
-            // The internal name the scene compiled under a moment ago, pinned before the display
-            // name moves. A scene stored with an empty one compiles under its display name, so
-            // letting the rename through unpinned would move its variables - see
-            // `sceneRuntimeName`. Every machine in a session derives the same pin from the same
-            // record, which is why this one may be worked out on the receiving side.
-            scene.runtimeName = sceneRuntimeName(scene);
-            scene.name = trimmed;
-            scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "rename-scene", sceneId, name: trimmed });
     }
 
     // -----------------------------------------------------------------------
@@ -1623,15 +1659,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         sceneId: StorySceneId,
         snapshots: readonly StorySceneSnapshot[],
     ): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene) return;
-            // Copies, because the list may have arrived inside a message the sender still holds.
-            scene.sceneSnapshots = snapshots.map(snapshot => ({ ...snapshot, values: { ...snapshot.values } }));
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "set-scene-snapshots", sceneId, snapshots });
     }
 
     // -----------------------------------------------------------------------
@@ -1662,20 +1690,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applySceneLayers(storyId: StoryId, sceneId: StorySceneId, layers: readonly StorySceneLayer[]): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene) return;
-            // Copies, because the stack may have arrived inside a message the sender still holds.
-            const next = normalizeSceneLayerStack(structuredClone(layers) as StorySceneLayer[]);
-            if (isDefaultSceneLayerStack(next)) {
-                delete scene.layers;
-            } else {
-                scene.layers = next;
-            }
-            changed = true;
+        // A copy, because the stack may have arrived inside a message the sender still holds.
+        return this.applyOp(storyId, {
+            op: "set-scene-layers",
+            sceneId,
+            layers: structuredClone(layers) as StorySceneLayer[],
         });
-        return changed;
     }
 
     public renameSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, name: string): boolean {
@@ -1921,30 +1941,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * both states the document spells as no key at all.
      */
     private applySceneFields(storyId: StoryId, sceneId: StorySceneId, fields: LiveSceneFields): void {
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene) {
-                return;
-            }
-            scene.name = fields.name;
-            scene.runtimeName = fields.runtimeName;
-            if (fields.description === undefined) {
-                delete scene.description;
-            } else {
-                scene.description = fields.description;
-            }
-            if (fields.defaultBackgroundAssetId === undefined) {
-                delete scene.defaultBackgroundAssetId;
-            } else {
-                scene.defaultBackgroundAssetId = fields.defaultBackgroundAssetId;
-            }
-            if (fields.bgm === undefined) {
-                delete scene.bgm;
-            } else {
-                scene.bgm = fields.bgm;
-            }
-            scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
-        });
+        this.applyOp(storyId, { op: "update-scene", sceneId, fields });
     }
 
     public deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean {
@@ -1967,26 +1964,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applySceneDelete(storyId: StoryId, sceneId: StorySceneId): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            if (!document.scenes[sceneId]) {
-                return;
-            }
-            delete document.scenes[sceneId];
-            for (const chapter of document.chapters) {
-                chapter.sceneIds = chapter.sceneIds.filter(id => id !== sceneId);
-            }
-            if (document.unassignedSceneIds) {
-                // The list that orders the scenes no chapter claims. Left alone it would name a
-                // scene that is not in the document, which the next parse would have to repair.
-                document.unassignedSceneIds = document.unassignedSceneIds.filter(id => id !== sceneId);
-            }
-            if (document.entrySceneId === sceneId) {
-                document.entrySceneId = this.firstSceneId(document);
-            }
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "delete-scene", sceneId });
     }
 
     public moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean {
@@ -2020,40 +1998,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         chapterId: StoryChapterId | null,
         beforeSceneId: StorySceneId | null,
     ): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const targetChapter = chapterId === null
-                ? undefined
-                : document.chapters.find(chapter => chapter.id === chapterId);
-            if ((chapterId !== null && !targetChapter) || !document.scenes[sceneId]) {
-                return;
-            }
-            for (const chapter of document.chapters) {
-                chapter.sceneIds = chapter.sceneIds.filter(id => id !== sceneId);
-            }
-            if (document.unassignedSceneIds) {
-                document.unassignedSceneIds = document.unassignedSceneIds.filter(id => id !== sceneId);
-            }
-            if (!targetChapter) {
-                // Back to the scenes no chapter claims, which is where an inverse of a move OUT of
-                // that state has to put it.
-                document.unassignedSceneIds = [...(document.unassignedSceneIds ?? []), sceneId];
-                changed = true;
-                return;
-            }
-            if (!beforeSceneId) {
-                targetChapter.sceneIds.push(sceneId);
-            } else {
-                const index = targetChapter.sceneIds.indexOf(beforeSceneId);
-                if (index === -1) {
-                    targetChapter.sceneIds.push(sceneId);
-                } else {
-                    targetChapter.sceneIds.splice(index, 0, sceneId);
-                }
-            }
-            changed = true;
-        });
-        return changed;
+        return this.applyOp(storyId, { op: "move-scene", sceneId, chapterId, beforeSceneId });
     }
 
     public setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void {
@@ -2066,12 +2011,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void {
-        this.mutateDocument(storyId, document => {
-            if (sceneId && !document.scenes[sceneId]) {
-                throw new RendererError(`Scene not found: ${sceneId}`);
-            }
-            document.entrySceneId = sceneId;
-        });
+        this.applyOp(storyId, { op: "set-entry-scene", sceneId: sceneId ?? null });
     }
 
     public insertBlock(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): StoryBlock {
@@ -2086,10 +2026,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockInsert(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            insertBlockInScene(scene, block, target);
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "insert-block", sceneId, block, target });
     }
 
     /**
@@ -2124,12 +2061,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         sceneId: StorySceneId,
         inserts: readonly { block: StoryBlock; target: BlockTarget }[],
     ): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            for (const insert of inserts) {
-                insertBlockInScene(scene, insert.block, insert.target);
-            }
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "insert-blocks", sceneId, inserts });
     }
 
     public updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
@@ -2140,10 +2072,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockPayload(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            updateBlockPayload(scene, blockId, payload);
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "update-block", sceneId, blockId, payload });
     }
 
     /**
@@ -2172,12 +2101,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         storyId: StoryId,
         edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[],
     ): void {
-        this.mutateDocument(storyId, document => {
-            for (const edit of edits) {
-                const scene = this.getSceneOrThrow(document, edit.sceneId);
-                updateBlockPayload(scene, edit.blockId, edit.payload);
-            }
-        }, edits.map(edit => edit.sceneId));
+        this.applyOp(storyId, { op: "update-blocks", edits });
     }
 
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
@@ -2188,10 +2112,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockDelete(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            deleteBlockFromScene(scene, blockId);
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "delete-block", sceneId, blockId });
     }
 
     /**
@@ -2211,12 +2132,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockDeletes(storyId: StoryId, sceneId: StorySceneId, blockIds: readonly StoryBlockId[]): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            for (const blockId of blockIds) {
-                deleteBlockFromScene(scene, blockId);
-            }
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "delete-blocks", sceneId, blockIds });
     }
 
     /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
@@ -2228,18 +2144,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockDisabled(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, disabled: boolean): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            const block = scene.blocks[blockId];
-            if (!block) {
-                return;
-            }
-            if (disabled) {
-                block.disabled = true;
-            } else {
-                delete block.disabled;
-            }
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "set-block-disabled", sceneId, blockId, disabled });
     }
 
     /**
@@ -2341,10 +2246,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private applyBlockMove(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, target: BlockTarget): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            moveBlockInScene(scene, blockId, target);
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "move-block", sceneId, blockId, target });
     }
 
     /**
@@ -2364,10 +2266,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         sceneId: StorySceneId,
         moves: readonly { blockIds: readonly StoryBlockId[]; target: BlockTarget }[],
     ): void {
-        this.mutateDocument(storyId, document => {
-            const scene = this.getSceneOrThrow(document, sceneId);
-            moveBlocksInScene(scene, moves.map(move => ({ blockIds: [...move.blockIds], target: move.target })));
-        }, [sceneId]);
+        this.applyOp(storyId, { op: "move-blocks", sceneId, moves });
     }
 
     /**
@@ -2570,105 +2469,33 @@ export class StoryService extends Service<StoryService> implements IStoryService
      */
     public applyLiveOp(storyId: StoryId, op: LiveStoryOp): void {
         this.getHistoryService().withoutRecording(() => {
-            switch (op.op) {
-                case "insert-block":
-                    // A copy, because the block arrived inside a message the sender may still be
-                    // holding - the host keeps every effect it broadcast - and inserting writes the
-                    // block into the document and edits it on the way in.
-                    this.applyBlockInsert(storyId, op.sceneId, structuredClone(op.block), op.target);
-                    return;
-                case "update-block":
-                    this.applyBlockPayload(storyId, op.sceneId, op.blockId, structuredClone(op.payload));
-                    return;
-                case "update-blocks":
-                    this.applyBlockPayloads(storyId, op.edits.map(edit => ({
-                        sceneId: edit.sceneId,
-                        blockId: edit.blockId,
-                        payload: structuredClone(edit.payload),
-                    })));
-                    return;
-                case "insert-blocks":
-                    // Copies, for the reason a single insert takes one: the blocks arrived inside a
-                    // message the sender may still be holding, and inserting edits them on the way in.
-                    this.applyBlockInserts(storyId, op.sceneId, op.inserts.map(insert => ({
-                        block: structuredClone(insert.block),
-                        target: insert.target,
-                    })));
-                    return;
-                case "delete-block":
-                    this.applyBlockDelete(storyId, op.sceneId, op.blockId);
-                    return;
-                case "delete-blocks":
-                    this.applyBlockDeletes(storyId, op.sceneId, op.blockIds);
-                    return;
-                case "move-block":
-                    this.applyBlockMove(storyId, op.sceneId, op.blockId, op.target);
-                    return;
-                case "move-blocks":
-                    this.applyBlockMoves(storyId, op.sceneId, op.moves);
-                    return;
-                case "set-block-disabled":
-                    this.applyBlockDisabled(storyId, op.sceneId, op.blockId, op.disabled);
-                    return;
-                case "rename-scene":
-                    this.applySceneName(storyId, op.sceneId, op.name);
-                    return;
-                case "set-entry-scene":
-                    this.applyEntryScene(storyId, op.sceneId ?? undefined);
-                    return;
-                case "rename-story":
-                    this.applyStoryName(storyId, op.name);
-                    return;
-                case "create-scene":
-                    // A copy, with `insert-block`'s block: the scene arrived inside a message the
-                    // sender may still be holding - the host keeps every effect it broadcast - and
-                    // the document is edited in place from here on.
-                    this.applySceneCreate(
-                        storyId,
-                        this.cloneScene(op.scene),
-                        op.chapterId,
-                        op.beforeSceneId,
-                        op.chapter,
-                        op.entry === true,
-                    );
-                    return;
-                case "delete-scene":
-                    this.applySceneDelete(storyId, op.sceneId);
-                    return;
-                case "update-scene":
-                    this.applySceneFields(storyId, op.sceneId, op.fields);
-                    return;
-                case "move-scene":
-                    this.applySceneMove(storyId, op.sceneId, op.chapterId, op.beforeSceneId);
-                    return;
-                case "set-scene-snapshots":
-                    this.applySceneSnapshots(storyId, op.sceneId, op.snapshots);
-                    return;
-                case "set-scene-layers":
-                    this.applySceneLayers(storyId, op.sceneId, op.layers);
-                    return;
-                case "create-chapter":
-                    this.applyChapterCreate(storyId, op.chapter, op.beforeChapterId, op.scenes, op.entry);
-                    return;
-                case "rename-chapter":
-                    this.applyChapterName(storyId, op.chapterId, op.name);
-                    return;
-                case "delete-chapter":
-                    this.applyChapterDelete(storyId, op.chapterId);
-                    return;
-                case "reorder-chapters":
-                    this.applyChapterOrder(storyId, op.chapterIds);
-                    return;
-                default: {
-                    // The switch is exhaustive over the vocabulary and this is what says so. The
-                    // callback returns void, so a verb nobody applied here would otherwise be a
-                    // silent no-op: the effect lands everywhere else in the room and does nothing on
-                    // this machine, which is the divergence the digest catches one message too late.
-                    const unapplied: never = op;
-                    throw new Error(`No applier for live operation: ${JSON.stringify(unapplied)}`);
-                }
+            // A copy, because the operation arrived inside a message the sender may still be
+            // holding - the host keeps every effect it broadcast - and the applier writes what is
+            // inside it into the document as it is, editing blocks on the way in.
+            const owned = structuredClone(op);
+            if (owned.op === "rename-story") {
+                // The one verb that reaches the library as well as the document.
+                this.applyStoryName(storyId, owned.name);
+                return;
             }
+            this.applyOp(storyId, owned);
         });
+    }
+
+    /**
+     * Apply one story operation through the shared applier, as one mutation.
+     *
+     * Every write to a story document's content ends here, whether it came from this author's
+     * gesture or from somebody else's effect - and the applier is `@shared/story/applyStoryOp`, the
+     * same code the Team server's project authority runs, so the two cannot disagree about what an
+     * operation does. Takes ownership of `op` (see the applier).
+     */
+    private applyOp(storyId: StoryId, op: LiveStoryOp): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            changed = applyStoryOpToDocument(document, op, { now: new Date().toISOString() }).changed;
+        }, storyOpSceneReach(op));
+        return changed;
     }
 
     private mutateLibrary(mutator: (index: StoryLibraryIndex) => void): void {
@@ -3054,15 +2881,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
             throw new RendererError(`Scene not found: ${sceneId}`);
         }
         return scene;
-    }
-
-    private firstSceneId(document: StoryDocument): StorySceneId | undefined {
-        for (const chapter of document.chapters) {
-            if (chapter.sceneIds[0]) {
-                return chapter.sceneIds[0];
-            }
-        }
-        return undefined;
     }
 
     private cloneScene(scene: StoryScene): StoryScene {
