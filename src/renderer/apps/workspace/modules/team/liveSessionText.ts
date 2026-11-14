@@ -32,6 +32,8 @@ export type LiveSentence = {
 const ENTRY_FAILURES: Record<LiveEntryFailure["kind"], TranslationKey> = {
     // Already in one. The freeze's own refusal says it in the words the controls already use.
     busy: "workspace.shell.team.liveBlockedSession",
+    // Everybody is already editing the project together through its server.
+    "team-documents": "workspace.shell.team.docs.online",
     // Replaced by the refusal's own key below - a freeze names the state that has to be left, and
     // there are five of those.
     frozen: "workspace.shell.team.liveBlockedSession",
@@ -88,6 +90,7 @@ export function liveEntryFailureSentence(failure: LiveEntryFailure): LiveSentenc
 const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = {
     // Already in one, and the control the author pressed is the one that leaves it.
     busy: null,
+    "team-documents": null,
     // The freeze's sentence names the state that has to be left, which is the whole remedy.
     frozen: null,
     // Both sentences are instructions already.

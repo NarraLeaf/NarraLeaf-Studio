@@ -53,6 +53,13 @@ import { backgroundLayerStyle, backgroundPlateStyle } from "@/lib/workspace/serv
 import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { useDialogs } from "../../hooks/useUIService";
+import {
+    readTeamHistoryCollapsed,
+    teamHistoryWidth,
+    TeamHistoryRail,
+    TeamReconnectBar,
+    useTeamDocuments,
+} from "../../modules/team/TeamHistoryRail";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -163,6 +170,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { context, recovery } = useWorkspace();
     // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
     const dialogs = useDialogs();
+    const teamDocuments = useTeamDocuments();
+    const [teamHistoryCollapsed, setTeamHistoryCollapsed] = useState(readTeamHistoryCollapsed);
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -464,8 +473,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         expanded: versionRailExpanded,
         frozen: versionSurface.frozen !== null,
     });
-    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel.
-    const railWidth = versionRailWidth(railPresence);
+    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel. A team project's
+    // history takes the rail's place, at the rail's own two widths.
+    const railWidth = teamDocuments.view !== null
+        ? teamHistoryWidth(teamHistoryCollapsed)
+        : versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
     /**
@@ -952,6 +964,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <RecoveryBanner />
 
                 <ExperimentalNotice />
+                <TeamReconnectBar surface={teamDocuments} />
 
                 {/* Main Content. `isolate` seals every z-index inside the docks and the editors into
                     this row, so the window-level layers above it - the floating story preview, the
@@ -960,11 +973,22 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
                         a past version the author still needs the sidebar, the assets and the scene tree.
                         Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
-                    <VersionRail
-                        surface={versionSurface}
-                        presence={railPresence}
-                        onExpandedChange={setVersionRailExpanded}
-                    />
+                    {/* A team project whose documents its Team server holds has no commits, pushes or
+                        merges to show: its history is the server's saved versions, and that list takes
+                        the version rail's place. Every other project keeps the rail. */}
+                    {teamDocuments.view !== null ? (
+                        <TeamHistoryRail
+                            surface={teamDocuments}
+                            collapsed={teamHistoryCollapsed}
+                            onCollapsedChange={setTeamHistoryCollapsed}
+                        />
+                    ) : (
+                        <VersionRail
+                            surface={versionSurface}
+                            presence={railPresence}
+                            onExpandedChange={setVersionRailExpanded}
+                        />
+                    )}
 
                     {/* Left Sidebar Selector */}
                     <LeftSidebarSelector
