@@ -1,4 +1,5 @@
 import { unpatchedFs as fs } from "../utils/unpatchedFs";
+import { parseTeamDeepLink, type TeamDeepLink } from "@shared/utils/teamDeepLink";
 import path from "path";
 import { app as electronApp, screen, session } from "electron";
 import {
@@ -682,6 +683,41 @@ export class App extends BaseApp {
      * Restores before focusing because a minimized window is the common case for the tray - and
      * `focus()` alone leaves a minimized window minimized.
      */
+    /** A `narraleaf://` link that arrived before the home screen could take it. */
+    private pendingDeepLink: TeamDeepLink | null = null;
+
+    /**
+     * Act on a `narraleaf://` link: bring the home screen up and hand it the link.
+     *
+     * Nothing is done to anything here. The link may come from any page or message, so
+     * all it can do is put a question in front of the person — the Add Server dialog with
+     * an address filled in, or a server they already hold, picked out. The launcher reads
+     * the link as it mounts (`takePendingDeepLink`) or, if it is already up, is sent it.
+     */
+    public async handleDeepLink(raw: string): Promise<void> {
+        const link = parseTeamDeepLink(raw);
+        if (link === null) {
+            this.logger.warn("[App] Ignored a narraleaf:// link that is not one Studio reads");
+            return;
+        }
+        this.logger.info("[App] Opening a", link.kind, "link for", link.server);
+        const existing = this.findLauncher();
+        if (existing) {
+            await this.revealLauncher();
+            existing.sendIpcEvent(IPCEventType.appDeepLink, { link });
+            return;
+        }
+        this.pendingDeepLink = link;
+        await this.revealLauncher();
+    }
+
+    /** The link waiting for the home screen, handed over once. */
+    public takePendingDeepLink(): TeamDeepLink | null {
+        const link = this.pendingDeepLink;
+        this.pendingDeepLink = null;
+        return link;
+    }
+
     public async revealLauncher(): Promise<void> {
         const existing = this.findLauncher();
         if (existing) {

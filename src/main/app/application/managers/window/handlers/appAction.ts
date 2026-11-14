@@ -285,6 +285,16 @@ export class AppWindowGetControlHandler extends IPCHandler<IPCEventType.appWindo
     }
 }
 
+/** The link that opened the home screen, handed over once. */
+export class AppTakeDeepLinkHandler extends IPCHandler<IPCEventType.appTakeDeepLink> {
+    readonly name = IPCEventType.appTakeDeepLink;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success({ link: window.app.takePendingDeepLink() });
+    }
+}
+
 export class AppWindowGetFullscreenHandler extends IPCHandler<IPCEventType.appWindowGetFullscreen> {
     readonly name = IPCEventType.appWindowGetFullscreen;
     readonly type = IPCMessageType.request;

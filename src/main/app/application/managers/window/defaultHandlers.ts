@@ -1,7 +1,7 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { ProjectListScriptEditorsHandler, ProjectOpenScriptHandler } from "./handlers/projectScriptAction";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppExportLogArchiveHandler, AppOpenLogsFolderHandler, AppOpenThirdPartyNoticesHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppTakeDeepLinkHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppExportLogArchiveHandler, AppOpenLogsFolderHandler, AppOpenThirdPartyNoticesHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     SpellcheckCheckHandler,
@@ -32,7 +32,7 @@ import {
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
     VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsRefreshServerHandler, VcsForgetServerHandler,
-    VcsSignInWithPasswordHandler, VcsPublishProjectHandler,
+    VcsSignInWithPasswordHandler, VcsSignInWithBrowserHandler, VcsPublishProjectHandler,
     VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
@@ -241,6 +241,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppWindowCloseWithHandler(),
         new AppWindowGetControlHandler(),
         new AppWindowGetFullscreenHandler(),
+        new AppTakeDeepLinkHandler(),
         new AppWindowControlAbilityHandler(),
         new AppWindowReadyHandler(),
         new AppTerminateHandler(),
@@ -557,6 +558,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // The sixth, and the only one that carries bytes rather than a question.
         new TeamTransferHandler(),
     new VcsSignInWithPasswordHandler(),
+    new VcsSignInWithBrowserHandler(),
         new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),
         new VcsAddServerHandler(),
