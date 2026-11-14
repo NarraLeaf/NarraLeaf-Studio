@@ -213,11 +213,18 @@ async function runTests() {
     try {
         console.log("verify: running the whole vitest suite");
         const full = await runVitest([], reportPath);
-        if (full.code === 0) {
-            return outcome(started, []);
-        }
         if (!full.report) {
             return outcome(started, [{ file: "vitest", tests: [`exited ${full.code} without finishing the run`] }]);
+        }
+        if (full.code === 0) {
+            if (full.report.unhandledErrors > 0 || full.report.failed.length > 0) {
+                return outcome(started, [{ file: "vitest", tests: ["reported failures despite a successful exit"] }]);
+            }
+            const ranTests = full.report.modules?.some(module => Array.isArray(module.passed) && module.passed.length > 0);
+            if (!ranTests) {
+                return outcome(started, [{ file: "vitest", tests: ["the full run did not pass any tests"] }]);
+            }
+            return outcome(started, []);
         }
 
         const failures = [];
@@ -240,10 +247,26 @@ async function runTests() {
         if (again.report.unhandledErrors > 0) {
             failures.push({ file: "vitest", tests: [`${again.report.unhandledErrors} error(s) outside any test when run alone`] });
         }
-        const failingAlone = new Set(again.report.failed.map(entry => toPosix(entry.file)));
+        const retriedModules = new Map((again.report.modules ?? []).map(module => [toPosix(module.file), module]));
+        const failingAlone = new Map(again.report.failed.map(entry => [toPosix(entry.file), entry]));
         const loadSensitive = [];
         for (const entry of full.report.failed) {
-            (failingAlone.has(toPosix(entry.file)) ? failures : loadSensitive).push(entry);
+            const name = toPosix(entry.file);
+            const retried = retriedModules.get(name);
+            const stillFailing = failingAlone.get(name);
+            if (stillFailing) {
+                failures.push(stillFailing);
+                failingAlone.delete(name);
+            } else if (retried?.state === "passed" && Array.isArray(retried.passed) && retried.passed.length > 0 &&
+                Array.isArray(entry.testIds) && entry.testIds.every(id => retried.passed.includes(id))) {
+                loadSensitive.push(entry);
+            } else {
+                failures.push({ file: entry.file, tests: ["the failed tests did not all pass on retry"] });
+            }
+        }
+        failures.push(...failingAlone.values());
+        if (again.code !== 0 && again.report.failed.length === 0 && again.report.unhandledErrors === 0) {
+            failures.push({ file: "vitest", tests: [`retry exited ${again.code} without a reported failure`] });
         }
         return outcome(started, failures, loadSensitive);
     } finally {
