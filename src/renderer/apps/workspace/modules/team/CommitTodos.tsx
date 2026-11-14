@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements/Checkbox";
 import { teamCall, useTeamCapability, useTeamConnection } from "@/lib/team";
 import { TeamMethod, type TeamTodo } from "@shared/types/team";
 
@@ -83,21 +84,21 @@ export function CommitTodoPicker({ controller, disabled }: { controller: CommitT
     const { t } = useTranslation();
     if (controller.todos.length === 0) return null;
     return (
-        <fieldset data-commit-todos="" className="mt-2" title={t("workspace.shell.team.commitTodos.hint")}>
+        <fieldset data-commit-todos="" className="mt-2">
             <legend className="mb-1 text-2xs text-fg-subtle">{t("workspace.shell.team.commitTodos.title")}</legend>
+            <p className="mb-1 text-2xs text-fg-subtle">{t("workspace.shell.team.commitTodos.hint")}</p>
             <ul className="max-h-28 space-y-0.5 overflow-y-auto">
                 {controller.todos.map(todo => (
                     <li key={todo.id}>
-                        <label className="flex cursor-default items-start gap-1.5 text-2xs text-fg">
-                            <input
-                                type="checkbox"
-                                className="mt-0.5"
-                                disabled={disabled}
-                                checked={controller.picked.has(todo.id)}
-                                onChange={() => controller.toggle(todo.id)}
-                            />
+                        <Checkbox
+                            className="items-start text-2xs text-fg"
+                            boxClassName="mt-0.5"
+                            disabled={disabled}
+                            checked={controller.picked.has(todo.id)}
+                            onCheckedChange={() => controller.toggle(todo.id)}
+                        >
                             <span className="line-clamp-2">{todo.title}</span>
-                        </label>
+                        </Checkbox>
                     </li>
                 ))}
             </ul>
