@@ -94,6 +94,12 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [],
     );
+    const baselineSource = useRef(options.persistenceSource);
+    const holdForCurrentSource = useCallback(() => {
+        if (baselineSource.current !== latest.current.persistenceSource) {
+            clock.awaitTotalBaseline();
+        }
+    }, [clock]);
 
     // Read the stored total once per store, and hold the clock's writes until that read comes back
     // one way or the other. A value arriving after play started is installed underneath the seconds
@@ -101,14 +107,15 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
     // being absent is what used to cost everything, which is why the hold exists.
     const persistenceSource = options.persistenceSource;
     useEffect(() => {
+        clock.awaitTotalBaseline();
+        baselineSource.current = persistenceSource;
         if (!persistenceSource) {
             return;
         }
         let cancelled = false;
-        clock.awaitTotalBaseline();
         void latest.current.persistenceGetAsync(BLUEPRINT_PLAYTIME_TOTAL_PERSISTENCE_KEY)
             .then(stored => {
-                if (cancelled) {
+                if (cancelled || latest.current.persistenceSource !== persistenceSource) {
                     return;
                 }
                 if (typeof stored === "number") {
@@ -123,7 +130,7 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
             // seconds this session is banking have to reach disk eventually, and a store that
             // cannot be read holds nothing this can be standing on top of.
             .catch(() => {
-                if (!cancelled) {
+                if (!cancelled && latest.current.persistenceSource === persistenceSource) {
                     clock.startTotalFromZero();
                 }
             });
@@ -134,9 +141,12 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
 
     const intervalMs = options.tickIntervalMs ?? PLAYTIME_TICK_INTERVAL_MS;
     useEffect(() => {
-        const timer = setInterval(() => clock.tick(), intervalMs);
+        const timer = setInterval(() => {
+            holdForCurrentSource();
+            clock.tick();
+        }, intervalMs);
         return () => clearInterval(timer);
-    }, [clock, intervalMs]);
+    }, [clock, holdForCurrentSource, intervalMs]);
 
     // Told rather than inferred: a hidden window's timer is throttled and may not tick at all, so
     // waiting for the next tick to notice would let the whole hidden stretch arrive as one delta.
@@ -146,12 +156,13 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
         }
         const onVisibilityChange = () => {
             if (documentHidden()) {
+                holdForCurrentSource();
                 clock.pause();
             }
         };
         document.addEventListener("visibilitychange", onVisibilityChange);
         return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-    }, [clock]);
+    }, [clock, holdForCurrentSource]);
 
     // The last chance to write on a real quit: `beforeunload` fires for a closing Electron window
     // and for the web export's tab. The write itself is synchronous into the store bridge, which is
@@ -162,21 +173,30 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
         if (typeof window === "undefined") {
             return;
         }
-        const onBeforeUnload = () => clock.flush();
+        const onBeforeUnload = () => {
+            holdForCurrentSource();
+            clock.flush();
+        };
         window.addEventListener("beforeunload", onBeforeUnload);
         return () => window.removeEventListener("beforeunload", onBeforeUnload);
-    }, [clock]);
+    }, [clock, holdForCurrentSource]);
 
     // Flushes rather than tears down. This cleanup runs on `React.StrictMode`'s throwaway mount
     // too, and anything irreversible taken here would be taken while the clock still has its whole
     // life ahead of it - see the note on `PlaytimeClock.flush`. The interval is stopped by its own
     // effect's `clearInterval`, which is all stopping actually requires.
-    useEffect(() => () => clock.flush(), [clock]);
+    useEffect(() => () => {
+        holdForCurrentSource();
+        clock.flush();
+    }, [clock, holdForCurrentSource]);
 
     const getRunSeconds = useCallback(() => clock.getRunSeconds(), [clock]);
     const getTotalSeconds = useCallback(() => clock.getTotalSeconds(), [clock]);
     const seedRun = useCallback((seconds: number) => clock.seedRun(seconds), [clock]);
-    const flush = useCallback(() => clock.flush(), [clock]);
+    const flush = useCallback(() => {
+        holdForCurrentSource();
+        clock.flush();
+    }, [clock, holdForCurrentSource]);
 
     return useMemo(
         () => ({ getRunSeconds, getTotalSeconds, seedRun, flush }),

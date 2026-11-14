@@ -1711,7 +1711,7 @@ async function buildLaunchEntryScene(params: {
     // Seed scene variables to the snapshot's accumulated values, so conditions and interpolations in
     // the tail read the state as it was on the path to the target row.
     for (const def of Object.values(ctx.sceneVariables)) {
-        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        const value = snapshotSceneVariableValue(snapshot, def);
         statements.push(launchScene.local.set(def.storageKey, value as any));
     }
     // The names the walked path's `/rename` rows left, so the first line of the tail is spoken under
@@ -1866,6 +1866,11 @@ function previewMarker(callback: () => void): NlrStatement {
     });
 }
 
+function snapshotSceneVariableValue(snapshot: StoryStageSnapshot, def: StorySceneVariableDefinition): StoryLiteralValue {
+    const assigned = snapshot.sceneVariables[def.storageKey];
+    return assigned === undefined ? def.defaultValue ?? null : assigned;
+}
+
 /**
  * Compile a Studio-computed stage snapshot into a minimal "state player" story: one scene whose
  * elements are constructed pre-posed at their settled transform state (constructor config, so the
@@ -2000,7 +2005,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     // Seed scene variables (defaults overlaid with the snapshot's assignments) so conditions and
     // inline interpolations in the target line read the accumulated values.
     for (const def of Object.values(ctx.sceneVariables)) {
-        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        const value = snapshotSceneVariableValue(snapshot, def);
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
     // And the speaker names the path left, so a previewed line shows the name it is played under.

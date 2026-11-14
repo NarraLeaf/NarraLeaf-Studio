@@ -522,12 +522,13 @@ export type DataPinResolveRuntime = {
         componentParams?: Record<string, string>;
     };
     valueExecution?: BehaviorGraphValueExecution;
+    executionFrame?: BehaviorNodeExecutionContext["executionFrame"];
 };
 
 /** The part of an executing node's context a data-pin read needs: where it is, and what it is running in. */
 export type DataPinReadingContext = Pick<
     BehaviorNodeExecutionContext,
-    "graph" | "node" | "params" | "blueprintLocals" | "hostAdapter" | "eventPayload" | "listItemScope" | "instanceKey" | "executionOwner" | "valueExecution"
+    "graph" | "node" | "params" | "blueprintLocals" | "hostAdapter" | "eventPayload" | "listItemScope" | "instanceKey" | "executionOwner" | "valueExecution" | "executionFrame"
 >;
 
 /**
@@ -551,6 +552,7 @@ export function dataPinRuntimeOf(ctx: DataPinReadingContext): DataPinResolveRunt
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
         valueExecution: ctx.valueExecution,
+        executionFrame: ctx.executionFrame,
     };
     return runtime;
 }
@@ -2633,7 +2635,7 @@ function resolveSwitchNodeOutput(
     // `execute()` published into the per-execution output cache, not something re-read from
     // the widget. Without this branch the pin resolves to `undefined` with no error at all.
     if (type === BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE || type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     const isElementTarget = type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED;
     if (!isElementTarget && type !== BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED) {
@@ -3645,12 +3647,12 @@ function resolveSelfOutput(
             portId === "isPlaying" ||
             portId === "count")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Kept separate for the reason the block below is: `found` is not a pin name any of the
     // nodes above publishes, and folding it into that list would answer it for all of them.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SAVED_GET && portId === "found") {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Kept separate from the list above rather than folded into it: `id` is an
     // *input* pin name on the save nodes there, and only these two publish it as
@@ -3664,7 +3666,7 @@ function resolveSelfOutput(
             portId === "hasAutoSave" ||
             portId === "timestamp")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Get Save Time, kept out of the cross-product list above because none of its port names appear
     // there and joining it would hand `savedAt` / `exists` to every save node in it.
@@ -3672,12 +3674,12 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
         (portId === "savedAt" || portId === "createdAt" || portId === "exists")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Current Game's captured slot, which its `execute` wrote into the output store the way every
     // other exec node's outputs get there.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN && portId === "slot") {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Get Save Playtime, separate for the same reason as Get Save Time: `exists` is shared with it,
     // and joining either list would hand one node's outputs to the other.
@@ -3688,7 +3690,7 @@ function resolveSelfOutput(
             || portId === "recorded"
             || portId === "exists")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The project's declared save fields, published by Get Save Metadata onto one pin each. Matched
     // by prefix rather than by name because the names are the author's: the set changes whenever a
@@ -3697,7 +3699,7 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA &&
         saveSchemaFieldIdFromPin(portId) !== null
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Get Save Line, separate for the same reason as Get Save Time: `speaker` is a port name several
     // nodes in the cross-product list carry, and joining it would hand this node's outputs to them.
@@ -3705,7 +3707,7 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE &&
         (portId === "line" || portId === "speaker" || portId === "exists")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Get Save Story, separate for the same reason as the two above: `storyId` is an inspector
     // param and an *input* pin name on `Start Game`, and `exists` belongs to three save nodes
@@ -3714,12 +3716,12 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY &&
         (portId === "storyName" || portId === "storyId" || portId === "exists")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The Move Mouse pair publishes why it failed, on the same `error` pin and kept out of the
     // cross-product list for the same reason Open Link is.
@@ -3728,13 +3730,13 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT) &&
         portId === "error"
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Open Link publishes why it failed. Kept out of the cross-product list for the reason the
     // network family below is: `error` is not a port name that list carries, and joining it would
     // hand `error` to every node type in it.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The screenshot pair, kept out of the cross-product list for Open Link's reason and for one of
     // its own: `path` is where the picture went, which is the whole point of the node - unregistered
@@ -3744,12 +3746,12 @@ function resolveSelfOutput(
             || selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER)
         && (portId === "path" || portId === "error")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // `Is Window Focused`, beside them rather than in the list above: `isFocused` is a new port name
     // there, and joining it would hand `isFocused` to every node type that list covers.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED && portId === "isFocused") {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The progress pair, kept out of the cross-product list for the reason Open Link is: `error` is
     // not a port name that list carries, and `sceneId` is the whole point of Import Progress - it
@@ -3760,7 +3762,7 @@ function resolveSelfOutput(
         (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS
             && (portId === "sceneId" || portId === "error"))
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The network family, kept out of the cross-product list above on purpose: `response`, `text`
     // and `status` are new port names there, and joining that list would hand them to every node
@@ -3771,7 +3773,7 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON) &&
         (portId === "response" || portId === "status" || portId === "error" || portId === "text" || portId === "value")
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // The layer family, kept out of the cross-product list above for the same reason the network one
     // is: `layer` is an INPUT pin name on three of these nodes and an output on exactly one, and
@@ -3784,7 +3786,7 @@ function resolveSelfOutput(
         (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_WAIT && portId === "result") ||
         (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM && (portId === "index" || portId === "label"))
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     // Animate Property hands the token it minted to a later Stop Animation, so the
     // token has to survive the hop through the node output store.
@@ -3793,14 +3795,14 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY) &&
         portId === "animation"
     ) {
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FN_HEAD && portId !== "then") ||
         (selfNode.type === BLUEPRINT_NODE_TYPE_FN_CALL && portId !== "next")
     ) {
         // Fn head param pins are seeded by the dispatcher; Call Fn return pins are written on completion.
-        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
     }
     const mathOp = MATH_RESULT_OPS[selfNode.type];
     if (mathOp && portId === "result") {
@@ -4139,7 +4141,7 @@ function resolveNonBuiltInNodeOutput(
     if (isBlueprintEventDispatchHeadType(type)) {
         return portId === "then" ? undefined : (runtime?.eventPayload?.[portId] ?? null);
     }
-    return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId, runtime?.executionFrame);
 }
 
 function isOutputPort(

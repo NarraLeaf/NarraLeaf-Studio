@@ -99,6 +99,38 @@ export type StoryStartGate = (
     options?: { inheritSavedGame?: unknown },
 ) => Promise<void>;
 
+type PendingStoryBoot = { current: Promise<void> | null };
+const bootReplacementListeners = new WeakMap<object, Set<() => void>>();
+
+/** Publish the environment being mounted and wake starts waiting on a superseded mount. */
+export function publishStoryBoot(ref: PendingStoryBoot, pending: Promise<void>): void {
+    if (ref.current === pending) return;
+    ref.current = pending;
+    for (const listener of [...(bootReplacementListeners.get(ref) ?? [])]) {
+        listener();
+    }
+}
+
+function waitForBootOrReplacement(
+    ref: { readonly current: Promise<void> | null },
+    pending: Promise<void>,
+): Promise<void> {
+    return new Promise(resolve => {
+        let listeners = bootReplacementListeners.get(ref);
+        if (!listeners) {
+            listeners = new Set();
+            bootReplacementListeners.set(ref, listeners);
+        }
+        const ready = () => {
+            listeners.delete(ready);
+            resolve();
+        };
+        listeners.add(ready);
+        void pending.then(ready, ready);
+        if (ref.current !== pending) ready();
+    });
+}
+
 /**
  * The player entering a story, made to wait for a boot still in flight.
  *
@@ -144,7 +176,7 @@ export function publishMenuEnvironmentMount(input: {
             input.onFailure(error);
         }
     })();
-    input.pendingBoot.current = pending;
+    publishStoryBoot(input.pendingBoot, pending);
     return pending;
 }
 
@@ -176,7 +208,11 @@ export function createStoryStartGate(input: {
             return;
         }
         const done = (async () => {
-            await input.pendingBoot.current;
+            let pending: Promise<void> | null;
+            do {
+                pending = input.pendingBoot.current;
+                await (pending ? waitForBootOrReplacement(input.pendingBoot, pending) : pending);
+            } while (input.pendingBoot.current !== pending);
             const start = input.start.current;
             if (!start) {
                 throw needsRunningGame("blueprint.node.startGame");

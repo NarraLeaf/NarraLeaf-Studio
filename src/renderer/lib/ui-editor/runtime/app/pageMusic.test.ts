@@ -207,6 +207,15 @@ describe("page music as the screen changes", () => {
         expect(h.log).toEqual(["play theme fade=0", "volume theme#0 0.4 fade=500"]);
     });
 
+    it("applies the newer page's volume when the shared music is still starting", async () => {
+        const h = harness();
+        h.controller.update(h.cue("theme"));
+        h.controller.update(h.cue("theme", { surfaceId: "load", volume: 0.4, fadeMs: 500 }));
+        await h.settle();
+
+        expect(h.log).toEqual(["play theme fade=0", "volume theme#0 0.4 fade=500"]);
+    });
+
     it("hands over: the outgoing music fades out with its own fade as the incoming one fades in", async () => {
         const h = harness();
         h.controller.update(h.cue("theme", { fadeMs: 1000 }));

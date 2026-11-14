@@ -1,4 +1,5 @@
 import { BlueprintGraphExecutionCancelledError } from "../behavior-graph/GraphExecutionError";
+import { releaseUnheldBlueprintWidgetLocalsForScope } from "./blueprintWidgetLocals";
 
 export type BlueprintExecutionRecord = {
     executionId: string;
@@ -35,6 +36,7 @@ export class BlueprintExecutionManager {
     public closeScope(runtimeScopeId: string, reason = "Surface unmounted"): void {
         this.closedScopes.add(runtimeScopeId);
         this.cancelScope(runtimeScopeId, reason);
+        releaseUnheldBlueprintWidgetLocalsForScope(runtimeScopeId);
         this.scopeCloseListeners.forEach(listener => listener(runtimeScopeId));
     }
 

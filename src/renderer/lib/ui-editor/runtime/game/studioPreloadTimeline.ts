@@ -137,6 +137,7 @@ export function createStudioPreloadTimeline(options?: {
     const now = options?.now ?? gameTimelineNow;
     const record = options?.record ?? recordGameSpan;
     let watcher: PreloadWarmWatcher | null = null;
+    let watcherGeneration = 0;
     let assetIds: ReadonlyMap<string, string> = new Map();
     /** The latest reason each url was asked for. */
     const planned = new Map<string, PlannedAsset>();
@@ -232,15 +233,19 @@ export function createStudioPreloadTimeline(options?: {
 
     return {
         useWatcher(next) {
-            watcher = next;
-            if (!next) {
-                // The session this was waiting in is gone; what it was waiting for will never land.
-                redecoding.clear();
-                if (pendingScene) {
-                    stopWaiting(pendingScene);
-                }
-                stopChecking();
+            if (watcher === next) {
+                return;
             }
+            watcher = next;
+            watcherGeneration += 1;
+            // In-flight promises may settle after the player they belonged to has gone away.
+            planned.clear();
+            inFlight.clear();
+            redecoding.clear();
+            if (pendingScene) {
+                stopWaiting(pendingScene);
+            }
+            stopChecking();
         },
 
         useAssetIds(next) {
@@ -301,7 +306,9 @@ export function createStudioPreloadTimeline(options?: {
             }
             pendingScene = pending;
             for (const src of remaining) {
-                void inFlight.get(src)?.then(() => settleForScene(src));
+                void inFlight.get(src)?.then(() => {
+                    if (pendingScene === pending) settleForScene(src);
+                });
             }
             startChecking();
             pending.giveUp = setTimeout(() => {
@@ -317,12 +324,16 @@ export function createStudioPreloadTimeline(options?: {
                 return;
             }
             const start = now();
+            const generation = watcherGeneration;
             const settled = current.settled(src);
             if (!settled) {
                 return;
             }
             const info = planned.get(src);
             const done = settled.then(ok => {
+                if (generation !== watcherGeneration) {
+                    return;
+                }
                 // Nothing to report for a picture the player only noted: without a decode it takes
                 // the url and fetches nothing, so the span would be the cost of a function call.
                 if (!info || info.decode) {

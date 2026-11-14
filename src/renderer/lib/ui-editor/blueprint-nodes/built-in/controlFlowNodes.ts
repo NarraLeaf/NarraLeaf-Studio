@@ -69,7 +69,9 @@ function readState<T extends LoopState["kind"]>(
     ctx: BehaviorNodeExecutionContext,
     kind: T,
 ): Extract<LoopState, { kind: T }> | undefined {
-    const raw = ctx.blueprintLocals?.[flowStateKey(ctx.node.id)];
+    const raw = ctx.executionFrame
+        ? ctx.executionFrame.loopStates.get(ctx.node.id)
+        : ctx.blueprintLocals?.[flowStateKey(ctx.node.id)];
     if (!raw || typeof raw !== "object" || (raw as { kind?: unknown }).kind !== kind) {
         return undefined;
     }
@@ -77,6 +79,10 @@ function readState<T extends LoopState["kind"]>(
 }
 
 function writeState(ctx: BehaviorNodeExecutionContext, state: LoopState): void {
+    if (ctx.executionFrame) {
+        ctx.executionFrame.loopStates.set(ctx.node.id, state);
+        return;
+    }
     if (!ctx.blueprintLocals) {
         return;
     }
@@ -84,6 +90,10 @@ function writeState(ctx: BehaviorNodeExecutionContext, state: LoopState): void {
 }
 
 function clearState(ctx: BehaviorNodeExecutionContext): void {
+    if (ctx.executionFrame) {
+        ctx.executionFrame.loopStates.delete(ctx.node.id);
+        return;
+    }
     if (!ctx.blueprintLocals) {
         return;
     }

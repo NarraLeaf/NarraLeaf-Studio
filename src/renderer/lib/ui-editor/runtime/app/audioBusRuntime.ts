@@ -152,10 +152,13 @@ export async function attachAudioBusPersistence(
         if (disposed) {
             return;
         }
-        try {
-            void write(AUDIO_BUS_VOLUMES_PERSISTENCE_KEY, mixer.getVolumes());
-        } catch (error) {
+        const reportWriteError = (error: unknown) => {
             log?.("warning", `Audio bus volumes could not be saved: ${String(error)}`);
+        };
+        try {
+            void Promise.resolve(write(AUDIO_BUS_VOLUMES_PERSISTENCE_KEY, mixer.getVolumes())).catch(reportWriteError);
+        } catch (error) {
+            reportWriteError(error);
         }
         // After the write and outside its try, so a store that refuses still updates the screen -
         // a slider that visibly does nothing is worse than one whose value is not kept.

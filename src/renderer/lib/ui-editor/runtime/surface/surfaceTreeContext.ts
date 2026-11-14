@@ -3,8 +3,8 @@ import { createContext, useContext } from "react";
 /**
  * Whether the tree a widget is drawn in takes pointer and keyboard input right now.
  *
- * Two separate answers, because they open at different moments: a page's keys open when it is
- * revealed, its pointer only once it is also present and not playing out (see `AppSurfaceLayer`).
+ * Pointer interactivity and keyboard ownership are separate: a surface may accept presses while
+ * another surface owns the keys (see `AppSurfaceLayer`).
  */
 export type SurfaceTreeInteractivity = {
     interactive: boolean;

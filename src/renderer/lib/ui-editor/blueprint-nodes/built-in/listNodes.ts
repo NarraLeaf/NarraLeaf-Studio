@@ -4,6 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { blueprintValuesEqual } from "@shared/blueprint/blueprintValueEquality";
 import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM,
@@ -294,14 +295,6 @@ function normalizeArray(value: unknown): unknown[] {
     return JSON.parse(JSON.stringify(value)) as unknown[];
 }
 
-function jsonEquals(a: unknown, b: unknown): boolean {
-    try {
-        return JSON.stringify(a) === JSON.stringify(b);
-    } catch {
-        return a === b;
-    }
-}
-
 function toInteger(value: unknown, fallback: number): number {
     const n = typeof value === "number" ? value : Number(value);
     return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -480,7 +473,7 @@ const listBlueprintNodeDefs: BlueprintNodeDef[] = [
         execute: ctx => {
             const item = readPin(ctx, "item");
             const items = currentItems(ctx, "self");
-            const index = items.findIndex(value => jsonEquals(value, item));
+            const index = items.findIndex(value => blueprintValuesEqual(value, item));
             if (index < 0) {
                 return { nextPort: "next" };
             }
@@ -519,7 +512,7 @@ const listBlueprintNodeDefs: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const listId = resolveListElementId(ctx, "self");
             const item = readPin(ctx, "item");
-            const index = api.widget.getListProperties(listId).items.findIndex(value => jsonEquals(value, item));
+            const index = api.widget.getListProperties(listId).items.findIndex(value => blueprintValuesEqual(value, item));
             if (index >= 0) {
                 await api.widget.setListSelectedIndex(listId, index);
             }
@@ -635,7 +628,7 @@ const listBlueprintNodeDefs: BlueprintNodeDef[] = [
         execute: ctx => {
             const item = readPin(ctx, "item");
             const items = currentItems(ctx, "element");
-            const index = items.findIndex(value => jsonEquals(value, item));
+            const index = items.findIndex(value => blueprintValuesEqual(value, item));
             if (index < 0) {
                 return { nextPort: "next" };
             }
@@ -674,7 +667,7 @@ const listBlueprintNodeDefs: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const listId = resolveListElementId(ctx, "element");
             const item = readPin(ctx, "item");
-            const index = api.widget.getListProperties(listId).items.findIndex(value => jsonEquals(value, item));
+            const index = api.widget.getListProperties(listId).items.findIndex(value => blueprintValuesEqual(value, item));
             if (index >= 0) {
                 await api.widget.setListSelectedIndex(listId, index);
             }

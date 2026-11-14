@@ -22,6 +22,7 @@ function pad(input: {
     axes?: number[];
     mapping?: GamepadMappingType;
     index?: number;
+    id?: string;
 }): Gamepad {
     const buttons = (input.buttons ?? []).map(button => ({
         pressed: button.pressed,
@@ -30,7 +31,7 @@ function pad(input: {
     }));
     return {
         index: input.index ?? 0,
-        id: "test-pad",
+        id: input.id ?? "test-pad",
         mapping: input.mapping ?? "standard",
         connected: true,
         timestamp: 0,
@@ -180,6 +181,78 @@ describe("createGamepadTracker", () => {
         lean(-0.8, 0.6);
         lean(0, 0);
         expect(edges).toEqual(["down:Left Stick Down", "up:Left Stick Down", "down:Left Stick Left", "up:Left Stick Left"]);
+        tracker.dispose();
+    });
+
+    it("applies the stick thresholds to each pad before unioning their directions", () => {
+        const host = hostWith([pad({ index: 0 }), pad({ index: 1 })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+
+        host.pads = [pad({ index: 0, axes: [0.8, 0] }), pad({ index: 1, axes: [0.4, 0] })];
+        host.tick();
+        host.pads = [pad({ index: 0, axes: [0, 0] }), pad({ index: 1, axes: [0.4, 0] })];
+        host.tick();
+        expect(edges).toEqual(["down:Left Stick Right", "up:Left Stick Right"]);
+
+        host.pads = [pad({ index: 0 }), pad({ index: 1, axes: [0.8, 0] })];
+        host.tick();
+        host.pads = [pad({ index: 0 }), pad({ index: 1, axes: [0.4, 0] })];
+        host.tick();
+        expect(tracker.read().buttons.has("Left Stick Right")).toBe(true);
+        host.pads = [pad({ index: 0 }), pad({ index: 1 })];
+        host.tick();
+        expect(edges).toEqual(["down:Left Stick Right", "up:Left Stick Right", "down:Left Stick Right", "up:Left Stick Right"]);
+        tracker.dispose();
+    });
+
+    it("keeps the union held while either stick remains pressed", () => {
+        const host = hostWith([pad({ index: 0 }), pad({ index: 1 })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+
+        host.pads = [pad({ index: 0, axes: [0.8, 0] }), pad({ index: 1, axes: [0.8, 0] })];
+        host.tick();
+        host.pads = [pad({ index: 0 }), pad({ index: 1, axes: [0.4, 0] })];
+        host.tick();
+        expect(edges).toEqual(["down:Left Stick Right"]);
+        host.pads = [pad({ index: 0 }), pad({ index: 1 })];
+        host.tick();
+        expect(edges).toEqual(["down:Left Stick Right", "up:Left Stick Right"]);
+        tracker.dispose();
+    });
+
+    it("starts a replacement controller at the press threshold even when its index is reused", () => {
+        const host = hostWith([pad({ id: "first" })]);
+        const tracker = createGamepadTracker(host);
+        const edges: string[] = [];
+        tracker.onEdge(edge => edges.push(`${edge.type}:${edge.button}`));
+        tracker.start();
+        host.pads = [pad({ id: "first", axes: [0.8, 0] })];
+        host.tick();
+        // A disconnect and another connection can both happen between two animation frames.
+        host.pads = [pad({ id: "second", axes: [0.4, 0] })];
+        host.tick();
+        expect(edges).toEqual(["down:Left Stick Right", "up:Left Stick Right"]);
+        tracker.dispose();
+    });
+
+    it("forgets each stick's threshold state when focus is lost", () => {
+        const host = hostWith([pad({ axes: [0.8, 0] })]);
+        const tracker = createGamepadTracker(host);
+        tracker.start();
+        expect(tracker.read().buttons.has("Left Stick Right")).toBe(true);
+
+        host.setFocused(false);
+        host.fire("blur");
+        host.pads = [pad({ axes: [0.4, 0] })];
+        host.setFocused(true);
+        host.tick();
+        expect(tracker.read().buttons.has("Left Stick Right")).toBe(false);
         tracker.dispose();
     });
 

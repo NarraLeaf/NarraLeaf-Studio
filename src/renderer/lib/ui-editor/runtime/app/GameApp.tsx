@@ -229,6 +229,7 @@ import {
     createStoryStartGate,
     layersMayDraw,
     publishMenuEnvironmentMount,
+    publishStoryBoot,
     resolveBootPaint,
     surfacesMayDraw,
 } from "./storyBootGate";
@@ -271,7 +272,7 @@ import {
     type KeyboardOwner,
 } from "./keyboardOwner";
 import { listenForGamepads } from "./gamepadInput";
-import { ownerCanGoBack, type NavigationBack } from "./navigationDefaults";
+import { createNavigationBack, ownerCanGoBack } from "./navigationDefaults";
 import {
     createDialogueAdvanceRecord,
     projectDrawsNvlPage,
@@ -345,8 +346,10 @@ import type {
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
 import { AutoSavePicture } from "./autoSavePicture";
+import { serializeGameSave } from "./saveWrite";
 import { SaveRecordReads } from "./saveRecordReads";
 import { usePlaytime } from "./usePlaytime";
+import { usePlaytimeSource } from "./usePlaytimeSource";
 import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import { sanitizeRestoredSave } from "@shared/utils/restoredSaveSafety";
 import type { WeatherSeedRef } from "@shared/weather/model";
@@ -615,13 +618,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         },
         [host.reportIssue],
     );
-    const core = useBlueprintRuntimeCore(bundle, {
+    const runtimeCoreOptions = {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
         debuggerEnabled: host.debuggerEnabled,
         disposeMessage: host.disposeMessage,
         onScriptIssue: reportScriptIssue,
-    });
+    };
+    const core = useBlueprintRuntimeCore(bundle, runtimeCoreOptions);
     /**
      * Whether `core` is the one built for the bundle this render holds.
      *
@@ -1352,18 +1356,18 @@ export function GameApp(props: GameAppProps): ReactNode {
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
      * below reads it, and a save has to record the time at the moment it is written.
      */
+    const playtimeStore = usePlaytimeSource(core, bundle, runtimeCoreOptions);
     const playtime = usePlaytime({
         isPlaying: isPlaythroughRunning,
         // The store the two functions below reach, so the hook can wait for it and read again when
         // it is replaced. Without it the stored total is read on the hook's first commit, when the
         // core is still null, and never again.
-        persistenceSource: core?.scopeBridge ?? null,
-        // Optional-chained because the runtime core is null until the bundle mounts.
-        persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
+        persistenceSource: playtimeStore,
+        persistenceGetAsync: async key => playtimeStore?.persistenceGetAsync(key),
         // Not awaited: the value is readable the moment this returns, the clock has already
         // counted the seconds, and a failed disk write only means the next flush carries them.
         persistenceSet: (key, value) => {
-            void core?.scopeBridge.persistenceSet(key, value);
+            void playtimeStore?.persistenceSet(key, value);
         },
     });
     const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
@@ -2111,30 +2115,12 @@ export function GameApp(props: GameAppProps): ReactNode {
      * recognises. The splash a game starts on replaces itself with the Title, so the Title is where
      * the stack starts.
      */
-    const navigationBack = useMemo<NavigationBack>(() => {
-        const topModalLayer = () => {
-            const layers = layerStack.getState();
-            const top = layers[layers.length - 1];
-            return top?.modal ? top : null;
-        };
-        return {
-            canGoBack: () => {
-                const layer = topModalLayer();
-                if (layer) {
-                    return layer.dismissible;
-                }
-                const stack = navigation.getState().navStack;
-                return stack.length > 1 && stack[stack.length - 1]!.surfaceId !== stack[0]!.surfaceId;
-            },
-            goBack: () => {
-                if (topModalLayer()) {
-                    layerStack.dismissTop();
-                    return;
-                }
-                void goBackPage().catch(() => undefined);
-            },
-        };
-    }, [goBackPage, layerStack, navigation]);
+    const navigationBack = useMemo(() => createNavigationBack({
+        layers: layerStack,
+        pageStack: () => navigation.getState().navStack,
+        isDrawable: surfaceId => drawableSurfaceIds.has(surfaceId),
+        goBackPage,
+    }), [drawableSurfaceIds, goBackPage, layerStack, navigation]);
 
     /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
@@ -3662,15 +3648,16 @@ export function GameApp(props: GameAppProps): ReactNode {
             return undefined;
         }
     }, [captureStage, readStageCoverPicture, reportSaveCaptureFailure]);
-    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: SaveScreenshot) => {
+    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: SaveScreenshot, onCaptured?: () => void, isCurrent?: () => boolean) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         const capture = typeof screenshot === "object"
             ? screenshot.picture
             : screenshot === true ? await takeSavePicture(id, liveGame) : undefined;
         saveRecordReads.forget(id);
+        const savedGame = serializeGameSave(liveGame, onCaptured, isCurrent);
         await host.saveStore.write(
             id,
-            liveGame.serialize(),
+            savedGame,
             capture,
             metadata,
             currentSaveStamp() ?? undefined,
@@ -3692,9 +3679,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         takeSavePicture,
     ]);
     /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
-    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: SaveScreenshot) => timeGameSpan(
+    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: SaveScreenshot, onCaptured?: () => void, isCurrent?: () => boolean) => timeGameSpan(
         GameTimelineName.saveWrite,
-        () => writeSaveNow(id, metadata, screenshot),
+        () => writeSaveNow(id, metadata, screenshot, onCaptured, isCurrent),
         outcome => ({ slot: id, screenshot: screenshot !== undefined && screenshot !== false, ok: outcome.ok }),
     ), [writeSaveNow]);
 
@@ -3892,6 +3879,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         console.warn(`[GameApp] Ignored ${removed} unsafe value(s) in the loaded save.`);
                     }
                     game.newGame().deserialize(save);
+                    gameEntriesRef.current += 1;
                 },
                 /**
                  * Put the run back - and, when this load switched stories or mounted this one
@@ -4074,7 +4062,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
         endingAnsweredRef.current = false;
-        gameEntriesRef.current += 1;
         if (outcome.storyChanged) {
             // The launch that put the save's own story up has already entered and revealed its
             // session, so there is no reveal left to wait for - and the router being waited on
@@ -4499,20 +4486,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The same gate `writeSave` itself enforces, so a true here always means
         // the write can actually serialize something.
         isPlaying: isPlaythroughRunning,
+        playthrough: () => gameEntriesRef.current,
         // Screenshots on: the point of an autosave ring is a screen that lists
         // it, and a list of thumbnail-less rows is a worse feature. A scheduled
         // write takes its picture at a quiet moment and keeps the last one while
         // the player skips; one the author asked for (`Auto Save`) takes it now.
-        write: async (id, reason) => {
+        write: async (id, reason, captured, isCurrent) => {
             if (reason === "requested") {
-                return writeSave(id, null, true);
+                return writeSave(id, null, true, captured, isCurrent);
             }
             const picture = await autoSavePicture.pictureForWrite(id);
-            // The wait for a quiet moment can outlast the run: the player went back to the title.
-            if (!isPlaythroughRunning()) {
-                return;
+            // The picture belongs to the playthrough that requested it.
+            if (!isCurrent()) {
+                return false;
             }
-            return writeSave(id, null, picture === undefined ? false : { picture });
+            return writeSave(id, null, picture === undefined ? false : { picture }, captured, isCurrent);
         },
         listStored: listAutoSaves,
         subscribeStoryAdvanced: storyRuntime.subscribeCurrentAction,
@@ -5883,7 +5871,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             finish();
         }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
 
-        nlrBootPromiseRef.current = (async () => {
+        publishStoryBoot(nlrBootPromiseRef, (async () => {
             bootInFlightRef.current = true;
             try {
                 await runBootRef.current?.();
@@ -5903,7 +5891,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 clearTimeout(timeoutId);
                 finish();
             }
-        })();
+        })());
 
         return () => {
             cancelled = true;

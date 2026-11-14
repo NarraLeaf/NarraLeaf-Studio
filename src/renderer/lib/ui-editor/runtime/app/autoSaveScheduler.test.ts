@@ -37,6 +37,7 @@ function harness(overrides?: {
     const scheduler = new AutoSaveScheduler({
         getConfig: () => state.config,
         isPlaying: () => state.playing,
+        playthrough: () => 1,
         write: async (id, reason) => {
             if (remainingFailures > 0) {
                 remainingFailures -= 1;
@@ -157,6 +158,29 @@ describe("AutoSaveScheduler", () => {
         expect(written).toEqual([autoSaveSlotId(0)]);
     });
 
+    it("retries the same slot when a scheduled write is cancelled", async () => {
+        const attempted: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async id => {
+                attempted.push(id);
+                if (attempted.length === 1) {
+                    return false;
+                }
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        scheduler.markStoryAdvanced();
+        await scheduler.tick();
+        await scheduler.tick();
+
+        expect(attempted).toEqual([autoSaveSlotId(0), autoSaveSlotId(0)]);
+    });
+
     it("writes on request even when autosaving is off and the story has not moved", async () => {
         const { scheduler, written } = harness({ config: { enabled: false } });
 
@@ -192,6 +216,7 @@ describe("AutoSaveScheduler", () => {
         const scheduler = new AutoSaveScheduler({
             getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
             isPlaying: () => true,
+            playthrough: () => 1,
             write: async id => {
                 await new Promise<void>(resolve => { gate.release = resolve; });
                 written.push(id);
@@ -208,5 +233,258 @@ describe("AutoSaveScheduler", () => {
         await first;
 
         expect(written).toEqual([autoSaveSlotId(0)]);
+    });
+
+    it("does not write a scheduled save after the game ends during ring discovery", async () => {
+        let playing = true;
+        let finishListing = (_entries: AutoSaveEntry[]) => undefined as void;
+        const written: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => DEFAULT_AUTO_SAVE_CONFIGURATION,
+            isPlaying: () => playing,
+            playthrough: () => 1,
+            write: async id => { written.push(id); },
+            listStored: () => new Promise(resolve => { finishListing = resolve; }),
+            log: () => undefined,
+        });
+        scheduler.markStoryAdvanced();
+        const saving = scheduler.tick();
+        playing = false;
+        finishListing([]);
+        await saving;
+        expect(written).toEqual([]);
+    });
+
+    it("does not transfer a scheduled save to a new playthrough during ring discovery", async () => {
+        let playthrough = 1;
+        let finishListing = (_entries: AutoSaveEntry[]) => undefined as void;
+        const written: number[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => DEFAULT_AUTO_SAVE_CONFIGURATION,
+            isPlaying: () => true,
+            playthrough: () => playthrough,
+            write: async () => { written.push(playthrough); },
+            listStored: () => new Promise(resolve => { finishListing = resolve; }),
+            log: () => undefined,
+        });
+        scheduler.markStoryAdvanced();
+        const saving = scheduler.tick();
+        playthrough = 2;
+        finishListing([]);
+        await saving;
+        expect(written).toEqual([]);
+        scheduler.markStoryAdvanced();
+        await scheduler.tick();
+        expect(written).toEqual([2]);
+    });
+
+    it("does not move a queued explicit request to a later playthrough", async () => {
+        let playthrough = 1;
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const firstWrite = new Promise<void>(resolve => { release = resolve; });
+        const written: number[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => DEFAULT_AUTO_SAVE_CONFIGURATION,
+            isPlaying: () => true,
+            playthrough: () => playthrough,
+            write: async () => {
+                written.push(playthrough);
+                started();
+                await firstWrite;
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+        const first = scheduler.writeNow();
+        await firstStarted;
+        const second = scheduler.writeNow();
+        const secondResult = second.then(() => "written", () => "cancelled");
+        playthrough = 2;
+        release();
+        await first;
+        expect(await secondResult).toBe("cancelled");
+        expect(written).toEqual([1]);
+    });
+
+    it("preserves story advances that happen after an in-flight save takes its snapshot", async () => {
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const firstWrite = new Promise<void>(resolve => { release = resolve; });
+        const written: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async (id, _reason, captured) => {
+                written.push(id);
+                captured();
+                if (written.length === 1) {
+                    started();
+                    await firstWrite;
+                }
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        scheduler.markStoryAdvanced();
+        const saving = scheduler.tick();
+        await firstStarted;
+        scheduler.markStoryAdvanced();
+        release();
+        await saving;
+        await scheduler.tick();
+
+        expect(written).toEqual([autoSaveSlotId(0), autoSaveSlotId(1)]);
+    });
+
+    it("does not write the same state again when the story moved before the snapshot", async () => {
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const waitingForPicture = new Promise<void>(resolve => { release = resolve; });
+        const written: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async (id, _reason, captured) => {
+                written.push(id);
+                if (written.length === 1) {
+                    started();
+                    await waitingForPicture;
+                }
+                captured();
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        scheduler.markStoryAdvanced();
+        const saving = scheduler.tick();
+        await firstStarted;
+        scheduler.markStoryAdvanced();
+        release();
+        await saving;
+        await scheduler.tick();
+
+        expect(written).toEqual([autoSaveSlotId(0)]);
+    });
+
+    it("keeps advances captured by an explicit write when that write fails", async () => {
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const waitingForPicture = new Promise<void>(resolve => { release = resolve; });
+        const written: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async (id, _reason, captured) => {
+                written.push(id);
+                if (written.length === 1) {
+                    started();
+                    await waitingForPicture;
+                    captured();
+                    throw new Error("disk full");
+                }
+                captured();
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        const saving = scheduler.writeNow();
+        await firstStarted;
+        scheduler.markStoryAdvanced();
+        release();
+        await expect(saving).rejects.toThrow("disk full");
+        await scheduler.tick();
+
+        expect(written).toEqual([autoSaveSlotId(0), autoSaveSlotId(0)]);
+    });
+
+    it("does not overlap a timer write with a waiting explicit save", async () => {
+        let releaseFirst = () => undefined as void;
+        let releaseSecond = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const firstWrite = new Promise<void>(resolve => { releaseFirst = resolve; });
+        const secondWrite = new Promise<void>(resolve => { releaseSecond = resolve; });
+        const reasons: AutoSaveWriteReason[] = [];
+        let active = 0;
+        let maxActive = 0;
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async (_id, reason, captured) => {
+                reasons.push(reason);
+                active += 1;
+                maxActive = Math.max(active, maxActive);
+                captured();
+                if (reasons.length === 1) {
+                    started();
+                    await firstWrite;
+                } else if (reasons.length === 2) {
+                    await secondWrite;
+                }
+                active -= 1;
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        const first = scheduler.writeNow();
+        await firstStarted;
+        const waiting = scheduler.writeNow();
+        scheduler.markStoryAdvanced();
+        releaseFirst();
+        await first;
+        const tick = scheduler.tick();
+        await Promise.resolve();
+        await Promise.resolve();
+        releaseSecond();
+        await Promise.all([waiting, tick]);
+
+        expect(reasons.filter(reason => reason === "requested")).toHaveLength(2);
+        expect(maxActive).toBe(1);
+    });
+
+    it("serializes simultaneous explicit requests through successive ring slots", async () => {
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        const firstWrite = new Promise<void>(resolve => { release = resolve; });
+        const written: string[] = [];
+        const scheduler = new AutoSaveScheduler({
+            getConfig: () => ({ ...DEFAULT_AUTO_SAVE_CONFIGURATION, slots: 3 }),
+            isPlaying: () => true,
+            playthrough: () => 1,
+            write: async id => {
+                written.push(id);
+                if (written.length === 1) {
+                    started();
+                    await firstWrite;
+                }
+            },
+            listStored: async () => [],
+            log: () => undefined,
+        });
+
+        const first = scheduler.writeNow();
+        const second = scheduler.writeNow();
+        await firstStarted;
+        await Promise.resolve();
+        const startedBeforeRelease = [...written];
+        release();
+        await Promise.all([first, second]);
+
+        expect(startedBeforeRelease).toEqual([autoSaveSlotId(0)]);
+        expect(written).toEqual([autoSaveSlotId(0), autoSaveSlotId(1)]);
     });
 });

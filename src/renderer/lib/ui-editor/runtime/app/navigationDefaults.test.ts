@@ -28,7 +28,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { KeyboardOwner } from "./keyboardOwner";
-import { claimNavigationConfirm, runNavigationDefaults } from "./navigationDefaults";
+import { claimNavigationConfirm, createNavigationBack, runNavigationDefaults } from "./navigationDefaults";
+import { LayerStackController } from "./layers/LayerStackController";
 import type { HostAdapterBundle } from "./types";
 
 const PAGE: UISurface = {
@@ -136,6 +137,63 @@ describe("a navigation press nothing on screen answers", () => {
         expect(back.goBack).toHaveBeenCalledTimes(1);
         expect(runNavigationDefaults({ gameRoot: root, owner: { stage: [] }, back, ...press(key("Escape")) })).toBe(false);
         expect(back.goBack).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("Back with a modal beneath a non-modal layer", () => {
+    it("closes the keyboard-owning modal without navigating the page behind it", () => {
+        const layers = new LayerStackController();
+        const modal = layers.show({ surfaceId: "confirm", modal: true });
+        const overlay = layers.show({ surfaceId: "hud", modal: false });
+        const goBackPage = vi.fn(async () => undefined);
+        const back = createNavigationBack({
+            layers,
+            pageStack: () => [{ surfaceId: "title" }, { surfaceId: "settings" }],
+            isDrawable: () => true,
+            goBackPage,
+        });
+
+        expect(back.canGoBack()).toBe(true);
+        back.goBack();
+
+        expect(layers.isPresent(modal)).toBe(false);
+        expect(layers.isPresent(overlay)).toBe(true);
+        expect(goBackPage).not.toHaveBeenCalled();
+    });
+
+    it("does not navigate the page when the owning modal cannot be dismissed", () => {
+        const layers = new LayerStackController();
+        const modal = layers.show({ surfaceId: "confirm", modal: true, dismissible: false });
+        layers.show({ surfaceId: "hud", modal: false });
+        const goBackPage = vi.fn(async () => undefined);
+        const back = createNavigationBack({
+            layers,
+            pageStack: () => [{ surfaceId: "title" }, { surfaceId: "settings" }],
+            isDrawable: () => true,
+            goBackPage,
+        });
+
+        expect(back.canGoBack()).toBe(false);
+        back.goBack();
+        expect(layers.isPresent(modal)).toBe(true);
+        expect(goBackPage).not.toHaveBeenCalled();
+    });
+
+    it("ignores a modal whose surface is absent from the bundle", () => {
+        const layers = new LayerStackController();
+        const missing = layers.show({ surfaceId: "deleted", modal: true });
+        const goBackPage = vi.fn(async () => undefined);
+        const back = createNavigationBack({
+            layers,
+            pageStack: () => [{ surfaceId: "title" }, { surfaceId: "settings" }],
+            isDrawable: () => false,
+            goBackPage,
+        });
+
+        expect(back.canGoBack()).toBe(true);
+        back.goBack();
+        expect(layers.isPresent(missing)).toBe(true);
+        expect(goBackPage).toHaveBeenCalledOnce();
     });
 });
 

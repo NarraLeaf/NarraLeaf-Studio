@@ -37,6 +37,7 @@
 import type { UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
 import { getSharedInputHoldTracker } from "./inputHoldState";
 import { readWheelGesture } from "./surfaceInputDom";
+import { isSyntheticControlClick } from "./syntheticKeyPress";
 
 /**
  * How far a finger travels before the stroke is a drag rather than a tap, in **CSS pixels**.
@@ -330,6 +331,7 @@ export function createTouchGestureTracker(
     /** Which finger this stroke is, or null for a host that names none. */
     let strokeTouchId: number | null = null;
     let holdTimer: unknown = null;
+    let holdingGesture = false;
 
     const clearHoldTimer = (): void => {
         if (holdTimer !== null && host) {
@@ -338,12 +340,20 @@ export function createTouchGestureTracker(
         holdTimer = null;
     };
 
+    const releaseHeldGesture = (): void => {
+        if (holdingGesture) {
+            getSharedInputHoldTracker().releaseGestures();
+            holdingGesture = false;
+        }
+    };
+
     const dispatch = (detail: UITouchGestureDetail): void => {
         // A long press is a state, not an instant: `Is Action Held` has to read it from the moment
         // it is recognised until the finger leaves, which is what makes "hold to hide the dialogue
         // and see the picture" a two-node graph. The tracker keeps only the gestures that are a
         // hold, so a direction gesture cannot become sticky by coming through here.
         getSharedInputHoldTracker().holdGesture(detail.gesture, strokeTarget);
+        holdingGesture = detail.gesture === "longPress";
         const target = strokeTarget;
         if (!target || typeof target.dispatchEvent !== "function") {
             return;
@@ -368,6 +378,7 @@ export function createTouchGestureTracker(
         clearHoldTimer();
         const touch = touchEvent.changedTouches?.[0] ?? touchEvent.touches?.[0];
         if (!touch || (touchEvent.touches?.length ?? 0) > 1) {
+            releaseHeldGesture();
             recognizer.voidStroke();
             strokeTarget = null;
             strokeTouchId = null;
@@ -412,7 +423,7 @@ export function createTouchGestureTracker(
         recognizer.end();
         strokeTarget = null;
         strokeTouchId = null;
-        getSharedInputHoldTracker().releaseGestures();
+        releaseHeldGesture();
     };
 
     /**
@@ -424,11 +435,23 @@ export function createTouchGestureTracker(
      * keeps, where a gesture nobody answered is left entirely alone.
      */
     const onClickCapture = (event: Event): void => {
+        const pointerType = (event as PointerEvent).pointerType;
+        if ((pointerType && pointerType !== "touch") || isSyntheticControlClick(event)) {
+            return;
+        }
         if (!recognizer.takeClickSuppression()) {
             return;
         }
         event.preventDefault();
         event.stopPropagation();
+    };
+
+    const cancelStroke = (): void => {
+        clearHoldTimer();
+        releaseHeldGesture();
+        recognizer.reset();
+        strokeTarget = null;
+        strokeTouchId = null;
     };
 
     if (host) {
@@ -437,16 +460,14 @@ export function createTouchGestureTracker(
         host.addEventListener("touchend", onTouchEnd, true);
         host.addEventListener("touchcancel", onTouchEnd, true);
         host.addEventListener("click", onClickCapture, true);
+        host.addEventListener("blur", cancelStroke);
     }
 
     return {
         isTouchStrokeInFlight: () => recognizer.inFlight(),
         claimStroke: () => recognizer.claim(),
         dispose: () => {
-            clearHoldTimer();
-            recognizer.reset();
-            strokeTarget = null;
-            strokeTouchId = null;
+            cancelStroke();
             if (!host) {
                 return;
             }
@@ -455,6 +476,7 @@ export function createTouchGestureTracker(
             host.removeEventListener("touchend", onTouchEnd, true);
             host.removeEventListener("touchcancel", onTouchEnd, true);
             host.removeEventListener("click", onClickCapture, true);
+            host.removeEventListener("blur", cancelStroke);
         },
     };
 }

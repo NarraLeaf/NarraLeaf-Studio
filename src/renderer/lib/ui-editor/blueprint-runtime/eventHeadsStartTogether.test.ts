@@ -5,13 +5,17 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { dispatchGlobalBlueprintEvent, dispatchSurfaceBlueprintEvent } from "./BlueprintDispatcher";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 import { DebugBridge } from "./DebugBridge";
 import { startTogether } from "./startTogether";
+import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 
 /**
  * Blueprints are event driven: an event is a broadcast, and every head listening for it starts at
@@ -94,6 +98,60 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const hostAdapter: UIHostAdapter = { host: "player" };
 
 describe("the heads of one event start together", () => {
+    it("runs a shared loop independently while both heads share the author's variables", async () => {
+        const seen: Record<string, unknown[]> = { a: [], b: [] };
+        behaviorNodeRegistry.register({
+            type: "test.concurrentLoop.capture",
+            displayName: "Capture",
+            execute: ctx => {
+                seen[ctx.entry.start.nodeId]!.push(ctx.resolveInput?.("index"));
+                return { nextPort: "next" };
+            },
+        }, { quietOverwrite: true });
+        const made = blueprintWith("global", [
+            {
+                head: "a",
+                headType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
+                then: {
+                    loop: { id: "loop", type: BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP, params: { start: 0, end: 2, step: 1 } },
+                    capture: { id: "capture", type: "test.concurrentLoop.capture" },
+                    get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "early" } },
+                    increment: { id: "increment", type: BLUEPRINT_NODE_TYPE_MATH_INCREMENT },
+                    set: { id: "set", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "early" } },
+                },
+                edges: [["a", "then", "loop"], ["loop", "loop", "capture"], ["capture", "next", "set"], ["set", "next", "loop"]],
+            },
+            { head: "b", headType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY, then: {}, edges: [["b", "then", "loop"]] },
+        ]);
+        const blueprint = made.blueprintDocument.blueprints[made.id] as unknown as {
+            members: { variables: { early: { valueType: string; defaultValue: unknown } } };
+            graphs: { events: { main: { graph: { edges: Array<{ from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }> } } } };
+        };
+        blueprint.members.variables.early.valueType = "number";
+        blueprint.members.variables.early.defaultValue = 0;
+        blueprint.graphs.events.main.graph.edges.push(
+            { from: { nodeId: "loop", port: "index" }, to: { nodeId: "capture", port: "index" } },
+            { from: { nodeId: "get", port: "value" }, to: { nodeId: "increment", port: "value" } },
+            { from: { nodeId: "increment", port: "result" }, to: { nodeId: "set", port: "value" } },
+        );
+
+        const debug = tracingBridge();
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument: made.blueprintDocument,
+            persistentVariables: {},
+            eventName: "gameReady",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(seen).toEqual({ a: [0, 1, 2], b: [0, 1, 2] });
+        expect(localsOf(made, "global").early).toBe(6);
+        expect(debug.snapshot().filter(event => event.type === "execution.error")).toEqual([]);
+        expect(debug.snapshot().filter(event => event.type === "execution.finished")).toHaveLength(1);
+    });
+
     it("starts a head that sorts after a waiting one before the wait is over, and settles after the longer", async () => {
         // `aSplash` sorts first and waits; `bSound` would have run only once that wait was over.
         const made = blueprintWith("global", [

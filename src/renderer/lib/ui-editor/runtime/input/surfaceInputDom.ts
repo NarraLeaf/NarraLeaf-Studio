@@ -308,6 +308,21 @@ function cloneInputEvent(event: Event): Event | null {
                 deltaMode: event.deltaMode,
             });
         }
+        if (typeof PointerEvent !== "undefined" && event instanceof PointerEvent) {
+            return new PointerEvent(event.type, {
+                ...init,
+                pointerId: event.pointerId,
+                width: event.width,
+                height: event.height,
+                pressure: event.pressure,
+                tangentialPressure: event.tangentialPressure,
+                tiltX: event.tiltX,
+                tiltY: event.tiltY,
+                twist: event.twist,
+                pointerType: event.pointerType,
+                isPrimary: event.isPrimary,
+            });
+        }
         return new MouseEvent(event.type, init);
     } catch {
         // A host whose event constructors are missing or refuse this init cannot be handed the

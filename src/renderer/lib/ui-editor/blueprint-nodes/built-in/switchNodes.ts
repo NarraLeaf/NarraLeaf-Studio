@@ -23,7 +23,6 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import { widgetKindName } from "../widgetKindName";
 import type { BlueprintSwitchPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
@@ -162,19 +161,14 @@ async function patchCurrentSwitch(
 }
 
 /**
- * Toggle is an exec node with a data output, so the new value has to be published into the
- * per-execution output cache by hand; `graphParamResolvers` reads it back from there. Skip
- * either half and the pin silently resolves to `undefined` downstream.
+ * Toggle returns its new value for the graph executor to publish to downstream data pins.
  */
 async function toggleCurrentSwitch(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
     const { api, elementId } = runtimeSwitchRef(ctx, target);
     const current = api.widget.getSwitchProperties(elementId);
     const next = !current.checked;
     await api.widget.setSwitchProperties(elementId, { checked: next });
-    if (ctx.blueprintLocals) {
-        writeBlueprintNodeOutputValues(ctx.blueprintLocals, ctx.node.id, { checked: next });
-    }
-    return { nextPort: "next" };
+    return { nextPort: "next", outputValues: { checked: next } };
 }
 
 export const switchBlueprintNodes: BlueprintNodeDef[] = [

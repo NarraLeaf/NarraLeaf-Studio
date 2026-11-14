@@ -4,6 +4,10 @@ import type { ScriptCtx } from "narraleaf-react";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_RETURN,
     BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -15,6 +19,7 @@ import {
     createExplicitBlueprintVariableRef,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { GLOBAL_MAIN_OWNER_KEY, storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
+import { createBlueprintFnRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     compileStoryActionBlueprintToScript,
     evaluateStoryActionBlueprintValueSync,
@@ -142,6 +147,7 @@ function input(document: BlueprintDocument): CompileStoryActionScriptInput {
         sceneVariables: {},
         savedVariables: {
             "var-seen": { id: "var-seen", name: "seen", storageKey: "seen", defaultValue: null } as never,
+            "var-fn-seen": { id: "var-fn-seen", name: "fnSeen", storageKey: "fnSeen", defaultValue: null } as never,
         },
         savedNamespace: "saved",
     };
@@ -186,6 +192,111 @@ async function runRow(action: unknown, saveFile: ReturnType<typeof storable>): P
 }
 
 describe("a story row's Var", () => {
+    it("shares its variables among concurrent On Call heads and resets them on the next run", async () => {
+        const document = blueprintDocument({
+            declareCount,
+            first: { id: "first", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+            second: { id: "second", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+            recordDefault: { id: "recordDefault", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-fn-seen" } },
+            set: { id: "set", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: COUNT_VAR_ID, value: 99 } },
+            wait: { id: "wait", type: BLUEPRINT_NODE_TYPE_FLOW_DELAY, params: { duration: 0 } },
+            read: { id: "read", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: COUNT_VAR_ID } },
+            record: { id: "record", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-seen" } },
+        } as Nodes, [
+            { from: { nodeId: "first", port: "then" }, to: { nodeId: "recordDefault", port: "in" } },
+            { from: { nodeId: "read", port: "value" }, to: { nodeId: "recordDefault", port: "value" } },
+            { from: { nodeId: "recordDefault", port: "next" }, to: { nodeId: "set", port: "in" } },
+            { from: { nodeId: "second", port: "then" }, to: { nodeId: "wait", port: "in" } },
+            { from: { nodeId: "wait", port: "completed" }, to: { nodeId: "record", port: "in" } },
+            { from: { nodeId: "read", port: "value" }, to: { nodeId: "record", port: "value" } },
+        ] as Edges);
+        const saveFile = storable();
+        const action = compileStoryActionBlueprintToScript(input(document));
+
+        await runRow(action, saveFile);
+        expect(saveFile.namespaces.get("saved")?.get("fnSeen")).toBe(3);
+        expect(saveFile.namespaces.get("saved")?.get("seen")).toBe(99);
+        await runRow(action, saveFile);
+        expect(saveFile.namespaces.get("saved")?.get("fnSeen")).toBe(3);
+        expect(saveFile.namespaces.get("saved")?.get("seen")).toBe(99);
+    });
+
+    it("shares the row's variables with its Fn while keeping the call's own execution", async () => {
+        const document = blueprintDocument({
+            declareCount,
+            call: { id: "call", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+            setBefore: { id: "setBefore", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: COUNT_VAR_ID, value: 99 } },
+            invoke: { id: "invoke", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: { fnRef: createBlueprintFnRef(ROW_BLUEPRINT_ID, "fn") } },
+            readAfter: { id: "readAfter", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: COUNT_VAR_ID } },
+            recordAfter: { id: "recordAfter", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-seen" } },
+            fn: { id: "fn", type: BLUEPRINT_NODE_TYPE_FN_HEAD, params: { name: "Change Count" } },
+            readFn: { id: "readFn", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: COUNT_VAR_ID } },
+            recordFn: { id: "recordFn", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-fn-seen" } },
+            setFn: { id: "setFn", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: COUNT_VAR_ID, value: 77 } },
+        } as Nodes, [
+            { from: { nodeId: "call", port: "then" }, to: { nodeId: "setBefore", port: "in" } },
+            { from: { nodeId: "setBefore", port: "next" }, to: { nodeId: "invoke", port: "in" } },
+            { from: { nodeId: "invoke", port: "next" }, to: { nodeId: "recordAfter", port: "in" } },
+            { from: { nodeId: "readAfter", port: "value" }, to: { nodeId: "recordAfter", port: "value" } },
+            { from: { nodeId: "fn", port: "then" }, to: { nodeId: "recordFn", port: "in" } },
+            { from: { nodeId: "readFn", port: "value" }, to: { nodeId: "recordFn", port: "value" } },
+            { from: { nodeId: "recordFn", port: "next" }, to: { nodeId: "setFn", port: "in" } },
+        ] as Edges);
+        const runInput = input(document);
+        runInput.sceneFnCatalog = { blueprintIds: new Set([ROW_BLUEPRINT_ID]) };
+        const saveFile = storable();
+
+        await runRow(compileStoryActionBlueprintToScript(runInput), saveFile);
+        expect(saveFile.namespaces.get("saved")?.get("fnSeen")).toBe(99);
+        expect(saveFile.namespaces.get("saved")?.get("seen")).toBe(77);
+    });
+
+    it("keeps concurrent Fn arguments and results with their own calls", async () => {
+        const snapshot = {
+            name: "Echo",
+            params: [{ pinId: "param_1_value", name: "input", valueType: "string" }],
+            returns: [{ pinId: "ret_1_value", name: "result", valueType: "string" }],
+        };
+        const callParams = (value: string) => ({
+            fnRef: createBlueprintFnRef(ROW_BLUEPRINT_ID, "fn"),
+            __fnSignatureSnapshot: snapshot,
+            param_1_value: value,
+        });
+        const document = blueprintDocument({
+            first: { id: "first", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+            second: { id: "second", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+            callFirst: { id: "callFirst", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: callParams("first") },
+            callSecond: { id: "callSecond", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: callParams("second") },
+            saveFirst: { id: "saveFirst", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-seen" } },
+            saveSecond: { id: "saveSecond", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "var-fn-seen" } },
+            fn: { id: "fn", type: BLUEPRINT_NODE_TYPE_FN_HEAD, params: {
+                name: "Echo", __fnParamPinIds: ["param_1_value"],
+                __fnParamPinLabels: { param_1_value: "input" }, __fnParamPinTypes: { param_1_value: "string" },
+            } },
+            wait: { id: "wait", type: BLUEPRINT_NODE_TYPE_FLOW_DELAY, params: { duration: 0 } },
+            ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_FN_RETURN, params: {
+                __fnReturnPinIds: ["ret_1_value"], __fnReturnPinLabels: { ret_1_value: "result" },
+                __fnReturnPinTypes: { ret_1_value: "string" },
+            } },
+        } as Nodes, [
+            { from: { nodeId: "first", port: "then" }, to: { nodeId: "callFirst", port: "in" } },
+            { from: { nodeId: "second", port: "then" }, to: { nodeId: "callSecond", port: "in" } },
+            { from: { nodeId: "callFirst", port: "next" }, to: { nodeId: "saveFirst", port: "in" } },
+            { from: { nodeId: "callFirst", port: "ret_1_value" }, to: { nodeId: "saveFirst", port: "value" } },
+            { from: { nodeId: "callSecond", port: "next" }, to: { nodeId: "saveSecond", port: "in" } },
+            { from: { nodeId: "callSecond", port: "ret_1_value" }, to: { nodeId: "saveSecond", port: "value" } },
+            { from: { nodeId: "fn", port: "then" }, to: { nodeId: "wait", port: "in" } },
+            { from: { nodeId: "wait", port: "completed" }, to: { nodeId: "ret", port: "in" } },
+            { from: { nodeId: "fn", port: "param_1_value" }, to: { nodeId: "ret", port: "ret_1_value" } },
+        ] as Edges);
+        const runInput = input(document);
+        runInput.sceneFnCatalog = { blueprintIds: new Set([ROW_BLUEPRINT_ID]) };
+        const saveFile = storable();
+        await runRow(compileStoryActionBlueprintToScript(runInput), saveFile);
+        expect(saveFile.namespaces.get("saved")?.get("seen")).toBe("first");
+        expect(saveFile.namespaces.get("saved")?.get("fnSeen")).toBe("second");
+    });
+
     it("reads its declared default in an inline value", () => {
         const saveFile = storable();
         const ctx = { storable: saveFile } as unknown as ScriptCtx;
