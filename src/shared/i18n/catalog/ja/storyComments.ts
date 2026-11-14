@@ -4,6 +4,13 @@ import type { LocaleNamespace } from "../types";
  * `storyComments` 日本語。ストーリー行のレビューコメントと、それを一覧する「コメント」パネル。
  */
 export const storyComments = {
+    suggest: "修正を提案",
+    suggestClear: "提案しない",
+    suggestPlaceholder: "この行を次のように…",
+    suggestedText: "提案",
+    applySuggestion: "採用",
+    suggestionApplied: "採用済み",
+    suggestionUnavailable: "この行にはテキストがないため採用できません",
     add: "コメントを追加",
     open: "コメントを開く",
     count: {

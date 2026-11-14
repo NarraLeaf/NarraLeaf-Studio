@@ -29,6 +29,7 @@ import {
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
+    TEAM_DOC_INTENT_LIMIT,
     TEAM_OVERLAY_BODY_LIMIT,
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
@@ -42,6 +43,13 @@ import {
     teamLiveTopic,
     teamProjectClientsTopic,
     teamProjectLiveTopic,
+    teamProjectMembersTopic,
+    teamProjectTodosTopic,
+    teamProjectReviewsTopic,
+    teamProjectMilestonesTopic,
+    teamProjectDocTopic,
+    teamAccountTodosTopic,
+    teamAccountNotificationsTopic,
     teamProjectOverlayTopic,
     teamProjectThreadsTopic,
     teamProjectTopic,
@@ -77,8 +85,16 @@ const CAPABILITIES: TeamCapability[] = [
     "overlay",
     "admin",
     "password-sign-in",
+    "oauth",
+    "activity",
+    "todos",
+    "notifications",
+    "reviews",
+    "milestones",
+    "webhooks",
     "project-history",
     "blobs",
+    "documents",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
@@ -111,6 +127,8 @@ describe("the protocol contract", () => {
         // four that arrived with the management family would have been four names Studio
         // never learned, and nothing here would have said so.
         expect(Object.keys(contract.topics).slice().sort()).toEqual([
+            "accountNotifications",
+            "accountTodos",
             "adminKeys",
             "adminRefusals",
             "adminSettings",
@@ -118,9 +136,14 @@ describe("the protocol contract", () => {
             "live",
             "project",
             "projectClients",
+            "projectDoc",
             "projectLive",
+            "projectMembers",
+            "projectMilestones",
             "projectOverlay",
+            "projectReviews",
             "projectThreads",
+            "projectTodos",
             "projects",
         ]);
 
@@ -138,6 +161,15 @@ describe("the protocol contract", () => {
         expect(teamProjectLiveTopic("abc")).toBe(
             contract.topics["projectLive"]?.replace("{project}", "abc"),
         );
+        expect(teamProjectMembersTopic("abc")).toBe(
+            contract.topics["projectMembers"]?.replace("{project}", "abc"),
+        );
+        expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
+        expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
+        expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
+        expect(teamProjectDocTopic("abc")).toBe(contract.topics["projectDoc"]?.replace("{project}", "abc"));
+        expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
+        expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
 
         // Compared rather than built: these name the server, not a project or a session,
@@ -157,6 +189,7 @@ describe("the protocol contract", () => {
             "anchorField",
             "answerBytes",
             "commentBody",
+            "docIntent",
             "instanceField",
             "livePayload",
             "overlayBody",
@@ -169,6 +202,7 @@ describe("the protocol contract", () => {
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
         expect(TEAM_LIVE_PAYLOAD_LIMIT).toBe(contract.limits["livePayload"]);
+        expect(TEAM_DOC_INTENT_LIMIT).toBe(contract.limits["docIntent"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
         expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
 

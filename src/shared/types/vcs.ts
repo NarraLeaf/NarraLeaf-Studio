@@ -635,6 +635,12 @@ export interface VcsServerProject {
      * yet - see {@link VcsServerProjectHistory}. Nothing here is ever a default.
      */
     history?: VcsServerProjectHistory;
+    /**
+     * This account's role in the project, as the server answered it. Absent from a server older
+     * than roles, where every account could do everything - which is how its absence is read.
+     * Reviewers and viewers cannot open the repository: they read and comment through Team.
+     */
+    role?: "owner" | "editor" | "reviewer" | "viewer";
 }
 
 /**
@@ -1312,6 +1318,22 @@ export type VcsPasswordSignInReason = "refused" | "unavailable" | "unreachable" 
 export type VcsPasswordSignInOutcome =
     | { ok: true; token: string }
     | { ok: false; reason: VcsPasswordSignInReason };
+
+/**
+ * Why a browser sign-in did not finish. `denied`: the person said no on the approval page.
+ * `timeout`: nobody finished in the browser in time, or it was cancelled. `refused`: the
+ * server would not redeem what the browser brought back.
+ */
+export type VcsBrowserSignInReason = "denied" | "timeout" | "unreachable" | "refused" | "unknown";
+
+/**
+ * What signing in through the browser came to. The token is the same kind a password
+ * sign-in produces, and the caller adds the server with it the same way; the refresh token
+ * that keeps it alive stays in the main process.
+ */
+export type VcsBrowserSignInOutcome =
+    | { ok: true; token: string }
+    | { ok: false; reason: VcsBrowserSignInReason };
 
 /**
  * What a server could read inside one project's own file.

@@ -1,21 +1,21 @@
-import {
-    appTagsSpec,
-    assetGroupsSpec,
-    assetSetsSpec,
-    assetsMetadataSpec,
-    audioTracksSpec,
-    brandSpec,
-    charactersSpec,
-    dictionarySpec,
-    dlcSpec,
-    localizationDocumentSpec,
-    localizationKeysSpec,
-    storyDocumentSpec,
-    uiDocumentSpec,
-    uiGraphsSpec,
-    variableRegistrySpec,
-    voiceDocumentSpec,
-} from "@shared/documents/specs";
+// Each spec from its own module rather than the barrel, which also carries the project file and its
+// binary encoder: this table is part of the kernel the Team server runs, and must stay plain JSON.
+import { appTagsSpec } from "@shared/documents/specs/appTags";
+import { assetGroupsSpec } from "@shared/documents/specs/assetGroups";
+import { assetSetsSpec } from "@shared/documents/specs/assetSets";
+import { assetsMetadataSpec } from "@shared/documents/specs/assetsMetadata";
+import { audioTracksSpec } from "@shared/documents/specs/audioTracks";
+import { brandSpec } from "@shared/documents/specs/brand";
+import { charactersSpec } from "@shared/documents/specs/characters";
+import { dictionarySpec } from "@shared/documents/specs/dictionary";
+import { dlcSpec } from "@shared/documents/specs/dlc";
+import { localizationDocumentSpec } from "@shared/documents/specs/localization";
+import { localizationKeysSpec } from "@shared/documents/specs/localizationKeys";
+import { storyDocumentSpec } from "@shared/documents/specs/story";
+import { uiDocumentSpec } from "@shared/documents/specs/uiDocument";
+import { uiGraphsSpec } from "@shared/documents/specs/uiGraphs";
+import { variableRegistrySpec } from "@shared/documents/specs/variables";
+import { voiceDocumentSpec } from "@shared/documents/specs/voice";
 import type { StoryId } from "@shared/types/story";
 import { sameLiveDocument, type LiveDocument } from "./ops";
 

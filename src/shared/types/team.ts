@@ -60,6 +60,20 @@ export const TEAM_PROTOCOL_VERSION = 2;
 export type TeamCapability =
     /** The link session exists at all. Everything below implies it. */
     | "session"
+    /** Studio may sign in through the browser (OAuth); see `vcs/serverOAuth.ts`. */
+    | "oauth"
+    /** Timelines and contribution graphs. */
+    | "activity"
+    /** To-dos, private or a project's, assignable and anchorable to a line or node. */
+    | "todos"
+    /** Mentions, replies and assignments, kept until read. */
+    | "notifications"
+    /** Asking a member to review a range of versions, and their verdict. */
+    | "reviews"
+    /** Names on revisions that a project can be read at. */
+    | "milestones"
+    /** Operators may have the server post its events elsewhere. */
+    | "webhooks"
     /** Threads and comments anchored in a project. */
     | "comments"
     /** Which installations are connected, and what each has open. */
@@ -90,7 +104,14 @@ export type TeamCapability =
      * without it answers 404 to the transfer endpoints, so importing an asset during a
      * session against one is a file that never arrives.
      */
-    | "blobs";
+    | "blobs"
+    /**
+     * The server is the authority over a team project's documents: every edit is an intent
+     * (`doc.intent`) the server applies and publishes on the project's `doc` topic, and the
+     * history versions are snapshots it commits. Opening a team project on such a server is
+     * following that topic - there is no room to open or join.
+     */
+    | "documents";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -176,6 +197,41 @@ export function teamProjectLiveTopic(projectId: string): string {
     return `project:${projectId}/live`;
 }
 
+/** Who belongs to one project, and in which role. */
+export function teamProjectMembersTopic(projectId: string): string {
+    return `project:${projectId}/members`;
+}
+
+/** The to-dos shown to one project's members. */
+export function teamProjectTodosTopic(projectId: string): string {
+    return `project:${projectId}/todos`;
+}
+
+/** One project's review requests. */
+export function teamProjectReviewsTopic(projectId: string): string {
+    return `project:${projectId}/reviews`;
+}
+
+/** One project's milestones. */
+export function teamProjectMilestonesTopic(projectId: string): string {
+    return `project:${projectId}/milestones`;
+}
+
+/** One project's applied edits, saved versions and restores (the `documents` capability). */
+export function teamProjectDocTopic(projectId: string): string {
+    return `project:${projectId}/doc`;
+}
+
+/** The signed-in account's own to-dos. Only that account may subscribe. */
+export function teamAccountTodosTopic(accountId: string): string {
+    return `account:${accountId}/todos`;
+}
+
+/** The signed-in account's notifications. Only that account may subscribe. */
+export function teamAccountNotificationsTopic(accountId: string): string {
+    return `account:${accountId}/notifications`;
+}
+
 /**
  * What is being said inside one live session.
  *
@@ -245,6 +301,9 @@ export const TEAM_LIVE_PAYLOAD_LIMIT = 16 * 1024;
 
 /** The most any single field describing an installation may be. */
 export const TEAM_INSTANCE_FIELD_LIMIT = 256;
+
+/** The most one `doc.intent` may carry, as JSON: its document address and its operation. */
+export const TEAM_DOC_INTENT_LIMIT = 96 * 1024;
 
 /**
  * The most a server sends in one answer, and so the least this build's reader may hold.
@@ -349,11 +408,97 @@ export type TeamThreadEvent =
     | { kind: "comment-created"; thread: string; comment: TeamComment }
     | { kind: "comment-updated"; thread: string; comment: TeamComment };
 
-/** What arrives on the projects topic. */
+/**
+ * What arrives on the projects topic. Each goes only to the accounts it concerns: a project
+ * being made or forgotten to its members, `project-access-changed` to the one account whose
+ * role in it changed — read the list again.
+ */
 export type TeamProjectsEvent =
     | { kind: "project-created"; project: string }
     | { kind: "project-forgotten"; project: string }
-    | { kind: "project-read"; project: string };
+    | { kind: "project-read"; project: string }
+    | { kind: "project-access-changed"; project: string };
+
+/**
+ * An account's role in one project, most able first. Owners and editors open the
+ * repository; reviewers and viewers read the project through Team only, because the
+ * version-control server does not tell a read from a write. Every project row the server
+ * answers with carries the caller's own role as `role`.
+ */
+export type TeamProjectRole = "owner" | "editor" | "reviewer" | "viewer";
+
+/** Whether a role may open the repository: pull, commit and push. */
+export function teamRoleReachesRepository(role: TeamProjectRole | undefined): boolean {
+    return role === undefined || role === "owner" || role === "editor";
+}
+
+/** One account's place in one project, as `projects.members.list` answers. */
+export interface TeamProjectMember {
+    username: string;
+    displayName: string;
+    role: TeamProjectRole;
+    addedBy?: string;
+    addedAt: number;
+}
+
+/** One installation the account is signed in on through the browser, as `account.devices.list` answers. */
+export interface TeamAccountDevice {
+    id: string;
+    name: string;
+    client: string;
+    signedInAt: number;
+    lastUsedAt: number;
+}
+
+/** A to-do, as `todos.*` answer and the to-do topics carry it. */
+export interface TeamTodo {
+    id: string;
+    owner: string;
+    assignee?: string;
+    project?: string;
+    anchor?: { document: string; element: string; revision?: string };
+    title: string;
+    body?: string;
+    status: "open" | "doing" | "done";
+    visibility: "private" | "project";
+    /** What it asks for. Absent from a server older than kinds, where everything is a task. */
+    kind?: "task" | "asset" | "translation" | "voice";
+    /** The language a translation or voice to-do is about. */
+    locale?: string;
+    /** The asset that answered an asset request. */
+    asset?: string;
+    dueAt?: number;
+    createdAt: number;
+    updatedAt: number;
+    doneAt?: number;
+    /** The revision that finished it, where it was ticked off in a commit. */
+    doneRevision?: string;
+}
+
+export type TeamTodosEvent =
+    | { kind: "todo-set"; todo: TeamTodo }
+    | { kind: "todo-removed"; todo: string };
+
+/** One notification, as `notifications.list` answers. */
+export interface TeamNotification {
+    id: number;
+    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered";
+    project?: string;
+    ref?: string;
+    actor?: string;
+    summary?: string;
+    at: number;
+    readAt?: number;
+}
+
+export type TeamNotificationsEvent =
+    | { kind: "notification"; notification: TeamNotification }
+    | { kind: "notifications-read"; ids: number[] | "all" };
+
+/** What arrives on a project's members topic. */
+export type TeamProjectMembersEvent =
+    | { kind: "member-set"; member: TeamProjectMember }
+    | { kind: "member-removed"; username: string };
 
 /* ------------------------------------------------------- client instances */
 
@@ -381,6 +526,12 @@ export interface TeamClientInstance {
     project?: string;
     /** What that project stands at on that machine, as it reported it. */
     revision?: string;
+    /**
+     * The document it has in front of it, in anchor terms (`story:<id>`, `ui:<id>`), and since
+     * when (the server's clock). A hint for somebody about to open the same one, never a lock.
+     */
+    editing?: string;
+    editingSince?: number;
     /** When it announced itself on its current link session. Epoch ms, the server's clock. */
     since: number;
 }
@@ -557,6 +708,31 @@ export const TeamMethod = {
     projectsHistory: "projects.history",
     projectsCreate: "projects.create",
     projectsForget: "projects.forget",
+    projectsMembersList: "projects.members.list",
+    projectsMembersSet: "projects.members.set",
+    projectsMembersRemove: "projects.members.remove",
+    accountDevicesList: "account.devices.list",
+    accountDevicesRevoke: "account.devices.revoke",
+    accountProfileGet: "account.profile.get",
+    accountProfileUpdate: "account.profile.update",
+    activityList: "activity.list",
+    activityHeatmap: "activity.heatmap",
+    todosList: "todos.list",
+    todosCreate: "todos.create",
+    todosUpdate: "todos.update",
+    todosDelete: "todos.delete",
+    reviewsList: "reviews.list",
+    reviewsCreate: "reviews.create",
+    reviewsUpdate: "reviews.update",
+    milestonesList: "milestones.list",
+    milestonesCreate: "milestones.create",
+    milestonesDelete: "milestones.delete",
+    adminWebhooksList: "admin.webhooks.list",
+    adminWebhooksCreate: "admin.webhooks.create",
+    adminWebhooksDelete: "admin.webhooks.delete",
+    adminWebhooksTest: "admin.webhooks.test",
+    notificationsList: "notifications.list",
+    notificationsRead: "notifications.read",
     membersList: "members.list",
     threadsList: "threads.list",
     threadsGet: "threads.get",
@@ -588,6 +764,15 @@ export const TeamMethod = {
     /** Answer somebody who asked, which only the room's opener may do. */
     liveAnswerJoin: "live.answerJoin",
     liveSay: "live.say",
+    // A team project's documents, with the server as their authority (`documents`).
+    docHead: "doc.head",
+    docEffects: "doc.effects",
+    docBase: "doc.base",
+    docFiles: "doc.files",
+    docFile: "doc.file",
+    docIntent: "doc.intent",
+    docSnapshot: "doc.snapshot",
+    docRestore: "doc.restore",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
     overlayDrop: "overlay.drop",
@@ -610,6 +795,7 @@ export const TeamMethod = {
     adminKeysRetire: "admin.keys.retire",
     adminAuditList: "admin.audit.list",
     adminServerStatus: "admin.server.status",
+    adminBrandSet: "admin.brand.set",
 } as const;
 
 /**

@@ -715,6 +715,44 @@ export const workspace = {
      * only what is new to this panel is here.
      */
     team: {
+        docs: {
+            refused: "The server did not take that edit",
+            restored: "{{by}} restored an earlier version. Everyone now has it.",
+            diverged: "This window fell out of step with the server and will start again from the last saved version",
+            history: "History",
+            historyHint: "Everyone's edits are saved on the server as they happen. A version is saved automatically when the project goes quiet; save one yourself to mark a point you can come back to.",
+            saveVersion: "Save version",
+            versionLabel: "Name this version (optional)",
+            restore: "Restore",
+            restoreConfirm: "Put this version back for everyone? It becomes a new version, so you can undo it the same way.",
+            noVersions: "No versions yet",
+            online: "Live",
+            offline: "Offline - your edits are kept here and sent when the server is back",
+            syncing: "Catching up",
+            readOnly: "Your role in this project is read-only",
+            conflictsTitle: "Offline edits that could not be applied",
+            conflictsHint: "Someone else changed these rows while you were offline. Their version is in the story now; yours is below, so you can copy it back if it should win.",
+            dismiss: "Dismiss",
+            savedBy: "saved by {{name}}",
+            automatic: "Automatic",
+            preview: "View",
+            previewing: "Viewing a saved version - nothing here is saved",
+            backToPresent: "Back to now",
+            compare: "Compare with now",
+            comparing: "Changes since this version",
+            noDifferences: "Nothing has changed since this version",
+            documentAdded: "Made since this version",
+            documentRemoved: "Removed since this version",
+            loadMore: "Load more",
+            override: "Use mine",
+            close: "Close",
+            detach: "Make a personal copy",
+            detachConfirm: "Stop following the team server and keep this as a personal project?",
+            detachDetail: "What this window holds, including edits made offline, becomes this project's newest local version. The team project on the server is not changed, and other people keep working on it. You can reconnect later: what you changed is sent then.",
+            conflictFile: "{path}: the team changed this file too; the server's version is open now",
+            detachedHint: "This is a personal copy of a team project. Reconnect to send what you changed since; anything the team also changed is shown for you to choose.",
+            reconnect: "Reconnect to the team project",
+        },
         // The product name, said in full, because this is where an author meets it. Every other
         // line in the panel calls a server a server.
         title: "NarraLeaf Team",
@@ -786,6 +824,8 @@ export const workspace = {
         liveAsking: "Waiting to be let in",
         liveLeaving: "Leaving",
         // Joined, and still applying everything the room did before this window arrived.
+        liveRebase: "Move to the latest version",
+        liveRebaseHint: "Record the session’s work as a version and reopen the session on it; members follow automatically",
         liveCatchingUp: "Catching up with the session.",
         // What stands between this project and a session, each naming the one thing that
         // has to be true before a room can be opened or joined.
@@ -862,6 +902,66 @@ export const workspace = {
         // room right now: a control that appears only once everything is in place cannot be used
         // to find out what is missing, so it goes inert and says which answer it is waiting for.
         livePresence: "Live session",
+        commitTodos: {
+            title: "Finished by this version",
+            hint: "Ticked to-dos are marked done after the commit, with the version that finished them",
+            failed: "The version was recorded, but {count} to-dos could not be marked done",
+        },
+        editingNotice: {
+            here: "{name} is editing this too ({since}). Changes made at the same time are combined when you merge.",
+            justNow: "just opened",
+            minutes: "for {minutes} min",
+            dismiss: "Got it",
+        },
+        liveChat: {
+            title: "Session chat",
+            open: "Open session chat",
+            close: "Collapse",
+            placeholder: "Say something…",
+            send: "Send",
+            empty: "Nobody has said anything yet",
+            nobodyElse: "You are the only one here",
+            follow: "Follow {name}: go wherever they go",
+            stopFollowing: "Stop following {name}",
+            followingShort: "following",
+        },
+        requests: {
+            askReview: "Ask for a review",
+            assignLanguage: "Assign a translation or voice",
+            askAsset: "Ask for an asset",
+            reviewTitle: "What to review, e.g. “chapters 3–5”",
+            reviewer: "Reviewer",
+            from: "From",
+            fromStart: "(the start)",
+            to: "To",
+            sendReview: "Send request",
+            kindTranslation: "Translation",
+            kindVoice: "Voice",
+            locale: "Locale, e.g. ja",
+            nobodyYet: "Nobody yet",
+            assign: "Assign",
+            translateTitle: "Translate “{story}” → {locale}",
+            voiceTitle: "Voice “{story}” ({locale})",
+            assetPlaceholder: "What is needed, e.g. “Ada crying variant”",
+            sendAsset: "Send",
+            sent: "Sent; follow it on the board in the web console",
+            failed: "Not sent; check the connection or your role",
+        },
+        roleNotice: {
+            reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
+            viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",
+            dismiss: "Got it",
+        },
+        notifications: {
+            label: "Notifications",
+            empty: "No notifications",
+            markAllRead: "Mark all read",
+            mention: "{who} mentioned you in a comment",
+            reply: "{who} replied in a thread you are in",
+            assigned: "{who} gave you a to-do",
+            "review-requested": "{who} asked you to review",
+            "review-answered": "{who} answered your review request",
+        },
         liveConnecting: "Connecting to that server.",
         liveUnsupported: "That server does not offer live sessions.",
         liveNobody: "No live session on this project.",
@@ -1240,6 +1340,7 @@ export const workspace = {
             // The documents themselves are named where the author asks what a session takes -
             // `liveFrozenWhat` - rather than here, which is a line under a title in a status bar.
             frozenDetailSession: "A live session is open, and only the documents it carries are saved. Leave the session to change anything else.",
+            frozenDetailTeam: "This is not shared through the team server, so a change here would reach nobody. While offline, only stories are saved.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
@@ -1270,6 +1371,7 @@ export const workspace = {
                 projectIcon: "project icon",
                 panelLayout: "panel layout",
                 recentColors: "recent colors",
+                teamDocs: "your place in the team project",
                 pluginData: "plugin data",
                 // Not a document store: the row an author has open for editing, whose words the
                 // documents have not been told about yet.
@@ -1382,6 +1484,7 @@ export const workspace = {
             // control that is itself unavailable. Which settings a session does leave writable is
             // said where the session is started or joined, not on every greyed control.
             unavailableLive: "Unavailable during a live session. Leave the session to use it.",
+            unavailableTeam: "Not shared through the team server, so it cannot be edited in a team project (offline, only stories can be edited)",
         },
         // Hover text on every control switched off because the project is not trusted. One
         // string for all of them, on the same bargain the freeze sentence above makes: the
@@ -1516,6 +1619,8 @@ export const workspace = {
             // A question rather than an instruction, and it says "optional" because it is: an empty
             // message is a valid revision, and one with no message names itself in the list above.
             commitPlaceholder: "What changed? (optional)",
+            openThreadsInChanges: "{count} open comments are in the stories this version changes.",
+            openThreadsShow: "Show",
             commitMessage: "Version message",
             // Asked in the panel, once, while the setting is empty. Says what the name is FOR
             // rather than naming the field: "Author name" is what Settings calls it, and there it

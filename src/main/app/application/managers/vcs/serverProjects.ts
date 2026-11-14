@@ -77,5 +77,11 @@ export function readProject(value: unknown): VcsServerProject | null {
         createdAt: typeof record["createdAt"] === "number" ? record["createdAt"] : 0,
         remote,
         ...(history === undefined ? {} : { history }),
+        ...(typeof record["role"] === "string" && (ROLE_WORDS as readonly string[]).includes(record["role"])
+            ? { role: record["role"] as NonNullable<VcsServerProject["role"]> }
+            : {}),
     };
 }
+
+const ROLE_WORDS = ["owner", "editor", "reviewer", "viewer"] as const;
+

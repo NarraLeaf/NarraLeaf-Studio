@@ -163,7 +163,14 @@ function CommentItem(props: {
 export function StoryCommentThreadView(props: {
     service: StoryCommentsService;
     thread: StoryCommentThread | null;
-    onCreate?: (body: string, todo: boolean) => void;
+    onCreate?: (body: string, todo: boolean, suggestion?: string) => void;
+    /** The row's text now, offered as the start of a suggested edit. */
+    rowText?: string;
+    /**
+     * Take the thread's suggestion: write it into the row. Absent where nothing can be written
+     * (no story to edit, or a row with no line of text), and the button says so.
+     */
+    onApplySuggestion?: (suggestion: string) => boolean;
     /** Where edits are recorded for undo. */
     editOptions?: StoryCommentEditOptions;
     autoFocus?: boolean;
@@ -176,17 +183,21 @@ export function StoryCommentThreadView(props: {
     const author = useStoryCommentAuthor();
     const [draft, setDraft] = useState("");
     const [newTodo, setNewTodo] = useState(false);
+    const [suggesting, setSuggesting] = useState(false);
+    const [suggestion, setSuggestion] = useState("");
     const { service, thread, editOptions } = props;
 
     const send = () => {
         const body = draft.trim();
         if (!body || props.readOnly) return;
-        if (thread) {
+        const offered = suggesting && suggestion.trim() !== "" && suggestion !== props.rowText ? suggestion : undefined;
+        if (thread && offered === undefined) {
             service.reply(thread.id, body, editOptions);
         } else {
-            props.onCreate?.(body, newTodo);
+            props.onCreate?.(body, newTodo, offered);
         }
         setDraft("");
+        setSuggesting(false);
     };
 
     const todo = thread ? thread.todo : newTodo;
@@ -255,8 +266,39 @@ export function StoryCommentThreadView(props: {
                     ))}
                 </ul>
             ) : null}
+            {thread?.suggestion !== undefined ? (
+                <div className="mt-1.5 rounded-md border border-edge-subtle bg-fill/40 p-1.5" data-story-comment-suggestion="">
+                    <div className="mb-0.5 text-2xs text-fg-subtle">{t("storyComments.suggestedText")}</div>
+                    <div className="whitespace-pre-wrap break-words text-xs text-fg">{thread.suggestion}</div>
+                    <div className="mt-1 flex justify-end">
+                        {thread.suggestionAppliedAt !== undefined ? (
+                            <span className="text-2xs text-success">{t("storyComments.suggestionApplied")}</span>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={props.readOnly || props.onApplySuggestion === undefined}
+                                data-tip={props.readOnly ? props.readOnlyReason : props.onApplySuggestion === undefined ? t("storyComments.suggestionUnavailable") : undefined}
+                                onClick={() => {
+                                    if (props.onApplySuggestion?.(thread.suggestion!)) service.markSuggestionApplied(thread.id, editOptions);
+                                }}
+                            >
+                                {t("storyComments.applySuggestion")}
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            ) : null}
             {props.readOnly ? null : (
                 <div className="mt-1.5 flex flex-col gap-1.5">
+                    {suggesting ? (
+                        <AutoTextarea
+                            value={suggestion}
+                            onChange={setSuggestion}
+                            placeholder={t("storyComments.suggestPlaceholder")}
+                            onKeyDown={event => composerKeys(event, send)}
+                        />
+                    ) : null}
                     <AutoTextarea
                         value={draft}
                         onChange={setDraft}
@@ -268,6 +310,19 @@ export function StoryCommentThreadView(props: {
                         <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle" data-tip={signed ? undefined : t("storyComments.authorHint")}>
                             {signed ? t("storyComments.signedAs", { name: signed }) : t("storyComments.authorHint")}
                         </span>
+                        {props.rowText !== undefined ? (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-pressed={suggesting}
+                                onClick={() => {
+                                    if (!suggesting && suggestion === "") setSuggestion(props.rowText ?? "");
+                                    setSuggesting(value => !value);
+                                }}
+                            >
+                                {suggesting ? t("storyComments.suggestClear") : t("storyComments.suggest")}
+                            </Button>
+                        ) : null}
                         <Button size="sm" variant="primary" disabled={!draft.trim()} onClick={send}>
                             {thread ? t("storyComments.reply") : t("storyComments.submit")}
                         </Button>

@@ -1,4 +1,5 @@
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 import type { AgentCallRequest, AgentCallResult, AgentFolderAccessAnswer, AgentFolderAccessRequest } from "../agent/protocol";
 import type { AgentSettingsPatch, AgentSettingsSnapshot } from "../agent/settings";
 import type { AgentCopyConfigKind, AgentMainActivity, AgentQuickState, AgentQuickTogglePatch } from "../agent/workspaceAccess";
@@ -111,7 +112,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -610,6 +611,10 @@ export interface RendererPreloadedInterface {
          * once the window is gone; a window closed without an answer resolves `false`.
          */
         promptServerTrust(props: ServerTrustPromptProps): Promise<RequestStatus<{ trusted: boolean }>>;
+        /** The `narraleaf://` link that opened the home screen, if one did. Handed over once. */
+        takeDeepLink(): Promise<RequestStatus<{ link: TeamDeepLink | null }>>;
+        /** A `narraleaf://` link that arrived while the home screen was up. */
+        onDeepLink(handler: (payload: { link: TeamDeepLink }) => void): AppEventToken;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
@@ -1224,6 +1229,13 @@ export interface RendererPreloadedInterface {
             username: string,
             password: string,
         ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
+        /**
+         * Sign in through the system browser, on a server that announces `oauth`.
+         *
+         * Opens the server's approval page and waits for the person to finish there (up to
+         * five minutes). Hand the token to {@link addServer} exactly as a password sign-in's.
+         */
+        signInWithBrowser(authUrl: string): Promise<RequestStatus<VcsBrowserSignInOutcome>>;
         /**
          * Put this project on a server: register it, connect it, send it.
          *

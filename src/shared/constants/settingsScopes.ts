@@ -53,6 +53,7 @@ export function isProtectedStateKey(key: string): boolean {
 export const MAIN_OWNED_STATE_KEYS: readonly string[] = [
     "versionControl.serverSessions",
     "versionControl.serverTokens",
+    "versionControl.serverRefreshTokens",
     "versionControl.serverSessionProjects",
 ];
 
@@ -64,6 +65,7 @@ export const MAIN_OWNED_STATE_KEYS: readonly string[] = [
  */
 export const MAIN_ONLY_STATE_KEYS: readonly string[] = [
     "versionControl.serverTokens",
+    "versionControl.serverRefreshTokens",
 ];
 
 export function isMainOwnedStateKey(key: string): boolean {

@@ -1,3 +1,4 @@
+import { applyDictionaryOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { dictionarySpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -347,30 +348,13 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
      * under both spellings, however the normalizer would have merged them.
      */
     public applyLiveOp(op: LiveDictionaryOp): void {
-        switch (op.op) {
-            case "set-dictionary-entry": {
-                const entry = op.entry;
-                this.applyMutation(entries => {
-                    const rest = entries.filter(candidate =>
-                        candidate.term !== op.term && candidate.term !== entry?.term);
-                    return entry ? [...rest, entry] : rest;
-                });
-                return;
-            }
-            case "set-dictionary-options": {
-                const document = this.getDocument();
-                this.document = { ...document, options: normalizeDictionaryOptions(op.options) };
-                this.bump();
-                return;
-            }
-            default: {
-                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
-                // other machine in the room and not on this one, and nothing says so until a digest
-                // disagrees one message later.
-                const unapplied: never = op;
-                throw new RendererError(`No applier for live dictionary operation: ${JSON.stringify(unapplied)}`);
-            }
-        }
+        // A new document rather than the old one changed, as every edit here makes one.
+        const next = structuredClone(this.getDocument());
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        applyDictionaryOpToDocument(next, structuredClone(op));
+        this.document = next;
+        this.bump();
     }
 
     /** Replace the whole document (history restore). Sets, publishes and emits without touching history. */

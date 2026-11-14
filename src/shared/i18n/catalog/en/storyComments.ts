@@ -4,6 +4,13 @@
  * Labels and expectations only; what a thread is and where it lives is the help topic's job.
  */
 export const storyComments = {
+    suggest: "Suggest an edit",
+    suggestClear: "No suggestion",
+    suggestPlaceholder: "Make this line say…",
+    suggestedText: "Suggested",
+    applySuggestion: "Apply",
+    suggestionApplied: "Applied",
+    suggestionUnavailable: "This row has no line of text to replace",
     add: "Add comment",
     open: "Open comments",
     count: {

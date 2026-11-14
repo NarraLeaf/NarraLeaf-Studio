@@ -48,6 +48,7 @@ import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
 import { LiveSessionService } from "./live/LiveSessionService";
+import { TeamDocumentsService } from "./teamDocs/TeamDocumentsService";
 import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 import { MediaSupportService } from "./media/MediaSupportService";
@@ -109,6 +110,7 @@ export type WorkspaceServiceMap = {
     [Services.VersionControl]: VersionControlService;
     [Services.WorkspaceFreeze]: WorkspaceFreezeService;
     [Services.Live]: LiveSessionService;
+    [Services.TeamDocuments]: TeamDocumentsService;
     [Services.WorkspaceReload]: WorkspaceReloadService;
     [Services.Recovery]: RecoveryService;
     [Services.AgentFollow]: AgentFollowService;
@@ -173,6 +175,7 @@ export class ServiceRegistry {
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
         [Services.Live]: LiveSessionService.getInstance(),
+        [Services.TeamDocuments]: TeamDocumentsService.getInstance(),
         [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
         [Services.Recovery]: RecoveryService.getInstance(),
         [Services.AgentFollow]: AgentFollowService.getInstance(),

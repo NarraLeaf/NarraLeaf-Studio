@@ -21,4 +21,9 @@ export {
 export { LiveSessionPresence } from "./LiveSessionPresence";
 export { LiveSessionDialog } from "./LiveSessionDialog";
 export { TeamProjectProvider, useTeamProjectSurface } from "./TeamProjectContext";
+export { StoryCommentsTeamSyncMount } from "./StoryCommentsTeamSync";
+export { TeamNotificationsBell } from "./TeamNotificationsBell";
+export { TeamRoleNotice } from "./TeamRoleNotice";
+export { TeamEditingNotice } from "./TeamEditingNotice";
+export { LiveCursorBroadcaster, LiveSessionChat } from "./LiveCursorAndChat";
 export { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiveSession";

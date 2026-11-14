@@ -50,6 +50,13 @@ export type StoryComment = {
     createdAt: number;
     /** Epoch ms of the last edit, absent when the comment was never edited. */
     editedAt?: number;
+    /**
+     * The id this comment has on the project's Team server, once it is there. Absent for a comment
+     * that has not been sent - or one written where no server is - which is what the sync looks for.
+     * Additive: an older Studio drops it on save, and the next sync finds the comment again by the
+     * client id it was sent with rather than sending it twice.
+     */
+    teamCommentId?: string;
 };
 
 /** A conversation about one story row. */
@@ -70,6 +77,21 @@ export type StoryCommentThread = {
     createdAt: number;
     /** Oldest first. Never empty in a document Studio wrote. */
     comments: StoryComment[];
+    /** The thread's id on the project's Team server, once it is there. See {@link StoryComment.teamCommentId}. */
+    teamThreadId?: string;
+    /**
+     * The Team to-do this thread's {@link todo} mark became, once it is there: a project to-do
+     * anchored to the same row, which the web console's board shows and can assign.
+     */
+    teamTodoId?: string;
+    /**
+     * What the row should say instead, when the thread opened as a suggested edit: plain text, the
+     * whole of the row's line. Somebody who may edit the story takes it with one press, which
+     * writes it as an ordinary edit and resolves the thread.
+     */
+    suggestion?: string;
+    /** When the suggestion was taken. Epoch ms. */
+    suggestionAppliedAt?: number;
 };
 
 /**
@@ -120,6 +142,9 @@ function normalizeComment(value: unknown): StoryComment | null {
     if (typeof value.editedAt === "number") {
         comment.editedAt = value.editedAt;
     }
+    if (typeof value.teamCommentId === "string" && value.teamCommentId) {
+        comment.teamCommentId = value.teamCommentId;
+    }
     return comment;
 }
 
@@ -154,6 +179,12 @@ export function normalizeStoryCommentThread(value: unknown): StoryCommentThread 
     };
     if (typeof value.excerpt === "string" && value.excerpt) {
         thread.excerpt = value.excerpt.slice(0, STORY_COMMENT_EXCERPT_MAX);
+    }
+    if (typeof value.teamThreadId === "string" && value.teamThreadId) {
+        thread.teamThreadId = value.teamThreadId;
+    }
+    if (typeof value.teamTodoId === "string" && value.teamTodoId) {
+        thread.teamTodoId = value.teamTodoId;
     }
     if (thread.resolved) {
         const resolvedBy = normalizeAuthor(value.resolvedBy);

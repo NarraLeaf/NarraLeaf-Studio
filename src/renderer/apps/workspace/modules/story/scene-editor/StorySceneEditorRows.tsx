@@ -108,11 +108,10 @@ import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserTyp
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
-import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
+import { StoryRowClaimMark, useStoryRowClaim, useStoryRowCursor } from "./storyRowClaims";
 import { diagnoseRow } from "./storyRowDiagnostics";
 import { RowProblemMark } from "./RowProblemMark";
 import { StoryRowCommentMark } from "./StoryRowCommentMark";
-import { useStoryCommentPopoverFor, useStoryCommentThreadForBlock } from "../../story-comments/storyCommentsState";
 import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -164,6 +163,8 @@ type StoryBlockRowProps = {
     dragGroupSize: number;
     /** This row is in the air with the row being dragged, and dims with it. */
     coDragging: boolean;
+    /** The scene has review comments, so every row keeps the comment column at its edge. */
+    commentColumn: boolean;
 };
 
 /**
@@ -354,11 +355,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     /** What the project checks found on this row; the same array until that changes. */
     const rowProblems = useRowProblems(block.id);
-    /** Whether this row carries a review thread, or is being given one; a container shows its slot for it. */
-    const commentThread = useStoryCommentThreadForBlock(block.id);
-    const commentPopover = useStoryCommentPopoverFor(block.id);
-    const hasComment = commentThread !== null || commentPopover !== null;
-    const commentMark = <StoryRowCommentMark storyId={document.id} sceneId={scene.id} block={block} />;
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
     /**
@@ -400,6 +396,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
      * row of the screenful costs a subscription apiece.
      */
     const claimedBy = useStoryRowClaim(blockId);
+    const cursorBy = useStoryRowCursor(blockId);
 
     return (
         <div
@@ -663,15 +660,13 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
                         <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
-                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
-                    ) : containerInfo && (rowProblems.length > 0 || hasComment) ? (
+                    ) : containerInfo && rowProblems.length > 0 ? (
                         // A choice or a condition header: no voice to hear, but the checks can still
                         // have something to say about it (a choice with no options, a cut point).
                         <div data-story-row-trailing="" className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
-                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
@@ -683,7 +678,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                             {block.kind === "control" && block.payload.control === "cut"
                                 ? <RowCutPointMark appTagId={block.payload.appTagId} commandContext={props.commandContext} />
                                 : null}
-                            {commentMark}
                             <RowProblemMark findings={rowProblems} legacyCode={diagnostic?.code ?? null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
@@ -721,6 +715,22 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         )}
                         <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                     </div>
+                    {/* The comment mark has a column of its own at the very edge, after the hover
+                        cluster: that cluster is a different width on every kind of row (a dialogue
+                        head carries a placement button, a condition its branch adds), so a mark placed
+                        before it would stand at a different x on every row. Present only in a scene
+                        that has comments, so a scene without any keeps its full line width. */}
+                    {props.commentColumn ? (
+                        <div
+                            data-story-row-trailing=""
+                            className={[
+                                "flex min-h-[var(--nl-story-row-box)] w-5 shrink-0 items-center justify-center",
+                                controlsOverArtwork ? "nl-on-media" : "",
+                            ].join(" ")}
+                        >
+                            <StoryRowCommentMark storyId={document.id} sceneId={scene.id} block={block} />
+                        </div>
+                    ) : null}
                 </div>
                 {/* The footer and the container's tail "+" take the same indent the row's content does. */}
                 <div style={{ paddingLeft: rowIndent(row.depth) }}>
@@ -744,6 +754,8 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     // name stands down and leaves the monogram.
                     quiet={showRowActions}
                 />
+            ) : cursorBy !== null ? (
+                <StoryRowClaimMark account={cursorBy} onArtwork={controlsOverArtwork} quiet={showRowActions} cursor />
             ) : null}
         </div>
     );

@@ -1,3 +1,4 @@
+import { applyAppTagOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { appTagsSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -851,53 +852,9 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      */
     public applyLiveOp(op: LiveAppTagOp): void {
         const document = this.getDocument();
-        switch (op.op) {
-            case "create-app-tag": {
-                const tag = structuredClone(op.tag) as ProjectAppTag;
-                document.tags = hasAppTag(document.tags, tag.id)
-                    // A creation for a record already here is a retry that escaped the receipts.
-                    ? document.tags.map(entry => (entry.id === tag.id ? tag : entry))
-                    : insertLiveRecordBefore(document.tags, tag, op.beforeId);
-                break;
-            }
-            case "update-app-tag": {
-                if (!hasAppTag(document.tags, op.tagId)) {
-                    // The host refuses an update naming a record it cannot find, so reaching this is
-                    // this machine having missed the creation. The digest on this effect reports it.
-                    break;
-                }
-                const tag = structuredClone(op.tag) as ProjectAppTag;
-                document.tags = document.tags.map(entry => (entry.id === op.tagId ? tag : entry));
-                break;
-            }
-            case "delete-app-tag":
-                document.tags = document.tags.filter(entry => entry.id !== op.tagId);
-                break;
-            case "set-app-tag-defaults": {
-                const defaults = structuredClone(op.defaults) as LiveAppTagDefaults;
-                document.pluginConfig = defaults.pluginConfig;
-                document.assetAxes = defaults.assetAxes;
-                document.reachableScenes = defaults.reachableScenes;
-                document.endingSurfaceId = defaults.endingSurfaceId;
-                if (op.tagPluginConfig) {
-                    // The variants this write also rewrites - see `LiveAppTagOp`. A tag named here
-                    // that has gone since is skipped rather than re-created: it is a variant somebody
-                    // deleted, not one this write is about.
-                    const byTag = new Map(op.tagPluginConfig.map(entry => [entry.tagId, entry.pluginConfig]));
-                    document.tags = document.tags.map(tag => (byTag.has(tag.id)
-                        ? { ...tag, pluginConfig: structuredClone(byTag.get(tag.id)!) }
-                        : tag));
-                }
-                break;
-            }
-            default: {
-                // ⚠ The switch is exhaustive by construction, and this is what says so. A verb added
-                // with no case here would be a silent no-op: the effect would land on every other
-                // machine in the room and not on this one.
-                const unapplied: never = op;
-                return unapplied;
-            }
-        }
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        applyAppTagOpToDocument(document, structuredClone(op));
         this.normalizeDocument(document);
         this.commitMutation();
     }

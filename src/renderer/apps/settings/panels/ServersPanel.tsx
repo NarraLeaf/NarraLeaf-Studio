@@ -6,7 +6,7 @@ import { ServerRow, useServers } from "@/lib/vcs/servers";
 import { cn } from "@/lib/utils/cn";
 import { SETTINGS_HIGHLIGHT_RING, useSettingsHighlight } from "../components/settingsHighlight";
 import type { VcsServerSession } from "@shared/types/vcs";
-import { signInWithPassword } from "@/lib/vcs/servers";
+import { signInWithBrowser, signInWithPassword } from "@/lib/vcs/servers";
 import { AddServerModal } from "./AddServerModal";
 
 /**
@@ -118,6 +118,7 @@ export function ServersPanel() {
                     onAdded={added}
                     onClose={leave}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
         </div>

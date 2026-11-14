@@ -1,4 +1,6 @@
 import { app as electronApp, dialog } from 'electron';
+import path from "path";
+import { deepLinkInArgv, TEAM_DEEP_LINK_SCHEME } from "@shared/utils/teamDeepLink";
 import { App } from '@/app/app';
 import { decideWindowClosedTeardown } from '@/app/application/windowClosedTeardown';
 import { getMainTranslator } from '@/app/application/i18n';
@@ -177,6 +179,19 @@ function start(app: App): void {
         });
     });
 
+    // `narraleaf://` links (src/shared/utils/teamDeepLink.ts). macOS delivers them here, and
+    // like `open-file` possibly before `ready`; `handleDeepLink` holds one until the home
+    // screen can take it. Windows and Linux deliver them in a second launch's argv, below.
+    app.electronApp.on('open-url', (event, url) => {
+        event.preventDefault();
+        if (ignoredByCommandLineRun(app, 'a narraleaf:// link')) {
+            return;
+        }
+        void app.whenReady().then(() => app.handleDeepLink(url)).catch((error) => {
+            app.logger.error('Failed to act on a narraleaf:// link:', error);
+        });
+    });
+
     // Another Studio already owns this profile. It has been told what this launch was for (see the
     // 'second-instance' handler below); this process has nothing left to do. exit() rather than
     // quit() so none of the shutdown work runs - the saves it would try to flush belong to the other
@@ -198,6 +213,19 @@ function start(app: App): void {
     app.whenReady().then(async () => {
         app.logger.info('App is ready');
 
+        // Claim `narraleaf://` for this installation. A development build runs under the
+        // Electron binary and has to name its entry script, or the OS would launch bare Electron.
+        if (process.defaultApp && process.argv.length >= 2) {
+            app.electronApp.setAsDefaultProtocolClient(TEAM_DEEP_LINK_SCHEME, process.execPath, [path.resolve(process.argv[1]!)]);
+        } else {
+            app.electronApp.setAsDefaultProtocolClient(TEAM_DEEP_LINK_SCHEME);
+        }
+        // A first launch from a link (Windows and Linux) carries it in this process's argv.
+        const launchLink = deepLinkInArgv(process.argv);
+        if (launchLink !== undefined) {
+            void app.handleDeepLink(launchLink);
+        }
+
         // A second launch (Start menu, a shortcut, a file association) reaches the running instance
         // here instead of starting a rival one. Studio may well have no window at all at this point,
         // which is exactly the case this exists for.
@@ -210,6 +238,13 @@ function start(app: App): void {
         // broken.
         app.electronApp.on('second-instance', (_event, argv, workingDirectory) => {
             if (ignoredByCommandLineRun(app, 'another launch of Studio on this profile')) {
+                return;
+            }
+            const link = deepLinkInArgv(argv);
+            if (link !== undefined) {
+                void app.handleDeepLink(link).catch((error) => {
+                    app.logger.error('Failed to act on a narraleaf:// link:', error);
+                });
                 return;
             }
             // The other way round: the launch that just lost the lock was a command-line run, which

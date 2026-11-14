@@ -201,8 +201,16 @@ function readServerProject(value: unknown): VcsServerProject | null {
         // Carried as it arrived, absences included: a field the server left out is a
         // repository it has not read, which is not the same as a nought.
         ...(history === null ? {} : { history: history as VcsServerProject["history"] }),
+        // A role this build does not know is read as none: the server decides what it allows,
+        // and guessing a narrower one here would only hide things that work.
+        ...(typeof from["role"] === "string" && (ROLE_WORDS as readonly string[]).includes(from["role"])
+            ? { role: from["role"] as NonNullable<VcsServerProject["role"]> }
+            : {}),
     } satisfies VcsServerProject;
 }
+
+const ROLE_WORDS = ["owner", "editor", "reviewer", "viewer"] as const;
+
 
 /**
  * What the server read inside a project's file, when it could read it.
@@ -517,6 +525,8 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
     if (id === undefined || account === undefined) return null;
     const project = text(from, "project");
     const revision = text(from, "revision");
+    const editing = text(from, "editing");
+    const editingSince = count(from, "editingSince");
     return {
         id,
         account,
@@ -526,6 +536,7 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
         agent: text(from, "agent") ?? "",
         ...(project === undefined ? {} : { project }),
         ...(revision === undefined ? {} : { revision }),
+        ...(editing === undefined ? {} : { editing, ...(editingSince === undefined ? {} : { editingSince }) }),
         since: count(from, "since") ?? 0,
     };
 }
@@ -542,7 +553,7 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
  */
 export async function announceClient(
     remoteOrigin: string,
-    what: { project?: string; revision?: string } = {},
+    what: { project?: string; revision?: string; editing?: string } = {},
 ): Promise<TeamOutcome<TeamClientInstance>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.clientsAnnounce, what);
     if (!answered.ok) return answered;

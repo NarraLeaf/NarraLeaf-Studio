@@ -540,6 +540,13 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "versionControl.serverTokens": Record<string, string>;
     /**
+     * The sealed refresh token for each server signed in to through the browser, keyed
+     * like the tokens. Spent and replaced on every renewal; see `vcs/serverOAuth.ts`.
+     *
+     * **Never leaves the main process.** Nothing over IPC reads it.
+     */
+    "versionControl.serverRefreshTokens": Record<string, string>;
+    /**
      * What this installation of Studio calls itself to a Team server.
      *
      * A random id, minted the first time a session is opened and never again, and the
@@ -663,6 +670,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.serverSessions": [],
     "versionControl.serverSessionProjects": [],
     "versionControl.serverTokens": {},
+    "versionControl.serverRefreshTokens": {},
     // `team.installationId` deliberately has no default; see its declaration above. A
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.

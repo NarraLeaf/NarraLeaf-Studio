@@ -242,6 +242,11 @@ export function isFreezeBlocking(
 export function useFreezeUnavailableReason(): string {
     const freeze = useWorkspaceFreeze();
     const { t } = useTranslation();
+    // A team project arms the same partial freeze under its own id: what stays read-only there is
+    // what its server does not hold (or, offline, everything but the stories), not "until you leave".
+    if (freeze?.kind === "live-session" && freeze.session === "team-documents") {
+        return t("workspace.shell.freeze.unavailableTeam");
+    }
     return freeze?.kind === "live-session"
         ? t("workspace.shell.freeze.unavailableLive")
         : t("workspace.shell.freeze.unavailable");

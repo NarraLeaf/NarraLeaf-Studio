@@ -1,3 +1,4 @@
+import { applyVariableOpToDocument } from "@shared/authority/project";
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { variableRegistrySpec } from "@shared/documents/specs";
@@ -549,37 +550,14 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      * what catches it instead, on this very effect - a missing entry has a digest of its own.
      */
     public applyLiveOp(op: LiveVariableOp): void {
-        switch (op.op) {
-            case "create-variable":
-                this.applyRegistryMutation(registry => {
-                    registry.entries[op.entry.id] = { ...op.entry };
-                });
-                return;
-            case "update-variable":
-                this.applyRegistryMutation(registry => {
-                    if (!registry.entries[op.variableId]) {
-                        return;
-                    }
-                    registry.entries[op.variableId] = { ...op.entry };
-                });
-                return;
-            case "delete-variable":
-                // ⚠ **The node-ref sweep is not here, and its absence is deliberate.** It is a write
-                // to the blueprint document, which this service does not own; the caller performs it
-                // around this call and reports which blueprints it touched, so that derived work
-                // reaches the effect's digests. See `LiveSessionService.applyVariableOp`.
-                this.applyRegistryMutation(registry => {
-                    delete registry.entries[op.variableId];
-                });
-                return;
-            default: {
-                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
-                // other machine in the room and not on this one, and nothing says so until a digest
-                // disagrees one message later.
-                const unapplied: never = op;
-                throw new RendererError(`No applier for live variable operation: ${JSON.stringify(unapplied)}`);
-            }
-        }
+        // ⚠ **The node-ref sweep of a deleted variable is not here, and its absence is deliberate.**
+        // It is a write to the blueprint document, which this service does not own; the caller
+        // performs it around this call. See `LiveSessionService.applyVariableOp`.
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        this.applyRegistryMutation(registry => {
+            applyVariableOpToDocument(registry, structuredClone(op));
+        });
     }
 
     /**

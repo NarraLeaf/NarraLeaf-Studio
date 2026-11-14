@@ -671,6 +671,44 @@ export const workspace = {
      * サーバーに関する語はレールと同じキーを共有しているため、ここにはこのパネル固有のものだけを置く。
      */
     team: {
+        docs: {
+            refused: "サーバーがこの編集を受け付けませんでした",
+            restored: "{{by}} が以前のバージョンを復元しました。全員に反映されています。",
+            diverged: "このウィンドウはサーバーと食い違ったため、最後に保存されたバージョンからやり直します",
+            history: "履歴",
+            historyHint: "全員の編集はその場でサーバーに保存されます。プロジェクトが落ち着くと自動でバージョンが保存されます。戻ってこられる地点を残したいときは手動で保存してください。",
+            saveVersion: "バージョンを保存",
+            versionLabel: "このバージョンの名前（任意）",
+            restore: "復元",
+            restoreConfirm: "このバージョンを全員に対して復元しますか？新しいバージョンになるので、同じ方法で元に戻せます。",
+            noVersions: "まだバージョンがありません",
+            online: "リアルタイム共同編集中",
+            offline: "オフライン — 編集はこの端末に保存され、サーバーに戻ったときに送信されます",
+            syncing: "同期中",
+            readOnly: "このプロジェクトでのあなたの役割は閲覧のみです",
+            conflictsTitle: "オフライン中の編集の一部を適用できませんでした",
+            conflictsHint: "オフラインの間に他の人がこれらの行を変更しました。ストーリーには相手の内容が入っています。あなたの内容は下にあるので、必要なら貼り戻してください。",
+            dismiss: "閉じる",
+            savedBy: "{{name}} が保存",
+            automatic: "自動",
+            preview: "表示",
+            previewing: "保存済みのバージョンを表示中 — ここでの変更は保存されません",
+            backToPresent: "現在に戻る",
+            compare: "現在と比較",
+            comparing: "このバージョン以降の変更",
+            noDifferences: "このバージョン以降の変更はありません",
+            documentAdded: "このバージョン以降に作成",
+            documentRemoved: "このバージョン以降に削除",
+            loadMore: "さらに読み込む",
+            override: "自分の内容で上書き",
+            close: "閉じる",
+            detach: "個人プロジェクトにする",
+            detachConfirm: "チームサーバーへの追従をやめ、個人プロジェクトとして残しますか？",
+            detachDetail: "このウィンドウの内容（オフライン中の編集を含む）がこのプロジェクトの最新のローカルバージョンになります。サーバー上のチームプロジェクトは変更されず、他の人は作業を続けられます。あとで再接続すると、変更が送られます。",
+            conflictFile: "{path}：チームもこのファイルを変更しました。いまはサーバー上の版が開いています",
+            detachedHint: "これはチームプロジェクトの個人用コピーです。再接続すると、その後の変更がチームプロジェクトに送られます。チームも変更した箇所は一覧で選べます。",
+            reconnect: "チームプロジェクトに再接続",
+        },
         // 製品名。作者がこの名前に出会う場所なので省略しない。パネル内の他の行はサーバーをサーバーと呼ぶ。
         title: "NarraLeaf Team",
         command: {
@@ -719,6 +757,8 @@ export const workspace = {
         liveAsking: "許可を待っている",
         liveLeaving: "退出中",
         // 参加は済み、到着前にルームで起きたことを適用しているところ。
+        liveRebase: "最新バージョンへ移動",
+        liveRebaseHint: "セッションの変更をバージョンとして記録し、そのバージョンでセッションを開き直します。参加者は自動で移動します",
         liveCatchingUp: "セッションに追いついているところ",
         // 開始・参加の前に満たしておく必要のあること。一つずつ名指しする。
         liveNoStory: "ストーリーを追加するとライブセッションを開始できる",
@@ -788,6 +828,66 @@ export const workspace = {
         // そろってから現れるコントロールでは何が足りないかを調べられないため、
         // 操作不可にしたうえで、どの答えを待っているかを示す。
         livePresence: "ライブセッション",
+        commitTodos: {
+            title: "このバージョンで完了",
+            hint: "チェックした ToDo はコミット後に完了になり、完了したバージョンが記録されます",
+            failed: "バージョンは記録されましたが、{count} 件の ToDo を完了にできませんでした",
+        },
+        editingNotice: {
+            here: "{name} もここを編集しています（{since}）。同時の変更はマージ時にまとめて扱われます。",
+            justNow: "開いたばかり",
+            minutes: "{minutes} 分前から",
+            dismiss: "OK",
+        },
+        liveChat: {
+            title: "セッションチャット",
+            open: "セッションチャットを開く",
+            close: "閉じる",
+            placeholder: "メッセージを入力…",
+            send: "送信",
+            empty: "まだ発言はありません",
+            nobodyElse: "参加者はあなただけです",
+            follow: "{name} をフォロー：相手の移動先に一緒に移動します",
+            stopFollowing: "{name} のフォローをやめる",
+            followingShort: "フォロー中",
+        },
+        requests: {
+            askReview: "レビューを依頼",
+            assignLanguage: "翻訳・ボイスを割り当て",
+            askAsset: "素材を依頼",
+            reviewTitle: "レビュー対象（例：「3〜5章」）",
+            reviewer: "レビュアー",
+            from: "開始",
+            fromStart: "（最初から）",
+            to: "終了",
+            sendReview: "依頼を送信",
+            kindTranslation: "翻訳",
+            kindVoice: "ボイス",
+            locale: "言語（例：ja）",
+            nobodyYet: "未割り当て",
+            assign: "割り当て",
+            translateTitle: "「{story}」を翻訳 → {locale}",
+            voiceTitle: "「{story}」のボイス（{locale}）",
+            assetPlaceholder: "必要な素材（例：「Ada 泣き差分」）",
+            sendAsset: "送信",
+            sent: "送信しました。Web コンソールのボードで確認できます",
+            failed: "送信できませんでした。接続か権限を確認してください",
+        },
+        roleNotice: {
+            reviewer: "このプロジェクトではレビュアー：閲覧・コメント・ToDo はできるが、コミットや送信はできない",
+            viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
+            dismiss: "了解",
+        },
+        notifications: {
+            label: "通知",
+            empty: "通知はない",
+            markAllRead: "すべて既読にする",
+            mention: "{who} がコメントであなたに言及した",
+            reply: "{who} があなたの参加しているスレッドに返信した",
+            assigned: "{who} があなたに ToDo を割り当てた",
+            "review-requested": "{who} からレビューを依頼されました",
+            "review-answered": "{who} がレビュー依頼に回答しました",
+        },
         liveConnecting: "そのサーバーに接続中",
         liveUnsupported: "そのサーバーはライブセッションに対応していない",
         liveNobody: "このプロジェクトに進行中のライブセッションはない",
@@ -1129,6 +1229,7 @@ export const workspace = {
             // 上のタイトルは作者が実際に入力しているファイルについては偽になる。
             frozenTitleSession: "このファイルは保存されない",
             frozenDetailSession: "ライブセッション中。保存されるのはセッションが持つドキュメントだけで、ほかを変更するにはセッションから抜ける",
+            frozenDetailTeam: "この内容はチームサーバーで共有されないため、変更しても誰にも届きません。オフライン中はストーリーのみ保存されます。",
             // マージには「解除」が無い。マージが終わるまで作業ツリーは両側を抱えるので、
             // それを名指しすることだけが役に立つ。
             frozenDetailMerge: "マージが終わっていない。バージョンのパネルで終わらせると保存が再開する",
@@ -1158,6 +1259,7 @@ export const workspace = {
                 projectIcon: "プロジェクトのアイコン",
                 panelLayout: "パネルのレイアウト",
                 recentColors: "最近使った色",
+                teamDocs: "チームプロジェクトの同期位置",
                 pluginData: "プラグインのデータ",
                 // ドキュメントの保存先ではない。作者が編集中の行で、その文字はまだドキュメントに
                 // 渡っていない。
@@ -1254,6 +1356,7 @@ export const workspace = {
             // 読まされる必要はない。隠さず無効にしてあるのは、まさにここに出す先を残すため。
             unavailable: "プロジェクトが凍結している間は使えない。凍結を解除すると使える",
             unavailableLive: "リアルタイムセッション中は使えない。セッションから退出すると使える",
+            unavailableTeam: "チームサーバーで共有されない内容のため、チームプロジェクトでは編集できません（オフライン中はストーリーのみ編集できます）",
         },
         distrust: {
             unavailable: "このプロジェクトを信頼するまで使えない。ステータスバーの「未信頼」から信頼できる",
@@ -1359,6 +1462,8 @@ export const workspace = {
             // 命令ではなく問いで、「任意」と書いてある。実際そのとおりで、メッセージが空でも
             // 正当なリビジョンになり、メッセージの無いものは上の一覧で自分の名を名乗る。
             commitPlaceholder: "何が変わったか（任意）",
+            openThreadsInChanges: "この変更に含まれるストーリーに未解決のコメントが {count} 件あります。",
+            openThreadsShow: "表示",
             commitMessage: "バージョンのメッセージ",
             authorLabel: "バージョンに記録される作成者",
             authorPlaceholder: "作成者名",

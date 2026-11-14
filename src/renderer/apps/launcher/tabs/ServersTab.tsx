@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Server } from "lucide-react";
+import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 
 import { getInterface } from "@/lib/app/bridge";
 import {
@@ -18,6 +19,7 @@ import {
     serverCan,
     serverDisplayName,
     serverHost,
+    signInWithBrowser,
     signInWithPassword,
     useServers,
 } from "@/lib/vcs/servers";
@@ -96,6 +98,12 @@ export type ForgetServerProject = (
 ) => Promise<boolean>;
 
 export interface ServersTabProps {
+    /**
+     * A `narraleaf://` link to act on, and when it arrived (so the same link twice is two
+     * requests). `connect` opens Add Server with the address filled in; `open` picks out a
+     * server this installation already holds and does nothing for one it does not.
+     */
+    deepLink?: { link: TeamDeepLink; at: number } | null;
     onForget?: ForgetServerProject;
 }
 
@@ -116,7 +124,7 @@ export function isEmptyOnServer(project: VcsServerProject): boolean {
     return project.history?.revisions === 0;
 }
 
-export function ServersTab({ onForget }: ServersTabProps = {}) {
+export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
     const { t } = useTranslation();
     const { servers, loading, reload } = useServers();
     const [chosen, setChosen] = useState<string | null>(null);
@@ -232,6 +240,29 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
     // - which servers this installation is signed in to - and this tab keeps what they
     // hold; the dialog belongs to neither and is opened by both.
     const [adding, setAdding] = useState(false);
+    const [prefill, setPrefill] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (deepLink == null || loading) return;
+        const { link } = deepLink;
+        if (link.kind === "connect") {
+            setPrefill(link.server);
+            setAdding(true);
+            return;
+        }
+        // Only a server already held. A link that names any other is a link anybody could
+        // write, and it gets no further than this.
+        const held = servers.find(server => {
+            try {
+                return new URL(server.authUrl).origin === link.server;
+            } catch {
+                return false;
+            }
+        });
+        if (held !== undefined) setChosen(held.remoteOrigin);
+    // Acted on once per link: `at` changes with each one, the server list does not need to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deepLink?.at, loading]);
 
     /** A server was added, so this tab has one more to show and may need to choose it. */
     const serverAdded = useCallback((session: VcsServerSession) => {
@@ -352,8 +383,10 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 {adding && (
                     <AddServerModal
                         onAdded={serverAdded}
-                        onClose={() => setAdding(false)}
+                        onClose={() => { setAdding(false); setPrefill(undefined); }}
+                        initialAddress={prefill}
                         signInWithPassword={signInWithPassword}
+                        signInWithBrowser={signInWithBrowser}
                     />
                 )}
                 <EmptyState
@@ -381,8 +414,10 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
             {adding && (
                 <AddServerModal
                     onAdded={serverAdded}
-                    onClose={() => setAdding(false)}
+                    onClose={() => { setAdding(false); setPrefill(undefined); }}
+                    initialAddress={prefill}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
 

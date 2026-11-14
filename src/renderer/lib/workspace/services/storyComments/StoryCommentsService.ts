@@ -45,6 +45,27 @@ export type StoryCommentEditOptions = {
     scopeId?: HistoryScopeId;
 };
 
+/** A thread as the Team server has it, in this document's terms. See `storyCommentsTeamSync`. */
+export type StoryCommentRemoteThread = {
+    teamThreadId: string;
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+    resolved: boolean;
+    resolvedBy?: StoryCommentAuthor;
+    resolvedAt?: number;
+    createdAt: number;
+    /** What the thread suggests the row says instead, where it opened as a suggestion. */
+    suggestion?: string;
+    comments: Array<{
+        teamCommentId: string;
+        author: StoryCommentAuthor;
+        body: string;
+        createdAt: number;
+        editedAt?: number;
+    }>;
+};
+
 export type StoryCommentThreadInput = {
     storyId: string;
     sceneId: string;
@@ -53,6 +74,8 @@ export type StoryCommentThreadInput = {
     text?: string;
     body: string;
     todo?: boolean;
+    /** The row's new text, for a suggested edit. */
+    suggestion?: string;
 };
 
 /**
@@ -196,8 +219,18 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             return null;
         }
         const existing = this.threadForBlock(input.blockId);
+        const suggestion = input.suggestion?.trim() ? input.suggestion : undefined;
         if (existing && !existing.resolved) {
-            return this.reply(existing.id, body, options);
+            const replied = this.reply(existing.id, body, options);
+            if (replied && suggestion !== undefined) {
+                // One row, one conversation: a suggestion made where a thread is open becomes that
+                // thread's suggestion, replacing an older one nobody took.
+                const next: StoryCommentThread = { ...replied, suggestion };
+                delete next.suggestionAppliedAt;
+                this.commit(replied.id, next, "storyComments.history.reply", options);
+                return next;
+            }
+            return replied;
         }
         const now = Date.now();
         const comment: StoryComment = { id: this.newId(), author: this.currentAuthor(), body, createdAt: now };
@@ -212,6 +245,7 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             resolved: false,
             createdAt: now,
             comments: [comment],
+            ...(suggestion === undefined ? {} : { suggestion }),
         };
         this.commit(thread.id, thread, "storyComments.history.create", options);
         return thread;
@@ -310,6 +344,102 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
             ...(excerpt ? { excerpt } : {}),
         };
         this.commit(threadId, next, "storyComments.history.reanchor", options);
+        return true;
+    }
+
+    /* ----------------------------------------------------------------- Team server sync */
+
+    /**
+     * Record that a local thread, and some of its comments, now exist on the Team server.
+     *
+     * Not an edit: nothing anybody wrote changed, so it is not an undo step - the same reason
+     * {@link applyRemoteThread} is not one.
+     */
+    public markSynced(threadId: string, teamThreadId: string, comments: Readonly<Record<string, string>>): void {
+        const thread = this.getThread(threadId);
+        if (!thread) return;
+        const next: StoryCommentThread = {
+            ...thread,
+            teamThreadId,
+            comments: thread.comments.map(comment =>
+                comments[comment.id] !== undefined ? { ...comment, teamCommentId: comments[comment.id] } : comment),
+        };
+        this.write(threadId, next);
+    }
+
+    /** Record the Team to-do a thread's to-do mark became. Not an undo step, like {@link markSynced}. */
+    public markTodoSynced(threadId: string, teamTodoId: string): void {
+        const thread = this.getThread(threadId);
+        if (!thread || thread.teamTodoId === teamTodoId) return;
+        this.write(threadId, { ...thread, teamTodoId });
+    }
+
+    /**
+     * Take a thread as the Team server has it.
+     *
+     * The server is the record for a thread that is on it: its comments, in its order, and whether
+     * it is resolved. A comment written here and not sent yet (no `teamCommentId`) is kept after them,
+     * for the next push. A thread this project has never seen is added under an id derived from the
+     * server's. Not an undo step: nobody here made the change.
+     */
+    public applyRemoteThread(remote: StoryCommentRemoteThread): void {
+        const local = Object.values(this.getDocument().threads).find(thread => thread.teamThreadId === remote.teamThreadId);
+        const pending = local?.comments.filter(comment => comment.teamCommentId === undefined) ?? [];
+        const comments: StoryComment[] = [
+            ...remote.comments.map(comment => ({
+                id: local?.comments.find(mine => mine.teamCommentId === comment.teamCommentId)?.id ?? `team:${comment.teamCommentId}`,
+                author: comment.author,
+                body: comment.body,
+                createdAt: comment.createdAt,
+                ...(comment.editedAt === undefined ? {} : { editedAt: comment.editedAt }),
+                teamCommentId: comment.teamCommentId,
+            })),
+            ...pending,
+        ];
+        if (comments.length === 0) return;
+        const id = local?.id ?? `team:${remote.teamThreadId}`;
+        const base: StoryCommentThread = {
+            id,
+            storyId: remote.storyId,
+            sceneId: remote.sceneId,
+            blockId: remote.blockId,
+            ...(local?.excerpt ? { excerpt: local.excerpt } : {}),
+            todo: local?.todo ?? false,
+            resolved: remote.resolved,
+            createdAt: remote.createdAt,
+            comments,
+            teamThreadId: remote.teamThreadId,
+            ...(local?.teamTodoId ? { teamTodoId: local.teamTodoId } : {}),
+            ...(remote.suggestion !== undefined ? { suggestion: remote.suggestion } : local?.suggestion !== undefined ? { suggestion: local.suggestion } : {}),
+            ...(local?.suggestionAppliedAt === undefined ? {} : { suggestionAppliedAt: local.suggestionAppliedAt }),
+        };
+        const next: StoryCommentThread = remote.resolved
+            ? {
+                ...base,
+                ...(remote.resolvedBy ? { resolvedBy: remote.resolvedBy } : {}),
+                ...(remote.resolvedAt === undefined ? {} : { resolvedAt: remote.resolvedAt }),
+            }
+            : base;
+        if (local && JSON.stringify(local) === JSON.stringify(next)) return;
+        this.write(id, next);
+    }
+
+    /**
+     * Record that a thread's suggestion was taken: the row now says it, so the thread is resolved.
+     * The edit itself is the story's own, made by the caller, and undone the story's way.
+     */
+    public markSuggestionApplied(threadId: string, options: StoryCommentEditOptions = {}): boolean {
+        const thread = this.getThread(threadId);
+        if (!thread || thread.suggestion === undefined) return false;
+        const now = Date.now();
+        const next: StoryCommentThread = {
+            ...thread,
+            suggestionAppliedAt: now,
+            resolved: true,
+            resolvedBy: this.currentAuthor(),
+            resolvedAt: now,
+        };
+        this.commit(threadId, next, "storyComments.history.resolve", options);
         return true;
     }
 

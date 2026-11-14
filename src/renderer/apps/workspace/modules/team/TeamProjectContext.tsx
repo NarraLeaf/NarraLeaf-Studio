@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 import { useTeamProject, type TeamProjectSurface } from "../../hooks/useTeamProject";
 import { isVersionSurfaceVisible } from "../../components/layout/versionRailModel";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
+import { useActiveEditorTab } from "../../hooks/useUIService";
+import { teamEditingDocument } from "./teamEditing";
 
 /**
  * This project's server as a live source, opened once for the whole window.
@@ -48,9 +50,11 @@ export function TeamProjectProvider({ surface, children }: {
     const followed = isVersionSurfaceVisible(surface.state)
         && surface.state.kind !== "not-a-repository"
         && surface.serverSession !== null;
+    const { tab } = useActiveEditorTab();
     const team = useTeamProject(
         followed ? surface.remote : null,
         followed ? surface.repositoryId : null,
+        teamEditingDocument(tab),
     );
     return <TeamProjectContext.Provider value={team}>{children}</TeamProjectContext.Provider>;
 }

@@ -118,6 +118,7 @@ export const story = {
         // On the mark a row wears while somebody else is writing it. A person is named:
         // there is no width for a name beside the glyph, and a truncated one names nobody.
         rowClaimed: "{name} is writing this line",
+        rowCursor: "{name} is on this line",
         // What the session's host would not take. The words the author typed stay exactly
         // where they are - a refused row is the case where what is on screen is the only
         // copy of them - so each of these says what happened and nothing else.

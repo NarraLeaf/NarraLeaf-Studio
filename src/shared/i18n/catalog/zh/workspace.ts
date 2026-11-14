@@ -662,6 +662,44 @@ export const workspace = {
      * 这里只放这个面板独有的。
      */
     team: {
+        docs: {
+            refused: "服务器没有接受这次修改",
+            restored: "{{by}} 恢复了之前的一个版本，所有人现在看到的都是它。",
+            diverged: "此窗口与服务器不一致，将从最近保存的版本重新开始",
+            history: "历史版本",
+            historyHint: "所有人的修改都会实时保存在服务器上。项目安静下来时会自动存一个版本；也可以手动保存，标记一个以后能回来的点。",
+            saveVersion: "保存版本",
+            versionLabel: "给这个版本起个名字（可选）",
+            restore: "恢复",
+            restoreConfirm: "要为所有人恢复这个版本吗？它会成为一个新版本，之后可以用同样的方式撤回。",
+            noVersions: "还没有版本",
+            online: "实时协作中",
+            offline: "离线中——你的修改先保存在本机，连上服务器后会自动发送",
+            syncing: "正在同步",
+            readOnly: "你在这个项目里是只读角色",
+            conflictsTitle: "离线时的修改有一部分没能应用",
+            conflictsHint: "你离线期间，别人改了这些行。故事里现在是对方的版本；你写的内容在下面，如果应该以你的为准，可以复制回去。",
+            dismiss: "知道了",
+            savedBy: "由 {{name}} 保存",
+            automatic: "自动",
+            preview: "查看",
+            previewing: "正在查看已保存的版本——这里的改动不会保存",
+            backToPresent: "回到当前",
+            compare: "与当前对比",
+            comparing: "这个版本之后的改动",
+            noDifferences: "这个版本之后没有改动",
+            documentAdded: "这个版本之后新建",
+            documentRemoved: "这个版本之后被删除",
+            loadMore: "加载更多",
+            override: "用我的覆盖",
+            close: "关闭",
+            detach: "转为个人项目",
+            detachConfirm: "不再跟随团队服务器，把它保留为个人项目吗？",
+            detachDetail: "此窗口里的内容（包括离线时的修改）会成为这个项目最新的本地版本。服务器上的团队项目不受影响，其他人可以继续在上面工作。之后可以重新连接，届时会把你的修改发回去。",
+            conflictFile: "{path}：团队也改了这个文件，现在打开的是服务器上的版本",
+            detachedHint: "这是一个团队项目的个人副本。重新连接会把之后的修改发回团队项目；团队同时改过的地方会列出来让你选择。",
+            reconnect: "重新连接到团队项目",
+        },
         // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
         title: "NarraLeaf Team",
         command: {
@@ -709,6 +747,8 @@ export const workspace = {
         liveAsking: "等待放行",
         liveLeaving: "正在离开",
         // 已加入，正在把加入之前会话里发生的事全部应用完。
+        liveRebase: "移到最新版本",
+        liveRebaseHint: "把会话里的修改记成一个版本，在这个版本上重开会话，成员会自动跟过来",
         liveCatchingUp: "正在跟上会话进度",
         // 开始或加入之前必须先满足的条件，每一条点名其中一件。
         liveNoStory: "先添加一个故事才能开始实时会话",
@@ -773,6 +813,66 @@ export const workspace = {
         // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
         // 所以它改为置灰并说明自己在等哪一个答复。
         livePresence: "实时会话",
+        commitTodos: {
+            title: "随这个版本完成",
+            hint: "勾选的待办会在提交后标为完成，并记下是哪个版本完成的",
+            failed: "版本已提交，但有 {count} 条待办没能标为完成",
+        },
+        editingNotice: {
+            here: "{name} 也在编辑这里（{since}）。同时修改的内容会在合并时一起处理。",
+            justNow: "刚刚打开",
+            minutes: "已经 {minutes} 分钟",
+            dismiss: "知道了",
+        },
+        liveChat: {
+            title: "会话聊天",
+            open: "打开会话聊天",
+            close: "收起",
+            placeholder: "说点什么…",
+            send: "发送",
+            empty: "还没有人说话",
+            nobodyElse: "会话里只有你",
+            follow: "跟随 {name}：TA 去哪里你就去哪里",
+            stopFollowing: "停止跟随 {name}",
+            followingShort: "跟随中",
+        },
+        requests: {
+            askReview: "请求评审",
+            assignLanguage: "分配翻译或配音",
+            askAsset: "请求资源",
+            reviewTitle: "评审什么，例如「第 3–5 章」",
+            reviewer: "评审人",
+            from: "从",
+            fromStart: "（从头）",
+            to: "到",
+            sendReview: "发送评审请求",
+            kindTranslation: "翻译",
+            kindVoice: "配音",
+            locale: "语言，如 ja",
+            nobodyYet: "暂不指派",
+            assign: "分配",
+            translateTitle: "翻译「{story}」→ {locale}",
+            voiceTitle: "配音「{story}」({locale})",
+            assetPlaceholder: "需要什么，例如「Ada 哭泣差分」",
+            sendAsset: "发出",
+            sent: "已发出，可以在网页的看板上跟进",
+            failed: "没有发出去，请检查连接或权限",
+        },
+        roleNotice: {
+            reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
+            viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
+            dismiss: "知道了",
+        },
+        notifications: {
+            label: "通知",
+            empty: "没有通知",
+            markAllRead: "全部标为已读",
+            mention: "{who} 在批注中提到了你",
+            reply: "{who} 回复了你参与的批注",
+            assigned: "{who} 指派了一个待办给你",
+            "review-requested": "{who} 请你评审",
+            "review-answered": "{who} 回复了你的评审请求",
+        },
         liveConnecting: "正在连接该服务器",
         liveUnsupported: "该服务器不提供实时会话",
         liveNobody: "此项目没有进行中的实时会话",
@@ -1096,6 +1196,7 @@ export const workspace = {
             // 对作者正在打字的那份文件是假的。
             frozenTitleSession: "该文件不会被保存",
             frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
+            frozenDetailTeam: "这部分内容不经团队服务器同步，改了也不会到达其他人；离线时只保存故事。",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -1123,6 +1224,7 @@ export const workspace = {
                 projectIcon: "项目图标",
                 panelLayout: "面板布局",
                 recentColors: "最近使用的颜色",
+                teamDocs: "团队项目的同步位置",
                 pluginData: "插件数据",
                 // 不是文档存储：作者正打开编辑的那一行，其内容尚未写入文档。
                 openEditors: "正在编辑的行",
@@ -1215,6 +1317,7 @@ export const workspace = {
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
             unavailable: "项目冻结期间不可用，解除冻结后恢复使用",
             unavailableLive: "实时会话期间不可用，离开会话后恢复使用",
+            unavailableTeam: "这部分内容不经团队服务器同步，团队项目里不能编辑（离线时只能编辑故事）",
         },
         distrust: {
             unavailable: "此项目受信任后方可使用，点击状态栏的「未受信任」以信任",
@@ -1316,6 +1419,8 @@ export const workspace = {
             // 是个问句而不是命令，并且明说可选——因为它确实可选：不写消息也是一个合法的版本，
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
             commitPlaceholder: "这次改了什么？（可选）",
+            openThreadsInChanges: "还有 {count} 条未解决的批注在这次修改的故事里。",
+            openThreadsShow: "查看",
             commitMessage: "版本说明",
             authorLabel: "提交版本记录的作者",
             authorPlaceholder: "作者名",

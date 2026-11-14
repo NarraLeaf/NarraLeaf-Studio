@@ -1,3 +1,4 @@
+import { applyAudioTrackOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { audioTracksSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -488,67 +489,14 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
      * before anybody else joined - the catastrophe the session's own undo exists to avoid.
      */
     public applyLiveOp(op: LiveAudioTrackOp): void {
-        switch (op.op) {
-            case "create-audio-track": {
-                const reparent = new Set(op.reparent ?? []);
-                this.commitTracks(tracks => {
-                    const rest = tracks
-                        .filter(track => track.id !== op.track.id)
-                        // Undoing a deletion: the buses that were promoted out of it come home. An
-                        // ordinary creation names none, so this is a no-op for it.
-                        .map(track => (reparent.has(track.id) ? { ...track, parentId: op.track.id } : track));
-                    const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
-                    if (index < 0) {
-                        return [...rest, { ...op.track }];
-                    }
-                    const next = [...rest];
-                    next.splice(index, 0, { ...op.track });
-                    return next;
-                });
-                return;
-            }
-            case "update-audio-track":
-                this.commitTracks(tracks => tracks.map(track => (
-                    track.id === op.trackId ? { ...op.track, id: op.trackId } : track
-                )));
-                return;
-            case "delete-audio-track": {
-                const doomed = this.getTrack(op.trackId);
-                if (!doomed) {
-                    // Already gone, so there is nothing to remove and nothing to promote. Not an
-                    // error: the host refuses a deletion it can see is impossible, and a machine
-                    // that is behind is caught by the digest rather than by a throw in an applier.
-                    return;
-                }
-                const inheritedParent = doomed.parentId;
-                this.commitTracks(tracks => tracks
-                    .filter(track => track.id !== op.trackId)
-                    .map(track => (track.parentId === op.trackId ? { ...track, parentId: inheritedParent } : track)));
-                return;
-            }
-            case "move-audio-track":
-                this.commitTracks(tracks => {
-                    const moving = tracks.find(track => track.id === op.trackId);
-                    if (!moving || op.beforeId === op.trackId) {
-                        return tracks;
-                    }
-                    const rest = tracks.filter(track => track.id !== op.trackId);
-                    const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
-                    if (index < 0) {
-                        return [...rest, moving];
-                    }
-                    rest.splice(index, 0, moving);
-                    return rest;
-                });
-                return;
-            default: {
-                // A verb with no applier would otherwise be a silent no-op: the effect lands on
-                // every other machine in the room and not on this one, and nothing says so until a
-                // digest disagrees one message later.
-                const unapplied: never = op;
-                throw new RendererError(`No applier for live audio track operation: ${JSON.stringify(unapplied)}`);
-            }
+        const document = { tracks: [...this.getDocument().tracks] };
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        if (!applyAudioTrackOpToDocument(document, structuredClone(op))) {
+            // Already gone: nothing to remove and nothing to promote.
+            return;
         }
+        this.commitTracks(() => document.tracks as ProjectAudioTrack[]);
     }
 
     /** {@link applyTrackMutation} without the undo step. What an effect being applied goes through. */

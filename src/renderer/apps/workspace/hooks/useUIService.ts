@@ -330,6 +330,9 @@ export function useActiveEditorTab(): { tab: EditorTab | null; tabId: string | n
     });
 
     useEffect(() => {
+        // Outside a workspace (a test, a surface mounted on its own) there are no tabs, which is an
+        // answer rather than a crash: the Team provider asks this of every window it wraps.
+        if (!uiService) return;
         let mounted = true;
 
         const resolve = () => {

@@ -509,7 +509,9 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 ? "workspace.shell.save.frozenTitleSession"
                 : "workspace.shell.save.frozenTitle"),
             detail: session
-                ? translate("workspace.shell.save.frozenDetailSession")
+                ? translate(refusal.reason.kind === "live-session" && refusal.reason.session === "team-documents"
+                    ? "workspace.shell.save.frozenDetailTeam"
+                    : "workspace.shell.save.frozenDetailSession")
                 : refusal.reason.kind === "revision"
                     ? translate("workspace.shell.save.frozenDetailRevision", {
                         version: refusal.reason.label ?? refusal.reason.revision,

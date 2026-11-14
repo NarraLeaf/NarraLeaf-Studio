@@ -36,7 +36,7 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
-vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: null }) }));
+vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: null }), useOptionalWorkspace: () => null }));
 
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],

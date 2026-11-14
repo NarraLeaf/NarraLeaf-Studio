@@ -1,3 +1,4 @@
+import { applyAssetSetOpToDocument } from "@shared/authority/project";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { assetSetsSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -486,53 +487,11 @@ export class AssetSetService extends Service<AssetSetService> {
      * stack would be a whole-document snapshot taken before anybody else joined.
      */
     public applyLiveOp(op: LiveAssetSetOp): void {
-        switch (op.op) {
-            case "create-asset-sets":
-                this.commitSets(sets => {
-                    const next = sets.filter(set => !op.creates.some(create => create.set.id === set.id));
-                    for (const create of op.creates) {
-                        const index = create.beforeId === null
-                            ? -1
-                            : next.findIndex(set => set.id === create.beforeId);
-                        next.splice(index < 0 ? next.length : index, 0, structuredClone(create.set));
-                    }
-                    return next;
-                });
-                return;
-            case "update-asset-set":
-                this.commitSets(sets => sets.map(set => (
-                    set.id === op.setId ? { ...structuredClone(op.set), id: op.setId } : set
-                )));
-                return;
-            case "delete-asset-sets": {
-                // Tolerant of a set that is already gone, with `delete-character-group`: the second
-                // of two deletions changes nothing.
-                const doomed = new Set(op.setIds);
-                this.commitSets(sets => sets.filter(set => !doomed.has(set.id)));
-                return;
-            }
-            case "move-asset-sets": {
-                const moves = new Map(op.moves.map(move => [move.setId, move.groupId]));
-                this.commitSets(sets => sets.map(set => {
-                    if (!moves.has(set.id)) {
-                        return set;
-                    }
-                    const groupId = moves.get(set.id) ?? null;
-                    // The key is removed rather than set to undefined: the two read alike in
-                    // TypeScript and are not the same document to a canonical encoder or a digest.
-                    const { groupId: _current, ...rest } = set;
-                    return groupId ? { ...rest, groupId } : rest;
-                }));
-                return;
-            }
-            default: {
-                // A verb with no applier would otherwise be a silent no-op: the effect lands on
-                // every other machine in the room and not on this one, and nothing says so until a
-                // digest disagrees one message later.
-                const unapplied: never = op;
-                throw new RendererError(`No applier for live asset set operation: ${JSON.stringify(unapplied)}`);
-            }
-        }
+        const document = { sets: [...this.getDocument().sets] };
+        // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
+        // so a document both apply one operation to comes out the same.
+        applyAssetSetOpToDocument(document, structuredClone(op));
+        this.commitSets(() => document.sets as AssetSet[]);
     }
 
     /** {@link applySetMutation} without the undo step. What an effect being applied goes through. */

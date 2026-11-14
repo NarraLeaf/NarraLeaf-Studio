@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionPresence, TeamProjectProvider } from "../../modules/team";
+import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -53,6 +53,13 @@ import { backgroundLayerStyle, backgroundPlateStyle } from "@/lib/workspace/serv
 import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { useDialogs } from "../../hooks/useUIService";
+import {
+    readTeamHistoryCollapsed,
+    teamHistoryWidth,
+    TeamHistoryRail,
+    TeamReconnectBar,
+    useTeamDocuments,
+} from "../../modules/team/TeamHistoryRail";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -163,6 +170,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { context, recovery } = useWorkspace();
     // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
     const dialogs = useDialogs();
+    const teamDocuments = useTeamDocuments();
+    const [teamHistoryCollapsed, setTeamHistoryCollapsed] = useState(readTeamHistoryCollapsed);
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -464,8 +473,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         expanded: versionRailExpanded,
         frozen: versionSurface.frozen !== null,
     });
-    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel.
-    const railWidth = versionRailWidth(railPresence);
+    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel. A team project's
+    // history takes the rail's place, at the rail's own two widths.
+    const railWidth = teamDocuments.view !== null
+        ? teamHistoryWidth(teamHistoryCollapsed)
+        : versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
     /**
@@ -869,6 +881,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     return (
         <TeamProjectProvider surface={versionSurface}>
+            <StoryCommentsTeamSyncMount />
+            <TeamRoleNotice />
+            <TeamEditingNotice />
+            <LiveCursorBroadcaster />
+            <LiveSessionChat />
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
@@ -927,6 +944,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 where an application puts the people you are in a document with. It is
                                 the only always-visible statement that a live session is running, and a
                                 session outlives every tab. */}
+                            <TeamNotificationsBell />
                             <LiveSessionPresence />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}
@@ -946,6 +964,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <RecoveryBanner />
 
                 <ExperimentalNotice />
+                <TeamReconnectBar surface={teamDocuments} />
 
                 {/* Main Content. `isolate` seals every z-index inside the docks and the editors into
                     this row, so the window-level layers above it - the floating story preview, the
@@ -954,11 +973,22 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
                         a past version the author still needs the sidebar, the assets and the scene tree.
                         Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
-                    <VersionRail
-                        surface={versionSurface}
-                        presence={railPresence}
-                        onExpandedChange={setVersionRailExpanded}
-                    />
+                    {/* A team project whose documents its Team server holds has no commits, pushes or
+                        merges to show: its history is the server's saved versions, and that list takes
+                        the version rail's place. Every other project keeps the rail. */}
+                    {teamDocuments.view !== null ? (
+                        <TeamHistoryRail
+                            surface={teamDocuments}
+                            collapsed={teamHistoryCollapsed}
+                            onCollapsedChange={setTeamHistoryCollapsed}
+                        />
+                    ) : (
+                        <VersionRail
+                            surface={versionSurface}
+                            presence={railPresence}
+                            onExpandedChange={setVersionRailExpanded}
+                        />
+                    )}
 
                     {/* Left Sidebar Selector */}
                     <LeftSidebarSelector

@@ -5,13 +5,14 @@ import { getInterface } from "@/lib/app/bridge";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Modal } from "@/lib/components/elements/Modal";
-import { serverDisplayName, serverHost, signInWithPassword } from "@/lib/vcs/servers";
+import { serverDisplayName, serverHost, signInWithBrowser, signInWithPassword } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { TeamCollaboration } from "./TeamCollaboration";
+import { TeamRequestsSection } from "./TeamRequests";
 import { teamServerFace } from "./teamFace";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
@@ -134,6 +135,7 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                     onAdded={() => undefined}
                     onClose={() => setAdding(false)}
                     signInWithPassword={signInWithPassword}
+                    signInWithBrowser={signInWithBrowser}
                 />
             )}
 
@@ -291,6 +293,8 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                             />
                         )}
                     </div>
+
+                    <TeamRequestsSection />
 
                     {/* A refusal that belongs to something pressed in here. The picker draws its
                         own, over the top of this, so the two are never read at once. */}

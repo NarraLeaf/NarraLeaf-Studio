@@ -6,6 +6,13 @@ import type { LocaleNamespace } from "../types";
  * 只写标签与预期；批注是什么、存在哪里由帮助主题说明。
  */
 export const storyComments = {
+    suggest: "建议修改",
+    suggestClear: "不提建议",
+    suggestPlaceholder: "这一行改成…",
+    suggestedText: "建议改为",
+    applySuggestion: "采纳",
+    suggestionApplied: "已采纳",
+    suggestionUnavailable: "这一行不是文字行，无法直接采纳",
     add: "添加批注",
     open: "打开批注",
     count: {
