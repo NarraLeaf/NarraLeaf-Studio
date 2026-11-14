@@ -11,6 +11,17 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 > [自己写](#21-客户端自有-koffi-绑定)，只保留 SDK 作为 devDependency 供 ABI 快照脚本使用。
 > §4 的坑分成了两类：**已由自有绑定按构造消除**的，和**仍然成立**的，每条都标了。
 
+> **2026-11 团队项目改为服务器权威**：项目连着一台宣布 `documents` 能力的 Team 服务器时，打开即进入实时协作，
+> **本文描述的 Lore 远程流程（推送 / 拉取 / 合并 / 冲突面板 / 定时检查点）对这类项目不再使用**：
+> 当前状态由服务器持有，每次编辑是发给服务器的意图（`TeamDocumentsService` / `teamDocs/teamDocSync.ts`），
+> 历史版本是服务器提交进 Lore 的快照，起步与预览从服务器读文件（`doc.base` / `doc.files`），不碰本地 Lore。
+> 服务器用的执行逻辑与编辑器是同一份代码（`src/shared/authority/`，Team 仓库打包为 `studio-kernel/`）。
+> 没有细粒度操作的文件（项目文件、故事动画、存档结构、预设……）写盘后整份发给服务器（`put-file`，
+> `teamDocs/teamFileSync.ts`），离线时改过的所有文件在重连时整份发送（故事仍逐行重放），所以团队项目里没有只读区域；
+> 「转为个人项目」会保存与服务器一致的状态，之后可以「重新连接到团队项目」，像离线重连一样把修改发回去。
+> 个人项目、以及连着不支持 `documents` 的服务器的项目，仍按本文的方式工作。交接与设计见 Team 仓库
+> `docs/collab-realtime-refactor.zh.md`。
+
 ## 0. 结论先行
 
 | 问题 | 结论 |
