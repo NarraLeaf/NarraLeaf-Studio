@@ -31,6 +31,7 @@ import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFail
 import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { useFollowedAsset } from "./useFollowedAsset";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import { fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt } from "./audio/viewWindow";
@@ -113,7 +114,7 @@ function VideoPreviewBody({ tabId, payload, active }: EditorComponentProps<Video
     // Everything here is inspection and stays live while frozen, except saving a frame, which adds
     // an asset to the library.
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
-    const asset = payload?.asset;
+    const asset = useFollowedAsset(payload?.asset);
 
     const { url, bytes, loading, failure } = useAssetBlobUrl(asset, videoMimeType(asset?.ext));
     const [undecodable, setUndecodable] = useState(false);

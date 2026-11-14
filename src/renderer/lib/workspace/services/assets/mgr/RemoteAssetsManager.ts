@@ -79,6 +79,10 @@ export class RemoteAssetsManager {
         if (!fetched.success) {
             return fetched;
         }
+        const frozenAfterFetch = this.refuseWhileFrozen();
+        if (frozenAfterFetch) {
+            return frozenAfterFetch;
+        }
         if (!fetched.data) {
             // An import sends no validators, so a well-behaved server cannot answer 304 here. One
             // that does has told us nothing we can store, and saying so beats an empty error.
@@ -222,6 +226,10 @@ export class RemoteAssetsManager {
         const fetched = await this.download(url, hasSnapshot ? validatorsOf(asset.meta) : undefined);
         if (!fetched.success) {
             return fetched;
+        }
+        const frozenAfterFetch = this.refuseWhileFrozen();
+        if (frozenAfterFetch) {
+            return frozenAfterFetch;
         }
 
         if (!fetched.data) {
@@ -374,6 +382,9 @@ export class RemoteAssetsManager {
                 `Failed to write the snapshot of ${name}: ${written.error.message}`,
                 { kind: "copyFailed", fsCode: written.error.code },
             );
+        }
+        if (written.refused) {
+            return refuse("The project is not accepting changes right now", { kind: "projectNotAccepting" });
         }
 
         // Recomputed from what actually landed, exactly as every other write path does: the hash is

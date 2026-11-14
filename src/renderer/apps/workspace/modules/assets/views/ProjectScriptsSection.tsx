@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, FileCode2, RefreshCw } from "lucide-react";
 import { AccordionItem } from "@/lib/components/elements/Accordion";
 import { useTranslation } from "@/lib/i18n";
@@ -49,30 +49,54 @@ export function ProjectScriptsSection({ open }: { open: boolean }) {
     const openBlueprint = useOpenBlueprintTarget();
     // The listing joins the disk with the blueprint document, so it is re-read when either moves.
     const blueprintRevision = useBlueprintDocumentRevision();
-    const [entries, setEntries] = useState<ProjectScriptEntry[]>([]);
+    const [listing, setListing] = useState<{
+        context: NonNullable<typeof context>;
+        projectPath: string | null;
+        entries: ProjectScriptEntry[];
+    } | null>(null);
     const [loading, setLoading] = useState(false);
+    const refreshGeneration = useRef(0);
 
     const projectPath = isInitialized && context ? context.project.getConfig().projectPath : null;
+    const entries = isInitialized && listing?.context === context && listing.projectPath === projectPath
+        ? listing.entries
+        : [];
 
     const refresh = useCallback(async () => {
+        const generation = ++refreshGeneration.current;
         if (!isInitialized || !context) {
+            setListing(null);
+            setLoading(false);
             return;
         }
         setLoading(true);
-        const fs = context.services.get<FileSystemService>(Services.FileSystem);
-        const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const files = await walkProjectScripts(async relative => {
-            const result = await fs.list(context.project.resolve(relative.split("/")));
-            // A directory that is not there is not an error here: a project with no scripts has no
-            // `scripts/` folder to list, and the empty section says that better than a failure would.
-            return result.ok ? result.data : null;
-        });
-        setEntries(buildProjectScriptListing(files, scriptBindingsByRef(localBp.getBlueprintDocument())));
-        setLoading(false);
-    }, [context, isInitialized]);
+        try {
+            const fs = context.services.get<FileSystemService>(Services.FileSystem);
+            const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            const files = await walkProjectScripts(async relative => {
+                const result = await fs.list(context.project.resolve(relative.split("/")));
+                // A missing scripts folder is an empty listing.
+                return result.ok ? result.data : null;
+            });
+            if (generation === refreshGeneration.current) {
+                setListing({
+                    context,
+                    projectPath,
+                    entries: buildProjectScriptListing(files, scriptBindingsByRef(localBp.getBlueprintDocument())),
+                });
+            }
+        } catch (error) {
+            console.warn("[assets] could not refresh project scripts", error);
+        } finally {
+            if (generation === refreshGeneration.current) {
+                setLoading(false);
+            }
+        }
+    }, [context, isInitialized, projectPath]);
 
     useEffect(() => {
         void refresh();
+        return () => { refreshGeneration.current += 1; };
     }, [refresh, blueprintRevision]);
 
     const openPreview = useCallback(

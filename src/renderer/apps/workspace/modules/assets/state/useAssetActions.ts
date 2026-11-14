@@ -337,6 +337,7 @@ export function useAssetActions({
             preFailures?: readonly ImportQueueFailure[];
             /** Removed once the importer has copied out of them. */
             scratchDirs?: readonly string[];
+            sourcesByConvertedPath?: Readonly<Record<string, string>>;
         },
     ) => {
         const ctx = contextRef.current;
@@ -344,13 +345,20 @@ export function useAssetActions({
         const entryByPath = options?.entryByPath;
         const preFailures = options?.preFailures ?? [];
         const scratchDirs = options?.scratchDirs ?? [];
+        const sourcePath = (path: string) => options?.sourcesByConvertedPath?.[path] ?? path;
+        const sourceFailure = (path: string, error?: string): ImportQueueFailure => ({
+            path: sourcePath(path),
+            ...(error ? { error } : {}),
+            ...(options?.sourcesByConvertedPath?.[path] ? { needsMediaTriage: true } : {}),
+        });
+        const conversionFailures = preFailures.map(failure => ({ ...failure, needsMediaTriage: true }));
 
         // Nothing to hand an importer. Reachable now that a conversion can fail for every file in a
         // run: the failures still have to be named, and the scratch directory still has to go.
         if (paths.length === 0) {
             if (preFailures.length > 0) {
                 importQueue?.start({ category, groupId, total: 0 });
-                importQueue?.finish([...preFailures]);
+                importQueue?.finish(conversionFailures);
             }
             await removeConvertScratch(scratchDirs);
             return;
@@ -371,7 +379,7 @@ export function useAssetActions({
                 // `LocalAssetsManager.bucketPathsByAssetType`.
                 const buckets = await assetsService.bucketPathsByAssetType(category, paths);
                 await assetsService.transaction(async (svc) => {
-                    const failures: { path: string; error?: string }[] = [...preFailures];
+                    const failures: ImportQueueFailure[] = [...conversionFailures];
                     const importedAssets: Asset[] = [];
                     let completed = 0;
 
@@ -390,7 +398,7 @@ export function useAssetActions({
                             // This bucket fell over, so every file in it is still outstanding. Its
                             // sentence is the importer's - English, naming paths - so it goes to the log.
                             console.warn("[assets] an import batch failed", result.error);
-                            failures.push(...bucket.paths.map(path => ({ path })));
+                            failures.push(...bucket.paths.map(path => sourceFailure(path)));
                             uiService.showAlert(t("assets.import.failedTitle"), t("assets.unknownError"));
                             completed += bucket.paths.length;
                             continue;
@@ -406,7 +414,7 @@ export function useAssetActions({
                             }
                             console.warn(`[assets] could not import ${bucket.paths[index]}`, assetResult.error);
                             const reason = describeAssetImportRefusal(assetResult.refusal, t);
-                            return [{ path: bucket.paths[index], ...(reason ? { error: reason } : {}) }];
+                            return [sourceFailure(bucket.paths[index], reason ?? undefined)];
                         }));
                         for (const [index, assetResult] of perFile.entries()) {
                             if (!assetResult.success || !assetResult.data) {
@@ -427,7 +435,7 @@ export function useAssetActions({
                                     // will not draw is not an import that worked. Nothing here is the
                                     // author's to act on, so it is listed by name and logged.
                                     console.warn(`[assets] could not record the entry of ${asset.name}`, entryResult.error);
-                                    failures.push({ path: bucket.paths[index] });
+                                    failures.push(sourceFailure(bucket.paths[index]));
                                 }
                             }
                         }
@@ -444,7 +452,7 @@ export function useAssetActions({
                             // A file with no extension at all is listed by name alone.
                             const ext = extname(path).slice(1).toLowerCase();
                             const reason = ext ? describeAssetImportRefusal({ kind: "wrongType", ext }, t) : null;
-                            return reason ? { path, error: reason } : { path };
+                            return sourceFailure(path, reason ?? undefined);
                         }));
 
                     importQueue?.finish(failures);
@@ -481,7 +489,6 @@ export function useAssetActions({
                 });
             });
 
-            await removeConvertScratch(scratchDirs);
             onActionComplete();
         } catch (error) {
             console.error("Failed to import assets", error);
@@ -498,13 +505,57 @@ export function useAssetActions({
                 // leaves the strip a retry instead of a progress bar that never moves again. The
                 // files that failed to convert are carried through as well; they never had an
                 // importer to be turned away by.
-                importQueue?.finish([...preFailures, ...paths.map(path => ({ path }))]);
+                importQueue?.finish([...conversionFailures, ...paths.map(path => sourceFailure(path))]);
             }
             uiService.showAlert(t("assets.import.failedTitle"), message);
         } finally {
+            await removeConvertScratch(scratchDirs);
             notifyLoading(false);
         }
     }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
+
+    const importPaths = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
+        if (!context || freeze.frozen) return;
+        const uiService = context.services.get<UIService>(Services.UI);
+
+        // Asked before a single byte is copied, so a file that will not play is a question rather
+        // than a refusal reported afterwards about work already done. Files with nothing wrong with
+        // them never appear in the dialog, and a run with no problems never opens one.
+        if (categoryNeedsMediaTriage(category)) {
+            notifyLoading(true);
+            try {
+                // Asked once, not once per dropped file. Main refuses every probe for a distrusted
+                // project and says so in the console each time, so a folder of voice takes produced
+                // a screenful of refusals and one untriaged import. Answering `null` here reaches
+                // the rule `planMediaImport` already has for a host with no ffprobe: an unanswerable
+                // probe means import it, unconverted and unremarked, which is the same outcome the
+                // refusals were producing at the cost of a spawn request each.
+                const mayProbe = await isProjectTrusted(context.project.resolve());
+                const plan = await planMediaImport(paths, async (path) => {
+                    if (!mayProbe) {
+                        return null;
+                    }
+                    const result = await getInterface().probeMedia(path);
+                    return result.success ? result.data.outcome : null;
+                });
+
+                if (plan.problems.length > 0) {
+                    setMediaImportRequest({ category, groupId, plan });
+                    return;
+                }
+            } catch (error) {
+                // What threw is the probe's or the platform's English; it stays in the log.
+                console.error("Failed to check the files before importing", error);
+                uiService.showAlert(t("assets.import.unableTitle"), t("assets.unknownError"));
+                return;
+            } finally {
+                notifyLoading(false);
+            }
+        }
+
+        await runImport(category, paths, groupId);
+    }, [context, freeze.frozen, notifyLoading, runImport, t]);
+
 
     const handleImport = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         if (!context || freeze.frozen) return;
@@ -579,43 +630,8 @@ export function useAssetActions({
             paths = selection.data.data;
         }
 
-        // Asked before a single byte is copied, so a file that will not play is a question rather
-        // than a refusal reported afterwards about work already done. Files with nothing wrong with
-        // them never appear in the dialog, and a run with no problems never opens one.
-        if (categoryNeedsMediaTriage(category)) {
-            notifyLoading(true);
-            try {
-                // Asked once, not once per dropped file. Main refuses every probe for a distrusted
-                // project and says so in the console each time, so a folder of voice takes produced
-                // a screenful of refusals and one untriaged import. Answering `null` here reaches
-                // the rule `planMediaImport` already has for a host with no ffprobe: an unanswerable
-                // probe means import it, unconverted and unremarked, which is the same outcome the
-                // refusals were producing at the cost of a spawn request each.
-                const mayProbe = await isProjectTrusted(context.project.resolve());
-                const plan = await planMediaImport(paths, async (path) => {
-                    if (!mayProbe) {
-                        return null;
-                    }
-                    const result = await getInterface().probeMedia(path);
-                    return result.success ? result.data.outcome : null;
-                });
-
-                if (plan.problems.length > 0) {
-                    setMediaImportRequest({ category, groupId, plan });
-                    return;
-                }
-            } catch (error) {
-                // What threw is the probe's or the platform's English; it stays in the log.
-                console.error("Failed to check the files before importing", error);
-                uiService.showAlert(t("assets.import.unableTitle"), t("assets.unknownError"));
-                return;
-            } finally {
-                notifyLoading(false);
-            }
-        }
-
-        await runImport(category, paths, groupId);
-    }, [context, freeze.frozen, notifyLoading, runImport, t, withAssetsService]);
+        await importPaths(category, paths, groupId);
+    }, [context, freeze.frozen, importPaths, t, withAssetsService]);
 
     /**
      * Re-run the files the last import could not read, into the same group.
@@ -625,10 +641,15 @@ export function useAssetActions({
      * dismisses it - so this is the one import path that is still on screen and still clickable on a
      * workspace that froze after the files were dropped.
      */
-    const handleRetryImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
+    const handleRetryImport = useCallback(async (category: AssetCategory, failures: readonly ImportQueueFailure[], groupId?: string) => {
         if (freeze.frozen) return;
-        await runImport(category, paths, groupId);
-    }, [freeze.frozen, runImport]);
+        const paths = failures.map(failure => failure.path);
+        if (failures.some(failure => failure.needsMediaTriage)) {
+            await importPaths(category, paths, groupId);
+        } else {
+            await runImport(category, paths, groupId);
+        }
+    }, [freeze.frozen, importPaths, runImport]);
 
     /**
      * Import the folders the model wizard settled on, into the group the author started from.
@@ -675,6 +696,7 @@ export function useAssetActions({
         await runImport(request.category, resolution.paths, request.groupId, {
             preFailures: resolution.failures,
             scratchDirs: resolution.scratchDirs,
+            sourcesByConvertedPath: resolution.sourcesByConvertedPath,
         });
     }, [freeze.frozen, mediaImportRequest, runImport]);
 

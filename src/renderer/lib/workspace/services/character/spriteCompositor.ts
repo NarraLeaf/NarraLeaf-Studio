@@ -118,8 +118,12 @@ export class SpriteCompositor {
             return pending;
         }
 
-        const work = this.build(layers, maxSize)
+        const work: Promise<SpriteComposite | null> = this.build(layers, maxSize)
             .then(composite => {
+                if (this.inFlight.get(cacheKey) !== work) {
+                    if (composite) URL.revokeObjectURL(composite.url);
+                    return null;
+                }
                 if (composite) {
                     this.cache.set(cacheKey, composite);
                     this.evict();
@@ -127,7 +131,9 @@ export class SpriteCompositor {
                 return composite;
             })
             .finally(() => {
-                this.inFlight.delete(cacheKey);
+                if (this.inFlight.get(cacheKey) === work) {
+                    this.inFlight.delete(cacheKey);
+                }
             });
         this.inFlight.set(cacheKey, work);
         return work;
@@ -169,6 +175,11 @@ export class SpriteCompositor {
 
     /** Drop every composite of one character — its stack or one of its assets changed. */
     public invalidate(prefix: string): void {
+        for (const key of this.inFlight.keys()) {
+            if (key.startsWith(prefix)) {
+                this.inFlight.delete(key);
+            }
+        }
         for (const [key, entry] of [...this.cache]) {
             if (key.startsWith(prefix)) {
                 URL.revokeObjectURL(entry.url);
@@ -178,6 +189,7 @@ export class SpriteCompositor {
     }
 
     public dispose(): void {
+        this.inFlight.clear();
         for (const entry of this.cache.values()) {
             URL.revokeObjectURL(entry.url);
         }

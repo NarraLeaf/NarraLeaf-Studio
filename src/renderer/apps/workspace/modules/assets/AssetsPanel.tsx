@@ -1074,7 +1074,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const handleRetryFailedImports = useCallback(() => {
         const run = importState.run;
         if (!run || importState.failures.length === 0) return;
-        void handleRetryImport(run.category, importState.failures.map(failure => failure.path), run.groupId);
+        void handleRetryImport(run.category, importState.failures, run.groupId);
     }, [handleRetryImport, importState]);
 
     // Use refs to store latest function references to avoid stale closures in action group
@@ -1101,13 +1101,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     }, [handleCreateMagicTags]);
 
-    const handleMagicTagsApply = useCallback(async (categoryMapping: Record<number, string>) => {
-        if (!magicTagTemplate) return;
-        await handleApplyMagicTags(magicTagAssets, magicTagTemplate, categoryMapping);
+    const handleMagicTagsApply = useCallback(async (categoryMapping: Record<number, string>, template: MagicTagTemplate) => {
+        await handleApplyMagicTags(magicTagAssets, template, categoryMapping);
         setMagicTagDialogVisible(false);
         setMagicTagTemplate(null);
         setMagicTagAssets([]);
-    }, [magicTagTemplate, magicTagAssets, handleApplyMagicTags]);
+    }, [magicTagAssets, handleApplyMagicTags]);
 
     const handleMagicTagsClose = useCallback(() => {
         setMagicTagDialogVisible(false);
@@ -1149,7 +1148,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { 
         draggedItem, draggedAssetSet, otherPanelDragCategories, dropTargetId, dragOver, 
         setDragOver, setDropTargetId, handleDragStart, handleAssetSetDragStart, handleDragEnd, 
-        handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
+        handlePanelDragOver, handlePanelDragLeave, handleDropOnItem
     } = useDragAndDrop({
         context,
         groups,
@@ -1355,7 +1354,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         expandedAssetSets, setExpandedAssetSets, assetSetReveal, assetSetNaming, rootAssetSets, memberAssetIds,
         handleItemSelect, publishRowOrder, handleAssetClick, handleAssetOpen, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
-        handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
+        handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
         isNarrowed,

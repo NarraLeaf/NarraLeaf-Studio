@@ -339,3 +339,25 @@ describe("AssetSelector ticks after an import", () => {
         expect(ticked()).toEqual(["hiyori", "hiyori-1"]);
     });
 });
+
+describe("AssetSelector virtual assets", () => {
+    it("keeps selected items when a search hides their rows", () => {
+        const onConfirm = vi.fn();
+        const alice = { id: "virtual:alice", name: "Alice", type: AssetType.Image, tags: [] };
+        const bob = { id: "virtual:bob", name: "Bob", type: AssetType.Image, tags: [] };
+        open(AssetType.Image, {
+            multiple: true,
+            virtualGroups: [{ id: "presets", title: "Presets", assets: [alice, bob] as never }],
+            onConfirm,
+        });
+
+        const search = screen.getByPlaceholderText("assets.searchPlaceholder");
+        fireEvent.change(search, { target: { value: "Alice" } });
+        fireEvent.click(screen.getByText("Alice"));
+        fireEvent.change(search, { target: { value: "Bob" } });
+        fireEvent.click(screen.getByText("Bob"));
+        fireEvent.click(screen.getByText("assets.selector.choose"));
+
+        expect(onConfirm).toHaveBeenCalledWith([alice, bob]);
+    });
+});

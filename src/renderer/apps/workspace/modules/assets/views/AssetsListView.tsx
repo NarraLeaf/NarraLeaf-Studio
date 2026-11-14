@@ -832,7 +832,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     /** The set value this row answers, when it is drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers, assetSetReveal } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, mediaSupport, handleConvertMedia, assetClaims, assetTransfers, assetSetReveal } = useAssetsPanelContext();
     const { t } = useTranslation();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
@@ -871,7 +871,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => {
                 handleItemSelect(asset.id, false, e);
-                handleAssetClick(asset, isMultiSelectMode);
+                handleAssetClick(asset, e.ctrlKey || e.metaKey || e.shiftKey);
             }}
             onDoubleClick={() => handleAssetOpen(asset)}
             onContextMenu={(e) => showContextMenu(e, category, asset, false, assetSetValue)}

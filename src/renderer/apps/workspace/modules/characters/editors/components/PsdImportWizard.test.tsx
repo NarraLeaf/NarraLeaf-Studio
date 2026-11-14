@@ -16,21 +16,26 @@
  * are `CharacterService.recordEdit.test.ts` and `AssetsService.libraryChange.test.ts`.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import zlib from "node:zlib";
+import { readPsd, writePsdBuffer } from "ag-psd";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
-import type { PsdDocument } from "@shared/types/psdImport";
+import { bakeLayers, describePsd } from "../../../../../../../main/buildWorker/psd/bakePsdLayers";
+import { initializePsdImageData } from "../../../../../../../main/buildWorker/psd/initializePsdImageData";
+import { CharacterAppearance, emptyAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
+import type { PsdBakeRequest, PsdDocument } from "@shared/types/psdImport";
+import { decodePngToRgba } from "@shared/utils/pngOpaque";
 import { PsdImportWizard } from "./PsdImportWizard";
 
 /** Flipped per case; read by the mocked hook below. */
 let frozen = false;
 const FREEZE_REASON = "frozen-reason";
 
-const bakePsd = vi.fn(async () => ({
+const bakePsd = vi.fn(async (_request: PsdBakeRequest) => ({
     success: true as const,
     data: { layers: [{ path: ["base"], filePath: "/tmp/base.png" }] },
 }));
-const importFromPaths = vi.fn(async () => ({
+const importFromPaths = vi.fn(async (_type: string, _paths: string[]) => ({
     success: true as const,
     data: [{ success: true as const, data: { id: "asset-base" } }],
 }));
@@ -42,7 +47,7 @@ const createGroup = vi.fn(async (_category: string, name: string) => ({
 const moveAssetsToGroup = vi.fn(async () => ({ success: true as const, data: undefined }));
 /** The image section of the library, by id: empty until a case puts the last import's image in it. */
 let images: Record<string, { id: string; name: string }> = {};
-const replaceAssetContent = vi.fn(async (asset: { id: string }) => ({ success: true as const, data: asset }));
+const replaceAssetContent = vi.fn(async (asset: { id: string }, _filePath: string) => ({ success: true as const, data: asset }));
 /** What `keep` answers in a case; every copy is made unless a case says otherwise. */
 let keepAnswer: { ok: true } | { ok: false; name: string; refusal: { kind: "notKept"; fsCode?: string } } = { ok: true };
 /** What the import did to the library, as the wizard reported it. */
@@ -91,7 +96,7 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
-        openPsd: async () => ({ success: true, data: { filePath: "/art/hero.psd", document: DOCUMENT } }),
+        openPsd: async () => ({ success: true, data: { filePath: "/art/hero.psd", document: selectedDocument } }),
         bakePsd,
     }),
 }));
@@ -119,6 +124,7 @@ const DOCUMENT: PsdDocument = {
         },
     ],
 };
+let selectedDocument = DOCUMENT;
 
 /**
  * Enough of an appearance for the plan to be summarised and, when it runs, applied. `imported` is
@@ -127,7 +133,6 @@ const DOCUMENT: PsdDocument = {
 function appearanceStub(imported = false): CharacterAppearance {
     const layer = { id: "layer-base", name: "base", axisId: null, assetId: "asset-base" };
     return {
-        findPsdSlot: () => (imported ? { layerId: layer.id } : null),
         getLayer: () => (imported ? layer : null),
         getLayers: () => (imported ? [layer] : []),
         createLayer: (name: string) => ({ id: `layer-${name}` }),
@@ -144,6 +149,7 @@ function appearanceStub(imported = false): CharacterAppearance {
 afterEach(() => {
     cleanup();
     frozen = false;
+    selectedDocument = DOCUMENT;
     images = {};
     folders = [];
     keepAnswer = { ok: true };
@@ -332,5 +338,112 @@ describe("PsdImportWizard importing a sheet again", () => {
         // Whatever it had written is taken back, and what it held is let go.
         expect(change.undo).toHaveBeenCalledTimes(1);
         expect(change.dispose).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("PsdImportWizard with same-named layers", () => {
+    it("keeps a known layer's asset when a new id-less sibling precedes it", async () => {
+        initializePsdImageData();
+        const pixel = (red: number, blue: number) => ({
+            width: 1, height: 1, data: new Uint8ClampedArray([red, 0, blue, 255]),
+        });
+        const psd = readPsd(writePsdBuffer({
+            width: 1, height: 1,
+            imageData: pixel(0, 0),
+            children: [
+                { name: "Body", imageData: pixel(0, 255) },
+                { name: "Body", id: 11, imageData: pixel(255, 0) },
+            ],
+        }), { skipCompositeImageData: true, skipThumbnail: true, useImageData: true });
+        selectedDocument = describePsd(psd, "hero.psd");
+        expect(selectedDocument.layers.map(layer => layer.sourceId)).toEqual([undefined, 11]);
+
+        const appearance = new CharacterAppearance(emptyAppearance("layered"));
+        const original = appearance.createLayer("Body")!;
+        appearance.setLayerAsset(original.id, "original-red");
+        appearance.setPsdFingerprint({
+            fileName: "hero.psd", width: 1, height: 1, importedAt: 1,
+            slots: [{ path: ["Body"], sourceId: 11, layerId: original.id, assetId: "original-red" }],
+        });
+        images = { "original-red": { id: "original-red", name: "Hero_Body.png" } };
+        const pixels = new Map<string, number[]>([["original-red", [255, 0, 0, 255]]]);
+        const bakedFiles = new Map<string, Uint8Array>();
+        const inflate = (bytes: Uint8Array) => new Uint8Array(zlib.inflateSync(bytes));
+        const bakedPixels = (filePath: string) => [...decodePngToRgba(bakedFiles.get(filePath)!, inflate).rgba];
+        bakePsd.mockImplementationOnce(async request => ({
+            success: true as const,
+            data: { layers: await bakeLayers(
+                psd,
+                request.layers,
+                bytes => new Uint8Array(zlib.deflateSync(bytes)),
+                async (filePath, png) => { bakedFiles.set(filePath, png); return filePath; },
+            ) },
+        }));
+        replaceAssetContent.mockImplementationOnce(async (asset, filePath) => {
+            pixels.set(asset.id, bakedPixels(filePath));
+            return { success: true as const, data: asset };
+        });
+        importFromPaths.mockImplementationOnce(async (_type, paths) => ({
+            success: true as const,
+            data: paths.map((filePath, index) => {
+                const id = `new-${index}`;
+                pixels.set(id, bakedPixels(filePath));
+                return { success: true as const, data: { id } };
+            }),
+        }));
+
+        render(<PsdImportWizard open onClose={() => undefined} characterId="hero" appearance={appearance} characterName="Hero" />);
+        await act(async () => { fireEvent.click(screen.getByText("characters.editor.psd.choose")); });
+        await act(async () => { fireEvent.click(importButton()); });
+
+        expect(pixels.get("original-red")).toEqual([255, 0, 0, 255]);
+        expect(appearance.getLayer(original.id)?.assetId).toBe("original-red");
+        const added = appearance.getLayers().filter(layer => layer.id !== original.id);
+        expect(added).toHaveLength(1);
+        expect(pixels.get(added[0].assetId!)).toEqual([0, 0, 255, 255]);
+        expect(new Set(appearance.getPsdFingerprint()?.slots.map(slot => slot.layerId)).size).toBe(2);
+    });
+
+    it("assigns each baked image to its own layer and records its identity", async () => {
+        selectedDocument = {
+            ...DOCUMENT,
+            layers: [
+                { ...DOCUMENT.layers[0], occurrence: 0, sourceId: 11 },
+                { ...DOCUMENT.layers[0], occurrence: 1, sourceId: 22 },
+            ],
+        };
+        bakePsd.mockImplementationOnce(async () => ({
+            success: true as const,
+            data: { layers: [
+                { path: ["base"], occurrence: 0, sourceId: 11, filePath: "/tmp/first.png" },
+                { path: ["base"], occurrence: 1, sourceId: 22, filePath: "/tmp/second.png" },
+            ] },
+        }));
+        importFromPaths.mockImplementationOnce(async () => ({
+            success: true as const,
+            data: [
+                { success: true as const, data: { id: "first-image" } },
+                { success: true as const, data: { id: "second-image" } },
+            ],
+        }));
+        const appearance = new CharacterAppearance(emptyAppearance("layered"));
+        render(<PsdImportWizard open onClose={() => undefined} characterId="hero" appearance={appearance} characterName="Hero" />);
+        await act(async () => { fireEvent.click(screen.getByText("characters.editor.psd.choose")); });
+        await act(async () => { fireEvent.click(importButton()); });
+
+        expect(appearance.getLayers().map(layer => layer.assetId)).toEqual(["first-image", "second-image"]);
+        expect(appearance.getPsdFingerprint()?.slots.map(slot => [slot.occurrence, slot.sourceId, slot.assetId])).toEqual([
+            [0, 11, "first-image"], [1, 22, "second-image"],
+        ]);
+    });
+
+    it("waits for a blend decision even when the layer name is a built-in object key", async () => {
+        selectedDocument = {
+            ...DOCUMENT,
+            layers: [{ ...DOCUMENT.layers[0], name: "constructor", path: ["constructor"], blendMode: "multiply" }],
+        };
+        await openWithDocument();
+        expect(importButton().matches(":disabled")).toBe(true);
+        expect(screen.getByRole("button", { name: "characters.editor.psd.skip" })).not.toBeNull();
     });
 });

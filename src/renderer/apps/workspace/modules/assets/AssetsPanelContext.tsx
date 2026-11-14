@@ -146,7 +146,6 @@ interface AssetsPanelContextType {
     /** Starts dragging a set's row. Folders and section roots are the only things that answer to it. */
     handleAssetSetDragStart?: (e: React.DragEvent, category: AssetCategory, setId: string) => void;
     handleDragEnd?: () => void;
-    handleDragOverItem?: (e: React.DragEvent, targetId: string) => void;
     handleDropOnItem?: (e: React.DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => void;
     handleImportToGroup: (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
     isFocused: (id: string) => boolean;

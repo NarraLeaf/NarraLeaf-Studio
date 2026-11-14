@@ -373,8 +373,8 @@ export function AssetSelector({
     }, [virtualGroups, searchQuery, matchesAssetSearch]);
 
     const virtualAssetsFlat = useMemo(
-        () => filteredVirtualGroups.flatMap((g) => g.assets),
-        [filteredVirtualGroups],
+        () => (virtualGroups ?? []).flatMap((group) => group.assets),
+        [virtualGroups],
     );
 
     const virtualAssetCount = useMemo(() => virtualGroups?.reduce((n, g) => n + g.assets.length, 0) ?? 0, [virtualGroups]);

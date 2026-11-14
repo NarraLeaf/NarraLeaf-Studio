@@ -31,6 +31,8 @@ export type MediaImportResolution = {
     scratchDirs: string[];
     /** Files that never reached the importer and are worth naming in the panel afterwards. */
     failures: { path: string; error?: string }[];
+    /** Converted output to original source, for retrying an import after scratch cleanup. */
+    sourcesByConvertedPath?: Record<string, string>;
 };
 
 type ConversionStatus = "waiting" | "converting" | "done" | "failed" | "stopped" | "unavailable";
@@ -144,11 +146,13 @@ export function MediaImportDialog({
         extraPaths: readonly string[],
         scratchDirs: readonly string[],
         failures: readonly { path: string; error?: string }[],
+        sourcesByConvertedPath?: Record<string, string>,
     ) => {
         onResolve({
             paths: [...plan.ready, ...extraPaths],
             scratchDirs: [...scratchDirs],
             failures: [...failures],
+            ...(sourcesByConvertedPath ? { sourcesByConvertedPath } : {}),
         });
     }, [onResolve, plan]);
 
@@ -190,6 +194,7 @@ export function MediaImportDialog({
         const runDirectory = scratchAt();
 
         const converted: string[] = [];
+        const sourcesByConvertedPath: Record<string, string> = {};
         const failures: { path: string; error?: string }[] = [];
 
         for (const [index, problem] of convertible.entries()) {
@@ -201,6 +206,9 @@ export function MediaImportDialog({
                 patch(problem.path, { status: "failed" });
                 failures.push({ path: problem.path, error: t("assets.mediaConvert.failedError") });
                 continue;
+            }
+            if (runRef.current.stopped || frozenRef.current) {
+                break;
             }
 
             const stem = basename(problem.path).replace(/\.[^.]+$/, "");
@@ -221,7 +229,12 @@ export function MediaImportDialog({
                 },
                 bridge,
                 {
-                    onStarted: jobId => { runRef.current.jobId = jobId; },
+                    onStarted: jobId => {
+                        runRef.current.jobId = jobId;
+                        if (runRef.current.stopped) {
+                            void bridge.cancel(jobId).catch(() => undefined);
+                        }
+                    },
                     onProgress: fraction => patch(problem.path, { fraction }),
                     wait: () => new Promise(resolve => setTimeout(resolve, MEDIA_CONVERT_POLL_MS)),
                 },
@@ -231,6 +244,7 @@ export function MediaImportDialog({
             if (outcome.status === "done") {
                 patch(problem.path, { status: "done", outputPath: outcome.outputPath });
                 converted.push(outcome.outputPath);
+                sourcesByConvertedPath[outcome.outputPath] = problem.path;
                 continue;
             }
             patch(problem.path, { status: outcome.status });
@@ -244,16 +258,16 @@ export function MediaImportDialog({
             }
         }
 
-        resolveWith(converted, [runDirectory], failures);
+        resolveWith(converted, [runDirectory], failures, sourcesByConvertedPath);
     }, [bridge, context, convertible, converting, patch, resolveWith, t]);
 
     const stop = useCallback(() => {
         runRef.current.stopped = true;
         const jobId = runRef.current.jobId;
         if (jobId) {
-            void getInterface().mediaConvert.cancel(jobId);
+            void bridge.cancel(jobId).catch(() => undefined);
         }
-    }, []);
+    }, [bridge]);
 
     /** Import the files that were already fine, and leave every problem file out. */
     const skip = useCallback(() => resolveWith([], [], []), [resolveWith]);
