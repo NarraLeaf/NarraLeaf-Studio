@@ -489,6 +489,12 @@ export interface TeamClientInstance {
     project?: string;
     /** What that project stands at on that machine, as it reported it. */
     revision?: string;
+    /**
+     * The document it has in front of it, in anchor terms (`story:<id>`, `ui:<id>`), and since
+     * when (the server's clock). A hint for somebody about to open the same one, never a lock.
+     */
+    editing?: string;
+    editingSince?: number;
     /** When it announced itself on its current link session. Epoch ms, the server's clock. */
     since: number;
 }

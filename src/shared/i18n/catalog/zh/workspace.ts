@@ -778,6 +778,12 @@ export const workspace = {
             hint: "勾选的待办会在提交后标为完成，并记下是哪个版本完成的",
             failed: "版本已提交，但有 {count} 条待办没能标为完成",
         },
+        editingNotice: {
+            here: "{name} 也在编辑这里（{since}）。同时修改的内容会在合并时一起处理。",
+            justNow: "刚刚打开",
+            minutes: "已经 {minutes} 分钟",
+            dismiss: "知道了",
+        },
         roleNotice: {
             reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
             viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",

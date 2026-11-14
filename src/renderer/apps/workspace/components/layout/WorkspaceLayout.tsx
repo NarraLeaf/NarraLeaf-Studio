@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamProjectProvider, TeamRoleNotice } from "../../modules/team";
+import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -871,6 +871,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         <TeamProjectProvider surface={versionSurface}>
             <StoryCommentsTeamSyncMount />
             <TeamRoleNotice />
+            <TeamEditingNotice />
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}

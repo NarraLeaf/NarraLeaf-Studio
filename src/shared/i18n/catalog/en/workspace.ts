@@ -867,6 +867,12 @@ export const workspace = {
             hint: "Ticked to-dos are marked done after the commit, with the version that finished them",
             failed: "The version was recorded, but {count} to-dos could not be marked done",
         },
+        editingNotice: {
+            here: "{name} is editing this too ({since}). Changes made at the same time are combined when you merge.",
+            justNow: "just opened",
+            minutes: "for {minutes} min",
+            dismiss: "Got it",
+        },
         roleNotice: {
             reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",

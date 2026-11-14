@@ -24,4 +24,5 @@ export { TeamProjectProvider, useTeamProjectSurface } from "./TeamProjectContext
 export { StoryCommentsTeamSyncMount } from "./StoryCommentsTeamSync";
 export { TeamNotificationsBell } from "./TeamNotificationsBell";
 export { TeamRoleNotice } from "./TeamRoleNotice";
+export { TeamEditingNotice } from "./TeamEditingNotice";
 export { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiveSession";

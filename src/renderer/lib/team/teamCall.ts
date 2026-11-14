@@ -525,6 +525,8 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
     if (id === undefined || account === undefined) return null;
     const project = text(from, "project");
     const revision = text(from, "revision");
+    const editing = text(from, "editing");
+    const editingSince = count(from, "editingSince");
     return {
         id,
         account,
@@ -534,6 +536,7 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
         agent: text(from, "agent") ?? "",
         ...(project === undefined ? {} : { project }),
         ...(revision === undefined ? {} : { revision }),
+        ...(editing === undefined ? {} : { editing, ...(editingSince === undefined ? {} : { editingSince }) }),
         since: count(from, "since") ?? 0,
     };
 }
@@ -550,7 +553,7 @@ export function readClientInstance(value: unknown): TeamClientInstance | null {
  */
 export async function announceClient(
     remoteOrigin: string,
-    what: { project?: string; revision?: string } = {},
+    what: { project?: string; revision?: string; editing?: string } = {},
 ): Promise<TeamOutcome<TeamClientInstance>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.clientsAnnounce, what);
     if (!answered.ok) return answered;

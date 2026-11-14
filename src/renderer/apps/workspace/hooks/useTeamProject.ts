@@ -147,6 +147,8 @@ const NOTHING: TeamProjectSurface = {
 export function useTeamProject(
     remote: string | null,
     repositoryId: string | null,
+    /** The document this window has in front of it, in anchor terms; null for none. */
+    editing: string | null = null,
 ): TeamProjectSurface {
     const remoteOrigin = useMemo(
         () => (remote === null ? null : parseVcsRemoteUrl(remote)?.origin ?? null),
@@ -220,10 +222,15 @@ export function useTeamProject(
      * too, and both doing it is deliberate - announcing twice is defined to be ordinary,
      * and the one that must never be missed is this one.
      */
+    // Read by the announcement below without being one of its keys: changing document is said
+    // by the effect after it, which must not withdraw and re-announce the window to do it.
+    const editingRef = useRef(editing);
+    editingRef.current = editing;
     useEffect(() => {
         if (remoteOrigin === null || repositoryId === null || !ready || !canSeeClients) return;
         let alive = true;
-        void announceClient(remoteOrigin, { project: repositoryId })
+        const now = editingRef.current;
+        void announceClient(remoteOrigin, { project: repositoryId, ...(now === null ? {} : { editing: now }) })
             .then((answer) => {
                 if (alive && answer.ok) setInstance(answer.value.id);
             })
@@ -235,6 +242,24 @@ export function useTeamProject(
             void withdrawClient(remoteOrigin, repositoryId).catch(() => undefined);
         };
     }, [remoteOrigin, repositoryId, ready, canSeeClients, connection.since]);
+
+    /**
+     * Say what this window has in front of it whenever that changes, so somebody opening the same
+     * chapter is told who is already in it. Announcing again is ordinary; the server keeps the time
+     * the window started on a document while it stays on it.
+     */
+    const announcedEditing = useRef<string | null | undefined>(undefined);
+    useEffect(() => {
+        if (remoteOrigin === null || repositoryId === null || !ready || !canSeeClients) return;
+        if (announcedEditing.current === undefined) {
+            // The first value went out with the window's own announcement.
+            announcedEditing.current = editing;
+            return;
+        }
+        if (announcedEditing.current === editing) return;
+        announcedEditing.current = editing;
+        void announceClient(remoteOrigin, { project: repositoryId, ...(editing === null ? {} : { editing }) }).catch(() => undefined);
+    }, [remoteOrigin, repositoryId, ready, canSeeClients, editing]);
 
     /** Every topic this project is described by, subscribed while it is on screen. */
     const topics = useMemo(() => {

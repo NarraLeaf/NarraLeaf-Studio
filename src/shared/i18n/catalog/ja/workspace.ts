@@ -793,6 +793,12 @@ export const workspace = {
             hint: "チェックした ToDo はコミット後に完了になり、完了したバージョンが記録されます",
             failed: "バージョンは記録されましたが、{count} 件の ToDo を完了にできませんでした",
         },
+        editingNotice: {
+            here: "{name} もここを編集しています（{since}）。同時の変更はマージ時にまとめて扱われます。",
+            justNow: "開いたばかり",
+            minutes: "{minutes} 分前から",
+            dismiss: "OK",
+        },
         roleNotice: {
             reviewer: "このプロジェクトではレビュアー：閲覧・コメント・ToDo はできるが、コミットや送信はできない",
             viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
