@@ -322,6 +322,8 @@ export class VersionControlService extends Service<VersionControlService> implem
     private readonly events = new EventEmitter<VersionControlServiceEvents>();
     private settings: GlobalSettingsService | null = null;
     private scheduler: CheckpointScheduler | null = null;
+    /** Set while the project is followed through a Team server that holds its documents. */
+    private teamManaged = false;
     private stopWatchingWrites: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -409,7 +411,8 @@ export class VersionControlService extends Service<VersionControlService> implem
             // copy would get subtly wrong. One predicate means the set of paths that can
             // trigger a checkpoint is the set a freeze protects.
             counts: (absolutePath) => isFrozenProjectData(projectPath, absolutePath),
-            isFrozen: () => getProjectWriteFreeze() !== null,
+            // A team project's history is its Team server's saved versions: no checkpoints of its own.
+            isFrozen: () => getProjectWriteFreeze() !== null || this.teamManaged,
             checkpoint: () => this.createCheckpoint("interval"),
             observeWrites: (observer) => BaseFileSystemService.observeWrites(observer),
             onError: (error) => console.warn("[VersionControl] Automatic checkpoint failed", error),
@@ -1233,6 +1236,21 @@ export class VersionControlService extends Service<VersionControlService> implem
      * a build, and "no revision needed" is the common case. Genuine failures still throw,
      * so the interval scheduler can report them once instead of every interval.
      */
+    /**
+     * Mark the project as one whose documents a Team server holds. Its history is then the server's
+     * saved versions: this window records no checkpoints, and the version rail gives way to the
+     * team history (see `TeamDocumentsService`).
+     */
+    public setTeamManaged(managed: boolean): void {
+        if (this.teamManaged === managed) return;
+        this.teamManaged = managed;
+        this.events.emit("statusChanged", this.status);
+    }
+
+    public isTeamManaged(): boolean {
+        return this.teamManaged;
+    }
+
     public async createCheckpoint(reason: VcsCheckpointReason): Promise<VcsCommitResult | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.checkpoint(this.projectPath(), reason);

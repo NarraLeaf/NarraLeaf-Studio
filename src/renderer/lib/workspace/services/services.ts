@@ -278,6 +278,8 @@ enum Services {
     WorkspaceFreeze = "workspaceFreeze",
     /** The live session this window is in: which half of it this is, and the story it is about */
     Live = "live",
+    /** A team project followed through its Team server, which holds its documents. */
+    TeamDocuments = "teamDocuments",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */

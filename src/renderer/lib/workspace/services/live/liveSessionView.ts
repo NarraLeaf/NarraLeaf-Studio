@@ -76,6 +76,11 @@ export type LiveSessionEnd = {
 export type LiveEntryFailure =
     /** Already in one. A window holds at most one session. */
     | { kind: "busy" }
+    /**
+     * This project is followed through a Team server that holds its documents: everybody is
+     * already editing it together, so there is no room to open or join.
+     */
+    | { kind: "team-documents" }
     /** The workspace is frozen for something else; `refusal` says which and what to say. */
     | { kind: "frozen"; refusal: LiveSessionEntryRefusal }
     /** This project points at no Team server, so there is no room to open or join. */

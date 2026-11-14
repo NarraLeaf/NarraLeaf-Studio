@@ -36,6 +36,7 @@ import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
+import type { TeamDocumentsService } from "../teamDocs/TeamDocumentsService";
 import type { LiveJoinTarget } from "./liveEntry";
 import type { LiveSessionDeps, LiveProjectIdentity } from "./liveSessionPorts";
 import { createTeamLiveRooms } from "./teamLiveRooms";
@@ -300,10 +301,16 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         title?: string;
         rule?: TeamLiveJoinRule;
     }): Promise<LiveEntryFailure | null> {
+        if (this.teamDocumentsActive()) {
+            return Promise.resolve<LiveEntryFailure>({ kind: "team-documents" });
+        }
         return this.session?.open(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
     public join(target: LiveJoinTarget): Promise<LiveEntryFailure | null> {
+        if (this.teamDocumentsActive()) {
+            return Promise.resolve<LiveEntryFailure>({ kind: "team-documents" });
+        }
         return this.session?.join(target) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
@@ -843,6 +850,15 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const answer = await getInterface().app.state.getGlobalState("team.hostedLiveSessions");
         const held = answer.success ? answer.data.value : null;
         return held !== null && typeof held === "object" ? held : {};
+    }
+
+    /** True while the project is followed through a Team server holding its documents. */
+    private teamDocumentsActive(): boolean {
+        try {
+            return this.getContext().services.get<TeamDocumentsService>(Services.TeamDocuments).isActive();
+        } catch {
+            return false;
+        }
     }
 
     private async identity(ctx: WorkspaceContext): Promise<LiveProjectIdentity | null> {
