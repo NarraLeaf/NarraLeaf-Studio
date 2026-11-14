@@ -244,6 +244,42 @@ describe("the expressibility gate", () => {
         expect(printNarralangScene(fixture, lookups).issues).toEqual([{ blockId: "b1", reason: "customTransform" }]);
     });
 
+    it("refuses a displayable effect that also changes another transform channel", () => {
+        const fixture = scene([
+            {
+                id: "b1",
+                kind: "action",
+                payload: {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { builtin: "background", name: "Scene background", kind: "image" },
+                    transform: { to: { maskAssetId: "asset-bg", opacity: 0.5 } },
+                },
+            },
+        ] as never);
+
+        expect(printNarralangScene(fixture, lookups).issues).toEqual([{ blockId: "b1", reason: "customTransform" }]);
+        expect(narralangSceneExpressible(fixture, lookups)).toBe(false);
+    });
+
+    it("refuses a placement that also changes another transform channel", () => {
+        const fixture = scene([
+            {
+                id: "b1",
+                kind: "action",
+                payload: {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    transform: { to: { position: { xalign: 0.25, yalign: 0.5 }, opacity: 0.5 } },
+                },
+            },
+        ] as never);
+
+        expect(printNarralangScene(fixture, lookups).issues).toEqual([{ blockId: "b1", reason: "customTransform" }]);
+        expect(narralangSceneExpressible(fixture, lookups)).toBe(false);
+    });
+
     it("refuses a clip row that says how the clip leaves, which the script cannot say", () => {
         const fixture = scene([
             { id: "b1", kind: "action", payload: { action: "video", operation: "play", objectName: "intro", hideOnEnd: false } },

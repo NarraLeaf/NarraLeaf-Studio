@@ -1,5 +1,6 @@
 import type { LocaleCode, LocalizationUnit, LocalizationUnitStatus } from "@shared/types/localization";
 import { isValidLocaleCode } from "@shared/types/localization";
+import { getLocalizationUnit, setLocalizationUnit } from "./localizationUnits";
 
 /**
  * Translations travelling with copied content: story rows, and interface widgets whose words are
@@ -61,9 +62,9 @@ export function collectClipboardTranslations(
         const carried: Record<string, LocalizationUnit> = {};
         let carriedAny = false;
         for (const textId of textIds) {
-            const unit = units[textId];
+            const unit = getLocalizationUnit(units, textId);
             if (unit?.target) {
-                carried[textId] = unit;
+                setLocalizationUnit(carried, textId, unit);
                 carriedAny = true;
             }
         }
@@ -131,7 +132,7 @@ export function planCarriedTranslations(
             }
             count += 1;
             if (known) {
-                units[textId] = unit;
+                setLocalizationUnit(units, textId, unit);
             }
         }
         if (!known) {
@@ -220,7 +221,7 @@ export function readCarriedTranslations(value: unknown): CarriedTranslations | u
         for (const [unitId, raw] of Object.entries(units as Record<string, unknown>)) {
             const unit = readCarriedUnit(raw);
             if (unitId && unit) {
-                kept[unitId] = unit;
+                setLocalizationUnit(kept, unitId, unit);
             }
         }
         if (Object.keys(kept).length > 0) {

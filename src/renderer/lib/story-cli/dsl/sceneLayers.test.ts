@@ -53,6 +53,13 @@ describe("#layer", () => {
         expect(read.scene.layers).toEqual(before.layers);
     });
 
+    it("preserves a layer whose name contains both kinds of quotes", () => {
+        const before = scene([{ kind: "custom", id: "fog", name: `Director's "fog"` }, { kind: "displayable" }, { kind: "background" }]);
+        const read = applySceneLayerDirectives(before, directives(...printSceneLayers(before).map(line => line.slice("#layer ".length))), () => "minted");
+        expect(read.diagnostics).toEqual([]);
+        expect(read.scene.layers).toEqual(before.layers);
+    });
+
     it("makes a new layer for a name the scene does not have, and removes one the lines leave out", () => {
         const before = scene([{ kind: "custom", id: "fog", name: "fog" }, { kind: "displayable" }, { kind: "background" }]);
         const read = applySceneLayerDirectives(before, directives("displayableLayer", "mist distance=2", "backgroundLayer"), () => "minted");

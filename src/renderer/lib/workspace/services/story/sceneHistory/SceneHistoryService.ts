@@ -16,14 +16,17 @@
  * Comments in English per convention.
  */
 
-import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
+import { getProjectWriteFreeze, isProjectWriteReloadHeld, observeProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { translate } from "@/lib/i18n";
+import { yieldToEventLoop } from "@/lib/lint/breather";
 import type { StoryBlock, StoryDocument, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { VcsHistoryEntry } from "@shared/types/vcs";
 import { Service } from "../../Service";
 import { Services, type WorkspaceContext } from "../../services";
 import type { GlobalSettingsService } from "../../GlobalSettingsService";
 import type { FileSystemService } from "../../core/FileSystem";
+import { storeWrite, type BackgroundWriteOwner, type FsWriteReport } from "../../autosave/writeReport";
+import type { SaveStatusService } from "../../autosave/SaveStatusService";
 import type { UuidService } from "../../core/UuidService";
 import type { StoryService } from "../StoryService";
 import type { VersionControlService } from "../../core/VersionControlService";
@@ -47,6 +50,7 @@ export const AUTO_SNAPSHOT_KEEP_SETTING = "story.autoSnapshot.keepRecent";
 export const AUTO_SNAPSHOT_DEFAULT_ENABLED = true;
 export const AUTO_SNAPSHOT_DEFAULT_INTERVAL_MINUTES = 10;
 export const AUTO_SNAPSHOT_DEFAULT_KEEP = DEFAULT_RETENTION_POLICY.keepRecent;
+const SCENE_HISTORY_WRITE = storeWrite("sceneHistory.panelTitle", "notRetried");
 
 /** How often the timer checks the clock. Independent of the interval so a changed setting applies on the next beat. */
 const HEARTBEAT_MS = 30_000;
@@ -56,6 +60,11 @@ export const ROW_HISTORY_REVISION_LIMIT = 10;
 type SceneHistoryEvents = {
     changed: { storyId: StoryId; sceneId: StorySceneId };
 };
+
+/** A failed write is reported by SaveStatus; other failures still need a caller's notice. */
+export type SceneHistoryResult<T = void> =
+    | { status: "ok"; value: T }
+    | { status: "save-reported" | "failed" | "row-missing" };
 
 export type SceneHistorySchedulerDeps = {
     enabled: () => boolean;
@@ -79,7 +88,8 @@ export class SceneHistoryScheduler {
     private stopBeating: (() => void) | null = null;
     private dirtySince: number | null = null;
     private readonly touched = new Set<StoryId>();
-    private running = false;
+    private running: Promise<void> | null = null;
+    private generation = 0;
 
     constructor(private readonly deps: SceneHistorySchedulerDeps) {
         this.now = deps.now ?? (() => Date.now());
@@ -97,8 +107,17 @@ export class SceneHistoryScheduler {
     public stop(): void {
         this.stopBeating?.();
         this.stopBeating = null;
+        this.cancel();
+    }
+
+    public cancel(): void {
+        this.generation += 1;
         this.touched.clear();
         this.dirtySince = null;
+    }
+
+    public async whenIdle(): Promise<void> {
+        await this.running?.catch(() => undefined);
     }
 
     public noteChange(storyId: StoryId): void {
@@ -115,29 +134,40 @@ export class SceneHistoryScheduler {
         if (!Number.isFinite(minutes) || minutes <= 0) return;
         if (this.dirtySince === null || this.running || this.deps.isFrozen()) return;
         if (this.now() - this.dirtySince < minutes * 60_000) return;
-        this.running = true;
+        const generation = this.generation;
         const storyIds = [...this.touched];
         this.touched.clear();
         this.dirtySince = null;
+        const running = Promise.resolve().then(() => {
+            if (generation === this.generation) return this.deps.run(storyIds);
+        });
+        this.running = running;
         try {
-            await this.deps.run(storyIds);
+            await running;
         } catch (error) {
-            storyIds.forEach(id => this.touched.add(id));
-            this.dirtySince ??= this.now();
-            this.deps.onError?.(error);
+            if (generation === this.generation) {
+                storyIds.forEach(id => this.touched.add(id));
+                this.dirtySince ??= this.now();
+                this.deps.onError?.(error);
+            }
         } finally {
-            this.running = false;
+            if (this.running === running) this.running = null;
         }
     }
 }
-
-const yieldToEditor = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 export class SceneHistoryService extends Service<SceneHistoryService> {
     private workspace: WorkspaceContext | null = null;
     private settings: GlobalSettingsService | null = null;
     private scheduler: SceneHistoryScheduler | null = null;
     private stopListening: (() => void) | null = null;
+    private stopLibraryListening: (() => void) | null = null;
+    private stopSettingsListening: (() => void)[] = [];
+    private stopReloadListening: (() => void) | null = null;
+    private stopFreezeListening: (() => void) | null = null;
+    private saveStatus: SaveStatusService | null = null;
+    private autoGeneration = 0;
+    private readonly backgroundWrites = new Map<string, { storyId: StoryId; sceneId: StorySceneId; owner: BackgroundWriteOwner }>();
     private readonly events = new EventEmitter<SceneHistoryEvents>();
     /** Parsed indexes by scene key, so the panel and the scheduler do not re-read the disk. */
     private readonly indexes = new Map<string, SceneHistoryIndex>();
@@ -148,39 +178,85 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         this.workspace = ctx;
         const story = ctx.services.get<StoryService>(Services.Story);
         const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
+        this.saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
         try {
             const settings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
-            await depend([story, fs, settings]);
+            await depend([story, fs, settings, this.saveStatus]);
             this.settings = settings;
         } catch {
-            await depend([story, fs]);
+            await depend([story, fs, this.saveStatus]);
             this.settings = null;
         }
         this.scheduler = new SceneHistoryScheduler({
             enabled: () => this.setting<boolean>(AUTO_SNAPSHOT_ENABLED_SETTING, AUTO_SNAPSHOT_DEFAULT_ENABLED) !== false,
             intervalMinutes: () => Number(this.setting(AUTO_SNAPSHOT_INTERVAL_SETTING, AUTO_SNAPSHOT_DEFAULT_INTERVAL_MINUTES)),
             isFrozen: () => getProjectWriteFreeze() !== null,
-            run: storyIds => this.snapshotStories(storyIds),
+            run: storyIds => this.snapshotStories(storyIds, true),
             onError: error => console.warn("[SceneHistory] automatic snapshot failed", error),
         });
+        this.stopReloadListening = this.saveStatus.onPrepareForReload(async () => {
+            this.autoGeneration += 1;
+            this.cancelBackgroundWrites();
+            this.scheduler?.cancel();
+            await this.scheduler?.whenIdle();
+            this.indexes.clear();
+        });
+        this.stopFreezeListening = observeProjectWriteFreeze(freeze => {
+            if (freeze) this.cancelBackgroundWrites();
+        });
+        const settingsChanged = () => {
+            if (!this.autoSnapshotEnabled()) this.cancelBackgroundWrites();
+        };
+        if (this.settings?.onChange) {
+            this.stopSettingsListening = [
+                this.settings.onChange(AUTO_SNAPSHOT_ENABLED_SETTING, settingsChanged),
+                this.settings.onChange(AUTO_SNAPSHOT_INTERVAL_SETTING, settingsChanged),
+            ];
+        }
     }
 
     public override activate(ctx: WorkspaceContext): void {
         this.scheduler?.start();
         this.stopListening?.();
-        this.stopListening = ctx.services.get<StoryService>(Services.Story)
-            .onDocumentChanged(event => this.scheduler?.noteChange(event.storyId));
+        const story = ctx.services.get<StoryService>(Services.Story);
+        this.stopListening = story.onDocumentChanged(event => {
+            if (!getProjectWriteFreeze() && !isProjectWriteReloadHeld()) {
+                this.cancelBackgroundWrites(item => item.storyId === event.storyId && !event.document.scenes[item.sceneId]);
+            }
+            this.scheduler?.noteChange(event.storyId);
+        });
+        this.stopLibraryListening?.();
+        this.stopLibraryListening = story.onLibraryChanged?.(index => {
+            if (!getProjectWriteFreeze() && !isProjectWriteReloadHeld()) {
+                const ids = new Set(index.stories.map(entry => entry.id));
+                this.cancelBackgroundWrites(item => !ids.has(item.storyId));
+            }
+        }) ?? null;
     }
 
-    public override dispose(): void {
-        this.scheduler?.stop();
+    public override async dispose(): Promise<void> {
+        const scheduler = this.scheduler;
+        scheduler?.stop();
+        this.autoGeneration += 1;
+        this.cancelBackgroundWrites();
         this.scheduler = null;
         this.stopListening?.();
         this.stopListening = null;
+        this.stopLibraryListening?.();
+        this.stopLibraryListening = null;
+        this.stopSettingsListening.forEach(stop => stop());
+        this.stopSettingsListening = [];
+        this.stopReloadListening?.();
+        this.stopReloadListening = null;
+        this.stopFreezeListening?.();
+        this.stopFreezeListening = null;
+        await scheduler?.whenIdle();
         this.indexes.clear();
         this.chains.clear();
         this.events.clear();
         this.workspace = null;
+        this.saveStatus = null;
+        this.settings = null;
     }
 
     public onChanged(handler: (event: { storyId: StoryId; sceneId: StorySceneId }) => void): () => void {
@@ -193,9 +269,11 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         return [...index.entries].sort((a, b) => b.createdAt - a.createdAt);
     }
 
-    /** Snapshot the scene as it is in memory now (including edits not yet auto-saved). Null when unchanged since the last one. */
-    public createManualSnapshot(storyId: StoryId, sceneId: StorySceneId, label?: string): Promise<SceneHistoryEntryMeta | null> {
-        return this.snapshotScene(storyId, sceneId, "manual", label, true);
+    /** Snapshot the scene as it is in memory now, including edits not yet auto-saved. */
+    public async createManualSnapshot(storyId: StoryId, sceneId: StorySceneId, label?: string): Promise<SceneHistoryResult<SceneHistoryEntryMeta>> {
+        const result = await this.snapshotScene(storyId, sceneId, "manual", label, true);
+        if (result.status !== "ok") return result;
+        return result.value ? { status: "ok", value: result.value } : { status: "failed" };
     }
 
     public async readSnapshotScene(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<StoryScene | null> {
@@ -203,13 +281,15 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         return result.ok ? result.data.scene ?? null : null;
     }
 
-    public deleteEntry(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<void> {
+    public deleteEntry(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<SceneHistoryResult> {
         return this.chain(storyId, sceneId, async () => {
             const index = await this.readIndex(storyId, sceneId);
             const next = { ...index, entries: index.entries.filter(entry => entry.id !== entryId) };
-            await this.writeIndex(storyId, sceneId, next);
+            const written = await this.writeIndex(storyId, sceneId, next, SCENE_HISTORY_WRITE);
+            if (written.status !== "ok") return written;
             await this.fs().deleteFile(this.entryPath(storyId, sceneId, entryId));
             this.events.emit("changed", { storyId, sceneId });
+            return { status: "ok", value: undefined };
         });
     }
 
@@ -271,33 +351,50 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
      * the copy and no duplicate is written. Only the block tree is restored: the scene's name, runtime name, music
      * and variable snapshots are not content a row history speaks about.
      */
-    public async restoreSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<boolean> {
+    public async restoreSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, entryId: string): Promise<SceneHistoryResult> {
         const snapshot = await this.readSnapshotScene(storyId, sceneId, entryId);
-        const current = this.story().getLoadedStoryDocument(storyId)?.scenes[sceneId];
-        if (!snapshot || !current) return false;
-        await this.snapshotBeforeRestore(storyId, sceneId);
-        return this.story().commitSceneReplacement(storyId, sceneId, {
-            ...current,
+        if (!snapshot) return { status: "failed" };
+        const current = await this.snapshotBeforeRestore(storyId, sceneId);
+        if (current.status !== "ok") return current;
+        const committed = this.story().commitSceneReplacement(storyId, sceneId, {
+            ...current.value,
             rootBlockIds: [...snapshot.rootBlockIds],
             blocks: JSON.parse(JSON.stringify(snapshot.blocks)),
         }, { label: { key: "sceneHistory.historyRestoreScene" } });
+        return committed ? { status: "ok", value: undefined } : { status: "failed" };
     }
 
     /** Set one row's content back to `version`, keeping its place in the tree. One undo step. */
-    public async restoreRowVersion(storyId: StoryId, sceneId: StorySceneId, version: StoryBlock): Promise<boolean> {
-        const current = this.story().getLoadedStoryDocument(storyId)?.scenes[sceneId];
-        if (!current) return false;
-        const next = sceneWithRowRestored(current, version);
-        if (!next) return false;
-        await this.snapshotBeforeRestore(storyId, sceneId);
-        return this.story().commitSceneReplacement(storyId, sceneId, next, { label: { key: "sceneHistory.historyRestoreRow" } });
+    public async restoreRowVersion(storyId: StoryId, sceneId: StorySceneId, version: StoryBlock): Promise<SceneHistoryResult> {
+        const scene = this.story().getLoadedStoryDocument(storyId)?.scenes[sceneId];
+        if (!scene) return { status: "failed" };
+        if (!scene.blocks[version.id]) return { status: "row-missing" };
+        const current = await this.snapshotBeforeRestore(storyId, sceneId);
+        if (current.status !== "ok") return current;
+        const next = sceneWithRowRestored(current.value, version);
+        if (!next) return { status: "row-missing" };
+        return this.story().commitSceneReplacement(storyId, sceneId, next, { label: { key: "sceneHistory.historyRestoreRow" } })
+            ? { status: "ok", value: undefined }
+            : { status: "failed" };
     }
 
-    private async snapshotBeforeRestore(storyId: StoryId, sceneId: StorySceneId): Promise<void> {
-        try {
-            await this.snapshotScene(storyId, sceneId, "manual", translate("sceneHistory.beforeRestore"));
-        } catch (error) {
-            console.warn("[SceneHistory] could not snapshot before restoring", error);
+    private async snapshotBeforeRestore(storyId: StoryId, sceneId: StorySceneId): Promise<SceneHistoryResult<StoryScene>> {
+        while (true) {
+            if (getProjectWriteFreeze() !== null) return { status: "failed" };
+            const story = this.story();
+            if (!story.getLoadedStoryDocument(storyId)?.scenes[sceneId]) return { status: "failed" };
+            const revision = story.getSceneContentRevision(storyId, sceneId);
+            try {
+                const saved = await this.snapshotScene(storyId, sceneId, "manual", translate("sceneHistory.beforeRestore"));
+                if (saved.status !== "ok") return saved;
+            } catch (error) {
+                console.warn("[SceneHistory] could not snapshot before restoring", error);
+                return { status: "failed" };
+            }
+            if (getProjectWriteFreeze() !== null) return { status: "failed" };
+            const current = story.getLoadedStoryDocument(storyId)?.scenes[sceneId];
+            if (!current) return { status: "failed" };
+            if (story.getSceneContentRevision(storyId, sceneId) === revision) return { status: "ok", value: current };
         }
     }
 
@@ -307,14 +404,40 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         await this.snapshotStories(ids);
     }
 
-    private async snapshotStories(storyIds: StoryId[]): Promise<void> {
+    private async snapshotStories(storyIds: StoryId[], scheduled = false): Promise<void> {
+        const generation = this.autoGeneration;
         for (const storyId of storyIds) {
-            const document = this.story().getLoadedStoryDocument(storyId);
-            if (!document) continue;
+            if (scheduled && generation !== this.autoGeneration) return;
+            const story = this.story();
+            const document = story.getLoadedStoryDocument(storyId);
+            if (!document) {
+                if (scheduled && story.getLibraryIndex().stories.some(entry => entry.id === storyId)) {
+                    throw new Error("The story is not loaded");
+                }
+                if (scheduled) this.cancelBackgroundWrites(item => item.storyId === storyId);
+                continue;
+            }
+            if (scheduled && !getProjectWriteFreeze() && !isProjectWriteReloadHeld()) {
+                this.cancelBackgroundWrites(item => item.storyId === storyId && !document.scenes[item.sceneId]);
+            }
             for (const sceneId of Object.keys(document.scenes)) {
-                if (getProjectWriteFreeze() !== null) return;
-                await this.snapshotScene(storyId, sceneId, "auto");
-                await yieldToEditor();
+                if (scheduled && generation !== this.autoGeneration) return;
+                if (getProjectWriteFreeze() !== null) {
+                    if (!scheduled) return;
+                    throw new Error("Automatic snapshots are paused");
+                }
+                if (scheduled && !this.autoSnapshotEnabled()) {
+                    throw new Error("Automatic snapshots are paused");
+                }
+                const owner = scheduled ? this.backgroundOwner(storyId, sceneId) : undefined;
+                const report: FsWriteReport | undefined = owner
+                    ? { name: { store: "sceneHistory.panelTitle" }, afterFailure: "backgroundRetried", owner }
+                    : undefined;
+                if ((await this.snapshotScene(storyId, sceneId, "auto", undefined, false, report)).status !== "ok") {
+                    throw new Error("Could not save the scene history snapshot");
+                }
+                if (owner) this.finishBackgroundWrite(storyId, sceneId, owner);
+                await yieldToEventLoop();
             }
         }
     }
@@ -325,16 +448,19 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         kind: SceneHistoryKind,
         label?: string,
         force = false,
-    ): Promise<SceneHistoryEntryMeta | null> {
+        autoReport?: FsWriteReport,
+    ): Promise<SceneHistoryResult<SceneHistoryEntryMeta | null>> {
         return this.chain(storyId, sceneId, async () => {
+            if (!this.canContinueAutoWrite(autoReport)) return { status: "failed" };
             const scene = this.story().getLoadedStoryDocument(storyId)?.scenes[sceneId];
-            if (!scene) return null;
+            if (!scene) return { status: "ok", value: null };
             // Serialized synchronously, so the bytes are the scene at this instant.
             const serialized = JSON.stringify(scene);
             const hash = hashString(serialized);
             const index = await this.readIndex(storyId, sceneId);
+            if (!this.canContinueAutoWrite(autoReport)) return { status: "failed" };
             const newest = [...index.entries].sort((a, b) => b.createdAt - a.createdAt)[0];
-            if (newest && newest.hash === hash && !force) return null;
+            if (newest && newest.hash === hash && !force) return { status: "ok", value: null };
             // A scene's very first automatic snapshot is still taken: it is the baseline every
             // later row version is compared against.
             const entry: SceneHistoryEntryMeta = {
@@ -345,26 +471,32 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
                 blockCount: Object.keys(scene.blocks).length,
                 ...(label ? { label } : {}),
             };
+            const report = kind === "manual" ? SCENE_HISTORY_WRITE : autoReport ?? SCENE_HISTORY_WRITE;
             await this.ensureDir(this.sceneDir(storyId, sceneId));
+            if (!this.canContinueAutoWrite(report)) return { status: "failed" };
             const wrote = await this.fs().writeFileNoFollowOrCreate(
                 this.entryPath(storyId, sceneId, entry.id),
                 `{"version":1,"scene":${serialized}}`,
                 "utf-8",
+                report,
             );
-            if (!wrote.ok || wrote.refused) return null;
+            if (!wrote.ok) return { status: "save-reported" };
+            if (wrote.refused) return { status: "failed" };
+            if (!this.canContinueAutoWrite(report)) return { status: "failed" };
             const keepRecent = Math.max(1, Number(this.setting(AUTO_SNAPSHOT_KEEP_SETTING, AUTO_SNAPSHOT_DEFAULT_KEEP)) || AUTO_SNAPSHOT_DEFAULT_KEEP);
             const { keep, drop } = applyRetention([...index.entries, entry], {
                 ...DEFAULT_RETENTION_POLICY,
                 keepRecent,
                 maxAuto: Math.max(DEFAULT_RETENTION_POLICY.maxAuto, keepRecent + DEFAULT_RETENTION_POLICY.keepDaily),
             });
-            await this.writeIndex(storyId, sceneId, { version: 1, entries: keep });
+            const written = await this.writeIndex(storyId, sceneId, { version: 1, entries: keep }, report);
+            if (written.status !== "ok") return written;
             for (const gone of drop) {
                 await this.fs().deleteFile(this.entryPath(storyId, sceneId, gone.id));
             }
             this.events.emit("changed", { storyId, sceneId });
-            return entry;
-        }) as Promise<SceneHistoryEntryMeta | null>;
+            return { status: "ok", value: entry };
+        });
     }
 
     private chain<T>(storyId: StoryId, sceneId: StorySceneId, task: () => Promise<T>): Promise<T> {
@@ -381,19 +513,69 @@ export class SceneHistoryService extends Service<SceneHistoryService> {
         if (cached) return cached;
         const path = this.indexPath(storyId, sceneId);
         const exists = await this.fs().isFileExists(path);
+        if (!exists.ok) throw new Error("Could not read the scene history index");
         let index: SceneHistoryIndex = { version: 1, entries: [] };
-        if (exists.ok && exists.data) {
+        if (exists.data) {
             const read = await this.fs().readJSON<SceneHistoryIndex>(path);
-            if (read.ok && Array.isArray(read.data?.entries)) index = { version: 1, entries: read.data.entries };
+            if (!read.ok || !Array.isArray(read.data?.entries)) {
+                throw new Error("Could not read the scene history index");
+            }
+            index = { version: 1, entries: read.data.entries };
         }
         this.indexes.set(key, index);
         return index;
     }
 
-    private async writeIndex(storyId: StoryId, sceneId: StorySceneId, index: SceneHistoryIndex): Promise<void> {
-        this.indexes.set(this.key(storyId, sceneId), index);
+    private async writeIndex(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        index: SceneHistoryIndex,
+        report: FsWriteReport | undefined,
+    ): Promise<SceneHistoryResult> {
         await this.ensureDir(this.sceneDir(storyId, sceneId));
-        await this.fs().writeFileNoFollowOrCreate(this.indexPath(storyId, sceneId), JSON.stringify(index), "utf-8");
+        if (!this.canContinueAutoWrite(report)) return { status: "failed" };
+        const result = await this.fs().writeFileNoFollowOrCreate(this.indexPath(storyId, sceneId), JSON.stringify(index), "utf-8", report);
+        if (!result.ok) return { status: "save-reported" };
+        if (result.refused) return { status: "failed" };
+        if (!this.canContinueAutoWrite(report)) return { status: "failed" };
+        this.indexes.set(this.key(storyId, sceneId), index);
+        return { status: "ok", value: undefined };
+    }
+
+    private autoSnapshotEnabled(): boolean {
+        const enabled = this.setting<boolean>(AUTO_SNAPSHOT_ENABLED_SETTING, AUTO_SNAPSHOT_DEFAULT_ENABLED) !== false;
+        const minutes = Number(this.setting(AUTO_SNAPSHOT_INTERVAL_SETTING, AUTO_SNAPSHOT_DEFAULT_INTERVAL_MINUTES));
+        return enabled && Number.isFinite(minutes) && minutes > 0;
+    }
+
+    private canContinueAutoWrite(report?: FsWriteReport): boolean {
+        return report?.afterFailure !== "backgroundRetried"
+            || (report.owner.active && !getProjectWriteFreeze() && !isProjectWriteReloadHeld() && this.autoSnapshotEnabled());
+    }
+
+    private backgroundOwner(storyId: StoryId, sceneId: StorySceneId): BackgroundWriteOwner {
+        const key = this.key(storyId, sceneId);
+        let item = this.backgroundWrites.get(key);
+        if (!item) {
+            item = { storyId, sceneId, owner: { active: true, attempts: 0 } };
+            this.backgroundWrites.set(key, item);
+        }
+        return item.owner;
+    }
+
+    private finishBackgroundWrite(storyId: StoryId, sceneId: StorySceneId, owner: BackgroundWriteOwner): void {
+        const key = this.key(storyId, sceneId);
+        if (this.backgroundWrites.get(key)?.owner !== owner) return;
+        this.backgroundWrites.delete(key);
+        this.saveStatus?.endBackgroundWrites(owner);
+    }
+
+    private cancelBackgroundWrites(
+        matches: (item: { storyId: StoryId; sceneId: StorySceneId; owner: BackgroundWriteOwner }) => boolean = () => true,
+    ): void {
+        for (const item of [...this.backgroundWrites.values()]) {
+            if (matches(item)) this.finishBackgroundWrite(item.storyId, item.sceneId, item.owner);
+        }
     }
 
     private async ensureDir(dir: string): Promise<void> {

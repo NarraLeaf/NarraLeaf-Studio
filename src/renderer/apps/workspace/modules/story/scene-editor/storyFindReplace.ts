@@ -85,6 +85,24 @@ export function plainOffsetToUnit(runs: readonly StoryRichRun[], plainOffset: nu
     return unit;
 }
 
+/** Resolve a match start after the tokens immediately before its first character. */
+function matchStartToUnit(runs: readonly StoryRichRun[], plainOffset: number): number {
+    let plain = 0;
+    let unit = 0;
+    for (const run of runs) {
+        if (!isTextRun(run)) {
+            unit += 1;
+            continue;
+        }
+        if (plainOffset < plain + run.text.length) {
+            return unit + (plainOffset - plain);
+        }
+        plain += run.text.length;
+        unit += run.text.length;
+    }
+    return unit;
+}
+
 /**
  * Replace one hit in a segment, keeping everything the hit did not cover.
  *
@@ -93,8 +111,8 @@ export function plainOffsetToUnit(runs: readonly StoryRichRun[], plainOffset: nu
  */
 export function replaceInSegment(segment: StoryTextSegment, range: StoryTextRange, replacement: string): StoryTextSegment {
     const runs = segmentToRuns(segment);
-    const startUnit = plainOffsetToUnit(runs, range.start);
-    const endUnit = plainOffsetToUnit(runs, range.end);
+    const startUnit = matchStartToUnit(runs, range.start);
+    const endUnit = range.start === range.end ? startUnit : plainOffsetToUnit(runs, range.end);
     const marks = markAtUnit(runs, startUnit);
     const insert: StoryRichRun[] = replacement
         ? [marks ? { text: replacement, marks } : { text: replacement }]

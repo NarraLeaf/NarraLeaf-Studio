@@ -177,7 +177,7 @@ function isPlaybackEndRow(block: StoryBlock): boolean {
  */
 function listsOfScene(scene: StoryScene): StoryBlockId[][] {
     const lists: StoryBlockId[][] = [scene.rootBlockIds];
-    for (const block of Object.values(scene.blocks)) {
+    for (const block of liveBlocks(scene)) {
         if (block.childrenIds.length > 0) {
             lists.push(block.childrenIds);
         }

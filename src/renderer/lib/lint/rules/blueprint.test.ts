@@ -483,6 +483,18 @@ describe("blueprint/dlc-entrance-unguarded", () => {
         expect(findings).toEqual([]);
     });
 
+    it("does not judge the picked story when a wire supplies the story id", async () => {
+        const graph = entrance({
+            literal: { id: "literal", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "story-base" } },
+        });
+        graph.edges = [...(graph.edges ?? []), { from: { nodeId: "literal", port: "value" }, to: { nodeId: "start", port: "storyId" } }];
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }), stories }),
+        );
+        expect(findings).toEqual([]);
+    });
+
     it("is not satisfied by a guard on a different DLC", async () => {
         const guard: BlueprintGraphIr["nodes"] = {
             guard: {
