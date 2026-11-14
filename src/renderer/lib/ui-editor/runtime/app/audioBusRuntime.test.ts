@@ -182,6 +182,27 @@ describe("attachAudioBusPersistence", () => {
         expect(changed).toHaveBeenCalledTimes(1);
     });
 
+    it("reports a rejected asynchronous write without blocking mixer notifications", async () => {
+        const mixer = createMixer();
+        const changed = vi.fn();
+        const log = vi.fn();
+        const rejected = Promise.reject(new Error("disk full"));
+        void rejected.catch(() => undefined);
+
+        await attachAudioBusPersistence({
+            mixer,
+            read: () => ({}),
+            write: () => rejected,
+            onVolumeChange: changed,
+            log,
+        });
+        mixer.fire("bgm", 0.2);
+        await Promise.resolve();
+
+        expect(changed).toHaveBeenCalledOnce();
+        expect(log).toHaveBeenCalledWith("warning", expect.stringContaining("disk full"));
+    });
+
     it("is a no-op on an engine build with no mixer", async () => {
         const dispose = await attachAudioBusPersistence({
             mixer: undefined,

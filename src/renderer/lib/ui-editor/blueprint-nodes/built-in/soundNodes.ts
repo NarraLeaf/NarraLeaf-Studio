@@ -255,12 +255,17 @@ function resolveTrackId(ctx: SoundExecuteCtx): string | null {
     return trackId ? trackId : null;
 }
 
-/**
- * A transport node's target handle. Required: pausing "whatever is playing" is
- * not expressible, because the host may hold several clips at once.
- */
+function handleIsWired(ctx: SoundExecuteCtx): boolean {
+    return ctx.graph.edges.some(edge => edge.to.nodeId === ctx.node.id && edge.to.port === "handle");
+}
+
+/** A connected Play Sound can return null when no clip started; an unwired required input is an error. */
 function requireHandle(ctx: SoundExecuteCtx, nodeTitleKey: TranslationKey) {
-    const handle = normalizeBlueprintSoundHandle(readPin(ctx, "handle"));
+    const value = readPin(ctx, "handle");
+    if (value === null && handleIsWired(ctx)) {
+        return null;
+    }
+    const handle = normalizeBlueprintSoundHandle(value);
     if (!handle) {
         throw new BlueprintGraphExecutionError(
             translate("blueprint.runtimeError.inputEmpty", {
@@ -343,8 +348,12 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         // family started, which is what a Page's exit handler wants.
         pins: [execIn, { ...handleIn, optional: true }, fadeIn, execNext],
         async execute(ctx) {
+            const handle = normalizeBlueprintSoundHandle(readPin(ctx, "handle"));
+            if (!handle && handleIsWired(ctx)) {
+                return { nextPort: "next" };
+            }
             await requireHostApi(ctx).sound.stop(
-                normalizeBlueprintSoundHandle(readPin(ctx, "handle")),
+                handle,
                 readSecondsAsMs(ctx, "fade"),
             );
             return { nextPort: "next" };
@@ -360,7 +369,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.pause(requireHandle(ctx, "blueprint.node.pauseSound"));
+            const handle = requireHandle(ctx, "blueprint.node.pauseSound");
+            if (handle) {
+                await requireHostApi(ctx).sound.pause(handle);
+            }
             return { nextPort: "next" };
         },
     },
@@ -374,7 +386,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.resume(requireHandle(ctx, "blueprint.node.resumeSound"));
+            const handle = requireHandle(ctx, "blueprint.node.resumeSound");
+            if (handle) {
+                await requireHostApi(ctx).sound.resume(handle);
+            }
             return { nextPort: "next" };
         },
     },
@@ -395,11 +410,14 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         // game family's SFX-slider node used to share this display name and no longer does.
         pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.setVolume(
-                requireHandle(ctx, "blueprint.node.setSoundVolume"),
-                readOptionalNumber(readPin(ctx, "volume")) ?? 1,
-                readSecondsAsMs(ctx, "fade"),
-            );
+            const handle = requireHandle(ctx, "blueprint.node.setSoundVolume");
+            if (handle) {
+                await requireHostApi(ctx).sound.setVolume(
+                    handle,
+                    readOptionalNumber(readPin(ctx, "volume")) ?? 1,
+                    readSecondsAsMs(ctx, "fade"),
+                );
+            }
             return { nextPort: "next" };
         },
     },
@@ -413,10 +431,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, timeIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.seek(
-                requireHandle(ctx, "blueprint.node.seekSound"),
-                readSecondsAsMs(ctx, "time"),
-            );
+            const handle = requireHandle(ctx, "blueprint.node.seekSound");
+            if (handle) {
+                await requireHostApi(ctx).sound.seek(handle, readSecondsAsMs(ctx, "time"));
+            }
             return { nextPort: "next" };
         },
     },
@@ -488,10 +506,11 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext, isPlayingOut],
         execute(ctx) {
+            const handle = requireHandle(ctx, "blueprint.node.isSoundPlaying");
             return {
                 nextPort: "next",
                 outputValues: {
-                    isPlaying: requireHostApi(ctx).sound.isPlaying(requireHandle(ctx, "blueprint.node.isSoundPlaying")),
+                    isPlaying: handle ? requireHostApi(ctx).sound.isPlaying(handle) : false,
                 },
             };
         },

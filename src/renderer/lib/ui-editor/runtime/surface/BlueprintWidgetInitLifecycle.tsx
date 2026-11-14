@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef } from "react";
 import type { UIComponentId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { releaseBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
+import { holdBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { useSurfaceTreeLifecycleSignals } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
@@ -79,9 +79,6 @@ export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLif
     const hasLogicApiInit = Boolean(logicApi?.supportsPrivateBlueprint && logicApi.events.some(e => e.id === "init"));
 
     const initSig = hasLogicApiInit ? `logicApi:${elementType}:init` : "";
-    const listItemScopeSig = listItemScope
-        ? `${listItemScope.index}:${listItemScope.count}:${listItemScope.key}`
-        : "";
     // The element tree rebuilds the resolved params on every render, so the object identity moves
     // even when nothing about the instance did. Effects below key off this signature instead: two
     // renders that resolve to the same values must not re-run an init dispatch or re-subscribe.
@@ -91,6 +88,11 @@ export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLif
     const seenBeforeSurfaceExitVersionRef = useRef(beforeSurfaceExitVersion);
     const seenAfterSurfaceEnterVersionRef = useRef(afterSurfaceEnterVersion);
     const dispatchedInitKeyRef = useRef<string | null>(null);
+    const heldLocalsRef = useRef<ReturnType<typeof holdBlueprintWidgetLocals> | null>(null);
+    const retiringLocalsRef = useRef<ReturnType<typeof holdBlueprintWidgetLocals> | null>(null);
+    const retiringDispatchRef = useRef<typeof latestDispatchRef.current | null>(null);
+    const unmountDispatchRef = useRef<Promise<void> | undefined>(undefined);
+    const pendingReplayRef = useRef<{ key: string; cancel: () => void } | null>(null);
     const hasBlueprintRuntime = Boolean(rt);
 
     useLayoutEffect(() => {
@@ -104,29 +106,94 @@ export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLif
         };
     });
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!hasBlueprintRuntime || !ownedBlueprintId) {
-            return;
+            return undefined;
         }
+        const held = holdBlueprintWidgetLocals({
+            surfaceId, elementId, blueprintId: ownedBlueprintId, runtimeScopeId, componentId, instanceKey,
+        });
+        heldLocalsRef.current = held;
         return () => {
-            releaseBlueprintWidgetLocals(surfaceId, elementId, ownedBlueprintId, runtimeScopeId, { componentId });
+            if (heldLocalsRef.current === held) {
+                heldLocalsRef.current = null;
+            }
+            // A new drawing can mount in this commit before passive Unmount cleanup runs. Its old
+            // record must already be retired, while the old handler can still acquire it.
+            held.retire();
+            retiringLocalsRef.current = held;
+            retiringDispatchRef.current = latestDispatchRef.current;
         };
-    }, [surfaceId, runtimeScopeId, elementId, componentId, hasBlueprintRuntime, ownedBlueprintId]);
+    }, [surfaceId, runtimeScopeId, elementId, componentId, instanceKey, hasBlueprintRuntime, ownedBlueprintId]);
+
+    useEffect(() => {
+        if (!getWidgetLogicApi(elementType)?.events.some(e => e.id === "unmount")) {
+            return undefined;
+        }
+        const key = JSON.stringify([runtimeScopeId, componentId, elementId, elementType, instanceKey]);
+        if (pendingReplayRef.current?.key === key) {
+            pendingReplayRef.current.cancel();
+            pendingReplayRef.current = null;
+        }
+        let committed = false;
+        enqueuePrepaintTask(() => { committed = true; });
+        return () => {
+            const latest = retiringDispatchRef.current ?? latestDispatchRef.current;
+            const held = retiringLocalsRef.current;
+            const dispatch = () => latest.rt?.dispatchElementBlueprintEvent(latest.elementId, "unmount", undefined, {
+                componentId: latest.componentId,
+                componentParams: latest.componentParams ?? undefined,
+                instanceKey: latest.instanceKey,
+                listItemScope: latest.listItemScope,
+                allowClosedScopeExecution: true,
+            });
+            const run = () => held ? held.runUnmount(dispatch) : dispatch();
+            if (committed) {
+                unmountDispatchRef.current = run();
+                return;
+            }
+            // StrictMode immediately reinstalls this effect; a real short-lived mount does not.
+            let cancelled = false;
+            const pending = { key, cancel: () => { cancelled = true; } };
+            pendingReplayRef.current = pending;
+            const result = Promise.resolve().then(() => {
+                if (pendingReplayRef.current === pending) {
+                    pendingReplayRef.current = null;
+                }
+                return cancelled ? undefined : run();
+            });
+            void result.catch(() => undefined);
+            unmountDispatchRef.current = result;
+        };
+    }, [componentId, elementId, elementType, instanceKey, runtimeScopeId]);
+
+    useEffect(() => {
+        const held = heldLocalsRef.current;
+        return () => {
+            held?.release(unmountDispatchRef.current);
+            unmountDispatchRef.current = undefined;
+            if (retiringLocalsRef.current === held) {
+                // If wiring disappeared, a later Unmount can still reach the previous runtime
+                // snapshot. Dispatch it against the retired record rather than creating a live one.
+                if (heldLocalsRef.current) {
+                    retiringLocalsRef.current = null;
+                }
+                retiringDispatchRef.current = null;
+            }
+        };
+    }, [surfaceId, runtimeScopeId, elementId, componentId, instanceKey, hasBlueprintRuntime, ownedBlueprintId]);
 
     useLayoutEffect(() => {
         if (!rt || !initSig) {
             return;
         }
-        // Params are part of the key for the same reason the list item scope is: an instance whose
-        // save id changed is a different subject, and the widget has to run its init again to show
-        // it. Editing a param in the inspector is what makes that visible while Dev Mode runs.
+        // Changing a component parameter can make a placement represent a different subject.
         const initDispatchKey = [
             runtimeScopeId,
             elementId,
             componentId ?? "",
             instanceKey ?? "",
             componentParamsSig,
-            listItemScopeSig,
             initSig,
         ].join("|");
         if (dispatchedInitKeyRef.current === initDispatchKey) {
@@ -148,7 +215,7 @@ export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLif
         return () => {
             cancelled = true;
         };
-    }, [componentId, componentParamsSig, elementId, initSig, instanceKey, listItemScope, listItemScopeSig, rt, runtimeScopeId]);
+    }, [componentId, componentParamsSig, elementId, initSig, instanceKey, listItemScope, rt, runtimeScopeId]);
 
     useEffect(() => {
         if (!rt || beforeSurfaceExitVersion <= seenBeforeSurfaceExitVersionRef.current) {
@@ -175,22 +242,6 @@ export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLif
             listItemScope,
         });
     }, [afterSurfaceEnterVersion, componentId, elementId, instanceKey, listItemScope, rt]);
-
-    useEffect(() => {
-        if (!getWidgetLogicApi(elementType)?.events.some(e => e.id === "unmount")) {
-            return undefined;
-        }
-        return () => {
-            const latest = latestDispatchRef.current;
-            void latest.rt?.dispatchElementBlueprintEvent(latest.elementId, "unmount", undefined, {
-                componentId: latest.componentId,
-                componentParams: latest.componentParams ?? undefined,
-                instanceKey: latest.instanceKey,
-                listItemScope: latest.listItemScope,
-                allowClosedScopeExecution: true,
-            });
-        };
-    }, [componentId, elementId, elementType, instanceKey, listItemScopeSig, runtimeScopeId]);
 
     return null;
 });

@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useAvatar, useDialog } from "narraleaf-react";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
@@ -13,6 +13,9 @@ import {
 import { blueprintSpeakerColor, findBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import { toBlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
+
+/** Each active drawing can restore its last dialog state when a newer drawing leaves. */
+const dialogMirrors = new WeakMap<BlueprintRuntimeCore, Map<object, () => void>>();
 
 /**
  * Mirrors the NarraLeaf dialog state - the speaker's nametag, avatar and accent colour, and the line
@@ -57,6 +60,7 @@ export function DialogStateBridge(props: {
     flushDialogElements: (options?: { now?: boolean }) => Promise<void> | void;
 }) {
     const { core, getCurrentNametag, resolveAvatarAssetId, flushDialogElements } = props;
+    const [drawing] = useState(() => ({}));
     const dialog = useDialog();
     const avatar = useAvatar();
     const avatarSrc = avatar.visible ? avatar.src : null;
@@ -67,30 +71,33 @@ export function DialogStateBridge(props: {
         }
         const nametag = dialog.isNarrator ? null : getCurrentNametag?.() ?? null;
         const avatarAssetId = avatarSrc ? resolveAvatarAssetId?.(avatarSrc) ?? null : null;
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
-        // The same write is the clock: `refreshAll` is key-agnostic, so mirroring the avatar here
-        // re-evaluates every value graph on the same beat the nametag already did.
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY, toBlueprintImageAsset(avatarAssetId));
-        // Same beat, same reason: a nametag widget that tints itself from the speaker colour has to
-        // repaint with the line it belongs to, not one line late.
         const speakerId = dialog.isNarrator
             ? null
             : core.scopeBridge.globalGet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY);
         const speaker = typeof speakerId === "string"
             ? findBlueprintCharacterInfo(core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), speakerId)
             : null;
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, blueprintSpeakerColor(speaker, dialog.isNarrator === true));
-        // The line itself, on the same beat. `done` is the engine's own dialog state and is exactly
-        // the click-to-continue condition: the typewriter has run out of characters (or a skip
-        // finished it early) and nothing advances until the player says so. `text` is the whole
-        // line rather than the revealed prefix - the engine settles the words when the line mounts.
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, dialog.done === true);
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, dialog.text ?? "");
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, dialog.isNarrator === true);
-        // Now, not on the next frame: the box is painted with this line in the frame after this
-        // commit, and what its widgets show for it (the speaker's avatar above all) has to be in that
-        // frame rather than the previous line's for one or two more.
-        void flushDialogElements({ now: true });
+        const color = blueprintSpeakerColor(speaker, dialog.isNarrator === true);
+        const text = dialog.text ?? "";
+        const waiting = dialog.done === true;
+        const narrator = dialog.isNarrator === true;
+        const publish = () => {
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY, toBlueprintImageAsset(avatarAssetId));
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, color);
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, waiting);
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, text);
+            core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, narrator);
+            void flushDialogElements({ now: true });
+        };
+        let mirrors = dialogMirrors.get(core);
+        if (!mirrors) {
+            mirrors = new Map();
+            dialogMirrors.set(core, mirrors);
+        }
+        mirrors.delete(drawing);
+        mirrors.set(drawing, publish);
+        publish();
     }, [
         core,
         dialog.done,
@@ -100,25 +107,28 @@ export function DialogStateBridge(props: {
         resolveAvatarAssetId,
         flushDialogElements,
         getCurrentNametag,
+        drawing,
     ]);
 
-    /**
-     * No dialog on screen is not a dialog waiting for the player.
-     *
-     * Its own effect so that it runs on unmount only, and it deliberately does not flush: the
-     * surface this bridge belongs to is going away, and the readers that outlive it - a page, a
-     * widget on the stage - re-evaluate on their own next beat and find the blank rather than the
-     * last line's answer. The nametag family is cleared by the host at session teardown instead,
-     * which is a different moment: it has to survive the dialog being hidden and shown again.
-     */
+    /** Restore a remaining drawing, or clear the line once the last dialog leaves. */
     useLayoutEffect(() => () => {
         if (!core) {
             return;
         }
+        const mirrors = dialogMirrors.get(core);
+        const wasLatest = mirrors && Array.from(mirrors.keys()).at(-1) === drawing;
+        mirrors?.delete(drawing);
+        if (mirrors?.size) {
+            if (wasLatest) {
+                Array.from(mirrors.values()).at(-1)?.();
+            }
+            return;
+        }
+        dialogMirrors.delete(core);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
         core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
-    }, [core]);
+    }, [core, drawing]);
 
     return null;
 }

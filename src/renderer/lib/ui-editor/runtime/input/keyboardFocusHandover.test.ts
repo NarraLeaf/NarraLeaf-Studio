@@ -95,6 +95,18 @@ describe("a layer over a page", () => {
         takeKeyboardFocus(page, remembered);
         expect(document.activeElement).toBe(page);
     });
+
+    it("hands the focus to the page when the remembered control has become disabled", () => {
+        const { page } = mountGame();
+        const button = document.createElement("button");
+        page.appendChild(button);
+        button.focus();
+        const remembered = releaseKeyboardFocus(page);
+        button.disabled = true;
+
+        expect(takeKeyboardFocus(page, remembered)).toBe("held");
+        expect(document.activeElement).toBe(page);
+    });
 });
 
 describe("letting go", () => {

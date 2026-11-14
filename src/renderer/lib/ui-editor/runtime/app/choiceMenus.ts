@@ -46,9 +46,8 @@ export type ChoiceMenus = {
     /**
      * The slot this drawing occupies, the lowest one free when it first asks.
      *
-     * Keyed by the caller's own id and idempotent, so asking twice for the same drawing - which is
-     * what a double-invoked render does - answers with the slot it already holds rather than taking
-     * a second one.
+     * Keyed by the caller's own id and idempotent, so repeated claims for the same drawing answer
+     * with its existing slot rather than taking a second one.
      */
     claimSlot(id: string): number;
     /** Give the slot back, and with it whatever runtime was registered under it. */

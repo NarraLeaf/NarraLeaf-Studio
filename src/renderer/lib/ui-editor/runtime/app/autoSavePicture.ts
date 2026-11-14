@@ -116,6 +116,9 @@ export class AutoSavePicture {
     private async take(id: string): Promise<string | undefined> {
         const playthrough = this.deps.playthrough();
         const picture = await this.deps.capture(id);
+        if (playthrough !== this.deps.playthrough()) {
+            return undefined;
+        }
         if (picture) {
             this.last = { playthrough, picture };
         }

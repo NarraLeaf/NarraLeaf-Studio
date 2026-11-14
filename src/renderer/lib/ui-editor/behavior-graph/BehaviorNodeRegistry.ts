@@ -3,6 +3,7 @@ import type { PersistentVariableRuntimeTable } from "@shared/types/variables/reg
 import type { UIGraph, UIGraphEntry, UIGraphId, UIGraphNode } from "@shared/types/ui-editor/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "../runtime/types";
+import type { BehaviorGraphExecutionFrame } from "./graphExecutionFrame";
 
 export type BehaviorNodeExecuteResult = {
     nextPort?: string;
@@ -72,6 +73,8 @@ export type BehaviorNodeExecutionContext = {
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
+    /** Loop state and node outputs owned by this graph invocation. */
+    executionFrame?: BehaviorGraphExecutionFrame;
     /** Runtime event slot currently being handled, for nodes that need to continue event propagation. */
     eventName?: string;
     eventPayload?: Record<string, unknown>;

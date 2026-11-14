@@ -106,10 +106,12 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
     let currentTextUnread = false;
     let detached = false;
     let dirty = false;
+    let baselineKnown = false;
+    let clearedBeforeLoad = false;
     let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
     const persistNow = () => {
-        if (!dirty) {
+        if (!dirty || !baselineKnown) {
             return;
         }
         dirty = false;
@@ -159,13 +161,21 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
     const whenLoaded = persistenceGetAsync(TEXT_READ_PERSISTENCE_KEY)
         .then(raw => {
             // Merge instead of replace: lines may complete before the load resolves.
-            for (const id of normalizePersistedReadIds(raw)) {
-                readIds.add(id);
+            if (!clearedBeforeLoad) {
+                for (const id of normalizePersistedReadIds(raw)) {
+                    readIds.add(id);
+                }
             }
-            refresh();
         })
         .catch(() => {
             // Unreadable storage degrades to session-only tracking.
+        })
+        .then(() => {
+            baselineKnown = true;
+            refresh();
+            if (persistTimer === null) {
+                persistNow();
+            }
         });
 
     const token = subscribe(refresh);
@@ -184,6 +194,8 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
             if (detached) {
                 return;
             }
+            clearedBeforeLoad = true;
+            baselineKnown = true;
             readIds.clear();
             // Write the wipe through immediately so a pending debounced write
             // cannot resurrect the old set.

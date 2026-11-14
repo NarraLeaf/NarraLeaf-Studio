@@ -21,6 +21,7 @@ import {
     type UITouchGestureDetail,
 } from "./touchGesture";
 import { getSharedInputHoldTracker, isInputBindingHeld, resetSharedInputHoldTracker } from "./inputHoldState";
+import { pressLikeEnter } from "./syntheticKeyPress";
 
 /** Far enough past the threshold that no rounding decides the answer. */
 const FAR = TOUCH_GESTURE_THRESHOLD_PX + 8;
@@ -272,6 +273,40 @@ describe("the recogniser over a window", () => {
         expect(hold.read().gestures.size).toBe(0);
     });
 
+    it("cancels a pending long press when the window loses focus", () => {
+        vi.useFakeTimers();
+        const tracker = attach();
+        const node = panel();
+        const hold = getSharedInputHoldTracker();
+        const seen = listen(node);
+
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100 }]);
+        window.dispatchEvent(new Event("blur"));
+        vi.advanceTimersByTime(UI_LONG_PRESS_MS);
+
+        expect(seen).toEqual([]);
+        expect(tracker.isTouchStrokeInFlight()).toBe(false);
+        expect(hold.read().gestures.size).toBe(0);
+
+        touch(node, "touchstart", [{ clientX: 120, clientY: 100 }]);
+        vi.advanceTimersByTime(UI_LONG_PRESS_MS);
+        expect(seen.map(entry => entry.gesture)).toEqual(["longPress"]);
+    });
+
+    it("releases a held gesture when its recogniser is disposed", () => {
+        vi.useFakeTimers();
+        const tracker = attach();
+        const node = panel();
+        const hold = getSharedInputHoldTracker();
+
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100 }]);
+        vi.advanceTimersByTime(UI_LONG_PRESS_MS);
+        expect(hold.read().gestures.has("longPress")).toBe(true);
+        tracker.dispose();
+
+        expect(hold.read().gestures.size).toBe(0);
+    });
+
     it("swallows the click a stroke it answered ends with", () => {
         const tracker = attach();
         const node = panel();
@@ -288,6 +323,65 @@ describe("the recogniser over a window", () => {
 
         // The next tap is nobody's business but its own.
         node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(clicked).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not swallow a mouse click after an answered stroke with no synthetic click", () => {
+        const tracker = attach();
+        const node = panel();
+        const clicked = vi.fn();
+        node.addEventListener("click", clicked);
+
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100 }]);
+        touch(node, "touchmove", [{ clientX: 100, clientY: 100 + FAR }]);
+        tracker.claimStroke();
+        touch(node, "touchend", [], [{ clientX: 100, clientY: 100 + FAR }]);
+        const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+        Object.defineProperty(click, "pointerType", { value: "mouse" });
+        node.dispatchEvent(click);
+
+        expect(clicked).toHaveBeenCalledTimes(1);
+        const tap = new MouseEvent("click", { bubbles: true, cancelable: true });
+        Object.defineProperty(tap, "pointerType", { value: "touch" });
+        node.dispatchEvent(tap);
+        expect(clicked).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not swallow a gamepad confirm after an answered stroke with no synthetic click", () => {
+        const tracker = attach();
+        const node = panel();
+        const clicked = vi.fn();
+        node.addEventListener("click", clicked);
+
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100 }]);
+        touch(node, "touchmove", [{ clientX: 100, clientY: 100 + FAR }]);
+        tracker.claimStroke();
+        touch(node, "touchend", [], [{ clientX: 100, clientY: 100 + FAR }]);
+        pressLikeEnter(node);
+
+        expect(clicked).toHaveBeenCalledTimes(1);
+        const tap = new MouseEvent("click", { bubbles: true, cancelable: true });
+        Object.defineProperty(tap, "pointerType", { value: "touch" });
+        node.dispatchEvent(tap);
+        expect(clicked).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not swallow a click made by a control handling a gamepad confirm", () => {
+        const tracker = attach();
+        const node = panel();
+        const clicked = vi.fn();
+        node.addEventListener("click", clicked);
+        node.addEventListener("keydown", event => {
+            event.preventDefault();
+            node.click();
+        });
+
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100 }]);
+        touch(node, "touchmove", [{ clientX: 100, clientY: 100 + FAR }]);
+        tracker.claimStroke();
+        touch(node, "touchend", [], [{ clientX: 100, clientY: 100 + FAR }]);
+        pressLikeEnter(node);
+
         expect(clicked).toHaveBeenCalledTimes(1);
     });
 
@@ -311,6 +405,23 @@ describe("the recogniser over a window", () => {
 
         touch(node, "touchend", [], [{ clientX: 100, clientY: 100 }]);
         expect(tracker.isTouchStrokeInFlight()).toBe(false);
+    });
+
+    it("releases a held long press when a second finger voids the stroke", () => {
+        vi.useFakeTimers();
+        const tracker = attach();
+        const node = panel();
+        const hold = getSharedInputHoldTracker();
+        const first = { clientX: 100, clientY: 100, identifier: 1 };
+        const second = { clientX: 200, clientY: 200, identifier: 2 };
+
+        touch(node, "touchstart", [first]);
+        vi.advanceTimersByTime(UI_LONG_PRESS_MS);
+        expect(hold.read().gestures.has("longPress")).toBe(true);
+        touch(node, "touchstart", [first, second], [second]);
+
+        expect(hold.read().gestures.has("longPress")).toBe(false);
+        expect(tracker.isTouchStrokeInFlight()).toBe(true);
     });
 
     it("follows the finger it started on rather than whichever is listed first", () => {

@@ -13,8 +13,8 @@
  * It took driving the real app to find, so it gets a test that does not need one.
  */
 
-import { StrictMode, useEffect, useState } from "react";
-import { render, cleanup, act } from "@testing-library/react";
+import { StrictMode, useEffect, useLayoutEffect, useState } from "react";
+import { render, renderHook, cleanup, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYTIME_TOTAL_FLUSH_SECONDS } from "./playtimeClock";
 import { usePlaytime, type PlaytimeRuntime } from "./usePlaytime";
@@ -186,5 +186,59 @@ describe("usePlaytime", () => {
         expect(reads.length).toBeGreaterThan(0);
         expect(persisted.length, "an empty store must not hold writing forever").toBeGreaterThan(0);
         expect(persisted[0]).toBeGreaterThanOrEqual(PLAYTIME_TOTAL_FLUSH_SECONDS);
+    });
+
+    it("holds accrued time while the persistence source is being replaced", async () => {
+        vi.useFakeTimers();
+        const persisted: number[] = [];
+        const { result, rerender } = renderHook(
+            ({ source }: { source: object | null }) => usePlaytime({
+                isPlaying: () => true,
+                persistenceSource: source,
+                persistenceGetAsync: async () => 500,
+                persistenceSet: (_key, value) => { persisted.push(value as number); },
+                tickIntervalMs: TICK_MS,
+            }),
+            { initialProps: { source: {} as object | null } },
+        );
+
+        await act(async () => { await vi.advanceTimersByTimeAsync(TICK_MS * 6); });
+        rerender({ source: null });
+        act(() => { result.current.flush(); });
+        expect(persisted).toEqual([]);
+
+        await act(async () => { rerender({ source: {} }); });
+        act(() => { result.current.flush(); });
+        expect(persisted).toHaveLength(1);
+        expect(persisted[0]).toBeGreaterThan(500);
+    });
+
+    it("keeps accrued time if a layout effect flushes as the source disappears", async () => {
+        vi.useFakeTimers();
+        const persisted: number[] = [];
+        const runtime: { current: PlaytimeRuntime | null } = { current: null };
+        function Probe({ source }: { source: object | null }) {
+            const current = usePlaytime({
+                isPlaying: () => true,
+                persistenceSource: source,
+                persistenceGetAsync: async () => 500,
+                persistenceSet: (_key, value) => {
+                    if (source) persisted.push(value as number);
+                },
+                tickIntervalMs: TICK_MS,
+            });
+            useLayoutEffect(() => {
+                runtime.current = current;
+                if (!source) current.flush();
+            }, [current, source]);
+            return null;
+        }
+        const view = render(<Probe source={{}} />);
+        await act(async () => { await vi.advanceTimersByTimeAsync(TICK_MS * 6); });
+        view.rerender(<Probe source={null} />);
+        await act(async () => { view.rerender(<Probe source={{}} />); });
+        act(() => { runtime.current?.flush(); });
+        expect(persisted).toHaveLength(1);
+        expect(persisted[0]).toBeGreaterThan(500);
     });
 });

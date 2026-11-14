@@ -29,6 +29,7 @@ import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBl
 import { PAGE, createRowRuntime, elementRefNode, graphOf } from "@/lib/ui-editor/runtime/testing/rowRuntimeTestKit";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { dataPinRuntimeOf } from "./graphParamResolvers";
+import { createGraphExecutionFrame } from "../../behavior-graph/graphExecutionFrame";
 
 const NODES_ROOT = path.resolve(__dirname, "..");
 const THE_ONE_PLACE = path.join(NODES_ROOT, "built-in", "graphParamResolvers.ts");
@@ -48,7 +49,7 @@ function sourceFiles(dir: string): string[] {
  * `listItemScope: ctx.listItemScope`. The instance key and the owner are left out on purpose - a
  * Delay's timer token carries those two for a reason of its own, and is not a pin read.
  */
-const HAND_COPIED_FIELD = /\b(hostAdapter|eventPayload|listItemScope|valueExecution)\s*:\s*ctx\.\1\b/;
+const HAND_COPIED_FIELD = /\b(hostAdapter|eventPayload|listItemScope|valueExecution|executionFrame)\s*:\s*ctx\.\1\b/;
 
 describe("the runtime half of a data-pin read", () => {
     const others = () => sourceFiles(NODES_ROOT).filter(file => file !== THE_ONE_PLACE);
@@ -73,6 +74,7 @@ describe("the runtime half of a data-pin read", () => {
             instanceKey: "row",
             executionOwner: { surfaceId: PAGE },
             valueExecution: { returnValue: () => undefined },
+            executionFrame: createGraphExecutionFrame(),
         } as unknown as Parameters<typeof dataPinRuntimeOf>[0];
 
         expect(dataPinRuntimeOf(ctx)).toEqual({
@@ -82,6 +84,7 @@ describe("the runtime half of a data-pin read", () => {
             instanceKey: ctx.instanceKey,
             executionOwner: ctx.executionOwner,
             valueExecution: ctx.valueExecution,
+            executionFrame: ctx.executionFrame,
         });
     });
 });

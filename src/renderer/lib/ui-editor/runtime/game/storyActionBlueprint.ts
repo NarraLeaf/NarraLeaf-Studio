@@ -33,7 +33,6 @@ import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
 import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
-import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import { acquireBlueprintExecutionLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
@@ -115,14 +114,14 @@ type StoryActionExecutionEnv = {
     input: CompileStoryActionScriptInput;
     hostAdapter: UIHostAdapter;
     signal: AbortSignal;
+    localsForBlueprint: (blueprintId: string) => Record<string, unknown>;
 };
 
 /**
  * Compile a Story Action Blueprint into an awaited NLR action, or `null` when it cannot be compiled
  * (missing blueprint, or no "On Call" layer). The action form ignores any Return Value.
  *
- * A story row has one event head, so it has one layer, and that layer is a graph or one of the
- * author's files.
+ * A story row runs its On Call graph heads or a script layer from one of the author's files.
  */
 export function compileStoryActionBlueprintToScript(input: CompileStoryActionScriptInput): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
@@ -137,8 +136,9 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
 
     return createStoryAwaitedAction({
         run: async (ctx, signal) => {
-            const hostAdapter = buildStoryActionHostAdapter(input, ctx, signal);
-            await runStoryActionOnCall({ input, hostAdapter, signal });
+            const localsForBlueprint = createStoryActionLocalsScope(input.blueprintDocument);
+            const hostAdapter = buildStoryActionHostAdapter(input, ctx, signal, localsForBlueprint);
+            await runStoryActionOnCall({ input, hostAdapter, signal, localsForBlueprint });
         },
         onError: error => {
             if (!isBlueprintGraphExecutionCancelledError(error)) {
@@ -254,7 +254,8 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
         return evaluateStoryScriptValueSync(input, ctx, bp.name, scriptLayer);
     }
     // No async work runs synchronously, so a never-aborting signal suffices for the host adapter.
-    const hostAdapter = buildStoryActionHostAdapter(input, ctx, new AbortController().signal);
+    const localsForBlueprint = createStoryActionLocalsScope(input.blueprintDocument);
+    const hostAdapter = buildStoryActionHostAdapter(input, ctx, new AbortController().signal, localsForBlueprint);
     let lastReturn: unknown;
     for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
@@ -266,7 +267,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter,
-                blueprintLocals: storyActionLocals(input.blueprintDocument, bp.id),
+                blueprintLocals: localsForBlueprint(bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: input.persistentVariables,
@@ -423,6 +424,7 @@ function buildStoryActionHostAdapter(
     input: CompileStoryActionScriptInput,
     ctx: ScriptCtx,
     signal: AbortSignal,
+    localsForBlueprint: (blueprintId: string) => Record<string, unknown>,
 ): UIHostAdapter {
     const { sceneVar, savedVar } = buildStoryVariableAccess(input, ctx);
     const hostApi = buildStoryActionHostApi(input);
@@ -438,6 +440,7 @@ function buildStoryActionHostAdapter(
                     depth: fnInput.depth,
                     signal: fnInput.signal ?? signal,
                     input,
+                    localsForBlueprint,
                     buildHostAdapter: () => adapter as UIHostAdapter,
                 }),
             hostApi,
@@ -447,14 +450,23 @@ function buildStoryActionHostAdapter(
 }
 
 /**
- * The variables one run of a story-row graph reads and writes through `Get Var` / `Set Var`.
+ * The variables one story-row invocation reads and writes through `Get Var` / `Set Var`.
  *
  * The same accessor a Surface blueprint's run is given, with no surface: the row's own Vars at their
- * declared defaults, and the project blueprint's Vars as the live records. Each graph run gets a
- * fresh object, because the node-output values a run writes into it are that run's alone.
+ * declared defaults, and the project blueprint's Vars as the live records. Each story-row invocation
+ * gets a fresh scope. Its heads and Fn calls share each blueprint's author variables, while graph
+ * frames hold their own node outputs and loop progress.
  */
-function storyActionLocals(document: BlueprintDocument, blueprintId: string): Record<string, unknown> {
-    return acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
+function createStoryActionLocalsScope(document: BlueprintDocument): (blueprintId: string) => Record<string, unknown> {
+    const locals = new Map<string, Record<string, unknown>>();
+    return blueprintId => {
+        let current = locals.get(blueprintId);
+        if (!current) {
+            current = acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
+            locals.set(blueprintId, current);
+        }
+        return current;
+    };
 }
 
 /**
@@ -481,7 +493,7 @@ async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unkno
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter: env.hostAdapter,
-                blueprintLocals: storyActionLocals(env.input.blueprintDocument, bp.id),
+                blueprintLocals: env.localsForBlueprint(bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: env.input.persistentVariables,
@@ -510,6 +522,7 @@ async function invokeStoryActionFn(options: {
     depth: number;
     signal?: AbortSignal;
     input: CompileStoryActionScriptInput;
+    localsForBlueprint: (blueprintId: string) => Record<string, unknown>;
     buildHostAdapter: () => UIHostAdapter;
 }): Promise<{ returns: Record<string, unknown> }> {
     const { fnRef, args, depth, input } = options;
@@ -530,18 +543,18 @@ async function invokeStoryActionFn(options: {
     if (!visible) {
         throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
-    const blueprintLocals = storyActionLocals(input.blueprintDocument, decl.blueprintId);
+    const blueprintLocals = options.localsForBlueprint(decl.blueprintId);
     const seededArgs: Record<string, unknown> = {};
     for (const param of decl.params) {
         seededArgs[param.pinId] = args[param.pinId];
     }
-    writeBlueprintNodeOutputValues(blueprintLocals, decl.headNodeId, seededArgs);
     const graph = adaptBlueprintGraphIr(decl.ir, buildBlueprintRunGraphId("storyActionFn", decl.blueprintId, decl.graphId));
     const result = await executeGraph({
         graph,
         entry: { start: { nodeId: decl.headNodeId, port: "then" as const } },
         hostAdapter: options.buildHostAdapter(),
         blueprintLocals,
+        entryOutputs: seededArgs,
         executionOwner: { blueprintId: decl.blueprintId },
         persistentVariables: input.persistentVariables,
         signal: options.signal,

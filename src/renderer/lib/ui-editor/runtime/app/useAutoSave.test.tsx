@@ -36,6 +36,7 @@ function AutoSaveProbe(props: {
     const runtime = useAutoSave({
         config: { ...DEFAULT_AUTO_SAVE_CONFIGURATION, intervalSeconds: 1 },
         isPlaying: props.playing,
+        playthrough: () => 1,
         write: async id => { props.written.push(id); },
         listStored: async () => [],
         subscribeStoryAdvanced: listener => {

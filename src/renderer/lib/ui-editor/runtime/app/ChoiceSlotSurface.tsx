@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GameMenu, Script, Word, useUIMenuContext, type ChoiceEvaluated } from "narraleaf-react";
 import type { UIStageSurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY } from "@shared/types/blueprint/hostApi";
@@ -103,12 +103,29 @@ export function ChoiceSlotSurface(props: {
     surface: UIStageSurface;
     choiceMenus: ChoiceMenus;
 }) {
-    const { options, surface, choiceMenus } = props;
-    // Which drawing of the choice surface this is. `useId` names the drawing without side effects,
-    // so the claim below can be made during render and answers the same slot however many times a
-    // render is replayed; the slot itself is what everything this menu addresses is keyed by.
+    const { choiceMenus } = props;
     const drawingId = useId();
-    const slot = choiceMenus.claimSlot(drawingId);
+    const [claim, setClaim] = useState<{ menus: ChoiceMenus; slot: number } | null>(null);
+
+    // An abandoned render has no cleanup. Claim only after commit, before the drawing can paint.
+    useLayoutEffect(() => {
+        setClaim({ menus: choiceMenus, slot: choiceMenus.claimSlot(drawingId) });
+        return () => choiceMenus.release(drawingId);
+    }, [choiceMenus, drawingId]);
+
+    return claim?.menus === choiceMenus
+        ? <ChoiceSlotDrawing {...props} drawingId={drawingId} slot={claim.slot} />
+        : null;
+}
+
+function ChoiceSlotDrawing(props: {
+    options: GameUiSlotHostOptions;
+    surface: UIStageSurface;
+    choiceMenus: ChoiceMenus;
+    drawingId: string;
+    slot: number;
+}) {
+    const { options, surface, choiceMenus, drawingId, slot } = props;
     const { core, bundle, host: { widgetRuntimeStore } } = options;
     const menu = useUIMenuContext();
     /**
@@ -194,11 +211,6 @@ export function ChoiceSlotSurface(props: {
             choiceMenus.setRuntime(drawingId, null);
         };
     }, [choiceMenus, drawingId, items, menu]);
-
-    // The slot is given back only when this drawing leaves for good, so a re-render that changes
-    // the options or the menu never hands this menu's scope - and the widget keys and surface state
-    // under it - to a menu standing beside it.
-    useEffect(() => () => choiceMenus.release(drawingId), [choiceMenus, drawingId]);
 
     useEffect(() => {
         if (!core) {

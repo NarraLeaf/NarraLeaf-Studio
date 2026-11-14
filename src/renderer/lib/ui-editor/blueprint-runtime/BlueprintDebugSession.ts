@@ -365,7 +365,7 @@ export class BlueprintDebugSession implements BlueprintExecutionDebugController 
         }
         variables.sort((a, b) => a.name.localeCompare(b.name));
 
-        const outputStore = readBlueprintNodeOutputValueStore(locals) ?? {};
+        const outputStore = frame.info.nodeOutputValues?.() ?? readBlueprintNodeOutputValueStore(locals) ?? {};
         const nodeOutputs = Object.entries(outputStore).map(([nodeId, values]) => ({
             nodeId,
             values: Object.entries(values ?? {}).map(([name, value]) => ({ name, value })),

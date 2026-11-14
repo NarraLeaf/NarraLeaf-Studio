@@ -46,6 +46,8 @@ export type BlueprintDebugFrameInfo = {
     eventName?: string;
     /** Live reference, not a copy: the debugger reads current values when it pauses. */
     blueprintLocals?: Record<string, unknown>;
+    /** Outputs visible to this invocation at the moment the debugger reads them. */
+    nodeOutputValues?: () => Record<string, Record<string, unknown>>;
     eventPayload?: Record<string, unknown>;
 };
 

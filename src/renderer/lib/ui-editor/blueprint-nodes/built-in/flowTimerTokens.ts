@@ -8,6 +8,7 @@ import {
     toBlueprintTimerToken,
     type BlueprintTimerToken,
 } from "@shared/types/blueprint/valueTypes";
+import { parseBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 
 export const BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID = "token";
 const BLUEPRINT_FLOW_DELAY_TOKEN_PREFIX = "delay:";
@@ -38,6 +39,8 @@ function encodeTokenPart(value: string): string {
 
 export function createDelayTimerToken(input: DelayTimerTokenInput): BlueprintTimerToken {
     const owner = input.executionOwner;
+    const graph = parseBlueprintRunGraphId(input.graphId);
+    const graphId = graph ? JSON.stringify([graph.blueprintId, graph.graphId]) : input.graphId;
     const parts = [
         "delay",
         cleanTokenPart(owner?.blueprintId),
@@ -45,7 +48,7 @@ export function createDelayTimerToken(input: DelayTimerTokenInput): BlueprintTim
         cleanTokenPart(owner?.elementId),
         cleanTokenPart(owner?.componentId),
         cleanTokenPart(input.instanceKey),
-        cleanTokenPart(input.graphId),
+        cleanTokenPart(graphId),
         cleanTokenPart(input.nodeId),
     ];
     const token = toBlueprintTimerToken(parts.map(encodeTokenPart).join(":"));

@@ -5,6 +5,7 @@ import {
     createStoryStartGate,
     layersMayDraw,
     publishMenuEnvironmentMount,
+    publishStoryBoot,
     resolveBootPaint,
     surfacesMayDraw,
 } from "./storyBootGate";
@@ -145,6 +146,97 @@ describe("createStoryStartGate", () => {
         await pressed;
         expect(start.current).toHaveBeenCalledTimes(1);
         expect(start.current).toHaveBeenCalledWith({ storyId: "s", sceneId: "c" }, undefined);
+    });
+
+    it("waits for the replacement when a boot is superseded while a start is waiting", async () => {
+        let finishFirst = () => undefined as void;
+        let finishReplacement = () => undefined as void;
+        const pendingBoot = { current: new Promise<void>(resolve => { finishFirst = resolve; }) };
+        const replacement = new Promise<void>(resolve => { finishReplacement = resolve; });
+        const start = { current: vi.fn(async () => undefined) };
+        const gate = createStoryStartGate({ pendingBoot, start });
+
+        const pressed = gate({ storyId: "s", sceneId: "c" });
+        pendingBoot.current = replacement;
+        finishFirst();
+        await Promise.resolve();
+        const callsBeforeReplacement = start.current.mock.calls.length;
+        finishReplacement();
+        await pressed;
+
+        expect(callsBeforeReplacement).toBe(0);
+        expect(start.current).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the latest published mount when several environments replace one another", async () => {
+        const pendingBoot: { current: Promise<void> | null } = { current: null };
+        const releases: Array<() => void> = [];
+        const publish = () => publishMenuEnvironmentMount({
+            mount: () => new Promise<void>(resolve => { releases.push(resolve); }),
+            pendingBoot,
+            isSuperseded: () => false,
+            onSuperseded: vi.fn(),
+            onFailure: vi.fn(),
+        });
+        void publish();
+        const start = { current: vi.fn(async () => undefined) };
+        const pressed = createStoryStartGate({ pendingBoot, start })({ storyId: "s", sceneId: "c" });
+        void publish();
+        releases[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(start.current).not.toHaveBeenCalled();
+        void publish();
+        releases[1]();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(start.current).not.toHaveBeenCalled();
+        releases[2]();
+        await pressed;
+        expect(start.current).toHaveBeenCalledOnce();
+    });
+
+    it("leaves a superseded boot that is still waiting once its replacement is ready", async () => {
+        const pendingBoot: { current: Promise<void> | null } = { current: null };
+        let finishOld = () => undefined as void;
+        let finishNew = () => undefined as void;
+        const publish = (mount: () => Promise<void>) => publishMenuEnvironmentMount({
+            mount,
+            pendingBoot,
+            isSuperseded: () => false,
+            onSuperseded: vi.fn(),
+            onFailure: vi.fn(),
+        });
+        void publish(() => new Promise<void>(resolve => { finishOld = resolve; }));
+        let signalStarted = () => undefined as void;
+        const started = new Promise<void>(resolve => { signalStarted = resolve; });
+        const start = { current: vi.fn(async () => { signalStarted(); }) };
+        const pressed = createStoryStartGate({ pendingBoot, start })({ storyId: "s", sceneId: "c" });
+        const replacement = publish(() => new Promise<void>(resolve => { finishNew = resolve; }));
+        finishNew();
+        await replacement;
+        const startedBeforeOldFinished = await Promise.race([
+            started.then(() => true),
+            new Promise<boolean>(resolve => setTimeout(() => resolve(false), 0)),
+        ]);
+        finishOld();
+        await pressed;
+        expect(startedBeforeOldFinished).toBe(true);
+    });
+
+    it("continues waiting when the same boot is published again", async () => {
+        let finish = () => undefined as void;
+        const boot = new Promise<void>(resolve => { finish = resolve; });
+        const pendingBoot = { current: boot };
+        const start = { current: vi.fn(async () => undefined) };
+        const pressed = createStoryStartGate({ pendingBoot, start })({ storyId: "s", sceneId: "c" });
+        publishStoryBoot(pendingBoot, boot);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(start.current).not.toHaveBeenCalled();
+        finish();
+        await pressed;
+        expect(start.current).toHaveBeenCalledOnce();
     });
 
     it("forwards what a Load Save carries into the run it starts", async () => {

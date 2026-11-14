@@ -110,6 +110,37 @@ describe("LayerStackController", () => {
         expect(controller.getState().map(layer => layer.key)).toEqual([second]);
     });
 
+    it("queues a layer shown while the previous layer of its group is exiting", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        controller.closeWithResult(first, "yes");
+
+        const second = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const other = mountSurfaceLayer(controller, { surfaceId: "hud", group: "hud" });
+        expect(controller.getState().map(layer => layer.key)).toEqual([other]);
+        expect(controller.getSnapshot().queued.map(layer => layer.key)).toEqual([second]);
+
+        controller.notifyExitComplete();
+        expect(controller.getState().map(layer => layer.key)).toEqual([other, second]);
+    });
+
+    it("releases every exiting group when the stack is cleared", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "first", group: "a" });
+        const second = mountSurfaceLayer(controller, { surfaceId: "second", group: "b" });
+        controller.hide(first);
+        controller.hide(second);
+        const queuedA = mountSurfaceLayer(controller, { surfaceId: "next-a", group: "a" });
+        const queuedB = mountSurfaceLayer(controller, { surfaceId: "next-b", group: "b" });
+        expect(controller.getSnapshot().queued.map(layer => layer.key)).toEqual([queuedA, queuedB]);
+
+        controller.clear();
+        const freshA = mountSurfaceLayer(controller, { surfaceId: "fresh-a", group: "a" });
+        const freshB = mountSurfaceLayer(controller, { surfaceId: "fresh-b", group: "b" });
+        expect(controller.getState().map(layer => layer.key)).toEqual([freshA, freshB]);
+        expect(controller.getSnapshot().queued).toEqual([]);
+    });
+
     it("only one of a queue enters per exit", () => {
         const controller = new LayerStackController();
         const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
@@ -243,6 +274,42 @@ describe("LayerStackController", () => {
         // the layer and the screen never had it, so no exit animation is ever going to be reported.
         controller.setUnrenderedLayers([key]);
         await expect(controller.hideAndWaitForExit(key)).resolves.toBe(true);
+    });
+
+    it("does not wait for an unrelated exit when a layer never appeared or is already gone", async () => {
+        const controller = new LayerStackController();
+        const shown = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const unrendered = mountSurfaceLayer(controller, { surfaceId: "deleted" });
+        controller.setUnrenderedLayers([unrendered]);
+        controller.hide(shown);
+
+        const results: boolean[] = [];
+        void controller.hideAndWaitForExit(queued).then(result => results.push(result));
+        void controller.hideAndWaitForExit(unrendered).then(result => results.push(result));
+        void controller.hideAndWaitForExit("missing").then(result => results.push(result));
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve();
+        }
+        expect(results).toEqual([true, true, false]);
+        expect(controller.getSnapshot().exitPending).toBe(true);
+        controller.notifyExitComplete();
+    });
+
+    it("does not wait for an unrelated exit when hiding only a queued group", async () => {
+        const controller = new LayerStackController();
+        const shown = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        controller.hide(shown);
+
+        let result: boolean | undefined;
+        void controller.hideGroupAndWaitForExit("confirm").then(value => { result = value; });
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve();
+        }
+        expect(result).toBe(true);
+        expect(controller.getSnapshot().exitPending).toBe(true);
+        controller.notifyExitComplete();
     });
 
     it("a group held by a layer that was never on screen is given back", () => {

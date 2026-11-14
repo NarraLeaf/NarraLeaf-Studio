@@ -375,6 +375,20 @@ describe("SurfacePuppetMount", () => {
         expect(warnings).toContain("no motion named wave");
     });
 
+    it("reports a synchronous re-pose failure without throwing from the update", async () => {
+        const session = fakeSession();
+        const { mount, warnings } = harness(() => Promise.resolve(session));
+
+        mount.mount(request(), state(), SIZE);
+        await settle();
+        session.apply = () => { throw new Error("no motion named wave"); };
+
+        expect(() => mount.apply(state({ motion: "wave" }))).not.toThrow();
+        await settle();
+        expect(mount.snapshot.status).toBe("ready");
+        expect(warnings).toContain("no motion named wave");
+    });
+
     it("does fail the mount when the backend rejects the initial pose", async () => {
         // Deliberately the opposite of the case above, and the engine draws the line in the same
         // place: its Puppet renderer chains `applyState -> ready` and puts the element in "error" if

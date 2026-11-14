@@ -116,6 +116,22 @@ describe("AutoSavePicture", () => {
         expect(captures).toHaveLength(2);
     });
 
+    it("discards a capture that finishes after a different playthrough starts", async () => {
+        let playthrough = 1;
+        let finish = (_picture: string) => undefined as void;
+        const picture = new AutoSavePicture({
+            isSkipping: () => true,
+            playthrough: () => playthrough,
+            capture: () => new Promise<string>(resolve => { finish = resolve; }),
+        });
+
+        const first = picture.pictureForWrite("auto-0");
+        playthrough = 2;
+        finish("picture-from-first-run");
+
+        expect(await first).toBeUndefined();
+    });
+
     it("keeps the last picture when the player never stops long enough", async () => {
         const { picture, state, captures } = harness();
         state.now += AUTO_SAVE_QUIET_MS;

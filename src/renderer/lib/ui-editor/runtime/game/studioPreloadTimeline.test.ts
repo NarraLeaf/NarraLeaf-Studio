@@ -124,6 +124,38 @@ describe("one asset", () => {
 
         expect(h.recorded).toEqual([]);
     });
+
+    it("does not record an in-flight asset after its session is withdrawn", async () => {
+        const h = harness();
+        h.timeline.planned("scene", "Scene", plan([{ type: "image", src: "bg.png", band: "gate" }]));
+        h.timeline.acquired("bg.png");
+        h.timeline.useWatcher(null);
+
+        await h.settle("bg.png");
+        expect(h.recorded).toEqual([]);
+    });
+
+    it("does not let an old session settle the same image in a new session", async () => {
+        const h = harness();
+        h.timeline.planned("scene", "Old", plan([{ type: "image", src: "bg.png", band: "gate" }]));
+        h.timeline.acquired("bg.png");
+        h.timeline.useWatcher(null);
+
+        const next: { resolve: ((ok: boolean) => void) | null } = { resolve: null };
+        h.timeline.useWatcher({
+            warmth: () => "none",
+            settled: () => new Promise<boolean>(resolve => { next.resolve = resolve; }),
+        });
+        h.timeline.planned("scene", "New", plan([{ type: "image", src: "bg.png", band: "gate" }]));
+        h.timeline.acquired("bg.png");
+
+        await h.settle("bg.png");
+        expect(h.recorded).toEqual([]);
+        next.resolve?.(true);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(h.named("nl.scene.load")[0]?.detail).toMatchObject({ scene: "New", complete: true });
+    });
 });
 
 describe("a scene", () => {

@@ -110,6 +110,10 @@ export function abortableSleep(durationMs: number, signal?: AbortSignal, nodeId?
 }
 
 export function abortablePromise<T>(promise: Promise<T>, signal?: AbortSignal, nodeId?: string): Promise<T> {
+    if (signal?.aborted) {
+        // The work may have started before it cancelled the graph; its later rejection still needs an observer.
+        void Promise.resolve(promise).catch(() => undefined);
+    }
     throwIfBlueprintExecutionCancelled(signal, nodeId);
     if (!signal) {
         return promise;

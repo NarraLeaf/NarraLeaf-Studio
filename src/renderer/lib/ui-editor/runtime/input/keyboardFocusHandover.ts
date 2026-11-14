@@ -79,7 +79,18 @@ export function takeKeyboardFocus(surface: HTMLElement, remembered: HTMLElement 
     // A page arriving must not scroll anything to bring itself into view: it is already where it is
     // drawn, and the game's own containers do not scroll.
     target.focus({ preventScroll: true });
-    return surface.ownerDocument.activeElement === target ? "held" : "refused";
+    if (surface.contains(surface.ownerDocument.activeElement)) {
+        return "held";
+    }
+    if (target !== surface) {
+        if (!focusIsFree(surface, surface.ownerDocument.activeElement)) {
+            return "elsewhere";
+        }
+        // A remembered control can still be mounted but no longer focusable, for example if it was
+        // disabled while a modal was open. The page remains the starting point for keyboard focus.
+        surface.focus({ preventScroll: true });
+    }
+    return surface.contains(surface.ownerDocument.activeElement) ? "held" : "refused";
 }
 
 /**

@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { resolveScriptModuleUrl } from "./scriptRuntime";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+    mountCompiledScripts,
+    resolveScriptHandler,
+    resolveScriptModuleUrl,
+    unmountCompiledScripts,
+} from "./scriptRuntime";
+
+afterEach(() => {
+    unmountCompiledScripts();
+});
 
 /*
  * A packaged game's bundle names each compiled script relative to its page, and the page is served
@@ -29,5 +38,67 @@ describe("the URL a compiled script is imported from", () => {
 
     it("is the name itself when there is no page to resolve against", () => {
         expect(resolveScriptModuleUrl(name, undefined)).toBe(name);
+    });
+});
+
+describe("script mount ordering", () => {
+    it("keeps a newer mount when an older import finishes after it", async () => {
+        let finishOld!: (module: Record<string, unknown>) => void;
+        const old = mountCompiledScripts(
+            { layer: { scriptRef: "old.ts", url: "old" } },
+            undefined,
+            () => new Promise(resolve => {
+                finishOld = resolve;
+            }),
+        );
+
+        const newer = () => "new";
+        await mountCompiledScripts(
+            { layer: { scriptRef: "new.ts", url: "new" } },
+            undefined,
+            async () => ({ onInit: newer }),
+        );
+        expect(resolveScriptHandler("layer", "init")?.()).toBe("new");
+
+        finishOld({ onInit: () => "old" });
+        await old;
+        expect(resolveScriptHandler("layer", "init")?.()).toBe("new");
+    });
+
+    it("keeps an explicit unmount empty when an import finishes later", async () => {
+        let finishPending!: (module: Record<string, unknown>) => void;
+        const pending = mountCompiledScripts(
+            { layer: { scriptRef: "pending.ts", url: "pending" } },
+            undefined,
+            () => new Promise(resolve => {
+                finishPending = resolve;
+            }),
+        );
+
+        unmountCompiledScripts();
+        expect(resolveScriptHandler("layer", "init")).toBeNull();
+
+        finishPending({ onInit: () => "pending" });
+        await pending;
+        expect(resolveScriptHandler("layer", "init")).toBeNull();
+    });
+
+    it("does not report an obsolete import failure after a newer mount", async () => {
+        let failOld!: (error: Error) => void;
+        const reported: string[] = [];
+        const old = mountCompiledScripts(
+            { layer: { scriptRef: "old.ts", url: "old" } },
+            (_layer, _ref, message) => reported.push(message),
+            () => new Promise((_resolve, reject) => { failOld = reject; }),
+        );
+        await mountCompiledScripts(
+            { layer: { scriptRef: "new.ts", url: "new" } },
+            undefined,
+            async () => ({ onInit: () => "new" }),
+        );
+        failOld(new Error("old failed"));
+        await old;
+        expect(reported).toEqual([]);
+        expect(resolveScriptHandler("layer", "init")?.()).toBe("new");
     });
 });
