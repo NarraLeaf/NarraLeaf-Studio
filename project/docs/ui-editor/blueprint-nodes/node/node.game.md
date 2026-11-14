@@ -4,7 +4,7 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay`、`Can Undo History`、`Can Redo History` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、`Select Choice`、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
-Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(...)` / `setPreference(...)` 访问当前活动 `LiveGame`。它们需要 NarraLeaf React 游戏环境已经准备就绪；在新游戏启动时初始化偏好，请使用全局蓝图的 `On Game Ready`，不要依赖可能早于 `LiveGame` 创建的 `App Boot`。
+游戏运行时，Preference Getter/Setter 访问当前 `LiveGame` 的 preference store。标准游戏宿主在标题页也提供玩家保存的偏好，因此文字速度、音量等设置可在开始游戏前读取和修改，并用于下一次启动。只属于运行中的状态仍需要游戏；没有持久偏好存储的宿主也需要 `LiveGame`。需要针对新周目初始化时可使用全局蓝图的 `On Game Ready`。
 
 ## Start Game
 
@@ -191,7 +191,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `cps` / `CPS` - 正数 `float` 输入，写入 `cps` preference key
 - `next` - 偏好写入完成后的执行出口
 
-`CPS` 必须是大于 0 的有限数字；没有活动 game runtime 时执行失败。
+`CPS` 必须是大于 0 的有限数字。标准游戏宿主可在标题页保存此偏好，供下一次启动使用。
 
 ## Get Sentence Speed
 
@@ -201,7 +201,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 - `cps` / `CPS` - 正数 `float`（传出引脚），当前 `cps` preference key 的值
 
-没有活动 game runtime 时执行失败。
+标准游戏宿主没有活动周目时读取玩家保存的文字速度；玩家尚未设置时读取作者默认值。
 
 ## Game Preference Getter / Setter
 
@@ -228,7 +228,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `skipping` 是运行期状态：它不随玩家设置保存，每次启动都是 `false`。写入 `true` 等同于按住跳过键——同样受 `skip` 与 `skipReadText` 约束，跳过停止时宿主会把它写回 `false`。
 
-所有 Preference Getter/Setter 在没有活动 game runtime 时执行失败。初始化新游戏偏好时，将这些 Setter 接到 `On Game Ready`，这样写入会发生在 `LiveGame` 已存在且第一段剧情开始前。
+标准游戏宿主在没有活动周目时读取并保存可持久化的玩家偏好。`skipping` 等运行期状态读取未开始时的默认值，写入需要活动游戏；对话框显示状态属于周目，标题页读取作者默认值，显示、隐藏和切换操作需要活动游戏。没有持久偏好存储的宿主在无活动游戏时会拒绝这些偏好读写。
 
 ## Save Game
 

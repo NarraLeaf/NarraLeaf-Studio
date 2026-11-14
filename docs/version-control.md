@@ -1394,7 +1394,7 @@ Team 协作（在线成员、房间、附件）在工作区里**只对「用」�
 界面那侧用 `GameSurfaceRenderer` 渲染历史文档（`passive` + `staticDocument` +
 `surfacePointerEvents:"none"`）。⚠ **`interactive` 必须留 ON**：`EditorNodeWrapper` 只在 interactive
 时写 `data-ui-element-id`，关掉就没有任何元素可寻址、蒙版全部落空。
-蓝图那侧不需要编译链路——IR 就在文件里（`program.graphs.<slot>.<id>.graph`，坐标在
+蓝图那侧不需要编译链路——IR 就在文件里（`blueprints.<id>.graphs.<slot>.<layerId>.graph`，坐标在
 `meta.editorLayout`），画布自带平移缩放（ctrl+滚轮，与 UI 编辑器同一套速率），**两列共用一个
 变换，叠加在 `sharedGraphViewport` 之上**。
 

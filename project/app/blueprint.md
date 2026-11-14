@@ -238,7 +238,8 @@ event "On click"
 - **`script <path>`** declares a layer that runs one of the author's files under
   `scripts/` instead of a graph, and has no body. A blueprint holds any mix of
   the two and every layer that answers an event runs, so a script sits beside a
-  graph rather than replacing it. `id=` optional, as above. `show` prints one
+  graph rather than replacing it. Without `id=`, a script layer keeps the id of
+  an unused existing layer with the same script path. `show` prints one
   for every script layer, and dropping that line from a file is what removes the
   layer - a file that does not mention it applies as a blueprint without it.
 - **`<nodeId>: <nodeType> [key=value …] [@x,y]`** declares a node. The id is
@@ -303,14 +304,11 @@ One more is a warning rather than a silence, and two things are filled in rather
   variables under the bare id only, so the long one shows as an empty field there. Write
   `bp:<id>:<variable>` only for another blueprint's variable - a page's or the project's.
 
-Two limits worth knowing:
-
-- A `Get Persistent` / `Get Saved` node is checked against the project's variable
-  registry (`editor/variables.json`). The same scopes can also be declared by a
-  `/save` or `/global` row inside a story document, and those are not read here,
-  so a node pointing at one is reported as unresolved. Warning, never a refusal.
-- Widget scope checks need the interface document, so pass `--project` when
-  checking a `widgetMain` blueprint or they are skipped rather than guessed at.
+`Get Persistent` and `Get Saved` nodes are checked against the project's variable
+registry (`editor/variables.json`). Older story declarations are migrated to that
+registry when the project opens in Studio; until then, a reference to one can be
+reported as an unresolved-variable warning. Widget scope checks need the interface
+document, so pass `--project` when checking a `widgetMain` blueprint.
 
 ## Reading what is already there
 
@@ -324,7 +322,8 @@ node project/app/blueprint.js show --project D:/path/to/project --out quit.bp
 Most owners hold an empty blueprint - a widget gets one the moment anyone opens
 its graph, and it stays whether or not a node was ever dropped into it. In the
 shipped skeleton they outnumber the rest six to one, so `list` takes a search
-word and `--with-graphs` drops the empty ones. `--blueprint` takes an id, a whole
+word and `--with-graphs` drops the empty ones; a script layer counts as content.
+`--blueprint` takes an id, a whole
 name, or part of one.
 
 `show` prints in the same format `apply` reads, ids and positions included, so
