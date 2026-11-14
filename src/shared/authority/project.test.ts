@@ -112,6 +112,21 @@ describe("a team project's documents", () => {
         expect((view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex).stories.map(entry => entry.id)).toEqual([STORY]);
     });
 
+    it("starts the story library with a project's first story", () => {
+        // A project nobody has written a story in has no library file: the editor writes it lazily.
+        const view = memory({});
+        const first = "00000000-0000-4000-8000-000000000010";
+        const firstPath = projectDocumentPath({ doc: "story", storyId: first });
+        const made = applyProjectOp(view, { doc: "story", storyId: first }, {
+            op: "create-story",
+            entry: createStoryLibraryEntry({ id: first, name: "Main", documentPath: firstPath, now: NOW }),
+            document: { ...story(), id: first, name: "Main" },
+        }, { now: NOW });
+        expect(made).toEqual({ changed: true, touched: [firstPath, STORY_LIBRARY_FILE] });
+        expect((view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex).stories.map(entry => entry.id)).toEqual([first]);
+        expect(view.get(firstPath)).toMatchObject({ id: first, name: "Main" });
+    });
+
     it("rewrites the rows a deleted character spoke, in every story", () => {
         const document = story();
         const scene = document.scenes[document.chapters[0].sceneIds[0]];

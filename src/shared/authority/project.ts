@@ -56,6 +56,7 @@ import { normalizeProjectDlcs } from "@shared/types/dlc";
 import { normalizeProjectFontStack } from "@shared/types/typography";
 import type { StoryDocument, StoryId, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import { applyStoryOpToDocument, storyOpSceneReach } from "@shared/story/applyStoryOp";
+import { createEmptyStoryLibraryIndex } from "@shared/story/storyModel";
 import { applyStoryOpToLibrary } from "./storyFiles";
 import { isVersioned } from "@shared/vcs/workingSet";
 import { STORY_COMMENTS_DOCUMENT_PATH } from "@shared/documents/specs/storyComments";
@@ -414,10 +415,13 @@ function applyStory(
     context: { now: string },
 ): ProjectOpApplied {
     const path = liveDocumentPath({ doc: "story", storyId });
-    const library = view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex | undefined;
+    let library = view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex | undefined;
     if (op.op === "create-story") {
+        // A project nobody has written a story in has no library file yet: the editor writes it
+        // the first time there is something in it. The first story starts it, as it does there.
         if (library === undefined) {
-            throw new Error("the project has no story library");
+            library = createEmptyStoryLibraryIndex(context.now);
+            view.set(STORY_LIBRARY_FILE, library);
         }
         if (library.stories.some(entry => entry.id === storyId) || view.get(path) !== undefined) {
             return { changed: false, touched: [] };
