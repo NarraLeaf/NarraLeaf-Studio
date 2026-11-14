@@ -103,6 +103,7 @@ export function useCompositedSprite(
     useEffect(() => {
         if (!key || !assetsService || layers.every(assetId => !assetId)) {
             setComposite(null);
+            setLoading(false);
             return;
         }
         let cancelled = false;

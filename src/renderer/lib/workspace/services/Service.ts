@@ -8,15 +8,35 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
     private ctx: WorkspaceContext | null = null;
     private _initialized = false;
     private _initializing: Promise<void> | null = null;
+    private _tearingDown: Promise<void> | null = null;
     /** When this service finished coming up, against every other: the order teardown reverses. */
     private _initializedAt = 0;
     private static initSequence = 0;
+    private static readonly contextInitializations = new WeakMap<WorkspaceContext, Set<Promise<unknown>>>();
 
-    public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
+    private static trackInitialization<T>(ctx: WorkspaceContext, operation: Promise<T>): Promise<T> {
+        let operations = Service.contextInitializations.get(ctx);
+        if (!operations) {
+            operations = new Set();
+            Service.contextInitializations.set(ctx, operations);
+        }
+        const tracked = operation.finally(() => {
+            operations.delete(tracked);
+            if (operations.size === 0) Service.contextInitializations.delete(ctx);
+        });
+        operations.add(tracked);
+        return tracked;
+    }
+
+    public static initializeAll(ctx: WorkspaceContext): Promise<void> {
+        return Service.trackInitialization(ctx, Service.initializeAllServices(ctx));
+    }
+
+    private static async initializeAllServices(ctx: WorkspaceContext): Promise<void> {
         const pending = new Set<Service>();
 
         const init = async (service: Service): Promise<void> => {
-            if (service._initialized && service.ctx === ctx) return;
+            if (service._initialized && service.ctx === ctx && !service._tearingDown) return;
             if (pending.has(service)) {
                 const cycle = [...pending, service].map(s => s.constructor.name).join(" -> ");
                 throw new Error(`Circular dependency detected: ${cycle}`);
@@ -61,7 +81,14 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
      * Safe here only because recovery mode freezes project writes before this is called: nothing a
      * half-initialized service does can reach the author's files. Do not use it for an ordinary boot.
      */
-    public static async initializeTolerant(
+    public static initializeTolerant(
+        ctx: WorkspaceContext,
+        services: readonly Service[],
+    ): Promise<ServiceInitFailure[]> {
+        return Service.trackInitialization(ctx, Service.initializeTolerantServices(ctx, services));
+    }
+
+    private static async initializeTolerantServices(
         ctx: WorkspaceContext,
         services: readonly Service[],
     ): Promise<ServiceInitFailure[]> {
@@ -70,7 +97,7 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
         const pending = new Set<Service>();
 
         const init = async (service: Service): Promise<void> => {
-            if (service._initialized && service.ctx === ctx) return;
+            if (service._initialized && service.ctx === ctx && !service._tearingDown) return;
             // Ahead of the `attempted` check below, which would otherwise swallow a cycle: the
             // second visit to a service already on the stack is also the second visit full stop, so
             // testing "have we tried this" first would break the loop silently and leave a genuine
@@ -114,6 +141,10 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
      * A service that never came up has nothing to dispose and keeps its registry position.
      */
     public static async disposeAll(ctx: WorkspaceContext): Promise<void> {
+        // A recovery check can still be bringing up a dependent while the workspace closes.
+        // Finish the graph walk before ordering disposal by each service's completion time.
+        const initializations = Service.contextInitializations.get(ctx);
+        if (initializations) await Promise.allSettled([...initializations]);
         const services = [...ctx.services.getAll()].sort((a, b) => b._initializedAt - a._initializedAt);
         for (const service of services) {
             try {
@@ -151,6 +182,15 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
 
     public async initialize(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         while (true) {
+            const tearingDown = this._tearingDown;
+            if (tearingDown) {
+                try {
+                    await tearingDown;
+                } catch {
+                    // The caller that started teardown reports its failure.
+                }
+                continue;
+            }
             if (this._initialized && this.ctx === ctx) {
                 return;
             }
@@ -179,23 +219,28 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
     public dispose(_ctx: WorkspaceContext): Promise<void> | void { }
 
     public async teardown(ctx: WorkspaceContext): Promise<void> {
-        if (this._initializing) {
+        while (this._initializing || this._tearingDown) {
+            const pending = this._initializing ?? this._tearingDown;
             try {
-                await this._initializing;
+                await pending;
             } catch {
-                // The failing initializer already reports the startup error.
+                // The caller that started the operation reports its failure.
             }
         }
 
-        if (this.ctx !== ctx) {
-            return;
-        }
+        if (this.ctx !== ctx) return;
 
-        try {
-            await this.dispose(ctx);
-        } finally {
+        // Queue the disposal before calling user code, so an initializer or another teardown
+        // started by dispose itself observes the same in-flight lifecycle operation.
+        const task = Promise.resolve().then(() => this.dispose(ctx)).finally(() => {
             this._initialized = false;
             this.ctx = null;
+        });
+        this._tearingDown = task;
+        try {
+            await task;
+        } finally {
+            if (this._tearingDown === task) this._tearingDown = null;
         }
     }
 

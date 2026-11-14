@@ -10,18 +10,14 @@ type PanelStateStore = {
     panels: Record<string, Record<string, any>>;
 };
 
-const DEFAULT_STORE: PanelStateStore = {
-    version: 1,
-    panels: {},
-};
-
 export class PanelStateService extends Service<PanelStateService> {
     // Typed against the classification table so a rename cannot quietly drop this store
     // back into the versioned tree; it lands in `.nlstudio/services/` instead.
     private static readonly Namespace: StudioStateStoreNamespace = "panel_state";
-    private store: PanelStateStore = { ...DEFAULT_STORE };
+    private store: PanelStateStore = { version: 1, panels: {} };
     private dirty = false;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    private writeQueue: Promise<void> = Promise.resolve();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const serviceAssets = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
@@ -49,12 +45,18 @@ export class PanelStateService extends Service<PanelStateService> {
         this.markDirty();
     }
 
-    public override dispose(_ctx: WorkspaceContext): void {
+    public override async dispose(_ctx: WorkspaceContext): Promise<void> {
         if (this.saveTimer) {
             clearTimeout(this.saveTimer);
             this.saveTimer = null;
         }
-        void this.flush();
+        try {
+            await this.flush();
+        } finally {
+            this.store = { version: 1, panels: {} };
+            this.dirty = false;
+            this.writeQueue = Promise.resolve();
+        }
     }
 
     private markDirty(): void {
@@ -82,17 +84,23 @@ export class PanelStateService extends Service<PanelStateService> {
         };
     }
 
-    private async flush(): Promise<void> {
-        if (!this.dirty) return;
+    private flush(): Promise<void> {
+        if (!this.dirty) return this.writeQueue;
         this.dirty = false;
+        const serviceAssets = this.getServiceAssets();
+        const data: PanelStateStore = { version: 1, panels: { ...this.store.panels } };
         // A failure is not retried - `dirty` is already clear - and is reported by the save-status
         // surface as the panel layout not being saved. Nothing here repeats it: the filesystem's
         // own message is English whatever the interface speaks, and names the store's file.
-        await this.getServiceAssets().writeStore(
-            PanelStateService.Namespace,
-            this.store,
-            storeWrite("workspace.shell.save.stores.panelLayout", "notRetried"),
-        );
+        const write = this.writeQueue.catch(() => undefined).then(async () => {
+            await serviceAssets.writeStore(
+                PanelStateService.Namespace,
+                data,
+                storeWrite("workspace.shell.save.stores.panelLayout", "notRetried"),
+            );
+        });
+        this.writeQueue = write;
+        return write;
     }
 
     private getServiceAssets(): ServiceAssetsService {

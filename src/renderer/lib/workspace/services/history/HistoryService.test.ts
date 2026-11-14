@@ -149,6 +149,24 @@ describe("HistoryService", () => {
         expect(history.canUndo(doc.id)).toBe(false);
     });
 
+    it("keeps a checkpoint when its scope cannot capture the current state for redo", () => {
+        const doc = createDocumentScope(history);
+        history.checkpoint(doc.id, { label: LABEL });
+        doc.state.text = "b";
+        doc.state.live = false;
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        expect(history.undo(doc.id)).toBe(false);
+        expect(doc.state.text).toBe("b");
+        expect(history.canUndo(doc.id)).toBe(true);
+        expect(history.canRedo(doc.id)).toBe(false);
+        doc.state.live = true;
+        expect(history.undo(doc.id)).toBe(true);
+        expect(history.redo(doc.id)).toBe(true);
+        expect(doc.state.text).toBe("b");
+        error.mockRestore();
+    });
+
     it("run() records the pair around a mutation and skips a no-op", () => {
         const doc = createDocumentScope(history);
 
@@ -237,6 +255,41 @@ describe("HistoryService", () => {
         expect(history.undo("project")).toBe(true);
         expect(log).toEqual(["async-start", "sync"]);
     });
+
+    it.each(["clearScope", "clearAll", "clearMatching", "dropTagged", "dispose"] as const)(
+        "discards an in-flight command after %s without releasing it early",
+        async action => {
+            let finish: () => void = () => {};
+            const dispose = vi.fn();
+            history.pushCommand("project", {
+                label: LABEL,
+                tag: "library",
+                undo: () => new Promise<void>(resolve => { finish = resolve; }),
+                redo: () => {},
+                dispose,
+            });
+
+            expect(history.undo("project")).toBe(true);
+            const settled = history.settled();
+            switch (action) {
+                case "clearScope": history.clearScope("project"); break;
+                case "clearAll": history.clearAll(); break;
+                case "clearMatching": history.clearMatching(id => id === "project"); break;
+                case "dropTagged": history.dropTagged("project", "library"); break;
+                case "dispose": history.dispose({ project: {} as never, services: {} as never, commandLineRun: false }); break;
+            }
+            expect(dispose).not.toHaveBeenCalled();
+            finish();
+            await settled;
+
+            expect(dispose).toHaveBeenCalledOnce();
+            expect(history.canUndo("project")).toBe(false);
+            expect(history.canRedo("project")).toBe(false);
+            expect(history.withoutRecording(() => history.pushCommand("project", {
+                label: LABEL, undo: () => {}, redo: () => {},
+            }))).toBe(false);
+        },
+    );
 
     it("clearAll drops every stack", () => {
         const a = createDocumentScope(history, "a");

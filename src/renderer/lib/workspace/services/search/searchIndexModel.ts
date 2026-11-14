@@ -1,5 +1,5 @@
 import type { SearchJumpTarget } from "./searchJumpTarget";
-import type { CompiledMatcher } from "./textMatcher";
+import { isWordCharacterBefore, type CompiledMatcher } from "./textMatcher";
 
 /**
  * Global project search - the pure query model.
@@ -376,10 +376,7 @@ const DEFAULT_MAX_PER_GROUP = 20;
 const EXPANDED_MAX_PER_GROUP = 500;
 
 function isWordBoundary(text: string, index: number): boolean {
-    if (index === 0) {
-        return true;
-    }
-    return !/[\p{L}\p{N}]/u.test(text[index - 1]);
+    return !isWordCharacterBefore(text, index);
 }
 
 /** Score a case-folded substring occurrence; higher is better, null when absent. */

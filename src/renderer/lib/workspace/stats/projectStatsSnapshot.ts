@@ -154,18 +154,18 @@ function createStoriesScan(): StoriesScan {
 }
 
 /**
- * Story documents load lazily: `listStories()` only sees the library index, so every
- * document must be pulled in before it can be scanned. One broken story degrades to
- * being skipped rather than taking the whole snapshot down.
+ * Story documents load lazily: `listStories()` only sees the library index, so every document must
+ * be pulled in before it can be scanned. A dashboard snapshot can skip an unreadable story; a
+ * persisted word total requires every story so a partial count cannot become a writing baseline.
  */
-async function loadStoryDocuments(ctx: WorkspaceContext): Promise<StoryDocument[]> {
+async function loadStoryDocuments(ctx: WorkspaceContext, options: { requireAll?: boolean } = {}): Promise<StoryDocument[]> {
     const storyService = ctx.services.get<StoryService>(Services.Story);
     const documents: StoryDocument[] = [];
     for (const entry of storyService.listStories()) {
         try {
             documents.push(await storyService.loadStory(entry.id));
-        } catch {
-            // A broken story must not take the snapshot down.
+        } catch (error) {
+            if (options.requireAll) throw error;
         }
     }
     return documents;
@@ -560,16 +560,12 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
 
 /** Total word count only - the cheap path used for the daily writing-curve snapshot. */
 export async function computeTotalWordCount(ctx: WorkspaceContext): Promise<number> {
-    try {
-        const documents = await loadStoryDocuments(ctx);
-        let total = 0;
-        for (const document of documents) {
-            for (const scene of Object.values(document.scenes)) {
-                total += scanScene(scene).words;
-            }
+    const documents = await loadStoryDocuments(ctx, { requireAll: true });
+    let total = 0;
+    for (const document of documents) {
+        for (const scene of Object.values(document.scenes)) {
+            total += scanScene(scene).words;
         }
-        return total;
-    } catch {
-        return 0;
     }
+    return total;
 }

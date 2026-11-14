@@ -27,12 +27,14 @@
  */
 
 import type { AgentCallResult } from "@shared/agent/protocol";
-import type { PsdDocument, PsdFingerprint, PsdFingerprintSlot } from "@shared/types/psdImport";
+import type { PsdDocument, PsdFingerprint, PsdFingerprintSlot, PsdLayerReference } from "@shared/types/psdImport";
 import {
     canMergeBlendMode,
     flattenLeaves,
     joinPath,
     planImport,
+    psdLayerKey,
+    psdLayerReference,
     toBakeTargets,
     unsupportedBlends,
     type ImportPlan,
@@ -424,13 +426,13 @@ export const characterLayersImport: AgentToolHandler = async (args, tool) => {
  */
 export function specFromPsdPlan(
     plan: ImportPlan,
-    assetOf: (path: string[]) => string | null,
-): { spec: LayeredSpec; renamed: string[]; tagPaths: Map<string, string[]>; layerPaths: Map<string, string[]> } {
+    assetOf: (ref: PsdLayerReference) => string | null,
+): { spec: LayeredSpec; renamed: string[]; tagPaths: Map<string, PsdLayerReference>; layerPaths: Map<string, PsdLayerReference> } {
     const renamed: string[] = [];
     const usedLayers = new Set<string>();
     const usedTags = new Set<string>();
-    const tagPaths = new Map<string, string[]>();
-    const layerPaths = new Map<string, string[]>();
+    const tagPaths = new Map<string, PsdLayerReference>();
+    const layerPaths = new Map<string, PsdLayerReference>();
     const unique = (wanted: string, used: Set<string>, fallback: (n: number) => string): string => {
         let name = wanted.trim() || "layer";
         for (let n = 2; used.has(name.toLowerCase()); n += 1) {
@@ -444,8 +446,8 @@ export function specFromPsdPlan(
         if (slot.kind === "constant") {
             const name = unique(slot.name, usedLayers, n => `${slot.name} ${n}`);
             if (name !== slot.name) renamed.push(`layer "${joinPath(slot.leaf.path)}" is "${name}"`);
-            layerPaths.set(name.toLowerCase(), slot.leaf.path);
-            spec.layers.push({ name, axis: null, asset: assetOf(slot.leaf.path) });
+            layerPaths.set(name.toLowerCase(), psdLayerReference(slot.leaf));
+            spec.layers.push({ name, axis: null, asset: assetOf(slot.leaf) });
             continue;
         }
         const layerName = unique(slot.axis, usedLayers, n => `${slot.axis} ${n}`);
@@ -455,8 +457,8 @@ export function specFromPsdPlan(
             const tag = unique(option.tag, usedTags, n => (n === 2 ? `${slot.axis}-${option.tag}` : `${slot.axis}-${option.tag}-${n}`));
             if (tag !== option.tag) renamed.push(`tag "${joinPath(option.leaf.path)}" is "${tag}"`);
             tags.push(tag);
-            options[tag] = assetOf(option.leaf.path);
-            tagPaths.set(`${layerName.toLowerCase()}/${tag.toLowerCase()}`, option.leaf.path);
+            options[tag] = assetOf(option.leaf);
+            tagPaths.set(`${layerName.toLowerCase()}/${tag.toLowerCase()}`, psdLayerReference(option.leaf));
         }
         spec.axes.push({ name: layerName, tags });
         spec.layers.push({ name: layerName, axis: layerName, options });
@@ -478,12 +480,19 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
     // layer below, or left out - exactly as the import wizard insists. No default: a default would be
     // a choice made for the author that nobody saw.
     const decisions = readOptionalRecord(args, "blendModes") ?? {};
-    const resolutions: Record<string, BlendResolution> = {};
+    const resolutions: Record<string, BlendResolution> = Object.create(null);
+    const legacyPathCounts = new Map<string, number>();
+    for (const leaf of leaves) {
+        const key = joinPath(leaf.path);
+        legacyPathCounts.set(key, (legacyPathCounts.get(key) ?? 0) + 1);
+    }
     const undecided: string[] = [];
     const unmergeable: string[] = [];
     for (const leaf of unsupportedBlends(leaves)) {
-        const key = joinPath(leaf.path);
-        const choice = decisions[key];
+        const key = psdLayerKey(leaf);
+        const legacy = joinPath(leaf.path);
+        const readDecision = (name: string): unknown => Object.hasOwn(decisions, name) ? decisions[name] : undefined;
+        const choice = readDecision(key) ?? (legacyPathCounts.get(legacy) === 1 ? readDecision(legacy) : undefined);
         if (choice !== "merge" && choice !== "skip") {
             undecided.push(`"${key}" (${leaf.blendMode}${canMergeBlendMode(leaf.blendMode) ? "" : ", skip only"})`);
             continue;
@@ -524,7 +533,7 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
 
     // Everything that can refuse is checked before a layer is baked or imported, against stand-ins
     // for the images: a refusal after the import would leave the layer images in the project.
-    const standIns = specFromPsdPlan(plan, path => `psd:${joinPath(path)}`);
+    const standIns = specFromPsdPlan(plan, ref => `psd:${psdLayerKey(ref)}`);
     await writeLayered(tool, {
         characterRef,
         spec: standIns.spec,
@@ -548,7 +557,7 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
     baked.data.layers.forEach((layer, index) => {
         const status = imported.data[index];
         if (status?.success && status.data) {
-            assetIds.set(joinPath(layer.path), status.data.id);
+            assetIds.set(psdLayerKey(layer), status.data.id);
         }
     });
     // Filed as the import wizard files them: in the image folder named after the character. A name
@@ -561,7 +570,7 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
             folderName,
         )
         : null;
-    const { spec, renamed, tagPaths, layerPaths } = specFromPsdPlan(plan, path => assetIds.get(joinPath(path)) ?? null);
+    const { spec, renamed, tagPaths, layerPaths } = specFromPsdPlan(plan, ref => assetIds.get(psdLayerKey(ref)) ?? null);
     const notes = [
         `Imported ${assetIds.size} layer image(s) from "${document.fileName}"${filed?.success && filed.data ? ` into the image folder "${folderName}"` : ""}.`,
         ...(filed && !filed.success ? [`Could not file them under the image folder "${folderName}": ${filed.error ?? "unknown error"}.`] : []),
@@ -573,13 +582,13 @@ async function importFromPsd(tool: AgentToolContext, characterRef: string, psdPa
         for (const layer of appearance.layers) {
             const axis = appearance.axes.find(candidate => candidate.id === layer.axisId);
             if (!axis) {
-                const path = layerPaths.get(layer.name.toLowerCase());
-                if (path) slots.push({ path, layerId: layer.id });
+                const ref = layerPaths.get(layer.name.toLowerCase());
+                if (ref) slots.push({ ...ref, layerId: layer.id });
                 continue;
             }
             for (const tag of axis.tags) {
-                const path = tagPaths.get(`${layer.name.toLowerCase()}/${tag.name.toLowerCase()}`);
-                if (path) slots.push({ path, layerId: layer.id, tagId: tag.id });
+                const ref = tagPaths.get(`${layer.name.toLowerCase()}/${tag.name.toLowerCase()}`);
+                if (ref) slots.push({ ...ref, layerId: layer.id, tagId: tag.id });
             }
         }
         return { fileName: document.fileName, width: document.width, height: document.height, slots, importedAt: Date.now() };

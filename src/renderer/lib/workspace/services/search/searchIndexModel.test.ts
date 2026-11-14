@@ -114,6 +114,19 @@ describe("querySearchIndex", () => {
         expect(boundary?.hits[0]?.entry.id).toBe("1");
     });
 
+    it("scores a hit after a supplementary letter as mid-word", () => {
+        const index = indexEntries([
+            { id: "letter", group: "storyText", text: "𠀀cat", target: { kind: "localizationKey", keyName: "x" } },
+            { id: "symbol", group: "storyText", text: "💬cat", target: { kind: "localizationKey", keyName: "x" } },
+        ] satisfies SearchIndexEntry[]);
+        for (const options of [undefined, { matcher: compileMatcher("cat", { caseSensitive: false, wholeWord: false, regex: false }) }]) {
+            const hits = querySearchIndex(index, "cat", options).find(group => group.group === "storyText")?.hits;
+            const letter = hits?.find(hit => hit.entry.id === "letter");
+            const symbol = hits?.find(hit => hit.entry.id === "symbol");
+            expect(symbol!.score).toBeGreaterThan(letter!.score);
+        }
+    });
+
     it("ANDs terms regardless of word order, across text and detail", () => {
         const forward = querySearchIndex(entries, "good morning");
         const reversed = querySearchIndex(entries, "morning good");
