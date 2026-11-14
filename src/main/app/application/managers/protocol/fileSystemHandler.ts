@@ -304,7 +304,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
         storageInfo: FileStorageInfo,
         relativePath: string,
     ): Promise<ProtocolResponse> {
-        const filePath = this.storageManager.resolveDirectoryGrantPath(storageInfo, relativePath);
+        const filePath = await this.storageManager.resolveDirectoryGrantPath(storageInfo, relativePath);
         if (!filePath) {
             this.logger.error(`Rejected directory grant path: ${relativePath}`);
             return {
@@ -326,6 +326,14 @@ export class FileSystemHashHandler implements ProtocolHandler {
         const opened = await Fs.openForRead(filePath);
         if (!opened.ok) {
             return readFailed(opened.error);
+        }
+        if (!await this.storageManager.isDirectoryGrantHandleAllowed(storageInfo, opened.data.handle)) {
+            await opened.data.handle.close();
+            return {
+                statusCode: 403,
+                headers: { "Content-Type": "text/plain" },
+                data: "Path is outside the granted directory",
+            };
         }
 
         return this.fileResponse(request, opened.data, {
@@ -654,4 +662,4 @@ export class FileSystemHashHandler implements ProtocolHandler {
             };
         }
     }
-} 
+}

@@ -156,7 +156,12 @@ export async function signIpa(options: SignIpaOptions): Promise<SignIpaResult> {
     }
 
     const workDir = await fs.mkdtemp(path.join(options.tempDirRoot ?? os.tmpdir(), "nls-ipa-sign-"));
+    let outputWorkDir: string | undefined;
     try {
+        // Keep the candidate on the output volume so it can replace the previous package only
+        // after zsign has produced a new file successfully.
+        outputWorkDir = await fs.mkdtemp(path.join(path.dirname(options.signedIpaPath), ".nls-ipa-sign-"));
+        const candidatePath = path.join(outputWorkDir, path.basename(options.signedIpaPath));
         const ephemeralP12 = path.join(workDir, "identity.p12");
         await fs.writeFile(
             ephemeralP12,
@@ -178,20 +183,19 @@ export async function signIpa(options: SignIpaOptions): Promise<SignIpaResult> {
             "-m", signing.provisioningProfileFile,
             "-b", options.bundleId,
             "-n", options.displayName,
-            "-o", options.signedIpaPath,
+            "-o", candidatePath,
             options.unsignedIpaPath,
         ];
         const { exitCode, output } = await (options.run ?? runZsign)(tool.path, args);
         // zsign reports failure both ways; a run that exits 0 having printed
         // "Signed Failed!" would otherwise leave a half-written package behind.
         if (exitCode !== 0 || /Signed Failed!/.test(output)) {
-            await fs.rm(options.signedIpaPath, { force: true });
             throw new IpaSigningError(
                 "signing-failed",
                 `The iOS signing tool refused this package: ${lastLines(output, 3) || `it exited with ${exitCode}`}`,
             );
         }
-        if (!await fileExists(options.signedIpaPath)) {
+        if (!await fileExists(candidatePath)) {
             throw new IpaSigningError(
                 "signing-failed",
                 "The iOS signing tool reported success but wrote no package.",
@@ -201,6 +205,7 @@ export async function signIpa(options: SignIpaOptions): Promise<SignIpaResult> {
         const signerSubject = new crypto.X509Certificate(
             Buffer.from(identity.certificateChainDerBase64[0], "base64"),
         ).subject.split("\n").join(", ");
+        await fs.rename(candidatePath, options.signedIpaPath);
         return {
             signerSubject,
             profileName: profile.name,
@@ -211,7 +216,10 @@ export async function signIpa(options: SignIpaOptions): Promise<SignIpaResult> {
     } finally {
         // The ephemeral container is a private key in the clear; it goes away
         // whether the run succeeded, failed, or threw on the way in.
-        await fs.rm(workDir, { recursive: true, force: true });
+        await Promise.all([
+            fs.rm(workDir, { recursive: true, force: true }),
+            ...(outputWorkDir ? [fs.rm(outputWorkDir, { recursive: true, force: true })] : []),
+        ]);
     }
 }
 

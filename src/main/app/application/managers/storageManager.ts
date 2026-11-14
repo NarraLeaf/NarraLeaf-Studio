@@ -6,6 +6,7 @@ import {
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
+import type { FileHandle } from "fs/promises";
 import { app as electronApp } from "electron";
 import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import { resolvePhysicalPath } from "../../../utils/physicalPath";
@@ -17,6 +18,30 @@ import type { AppWindow } from "./window/appWindow";
 import { FileSystemAccessMode, FileSystemGrant, FileSystemGrantMode, getDeclaredFileSystemGrants } from "./window/permissions";
 
 export type FileStorageLifetime = "once" | "session";
+
+let getDarwinHandlePath: ((fd: number, command: number, kind: string, output: Buffer) => number) | undefined;
+let getWindowsHandlePath: ((fd: number) => string | null) | undefined;
+
+function windowsPathFromFileHandle(fd: number): string | null {
+    if (!getWindowsHandlePath) {
+        const koffi = require("koffi") as typeof import("koffi");
+        const getOsHandle = koffi.load(null).func("uv_get_osfhandle", "intptr_t", ["int"]);
+        const getFinalPath = koffi.load("kernel32.dll").func(
+            "GetFinalPathNameByHandleW", "uint32_t", ["intptr_t", "void *", "uint32_t", "uint32_t"],
+        );
+        getWindowsHandlePath = (fileDescriptor: number): string | null => {
+            const handle = getOsHandle(fileDescriptor);
+            if (handle === -1 || handle === -1n) return null;
+            const buffer = Buffer.alloc(32768 * 2);
+            const length = getFinalPath(handle, buffer, 32768, 0);
+            if (length === 0 || length >= 32768) return null;
+            const result = buffer.toString("utf16le", 0, length * 2);
+            if (result.startsWith("\\\\?\\UNC\\")) return `\\\\${result.slice(8)}`;
+            return result.startsWith("\\\\?\\") ? result.slice(4) : result;
+        };
+    }
+    return getWindowsHandlePath(fd);
+}
 
 export interface FileStorageInfo {
     path: string;
@@ -42,6 +67,8 @@ export interface FileStorageInfo {
      * request per texture, per motion), so a one-shot grant would die on the first file.
      */
     directory?: boolean;
+    /** Physical root fixed when a directory grant is issued. */
+    directoryRoot?: string;
     /**
      * "once" (default when absent): destroyed after the first successful use.
      * "session": stays usable until the owner webContents goes away, so the
@@ -101,6 +128,7 @@ export class StorageManager extends Manager {
     /** Asset manifests offered for a cross-window paste; see {@link recordAssetTransferOffer}. */
     private assetTransferOffers = new Map<string, AssetTransferOffer>();
     private namespaces = new Map<string, StorageNamespaceInfo>();
+    private reportedHandlePathFailure = false;
     /** `mode:path` pairs already reported by {@link allowUnscopedFileAccess}, so each is logged once. */
     private unscopedFileAccessSeen = new Set<string>();
     
@@ -161,7 +189,8 @@ export class StorageManager extends Manager {
      * will fetch many files under the root and is expected to keep doing so for as long as it is
      * showing the bundle. It dies with that webContents, exactly like a promoted read grant.
      */
-    public allocateDirectoryHash(dirPath: string, ownerWebContentsId: number): string {
+    public async allocateDirectoryHash(dirPath: string, ownerWebContentsId: number, authorizedRoot?: string): Promise<string> {
+        const directoryRoot = authorizedRoot ?? await fs.realpath(dirPath);
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, {
             path: path.resolve(dirPath),
@@ -173,6 +202,7 @@ export class StorageManager extends Manager {
             // way to forget the second call.
             status: "ready",
             directory: true,
+            directoryRoot,
             lifetime: "session",
             ownerWebContentsId,
         });
@@ -187,7 +217,7 @@ export class StorageManager extends Manager {
      * is attacker-controllable in the same sense every renderer-supplied path is, and `..` segments
      * survive `new URL()` normalization when they are percent-encoded.
      */
-    public resolveDirectoryGrantPath(info: FileStorageInfo, relativePath: string): string | null {
+    public async resolveDirectoryGrantPath(info: FileStorageInfo, relativePath: string): Promise<string | null> {
         if (!info.directory) {
             return null;
         }
@@ -202,7 +232,45 @@ export class StorageManager extends Manager {
         }
         const root = path.resolve(info.path);
         const target = path.resolve(root, decoded);
-        return this.isSameOrChild(target, root) && target !== root ? target : null;
+        if (!this.isSameOrChild(target, root) || target === root || !info.directoryRoot) {
+            return null;
+        }
+        const physicalTarget = await this.resolvePathForAuthorization(target);
+        return this.isSameOrChild(physicalTarget, info.directoryRoot) && physicalTarget !== info.directoryRoot
+            ? physicalTarget
+            : null;
+    }
+
+    /** Check the opened file itself before returning any bytes to a directory-grant reader. */
+    public async isDirectoryGrantHandleAllowed(info: FileStorageInfo, handle: FileHandle): Promise<boolean> {
+        if (!info.directoryRoot) return false;
+        try {
+            let openedPath: string;
+            if (process.platform === "darwin") {
+                if (!getDarwinHandlePath) {
+                    const koffi = require("koffi") as typeof import("koffi");
+                    getDarwinHandlePath = koffi.load(null).func("fcntl", "int", ["int", "int", "..."]);
+                }
+                const buffer = Buffer.alloc(1024);
+                if (getDarwinHandlePath(handle.fd, 50, "void *", buffer) !== 0) return false;
+                openedPath = buffer.toString("utf8").split("\0", 1)[0];
+            } else if (process.platform === "linux") {
+                openedPath = await fs.realpath(`/proc/self/fd/${handle.fd}`);
+            } else if (process.platform === "win32") {
+                const resolved = windowsPathFromFileHandle(handle.fd);
+                if (!resolved) return false;
+                openedPath = resolved;
+            } else {
+                return false;
+            }
+            return this.isSameOrChild(openedPath, info.directoryRoot) && openedPath !== info.directoryRoot;
+        } catch (error) {
+            if (!this.reportedHandlePathFailure) {
+                this.reportedHandlePathFailure = true;
+                this.app.logger.warn("Unable to verify an opened directory-grant file:", error);
+            }
+            return false;
+        }
     }
 
     public grantFileSystemAccess(
@@ -294,6 +362,9 @@ export class StorageManager extends Manager {
         if (await this.isProtectedStoragePath(target)) {
             return false;
         }
+        if (requireSubtree && (await this.getResolvedProtectedStorageRoots()).some(root => this.isSameOrChild(root, target))) {
+            return false;
+        }
         return this.hasResolvedFileSystemGrant(window, target, mode, requireSubtree);
     }
 
@@ -359,6 +430,12 @@ export class StorageManager extends Manager {
 
     public async isPathProtected(fsPath: string): Promise<boolean> {
         return this.isProtectedStoragePath(await this.resolvePathForAuthorization(fsPath));
+    }
+
+    public async isPathTreeProtected(fsPath: string): Promise<boolean> {
+        const target = await this.resolvePathForAuthorization(fsPath);
+        return (await this.getResolvedProtectedStorageRoots()).some(root =>
+            this.isSameOrChild(target, root) || this.isSameOrChild(root, target));
     }
 
     public getSecurityScopedBookmarkForPath(fsPath: string): string | undefined {
@@ -802,7 +879,7 @@ export class StorageManager extends Manager {
 
     private isSameOrChild(target: string, root: string): boolean {
         const relativePath = path.relative(root, target);
-        return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+        return relativePath === "" || (relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath));
     }
 }
 

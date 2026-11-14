@@ -142,7 +142,11 @@ describe("signIpa", () => {
         expect(args[args.indexOf("-m") + 1]).toBe(opts.signing.provisioningProfileFile);
         expect(args[args.indexOf("-b") + 1]).toBe(APPLE_PROFILE_BUNDLE_ID);
         expect(args[args.indexOf("-n") + 1]).toBe("My Game");
-        expect(args[args.indexOf("-o") + 1]).toBe(opts.signedIpaPath);
+        const candidatePath = args[args.indexOf("-o") + 1];
+        expect(path.basename(candidatePath)).toBe(path.basename(opts.signedIpaPath));
+        expect(candidatePath).not.toBe(opts.signedIpaPath);
+        expect(await fs.readFile(opts.signedIpaPath, "utf8")).toBe("signed package bytes");
+        await expect(fs.access(path.dirname(candidatePath))).rejects.toThrow();
         // The package to sign is the trailing positional argument.
         expect(args.at(-1)).toBe(opts.unsignedIpaPath);
     });
@@ -257,6 +261,64 @@ describe("signIpa", () => {
             "signing-failed",
         );
         expect(error.message).toContain("wrote no package");
+    });
+
+    it("does not mistake an existing package for a new signing result", async () => {
+        const opts = await options();
+        await fs.writeFile(opts.signedIpaPath, "previous signed package");
+
+        const error = await expectFailure(
+            signIpa({ ...opts, run: recorder(() => ({ exitCode: 0, output: ">>> Done." })).run }),
+            "signing-failed",
+        );
+
+        expect(error.message).toContain("wrote no package");
+        expect(await fs.readFile(opts.signedIpaPath, "utf8")).toBe("previous signed package");
+    });
+
+    it("replaces a previous package after a successful signing run", async () => {
+        const opts = await options();
+        await fs.writeFile(opts.signedIpaPath, "previous signed package");
+        const zsign = succeeds();
+
+        await signIpa({ ...opts, run: zsign.run });
+
+        expect(await fs.readFile(opts.signedIpaPath, "utf8")).toBe("signed package bytes");
+        const candidatePath = zsign.calls[0].args[zsign.calls[0].args.indexOf("-o") + 1];
+        await expect(fs.access(path.dirname(candidatePath))).rejects.toThrow();
+    });
+
+    it("preserves the previous package and removes partial output when the runner throws", async () => {
+        const opts = await options();
+        await fs.writeFile(opts.signedIpaPath, "previous signed package");
+        let partialPath = "";
+        const zsign = recorder(async invocation => {
+            partialPath = invocation.args[invocation.args.indexOf("-o") + 1];
+            await fs.writeFile(partialPath, "partial package");
+            throw new Error("runner failed");
+        });
+
+        await expect(signIpa({ ...opts, run: zsign.run })).rejects.toThrow("runner failed");
+        expect(await fs.readFile(opts.signedIpaPath, "utf8")).toBe("previous signed package");
+        await expect(fs.access(partialPath)).rejects.toThrow();
+        await expect(fs.access(path.dirname(partialPath))).rejects.toThrow();
+        const keyPath = zsign.calls[0].args[zsign.calls[0].args.indexOf("-k") + 1];
+        await expect(fs.access(keyPath)).rejects.toThrow();
+    });
+
+    it("preserves the previous package when zsign reports failure after writing a partial output", async () => {
+        const opts = await options();
+        await fs.writeFile(opts.signedIpaPath, "previous signed package");
+        let partialPath = "";
+        const zsign = recorder(async invocation => {
+            partialPath = invocation.args[invocation.args.indexOf("-o") + 1];
+            await fs.writeFile(partialPath, "partial package");
+            return { exitCode: 255, output: ">>> Signed Failed!" };
+        });
+
+        await expectFailure(signIpa({ ...opts, run: zsign.run }), "signing-failed");
+        expect(await fs.readFile(opts.signedIpaPath, "utf8")).toBe("previous signed package");
+        await expect(fs.access(path.dirname(partialPath))).rejects.toThrow();
     });
 
     it("carries zsign's own words into the failure, rather than guessing", async () => {

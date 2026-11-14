@@ -2,9 +2,9 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BundleTree } from "../macBundle/bundleTree";
-import { readZipAsTree, writeTreeAsZip } from "./archive";
+import { FileZipOutput, readZipAsTree, writeTreeAsZip } from "./archive";
 
 let root: string;
 
@@ -60,5 +60,45 @@ describe("writeTreeAsZip / readZipAsTree", () => {
         await writeTreeAsZip(new Map([...tree].reverse()), path.join(root, "two.zip"), mtime);
 
         expect((await fs.readFile(path.join(root, "one.zip"))).equals(await fs.readFile(path.join(root, "two.zip")))).toBe(true);
+    });
+});
+
+describe("FileZipOutput", () => {
+    it("writes a complete header patch when a file write is short", async () => {
+        const file = path.join(root, "archive.zip");
+        const handle = await fs.open(file, "w+");
+        const open = vi.spyOn(fs, "open").mockResolvedValueOnce(handle);
+        const originalWrite = handle.write.bind(handle);
+        const write = vi.spyOn(handle, "write").mockImplementation(((
+            buffer: Uint8Array,
+            offset: number,
+            length: number,
+            position: number,
+        ) => originalWrite(buffer, offset, Math.min(length, 2), position)) as typeof handle.write);
+        const output = await FileZipOutput.create(file);
+        try {
+            await output.write(Buffer.from("0123456789"));
+            await output.patch(2, Buffer.from("ABCDEFGH"));
+        } finally {
+            await output.close();
+            open.mockRestore();
+            write.mockRestore();
+        }
+        expect(await fs.readFile(file, "utf8")).toBe("01ABCDEFGH");
+    });
+
+    it("fails instead of looping when a file write makes no progress", async () => {
+        const file = path.join(root, "stalled.zip");
+        const handle = await fs.open(file, "w+");
+        const open = vi.spyOn(fs, "open").mockResolvedValueOnce(handle);
+        const write = vi.spyOn(handle, "write").mockResolvedValueOnce({ bytesWritten: 0, buffer: Buffer.alloc(0) } as never);
+        const output = await FileZipOutput.create(file);
+        try {
+            await expect(output.patch(0, Buffer.from("header"))).rejects.toThrow(/no progress/);
+        } finally {
+            await output.close();
+            open.mockRestore();
+            write.mockRestore();
+        }
     });
 });

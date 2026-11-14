@@ -120,6 +120,25 @@ describe("the weather render pool", () => {
         expect(await pool.next()).toBeNull();
     });
 
+    it("finishes a pending read when closing terminates its render thread", async () => {
+        const pool = createWeatherRenderPool(SPEC, {
+            threads: 1,
+            spawn: () => {
+                let rejectFrame: (error: Error) => void = () => undefined;
+                return {
+                    render: () => new Promise((_resolve, reject) => { rejectFrame = reject; }),
+                    close: () => rejectFrame(new Error("thread terminated")),
+                };
+            },
+        });
+        const pending = pool.next();
+
+        pool.close();
+
+        await expect(pending).resolves.toBeNull();
+        await expect(pool.next()).resolves.toBeNull();
+    });
+
     it("reports a thread that died rather than handing back a short clip", async () => {
         // A truncated stream makes the encoder complain about its input, which names the wrong
         // thing entirely. The bake turns this into its own sentence.
