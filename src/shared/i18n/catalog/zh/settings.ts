@@ -357,6 +357,10 @@ export const settings = {
             description: "工程连接到 Team 服务器时，在标题栏显示你的 Team 账号头像",
             noServer: "连接到 Team 服务器后可用",
         },
+        teamLatencyVisible: {
+            label: "显示 Team 服务器延迟",
+            description: "在状态栏的服务器名称旁显示到 Team 服务器的往返延迟",
+        },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
             description: "标题栏中间的搜索框",

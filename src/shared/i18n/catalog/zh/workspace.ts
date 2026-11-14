@@ -863,6 +863,10 @@ export const workspace = {
             viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
             dismiss: "知道了",
         },
+        latency: {
+            value: "{ms} ms",
+            title: "到服务器的往返延迟：最近 5 次的中位数 {median} ms，最近一次 {last} ms",
+        },
         account: {
             history: "历史版本",
             manage: "管理 Team",

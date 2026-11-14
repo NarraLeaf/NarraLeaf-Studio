@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, Settings2 } from "lucide-react";
 
-import { getInterface } from "@/lib/app/bridge";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
@@ -9,7 +8,8 @@ import { getProfile, listClients, readAvatar, useTeamCapability, useTeamConnecti
 import { cn } from "@/lib/utils/cn";
 import { teamProjectClientsTopic, type TeamAccountProfile } from "@shared/types/team";
 
-import { TEAM_AVATAR_VISIBLE_DEFAULT, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
+import { resolveOnByDefault, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import { useTeamDocuments } from "./TeamHistoryRail";
 import { useTeamProjectSurface } from "./TeamProjectContext";
 import { isTeamHistoryReachable, openTeamHistory } from "./teamHistoryController";
@@ -38,7 +38,7 @@ export function TeamAccountAvatar() {
     const connection = useTeamConnection(remoteOrigin);
     const ready = connection.state === "ready" && connection.account !== undefined;
     const inTeamProject = documents.view !== null && documents.target !== null;
-    const visible = useTeamAvatarVisible();
+    const visible = useGlobalSetting(TEAM_AVATAR_VISIBLE_KEY, resolveOnByDefault);
 
     const [open, setOpen] = useState(false);
     const root = useRef<HTMLDivElement>(null);
@@ -343,25 +343,4 @@ function useTeamProfiles(remoteOrigin: string, usernames: readonly string[]): Re
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [remoteOrigin, wanted]);
     return profiles;
-}
-
-/** Whether the author wants the account in the title bar. Follows the setting live. */
-function useTeamAvatarVisible(): boolean {
-    const [visible, setVisible] = useState(TEAM_AVATAR_VISIBLE_DEFAULT);
-    useEffect(() => {
-        let alive = true;
-        void getInterface().app.state.getGlobalState(TEAM_AVATAR_VISIBLE_KEY)
-            .then((answer) => {
-                if (alive && answer.success) setVisible(answer.data.value !== false);
-            })
-            .catch(() => undefined);
-        const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (change.key === TEAM_AVATAR_VISIBLE_KEY) setVisible(change.value !== false);
-        });
-        return () => {
-            alive = false;
-            token?.cancel();
-        };
-    }, []);
-    return visible;
 }

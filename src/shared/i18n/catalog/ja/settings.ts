@@ -373,6 +373,10 @@ export const settings = {
             description: "プロジェクトが Team サーバーに接続しているとき、タイトルバーに Team アカウントのアバターを表示",
             noServer: "Team サーバーにサインインすると使用可能",
         },
+        teamLatencyVisible: {
+            label: "Team サーバーの遅延を表示",
+            description: "ステータスバーのサーバー名の横に Team サーバーまでの往復遅延を表示",
+        },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
             description: "タイトルバー中央の検索欄",

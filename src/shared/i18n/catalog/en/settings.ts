@@ -379,6 +379,10 @@ export const settings = {
             description: "Your Team account in the title bar, while a project is connected to a Team server.",
             noServer: "Available once you are signed in to a Team server.",
         },
+        teamLatencyVisible: {
+            label: "Show Team server latency",
+            description: "The round trip to the Team server, beside its name in the status bar.",
+        },
         titleBarSearchVisible: {
             label: "Show title bar search box",
             description: "The search box in the middle of the title bar.",

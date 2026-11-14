@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
+import { resolveOnByDefault, TEAM_LATENCY_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
+import { teamLatencyTone, useTeamLatency } from "@/lib/team/useTeamLatency";
+import { cn } from "@/lib/utils/cn";
 import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
@@ -55,6 +59,12 @@ export function TeamStatusEntry() {
      * up to `TeamProjectProvider`, where both can reach one.
      */
     const team = useTeamProjectSurface();
+    /**
+     * How far away the server is, beside its name. Timed only while the author wants it shown and
+     * the project's session with its server is up - see `useTeamLatency`.
+     */
+    const latencyShown = useGlobalSetting(TEAM_LATENCY_VISIBLE_KEY, resolveOnByDefault);
+    const latency = useTeamLatency(drawn ? team.remoteOrigin : null, latencyShown);
     useEffect(() => {
         if (!drawn) {
             return;
@@ -79,7 +89,10 @@ export function TeamStatusEntry() {
     const face = teamServerFace(team.state, surface.syncState);
     const tooltip = remote === null
         ? t("workspace.shell.versionControl.server.none")
-        : `${name} - ${t(face.detail)}`;
+        : latency === null
+            ? `${name} - ${t(face.detail)}`
+            : `${name} - ${t(face.detail)}\n${t("workspace.shell.team.latency.title", { median: String(latency.median), last: String(latency.last) })}`;
+    const latencyTone = latency === null ? null : teamLatencyTone(latency.median);
     /**
      * The one state the cell raises its voice for: something is standing between this project and
      * its server, and nothing else on screen says so.
@@ -111,6 +124,19 @@ export function TeamStatusEntry() {
             >
                 {remote === null ? <CloudOff className="h-3 w-3" /> : <Cloud className="h-3 w-3" />}
                 {name !== null && <span className="max-w-[18ch] truncate">{name}</span>}
+                {latency !== null && (
+                    <span
+                        data-team-latency={latencyTone ?? undefined}
+                        className={cn(
+                            "tabular-nums",
+                            latencyTone === "ok" && "text-fg-subtle",
+                            latencyTone === "slow" && "text-warning",
+                            latencyTone === "bad" && "text-danger",
+                        )}
+                    >
+                        {t("workspace.shell.team.latency.value", { ms: String(latency.median) })}
+                    </span>
+                )}
             </StatusEntry>
             <TeamPanel surface={surface} team={team} isOpen={open} onClose={() => setOpen(false)} />
         </>

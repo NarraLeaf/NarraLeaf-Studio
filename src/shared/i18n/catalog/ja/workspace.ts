@@ -878,6 +878,10 @@ export const workspace = {
             viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
             dismiss: "了解",
         },
+        latency: {
+            value: "{ms} ms",
+            title: "サーバーまでの往復遅延：直近 5 回の中央値 {median} ms、直近 {last} ms",
+        },
         account: {
             history: "バージョン履歴",
             manage: "Team を管理",
