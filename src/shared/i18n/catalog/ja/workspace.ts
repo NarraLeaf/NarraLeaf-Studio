@@ -1383,6 +1383,8 @@ export const workspace = {
             // 命令ではなく問いで、「任意」と書いてある。実際そのとおりで、メッセージが空でも
             // 正当なリビジョンになり、メッセージの無いものは上の一覧で自分の名を名乗る。
             commitPlaceholder: "何が変わったか（任意）",
+            openThreadsInChanges: "この変更に含まれるストーリーに未解決のコメントが {count} 件あります。",
+            openThreadsShow: "表示",
             commitMessage: "バージョンのメッセージ",
             authorLabel: "バージョンに記録される作成者",
             authorPlaceholder: "作成者名",

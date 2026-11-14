@@ -1340,6 +1340,8 @@ export const workspace = {
             // 是个问句而不是命令，并且明说可选——因为它确实可选：不写消息也是一个合法的版本，
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
             commitPlaceholder: "这次改了什么？（可选）",
+            openThreadsInChanges: "还有 {count} 条未解决的批注在这次修改的故事里。",
+            openThreadsShow: "查看",
             commitMessage: "版本说明",
             authorLabel: "提交版本记录的作者",
             authorPlaceholder: "作者名",

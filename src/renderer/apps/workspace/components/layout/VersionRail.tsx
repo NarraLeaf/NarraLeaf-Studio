@@ -87,6 +87,8 @@ import { registerVersionRailBridge, VERSION_COMMIT_MESSAGE_ATTRIBUTE } from "./v
 import { AuthorIdentity } from "./AuthorIdentity";
 import { openTeamPresence } from "../../modules/team/teamPresenceController";
 import { CommitTodoPicker, useCommitTodos } from "../../modules/team/CommitTodos";
+import { useOpenThreadsInChanges } from "../../modules/story-comments/precommitComments";
+import { openStoryCommentPopover } from "../../modules/story-comments/storyCommentsState";
 
 interface VersionRailProps {
     surface: VersionSurface;
@@ -879,6 +881,8 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
     // whether this project has changes would be the panel arguing with itself. Null while nobody has
     // scanned, which is not "clean" and does not disable anything.
     const changedFiles = surface.status ? buildChangeList(surface.status.files).total : null;
+    const changedPaths = useMemo(() => surface.status?.files.map(file => file.path) ?? null, [surface.status]);
+    const openThreads = useOpenThreadsInChanges(changedPaths);
     const enabled = canCommit({
         state: surface.state,
         frozen,
@@ -945,6 +949,22 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                 className="text-2xs"
             />
             <CommitTodoPicker controller={commitTodos} disabled={surface.busy === "commit"} />
+            {openThreads.length > 0 && (
+                // A glance before recording, not a gate: often the change IS the answer.
+                <p data-commit-open-threads={openThreads.length} className="mt-2 flex items-center gap-1 text-2xs text-fg-subtle">
+                    <span>{t("workspace.shell.versionControl.openThreadsInChanges", { count: String(openThreads.length) })}</span>
+                    <button
+                        type="button"
+                        className="text-primary hover:underline"
+                        onClick={() => {
+                            const first = openThreads[0]!;
+                            openStoryCommentPopover({ storyId: first.storyId, sceneId: first.sceneId, blockId: first.blockId });
+                        }}
+                    >
+                        {t("workspace.shell.versionControl.openThreadsShow")}
+                    </button>
+                </p>
+            )}
             <button
                 type="button"
                 onClick={submit}

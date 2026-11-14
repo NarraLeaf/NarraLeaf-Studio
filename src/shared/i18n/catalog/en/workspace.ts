@@ -1540,6 +1540,8 @@ export const workspace = {
             // A question rather than an instruction, and it says "optional" because it is: an empty
             // message is a valid revision, and one with no message names itself in the list above.
             commitPlaceholder: "What changed? (optional)",
+            openThreadsInChanges: "{count} open comments are in the stories this version changes.",
+            openThreadsShow: "Show",
             commitMessage: "Version message",
             // Asked in the panel, once, while the setting is empty. Says what the name is FOR
             // rather than naming the field: "Author name" is what Settings calls it, and there it
