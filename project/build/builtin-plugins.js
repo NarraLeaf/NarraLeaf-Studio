@@ -17,6 +17,16 @@ const pluginExternals = [
     'react/jsx-dev-runtime',
 ];
 
+/** Wait for every writer in a batch before returning its results or the first failure. */
+async function finishBuilds(builds) {
+    const results = await Promise.allSettled(builds);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) {
+        throw failure.reason;
+    }
+    return results.map(result => result.value);
+}
+
 function getBuiltInPluginDirs() {
     if (!fs.existsSync(sourceRoot)) {
         return [];
@@ -80,7 +90,7 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
     // A plugin's entries share no inputs, so they bundle concurrently. The order
     // of `outfiles` still follows `declaredEntries` — `outfiles[0]` is the
     // manifest's first declared entry, which callers read as `outfile`.
-    const outfiles = await Promise.all(declaredEntries.map(async ({ entry }) => {
+    const outfiles = await finishBuilds(declaredEntries.map(async ({ entry }) => {
         const sourceEntry = resolveSourceEntry(pluginDir, manifest, entry);
         const outfile = path.join(outDir, entry);
         fs.mkdirSync(path.dirname(outfile), { recursive: true });
@@ -155,7 +165,7 @@ async function buildBuiltInPlugins(options = {}) {
     }
     // Each plugin owns its own output directory, so nothing here is ordered:
     // building them one at a time only stretched `yarn dev`'s startup.
-    return Promise.all(pluginDirs.map(pluginDir => buildBuiltInPlugin(pluginDir, options)));
+    return finishBuilds(pluginDirs.map(pluginDir => buildBuiltInPlugin(pluginDir, options)));
 }
 
 // Nothing here installs into the dev userData directory any more: the main

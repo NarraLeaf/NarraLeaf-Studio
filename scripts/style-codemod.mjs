@@ -12,9 +12,10 @@
  *
  * Rules are applied in order; each is a [regex, replacement, label].
  */
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { styleLiterals, walk } from "./style-scan.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_DIR = join(ROOT, "src", "renderer");
@@ -40,31 +41,8 @@ const RULES = [
     [/\btext-(?:gray|slate)-(?:500|600)\b/g, "text-fg-subtle", "text gray/slate 500-600 → fg-subtle"],
     [/\bplaceholder-(?:gray|slate)-(?:300|400|500|600)\b/g, "placeholder-fg-subtle", "placeholder gray/slate → fg-subtle"],
 
-    // --- Border white-alpha → edge (identical values) ---
-    [/\bborder-white\/5\b/g, "border-edge-subtle", "border-white/5 → edge-subtle"],
-    [/\bborder-white\/(?:10|15)\b/g, "border-edge", "border-white/10,15 → edge"],
-    [/\bborder-white\/(?:20|25|30)\b/g, "border-edge-strong", "border-white/20,25,30 → edge-strong"],
-    [/\bdivide-white\/5\b/g, "divide-edge-subtle", "divide-white/5 → edge-subtle"],
-    [/\bdivide-white\/10\b/g, "divide-edge", "divide-white/10 → edge"],
-
-    // --- Background white-alpha → fill (identical values) ---
-    [/\bbg-white\/5\b/g, "bg-fill-subtle", "bg-white/5 → fill-subtle"],
-    [/\bbg-white\/10\b/g, "bg-fill", "bg-white/10 → fill"],
-    [/\bbg-white\/(?:15|20)\b/g, "bg-fill-strong", "bg-white/15,20 → fill-strong"],
-    [/\bbg-white\/\[0\.0[1-5]\]/g, "bg-fill-subtle", "bg-white/[0.01-0.05] → fill-subtle"],
-    [/\bbg-white\/\[0\.0[6-9]\]/g, "bg-fill", "bg-white/[0.06-0.09] → fill"],
+    // White-alpha surfaces can be deliberately theme-invariant; they need context, not a rewrite.
 ];
-
-function walk(dir, out = []) {
-    for (const name of readdirSync(dir)) {
-        if (name === "dist" || name === "node_modules") continue;
-        const full = join(dir, name);
-        const st = statSync(full);
-        if (st.isDirectory()) walk(full, out);
-        else if (/\.tsx?$/.test(name)) out.push(full);
-    }
-    return out;
-}
 
 const dry = process.argv.includes("--dry");
 const hits = Object.fromEntries(RULES.map(([, , label]) => [label, 0]));
@@ -72,14 +50,19 @@ let filesChanged = 0;
 
 for (const file of walk(SCAN_DIR)) {
     let src = readFileSync(file, "utf8");
+    let styles = styleLiterals(src, file);
     let changed = false;
     for (const [re, repl, label] of RULES) {
-        const before = src;
-        src = src.replace(re, (m) => {
-            hits[label]++;
-            return typeof repl === "string" ? repl : repl(m);
-        });
-        if (src !== before) changed = true;
+        // The mask preserves offsets, so matches can be applied to the original text without
+        // touching comments or code that is not a string literal.
+        const matches = [...styles.matchAll(re)];
+        for (const match of matches.reverse()) {
+            const replacement = typeof repl === "string" ? repl : repl(match[0]);
+            src = src.slice(0, match.index) + replacement + src.slice(match.index + match[0].length);
+            styles = styles.slice(0, match.index) + replacement + styles.slice(match.index + match[0].length);
+        }
+        hits[label] += matches.length;
+        if (matches.length > 0) changed = true;
     }
     if (changed) {
         filesChanged++;
