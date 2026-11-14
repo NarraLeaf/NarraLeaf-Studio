@@ -66,6 +66,36 @@ export const launcher = {
             remove: "Remove from list",
             errorNotAProject: "That folder is not a NarraLeaf project.",
         },
+        // A project that points at a Team server. Once this machine is disconnected from that
+        // server the project no longer opens: the local copy can be deleted or turned into a
+        // personal project, because server settings are changed from outside a project.
+        team: {
+            label: "Team project",
+            on: "Team project on {server}",
+            signedOut: "Disconnected from {server}",
+            gate: {
+                title: "Can't open team project",
+                message: "This machine is disconnected from {server}, so this team project can't be opened.",
+                note: "Converting keeps all content and version history and stops syncing with the server. Deleting moves the project folder to the {trash}.",
+                detach: "Convert to personal project",
+                delete: "Delete",
+            },
+            detachConfirm: {
+                title: "Convert to personal project",
+                message: "{name} will stop syncing with {server}. Its content and version history stay on this machine.",
+                confirm: "Convert",
+            },
+            deleteConfirm: {
+                title: "Delete project",
+                message: "The project folder of {name} will be moved to the {trash}, where it can be restored.",
+                confirm: "Delete",
+            },
+            trashMac: "Bin",
+            trashOther: "Recycle Bin",
+            errorDetach: "Could not convert the project.",
+            errorDelete: "Could not delete the project.",
+            errorOpen: "Close the window that has this project open first.",
+        },
     },
     // The Servers tab. It lists what exists on the servers this installation is signed in to;
     // what is already on this disk is the Projects tab's answer and is not repeated here.

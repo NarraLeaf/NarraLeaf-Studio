@@ -1517,6 +1517,8 @@ When the same part of a file changed locally and on the server, the merge stops 
 - 两边都有新版本时，先获取，再发送
 - 检查当前状态需要访问服务器
 - 服务器与版本记录使用的账号，在窗口左下角的 NarraLeaf Team 中设置
+- 已连接服务器的团队项目打开时，不能更换服务器或退出登录；关闭项目后，可在启动器中将其转为个人项目，或在设置中退出该服务器的登录
+- 退出某服务器的登录后，使用它的团队项目无法打开，只能删除或转为个人项目
 
 A project can be connected to a version control server so that several people can work on it. Nothing is sent or fetched except by an explicit action.
 
@@ -1525,6 +1527,8 @@ A project can be connected to a version control server so that several people ca
 - When both sides have new versions, Get first and Send afterwards.
 - Checking the current state contacts the server.
 - The server, and the account versions are recorded under, are set from NarraLeaf Team in the bottom-left corner of the window.
+- While a team project is open, its server cannot be changed or signed out of. Once it is closed, convert it to a personal project from the launcher, or sign out of the server in Settings.
+- After signing out of a server, the team projects that use it cannot be opened; they can only be deleted or converted to personal projects.
 
 相关主题 · Related：版本控制 · Version control、合并冲突 · Merge conflicts、添加项目 · Adding a project
 

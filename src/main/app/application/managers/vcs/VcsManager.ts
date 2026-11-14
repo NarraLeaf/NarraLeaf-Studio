@@ -42,7 +42,7 @@ import type {
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { DEFAULT_PUBLISH_LINEAGE_RULE } from "@shared/types/vcs";
-import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
+import { composeVcsIdentity, isVcsRemoteConfigured, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import {
     composeRestoreMessage,
     VCS_CHECKPOINT_MESSAGES,
@@ -89,7 +89,7 @@ import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
 // Two plain file reads and nothing of Lore's, which is the whole reason it exists: the
 // repository id of a project that has not been opened has to be readable without taking
 // the exclusive lock on it.
-import { readRepositoryId } from "./localRepositories";
+import { readRemoteOrigin, readRepositoryId } from "./localRepositories";
 import { signInWithPassword } from "./serverPassword";
 import {
     createServerProjectOverSession,
@@ -2070,6 +2070,42 @@ export class VcsManager extends Manager {
     }
 
     /**
+     * Turn a team project into a personal one, from outside it.
+     *
+     * The launcher's twin of the workspace's own "convert to personal project"
+     * (`TeamDocumentsService.detach`), and it leaves the project in the same state: what is on disk
+     * recorded as a version, the address gone, and the team-documents store marked `detached` with
+     * the address it came from - so opening it later offers to reconnect, and reconnecting sends
+     * what changed since against what the two sides last agreed, exactly as coming back online does.
+     * The store's `state` is the one the last session left; nothing here can read the server.
+     *
+     * This project's answer about the server's sign-in goes too, so a server added again later
+     * asks afresh. Nothing is sent and nothing on the server is touched.
+     *
+     * The caller has made sure no window has the project open - {@link setRemote} closes the
+     * session around the write, and a workspace holding one would go on reading the old address.
+     */
+    public async detachProject(projectPath: string): Promise<void> {
+        const root = projectRoot(projectPath);
+        const origin = readRemoteOrigin(root);
+        const remote = await this.getRemote(root).catch(() => null);
+        await this.commit(root, { message: "Made a personal copy of the team project" }).catch((error) => {
+            if (!isNothingToCommit(error)) throw error;
+        });
+        await this.setRemote(root, null);
+        if (origin) {
+            this.app.getGlobalState().set(SESSION_USES_KEY, withoutSessionUse(this.sessionUses(), origin, root));
+        }
+        await markTeamDocumentsDetached(root, remote && isVcsRemoteConfigured(remote) ? remote : null)
+            .catch((error: unknown) => {
+                // The address is already gone, which is the conversion; what this loses is only the
+                // offer to reconnect later.
+                this.app.logger.warn("[Vcs] Converted", root, "without recording where it came from:", error);
+            });
+        this.app.logger.info("[Vcs] Converted to a personal project", root);
+    }
+
+    /**
      * Which sign-in this project uses at its server, and which one it could.
      *
      * **Two stores have to agree**, and asking only one of them is how this goes wrong. Studio
@@ -3583,4 +3619,31 @@ export class VcsManager extends Manager {
     public get openProjects(): string[] {
         return [...this.sessions.values()].map((s) => s.root);
     }
+}
+
+/**
+ * Mark a project's team-documents store as a personal copy of the team project at `remote`.
+ *
+ * The same shape `TeamDocumentsService.detach` writes, at the same place
+ * (`.nlstudio/services/team_docs.json`): the project and the agreed state the last session kept,
+ * plus where it came from. A store with nothing agreed in it cannot be replayed from, so it is
+ * reset rather than marked, which is what the workspace does in that case as well.
+ */
+async function markTeamDocumentsDetached(root: string, remote: string | null): Promise<void> {
+    const file = path.join(root, ".nlstudio", "services", "team_docs.json");
+    let stored: { version?: unknown; project?: unknown; state?: unknown } | null = null;
+    try {
+        stored = JSON.parse(await fs.readFile(file, "utf-8"));
+    } catch {
+        stored = null;
+    }
+    const project = typeof stored?.project === "string" ? stored.project : "";
+    const state = stored?.state;
+    const agreed = stored?.version === 1 && project !== "" && state !== null && typeof state === "object";
+    const next = agreed && remote !== null
+        ? { version: 1, project, state, detached: { remote } }
+        : { version: 1, project: "", state: { seq: -1 } };
+    if (stored === null && !agreed) return;
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(next), "utf-8");
 }

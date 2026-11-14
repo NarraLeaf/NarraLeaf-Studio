@@ -5,14 +5,15 @@ import { ConfirmModal, ContextMenu, IconButton, Input, Modal, dialogFooterButton
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, X } from "lucide-react";
+import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, Users, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
-import { revealInFileManagerKey } from "@/lib/app/platform";
+import { isMacPlatform, revealInFileManagerKey } from "@/lib/app/platform";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjectIcons, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
 import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
+import { useTeamProjects, type TeamProjectFacts } from "./teamProjects";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
@@ -38,6 +39,18 @@ export function ProjectsTab() {
     const [removeTarget, setRemoveTarget] = useState<RecentlyOpenedProject | null>(null);
     const homeDir = useHomeDir();
     const isBusy = isOpening;
+    // Which remembered projects work with a Team server, and whether this machine is still
+    // connected to it. Keyed on the list's paths so a project added or removed is read at once.
+    const { teamProjects, reload: reloadTeamProjects } = useTeamProjects(
+        useMemo(() => recentProjects.map(project => project.path).join("\n"), [recentProjects]),
+    );
+    // The team project whose "cannot open this" dialog is up: its server was signed out of.
+    const [teamGate, setTeamGate] = useState<{ project: RecentlyOpenedProject; team: TeamProjectFacts } | null>(null);
+    // A team project waiting on "yes, make it personal", or on "yes, delete it".
+    const [detachTarget, setDetachTarget] = useState<{ project: RecentlyOpenedProject; team: TeamProjectFacts } | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<RecentlyOpenedProject | null>(null);
+    const [teamError, setTeamError] = useState<string | null>(null);
+    const [teamBusy, setTeamBusy] = useState(false);
 
     // Plain case-insensitive substring, over name *and* path. Matching the path is what makes this
     // worth having: several projects can share a name ("Demo", "test"), and where they live is
@@ -66,6 +79,15 @@ export function ProjectsTab() {
         setIsOpening(true);
         setOperationError(null);
         try {
+            // A team project opens only while this machine is connected to its server. Read afresh
+            // rather than from the marks on screen: signing out happens in another window, and a
+            // project with nothing behind it would open into a team workspace that cannot work.
+            const team = (await reloadTeamProjects()).get(normalizeProjectPath(project.path));
+            if (team && !team.connected) {
+                setTeamError(null);
+                setTeamGate({ project, team });
+                return;
+            }
             // Open workspace with the project path
             await getInterface().workspace.launch(
                 { projectPath: project.path },
@@ -114,6 +136,49 @@ export function ProjectsTab() {
         setRemoveTarget(null);
     };
 
+    /**
+     * Make a team project personal: its server address goes, its content and history stay, and the
+     * workspace offers to reconnect later. Done here, with the project closed, because a project's
+     * server settings do not change while it is open.
+     */
+    const handleDetach = async (project: RecentlyOpenedProject) => {
+        setTeamBusy(true);
+        setTeamError(null);
+        try {
+            const result = await getInterface().vcs.detachRecentProject(project.path).catch(() => null);
+            if (!result?.success) {
+                setTeamError(t(result?.code === "recent-project-open"
+                    ? "launcher.projects.team.errorOpen"
+                    : "launcher.projects.team.errorDetach"));
+                return false;
+            }
+            await reloadTeamProjects();
+            return true;
+        } finally {
+            setTeamBusy(false);
+        }
+    };
+
+    /** Move a project's folder to the trash and take it off the list. */
+    const handleDelete = async (project: RecentlyOpenedProject) => {
+        setTeamBusy(true);
+        setTeamError(null);
+        try {
+            const result = await getInterface().app.trashRecentProject(project.path).catch(() => null);
+            if (!result?.success) {
+                setTeamError(t(result?.code === "recent-project-open"
+                    ? "launcher.projects.team.errorOpen"
+                    : "launcher.projects.team.errorDelete"));
+                return false;
+            }
+            return true;
+        } finally {
+            setTeamBusy(false);
+        }
+    };
+
+    const trashName = t(isMacPlatform() ? "launcher.projects.team.trashMac" : "launcher.projects.team.trashOther");
+
     const handleRevealProject = async (project: RecentlyOpenedProject) => {
         setOperationError(null);
         const error = await revealRecentProject(project.path);
@@ -129,6 +194,7 @@ export function ProjectsTab() {
      */
     const rowMenuItems = (project: RecentlyOpenedProject): ContextMenuDef => {
         const isMissing = missingByPath.has(normalizeProjectPath(project.path));
+        const team = isMissing ? undefined : teamProjects.get(normalizeProjectPath(project.path));
         return [
             {
                 id: "open",
@@ -149,6 +215,15 @@ export function ProjectsTab() {
                 label: t(revealInFileManagerKey()),
                 onClick: () => void handleRevealProject(project),
             }]),
+            // The one place a team project's server is changed from: outside it.
+            ...(team ? [{
+                id: "detach",
+                label: t("launcher.projects.team.gate.detach"),
+                onClick: () => {
+                    setTeamError(null);
+                    setDetachTarget({ project, team });
+                },
+            }] : []),
             { id: "sep", separator: true as const },
             {
                 id: "remove",
@@ -267,6 +342,8 @@ export function ProjectsTab() {
             </div>
 
             {operationError && <OperationError message={operationError} />}
+            {/* A conversion asked for from a row's menu has no dialog left open to answer in. */}
+            {teamError && !teamGate && <OperationError message={teamError} />}
 
             <div className="flex-1 min-h-0 overflow-y-auto">
                 {visibleProjects.length === 0 && (
@@ -279,6 +356,7 @@ export function ProjectsTab() {
                     const identity = normalizeProjectPath(project.path);
                     const missingEntry = missingByPath.get(identity);
                     const icon = iconsByPath.get(identity);
+                    const team = missingEntry ? undefined : teamProjects.get(identity);
                     return (
                         <div key={`${project.path}-${index}`} className="relative group">
                             <button
@@ -310,8 +388,23 @@ export function ProjectsTab() {
                                     </span>
                                 )}
                                 <span className="flex-1 min-w-0">
-                                    <span className={cn("block text-sm truncate", missingEntry ? "text-fg-muted" : "text-fg")}>
-                                        {project.name}
+                                    <span className="flex items-baseline gap-2 min-w-0">
+                                        <span className={cn("text-sm truncate", missingEntry ? "text-fg-muted" : "text-fg")}>
+                                            {project.name}
+                                        </span>
+                                        {/* Plain words beside the name rather than a chip: it is a
+                                            fact about the project, read once, and the server it is
+                                            on is one hover away. */}
+                                        {team && (
+                                            <span
+                                                data-recent-team={team.connected ? "connected" : "disconnected"}
+                                                data-tip={t("launcher.projects.team.on", { server: team.server })}
+                                                className="flex flex-shrink-0 items-center gap-1 text-2xs text-fg-subtle"
+                                            >
+                                                <Users className="w-3 h-3" />
+                                                {t("launcher.projects.team.label")}
+                                            </span>
+                                        )}
                                     </span>
                                     {/* Cut the path at its HEAD. Two recents can share a name (two
                                         "Demo"s), and then the only thing telling them apart is the
@@ -331,6 +424,12 @@ export function ProjectsTab() {
                                         <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">
                                             <AlertTriangle className="w-3 h-3 flex-shrink-0" />
                                             <span className="truncate">{t(missingReasonKey(missingEntry.reason))}</span>
+                                        </span>
+                                    )}
+                                    {team && !team.connected && (
+                                        <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">
+                                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                            <span className="truncate">{t("launcher.projects.team.signedOut", { server: team.server })}</span>
                                         </span>
                                     )}
                                 </span>
@@ -369,6 +468,59 @@ export function ProjectsTab() {
                     title={t("launcher.projects.removeConfirm.title")}
                     message={t("launcher.projects.removeConfirm.message", { name: removeTarget.name })}
                     confirmText={t("launcher.projects.removeConfirm.confirm")}
+                />
+            )}
+
+            {teamGate && (
+                <TeamProjectGateDialog
+                    project={teamGate.project}
+                    server={teamGate.team.server}
+                    trashName={trashName}
+                    error={teamError}
+                    busy={teamBusy}
+                    onDetach={async () => {
+                        if (await handleDetach(teamGate.project)) setTeamGate(null);
+                    }}
+                    onDelete={() => {
+                        setDeleteTarget(teamGate.project);
+                    }}
+                    onClose={() => setTeamGate(null)}
+                />
+            )}
+
+            {detachTarget && (
+                <ConfirmModal
+                    isOpen
+                    onClose={() => setDetachTarget(null)}
+                    onConfirm={() => {
+                        const target = detachTarget;
+                        setDetachTarget(null);
+                        void handleDetach(target.project);
+                    }}
+                    title={t("launcher.projects.team.detachConfirm.title")}
+                    message={t("launcher.projects.team.detachConfirm.message", {
+                        name: detachTarget.project.name,
+                        server: detachTarget.team.server,
+                    })}
+                    confirmText={t("launcher.projects.team.detachConfirm.confirm")}
+                />
+            )}
+
+            {deleteTarget && (
+                <ConfirmModal
+                    isOpen
+                    variant="danger"
+                    onClose={() => setDeleteTarget(null)}
+                    onConfirm={() => {
+                        const target = deleteTarget;
+                        setDeleteTarget(null);
+                        void handleDelete(target).then(done => {
+                            if (done) setTeamGate(null);
+                        });
+                    }}
+                    title={t("launcher.projects.team.deleteConfirm.title")}
+                    message={t("launcher.projects.team.deleteConfirm.message", { name: deleteTarget.name, trash: trashName })}
+                    confirmText={t("launcher.projects.team.deleteConfirm.confirm")}
                 />
             )}
 
@@ -563,3 +715,74 @@ function MissingProjectDialog({
 }
 
 
+
+/**
+ * What opening a team project answers once this machine is disconnected from its server.
+ *
+ * It does not open: a team workspace with no server behind it can neither sync nor say who is
+ * editing, and the server's settings are not changed from inside a project. So the two ways out
+ * are offered here instead. Converting leads, because it keeps everything; deleting is the plain
+ * secondary, and asks again before it moves anything.
+ */
+function TeamProjectGateDialog({
+    project,
+    server,
+    trashName,
+    error,
+    busy,
+    onDetach,
+    onDelete,
+    onClose,
+}: {
+    project: RecentlyOpenedProject;
+    server: string;
+    trashName: string;
+    error: string | null;
+    busy: boolean;
+    onDetach: () => Promise<void>;
+    onDelete: () => void;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+
+    return (
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={t("launcher.projects.team.gate.title")}
+            size="sm"
+            footer={
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: busy })}
+                        onClick={onDelete}
+                        disabled={busy}
+                    >
+                        {t("launcher.projects.team.gate.delete")}
+                    </button>
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "primary", disabled: busy })}
+                        onClick={() => void onDetach()}
+                        disabled={busy}
+                    >
+                        {t("launcher.projects.team.gate.detach")}
+                    </button>
+                </div>
+            }
+        >
+            <p className="text-sm text-fg">{t("launcher.projects.team.gate.message", { server })}</p>
+            <div className="my-3 rounded-md bg-fill-subtle px-3 py-2">
+                <div className="text-sm text-fg truncate">{project.name}</div>
+                <div className="text-xs text-fg-subtle break-all">{project.path}</div>
+            </div>
+            <p className="text-sm text-fg-muted">{t("launcher.projects.team.gate.note", { trash: trashName })}</p>
+            {error && (
+                <div className="mt-3 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
+                    {error}
+                </div>
+            )}
+        </Modal>
+    );
+}

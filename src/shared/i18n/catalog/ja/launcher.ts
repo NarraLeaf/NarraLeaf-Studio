@@ -55,6 +55,33 @@ export const launcher = {
             remove: "一覧から取り除く",
             errorNotAProject: "そのフォルダは NarraLeaf プロジェクトではない",
         },
+        team: {
+            label: "チームプロジェクト",
+            on: "{server} のチームプロジェクト",
+            signedOut: "{server} との接続を解除済み",
+            gate: {
+                title: "チームプロジェクトを開けない",
+                message: "このマシンは {server} との接続を解除したため、このチームプロジェクトは開けない",
+                note: "個人プロジェクトに変換すると内容とバージョン履歴はすべて残り、以後サーバーとは同期しない。削除するとプロジェクトフォルダは{trash}に移動する",
+                detach: "個人プロジェクトに変換",
+                delete: "削除",
+            },
+            detachConfirm: {
+                title: "個人プロジェクトに変換",
+                message: "{name} は {server} と同期しなくなる。内容とバージョン履歴はこのマシンに残る",
+                confirm: "変換",
+            },
+            deleteConfirm: {
+                title: "プロジェクトを削除",
+                message: "{name} のプロジェクトフォルダは{trash}に移動し、そこから復元できる",
+                confirm: "削除",
+            },
+            trashMac: "ゴミ箱",
+            trashOther: "ごみ箱",
+            errorDetach: "プロジェクトを変換できなかった",
+            errorDelete: "プロジェクトを削除できなかった",
+            errorOpen: "このプロジェクトを開いているウィンドウを先に閉じる",
+        },
     },
     // 「サーバー」タブ。サインイン済みのサーバーに何があるかを並べる。この機械にすでにある
     // ものは「プロジェクト」タブの答えなので、ここでは繰り返さない。

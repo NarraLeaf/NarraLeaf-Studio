@@ -204,6 +204,7 @@ export enum IPCEventType {
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
     appRevealRecentProject = "app.revealRecentProject",
+    appTrashRecentProject = "app.trashRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
@@ -513,6 +514,7 @@ export enum IPCEventType {
     vcsCompleteBrowserSignIn = "vcs.completeBrowserSignIn",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
+    vcsDetachRecentProject = "vcs.detachRecentProject",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1054,6 +1056,22 @@ export type IPCEvents = {
      * history, so this is a "reveal one of these", never a "reveal anything".
      */
     [IPCEventType.appRevealRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
+    /**
+     * Move one remembered project's folder to the system trash and drop it from the history.
+     *
+     * The launcher's answer for a team project this machine is no longer signed in to: the copy
+     * on the server is the shared one, so the local folder can go. The trash rather than a delete,
+     * so a wrong click is recoverable from the file manager. Refused for a path that is not in the
+     * history, and for a project a workspace window has open.
+     */
+    [IPCEventType.appTrashRecentProject]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
@@ -1879,6 +1897,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: {},
         response: { repositories: VcsLocalRepository[] };
+    };
+    /**
+     * Turn a remembered team project into a personal one: take its server address off, from the
+     * launcher, while no window has it open.
+     *
+     * Local. Nothing is sent and no version is touched; the project keeps its whole history and
+     * simply stops naming a server. Refused for a path that is not in the history and for a
+     * project a workspace window has open.
+     */
+    [IPCEventType.vcsDetachRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { path: string },
+        response: void;
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
@@ -2841,7 +2873,12 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
         data: {};
-        response: RequestStatus<{ flushed: boolean }>;
+        /**
+         * `teamManaged` says the project's documents are held by a Team server, whose saved versions
+         * are its history: such a project records no checkpoints of its own, on close included.
+         * Absent from a window with no workspace, which has nothing to check point anyway.
+         */
+        response: RequestStatus<{ flushed: boolean; teamManaged?: boolean }>;
     };
     /**
      * Carry out one agent tool call, or one of main's internal calls (`__state`, `__test`,

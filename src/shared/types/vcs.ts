@@ -930,6 +930,14 @@ export interface VcsServerSession {
      * Absent everywhere else.
      */
     usedBy?: VcsSessionUser[];
+    /**
+     * The projects open in a workspace window right now whose server this is.
+     *
+     * Filled in by `vcs.listServers`, absent when there are none. A server is not signed out of
+     * while one of these is open (`vcs.forgetServer` refuses), so the list that offers to says
+     * which projects to close first.
+     */
+    openIn?: VcsSessionUser[];
 }
 
 /** A project that uses a sign-in, as a list of them names it. */

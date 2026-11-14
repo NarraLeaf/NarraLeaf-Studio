@@ -1368,8 +1368,11 @@ export class App extends BaseApp {
             );
             if (!result.success) {
                 this.logger.warn(`[Workspace] Pending saves could not be flushed: ${result.error}`);
-            } else if (!result.data.flushed) {
-                this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+            } else {
+                window.setTeamManaged(result.data.teamManaged === true);
+                if (!result.data.flushed) {
+                    this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+                }
             }
         } catch (error) {
             this.logger.warn(`[Workspace] No answer to the pending-save flush: ${String(error)}`);
@@ -1390,6 +1393,7 @@ export class App extends BaseApp {
             enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
             projectPath: typeof projectPath === "string" ? projectPath : null,
             workspaceLoaded: window.hasLoadedWorkspace(),
+            teamManaged: window.isTeamManaged(),
             heldElsewhere: typeof projectPath === "string"
                 && this.projectSessionLockManager.heldElsewhere(projectPath) !== null,
         });
@@ -2077,6 +2081,18 @@ export class App extends BaseApp {
                 "session",
             );
         }
+    }
+
+    /** Whether another NarraLeaf Studio holds this project's session lock right now. */
+    public projectHeldElsewhere(projectPath: string): boolean {
+        return this.projectSessionLockManager.heldElsewhere(projectPath) !== null;
+    }
+
+    /** The project of every workspace window still on screen, as each window was opened on it. */
+    public openWorkspaceProjectPaths(): string[] {
+        return this.liveWorkspaceWindows()
+            .map(window => window.getProps().projectPath)
+            .filter((projectPath): projectPath is string => typeof projectPath === "string" && projectPath.length > 0);
     }
 
     /** The live workspace window for a project, if one already has it open. */

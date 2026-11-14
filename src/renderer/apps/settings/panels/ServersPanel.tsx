@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button } from "@/lib/components/elements";
@@ -48,11 +48,21 @@ export function ServersPanel() {
         void reload();
     }, [reload]);
 
+    // Which projects are open is a fact about other windows, so it is read again whenever this one
+    // comes back to the front - the moment somebody who just closed a project returns to sign out.
+    useEffect(() => {
+        const onFocus = () => void reload();
+        window.addEventListener("focus", onFocus);
+        return () => window.removeEventListener("focus", onFocus);
+    }, [reload]);
+
     const forget = useCallback(async (session: VcsServerSession) => {
         setBusy(true);
         const result = await getInterface().vcs.forgetServer(session.remoteOrigin).catch(() => null);
         setBusy(false);
-        if (result?.success) void reload();
+        // A refusal means a project using it was opened since the list was read: read it again,
+        // and the row says which one.
+        void reload();
     }, [reload]);
 
     return (
@@ -63,7 +73,12 @@ export function ServersPanel() {
 
             {servers.length > 0 && (
                 <div className="flex flex-col gap-1">
-                    {servers.map(session => (
+                    {servers.map(session => {
+                        // A server is not signed out of while a project that works with it is
+                        // open: its settings change between projects, never inside one.
+                        const openIn = session.openIn ?? [];
+                        const locked = openIn.length > 0;
+                        return (
                         <div key={session.remoteOrigin} className="flex flex-col">
                             <ServerRow
                                 session={session}
@@ -73,7 +88,8 @@ export function ServersPanel() {
                                         size="sm"
                                         variant="ghost"
                                         className="shrink-0"
-                                        disabled={busy}
+                                        disabled={busy || locked}
+                                        data-servers-sign-out={locked ? "locked" : "open"}
                                         onClick={() => void forget(session)}
                                     >
                                         {t("settings.servers.signOut")}
@@ -88,14 +104,19 @@ export function ServersPanel() {
                                 data-servers-used-by={session.remoteOrigin}
                                 data-tip={session.usedBy?.map(project => project.path).join("\n") || undefined}
                             >
-                                {session.usedBy && session.usedBy.length > 0
+                                {locked
+                                    ? t("settings.servers.signOutBlocked", {
+                                        projects: formatList(openIn.map(project => project.name)),
+                                    })
+                                    : session.usedBy && session.usedBy.length > 0
                                     ? t("settings.servers.usedBy", {
                                         projects: formatList(session.usedBy.map(project => project.name)),
                                     })
                                     : t("settings.servers.unused")}
                             </p>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

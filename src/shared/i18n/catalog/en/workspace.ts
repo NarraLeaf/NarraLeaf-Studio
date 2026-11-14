@@ -746,9 +746,6 @@ export const workspace = {
             loadMore: "Load more",
             override: "Use mine",
             close: "Close",
-            detach: "Make a personal copy",
-            detachConfirm: "Stop following the team server and keep this as a personal project?",
-            detachDetail: "What this window holds, including edits made offline, becomes this project's newest local version. The team project on the server is not changed, and other people keep working on it. You can reconnect later: what you changed is sent then.",
             conflictFile: "{path}: the team changed this file too; the server's version is open now",
             detachedHint: "This is a personal copy of a team project. Reconnect to send what you changed since; anything the team also changed is shown for you to choose.",
             reconnect: "Reconnect to the team project",
@@ -779,7 +776,9 @@ export const workspace = {
         useSignIn: "Use the sign-in as {name}…",
         // On the sign-out control beside "Signed in as". Signing out here is this project's and no
         // other's; Settings is where the sign-in leaves the machine.
-        signOutHint: "Only this project is signed out. Other projects that use this sign-in are not affected.",
+        // While a team project is open its server settings cannot change; that happens from the
+        // launcher or Settings once the project is closed.
+        serverLocked: "To change server, sign out or convert to a personal project, close this project first.",
         // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
         // is this catalog's mark for a control that opens somewhere else.
         manage: "Manage servers…",

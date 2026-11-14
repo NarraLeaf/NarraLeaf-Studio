@@ -445,6 +445,8 @@ export const settings = {
         signOut: "退出登录",
         usedBy: "使用此登录的项目：{projects}",
         unused: "尚无项目使用此登录",
+        // 有使用该服务器的项目打开时不允许退出登录：服务器设置只在项目之外修改。
+        signOutBlocked: "请先关闭使用此服务器的项目：{projects}",
         signIn: "登录",
         signingIn: "正在登录…",
         addressLabel: "服务器地址",

@@ -223,18 +223,6 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                                         name: serverSession.account.displayName,
                                     })}
                                 </span>
-                                <button
-                                    type="button"
-                                    onClick={() => void surface.signOutOfServer()}
-                                    disabled={running}
-                                    data-team-seam="sign-out"
-                                    // Signing out here is this project's alone; the sign-in stays
-                                    // on this machine for the others, and Settings is where it goes.
-                                    data-tip={t("workspace.shell.team.signOutHint")}
-                                    className="shrink-0 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
-                                >
-                                    {t("workspace.shell.versionControl.server.signIn.signOut")}
-                                </button>
                             </div>
                         ) : (
                             // `always`, unlike the commit form's copy of this row: there the field
@@ -246,13 +234,17 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                     </div>
 
                     <div className="-mx-2 flex flex-col border-t border-edge pt-2">
-                        <TeamAction
-                            label={t(remote === null
-                                ? "workspace.shell.versionControl.server.connect"
-                                : "workspace.shell.versionControl.server.change")}
-                            onClick={() => setPicking(true)}
-                            disabled={running}
-                        />
+                        {/* Connecting is how a personal project becomes a team project, and stays here.
+                            Once it is one, which server it works with - and whether it works with
+                            one at all - is changed from outside it: the launcher converts it, and
+                            Settings signs out. */}
+                        {remote === null && (
+                            <TeamAction
+                                label={t("workspace.shell.versionControl.server.connect")}
+                                onClick={() => setPicking(true)}
+                                disabled={running}
+                            />
+                        )}
                         {remote !== null && (
                             <TeamAction
                                 label={t("workspace.shell.versionControl.server.check")}
@@ -277,22 +269,13 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                             />
                         )}
                         <TeamAction label={t("workspace.shell.team.manage")} onClick={manageServers} />
-                        {remote !== null && (
-                            <TeamAction
-                                label={t("workspace.shell.versionControl.server.disconnect")}
-                                onClick={() => {
-                                    void surface.setRemote(null).then(saved => {
-                                        if (saved) onClose();
-                                    });
-                                }}
-                                disabled={running}
-                                // At rest it reads like the rows above it; the colour
-                                // arrives on hover. Drawn dimmer at rest it read as
-                                // disabled, which is the one thing a live control must not.
-                                tone="text-fg-muted hover:text-danger"
-                            />
-                        )}
                     </div>
+
+                    {remote !== null && (
+                        <p data-team-seam="server-locked" className="text-2xs text-fg-subtle">
+                            {t("workspace.shell.team.serverLocked")}
+                        </p>
+                    )}
 
                     <TeamRequestsSection />
 

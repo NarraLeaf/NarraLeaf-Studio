@@ -200,18 +200,6 @@ export function TeamHistoryRail({
         if (rows !== null) setComparison({ revision, rows });
     });
 
-    const detach = () => run(async () => {
-        const ui = context?.services.get<UIService>(Services.UI);
-        const confirmed = ui === undefined
-            ? false
-            : await ui.showDestructiveConfirm(
-                t("workspace.shell.team.docs.detachConfirm"),
-                t("workspace.shell.team.docs.detachDetail"),
-                t("workspace.shell.team.docs.detach"),
-            );
-        if (confirmed) await service.detach();
-    });
-
     const stateLine = view.state === "online"
         ? t("workspace.shell.team.docs.online")
         : view.state === "offline"
@@ -317,13 +305,8 @@ export function TeamHistoryRail({
                 </section>
             )}
 
-            {previewing === null && view.state !== "syncing" && (
-                <section className="px-3 py-2 border-b border-edge">
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => void detach()}>
-                        {t("workspace.shell.team.docs.detach")}
-                    </Button>
-                </section>
-            )}
+            {/* No "convert to personal project" here: a team project's server is changed from
+                outside it, in the launcher, which leaves the project in the same detached state. */}
 
             <ol className="flex-1 overflow-auto">
                 {revisions.length === 0 && (

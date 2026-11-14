@@ -464,6 +464,7 @@ export const settings = {
         signOut: "サインアウト",
         usedBy: "使用中のプロジェクト：{projects}",
         unused: "このサインインを使うプロジェクトはない",
+        signOutBlocked: "このサーバーを使うプロジェクトを先に閉じる：{projects}",
         signIn: "サインイン",
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",

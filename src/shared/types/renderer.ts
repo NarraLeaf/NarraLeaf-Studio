@@ -636,6 +636,8 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Move a remembered project's folder to the trash and drop it from the history. */
+        trashRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /**
@@ -1265,6 +1267,12 @@ export interface RendererPreloadedInterface {
          * on the first project the author already has open.
          */
         listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
+        /**
+         * Take a remembered project's server address off, from the launcher. Local.
+         *
+         * Refused while a workspace window has the project open.
+         */
+        detachRecentProject(path: string): Promise<RequestStatus<void>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.

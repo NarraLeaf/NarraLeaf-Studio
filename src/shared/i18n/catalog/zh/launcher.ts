@@ -57,6 +57,35 @@ export const launcher = {
             remove: "从列表移除",
             errorNotAProject: "所选文件夹不是 NarraLeaf 项目",
         },
+        // 指向 Team 服务器的项目。本机断开与该服务器的连接后，项目不再能打开，
+        // 只能删除本地副本或转为个人项目：服务器那一侧的设置只在项目之外修改。
+        team: {
+            label: "团队项目",
+            on: "{server} 上的团队项目",
+            signedOut: "已断开与 {server} 的连接",
+            gate: {
+                title: "无法打开团队项目",
+                message: "本机已断开与 {server} 的连接，无法打开此团队项目",
+                note: "转为个人项目会保留全部内容与版本历史，此后不再与服务器同步；删除会将项目文件夹移到{trash}",
+                detach: "转为个人项目",
+                delete: "删除",
+            },
+            detachConfirm: {
+                title: "转为个人项目",
+                message: "{name} 将不再与 {server} 同步，内容与版本历史保留在本机",
+                confirm: "转为个人项目",
+            },
+            deleteConfirm: {
+                title: "删除项目",
+                message: "{name} 的项目文件夹将被移到{trash}，可从中恢复",
+                confirm: "删除",
+            },
+            trashMac: "废纸篓",
+            trashOther: "回收站",
+            errorDetach: "转为个人项目失败",
+            errorDelete: "删除项目失败",
+            errorOpen: "请先关闭正在使用此项目的窗口",
+        },
     },
     // 「服务器」标签页。它列的是已登录服务器上有什么；这台机器上已有的由「项目」标签页回答，
     // 这里不重复。

@@ -28,6 +28,7 @@ import { ONBOARDING_STATE_KEY, onboardingMarkerMovesBack } from "@shared/constan
 import { getMainLocale } from "../../../i18n";
 import { collectLogArchiveFiles, encodeLogArchive } from "../../../logging/logArchive";
 import { windowProjectPath } from "../../../utils/windowProject";
+import { requireIdleRecentProject } from "../recentProjectGuard";
 import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
 import { studioFetch } from "../../downloadProxy";
 
@@ -526,6 +527,30 @@ export class AppRevealRecentProjectHandler extends IPCHandler<IPCEventType.appRe
             return this.failed(new Error(failure));
         }
         return this.success(void 0);
+    }
+}
+
+/**
+ * Move one remembered project's folder to the system trash, and drop it from the history.
+ *
+ * Held to a launcher row that no window has open (`requireIdleRecentProject`). The trash rather
+ * than a delete: the author can take it back out from the file manager, which is the difference
+ * between a wrong click and lost work.
+ */
+export class AppTrashRecentProjectHandler extends IPCHandler<IPCEventType.appTrashRecentProject> {
+    readonly name = IPCEventType.appTrashRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.appTrashRecentProject]["data"],
+    ): Promise<RequestStatus<void>> {
+        return this.tryUse(async () => {
+            const known = requireIdleRecentProject(window, data.path);
+            await shell.trashItem(path.resolve(known));
+            window.app.setGlobalStateAndBroadcast("app.recentProjects", window.app.globalState.recentlyOpened.without(known));
+            window.app.logger.info("[Projects] Moved to the trash", known);
+        });
     }
 }
 

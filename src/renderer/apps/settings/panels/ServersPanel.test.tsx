@@ -149,4 +149,21 @@ describe("the servers panel", () => {
         });
         expect(line.textContent).toBe("settings.servers.unused");
     });
+
+    it("will not sign out of a server while a project that uses it is open, and says which", async () => {
+        bridge.servers = [{
+            ...session(),
+            openIn: [{ path: "D:/games/harbour", name: "Harbour Lights" }],
+        }];
+        render(<ServersPanel />);
+
+        const button = await waitFor(() => {
+            const node = document.querySelector<HTMLButtonElement>("[data-servers-sign-out='locked']");
+            if (node === null) throw new Error("no locked button");
+            return node;
+        });
+        expect(button.disabled).toBe(true);
+        expect(document.querySelector(`[data-servers-used-by='${ORIGIN}']`)?.textContent)
+            .toBe("settings.servers.signOutBlocked(Harbour Lights)");
+    });
 });

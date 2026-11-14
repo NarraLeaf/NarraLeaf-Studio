@@ -485,6 +485,8 @@ export const settings = {
         // here signs out of that server.
         usedBy: "Used by {projects}",
         unused: "No project uses this sign-in.",
+        // Not while a project that uses this server is open: server settings change between projects.
+        signOutBlocked: "Close the projects that use this server first: {projects}",
         signIn: "Sign in",
         signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including

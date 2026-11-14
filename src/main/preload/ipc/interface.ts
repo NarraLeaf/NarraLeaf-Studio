@@ -470,6 +470,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         revealRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
+        trashRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.appTrashRecentProject, { path }) as Promise<RequestStatus<void>>,
         /**
          * Hand the project's scripts folder to whatever the author edits with.
          *
@@ -849,6 +851,8 @@ export const IPCInterface: RendererPreloadedInterface = {
         /** Local, and no project: two plain file reads over the machine's own history. */
         listLocalRepositories: () =>
             ipcClient.invoke(IPCEventType.vcsListLocalRepositories, {}) as Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>,
+        detachRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.vcsDetachRecentProject, { path }) as Promise<RequestStatus<void>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */

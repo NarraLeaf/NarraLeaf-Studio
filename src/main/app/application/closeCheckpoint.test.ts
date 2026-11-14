@@ -6,6 +6,7 @@ const BASE: CloseCheckpointFacts = {
     projectPath: "/projects/demo",
     workspaceLoaded: true,
     heldElsewhere: false,
+    teamManaged: false,
 };
 
 describe("shouldCheckpointOnClose", () => {
@@ -22,6 +23,11 @@ describe("shouldCheckpointOnClose", () => {
     it("skips a workspace whose project another Studio took over", () => {
         // The tree is the other Studio's now, and this window wrote nothing after it was taken.
         expect(shouldCheckpointOnClose({ ...BASE, heldElsewhere: true })).toBe(false);
+    });
+
+    it("skips a team project, whose history is its server's saved versions", () => {
+        // The workspace records no checkpoints for it while open; closing it does not start to.
+        expect(shouldCheckpointOnClose({ ...BASE, teamManaged: true })).toBe(false);
     });
 
     it("skips when the author turned it off", () => {
