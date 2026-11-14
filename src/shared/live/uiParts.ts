@@ -1,5 +1,6 @@
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { fnv1a64BytesHex } from "@shared/utils/contentHash";
+import { pruneUndefined } from "./digestValue";
 import type {
     UIComponentDefinition,
     UIComponentId,
@@ -839,30 +840,6 @@ function sameJsonValue(left: unknown, right: unknown): boolean {
 
 function definedEntries(value: Record<string, unknown>): string[] {
     return Object.keys(value).filter(key => value[key] !== undefined);
-}
-
-/**
- * The same value with every `undefined`-valued property dropped, at any depth.
- *
- * The canonical encoder rejects an `undefined` property by name, and the interface services produce
- * them freely - a record spread through `{ ...element, extra: undefined }` holds a key whose value is
- * `undefined` where a record parsed off disk has no key at all. Those two are the same document, so
- * hashing them differently would eject a machine from the room over a difference no file can hold.
- */
-function pruneUndefined(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(pruneUndefined);
-    }
-    if (value === null || typeof value !== "object") {
-        return value;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        if (entry !== undefined) {
-            out[key] = pruneUndefined(entry);
-        }
-    }
-    return out;
 }
 
 function hash(content: unknown): string {

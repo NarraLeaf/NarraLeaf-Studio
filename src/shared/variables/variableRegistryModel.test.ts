@@ -35,6 +35,16 @@ describe("normalizeVariableRegistryScope", () => {
 });
 
 describe("migrateVariableRegistryToLatest", () => {
+    it("retains externally supplied special ids while migrating", () => {
+        const rawEntries = Object.fromEntries(["__proto__", "constructor", "toString"].map(id => [id, {
+            name: id, scope: "saved", valueType: "number", storageKey: `storage-${id}`, defaultValue: 7,
+        }]));
+        const migrated = migrateVariableRegistryToLatest({ schemaVersion: 2, entries: rawEntries });
+        expect(Object.keys(migrated.entries)).toEqual(["__proto__", "constructor", "toString"]);
+        expect(migrated.entries.__proto__).toMatchObject({ id: "__proto__", scope: "saved", storageKey: "storage-__proto__" });
+        expect(Object.getPrototypeOf(migrated.entries)).toBe(Object.prototype);
+    });
+
     it("normalizes entries and stamps the current schema version", () => {
         const migrated = migrateVariableRegistryToLatest({
             schemaVersion: 1,
@@ -76,6 +86,15 @@ describe("migrateVariableRegistryToLatest", () => {
 });
 
 describe("listRegistryEntries / runtime tables", () => {
+    it.each(["saved", "persistent"] as const)("preserves special ids in the %s runtime table", scope => {
+        const entry = { id: "__proto__", name: "Progress", scope, valueType: "number" as const, storageKey: "progress" };
+        const registry = { ...createEmptyVariableRegistry(), entries: Object.fromEntries([[entry.id, entry]]) };
+        const table = scope === "saved" ? buildSavedRuntimeTable(registry) : buildPersistentRuntimeTable(registry);
+        expect(Object.keys(table)).toEqual(["__proto__"]);
+        expect(table.__proto__).toEqual(entry);
+        expect(Object.getPrototypeOf(table)).toBe(Object.prototype);
+    });
+
     function seeded() {
         const registry = createEmptyVariableRegistry();
         registry.entries = {

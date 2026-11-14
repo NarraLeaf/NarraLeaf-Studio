@@ -43,6 +43,16 @@ const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:", PLUGIN_WORDS_UN
  */
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
+/** Keep serialized id maps safe for ids that overlap Object.prototype names. */
+function setRecordEntry<T>(record: Record<string, T>, key: string, value: T): void {
+    Object.defineProperty(record, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+    });
+}
+
 export function isSceneIndependentUnitId(unitId: string): boolean {
     return SCENE_INDEPENDENT_UNIT_PREFIXES.some(prefix => unitId.startsWith(prefix));
 }
@@ -141,12 +151,12 @@ export function restrictLocalizationToTextIds(
                 ?? isShippedRenameUnit(bundle, unitId);
             if (shippedOwner !== null) {
                 if (shippedOwner) {
-                    kept[unitId] = target;
+                    setRecordEntry(kept, unitId, target);
                 } else {
                     removedUnitCount += 1;
                 }
             } else if (isSceneIndependentUnitId(unitId) || textIds.has(unitId)) {
-                kept[unitId] = target;
+                setRecordEntry(kept, unitId, target);
             } else {
                 removedUnitCount += 1;
             }
@@ -169,7 +179,7 @@ export function restrictVoiceToTextIds(
         const kept: Record<string, string> = {};
         for (const [unitId, assetId] of Object.entries(table)) {
             if (textIds.has(unitId)) {
-                kept[unitId] = assetId;
+                setRecordEntry(kept, unitId, assetId);
             } else {
                 removedUnitCount += 1;
             }
@@ -254,7 +264,7 @@ export function restrictCharacterUnits(
                 removedUnitCount += 1;
                 continue;
             }
-            kept[unitId] = target;
+            setRecordEntry(kept, unitId, target);
         }
         tables[locale] = kept;
     }
@@ -278,7 +288,7 @@ export function restrictRecordToAssetIds<T>(
     let removedCount = 0;
     for (const [assetId, value] of Object.entries(record)) {
         if (assetIds.has(assetId)) {
-            kept[assetId] = value;
+            setRecordEntry(kept, assetId, value);
         } else {
             removedCount += 1;
         }

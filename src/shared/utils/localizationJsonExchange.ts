@@ -41,7 +41,7 @@ type JsonUnit = {
 };
 
 export function serializeTranslationJson(document: TranslationExchangeDocument): string {
-    const units: Record<string, JsonUnit> = {};
+    const units: Record<string, JsonUnit> = Object.create(null);
     for (const row of document.rows) {
         units[row.unitId] = {
             ...(row.context ? { context: row.context } : {}),

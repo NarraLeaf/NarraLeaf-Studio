@@ -85,14 +85,14 @@ export type ProjectActivityDay = {
 };
 
 /**
- * Bumped whenever the word counter (`scanScene` in `projectStatsSnapshot.ts`) starts or stops
- * counting some class of text, so totals recorded under the old rule are never diffed against
- * totals recorded under the new one.
+ * Bumped whenever the word counter changes which text is counted or how it is measured, so totals
+ * recorded under the old rule are never diffed against totals recorded under the new one.
  *
  * 1 - narration and dialogue only.
  * 2 - choice prompts and choice option text included.
+ * 3 - supplementary-plane Han ideographs counted individually.
  */
-export const WORD_COUNT_BASIS = 2;
+export const WORD_COUNT_BASIS = 3;
 
 export type ProjectStatsV1 = {
     version: 1;

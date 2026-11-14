@@ -71,15 +71,20 @@ export function migrateVariableRegistryToLatest(raw: unknown): VariableRegistry 
         if (!isRecord(value) || typeof value.storageKey !== "string" || typeof value.name !== "string") {
             continue;
         }
-        entries[id] = {
-            id,
-            name: value.name,
-            scope: normalizeVariableRegistryScope(value.scope),
-            valueType: normalizePersistentValueType(typeof value.valueType === "string" ? value.valueType : undefined),
-            ...withDefaultValue(value.defaultValue),
-            storageKey: value.storageKey,
-            ...(typeof value.description === "string" ? { description: value.description } : {}),
-        };
+        Object.defineProperty(entries, id, {
+            value: {
+                id,
+                name: value.name,
+                scope: normalizeVariableRegistryScope(value.scope),
+                valueType: normalizePersistentValueType(typeof value.valueType === "string" ? value.valueType : undefined),
+                ...withDefaultValue(value.defaultValue),
+                storageKey: value.storageKey,
+                ...(typeof value.description === "string" ? { description: value.description } : {}),
+            },
+            enumerable: true,
+            configurable: true,
+            writable: true,
+        });
     }
     return {
         schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION,
@@ -145,7 +150,7 @@ function runtimeTableForScope(
     const table: Record<string, VariableRegistryEntry> = {};
     for (const [id, entry] of Object.entries(registry.entries)) {
         if (entry.scope === scope) {
-            table[id] = entry;
+            Object.defineProperty(table, id, { value: entry, enumerable: true, configurable: true, writable: true });
         }
     }
     return table;

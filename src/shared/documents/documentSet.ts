@@ -269,7 +269,11 @@ export function documentSetMemberPath(
     key: Readonly<Record<string, string>>,
     memberId: string,
 ): string {
-    return spec.pathFor({...key, [memberParameterOf(spec)]: memberId});
+    const path = spec.pathFor({...key, [memberParameterOf(spec)]: memberId});
+    if (path === documentSetManifestPath(spec, key)) {
+        throw new DocumentPathError(`The member "${memberId}" resolves to the document set's manifest at "${path}".`);
+    }
+    return path;
 }
 
 /** The name of the member path's own parameter, e.g. `"sceneId"`. */

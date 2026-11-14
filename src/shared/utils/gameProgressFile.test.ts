@@ -53,6 +53,40 @@ describe("resolveGameProgressDirectory", () => {
 });
 
 describe("the progress file", () => {
+    it("preserves special storage keys in exported and imported records", async () => {
+        const saved = Object.fromEntries([
+            ["__proto__", { route: "north" }],
+            ["constructor", 0],
+            [" padded key ", false],
+            ["  ", "ignored"],
+        ]);
+        const persistent = Object.fromEntries([
+            ["__proto__", 7],
+            ["prototype", { chapter: 2 }],
+            ["toString", null],
+        ]);
+        expect(await writeGameProgressFile(env, KEY, {
+            storyId: "story-1",
+            savedVariables: saved,
+            persistentVariables: persistent,
+            anchor: null,
+            visitedSceneIds: [],
+        })).toEqual({ outcome: "written", error: null });
+
+        const raw = JSON.parse(await fs.readFile(resolveGameProgressFilePath(env, KEY), "utf-8"));
+        expect(Object.keys(raw.savedVariables)).toEqual(["__proto__", "constructor", " padded key "]);
+        expect(raw.savedVariables.__proto__).toEqual({ route: "north" });
+        expect(Object.keys(raw.persistentVariables)).toEqual(["__proto__", "prototype", "toString"]);
+        expect(raw.persistentVariables.__proto__).toBe(7);
+
+        const read = await readGameProgressFile(env, KEY);
+        expect(read.outcome).toBe("found");
+        expect(Object.keys(read.document!.savedVariables)).toEqual(["__proto__", "constructor", " padded key "]);
+        expect(Object.keys(read.document!.persistentVariables)).toEqual(["__proto__", "prototype", "toString"]);
+        expect(read.document!.savedVariables.__proto__).toEqual({ route: "north" });
+        expect(read.document!.persistentVariables.__proto__).toBe(7);
+    });
+
     it("round-trips a playthrough, saved and persistent values included", async () => {
         const written = await writeGameProgressFile(env, KEY, {
             storyId: "story-1",

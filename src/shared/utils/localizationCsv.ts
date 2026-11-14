@@ -43,8 +43,7 @@ export function parseTranslationCsv(text: string): ParsedTranslationCsv {
     table.rows.forEach((cells, lineIndex) => {
         const unitId = table.cell(cells, "unit_id").trim();
         if (!unitId) {
-            // The row number a spreadsheet shows beside it: the header is row 1.
-            problems.push({ code: "missingId", at: { row: lineIndex + 2 } });
+            problems.push({ code: "missingId", at: { row: table.rowNumbers[lineIndex] } });
             return;
         }
         rows.push({

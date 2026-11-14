@@ -51,6 +51,21 @@ export class PersistentState<T extends Record<string, any>> implements IPersiste
         this.store.set(key, data);
     }
 
+    /** Write a valid literal key that Conf's per-key setter reserves. */
+    public setReservedLiteralItem(key: "constructor" | "prototype", data: unknown): void {
+        this.ensureValidKey(key);
+        if (data === undefined) {
+            throw new TypeError("Use `delete()` to clear values");
+        }
+        const valueType = typeof data;
+        if (valueType === "symbol" || valueType === "function") {
+            throw new TypeError(`Setting a value of type \`${valueType}\` for key \`${key}\` is not allowed as it's not supported by JSON`);
+        }
+        const values = this.store.store;
+        Object.defineProperty(values, key, { value: data, enumerable: true, configurable: true, writable: true });
+        this.store.store = values;
+    }
+
     public removeItem(key: string): void {
         this.ensureValidKey(key);
         this.store.delete(key);

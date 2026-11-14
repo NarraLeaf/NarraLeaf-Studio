@@ -47,6 +47,14 @@ describe("assetsDigest", () => {
         expect(assetsDigest({ a: RECORD })).not.toBe(assetsDigest({}));
     });
 
+    it("hashes every JSON key in asset metadata", () => {
+        const named = JSON.parse('{"a":{"meta":{"__proto__":{"label":"first"}}}}');
+        const changed = JSON.parse('{"a":{"meta":{"__proto__":{"label":"second"}}}}');
+        const absent = JSON.parse('{"a":{"meta":{}}}');
+        expect(assetsDigest(named)).not.toBe(assetsDigest(changed));
+        expect(assetsDigest(named)).not.toBe(assetsDigest(absent));
+    });
+
     it("hashes a shard nobody holds to a value rather than to nothing", () => {
         // The libraries' rule and the cast's: a workspace creates every shard as it starts, so
         // reaching an effect without one means this machine failed at something, and answering

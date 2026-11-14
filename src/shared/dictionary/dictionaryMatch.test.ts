@@ -52,6 +52,44 @@ describe("finding what the dictionary has to say about a line", () => {
         )).toEqual([]);
     });
 
+    it("recognises supplementary-plane letters at both word boundaries", () => {
+        const dictionary = entries({term: "color", variants: ["colour"]});
+
+        expect(findDictionaryMatches("𝒜colour colour𝒜", dictionary, options())).toEqual([]);
+        expect(findDictionaryMatches("𝒜 colour 𝒜", dictionary, options())).toMatchObject([
+            {text: "colour", start: 3, end: 9},
+        ]);
+    });
+
+    it("does not split a word at a combining mark", () => {
+        expect(findDictionaryMatches(
+            "a\u0301colour colour\u0301",
+            entries({term: "color", variants: ["colour"]}),
+            options(),
+        )).toEqual([]);
+    });
+
+    it("keeps multiple combining marks with their Latin base", () => {
+        expect(findDictionaryMatches(
+            "a\u0301\u0302colour colour\u0301\u0302",
+            entries({term: "color", variants: ["colour"]}),
+            options(),
+        )).toEqual([]);
+    });
+
+    it("allows a reading beside supplementary-plane Han characters", () => {
+        expect(findDictionaryMatches(
+            "𠮷神楽坂𠮷",
+            entries({term: "神楽坂", reading: "かぐらざか"}),
+            options(),
+        )).toMatchObject([{text: "神楽坂", start: 2, end: 5}]);
+        expect(findDictionaryMatches(
+            "a𠮷b",
+            entries({term: "𠮷", reading: "よし"}),
+            options(),
+        )).toMatchObject([{text: "𠮷", start: 1, end: 3}]);
+    });
+
     it("finds a term inside a longer run of kanji, because that is how the script is written", () => {
         const found = findDictionaryMatches(
             "神楽坂に着いた",
@@ -73,6 +111,14 @@ describe("finding what the dictionary has to say about a line", () => {
         expect(found[0]).toMatchObject({text: "Colour", replacement: "Color"});
         expect(carryCapitalisation("color", "Colour")).toBe("Color");
         expect(carryCapitalisation("Kamurocho", "kamurocho")).toBe("Kamurocho");
+    });
+
+    it("carries the capitalisation of a supplementary-plane letter", () => {
+        expect(findDictionaryMatches(
+            "𐐀olour",
+            entries({term: "𐐨olor", variants: ["𐐨olour"]}),
+            options(),
+        )).toMatchObject([{text: "𐐀olour", replacement: "𐐀olor", start: 0, end: 7}]);
     });
 
     it("says nothing about a term written the way the project writes it", () => {

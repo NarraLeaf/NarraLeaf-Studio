@@ -193,4 +193,17 @@ describe("the project dictionary document", () => {
             counts: [{key: "dictionaryTerms", value: 2}],
         });
     });
+
+    it("reports a term whose spelling is an object prototype property", () => {
+        const empty = document([]);
+        const added = document([{term: "__proto__", reading: "prototype"}]);
+        const edited = document([{term: "__proto__", reading: "proto"}]);
+        const removed = dictionarySpec.diff!(added, empty, {limit: 10});
+
+        expect(dictionarySpec.diff!(empty, added, {limit: 10}).changes)
+            .toMatchObject([{path: ["entries", "__proto__"], kind: "added"}]);
+        expect(dictionarySpec.diff!(added, edited, {limit: 10}).changes)
+            .toMatchObject([{path: ["entries", "__proto__", "reading"], kind: "changed"}]);
+        expect(removed.changes).toMatchObject([{path: ["entries", "__proto__"], kind: "removed"}]);
+    });
 });

@@ -53,19 +53,51 @@ export type DictionaryMatch = {
  * longer run of kanji is ordinary, because that is how the script is written, and demanding a
  * boundary there would find nothing at all.
  */
-const WORDISH = /[\p{L}\p{N}_]/u;
+const WORDISH = /[\p{L}\p{N}\p{M}_]/u;
 const SEGMENTED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const MARK = /\p{M}/u;
 
 function isWordish(character: string | undefined): boolean {
     return character !== undefined && WORDISH.test(character) && !SEGMENTED.test(character);
 }
 
+function characterAt(text: string, index: number): string | undefined {
+    const point = text.codePointAt(index);
+    return point === undefined ? undefined : String.fromCodePoint(point);
+}
+
+function characterBefore(text: string, index: number): string | undefined {
+    if (index <= 0) {
+        return undefined;
+    }
+    const last = text.charCodeAt(index - 1);
+    const previous = text.charCodeAt(index - 2);
+    const paired = last >= 0xdc00 && last <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff;
+    return characterAt(text, index - (paired ? 2 : 1));
+}
+
+/** A combining mark follows the boundary behaviour of the character it belongs to. */
+function isWordishAt(text: string, index: number): boolean {
+    let character = characterAt(text, index);
+    while (character && MARK.test(character)) {
+        const previous = characterBefore(text, index);
+        if (!previous) {
+            return true;
+        }
+        index -= previous.length;
+        character = previous;
+    }
+    return isWordish(character);
+}
+
 /** Whether `[start, end)` in `text` stands as a word rather than inside a longer one. */
 export function standsAlone(text: string, start: number, end: number): boolean {
-    if (isWordish(text[start]) && isWordish(text[start - 1])) {
+    const before = characterBefore(text, start);
+    if (before && isWordishAt(text, start) && isWordishAt(text, start - before.length)) {
         return false;
     }
-    if (isWordish(text[end - 1]) && isWordish(text[end])) {
+    const last = characterBefore(text, end);
+    if (last && isWordishAt(text, end - last.length) && isWordishAt(text, end)) {
         return false;
     }
     return true;
@@ -79,15 +111,15 @@ export function standsAlone(text: string, start: number, end: number): boolean {
  * two-word term - is guessing at a style the author has not stated.
  */
 export function carryCapitalisation(term: string, written: string): string {
-    const first = written[0];
+    const first = characterAt(written, 0);
     if (!first || first !== first.toUpperCase() || first === first.toLowerCase()) {
         return term;
     }
-    const head = term[0];
+    const head = characterAt(term, 0);
     if (!head || head === head.toUpperCase()) {
         return term;
     }
-    return head.toUpperCase() + term.slice(1);
+    return head.toUpperCase() + term.slice(head.length);
 }
 
 /**

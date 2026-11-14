@@ -1,5 +1,6 @@
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { fnv1a64BytesHex } from "@shared/utils/contentHash";
+import { pruneUndefined } from "./digestValue";
 
 /**
  * The fingerprint of one section's folders.
@@ -27,22 +28,6 @@ import { fnv1a64BytesHex } from "@shared/utils/contentHash";
  */
 export function assetGroupsDigest(folders: Readonly<Record<string, unknown>> | null): string {
     return hash(folders === null ? { absent: true } : { folders: pruneUndefined(folders) });
-}
-
-function pruneUndefined(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(pruneUndefined);
-    }
-    if (value === null || typeof value !== "object") {
-        return value;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        if (entry !== undefined) {
-            out[key] = pruneUndefined(entry);
-        }
-    }
-    return out;
 }
 
 function hash(content: unknown): string {

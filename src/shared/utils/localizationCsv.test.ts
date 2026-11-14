@@ -37,6 +37,13 @@ describe("translation csv round-trip", () => {
         expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 2 } }]);
     });
 
+    it("reports spreadsheet row numbers after blank rows and multiline cells", () => {
+        const csv = '\nunit_id,target\n\nt-1,"first\nsecond"\n,orphan\n';
+        const parsed = parseTranslationCsv(csv);
+        expect(parsed.rows).toEqual([row({ unitId: "t-1", target: "first\nsecond" })]);
+        expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 5 } }]);
+    });
+
     it("rejects files without the unit_id column", () => {
         expect(parseTranslationCsv("source,target\nA,B\n").problems).toEqual([{ code: "noIdColumn" }]);
         expect(parseTranslationCsv("").problems).toEqual([{ code: "empty" }]);

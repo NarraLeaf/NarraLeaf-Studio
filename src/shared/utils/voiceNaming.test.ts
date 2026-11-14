@@ -24,6 +24,11 @@ describe("formatVoiceFilename", () => {
         expect(formatVoiceFilename("{take}", tokens())).toBe("{take}");
     });
 
+    it("leaves unknown tokens that name object properties alone", () => {
+        expect(formatVoiceFilename("{constructor}_{toString}_{__proto__}", tokens()))
+            .toBe("{constructor}_{toString}_{__proto__}");
+    });
+
     it("keeps CJK names in the filename", () => {
         expect(formatVoiceFilename(PATTERN, tokens({ scene: "序章", character: "優希" }))).toBe("序章_001_優希");
     });
@@ -45,6 +50,17 @@ describe("matchKeyForFilename", () => {
 
         expect(a).not.toBe(b);
         expect(a).toBe("序章001優希");
+    });
+
+    it("keeps combining marks that distinguish names", () => {
+        expect(matchKeyForFilename("कल_001_मीरा.wav")).toBe("कल001मीरा");
+        expect(matchKeyForFilename("काल_001_मीरा.wav")).toBe("काल001मीरा");
+        expect(matchKeyForVoiceName("कल_001_मीरा")).not.toBe(matchKeyForVoiceName("काल_001_मीरा"));
+    });
+
+    it("ignores emoji and their variation selectors", () => {
+        expect(matchKeyForFilename("Scene_001_❤️.wav")).toBe("scene001");
+        expect(matchKeyForFilename("Scene_1️⃣_ℹ️.wav")).toBe("scene1i");
     });
 
     it("matches a decomposed filename from a macOS booth against the composed one", () => {

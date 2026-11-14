@@ -127,7 +127,7 @@ export function diffDictionary(base: ProjectDictionaryDocument, head: ProjectDic
  * something no Studio wrote.
  */
 function byTerm(entries: readonly ProjectDictionaryEntry[]): Record<string, ProjectDictionaryEntry> {
-    const record: Record<string, ProjectDictionaryEntry> = {};
+    const record: Record<string, ProjectDictionaryEntry> = Object.create(null);
     for (const entry of entries) {
         if (typeof entry?.term === "string" && entry.term.length > 0 && !Object.prototype.hasOwnProperty.call(record, entry.term)) {
             record[entry.term] = entry;

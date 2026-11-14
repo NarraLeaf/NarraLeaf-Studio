@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { parseProjectStats } from "./stats";
+import { createEmptyProjectStats, parseProjectStats, WORD_COUNT_BASIS } from "./stats";
+
+describe("project word-count basis", () => {
+    const stored = {
+        version: 1,
+        firstSeenAt: 1,
+        lastActiveAt: 2,
+        days: {
+            "2026-11-12": { words: 12, edits: 1, activeSeconds: 20 },
+            "2026-11-13": { words: 20, edits: 2, activeSeconds: 30, rebased: true },
+        },
+        builds: [],
+    };
+
+    it("starts fresh records on the supplementary-plane ideograph counting rule", () => {
+        expect(WORD_COUNT_BASIS).toBe(3);
+        expect(createEmptyProjectStats().wordBasis).toBe(3);
+    });
+
+    it("keeps the old basis until an existing record is recounted", () => {
+        const old = parseProjectStats({ ...stored, wordBasis: 2 });
+        expect(old?.wordBasis).toBe(2);
+        expect(old?.days["2026-11-12"]).toEqual({ words: 12, edits: 1, activeSeconds: 20 });
+        expect(parseProjectStats(stored)?.wordBasis).toBe(1);
+    });
+
+    it("retains an earlier rebased day through storage", () => {
+        const parsed = parseProjectStats(JSON.parse(JSON.stringify({ ...stored, wordBasis: 2 })));
+        expect(parsed?.days["2026-11-13"]).toEqual({ words: 20, edits: 2, activeSeconds: 30, rebased: true });
+    });
+});
 
 /**
  * The stored build ledger is rebuilt field by field on every read, so a field the parser does not
