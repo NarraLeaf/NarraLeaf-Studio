@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { acquireBlueprintExecutionLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import {
     buildAccessibleBlueprintVariableOptions,
     createExplicitBlueprintVariableRef,
@@ -299,5 +300,30 @@ describe("blueprintVariableRefs", () => {
                 defaultValue: null,
             }),
         ]);
+    });
+
+    it("keeps an authored null JSON default", () => {
+        const blueprint: Blueprint = {
+            id: "widget",
+            name: "Widget",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+            graphs: { events: { init: { id: "init", graph: { nodes: {
+                value: { id: "value", type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR, params: {
+                    variableId: "value", name: "value", valueType: "json", defaultValue: null,
+                } },
+            }, edges: [] } } }, functions: {} },
+        };
+        expect(listEffectiveBlueprintVariables(blueprint)[0].defaultValue).toBeNull();
+        const document: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: { widget: blueprint },
+            ownerRecords: { "widgetMain:surface:button": { blueprintId: "widget" } },
+        };
+        expect(acquireBlueprintExecutionLocals({
+            blueprintDocument: document,
+            currentBlueprintId: "widget",
+            surfaceId: "surface",
+            elementId: "button",
+        }).value).toBeNull();
     });
 });

@@ -382,6 +382,10 @@ function PuppetStateField(props: CustomFieldProps<UIInspectorData>) {
  * draft is simply not committed.
  */
 function PuppetOptionsField(props: CustomFieldProps<UIInspectorData>) {
+    return <PuppetOptionsEditor key={props.data.element.id} {...props} />;
+}
+
+function PuppetOptionsEditor(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const current = getLivePuppetProps(props.data);
     const committed = useMemo(() => JSON.stringify(current.options, null, 2), [current.options]);

@@ -6,11 +6,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIHostAdapterBlueprintRuntime } from "@/lib/ui-editor/runtime/types";
 import { bindWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import { resolveButtonVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import type { SectionFieldDefinition, SelectFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
+import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { createTextInputInspector } from "./inspector";
 import { TextInputRenderer } from "./renderer";
 
 vi.mock("@/apps/workspace/modules/properties/framework/utils/colorUtils", () => ({
-    parseColorValue: (_raw: string | undefined, fallback: { hex: string; alpha?: number }) => fallback,
+    parseColorValue: (raw: string | undefined, fallback: { hex: string; alpha?: number }) =>
+        raw?.match(/^#[0-9a-f]{6}$/i) ? { hex: raw } : fallback,
     colorValueToCss: (value: { hex: string; alpha?: number }) => value.hex,
 }));
 
@@ -125,6 +131,64 @@ describe("TextInputRenderer", () => {
         expect(markup).not.toContain('tabindex="-1"');
     });
 
+    it("disables text entry when a blueprint disables the widget", () => {
+        const markup = renderTextInput(createDocument({ interactionDisabled: true }), createBlueprintRuntime());
+
+        expect(markup).toContain('disabled=""');
+    });
+
+    it("draws text using the current appearance's typography", () => {
+        const appearance = {
+            defaultVariantId: "default",
+            variants: [{
+                id: "default",
+                name: "Default",
+                propertyGroups: [
+                    { key: "fontSize", rows: [{ conditions: null, value: 32 }] },
+                    { key: "fontWeight", rows: [{ conditions: null, value: "bold" }] },
+                    { key: "lineHeight", rows: [{ conditions: null, value: 1.8 }] },
+                    { key: "color", rows: [{ conditions: null, value: "#123456" }] },
+                ],
+            }],
+        };
+        const markup = renderTextInput(createDocument({ appearance }));
+
+        expect(markup).toContain("font-size:32px");
+        expect(markup).toContain("font-weight:bold");
+        expect(markup).toContain("line-height:1.8");
+        expect(markup).toContain("color:#123456");
+    });
+
+    it("keeps the default appearance in step when the inspector changes typography", () => {
+        const document = createDocument({
+            fontWeight: "normal",
+            appearance: {
+                defaultVariantId: "default",
+                variants: [{
+                    id: "default", name: "Default",
+                    propertyGroups: [{ key: "fontWeight", rows: [{ conditions: null, value: "normal" }] }],
+                }],
+            },
+        });
+        const element = document.elements.textInput!;
+        const documentService = {
+            getDocument: () => document,
+            updateElementProps: (_id: string, patch: Record<string, unknown>) => {
+                element.props = { ...element.props, ...patch };
+            },
+        } as unknown as UIInspectorData["documentService"];
+        const data: UIInspectorData = { element, elements: [element], documentService };
+        const schema = createTextInputInspector({ element, documentService });
+        const sections = schema.tabs![0]!.fields as SectionFieldDefinition<UIInspectorData>[];
+        const typography = sections.find(section => section.id === "section.textInputTypography")!;
+        const weight = typography.fields.find(field => field.id === "textInput.weight") as SelectFieldDefinition<UIInspectorData>;
+
+        weight.setValue!(data, "bold");
+        const appearance = element.props?.appearance as Parameters<typeof resolveButtonVisualProps>[1];
+        const visual = resolveButtonVisualProps(element, appearance, { signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS });
+        expect(visual.fontWeight).toBe("bold");
+    });
+
     it("masks a password field and hints the numeric keyboard for number mode", () => {
         expect(renderTextInput(createDocument({ inputMode: "password" }))).toContain('type="password"');
 
@@ -175,6 +239,27 @@ describe("TextInputRenderer submit and IME composition", () => {
         fireEvent.keyDown(renderLive((_id, event) => events.push(event)), { key: "Enter" });
 
         expect(events).toEqual(["submit"]);
+    });
+
+    it("does not submit or send a value change while the widget is disabled", () => {
+        const document = createDocument({ interactionDisabled: true });
+        const dispatch = vi.fn(async () => {});
+        render(
+            <WidgetRuntimeStateProvider>
+                <TextInputRenderer
+                    element={document.elements.textInput!}
+                    document={document}
+                    surface={document.surfaces[0]!}
+                    hostAdapter={{ host: "app", blueprintRuntime: createBlueprintRuntime() }}
+                    dispatchEvent={dispatch}
+                />
+            </WidgetRuntimeStateProvider>,
+        );
+        const input = screen.getByPlaceholderText("Your name") as HTMLInputElement;
+        expect(input.disabled).toBe(true);
+        fireEvent.change(input, { target: { value: "Bea" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        expect(dispatch).not.toHaveBeenCalled();
     });
 
     it("stays silent on the Enter that confirms an IME conversion", () => {

@@ -130,6 +130,15 @@ type BlueprintHistoryScope = {
     ownerKey?: string;
 };
 
+type VariableNodeRefPatch = {
+    blueprintId: string;
+    graphKind: "events" | "functions" | "macros";
+    graphId: string;
+    nodeId: string;
+    nodeType: string;
+    valueType: unknown;
+};
+
 export type BlueprintEditorHistorySnapshot = {
     blueprintId: string;
     ownerKey: string | null;
@@ -324,9 +333,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     /**
      * Publish this blueprint's readers once.
      *
-     * A blueprint's snapshot slices three service-owned stores (the graph document, element
-     * behaviours, the variable registry), none of which need an editor to be mounted - so the scope
-     * stays registered for the life of the workspace and an entry is always applicable.
+     * A blueprint's snapshot slices the graph document, variable registry and save schema. None
+     * needs an editor to be mounted, so the scope stays registered for the life of the workspace.
      */
     private ensureBlueprintHistoryScope(blueprintId: string): void {
         if (this.registeredHistoryScopes.has(blueprintId)) {
@@ -479,6 +487,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             clearTimeout(this.declarationsQueued);
             this.declarationsQueued = null;
         }
+        this.unsubscribeHistory?.();
+        this.unsubscribeHistory = null;
+        for (const unregister of this.registeredHistoryScopes.values()) {
+            unregister();
+        }
+        this.registeredHistoryScopes.clear();
+        this.events.clear();
     }
 
     public clearBlueprintHistory(blueprintId?: string): void {
@@ -1055,8 +1070,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!elementId) {
             return undefined;
         }
-        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
-        return uidoc.getDocument().elements[elementId]?.type;
+        const document = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        return owner.kind === "componentWidgetMain"
+            ? document.components?.find(component => component.id === owner.componentId)?.elements[elementId]?.type
+            : document.elements[elementId]?.type;
     }
 
     public getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary {
@@ -1451,18 +1468,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (registry.isShared()) {
             return registry.deleteEntry(variableId);
         }
-        this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
-            // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
-            this.applyBlueprintMutation(doc => {
-                this.clearVariableNodeRefs(doc, {
-                    paramKey: "persistentVariableId",
-                    nodeTypes: [BLUEPRINT_NODE_TYPE_PERSISTENT_GET, BLUEPRINT_NODE_TYPE_PERSISTENT_SET],
-                    variableId,
-                });
-            });
-            this.getVariableRegistryService().deleteEntry(variableId);
+        return this.deleteRegistryVariable(historyBlueprintId, variableId, {
+            paramKey: "persistentVariableId",
+            nodeTypes: [BLUEPRINT_NODE_TYPE_PERSISTENT_GET, BLUEPRINT_NODE_TYPE_PERSISTENT_SET],
         });
-        return true;
     }
 
     public createSavedRegistryVariable(
@@ -1523,17 +1532,67 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             // Derived in a session, with {@link deletePersistentVariable}.
             return registry.deleteEntry(variableId);
         }
-        this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
-            this.applyBlueprintMutation(doc => {
-                this.clearVariableNodeRefs(doc, {
-                    paramKey: "savedVariableId",
-                    nodeTypes: [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET],
-                    variableId,
-                });
-            });
-            this.getVariableRegistryService().deleteEntry(variableId);
+        return this.deleteRegistryVariable(historyBlueprintId, variableId, {
+            paramKey: "savedVariableId",
+            nodeTypes: [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET],
         });
-        return true;
+    }
+
+    private deleteRegistryVariable(
+        historyBlueprintId: string,
+        variableId: string,
+        target: { paramKey: string; nodeTypes: readonly string[] },
+    ): boolean {
+        const registry = this.getVariableRegistryService();
+        const entry = registry.getRegistry().entries[variableId];
+        if (!entry) {
+            return false;
+        }
+        const savedEntry = cloneBlueprintHistoryValue(entry);
+        const patches: VariableNodeRefPatch[] = [];
+        this.applyBlueprintMutation(doc => {
+            this.clearVariableNodeRefs(doc, { ...target, variableId }, patches);
+        });
+        const deleted = registry.deleteEntry(variableId);
+        const apply = (restoring: boolean) => {
+            const currentRegistry = registry.getRegistry();
+            const entries = { ...currentRegistry.entries };
+            if (restoring) {
+                if (!entries[variableId]) {
+                    entries[variableId] = cloneBlueprintHistoryValue(savedEntry);
+                }
+            } else {
+                delete entries[variableId];
+            }
+            registry.replaceRegistry({ ...currentRegistry, entries });
+            if (patches.length > 0) {
+                this.applyBlueprintMutation(doc => {
+                    for (const patch of patches) {
+                        const node = doc.blueprints[patch.blueprintId]?.graphs[patch.graphKind]?.[patch.graphId]?.graph?.nodes?.[patch.nodeId];
+                        if (!node || node.type !== patch.nodeType) {
+                            continue;
+                        }
+                        const current = node.params?.[target.paramKey];
+                        if (restoring && current == null) {
+                            node.params = { ...(node.params ?? {}), [target.paramKey]: variableId };
+                            if (patch.valueType !== undefined) {
+                                node.params[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = patch.valueType;
+                            }
+                        } else if (!restoring && current === variableId) {
+                            delete node.params![target.paramKey];
+                            delete node.params![BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                        }
+                    }
+                });
+            }
+        };
+        this.ensureBlueprintHistoryScope(historyBlueprintId);
+        this.history().pushCommand(blueprintHistoryScope(historyBlueprintId), {
+            label: { key: "workspace.history.entry.blueprintEdit" as TranslationKey },
+            undo: () => apply(true),
+            redo: () => apply(false),
+        });
+        return deleted;
     }
 
     public createBlueprintVariable(
@@ -1623,27 +1682,33 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     private clearVariableNodeRefs(
         doc: BlueprintDocument,
         target: { paramKey: string; nodeTypes: readonly string[]; variableId: string },
+        patches?: VariableNodeRefPatch[],
     ): void {
         for (const bp of Object.values(doc.blueprints)) {
-            const slots = [
-                ...Object.values(bp.graphs.events ?? {}),
-                ...Object.values(bp.graphs.functions ?? {}),
-                ...Object.values(bp.graphs.macros ?? {}),
-            ];
-            for (const slot of slots) {
-                if (!slot.graph) {
-                    continue;
-                }
-                const ir = ensureBlueprintGraphIr(slot.graph);
-                for (const node of Object.values(ir.nodes ?? {})) {
-                    if (
-                        target.nodeTypes.includes(node.type) &&
-                        node.params?.[target.paramKey] === target.variableId
-                    ) {
-                        const next = { ...(node.params ?? {}) };
-                        delete next[target.paramKey];
-                        delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
-                        node.params = next;
+            for (const graphKind of ["events", "functions", "macros"] as const) {
+                for (const [graphId, slot] of Object.entries(bp.graphs[graphKind] ?? {})) {
+                    if (!slot.graph) {
+                        continue;
+                    }
+                    const ir = ensureBlueprintGraphIr(slot.graph);
+                    for (const node of Object.values(ir.nodes ?? {})) {
+                        if (
+                            target.nodeTypes.includes(node.type) &&
+                            node.params?.[target.paramKey] === target.variableId
+                        ) {
+                            patches?.push({
+                                blueprintId: bp.id,
+                                graphKind,
+                                graphId,
+                                nodeId: node.id,
+                                nodeType: node.type,
+                                valueType: node.params[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE],
+                            });
+                            const next = { ...(node.params ?? {}) };
+                            delete next[target.paramKey];
+                            delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                            node.params = next;
+                        }
                     }
                 }
             }
@@ -1793,14 +1858,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }, options);
     }
 
-    /**
-     * Where a script blueprint's file is, or null when it is not a script blueprint.
-     *
-     * There is no matching setter for its TEXT, and that absence is the model: the file is the
-     * author's, edited in their own editor, and a service that could write it back would undo an
-     * edit made outside Studio the next time anything saved. This service moved a whole directory
-     * out of its own reach to make that impossible - see `@shared/project/scriptsDirectory`.
-     */
     /** The file one script layer runs, or null when that layer is a graph. */
     public getScriptRef(blueprintId: string, layerId: string): string | null {
         const layer = this.getBlueprintDocument().blueprints?.[blueprintId]?.graphs.events?.[layerId];

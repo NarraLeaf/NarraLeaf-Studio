@@ -110,11 +110,9 @@ export function parseBlueprintFnRef(raw: unknown): { blueprintId: string; headNo
 /**
  * Owners whose blueprint may declare a Fn.
  *
- * A Fn is factoring inside one blueprint - `findBlueprintFnByRef` resolves it by the blueprint id
- * baked into the ref, and calls never cross a blueprint - so the list is about which owners write
- * graphs big enough to want it rather than about anything a Fn can reach. `componentWidgetMain` is
- * on it for that reason: a definition's graph runs once per instance, which makes it the *most*
- * likely place for one chain to be needed from three call sites.
+ * A Fn is identified by its blueprint and head node. Calls may cross blueprints within the visibility
+ * rules below. `componentWidgetMain` can declare one for each instance of a definition, and other
+ * blueprints in the same definition can call it.
  */
 const FN_DECL_OWNER_KINDS: ReadonlySet<BlueprintOwnerRef["kind"]> = new Set([
     "globalMain",

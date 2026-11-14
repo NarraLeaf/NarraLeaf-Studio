@@ -33,6 +33,7 @@ import type { TextAlign, TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor
 import { i18nStore, translate } from "@/lib/i18n";
 import { TextRunMarksEditor } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
 import { BUTTON_MARKED_LABEL, BUTTON_SITE, getButtonProps } from "./helpers";
+import { patchButtonAuthoringProps } from "./authoring";
 import type { ButtonWidgetProps } from "./types";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
@@ -116,10 +117,8 @@ export function createButtonInspector(ctx: InspectorContext) {
     const { element, documentService } = ctx;
 
     const patch = (partial: Partial<ButtonWidgetProps>) => {
-        documentService.updateElementProps(element.id, {
-            ...element.props,
-            ...partial,
-        });
+        const live = documentService.getDocument().elements[element.id] ?? element;
+        documentService.updateElementProps(live.id, patchButtonAuthoringProps(live, partial));
     };
 
     return createPropertyEditorSchema<D>({

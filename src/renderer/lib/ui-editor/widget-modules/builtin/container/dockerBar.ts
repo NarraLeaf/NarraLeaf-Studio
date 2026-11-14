@@ -15,10 +15,7 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
     const { element, documentService } = ctx;
     const props = getContainerProps(element);
     const patch = (partial: Record<string, unknown>) => {
-        documentService.updateElementProps(element.id, {
-            ...element.props,
-            ...partial,
-        });
+        documentService.updateElementProps(element.id, partial);
     };
 
     const layoutMode: DockerBarItem[] = [

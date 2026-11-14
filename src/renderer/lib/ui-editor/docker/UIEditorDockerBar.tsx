@@ -845,6 +845,7 @@ export function UIEditorDockerBar({
     );
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
     const [tool, setTool] = useState<UITool>(stateService.getTool());
+    const [enteredState, setEnteredState] = useState(() => stateService.getEnteredState());
     const [docVersion, setDocVersion] = useState(0);
     /**
      * Docker items are rebuilt on document change, which is enough for every item that edits
@@ -868,6 +869,13 @@ export function UIEditorDockerBar({
     useEffect(() => {
         const unsub = stateService.on("toolChanged", setTool);
         return unsub;
+    }, [stateService]);
+
+    useEffect(() => {
+        const read = () => setEnteredState(stateService.getEnteredState());
+        const unsubscribe = stateService.on("enteredStateChanged", read);
+        read();
+        return unsubscribe;
     }, [stateService]);
 
     useEffect(() => {
@@ -953,7 +961,7 @@ export function UIEditorDockerBar({
             surfaceId,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedElement, selectedModule, documentService, docVersion, ephemeralPreviewVersion]);
+    }, [selectedElement, selectedModule, documentService, stateService, surfaceId, docVersion, ephemeralPreviewVersion, enteredState]);
 
     const multiSelectItems = useMemo<DockerBarItem[]>(() => {
         if (selectedElements.length < 2) {
@@ -1002,7 +1010,7 @@ export function UIEditorDockerBar({
             }
         }
         return aggregated;
-    }, [selectedElements, documentService]);
+    }, [selectedElements, documentService, stateService, surfaceId, docVersion, ephemeralPreviewVersion, enteredState]);
     const showMultiSelectDocker = multiSelectItems.length > 0;
 
     // Show element docker bar only when there's a selection AND not in insert mode

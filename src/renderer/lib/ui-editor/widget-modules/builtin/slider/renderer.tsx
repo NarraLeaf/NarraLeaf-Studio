@@ -107,6 +107,8 @@ export function SliderRenderer(props: WidgetRendererProps) {
     const valueChangedFrameRef = useRef<number | null>(null);
     const valueChangedInFlightRef = useRef(false);
     const valueChangedPendingRef = useRef<{ value: number; previousValue: number } | null>(null);
+    const dragDisposeRef = useRef<(() => void) | null>(null);
+    const mountedRef = useRef(true);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const authoredProps = getSliderProps(element);
@@ -131,21 +133,27 @@ export function SliderRenderer(props: WidgetRendererProps) {
     );
     const normalizedValue = sliderValueToNormalized(sliderProps.value, sliderProps);
     const blueprintRuntime = hostAdapter.blueprintRuntime;
-    const canRunSliderInteraction = Boolean(blueprintRuntime && runtimeStore);
+    const interactionDisabled = Boolean(element.props?.interactionDisabled);
+    const canRunSliderInteraction = Boolean(blueprintRuntime && runtimeStore) && !interactionDisabled;
     // A slider is a stop for the keys only where something moves it with them: navigation's
     // directions. A game without navigation keeps it what it always was, a thing to drag.
     const navigationEnabled = useGameNavigationEnabled();
     const reachableByKeys = canRunSliderInteraction && navigationEnabled;
 
-    useEffect(() => () => {
-        if (flushFrameRef.current !== null) {
-            window.cancelAnimationFrame(flushFrameRef.current);
-            flushFrameRef.current = null;
-        }
-        if (valueChangedFrameRef.current !== null) {
-            window.cancelAnimationFrame(valueChangedFrameRef.current);
-            valueChangedFrameRef.current = null;
-        }
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (flushFrameRef.current !== null) {
+                window.cancelAnimationFrame(flushFrameRef.current);
+                flushFrameRef.current = null;
+            }
+            if (valueChangedFrameRef.current !== null) {
+                window.cancelAnimationFrame(valueChangedFrameRef.current);
+                valueChangedFrameRef.current = null;
+            }
+            dragDisposeRef.current?.();
+        };
     }, []);
 
     const scheduleSliderFlush = useCallback(() => {
@@ -183,7 +191,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
         valueChangedInFlightRef.current = true;
         void dispatchEvent("valueChanged", payload).finally(() => {
             valueChangedInFlightRef.current = false;
-            if (valueChangedPendingRef.current) {
+            if (mountedRef.current && valueChangedPendingRef.current) {
                 scheduleValueChanged();
             }
         });
@@ -281,24 +289,45 @@ export function SliderRenderer(props: WidgetRendererProps) {
             }
             event.preventDefault();
             event.stopPropagation();
+            dragDisposeRef.current?.();
 
             const dragPointerOffset =
                 hitPartId === handleElement?.id
                     ? pointerOffsetFromHandleCenter(event.clientX, event.clientY)
                     : 0;
             let disposed = false;
+            let cancelled = false;
             void (async () => {
                 const previousValue = valueRef.current;
                 const firstValue = await setRuntimeValue(
                     valueFromPointer(event.clientX, event.clientY, dragPointerOffset),
                     false,
                 );
+                if (cancelled || !mountedRef.current) {
+                    return;
+                }
                 await dispatchEvent("dragStart", { value: firstValue });
-                if (firstValue !== previousValue) {
+                if (!cancelled && mountedRef.current && firstValue !== previousValue) {
                     queueValueChanged(firstValue, previousValue);
                 }
             })();
 
+            const dispose = () => {
+                if (disposed) {
+                    return;
+                }
+                disposed = true;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
+                if (dragDisposeRef.current === cancel) {
+                    dragDisposeRef.current = null;
+                }
+            };
+            const cancel = () => {
+                cancelled = true;
+                dispose();
+            };
             const onMove = (moveEvent: globalThis.PointerEvent) => {
                 if (disposed) {
                     return;
@@ -313,15 +342,13 @@ export function SliderRenderer(props: WidgetRendererProps) {
                 if (disposed) {
                     return;
                 }
-                disposed = true;
-                window.removeEventListener("pointermove", onMove);
-                window.removeEventListener("pointerup", onUp);
-                window.removeEventListener("pointercancel", onUp);
+                dispose();
                 void dispatchEvent("dragEnd", {
                     value: valueRef.current,
                 });
                 scheduleSliderFlush();
             };
+            dragDisposeRef.current = cancel;
             window.addEventListener("pointermove", onMove, { passive: false });
             window.addEventListener("pointerup", onUp, { once: true });
             window.addEventListener("pointercancel", onUp, { once: true });
@@ -333,6 +360,8 @@ export function SliderRenderer(props: WidgetRendererProps) {
             handleElement?.id,
             partIds,
             pointerOffsetFromHandleCenter,
+            queueValueChanged,
+            scheduleSliderFlush,
             setRuntimeValue,
             valueFromPointer,
         ],

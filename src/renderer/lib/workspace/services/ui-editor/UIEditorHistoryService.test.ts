@@ -304,6 +304,28 @@ describe("UIEditorHistoryService", () => {
             valueType: "string",
         });
     });
+
+    it("restores a changed binding and its blueprint when a switch is undone", () => {
+        const { history, uidoc, graphDocument } = createHarness();
+        const blueprint = widgetValueBlueprint("surface-a", "a", "bp-value-a");
+        graphDocument.blueprintDocument = {
+            ...emptyBlueprintDocument(),
+            blueprints: { "bp-value-a": blueprint },
+            ownerRecords: { "widgetValue:surface-a:a:text": { blueprintId: "bp-value-a" } },
+        };
+        uidoc.document.elements.a.valueBindings = { text: { kind: "blueprintValue", blueprintId: "bp-value-a", valueType: "string" } };
+        const before = history.captureSnapshot("surface-a");
+        uidoc.document.elements.a.valueBindings = { text: { kind: "listItemField", fieldId: "caption" } };
+        delete graphDocument.blueprintDocument.ownerRecords["widgetValue:surface-a:a:text"];
+        delete graphDocument.blueprintDocument.blueprints["bp-value-a"];
+        history.record({ surfaceId: "surface-a", before, after: history.captureSnapshot("surface-a") });
+
+        expect(history.undo("surface-a")).toBe(true);
+        expect(uidoc.document.elements.a.valueBindings?.text).toEqual({ kind: "blueprintValue", blueprintId: "bp-value-a", valueType: "string" });
+        expect(graphDocument.blueprintDocument.blueprints["bp-value-a"]).toBeDefined();
+        expect(history.redo("surface-a")).toBe(true);
+        expect(uidoc.document.elements.a.valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "caption" });
+    });
 });
 
 /**

@@ -206,7 +206,21 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         this.flushOutlineCollapsePersistence();
         this.setInteractionOverride(null);
         this.setSnapGuides(null);
+        this.setEnteredState(null);
         this.selectionUnsubscribe?.();
+        this.selectionUnsubscribe = undefined;
+        this.selection = { type: null, data: null };
+        this.tool = { kind: "select" };
+        this.viewportSurfaceId = null;
+        this.viewportFit = null;
+        this.viewportBySurfaceId.clear();
+        this.viewportFitBySurfaceId.clear();
+        this.appearanceBorderSidesExpandedByElementId.clear();
+        this.outlineCollapsedBranchIds.clear();
+        this.uiStore = null;
+        this.documentService = null;
+        this.settingsService = null;
+        this.panelStateService = null;
         this.events.clear();
     }
 
@@ -655,6 +669,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     }
 
     private flushAppearanceInspectorUiCachePersistence(): void {
+        const pending = this.appearanceInspectorUiCachePersistTimer !== null;
         if (this.appearanceInspectorUiCachePersistTimer) {
             clearTimeout(this.appearanceInspectorUiCachePersistTimer);
             this.appearanceInspectorUiCachePersistTimer = null;
@@ -662,7 +677,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (!this.settingsService) {
             return;
         }
-        if (this.appearanceBorderSidesExpandedByElementId.size > 0) {
+        if (pending || this.appearanceBorderSidesExpandedByElementId.size > 0) {
             this.persistAppearanceInspectorUiCachesNow();
         }
     }

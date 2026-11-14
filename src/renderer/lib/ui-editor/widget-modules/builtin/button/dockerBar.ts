@@ -1,6 +1,7 @@
 import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import { getButtonProps } from "./helpers";
+import { patchButtonAuthoringProps } from "./authoring";
 
 export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
   const { element, documentService } = ctx;
@@ -17,10 +18,10 @@ export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem
       max: 128,
       step: 1,
       onChange: (value: number) => {
-        documentService.updateElementProps(element.id, {
-          ...element.props,
+        const live = documentService.getDocument().elements[element.id] ?? element;
+        documentService.updateElementProps(live.id, patchButtonAuthoringProps(live, {
           paddingX: Math.max(0, value),
-        });
+        }));
       },
     },
   ];

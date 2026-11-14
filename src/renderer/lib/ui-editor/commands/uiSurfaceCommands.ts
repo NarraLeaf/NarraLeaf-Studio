@@ -41,6 +41,12 @@ import {
     type UISurfaceClipboardPayload,
     type UiSurfacePasteOutcome,
 } from "./uiSurfaceClipboard";
+import {
+    beginUiClipboardPublication,
+    finishUiClipboardPublication,
+    isCurrentUiClipboardPublication,
+    isUiClipboardPublicationPending,
+} from "./uiClipboardPublication";
 
 /**
  * Copying a whole interface between projects.
@@ -60,9 +66,8 @@ const CLIPBOARD_KIND = "ui-surfaces" as const;
 /**
  * Put one interface on the machine's clipboard.
  *
- * Answers false for a surface that cannot be copied - the main page, or one whose root element is
- * missing - so the caller can leave the gesture off rather than offer a copy that pastes as
- * nothing.
+ * Answers false when the surface or its root element is missing, so the caller can leave the
+ * gesture off rather than offer a copy that pastes as nothing.
  *
  * The in-window copy is what the gesture returns on, so copying stays synchronous. Reaching the
  * other project windows is one round trip through the main process and is left to run on its own,
@@ -116,8 +121,12 @@ export function copyUiSurface(
  * {@link chooseUiSurfacePastePayload} gives.
  */
 export async function refreshUiSurfaceClipboardFromSystem(): Promise<boolean> {
+    const previous = getUiSurfaceClipboard();
+    if (isUiClipboardPublicationPending(CLIPBOARD_KIND, previous?.copyId)) {
+        return true;
+    }
     const payload = await readSystemSurfacePayload();
-    if (payload && payload.copyId !== getUiSurfaceClipboard()?.copyId) {
+    if (previous === getUiSurfaceClipboard() && payload && payload.copyId !== previous?.copyId) {
         setUiSurfaceClipboard(payload);
     }
     return Boolean(getUiSurfaceClipboard());
@@ -134,7 +143,12 @@ export async function refreshUiSurfaceClipboardFromSystem(): Promise<boolean> {
  */
 export async function pasteUiSurface(documentService: UIDocumentService): Promise<UISurface | null> {
     const environment = readUiClipboardEnvironment(documentService);
-    const payload = chooseUiSurfacePastePayload(getUiSurfaceClipboard(), await readSystemSurfacePayload());
+    const previous = getUiSurfaceClipboard();
+    const fromClipboard = isUiClipboardPublicationPending(CLIPBOARD_KIND, previous?.copyId)
+        ? null
+        : await readSystemSurfacePayload();
+    const current = getUiSurfaceClipboard();
+    const payload = current !== previous ? current : chooseUiSurfacePastePayload(current, fromClipboard);
     if (!payload) {
         return null;
     }
@@ -200,48 +214,50 @@ export async function pasteUiSurface(documentService: UIDocumentService): Promis
 /**
  * Vouch for the copied interface's files and hand the payload to the platform clipboard.
  *
- * Not awaited by the gesture that starts it: the in-window copy is already made, and a copy whose
- * grant has not come back yet still reaches other windows - as a payload with no manifest, which is
- * what a paste already handles when the copying window has closed.
+ * Not awaited by the gesture that starts it: the in-window copy is available immediately, and the
+ * platform clipboard receives the enriched payload when preparation finishes.
  */
 function publishUiSurfaceClipboard(
     environment: UiClipboardEnvironment,
     payload: UISurfaceClipboardPayload,
 ): void {
+    const publication = beginUiClipboardPublication(CLIPBOARD_KIND, payload.copyId);
     void (async () => {
-        const assets = await offerClipboardAssetGrant(
-            environment,
-            collectUiClipboardAssetIds(asUiElementSelection(payload), environment.resolveAssetPins),
-        );
-        const textKeys = await environment.carryTextKeys([
-            ...new Set([
-                ...listUITextKeysNamed(payload.document.elements),
-                ...(payload.document.components ?? []).flatMap(component => listUITextKeysNamed(component.elements)),
-            ]),
-        ]);
-        const translations = await environment.carryTranslations([
-            ...listUITextOwnUnits(payload.document.elements).map(unit => unit.unitId),
-            ...(payload.document.components ?? []).flatMap(component => [
-                ...listUITextOwnUnits(component.elements).map(unit => unit.unitId),
-                ...listUIComponentDefaultUnits(component),
-            ]),
-            ...payload.document.surfaces.flatMap(surface => listUIPageDefaultUnits(surface)),
-        ]);
-        const published: UISurfaceClipboardPayload = {
-            ...payload,
-            ...(assets ? { assets } : {}),
-            ...(textKeys ? { textKeys } : {}),
-            ...(translations ? { translations } : {}),
-        };
-        if (getUiSurfaceClipboard()?.copyId === payload.copyId) {
-            setUiSurfaceClipboard(published);
-        }
         try {
-            await getInterface().clipboard.writeEditorSelection(CLIPBOARD_KIND, JSON.stringify(published));
+            const assets = await offerClipboardAssetGrant(
+                environment,
+                collectUiClipboardAssetIds(asUiElementSelection(payload), environment.resolveAssetPins),
+            );
+            const textKeys = await environment.carryTextKeys([
+                ...new Set([
+                    ...listUITextKeysNamed(payload.document.elements),
+                    ...(payload.document.components ?? []).flatMap(component => listUITextKeysNamed(component.elements)),
+                ]),
+            ]);
+            const translations = await environment.carryTranslations([
+                ...listUITextOwnUnits(payload.document.elements).map(unit => unit.unitId),
+                ...(payload.document.components ?? []).flatMap(component => [
+                    ...listUITextOwnUnits(component.elements).map(unit => unit.unitId),
+                    ...listUIComponentDefaultUnits(component),
+                ]),
+                ...payload.document.surfaces.flatMap(surface => listUIPageDefaultUnits(surface)),
+            ]);
+            const publicationId = await publication.reservation;
+            if (publicationId === null || !isCurrentUiClipboardPublication(publication) || getUiSurfaceClipboard()?.copyId !== payload.copyId) {
+                return;
+            }
+            const published: UISurfaceClipboardPayload = {
+                ...payload,
+                ...(assets ? { assets } : {}),
+                ...(textKeys ? { textKeys } : {}),
+                ...(translations ? { translations } : {}),
+            };
+            setUiSurfaceClipboard(published);
+            await getInterface().clipboard.writeEditorSelection(CLIPBOARD_KIND, JSON.stringify(published), publicationId);
         } catch (error) {
-            // A copy that raised a dialog because the platform clipboard was busy would be a fault
-            // report for a menu row. The window keeps its own copy either way.
             console.warn("[uiSurfaceClipboard] could not publish the copied interface", error);
+        } finally {
+            finishUiClipboardPublication(publication);
         }
     })();
 }

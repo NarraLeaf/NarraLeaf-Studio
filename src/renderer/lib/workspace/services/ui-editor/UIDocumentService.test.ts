@@ -1119,6 +1119,25 @@ describe("UIDocumentService surface creation", () => {
             propPath: "label",
         });
     });
+
+    it("repoints copied page blueprint function calls to the copied blueprint", () => {
+        const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Page" });
+        const id = createGraphBlueprint("page-bp", "Page logic", { kind: "surfaceMain", surfaceId: page.id });
+        blueprintDocument.blueprints[id].graphs.events.main = {
+            id: "main",
+            graph: { nodes: {
+                call: { id: "call", type: "blueprint.fn.call", params: { fnRef: "fn:page-bp:head" } },
+                external: { id: "external", type: "blueprint.fn.call", params: { fnRef: "fn:global:head" } },
+            }, edges: [] },
+        };
+
+        const duplicate = service.duplicateSurface(page.id)!;
+        const copyId = blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: duplicate.id })].blueprintId;
+        const nodes = blueprintDocument.blueprints[copyId].graphs.events.main.graph.nodes;
+        expect(nodes.call.params.fnRef).toBe(`fn:${copyId}:head`);
+        expect(nodes.external.params.fnRef).toBe("fn:global:head");
+    });
 });
 
 describe("UIDocumentService component library", () => {
@@ -1388,6 +1407,30 @@ describe("UIDocumentService component library", () => {
                 && (b as { owner?: { componentId?: string } }).owner?.componentId === component.id,
         );
         expect(clones).toHaveLength(0);
+    });
+
+    it("carries a script layer when extracting a component", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const surface = service.createSurface({ kind: "appSurface", host: "app", name: "Page" });
+        const document = service.getDocument();
+        const rootId = surface.rootElementId;
+        const button: UIElement = {
+            id: "button-script", type: "nl.button", name: "Button", parentId: rootId,
+            childrenIds: [], layout: { x: 0, y: 0, width: 100, height: 40 },
+        };
+        document.elements[rootId].childrenIds.push(button.id);
+        document.elements[button.id] = button;
+        blueprintDocument.blueprints["script-bp"] = {
+            id: "script-bp", name: "Logic", owner: { kind: "widgetMain", surfaceId: surface.id, elementId: button.id },
+            graphs: { events: { script: { id: "script", script: { scriptRef: "scripts/button.ts" } } }, functions: {} },
+        };
+        blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: surface.id, elementId: button.id })] = { blueprintId: "script-bp" };
+
+        const component = service.createComponentFromElements(surface.id, [button.id], "Card")!;
+        const ownerKey = encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: component.rootElementId });
+        const copiedId = blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
+        expect(copiedId).toBeTruthy();
+        expect(blueprintDocument.blueprints[copiedId].graphs.events.script.script.scriptRef).toBe("scripts/button.ts");
     });
 
     it("wraps multi-selection components in a relative container root", () => {
@@ -2314,6 +2357,18 @@ describe("UIDocumentService entry page", () => {
 });
 
 describe("UIDocumentService clearing a Blueprint Value binding", () => {
+    it("switches from a Blueprint Value to a list field in one history step", () => {
+        const { service, historyCalls } = createHarness({ withLocalBlueprint: true, withHistory: true, withEditorTabs: true });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Title" });
+        service.ensureElementBlueprintValueBinding(page.rootElementId, "text", { valueType: "string" });
+        historyCalls.length = 0;
+
+        service.setElementListItemFieldBinding(page.rootElementId, "text", "caption");
+
+        expect(service.getDocument().elements[page.rootElementId].valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "caption" });
+        expect(historyCalls).toEqual([{ surfaceId: page.id, mergeKey: undefined }]);
+    });
+
     it("removes the binding's blueprint as one undo step and closes the tabs showing it, and only those", () => {
         const { service, blueprintDocument, historyCalls, editorTabs, closedTabIds } = createHarness({
             withLocalBlueprint: true,

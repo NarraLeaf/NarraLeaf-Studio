@@ -8,7 +8,7 @@
  *
  * Comments in English per project convention.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type {
     FieldDefinition,
@@ -102,6 +102,25 @@ function describePages(options: SelectOption[]): string[] {
 const LEADS_BACK = translate("widgets.frame.leadsBackHere");
 
 describe("the Page widget's page picker", () => {
+    it("preserves newer frame properties when the picker commits from an older inspector view", () => {
+        const document = project();
+        const live = document.elements.show!;
+        live.props = { targetSurfaceId: null, params: { message: "New words" }, navigationMode: "static" };
+        const stale = { ...live, props: { ...live.props, params: { message: "Old words" } } };
+        const documentService = {
+            ...service(document),
+            updateElementProps: (_id: string, patch: Record<string, unknown>) => {
+                live.props = { ...live.props, ...patch };
+            },
+            updateElementLayout: vi.fn(),
+        } as unknown as UIDocumentService;
+        const data: UIInspectorData = { element: stale, elements: [stale], documentService, surfaceId: "gallery" };
+
+        pageField(createFrameInspector({ element: stale, documentService })).setValue!(data, "credits");
+
+        expect(live.props).toMatchObject({ targetSurfaceId: "credits", params: { message: "New words" } });
+    });
+
     it("marks the page a component is placed on when the widget is inside that component", () => {
         const document = project();
         const adapter = createComponentDocumentServiceAdapter(service(document), "card");

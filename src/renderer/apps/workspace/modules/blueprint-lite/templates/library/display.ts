@@ -141,7 +141,7 @@ export const DISPLAY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         },
         // Reached endings are kept across playthroughs, so the count is the player's, not one game's.
         // The story is the default one; a project with several picks the one this page is about, on
-        // both Get Endings - one for each number, since a node's output feeds one input.
+        // both Get Endings - one for each number, since this pure output feeds one input.
         graph: facts => lines(
             "    init: blueprint.event.head.init @0,0",
             "    show: blueprint.text.setText @1300,0",
@@ -211,7 +211,7 @@ export const DISPLAY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         },
         // Chosen once as the picture starts, as a title screen that greets the player by the hour
         // does; nothing changes under a player who sits on the page across six o'clock. The hour is
-        // read twice, once for each end of the day, since a node's output feeds one input.
+        // read twice, once for each end of the day, since the time-parts output feeds one input.
         graph: () => lines(
             "    init: blueprint.event.head.init @0,0",
             "    now: blueprint.time.now @0,160",

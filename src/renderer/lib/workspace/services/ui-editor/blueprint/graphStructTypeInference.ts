@@ -1,8 +1,7 @@
 /**
  * The types a graph's pins carry that their declarations leave open, worked out in the editor.
  *
- * Four kinds of node take their types from somewhere else, and this is the one place any of them is
- * answered:
+ * Nodes that take their types from elsewhere are resolved here:
  *
  *  - **The array nodes** (`elementTypeFlow` on their definitions) hand back the items they were
  *    given, so their outputs are typed by what is wired into them. `Get Endings` answers endings,
@@ -17,6 +16,7 @@
  *    project's variable table for a saved one, the declaration row in the scene for a scene one.
  *  - **The list nodes and item heads** (`listRowTypes`), whose rows are the rows of the list they act
  *    on: Item Click on an ending list hands out an ending. Rows wired in are compared with that shape.
+ *  - **Page parameter readers and writers**, typed by the declarations on the selected page.
  *
  * The answers are stamped onto a copy of each node's params under
  * `BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES`, so every consumer that already reads pins through the

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_ELEMENT_REF, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK } from "@shared/types/blueprint/graph";
 import { cloneStoryActionBlueprintForPaste, cloneWidgetMainBlueprintForPaste } from "./cloneBlueprintForPaste";
+import { createExplicitBlueprintVariableRef } from "./blueprintVariableRefs";
 
 /**
  * Whether a copied widget's logic drives the copy or the original.
@@ -66,6 +67,26 @@ describe("cloning a widget's blueprint for a paste", () => {
 
     it("still moves the blueprint onto the pasted widget", () => {
         expect(clone().owner).toEqual({ kind: "widgetMain", surfaceId: "surface-new", elementId: "el-new" });
+    });
+
+    it("remaps its own scoped variables and leaves another blueprint's references alone", () => {
+        const source = blueprintNamingElement("el-old");
+        const nodes = source.graphs.events["ev-1"].graph!.nodes!;
+        nodes.local = { id: "local", type: "blueprint.local.get", params: { variableId: createExplicitBlueprintVariableRef("bp-old", "score") } };
+        nodes.other = { id: "other", type: "blueprint.fn.call", params: { fnRef: "fn:bp-other:head" } };
+        const cloned = cloneWidgetMainBlueprintForPaste({
+            source,
+            newBlueprintId: "bp-new",
+            surfaceId: "surface-new",
+            newOwnerElementId: "el-new",
+            elementIdMap: { "el-old": "el-new" },
+            oldBlueprintId: "bp-old",
+            newBlueprintIdForSourceRemap: "bp-new",
+        });
+
+        expect(paramsOf(cloned, "local").variableId).toBe(createExplicitBlueprintVariableRef("bp-new", "score"));
+        expect(paramsOf(cloned, "other").fnRef).toBe("fn:bp-other:head");
+        expect(nodes.local.params?.variableId).toBe(createExplicitBlueprintVariableRef("bp-old", "score"));
     });
 });
 

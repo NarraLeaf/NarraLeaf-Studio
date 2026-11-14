@@ -4,7 +4,10 @@ import {
     BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
+import { parseBlueprintVariableRef } from "./blueprintVariableRefs";
 import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
 import { readNodeEditorLayout, writeNodeEditorLayout } from "./graphEditing";
 
@@ -345,6 +348,7 @@ export function pasteBlueprintGraphClipboardPayload(input: {
     const offset = resolvePasteOffset(input.ir, payload, input.offset);
     const usedNodeIds = new Set(Object.keys(next.nodes));
     const idMap = new Map<string, string>();
+    const variableIdMap = new Map<string, string>();
     const newNodeIds: string[] = [];
 
     for (const oldNodeId of payload.nodeIds) {
@@ -356,6 +360,10 @@ export function pasteBlueprintGraphClipboardPayload(input: {
         const nextNode = cloneGraphClipboardValue(node);
         nextNode.id = newNodeId;
         if (nextNode.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR) {
+            const oldVariableId = typeof node.params?.variableId === "string" && node.params.variableId.trim()
+                ? node.params.variableId.trim()
+                : oldNodeId;
+            variableIdMap.set(oldVariableId, newNodeId);
             nextNode.params = { ...(nextNode.params ?? {}), variableId: newNodeId };
         }
         const pos = readNodeEditorLayout(nextNode);
@@ -371,6 +379,13 @@ export function pasteBlueprintGraphClipboardPayload(input: {
 
     for (const newNodeId of newNodeIds) {
         const node = next.nodes[newNodeId];
+        if (node?.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || node?.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+            const ref = parseBlueprintVariableRef(node.params?.variableId, "");
+            const copiedVariableId = ref && !ref.explicit ? variableIdMap.get(ref.variableId) : undefined;
+            if (copiedVariableId) {
+                node.params = { ...(node.params ?? {}), variableId: copiedVariableId };
+            }
+        }
         if (node?.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
             continue;
         }

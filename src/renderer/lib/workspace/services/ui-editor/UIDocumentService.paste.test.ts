@@ -10,6 +10,7 @@ import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import { widgetMainOwnerKey } from "./blueprint/ownerKeys";
 import { setPrivateOwnerBlueprint } from "./blueprint/ownerRecords";
+import { createBlueprintFnRef } from "./blueprint/fnCatalog";
 
 /**
  * A document service wired the way the workspace wires it, as far as a paste reaches: the blueprint
@@ -89,6 +90,47 @@ function payloadOf(surfaceId: string, copied: UIElement, blueprint?: ReturnType<
 }
 
 describe("pasting an element that carries its own blueprint", () => {
+    it("points a pasted slider's structural parts at the pasted children", () => {
+        const { service, surfaceId, rootId } = createHarness();
+        const slider = {
+            ...element("slider", "nl.slider", rootId),
+            childrenIds: ["track", "handle"],
+            props: { trackElementId: "track", handleElementId: "handle" },
+        };
+        const track = element("track", "nl.container", slider.id, { sliderSlot: "track" });
+        const handle = element("handle", "nl.container", slider.id, { sliderSlot: "handle" });
+        const payload: UIEditorClipboardPayload = {
+            ...payloadOf(surfaceId, slider),
+            elements: { slider, track, handle },
+        };
+
+        const result = service.pasteClipboardPayload(surfaceId, rootId, null, payload);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const pasted = service.getDocument().elements[result.newRootIds[0]];
+        expect(pasted.props?.trackElementId).toBe(pasted.childrenIds[0]);
+        expect(pasted.props?.handleElementId).toBe(pasted.childrenIds[1]);
+        expect(slider.props).toEqual({ trackElementId: "track", handleElementId: "handle" });
+    });
+
+    it("points a pasted list's scrollbar at the pasted track and thumb", () => {
+        const { service, surfaceId, rootId } = createHarness();
+        const list = {
+            ...element("list", "nl.list", rootId),
+            childrenIds: ["track", "thumb"],
+            props: { scrollbar: { trackElementId: "track", thumbElementId: "thumb" } },
+        };
+        const track = element("track", "nl.container", list.id, { listSlot: "scrollbarTrack" });
+        const thumb = element("thumb", "nl.container", list.id, { listSlot: "scrollbarThumb" });
+        const payload: UIEditorClipboardPayload = { ...payloadOf(surfaceId, list), elements: { list, track, thumb } };
+
+        const result = service.pasteClipboardPayload(surfaceId, rootId, null, payload);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const pasted = service.getDocument().elements[result.newRootIds[0]];
+        expect(pasted.props?.scrollbar).toMatchObject({ trackElementId: pasted.childrenIds[0], thumbElementId: pasted.childrenIds[1] });
+    });
+
     it("leaves the blueprint document valid, with the copy's blueprint in the new element's slot", () => {
         const { service, blueprintDocument, surfaceId, rootId } = createHarness();
         const source = element("source", "nl.text", rootId);
@@ -107,6 +149,58 @@ describe("pasting an element that carries its own blueprint", () => {
         expect(blueprintDocument.blueprints[slot.blueprintId].name).toBe("Source logic");
         // The empty blueprint the sweep gave the element while it was being written is gone.
         expect(blueprintDocument.blueprints[derivedBlueprintId(widgetMainOwnerKey(surfaceId, pastedId))]).toBeUndefined();
+    });
+
+    it("points the copied widget's own function call at the copied blueprint", () => {
+        const { service, blueprintDocument, surfaceId, rootId } = createHarness();
+        const source = element("source", "nl.text", rootId);
+        const sourceBlueprint = createMainBlueprint({
+            id: "source-bp",
+            name: "Source logic",
+            owner: { kind: "widgetMain", surfaceId, elementId: "source" },
+        });
+        sourceBlueprint.graphs.events = {
+            main: { id: "main", graph: { nodes: {
+                head: { id: "head", type: "blueprint.fn.head" },
+                call: { id: "call", type: "blueprint.fn.call", params: { fnRef: createBlueprintFnRef("source-bp", "head") } },
+            }, edges: [] } },
+        };
+
+        const result = service.pasteClipboardPayload(surfaceId, rootId, null, payloadOf(surfaceId, source, sourceBlueprint));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const id = blueprintDocument.ownerRecords[widgetMainOwnerKey(surfaceId, result.newRootIds[0])].blueprintId;
+        expect(blueprintDocument.blueprints[id].graphs.events.main.graph?.nodes?.call.params?.fnRef)
+            .toBe(createBlueprintFnRef(id, "head"));
+    });
+
+    it("points a copied widget at the function of another widget copied with it", () => {
+        const { service, blueprintDocument, surfaceId, rootId } = createHarness();
+        const first = element("first", "nl.text", rootId);
+        const second = element("second", "nl.text", rootId);
+        const firstBlueprint = createMainBlueprint({ id: "first-bp", name: "First", owner: { kind: "widgetMain", surfaceId, elementId: "first" } });
+        const secondBlueprint = createMainBlueprint({ id: "second-bp", name: "Second", owner: { kind: "widgetMain", surfaceId, elementId: "second" } });
+        firstBlueprint.graphs.events = {
+            main: { id: "main", graph: { nodes: {
+                call: { id: "call", type: "blueprint.fn.call", params: { fnRef: createBlueprintFnRef("second-bp", "head") } },
+            }, edges: [] } },
+        };
+        const payload: UIEditorClipboardPayload = {
+            v: 1,
+            sourceSurfaceId: surfaceId,
+            topLevelElementIds: ["first", "second"],
+            elements: { first, second },
+            widgetMainBlueprints: { "first-bp": firstBlueprint, "second-bp": secondBlueprint },
+            widgetValueBlueprints: {},
+        };
+
+        const result = service.pasteClipboardPayload(surfaceId, rootId, null, payload);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const firstId = blueprintDocument.ownerRecords[widgetMainOwnerKey(surfaceId, result.newRootIds[0])].blueprintId;
+        const secondId = blueprintDocument.ownerRecords[widgetMainOwnerKey(surfaceId, result.newRootIds[1])].blueprintId;
+        expect(blueprintDocument.blueprints[firstId].graphs.events.main.graph?.nodes?.call.params?.fnRef)
+            .toBe(createBlueprintFnRef(secondId, "head"));
     });
 });
 

@@ -99,10 +99,11 @@ function variableFromDeclareNode(node: BlueprintGraphNode): BlueprintVariable | 
     const id = readParamString(params, "variableId") ?? node.id;
     const name = readParamString(params, "name") ?? `var_${id.slice(0, 8)}`;
     const valueType = readParamString(params, "valueType");
+    const authoredDefault = normalizeLiteralValue(params.defaultValue);
     const defaultValue =
         valueType === "any"
             ? null
-            : normalizeLiteralValue(params.defaultValue) ?? resolveBlueprintVariableDefaultValue(valueType);
+            : authoredDefault === undefined ? resolveBlueprintVariableDefaultValue(valueType) : authoredDefault;
     return {
         id,
         name,
