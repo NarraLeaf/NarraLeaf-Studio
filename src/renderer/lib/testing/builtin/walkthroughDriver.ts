@@ -154,7 +154,7 @@ export async function driveWalkthrough(input: WalkthroughDriverInput): Promise<W
     const dispose = input.session.onEvent(event => {
         // Once there is an answer nothing changes it, and the run must stop acting on the game -
         // picking an option after the verdict would leave a window doing things nobody asked for.
-        if (settled) {
+        if (settled || input.signal.aborted) {
             return;
         }
         lastEventAt = now();
@@ -201,7 +201,9 @@ export async function driveWalkthrough(input: WalkthroughDriverInput): Promise<W
                 return;
             }
             input.onImprovised(fallback);
-            void input.session.sendCommand({ kind: "choose", index: fallback.index });
+            if (!input.signal.aborted) {
+                void input.session.sendCommand({ kind: "choose", index: fallback.index });
+            }
             return;
         }
         const offered = event.options.find(option => option.index === decision.optionIndex);
@@ -212,7 +214,9 @@ export async function driveWalkthrough(input: WalkthroughDriverInput): Promise<W
         pending.shift();
         taken += 1;
         input.onDecision(taken, decision);
-        void input.session.sendCommand({ kind: "choose", index: decision.optionIndex });
+        if (!input.signal.aborted) {
+            void input.session.sendCommand({ kind: "choose", index: decision.optionIndex });
+        }
     });
 
     try {
