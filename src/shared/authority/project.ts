@@ -179,6 +179,58 @@ export function isProjectDocumentPath(path: string): boolean {
     return specFor(path) !== undefined;
 }
 
+/**
+ * The parts of a project a team grants editing of separately. A project's owners may let an editor
+ * change some of them and not others; the server refuses an edit outside an editor's areas, and a
+ * Studio reads the same answer to say so before it sends one.
+ */
+export const PROJECT_AREAS = ["story", "characters", "assets", "ui", "localization", "config"] as const;
+export type ProjectArea = (typeof PROJECT_AREAS)[number];
+
+const AREA_BY_KIND: Readonly<Record<string, ProjectArea>> = {
+    "story": "story",
+    "story-index": "story",
+    "variables": "story",
+    "characters": "characters",
+    "assets-metadata": "assets",
+    "assets-groups": "assets",
+    "asset-sets": "assets",
+    "audio-tracks": "assets",
+    "ui-document": "ui",
+    "ui-graphs": "ui",
+    "localization": "localization",
+    "localization-keys": "localization",
+    "voice": "localization",
+    "dictionary": "localization",
+};
+
+/**
+ * Which area a project-relative path belongs to. Documents go by their spec; other files by where
+ * they sit. Whatever is left - the project file, brand, variants, DLC, save schema, icons and any
+ * file a later Studio adds - is the game's configuration, so a new kind of file is guarded as
+ * closely as the most guarded area rather than left open.
+ */
+export function projectAreaOf(path: string): ProjectArea {
+    const kind = specFor(path)?.kind;
+    const byKind = kind === undefined ? undefined : AREA_BY_KIND[kind];
+    if (byKind !== undefined) {
+        return byKind;
+    }
+    if (path.startsWith("editor/story/") || path === "editor/transform-presets.json") {
+        return "story";
+    }
+    if (path.startsWith("assets/") || path.startsWith("editor/assets/")) {
+        return "assets";
+    }
+    if (path.startsWith("editor/ui/")) {
+        return "ui";
+    }
+    if (path.startsWith("editor/localization/") || path.startsWith("editor/voice/")) {
+        return "localization";
+    }
+    return "config";
+}
+
 /** Where an asset's bytes live, by digest. Its files are put by asset operations, or offline by `put-file`. */
 export const ASSET_CONTENT_ROOT = "assets/content";
 
