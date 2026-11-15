@@ -14,9 +14,10 @@ const history = vi.hoisted(() => ({
 vi.mock("@/lib/i18n", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/lib/team/useTeam", () => ({
     useTeamTopics: () => ({ value: history.page, refresh: history.refresh }),
+    useTeamConnection: () => ({ remoteOrigin: "team" }),
 }));
 vi.mock("@/lib/team/teamCall", () => ({ listProjectHistory: history.list }));
-vi.mock("../../context", () => ({ useWorkspace: () => ({ context: null }) }));
+vi.mock("../../context", () => ({ useWorkspace: () => ({ context: null }), useOptionalWorkspace: () => null }));
 vi.mock("@/lib/components/elements/Modal", () => ({ Modal: () => null }));
 vi.mock("@/lib/vcs/DocumentChangeList", () => ({ DocumentChangeList: () => null }));
 

@@ -4,12 +4,18 @@ import { Button } from "@/lib/components/elements/Button";
 import { Input } from "@/lib/components/elements/Input";
 import { Modal } from "@/lib/components/elements/Modal";
 import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
+import { documentNameOf, documentNameSourcesFor, numberRepeatedNames, renderDocumentName, type DocumentName, type DocumentNameContext } from "@/lib/vcs/documentName";
+import { containsGeneratedIdentifier, elideGeneratedIdentifiers, readableStoragePath, revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
+import { useDocumentNames } from "@/lib/vcs/nameSources";
 import { listProjectHistory } from "@/lib/team/teamCall";
-import { useTeamTopics } from "@/lib/team/useTeam";
-import { Services } from "@/lib/workspace/services/services";
+import { useTeamConnection, useTeamTopics } from "@/lib/team/useTeam";
+import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { TeamDocumentsService, TeamVersionComparison } from "@/lib/workspace/services/teamDocs/TeamDocumentsService";
-import type { TeamDocView } from "@/lib/workspace/services/teamDocs/teamDocSync";
+import type { TeamDocConflict, TeamDocView } from "@/lib/workspace/services/teamDocs/teamDocSync";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { Translator } from "@shared/i18n";
+import { liveDocumentPath } from "@shared/live/sharedDocuments";
 import { teamProjectDocTopic } from "@shared/types/team";
 import type { VcsServerRevision } from "@shared/types/vcs";
 import { useWorkspace } from "../../context";
@@ -127,6 +133,27 @@ export function TeamHistoryRail({
         target === null ? [] : [teamProjectDocTopic(target.project)],
         read,
     );
+    const connection = useTeamConnection(target?.remoteOrigin ?? null);
+    const conflictPaths = useMemo(
+        () => (view?.conflicts ?? []).map(conflictPath),
+        [view?.conflicts],
+    );
+    const comparisonPaths = useMemo(() => comparison?.rows.map(row => row.path) ?? [], [comparison]);
+    const nameSources = useMemo(() => documentNameSourcesFor([...conflictPaths, ...comparisonPaths]), [conflictPaths, comparisonPaths]);
+    const names = useDocumentNames(target && view && nameSources.size > 0 ? { before: null, after: { at: "working-tree" } } : null, {
+        sources: nameSources,
+        refreshKey: view?.seq,
+    });
+    const conflictNames = useMemo(() => {
+        const storyTitles = new Map(names.storyTitles);
+        for (const conflict of view?.conflicts ?? []) {
+            if (conflict.kind !== "story" || storyTitles.has(conflict.storyId)) continue;
+            const name = conflict.mine?.name ?? (conflict.op.op === "create-story" ? conflict.op.entry.name : undefined);
+            if (name?.trim()) storyTitles.set(conflict.storyId, name);
+        }
+        return visibleDocumentNames(conflictPaths, { ...names, storyTitles }, t);
+    }, [conflictPaths, names, t, view?.conflicts]);
+    const comparisonNames = useMemo(() => visibleDocumentNames(comparisonPaths, names, t), [comparisonPaths, names, t]);
     useEffect(() => {
         // A new first page (a version was saved) starts the older pages again.
         historyGeneration.current += 1;
@@ -177,17 +204,17 @@ export function TeamHistoryRail({
         history.refresh();
     });
 
-    const restore = (revision: VcsServerRevision) => run(async () => {
+    const restore = (revision: VcsServerRevision, label: string) => run(async () => {
         const ui = context?.services.get<UIService>(Services.UI);
         const confirmed = ui === undefined
             ? false
-            : await ui.showConfirm(t("workspace.shell.team.docs.restoreConfirm"), versionName(revision) ?? revision.id.slice(0, 12));
+            : await ui.showConfirm(t("workspace.shell.team.docs.restoreConfirm"), label);
         if (!confirmed) return;
         await service.restoreVersion(revision.id);
         history.refresh();
     });
 
-    const preview = (revision: VcsServerRevision) => run(() => service.previewVersion(revision.id, versionName(revision) ?? undefined));
+    const preview = (revision: VcsServerRevision, label: string) => run(() => service.previewVersion(revision.id, label));
     const compare = (revision: VcsServerRevision) => run(async () => {
         const rows = await service.compareWithCurrent(revision.id);
         if (rows !== null) setComparison({ revision, rows });
@@ -211,6 +238,13 @@ export function TeamHistoryRail({
             ? t("workspace.shell.team.docs.offline")
             : t("workspace.shell.team.docs.syncing");
     const online = view.state === "online";
+    const account = connection.remoteOrigin === target.remoteOrigin && connection.account
+        ? { userId: connection.account.id, identity: connection.account.displayName.trim() || connection.account.username }
+        : null;
+    const summaries = view.conflicts.map((conflict, index) => conflictSummary(conflict, conflictNames.get(conflictPaths[index]!)!, context, t));
+    const summaryCounts = new Map<string, number>();
+    for (const summary of summaries) summaryCounts.set(summary, (summaryCounts.get(summary) ?? 0) + 1);
+    const summaryOrdinals = new Map<string, number>();
 
     if (collapsed) {
         return (
@@ -264,18 +298,22 @@ export function TeamHistoryRail({
                     <div className="text-xs font-medium text-fg">{t("workspace.shell.team.docs.conflictsTitle")}</div>
                     <div className="text-xs text-fg-muted mb-1">{t("workspace.shell.team.docs.conflictsHint")}</div>
                     <ul className="max-h-48 overflow-auto text-xs space-y-1">
-                        {view.conflicts.map((conflict, index) => (
-                            <li key={index} className="flex items-start gap-2">
-                                <span className="flex-1 font-mono break-all">
-                                    {conflict.kind === "file"
-                                        ? t("workspace.shell.team.docs.conflictFile", { path: conflict.path })
-                                        : describeConflict(conflict.op)}
-                                </span>
-                                <Button size="sm" variant="ghost" disabled={busy || !online} onClick={() => void run(() => service.overrideConflict(index))}>
-                                    {t("workspace.shell.team.docs.override")}
-                                </Button>
-                            </li>
-                        ))}
+                        {view.conflicts.map((_, index) => {
+                            const summary = summaries[index]!;
+                            const ordinal = (summaryOrdinals.get(summary) ?? 0) + 1;
+                            summaryOrdinals.set(summary, ordinal);
+                            const label = (summaryCounts.get(summary) ?? 0) > 1
+                                ? t("documentDiff.name.numbered", { name: summary, index: String(ordinal) })
+                                : summary;
+                            return (
+                                <li key={index} className="flex items-start gap-2">
+                                    <span id={`team-conflict-${index}`} className="flex-1 whitespace-pre-wrap break-words">{label}</span>
+                                    <Button size="sm" variant="ghost" aria-describedby={`team-conflict-${index}`} disabled={busy || !online} onClick={() => void run(() => service.overrideConflict(index))}>
+                                        {t("workspace.shell.team.docs.override")}
+                                    </Button>
+                                </li>
+                            );
+                        })}
                     </ul>
                     <Button size="sm" variant="ghost" onClick={() => service.dismissConflicts()}>
                         {t("workspace.shell.team.docs.dismiss")}
@@ -313,25 +351,30 @@ export function TeamHistoryRail({
                 {history.value?.revisions !== undefined && revisions.length === 0 && (
                     <li className="px-3 py-4 text-xs text-fg-muted">{t("workspace.shell.team.docs.noVersions")}</li>
                 )}
-                {revisions.map(revision => {
+                {revisions.map((revision, index) => {
                     const name = versionName(revision);
+                    const label = name === null
+                        ? t("documentDiff.name.numbered", { name: t("workspace.shell.team.docs.automatic"), index: String(index + 1) })
+                        : elideGeneratedIdentifiers(name);
+                    const rawAuthor = revisionAuthorLabel(revision.by, account);
+                    const author = rawAuthor !== null && !containsGeneratedIdentifier(rawAuthor) ? rawAuthor : null;
                     const onScreen = previewing === revision.id;
                     return (
                         <li key={revision.id} className={onScreen ? "px-3 py-2 border-b border-edge bg-primary/10" : "px-3 py-2 border-b border-edge"} data-team-version={revision.id}>
-                            <div className="text-sm text-fg truncate">{name ?? t("workspace.shell.team.docs.automatic")}</div>
+                            <div className="text-sm text-fg truncate">{label}</div>
                             <div className="text-xs text-fg-muted flex flex-wrap items-center gap-x-2">
                                 <span>{revision.at === undefined ? "" : new Date(revision.at).toLocaleString()}</span>
-                                {revision.by !== undefined && <span>{t("workspace.shell.team.docs.savedBy", { name: revision.by })}</span>}
+                                {author !== null && <span>{t("workspace.shell.team.docs.savedBy", { name: author })}</span>}
                             </div>
                             <div className="mt-1 flex flex-wrap gap-1">
-                                <Button size="sm" variant="ghost" disabled={busy || !online || onScreen} onClick={() => void preview(revision)}>
+                                <Button size="sm" variant="ghost" disabled={busy || !online || onScreen} onClick={() => void preview(revision, label)}>
                                     {t("workspace.shell.team.docs.preview")}
                                 </Button>
                                 <Button size="sm" variant="ghost" disabled={busy || !online} onClick={() => void compare(revision)}>
                                     {t("workspace.shell.team.docs.compare")}
                                 </Button>
                                 {view.mayEdit && (
-                                    <Button size="sm" variant="ghost" disabled={busy || !online || previewing !== null} onClick={() => void restore(revision)}>
+                                    <Button size="sm" variant="ghost" disabled={busy || !online || previewing !== null} onClick={() => void restore(revision, label)}>
                                         {t("workspace.shell.team.docs.restore")}
                                     </Button>
                                 )}
@@ -359,7 +402,7 @@ export function TeamHistoryRail({
                 )}
                 {comparison?.rows.map(row => (
                     <section key={row.path} className="mb-4" data-team-compare={row.path}>
-                        <div className="text-xs font-mono text-fg-muted mb-1">{row.path}</div>
+                        <div className="text-xs text-fg-muted mb-1">{comparisonNames.get(row.path)}</div>
                         {row.kind === "added" && <div className="text-sm">{t("workspace.shell.team.docs.documentAdded")}</div>}
                         {row.kind === "removed" && <div className="text-sm">{t("workspace.shell.team.docs.documentRemoved")}</div>}
                         {row.kind === "changed" && row.diff !== undefined && <DocumentChangeList diff={row.diff} limit={60} />}
@@ -370,12 +413,119 @@ export function TeamHistoryRail({
     );
 }
 
-/** A short line naming what an offline edit was and what it said. */
-function describeConflict(op: { op: string } & Record<string, unknown>): string {
-    const payload = op["payload"] as { text?: { value?: unknown } } | undefined;
-    const text = typeof payload?.text?.value === "string" ? `: ${payload.text.value}` : "";
-    const row = typeof op["blockId"] === "string" ? ` ${op["blockId"].slice(0, 8)}` : "";
-    return `${op.op}${row}${text}`;
+function conflictPath(conflict: TeamDocConflict): string {
+    return conflict.kind === "file" ? conflict.path : liveDocumentPath({ doc: "story", storyId: conflict.storyId });
+}
+
+function visibleDocumentNames(paths: readonly string[], names: DocumentNameContext, t: Translator["t"]): Map<string, string> {
+    const unique = [...new Set(paths)];
+    const resolved = unique.map(path => {
+        const name = documentNameOf(path, names);
+        return name.source === "file" && readableStoragePath(name.path) === null
+            ? { source: "unnamed", key: "workspace.shell.team.docs.conflictItem" } as DocumentName
+            : name;
+    });
+    const numbered = numberRepeatedNames(resolved);
+    return new Map(unique.map((path, index) => [path, elideGeneratedIdentifiers(renderDocumentName(numbered[index]!, t))]));
+}
+
+/** The text a story row carries, when the operation has a text segment. */
+function payloadText(payload: unknown): string | null {
+    if (typeof payload !== "object" || payload === null) return null;
+    const fields = payload as Record<string, unknown>;
+    const segment = fields["text"] ?? fields["prompt"];
+    if (typeof segment !== "object" || segment === null) return null;
+    const value = (segment as { value?: unknown }).value;
+    return typeof value === "string" && value.trim() ? value : null;
+}
+
+function conflictSummary(conflict: TeamDocConflict, document: string, context: WorkspaceContext | null, t: Translator["t"]): string {
+    if (conflict.kind === "file") {
+        return `${document} · ${t(conflict.mine === null ? "workspace.shell.team.docs.conflictRemoved" : "workspace.shell.team.docs.conflictChanged")}`;
+    }
+    const op = conflict.op;
+    let sceneId: string | null = "sceneId" in op ? op.sceneId : null;
+    if (op.op === "create-scene") sceneId = op.scene.id;
+    if (op.op === "update-blocks" && op.edits.length > 0 && op.edits.every(edit => edit.sceneId === op.edits[0]!.sceneId)) {
+        sceneId = op.edits[0]!.sceneId;
+    }
+    let sceneName: string | undefined;
+    if (sceneId !== null) {
+        try {
+            sceneName = context?.services.get<StoryService>(Services.Story).getLoadedStoryDocument(conflict.storyId)?.scenes[sceneId]?.name;
+        } catch {
+            // The saved offline story can still name a scene that is no longer open.
+        }
+        sceneName = sceneName?.trim() ? sceneName : conflict.mine?.scenes[sceneId]?.name;
+        if (!sceneName?.trim() && op.op === "create-scene") sceneName = op.scene.name;
+        if (!sceneName?.trim()) sceneName = t("storyComments.unknownScene");
+    }
+
+    const oldRowText = (scene: string, block: string) => payloadText(conflict.mine?.scenes[scene]?.blocks[block]?.payload);
+    let action: string;
+    let details: (string | null)[] = [];
+    switch (op.op) {
+        case "insert-block":
+            action = t("documentDiff.story.blockAdded");
+            details = [payloadText(op.block.payload)];
+            break;
+        case "update-block":
+            action = t("documentDiff.story.blockChanged");
+            details = [payloadText(op.payload)];
+            break;
+        case "delete-block":
+            action = t("documentDiff.story.blockRemoved");
+            details = [oldRowText(op.sceneId, op.blockId)];
+            break;
+        case "move-block":
+            action = t("documentDiff.story.blockMoved");
+            details = [oldRowText(op.sceneId, op.blockId)];
+            break;
+        case "set-block-disabled":
+            action = t(op.disabled ? "documentDiff.story.blockDisabled" : "documentDiff.story.blockEnabled");
+            details = [oldRowText(op.sceneId, op.blockId)];
+            break;
+        case "insert-blocks":
+            action = `${t("workspace.shell.team.docs.conflictRowsAdded")} (${op.inserts.length})`;
+            details = op.inserts.map(entry => payloadText(entry.block.payload));
+            break;
+        case "update-blocks":
+            action = `${t("workspace.shell.team.docs.conflictRowsChanged")} (${op.edits.length})`;
+            details = op.edits.map(entry => payloadText(entry.payload));
+            break;
+        case "delete-blocks":
+            action = `${t("workspace.shell.team.docs.conflictRowsRemoved")} (${op.blockIds.length})`;
+            details = op.blockIds.map(id => oldRowText(op.sceneId, id));
+            break;
+        case "move-blocks": {
+            const ids = op.moves.flatMap(move => move.blockIds);
+            action = `${t("workspace.shell.team.docs.conflictRowsMoved")} (${ids.length})`;
+            details = ids.map(id => oldRowText(op.sceneId, id));
+            break;
+        }
+        case "rename-scene": action = t("workspace.shell.team.docs.conflictSceneRenamed"); details = [op.name]; break;
+        case "set-entry-scene": action = t("workspace.shell.team.docs.conflictStartingScene"); break;
+        case "rename-story": action = t("documentDiff.story.renamed"); details = [op.name]; break;
+        case "reorder-chapters": action = t("documentDiff.story.chapterOrder"); break;
+        case "create-scene": action = t("workspace.shell.team.docs.conflictSceneAdded"); break;
+        case "delete-scene": action = t("workspace.shell.team.docs.conflictSceneRemoved"); break;
+        case "update-scene": action = t("documentDiff.story.sceneChanged"); break;
+        case "move-scene": action = t("workspace.shell.team.docs.conflictSceneMoved"); break;
+        case "set-scene-snapshots": action = t("workspace.shell.team.docs.conflictSnapshots"); break;
+        case "set-scene-layers": action = t("workspace.shell.team.docs.conflictLayers"); break;
+        case "create-chapter": action = t("documentDiff.story.chapterAdded"); details = [op.chapter.name]; break;
+        case "rename-chapter": action = t("documentDiff.story.chapterRenamed"); details = [op.name]; break;
+        case "delete-chapter":
+            action = t("documentDiff.story.chapterRemoved");
+            details = [conflict.mine?.chapters?.find(chapter => chapter.id === op.chapterId)?.name ?? null];
+            break;
+        case "create-story": action = t("documentDiff.storyIndex.added"); break;
+        case "delete-story": action = t("documentDiff.storyIndex.removed"); break;
+        default: action = t("documentDiff.storyIndex.changed");
+    }
+    const location = [document, sceneName, action].filter(Boolean).join(" · ");
+    const text = details.filter((value): value is string => Boolean(value?.trim())).join("\n");
+    return elideGeneratedIdentifiers(text ? `${location}: ${text}` : location);
 }
 
 /**
