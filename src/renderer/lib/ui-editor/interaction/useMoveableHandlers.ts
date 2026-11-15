@@ -860,7 +860,10 @@ export function useMoveableHandlers({
                 ensureSmartSnapCandidateLines();
                 const { vertical, horizontal } = splitSnapLinesToAxes(snapLinesCacheRef.current);
                 const dir = startData.direction;
-                const resizeDirection: readonly [number, number] = [dir[0] ?? 0, dir[1] ?? 0];
+                const resizeDirection: readonly [number, number] = [
+                    (dir[0] ?? 0) * (hasResizeAxisCrossed(getResizeFlipBaseline(initialLayout, startData, "x"), signedWidth) ? -1 : 1),
+                    (dir[1] ?? 0) * (hasResizeAxisCrossed(getResizeFlipBaseline(initialLayout, startData, "y"), signedHeight) ? -1 : 1),
+                ];
                 // Snap layer interprets layout via min(0, width) for top-left, so it expects
                 // unnormalized layout semantics. Our (translateX/Y) already encodes the visual
                 // top-left, so feed positive width/height to keep both contributors consistent;

@@ -6,6 +6,24 @@ import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceG
 import { translate } from "@/lib/i18n";
 import type { UISurfaceDiagnostic } from "../types";
 
+/** A flow item's saved coordinates do not determine where its descendants are drawn. */
+function hasFlowPositionedAncestor(document: UIDocument, element: UIElement): boolean {
+    const visited = new Set<string>();
+    let parentId = element.parentId;
+    while (parentId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = document.elements[parentId];
+        if (!parent) {
+            break;
+        }
+        if (isUIElementFlowLayoutChild(document, parent)) {
+            return true;
+        }
+        parentId = parent.parentId;
+    }
+    return false;
+}
+
 /**
  * There is deliberately no "this element is too small" check here.
  *
@@ -40,7 +58,7 @@ export function collectLayoutDiagnostics(
         const hAbs = Math.abs(height);
         const right = origin.x + wAbs;
         const bottom = origin.y + hAbs;
-        if (right < 0 || bottom < 0 || origin.x > dw || origin.y > dh) {
+        if ((right < 0 || bottom < 0 || origin.x > dw || origin.y > dh) && !hasFlowPositionedAncestor(document, el)) {
             out.push({
                 id: `layout:oob:${el.id}`,
                 severity: "warning",

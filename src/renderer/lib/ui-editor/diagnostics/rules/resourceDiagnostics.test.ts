@@ -70,6 +70,22 @@ describe("collectResourceDiagnostics", () => {
         ]);
     });
 
+    it("warns when an image fill has no imageFill record", () => {
+        expect(collectResourceDiagnostics([createImageElement({ fillType: "image" })]).map(d => d.id))
+            .toEqual(["res:image:image-1"]);
+    });
+
+    it("does not report an image whose image fill is hidden", () => {
+        expect(collectResourceDiagnostics([createImageElement({
+            fillType: "image", fillVisible: false, imageFill: { mode: "cover", assetId: null },
+        })])).toEqual([]);
+    });
+
+    it("accepts a legacy image URL when the imageFill record is absent", () => {
+        expect(collectResourceDiagnostics([createImageElement({ fillType: "image", backgroundImage: "legacy.png" })]))
+            .toEqual([]);
+    });
+
     /**
      * The three ways an image is handed its picture by the game, each from the starter template: a
      * gallery tile bound to its row's picture, the viewer a blueprint fills with whichever picture was
@@ -218,5 +234,26 @@ describe("a container's image fill", () => {
     it("says nothing for a picture or a hidden fill", () => {
         expect(collectResourceDiagnostics([container({ fillType: "image", imageFill: { mode: "cover", assetId: "a" } })])).toEqual([]);
         expect(collectResourceDiagnostics([container({ fillType: "image", fillVisible: false })])).toEqual([]);
+    });
+});
+
+describe("a button's image fill", () => {
+    const button = (props: Record<string, unknown>): UIElement => ({
+        ...createImageElement(props), id: "button", type: "nl.button", name: "Button",
+    });
+
+    it("warns when the image fill has no imageFill record", () => {
+        expect(collectResourceDiagnostics([button({ fillType: "image" })]).map(d => d.id))
+            .toEqual(["res:button-image:button"]);
+    });
+
+    it("does not report a hidden image fill", () => {
+        expect(collectResourceDiagnostics([button({
+            fillType: "image", fillVisible: false, imageFill: { mode: "cover", assetId: null },
+        })])).toEqual([]);
+    });
+
+    it("accepts a legacy image URL when the imageFill record is absent", () => {
+        expect(collectResourceDiagnostics([button({ fillType: "image", backgroundImage: "legacy.png" })])).toEqual([]);
     });
 });

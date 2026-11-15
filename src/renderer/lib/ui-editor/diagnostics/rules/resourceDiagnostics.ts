@@ -21,7 +21,7 @@ import type { UISurfaceDiagnostic } from "../types";
 
 function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
     if (!fill) {
-        return false;
+        return true;
     }
     const mode = fill.mode;
     if (mode === "crop" || mode === "cover" || mode === "contain" || mode === "stretch" || mode === "tile") {
@@ -66,7 +66,7 @@ export function collectResourceDiagnostics(
     for (const el of elements) {
         if (el.type === "nl.image" && !imageGetsPictureAtRuntime(el, scripted)) {
             const props = getImageDiagnosticProps(el);
-            if (props.fillType !== "image") {
+            if (props.fillType !== "image" || props.fillVisible === false) {
                 continue;
             }
             const fill = normalizeImageFill(props);
@@ -134,7 +134,7 @@ export function collectResourceDiagnostics(
                 : getRectangleLikeProps(el);
             if (p.fillType === "image" && p.fillVisible !== false) {
                 const fill = normalizeImageFill(p);
-                if ((!fill || imageFillMissingAsset(fill)) && !p.backgroundImage?.trim()) {
+                if (imageFillMissingAsset(fill) && !p.backgroundImage?.trim()) {
                     out.push({
                         id: `res:container-image:${el.id}`,
                         severity: "warning",
@@ -153,7 +153,7 @@ export function collectResourceDiagnostics(
                 variantOverrideId: null,
                 signals,
             });
-            if (v.fillType === "image") {
+            if (v.fillType === "image" && v.fillVisible !== false) {
                 const rl = buttonResolvedVisualToRectangleLike(v);
                 const fill = normalizeImageFill(rl);
                 if (imageFillMissingAsset(fill) && !rl.backgroundImage?.trim()) {
