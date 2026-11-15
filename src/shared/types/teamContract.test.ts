@@ -24,7 +24,9 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 import {
+    TEAM_ACCESS_REQUEST_MESSAGE_LIMIT,
     TEAM_ANCHOR_FIELD_LIMIT,
+    TEAM_PERMISSION_TEMPLATES,
     TEAM_ANSWER_BYTES_LIMIT,
     TEAM_CHAT_BODY_LIMIT,
     TEAM_COMMENT_BODY_LIMIT,
@@ -67,6 +69,7 @@ interface Contract {
     methods: string[];
     topics: Record<string, string>;
     limits: Record<string, number>;
+    permissionTemplates: { id: string; role: string; areas?: string[] }[];
 }
 
 const contract = JSON.parse(
@@ -191,6 +194,7 @@ describe("the protocol contract", () => {
         // Studio went on applying at whatever number it had - which is how the reader on
         // the session's socket came to refuse answers the server was entitled to send.
         expect(Object.keys(contract.limits).slice().sort()).toEqual([
+            "accessRequestMessage",
             "anchorField",
             "answerBytes",
             "chatBody",
@@ -204,6 +208,7 @@ describe("the protocol contract", () => {
         ]);
 
         expect(TEAM_ANCHOR_FIELD_LIMIT).toBe(contract.limits["anchorField"]);
+        expect(TEAM_ACCESS_REQUEST_MESSAGE_LIMIT).toBe(contract.limits["accessRequestMessage"]);
         expect(TEAM_COMMENT_BODY_LIMIT).toBe(contract.limits["commentBody"]);
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
@@ -216,5 +221,13 @@ describe("the protocol contract", () => {
         // `pageBytes` is where a server ends a page, and nothing on this side composes
         // one: it is named above so that it cannot arrive unnoticed, and pinned to no
         // constant because there is nothing here for it to bound.
+    });
+});
+
+describe("permission templates", () => {
+    it("offers the contract's templates, in its order, with its grants", () => {
+        expect(TEAM_PERMISSION_TEMPLATES.map((template) => ({ ...template, ...("areas" in template ? { areas: [...template.areas] } : {}) }))).toEqual(
+            contract.permissionTemplates,
+        );
     });
 });

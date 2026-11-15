@@ -329,6 +329,9 @@ export const TEAM_DOC_INTENT_LIMIT = 96 * 1024;
 /** The longest chat message, in characters. */
 export const TEAM_CHAT_BODY_LIMIT = 4096;
 
+/** The longest message or note on an access request, in characters. */
+export const TEAM_ACCESS_REQUEST_MESSAGE_LIMIT = 1000;
+
 /**
  * The most a server sends in one answer, and so the least this build's reader may hold.
  *
@@ -441,7 +444,8 @@ export type TeamProjectsEvent =
     | { kind: "project-created"; project: string }
     | { kind: "project-forgotten"; project: string }
     | { kind: "project-read"; project: string }
-    | { kind: "project-access-changed"; project: string };
+    | { kind: "project-access-changed"; project: string }
+    | { kind: "access-request"; request: TeamAccessRequest };
 
 /**
  * An account's role in one project, most able first. Owners and editors open the
@@ -470,6 +474,72 @@ export function teamRoleReachesRepository(
         return false;
     }
     return role === undefined || role === "owner" || role === "editor";
+}
+
+/** A named grant every Team and every Studio knows by the same id. */
+export interface TeamPermissionTemplate {
+    id: string;
+    role: TeamProjectRole;
+    /** For an editor kept to some areas, which ones; absent for all of them. */
+    areas?: readonly TeamProjectArea[];
+}
+
+/** The templates, in the order a picker shows them; pinned to the contract's `permissionTemplates`. */
+export const TEAM_PERMISSION_TEMPLATES = [
+    { id: "owner", role: "owner" },
+    { id: "editor", role: "editor" },
+    { id: "writer", role: "editor", areas: ["story", "characters"] },
+    { id: "artist", role: "editor", areas: ["characters", "assets", "ui"] },
+    { id: "translator", role: "editor", areas: ["localization"] },
+    { id: "engineer", role: "editor", areas: ["ui", "config"] },
+    { id: "reviewer", role: "reviewer" },
+    { id: "viewer", role: "viewer" },
+] as const satisfies readonly TeamPermissionTemplate[];
+export type TeamPermissionTemplateId = (typeof TEAM_PERMISSION_TEMPLATES)[number]["id"];
+
+/** The template a grant is, if it is one: the same role and exactly the same areas (all areas is `editor`). */
+export function teamTemplateOf(
+    role: TeamProjectRole,
+    areas?: readonly TeamProjectArea[],
+): (TeamPermissionTemplate & { id: TeamPermissionTemplateId }) | undefined {
+    const all = (list?: readonly TeamProjectArea[]) => list === undefined || TEAM_PROJECT_AREAS.every((area) => list.includes(area));
+    return (TEAM_PERMISSION_TEMPLATES as readonly (TeamPermissionTemplate & { id: TeamPermissionTemplateId })[]).find((template) => {
+        if (template.role !== role) return false;
+        if (role !== "editor") return true;
+        if (template.areas === undefined) return all(areas);
+        if (areas === undefined || all(areas)) return false;
+        return template.areas.length === areas.length && template.areas.every((area) => areas.includes(area));
+    });
+}
+
+/** A request for access: to a project (`project`), or for leave to make projects (`creator`). */
+export interface TeamAccessRequest {
+    id: number;
+    kind: "project" | "creator";
+    project?: string;
+    projectName?: string;
+    requester: string;
+    requesterName?: string;
+    role?: TeamProjectRole;
+    areas?: TeamProjectArea[];
+    template?: string;
+    /** The asker's role in the project when it asked, if it had one. */
+    currentRole?: TeamProjectRole;
+    message?: string;
+    status: "pending" | "approved" | "denied" | "withdrawn";
+    at: number;
+    decidedBy?: string;
+    decidedAt?: number;
+    note?: string;
+    grantedRole?: TeamProjectRole;
+    grantedAreas?: TeamProjectArea[];
+}
+
+/** A project the caller has no role in, as `projects.discover` answers. */
+export interface TeamDiscoverableProject {
+    id: string;
+    name: string;
+    description?: string;
 }
 
 /** One account's place in one project, as `projects.members.list` answers. */
@@ -524,7 +594,7 @@ export type TeamTodosEvent =
 /** One notification, as `notifications.list` answers. */
 export interface TeamNotification {
     id: number;
-    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered";
+    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered" | "access-requested" | "access-decided";
     project?: string;
     ref?: string;
     actor?: string;
@@ -753,6 +823,11 @@ export const TeamMethod = {
     projectsMembersList: "projects.members.list",
     projectsMembersSet: "projects.members.set",
     projectsMembersRemove: "projects.members.remove",
+    projectsDiscover: "projects.discover",
+    accessRequestsList: "access.requests.list",
+    accessRequestsCreate: "access.requests.create",
+    accessRequestsDecide: "access.requests.decide",
+    accessRequestsWithdraw: "access.requests.withdraw",
     projectsUpdate: "projects.update",
     projectsWebhooksList: "projects.webhooks.list",
     projectsWebhooksCreate: "projects.webhooks.create",

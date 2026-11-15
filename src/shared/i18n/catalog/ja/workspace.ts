@@ -905,6 +905,8 @@ export const workspace = {
             assigned: "{who} があなたに ToDo を割り当てた",
             "review-requested": "{who} からレビューを依頼されました",
             "review-answered": "{who} がレビュー依頼に回答しました",
+            "access-requested": "{who} が権限を申請しました",
+            "access-decided": "{who} があなたの権限申請に回答しました",
         },
         liveConnecting: "そのサーバーに接続中",
         liveUnsupported: "そのサーバーはライブセッションに対応していない",

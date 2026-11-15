@@ -78,6 +78,15 @@ export function TeamNotificationsBell() {
             setOpen(false);
             return;
         }
+        if (notification.kind === "access-requested" || notification.kind === "access-decided") {
+            // Requests are asked and answered in the web console: a project's settings, or its project list.
+            const where = notification.project
+                ? `/console/p/${encodeURIComponent(notification.project)}/${notification.kind === "access-requested" ? "settings" : "overview"}`
+                : notification.kind === "access-requested" ? "/console/admin" : "/console/projects";
+            void getInterface().app.openExternal(`${remoteOrigin}${where}`);
+            setOpen(false);
+            return;
+        }
         const thread = notification.ref === undefined
             ? undefined
             : service?.listThreads().find(candidate => candidate.teamThreadId === notification.ref);

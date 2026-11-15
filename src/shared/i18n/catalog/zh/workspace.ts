@@ -891,6 +891,8 @@ export const workspace = {
             assigned: "{who} 指派了一个待办给你",
             "review-requested": "{who} 请你评审",
             "review-answered": "{who} 回复了你的评审请求",
+            "access-requested": "{who} 申请了权限",
+            "access-decided": "{who} 处理了你的权限申请",
         },
         liveConnecting: "正在连接该服务器",
         liveUnsupported: "该服务器不提供实时会话",

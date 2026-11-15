@@ -41,6 +41,11 @@
     "projects.members.list",
     "projects.members.set",
     "projects.members.remove",
+    "projects.discover",
+    "access.requests.list",
+    "access.requests.create",
+    "access.requests.decide",
+    "access.requests.withdraw",
     "projects.update",
     "projects.webhooks.list",
     "projects.webhooks.create",
@@ -144,6 +149,56 @@
     "adminKeys": "admin/keys",
     "adminRefusals": "admin/refusals"
   },
+  "permissionTemplates": [
+    {
+      "id": "owner",
+      "role": "owner"
+    },
+    {
+      "id": "editor",
+      "role": "editor"
+    },
+    {
+      "id": "writer",
+      "role": "editor",
+      "areas": [
+        "story",
+        "characters"
+      ]
+    },
+    {
+      "id": "artist",
+      "role": "editor",
+      "areas": [
+        "characters",
+        "assets",
+        "ui"
+      ]
+    },
+    {
+      "id": "translator",
+      "role": "editor",
+      "areas": [
+        "localization"
+      ]
+    },
+    {
+      "id": "engineer",
+      "role": "editor",
+      "areas": [
+        "ui",
+        "config"
+      ]
+    },
+    {
+      "id": "reviewer",
+      "role": "reviewer"
+    },
+    {
+      "id": "viewer",
+      "role": "viewer"
+    }
+  ],
   "frames": {
     "fromServer": [
       "hello",
@@ -163,6 +218,7 @@
     "anchorField": 512,
     "commentBody": 8192,
     "chatBody": 4096,
+    "accessRequestMessage": 1000,
     "suggestion": 65536,
     "overlayBody": 65536,
     "livePayload": 16384,

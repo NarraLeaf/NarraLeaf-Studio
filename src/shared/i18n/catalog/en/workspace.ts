@@ -981,6 +981,8 @@ export const workspace = {
             assigned: "{who} gave you a to-do",
             "review-requested": "{who} asked you to review",
             "review-answered": "{who} answered your review request",
+            "access-requested": "{who} asked for access",
+            "access-decided": "{who} answered your access request",
         },
         liveConnecting: "Connecting to that server.",
         liveUnsupported: "That server does not offer live sessions.",
