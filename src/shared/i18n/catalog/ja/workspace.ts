@@ -2018,6 +2018,17 @@ export const workspace = {
                 thisWindow: "このウィンドウで開く",
                 newWindow: "新規ウィンドウで開く",
             },
+            // ランチャーが入口で止める最近のプロジェクト。ワークスペースには選択肢がないので、
+            // 行に理由を示し、対処はランチャーで行う
+            unavailable: {
+                folderMissing: "プロジェクトフォルダーは削除または移動された",
+                notAProject: "このフォルダーは NarraLeaf プロジェクトではなくなった",
+                signedOut: "{server} との接続を解除済み",
+                refused: "このプロジェクトを開けない",
+                detailFolderMissing: "プロジェクトフォルダーは削除または移動された。ランチャーで場所を指定し直すか、一覧から削除できる",
+                detailNotAProject: "このフォルダーは NarraLeaf プロジェクトではなくなった。ランチャーで場所を指定し直すか、一覧から削除できる",
+                detailSignedOut: "このマシンはプロジェクトの Team サーバーとの接続を解除済み。ランチャーで個人プロジェクトに変換するか削除できる",
+            },
         },
         // `workspace.confirmBeforeClose` が有効なとき、ワークスペースを閉じる前に出るアプリ内の確認。
         closeConfirm: {

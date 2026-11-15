@@ -1966,6 +1966,17 @@ export const workspace = {
                 thisWindow: "在当前窗口打开",
                 newWindow: "在新窗口打开",
             },
+            // 启动器会在入口拦下的最近项目。工作区里没有可给的选择，只在行上写明原因，
+            // 处理要回到启动器去做
+            unavailable: {
+                folderMissing: "项目文件夹已被删除或移动",
+                notAProject: "此文件夹已不是 NarraLeaf 项目",
+                signedOut: "已断开与 {server} 的连接",
+                refused: "无法打开此项目",
+                detailFolderMissing: "项目文件夹已被删除或移动，可在启动器重新定位或从列表移除",
+                detailNotAProject: "此文件夹已不是 NarraLeaf 项目，可在启动器重新定位或从列表移除",
+                detailSignedOut: "本机已断开与此项目 Team 服务器的连接，可在启动器转为个人项目或删除",
+            },
         },
         closeConfirm: {
             message: "关闭当前工作区",

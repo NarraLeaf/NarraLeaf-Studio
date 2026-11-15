@@ -13,7 +13,7 @@ import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjectIcons, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
 import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
-import { useTeamProjects, type TeamProjectFacts } from "./teamProjects";
+import { useTeamProjects, type TeamProjectFacts } from "@/lib/app/teamProjects";
 
 export function ProjectsTab() {
     const { t } = useTranslation();

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { useFloatingLayer } from "@/lib/components/layout";
@@ -10,7 +10,14 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
-import { useOpenRecentProject, useRecentProjectIcons, useRecentProjects } from "../../hooks/useRecentProjects";
+import {
+    useNotifyProjectOpenRefusal,
+    useOpenRecentProject,
+    useRecentProjectIcons,
+    useRecentProjects,
+} from "../../hooks/useRecentProjects";
+import { readTeamProjects } from "@/lib/app/teamProjects";
+import { switcherUnavailability, type SwitcherUnavailable } from "./projectSwitcherAvailability";
 import { useTitleBarMenu } from "../ui/titleBarMenus";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
@@ -33,6 +40,11 @@ import { openVersionRail } from "./versionRailController";
  * this project for a window that was already there. So the switcher asks main whether the project is
  * open (`workspace.isProjectOpen`) and puts the question only when something is going to be opened.
  *
+ * **A project the launcher would stop at its gate is shown but not opened** - a folder that is gone,
+ * or a team project this machine has signed out of. Its row says why; the choices for it (relocate,
+ * forget, convert, delete) live in the launcher, and main refuses the open from here whichever route
+ * asked (`requireOpenableFromWorkspace`).
+ *
  * A new window steps down and to the right of this one rather than landing on top of it, because a
  * second window that covers the first is indistinguishable from having replaced it.
  *
@@ -48,6 +60,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     // The app icon each remembered project ships, for the ones that ship one.
     const iconsByPath = useRecentProjectIcons();
     const openRecentProject = useOpenRecentProject();
+    const notifyRefusal = useNotifyProjectOpenRefusal();
 
     // Held in the title bar's bar of menus, so opening this one puts away whatever was open, and
     // Escape closes it. It is NOT part of the chain the pointer and the arrow keys walk
@@ -67,6 +80,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     });
     // The project the author picked, held while the dialog asks which window it should open in.
     const [pending, setPending] = useState<PendingOpen | null>(null);
+    const unavailable = useSwitcherUnavailability(open, recentProjects);
 
     const currentPath = context?.project.getConfig().projectPath ?? "";
     const currentName = context
@@ -96,8 +110,11 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
             void openRecentProject(target.projectPath, { replaceCurrentWindow });
             return;
         }
-        void getInterface().workspace.launch({ projectPath: target.projectPath }, replaceCurrentWindow);
-    }, [openRecentProject]);
+        void getInterface().workspace.launch({ projectPath: target.projectPath }, replaceCurrentWindow)
+            .then(result => {
+                if (!result.success) notifyRefusal(result.code);
+            });
+    }, [notifyRefusal, openRecentProject]);
 
     /**
      * Ask where the project should open, unless it is open already - then just go there.
@@ -202,14 +219,21 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                         </div>
                     ) : (
                         <div className="max-h-80 overflow-y-auto">
-                            {others.map(project => (
-                                <RecentProjectRow
-                                    key={project.path}
-                                    project={project}
-                                    icon={iconsByPath.get(normalizeProjectPath(project.path))}
-                                    onSelect={() => handleOpen(project)}
-                                />
-                            ))}
+                            {others.map(project => {
+                                const identity = normalizeProjectPath(project.path);
+                                const reason = unavailable.get(identity);
+                                return (
+                                    <RecentProjectRow
+                                        key={project.path}
+                                        project={project}
+                                        icon={iconsByPath.get(identity)}
+                                        unavailable={reason}
+                                        // A row that cannot open does nothing when picked: the menu
+                                        // stays, so the reason it shows can still be read.
+                                        onSelect={() => { if (!reason) handleOpen(project); }}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
 
@@ -425,20 +449,80 @@ function MenuSeparator() {
     return <div className="h-px bg-fill-strong my-1 mx-2" />;
 }
 
-/** One remembered project. `icon` is its own app icon; without one the row shows a folder. */
+/**
+ * Which remembered projects cannot be opened from here, read each time the menu opens.
+ *
+ * Read on opening rather than kept live: signing out happens in the Settings window and a folder
+ * goes away in Finder, and neither tells this window. Two local reads - the disk sweep the launcher
+ * uses and the sign-ins this machine holds - so no socket opens. Until they answer every row reads
+ * as openable, which is safe: main refuses the same projects whatever the menu showed.
+ */
+function useSwitcherUnavailability(
+    open: boolean,
+    recentProjects: readonly RecentlyOpenedProject[],
+): ReadonlyMap<string, SwitcherUnavailable> {
+    const [unavailable, setUnavailable] = useState<ReadonlyMap<string, SwitcherUnavailable>>(new Map());
+    useEffect(() => {
+        if (!open) return;
+        let cancelled = false;
+        void (async () => {
+            const [missing, team] = await Promise.all([
+                getInterface().app.checkRecentProjects().catch(() => null),
+                readTeamProjects(),
+            ]);
+            if (cancelled) return;
+            setUnavailable(switcherUnavailability(missing?.success ? missing.data.missing : [], team));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [open, recentProjects]);
+    return unavailable;
+}
+
+/** The catalog line for a row that cannot be opened. */
+function unavailableLine(reason: SwitcherUnavailable, t: ReturnType<typeof useTranslation>["t"]): string {
+    switch (reason.kind) {
+        case "folder-missing":
+            return t("workspace.shell.projectSwitcher.unavailable.folderMissing");
+        case "not-a-project":
+            return t("workspace.shell.projectSwitcher.unavailable.notAProject");
+        case "signed-out":
+            return t("workspace.shell.projectSwitcher.unavailable.signedOut", { server: reason.server });
+    }
+}
+
+/**
+ * One remembered project. `icon` is its own app icon; without one the row shows a folder.
+ *
+ * A row that cannot be opened from here (`unavailable`) stays in the list - it is still the
+ * author's project, and the list is where they would look for it - but reads as such: dimmed, its
+ * path replaced by the reason, and `aria-disabled` rather than `disabled` so the arrow keys still
+ * reach it and the reason can be read.
+ */
 function RecentProjectRow(
-    { project, icon, onSelect }:
-    { project: RecentlyOpenedProject; icon?: string; onSelect: () => void },
+    { project, icon, unavailable, onSelect }:
+    { project: RecentlyOpenedProject; icon?: string; unavailable?: SwitcherUnavailable; onSelect: () => void },
 ) {
+    const { t } = useTranslation();
+    const reason = unavailable ? unavailableLine(unavailable, t) : null;
     return (
         <button
             type="button"
             onClick={onSelect}
-            className="w-full px-3 py-2 flex items-center gap-3 text-left cursor-default text-fg-muted hover:bg-fill hover:text-fg transition-colors"
+            className={cn(
+                "w-full px-3 py-2 flex items-center gap-3 text-left cursor-default transition-colors",
+                reason ? "text-fg-subtle" : "text-fg-muted hover:bg-fill hover:text-fg",
+            )}
             role="menuitem"
-            data-tip={`${project.name}\n${project.path}`}
+            aria-disabled={reason ? true : undefined}
+            data-switcher-unavailable={unavailable?.kind}
+            data-tip={reason ? `${project.name}\n${project.path}\n${reason}` : `${project.name}\n${project.path}`}
         >
-            <span className="shrink-0 w-7 h-7 rounded-md bg-fill grid place-items-center overflow-hidden">
+            <span className={cn(
+                "shrink-0 w-7 h-7 rounded-md bg-fill grid place-items-center overflow-hidden",
+                reason && "opacity-40 saturate-50",
+            )}>
                 {icon ? (
                     <img src={icon} alt="" className="w-5 h-5 object-contain" />
                 ) : (
@@ -446,8 +530,15 @@ function RecentProjectRow(
                 )}
             </span>
             <span className="flex-1 min-w-0">
-                <span className="block text-sm text-fg truncate">{project.name}</span>
-                <span className="block text-2xs text-fg-subtle truncate">{project.path}</span>
+                <span className={cn("block text-sm truncate", reason ? "text-fg-muted" : "text-fg")}>{project.name}</span>
+                {reason ? (
+                    <span className="flex items-center gap-1 text-2xs text-fg-subtle">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{reason}</span>
+                    </span>
+                ) : (
+                    <span className="block text-2xs text-fg-subtle truncate">{project.path}</span>
+                )}
             </span>
         </button>
     );

@@ -2294,6 +2294,17 @@ export const workspace = {
                 thisWindow: "Open in this window",
                 newWindow: "Open in a new window",
             },
+            // A remembered project the launcher would stop at its gate. From a workspace there is no
+            // choice to offer, so the row says why and points the author back to the launcher.
+            unavailable: {
+                folderMissing: "The project folder was deleted or moved",
+                notAProject: "This folder is no longer a NarraLeaf project",
+                signedOut: "Disconnected from {server}",
+                refused: "Can't open this project",
+                detailFolderMissing: "The project folder was deleted or moved. Relocate it or remove it from the list in the Launcher.",
+                detailNotAProject: "This folder is no longer a NarraLeaf project. Relocate it or remove it from the list in the Launcher.",
+                detailSignedOut: "This machine is disconnected from the project's Team server. Convert it to a personal project or delete it in the Launcher.",
+            },
         },
         // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.

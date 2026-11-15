@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { WindowAppType } from "@shared/types/window";
 import type { AppWindow } from "../appWindow";
 import { WorkspaceLaunchHandler } from "./workspaceAction";
 
@@ -17,7 +18,11 @@ import { WorkspaceLaunchHandler } from "./workspaceAction";
 
 function handler() {
     const openProject = vi.fn(async () => undefined);
-    const window = { getApp: () => ({ openProject }) } as unknown as AppWindow;
+    // The launcher is the opener here, so the workspace-only open gate stays out of the way.
+    const window = {
+        getApp: () => ({ openProject }),
+        getWindowType: () => WindowAppType.Launcher,
+    } as unknown as AppWindow;
     return { window, openProject };
 }
 

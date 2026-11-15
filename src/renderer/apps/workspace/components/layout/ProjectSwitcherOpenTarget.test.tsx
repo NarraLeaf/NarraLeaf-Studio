@@ -44,15 +44,20 @@ vi.mock("../../hooks/useRecentProjects", () => ({
     useOpenRecentProject: () => recents.openRecent,
     // Decoration: neither project here ships a logo, so every row draws its folder glyph.
     useRecentProjectIcons: () => new Map<string, string>(),
+    useNotifyProjectOpenRefusal: () => () => false,
 }));
+
+// Both projects are on disk and neither belongs to a team server, so every row is pickable.
+vi.mock("@/lib/app/teamProjects", () => ({ readTeamProjects: async () => new Map() }));
 
 const bridge = vi.hoisted(() => ({
     open: false,
     isProjectOpen: vi.fn(),
-    launch: vi.fn(),
+    launch: vi.fn(() => Promise.resolve({ success: true })),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
+        app: { checkRecentProjects: () => Promise.resolve({ success: true, data: { missing: [] } }) },
         workspace: { isProjectOpen: bridge.isProjectOpen, launch: bridge.launch },
     }),
 }));
