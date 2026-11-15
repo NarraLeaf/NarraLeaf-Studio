@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isComposingText } from "@/lib/utils/imeComposition";
 import { AddKeyRow } from "./TranslationRows";
 
 /** Flipped per case; read by the mocked hook below. */
@@ -109,5 +110,37 @@ describe("AddKeyRow while the workspace is frozen", () => {
 
         const name = screen.getByLabelText("workspace.localization.table.keyNamePlaceholder");
         expect((name as HTMLInputElement).value).toBe("menu.start");
+    });
+
+    it("leaves Enter and Escape to the input method while composing", () => {
+        const onSubmit = vi.fn(() => true);
+        render(<AddKeyRow onSubmit={onSubmit} />);
+        openAndFill();
+        const name = screen.getByLabelText("workspace.localization.table.keyNamePlaceholder");
+
+        fireEvent.keyDown(name, { key: "Enter", isComposing: true });
+        fireEvent.keyDown(name, { key: "Escape", keyCode: 229 });
+
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect((screen.getByLabelText("workspace.localization.table.keyNamePlaceholder") as HTMLInputElement).value).toBe("menu.start");
+    });
+
+    it("keeps the draft open when an input method temporarily blurs the field", () => {
+        render(<AddKeyRow onSubmit={() => true} />);
+        openAndFill();
+        const name = screen.getByLabelText("workspace.localization.table.keyNamePlaceholder");
+        fireEvent.compositionStart(name);
+        fireEvent.blur(name);
+        expect((screen.getByLabelText("workspace.localization.table.keyNamePlaceholder") as HTMLInputElement).value).toBe("menu.start");
+        fireEvent.compositionEnd(name);
+    });
+
+    it("clears the composing state if the draft unmounts mid-composition", () => {
+        const view = render(<AddKeyRow onSubmit={() => true} />);
+        openAndFill();
+        fireEvent.compositionStart(screen.getByLabelText("workspace.localization.table.keyNamePlaceholder"));
+        expect(isComposingText()).toBe(true);
+        view.unmount();
+        expect(isComposingText()).toBe(false);
     });
 });

@@ -13,7 +13,8 @@ import { Check, Ellipsis, Plus, RotateCcw } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, Switch, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
-import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+import { freezeContextMenuRows, isFreezeBlocking, useFreezeGuard } from "../../components/ui/freezeGuard";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
 
 /**
@@ -45,6 +46,7 @@ import { LocalizationService } from "@/lib/workspace/services/localization/Local
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { AssetsService, REPLACE_REFUSED_IN_SESSION } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -142,10 +144,19 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
         [context, isInitialized],
     );
+    const projectService = useMemo(
+        () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
+        [context, isInitialized],
+    );
 
     const [config, setConfig] = useState<VoiceConfiguration | null>(null);
-    const [rows, setRows] = useState<PanelRow[]>([]);
-    const [progressByLocale, setProgressByLocale] = useState<Record<string, VoiceProgress>>({});
+    const [rows, setRows] = useState<PanelRow[] | null>(null);
+    const [coverage, setCoverage] = useState<{
+        rows: PanelRow[];
+        config: VoiceConfiguration;
+        tick: number;
+        byLocale: Record<string, VoiceProgress>;
+    } | null>(null);
     const [refreshTick, setRefreshTick] = useState(0);
 
     // Add-language inline form (collapsed by default; the panel shows no idle inputs).
@@ -158,9 +169,12 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         if (!voiceService) {
             return;
         }
-        setConfig(voiceService.getConfiguration());
-        return voiceService.onConfigChanged(setConfig);
-    }, [voiceService]);
+        const read = () => setConfig(voiceService.getConfiguration());
+        read();
+        const offVoice = voiceService.onConfigChanged(setConfig);
+        const offProject = projectService?.onConfigChanged(() => { read(); setRefreshTick(tick => tick + 1); });
+        return () => { offVoice(); offProject?.(); };
+    }, [voiceService, projectService]);
 
     // Every line of the project an actor records, in narrative order — the coverage denominator for
     // each voice language.
@@ -177,7 +191,8 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             return;
         }
         let disposed = false;
-        const byStory = new Map<string, PanelRow[]>();
+        const byStory = new Map<string, PanelRow[] | null>();
+        const revisions = new Map<string, number>();
 
         const publish = () => {
             if (disposed) {
@@ -187,34 +202,45 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             // story stays where it was rather than jumping to the end of the coverage denominator.
             const collected: PanelRow[] = [];
             for (const entry of storyService.listStories()) {
-                collected.push(...(byStory.get(entry.id) ?? []));
+                const storyRows = byStory.get(entry.id);
+                if (!storyRows) {
+                    setRows(null);
+                    return;
+                }
+                collected.push(...storyRows);
             }
             setRows(collected);
         };
 
         const extract = async (storyId: string): Promise<void> => {
+            const revision = (revisions.get(storyId) ?? 0) + 1;
+            revisions.set(storyId, revision);
+            byStory.delete(storyId);
+            publish();
             try {
                 const document = await storyService.loadStory(storyId);
+                if (disposed || revisions.get(storyId) !== revision) return;
                 byStory.set(storyId, voiceService.extractRows(document).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
                 })));
             } catch {
-                // A broken story must not take the panel down - it contributes no lines.
-                byStory.set(storyId, []);
+                if (!disposed && revisions.get(storyId) === revision) byStory.set(storyId, null);
             }
         };
 
         const rebuildAll = async (): Promise<void> => {
             const ids = storyService.listStories().map(entry => entry.id);
             for (const id of ids) {
-                if (!byStory.has(id)) {
+                if (!byStory.has(id) || byStory.get(id) === null) {
                     await extract(id);
                 }
             }
-            for (const id of [...byStory.keys()]) {
-                if (!ids.includes(id)) {
+            const currentIds = new Set(storyService.listStories().map(entry => entry.id));
+            for (const id of revisions.keys()) {
+                if (!currentIds.has(id)) {
                     byStory.delete(id);
+                    revisions.set(id, (revisions.get(id) ?? 0) + 1);
                 }
             }
             publish();
@@ -237,9 +263,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
 
     // Per-language coverage; recomputed when rows, config, or any assignment changes.
     useEffect(() => {
-        if (!voiceService || !config) {
-            return;
-        }
+        if (!voiceService || !config || !rows) return;
         let disposed = false;
         void (async () => {
             const next: Record<string, VoiceProgress> = {};
@@ -255,7 +279,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 }
             }
             if (!disposed) {
-                setProgressByLocale(next);
+                setCoverage({ rows, config, tick: refreshTick, byLocale: next });
             }
         })();
         return () => {
@@ -269,6 +293,13 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         }
         return voiceService.onDocumentChanged(() => setRefreshTick(tick => tick + 1));
     }, [voiceService]);
+
+    useEffect(() => {
+        const refresh = () => setRefreshTick(tick => tick + 1);
+        const offDocument = localizationService?.onDocumentChanged(refresh);
+        const offConfig = localizationService?.onConfigChanged(refresh);
+        return () => { offDocument?.(); offConfig?.(); };
+    }, [localizationService]);
 
     const handleCodeDraftChange = useCallback((value: string) => {
         setCodeDraft(value);
@@ -364,20 +395,16 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         await voiceService.loadLineTexts(locale);
         const flat: (VoiceScriptEntry & { sceneId: string })[] = [];
         for (const entry of storyService.listStories()) {
-            try {
-                const document = await storyService.loadStory(entry.id);
-                for (const row of voiceService.extractRows(document)) {
-                    flat.push({
-                        unitId: row.unitId,
-                        sceneId: row.sceneId,
-                        sceneName: row.sceneName,
-                        indexInScene: 0,
-                        ...speakerNameFor(row),
-                        sourceText: voiceService.getLineText(locale, row.unitId, row.sourceText),
-                    });
-                }
-            } catch {
-                // A broken story must not abort the whole export.
+            const document = await storyService.loadStory(entry.id);
+            for (const row of voiceService.extractRows(document)) {
+                flat.push({
+                    unitId: row.unitId,
+                    sceneId: row.sceneId,
+                    sceneName: row.sceneName,
+                    indexInScene: 0,
+                    ...speakerNameFor(row),
+                    sourceText: voiceService.getLineText(locale, row.unitId, row.sourceText),
+                });
             }
         }
         return withSceneIndices(flat).map(({ sceneId: _sceneId, ...entry }) => entry);
@@ -420,7 +447,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         }
         try {
             const entries = await gatherEntries(code);
-            const document = await voiceService.loadDocument(code).catch(() => undefined);
+            const document = await voiceService.loadDocument(code);
             const selected = pickupOnly
                 ? entries.filter(entry => deriveVoiceUnitState(document?.units[entry.unitId], entry.sourceText) === "stale")
                 : entries;
@@ -464,7 +491,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             // An undo that landed while this was reading has put other bytes in the take, or taken
             // the take out; a length measured from the file it replaced belongs to neither.
             const now = assetsService.getAssets()[AssetType.Audio]?.[take.assetId];
-            if (!now || now.hash !== hashAtRead) {
+            const current = voiceService.getDocumentIfLoaded(code)?.units[take.unitId];
+            if (!now || now.hash !== hashAtRead || current?.assetId !== take.assetId
+                || !voiceService.getConfiguration().voicedLocales.some(locale => locale.code === code)
+                || isFreezeBlocking(getProjectWriteFreeze()?.reason ?? null, voiceDocumentFreezeScope(code))) {
                 continue;
             }
             if (duration !== undefined) {
@@ -674,7 +704,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 setRefreshTick(tick => tick + 1);
                 // Lengths trail the import rather than gating it: a booth hands back hundreds of files
                 // at once and nobody should watch a spinner decode headers to learn the takes are linked.
-                void measureDurations(code, measured);
+                void measureDurations(code, measured).catch(error => console.warn("[voice] could not measure the takes", error));
             } finally {
                 if (change && !recorded) {
                     // An import that stopped before its step was left takes back what it had already
@@ -756,7 +786,8 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                     {locales.length === 0 ? null : (
                         <div className="flex flex-col gap-1">
                             {locales.map(locale => {
-                                const progress = progressByLocale[locale.code];
+                                const progress = coverage?.rows === rows && coverage.config === config && coverage.tick === refreshTick
+                                    ? coverage.byLocale[locale.code] : undefined;
                                 const menuOpen = localeMenu?.code === locale.code;
                                 return (
                                     <div
@@ -803,16 +834,16 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                                 <Ellipsis className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
-                                        <div className="flex flex-col gap-1">
+                                        {progress ? <div className="flex flex-col gap-1">
                                             <Progress
-                                                value={progress ? progress.covered : 0}
-                                                max={Math.max(1, progress?.total ?? 1)}
+                                                value={progress.covered}
+                                                max={Math.max(1, progress.total)}
                                                 size="sm"
                                             />
                                             <span className="flex items-center gap-2 text-2xs text-fg-subtle">
                                                 {t("workspace.voice.panel.progress", {
-                                                    covered: progress?.covered ?? 0,
-                                                    total: progress?.total ?? 0,
+                                                    covered: progress.covered,
+                                                    total: progress.total,
                                                 })}
                                                 {progress && progress.stale > 0 ? (
                                                     <span className="text-warning">
@@ -820,7 +851,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                                     </span>
                                                 ) : null}
                                             </span>
-                                        </div>
+                                        </div> : null}
                                     </div>
                                 );
                             })}

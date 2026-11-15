@@ -109,6 +109,8 @@ function TranslationField(props: {
     placeholder: string;
     ariaLabel: string;
     caret: number | null;
+    readOnly: boolean;
+    readOnlyReason?: string;
     fieldRef: MutableRefObject<TranslationFieldHandle | null>;
     onChange: (target: string) => void;
     onDone: () => void;
@@ -118,10 +120,16 @@ function TranslationField(props: {
     /** What this field last emitted, so an echo of its own value never redraws it under the caret. */
     const emitted = useRef(props.target);
     const composing = useRef(false);
+    const wasReadOnly = useRef(props.readOnly);
+    useEffect(() => () => {
+        if (composing.current) {
+            compositionHandlers.onCompositionEnd();
+        }
+    }, []);
 
     const emit = useCallback(() => {
         const root = rootRef.current;
-        if (!root) {
+        if (!root || props.readOnly) {
             return;
         }
         const value = printTranslationTokens(translationTokensFromDom(root));
@@ -170,12 +178,23 @@ function TranslationField(props: {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        const root = rootRef.current;
+        const leavingReadOnly = wasReadOnly.current && !props.readOnly;
+        wasReadOnly.current = props.readOnly;
+        if (!root || (!props.readOnly && !leavingReadOnly) || props.target === emitted.current) {
+            return;
+        }
+        renderTranslationTokens(root, translationTokens(props.target), props.sourceRuns, options);
+        emitted.current = props.target;
+    }, [props.readOnly, props.target, props.sourceRuns, options]);
+
     props.fieldRef.current = {
         focus: () => rootRef.current?.focus(),
         place: (token, closing) => {
             const root = rootRef.current;
             const selection = globalThis.window.getSelection();
-            if (!root || !selection || selection.rangeCount === 0) {
+            if (props.readOnly || !root || !selection || selection.rangeCount === 0) {
                 return;
             }
             const range = selection.getRangeAt(0);
@@ -209,11 +228,13 @@ function TranslationField(props: {
     return (
         <div
             ref={rootRef}
-            contentEditable
+            contentEditable={!props.readOnly}
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="false"
+            aria-readonly={props.readOnly}
             aria-label={props.ariaLabel}
+            data-tip={props.readOnlyReason}
             data-placeholder={props.placeholder}
             className="nl-translation-field min-h-[3.25rem] w-full rounded-md border border-primary/50 bg-surface-raised px-2 py-1.5 text-sm leading-relaxed text-fg outline-none"
             onInput={() => {
@@ -234,6 +255,9 @@ function TranslationField(props: {
                 // Plain text only: a translation carries the line's tags, and nothing a clipboard can
                 // bring in is one of them.
                 event.preventDefault();
+                if (props.readOnly) {
+                    return;
+                }
                 const text = event.clipboardData.getData("text/plain").replace(/\r?\n/g, " ");
                 globalThis.document.execCommand("insertText", false, text);
             }}
@@ -331,6 +355,8 @@ function indexAt(tokens: readonly TranslationToken[], target: number): number {
 function TagPalette(props: {
     sourceRuns: StoryRichRun[];
     placed: ReadonlySet<string>;
+    disabled: boolean;
+    disabledReason?: string;
     onPlace: (token: PlaceableToken, closing?: PlaceableToken) => void;
 }) {
     const { t } = useTranslation();
@@ -378,6 +404,7 @@ function TagPalette(props: {
                 <button
                     key={entry.key}
                     type="button"
+                    disabled={props.disabled}
                     className={`grid h-6 min-w-6 place-items-center rounded-md border border-edge-subtle px-1.5 text-xs transition-colors hover:border-edge-strong hover:bg-fill ${
                         props.placed.has(entry.key) ? "opacity-40" : ""
                     }`}
@@ -385,7 +412,7 @@ function TagPalette(props: {
                     // translator left the caret, and focusing a button would move it first.
                     onMouseDown={event => event.preventDefault()}
                     onClick={entry.place}
-                    data-tip={entry.tip}
+                    data-tip={props.disabled ? props.disabledReason : entry.tip}
                     aria-label={entry.tip}
                 >
                     {entry.label}
@@ -492,6 +519,8 @@ export function InlineTargetEditor(props: {
                 placeholder={props.placeholder}
                 ariaLabel={props.ariaLabel}
                 caret={props.caret}
+                readOnly={shut}
+                readOnlyReason={shutReason}
                 fieldRef={field}
                 onChange={props.onTargetChange}
                 onDone={props.onStopEdit}
@@ -499,6 +528,8 @@ export function InlineTargetEditor(props: {
             <TagPalette
                 sourceRuns={props.sourceRuns}
                 placed={placed}
+                disabled={shut}
+                disabledReason={shutReason}
                 onPlace={(token, closing) => field.current?.place(token, closing)}
             />
         </div>

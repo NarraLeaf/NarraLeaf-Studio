@@ -135,7 +135,7 @@ export function useLocalizationKeyClaimHold(input: {
 /** Unit id to the account translating it, for every line somebody else holds in THIS language. */
 export type TranslationClaims = Readonly<Record<string, string>>;
 
-const NO_CLAIMS: TranslationClaims = {};
+const NO_CLAIMS: TranslationClaims = Object.create(null);
 
 const TranslationClaimsContext = createContext<TranslationClaims>(NO_CLAIMS);
 
@@ -216,7 +216,7 @@ export function useLocalizationKeyClaim(name: string | undefined): string | null
 export function othersLocalizationKeyClaims(view: LiveSessionView): TranslationClaims {
     const self = selfAccount(view);
     const prefix = localizationKeyClaimKey("");
-    const held: Record<string, string> = {};
+    const held: Record<string, string> = Object.create(null);
     for (const [key, account] of Object.entries(view.claims)) {
         if (key.startsWith(prefix) && account !== self) {
             held[key.slice(prefix.length)] = account;
@@ -240,7 +240,7 @@ export function othersLocalizationKeyClaims(view: LiveSessionView): TranslationC
 export function othersTranslationClaims(view: LiveSessionView, locale: string): TranslationClaims {
     const self = selfAccount(view);
     const prefix = translationClaimKey(locale, "");
-    const held: Record<string, string> = {};
+    const held: Record<string, string> = Object.create(null);
     for (const [key, account] of Object.entries(view.claims)) {
         if (key.startsWith(prefix) && account !== self) {
             held[key.slice(prefix.length)] = account;
