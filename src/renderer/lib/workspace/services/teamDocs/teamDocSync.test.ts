@@ -142,6 +142,8 @@ class Window {
     online = true;
     state: TeamDocState | null = null;
     failStateWrites = false;
+    failFlush = false;
+    flushCalls = 0;
     failStateWhen: ((state: TeamDocState) => boolean) | null = null;
     beforeStateSave: ((state: TeamDocState) => Promise<void>) | null = null;
     readonly notices: TeamDocNotice[] = [];
@@ -166,7 +168,13 @@ class Window {
                 this.disk.delete(path);
                 this.binary.delete(path);
             },
-            flush: async () => undefined,
+            flush: async () => {
+                this.flushCalls += 1;
+                if (this.failFlush) {
+                    await settle();
+                    throw new Error("save failed");
+                }
+            },
             reload: async () => {
                 this.reloads += 1;
             },
@@ -582,6 +590,36 @@ describe("following a team project", () => {
     describe("files that travel whole", () => {
         const SCHEMA = "editor/save-schema.json";
         const VARIABLES = "editor/variables.json";
+
+        it("holds incoming files when pending edits fail to save", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author edit");
+            ada.failFlush = true;
+            const callsBefore = ada.flushCalls;
+            server.call("bob", "doc.intent", {
+                clientId: "bob:save-failure",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+            });
+            for (let i = 0; i < 4; i += 1) await settle();
+            const calls = ada.flushCalls - callsBefore;
+            const state = ada.sync.getView();
+            const text = ada.disk.get(SCHEMA);
+            ada.failFlush = false;
+
+            expect(text).toBe("author edit");
+            expect(calls).toBe(1);
+            expect(state).toMatchObject({ state: "offline", seq: 0 });
+
+            ada.setOnline(false);
+            await settle();
+            ada.setOnline(true);
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(ada.sync.getView().conflicts).toHaveLength(1);
+            expect(new TextDecoder().decode((ada.sync.getView().conflicts[0] as { mine: Uint8Array }).mine)).toBe("author edit");
+        });
         /** Long enough for the look after a write to have run and its answer to have landed. */
         const afterScan = async () => {
             await new Promise(resolve => setTimeout(resolve, 450));

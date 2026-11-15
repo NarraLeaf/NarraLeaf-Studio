@@ -1049,7 +1049,6 @@ export class TeamDocSync {
     private storageFailure(error: unknown): void {
         if (!(error instanceof TeamDocStateError)) {
             console.warn("[TeamDocSync] synchronization failed", error);
-            return;
         }
         this.persistenceBlocked = true;
         this.online = false;

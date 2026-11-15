@@ -3,7 +3,7 @@ import { isVersioned } from "@shared/vcs/workingSet";
 import { ASSET_CONTENT_ROOT } from "@shared/authority/project";
 import { BaseFileSystemService } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
-import { SaveStatusService } from "../autosave/SaveStatusService";
+import { flushPendingSaves } from "../autosave/flushPendingSaves";
 import { WorkspaceReloadService } from "../core/WorkspaceReloadService";
 import type { TeamFilePorts } from "./teamFileSync";
 
@@ -67,7 +67,10 @@ export function createTeamFilePorts(ctx: WorkspaceContext, target: { remoteOrigi
             await BaseFileSystemService.deleteFile(absolute(path));
         },
         flush: async () => {
-            await ctx.services.get<SaveStatusService>(Services.SaveStatus).flushAll();
+            const result = await flushPendingSaves(ctx);
+            if (!result.flushed) {
+                throw new Error("Pending changes could not be saved before applying Team files");
+            }
         },
         reload: async () => {
             await ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload).reload("external");

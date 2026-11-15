@@ -305,20 +305,23 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * Move every open editor's held edit into its document. Synchronous, and safe to call when
      * there is nothing to move - a settle with no change writes nothing.
      *
-     * One editor that throws must not stop the others, and must not be the reason a window refuses
-     * to close: the failure is reported and the flush carries on with what it can still save.
+     * One editor that throws does not stop the others. The returned value lets callers report an
+     * incomplete flush while continuing to save every document they can.
      */
-    public settlePendingEdits(): void {
+    public settlePendingEdits(): boolean {
+        let settled = true;
         for (const settle of [...this.pendingEdits]) {
             try {
                 settle();
             } catch (error) {
+                settled = false;
                 this.logStorage("error", translate("workspace.shell.save.flushFailed", {
                     label: translate("workspace.shell.save.stores.openEditors"),
                     error: String((error as Error)?.message ?? error),
                 }));
             }
         }
+        return settled;
     }
 
     /** Worst state across every registered saver, with any write failure taking precedence. */
