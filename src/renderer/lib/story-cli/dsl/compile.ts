@@ -744,7 +744,30 @@ function withSceneVariablesFrom(context: StoryCommandContext, rows: ReadonlySet<
  * - never touch it, so an edited `/local` line keeps it too.
  */
 function carryIdentity(built: StoryBlock, previous: StoryBlock): StoryBlock {
-    const next = { ...built, id: previous.id } as StoryBlock;
+    let next = { ...built, id: previous.id } as StoryBlock;
+    // A show row names its target by the declaring row's id. Preserve its fallback names while the
+    // same target is addressed, so an unchanged line stays byte-identical after the target is renamed.
+    if (next.kind === "action" && previous.kind === "action"
+        && (next.payload.action === "image" || next.payload.action === "text")
+        && previous.payload.action === next.payload.action
+        && next.payload.operation === "show" && previous.payload.operation === "show") {
+        const target = next.payload.target;
+        const priorTarget = previous.payload.target;
+        if (target?.sourceBlockId && target.sourceBlockId === priorTarget?.sourceBlockId
+            && target.kind === priorTarget.kind && !target.builtin && !priorTarget.builtin) {
+            next = { ...next, payload: { ...next.payload, objectName: previous.payload.objectName, target: priorTarget } };
+        }
+    }
+    if (next.kind === "action" && previous.kind === "action"
+        && next.payload.action === "displayable" && previous.payload.action === "displayable"
+        && next.payload.operation === "show" && previous.payload.operation === "show") {
+        const target = next.payload.target;
+        const priorTarget = previous.payload.target;
+        if (target.kind === "layer" && priorTarget.kind === "layer" && target.sourceBlockId
+            && target.sourceBlockId === priorTarget.sourceBlockId && !target.builtin && !priorTarget.builtin) {
+            next = { ...next, payload: { ...next.payload, target: priorTarget } };
+        }
+    }
     for (const slot of ["text", "prompt"] as const) {
         const carried = segmentAt(previous, slot);
         const fresh = segmentAt(next, slot);

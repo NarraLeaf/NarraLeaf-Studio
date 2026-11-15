@@ -49,7 +49,7 @@ describe("localizedCommandToken", () => {
         // The invariant the whole feature rests on. A label that fell foul of a drop rule (blank,
         // untranslated, multi-word, or already spelling another command's canonical token) must come
         // back as the English token rather than as a word the line cannot read.
-        for (const locale of ["en", "zh"] as const) {
+        for (const locale of ["en", "zh", "ja"] as const) {
             i18nStore.setLocale(locale);
             for (const def of listCommandDefs()) {
                 const token = localizedCommandToken(def);

@@ -62,7 +62,6 @@ import {
     type TransformPropArg,
 } from "./commands/transformVocabulary";
 import {
-    applyPositionToTransform,
     applyTransitionWordToTransform,
     placementWordFor,
     transitionKindFor,
@@ -843,8 +842,8 @@ function retargetActionable<P extends { objectName?: string; target?: StoryActio
  * row's reveal context to apply that rule; a row that has no `in=` passes `null`.
  *
  * Each value writes back into the position it came from. An edit of `pos=` keeps the offsets
- * (`withOffsetsOf`) - the author moved the anchor, not the pixels on top of it - and goes through the
- * same channel replacement a typed placement does.
+ * (`withOffsetsOf`) - the author moved the anchor, not the pixels on top of it. Other transform
+ * channels stay as they were.
  */
 function placementArgs<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(
     payload: P,
@@ -857,7 +856,7 @@ function placementArgs<P extends StoryBlock["payload"] & { transform?: StoryTran
     }
     const place = (next: string): StoryTransformRef | undefined => {
         const parsed = parsePositionValue(next);
-        return parsed ? applyPositionToTransform(transform, withOffsetsOf(parsed, position)) : transform;
+        return parsed ? { ...(transform ?? {}), to: { ...(transform?.to ?? {}), position: withOffsetsOf(parsed, position) } } : transform;
     };
     return positionPropArgs(position).map(entry => arg(entry.key, entry.value, {
         ...(entry.enum ? { enum: true } : {}),
@@ -879,16 +878,15 @@ function revealWord(transform: StoryTransformRef | undefined, direction: "reveal
 }
 
 /**
- * `/show opacity=` — the opacity an entrance ends at, printed only when it is not the full 1 every
- * reveal ends at anyway.
+ * `/show opacity=` — the opacity an entrance ends at. A full opacity is stated when a placement
+ * accompanies it, so rebuilding the row keeps the combined reveal and move.
  *
- * A stated opacity also makes {@link revealWord} read the bag as `fade` (the channel is the one
- * `fade` writes), and the word is kept beside the number: `in=fade` clears the other reveal channels
- * before the opacity lands, so dropping it would print a line that builds a different row.
+ * When opacity is the reveal channel, {@link revealWord} names it as `fade`; an explicit placement
+ * is written separately alongside its opacity.
  */
 function entranceOpacityArg<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(payload: P): Arg | null {
     const opacity = payload.transform?.to?.opacity;
-    if (opacity === undefined || opacity === 1) {
+    if (opacity === undefined || (opacity === 1 && payload.transform?.to?.position === undefined)) {
         return null;
     }
     return arg("opacity", numberValue(opacity), {
@@ -1255,6 +1253,7 @@ function imageSentence(
         commandId,
         args: [
             positional("target", name, object),
+            ...(payload.operation === "show" ? placement : []),
             reveal(payload.operation === "show" ? "reveal" : "conceal"),
             payload.operation === "show" ? entranceOpacityArg(payload) : null,
             duration,
@@ -1325,6 +1324,7 @@ function textSentence(
                 commandId,
                 args: [
                     positional("target", name, object),
+                    ...(direction === "reveal" ? placementArgs(payload, "reveal") : []),
                     arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
                         enum: true,
                         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
@@ -1618,6 +1618,7 @@ function displayableSentence(
         commandId,
         args: [
             positional("target", label, who),
+            ...(direction === "reveal" ? placementArgs(payload, "reveal") : []),
             arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
                 enum: true,
                 apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),

@@ -21,6 +21,7 @@ import {
     actionableStageRefName,
     BGM_STAGE_OBJECT_NAME,
     declaresStageObject,
+    displayableStageRefName,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -1375,7 +1376,10 @@ class SnapshotWalker {
     }
 
     private applyImage(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "image" }>): void {
-        const record = this.ensure("image", payload.objectName, block.id);
+        const name = payload.operation === "show" && !declaresStageObject(payload)
+            ? displayableStageRefName(this.scene, payload.target, payload.objectName).name
+            : payload.objectName;
+        const record = this.ensure("image", name, block.id);
         if (payload.autoFit !== undefined) {
             record.autoFit = payload.autoFit;
         }
@@ -1541,7 +1545,10 @@ class SnapshotWalker {
     }
 
     private applyText(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "text" }>): void {
-        const record = this.ensure("text", payload.objectName, block.id);
+        const name = payload.operation === "show"
+            ? displayableStageRefName(this.scene, payload.target, payload.objectName).name
+            : payload.objectName;
+        const record = this.ensure("text", name, block.id);
         if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
             record.text = payload.text;
         }
