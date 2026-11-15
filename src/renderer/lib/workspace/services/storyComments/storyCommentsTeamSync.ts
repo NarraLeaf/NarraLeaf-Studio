@@ -104,6 +104,8 @@ export class StoryCommentsTeamSync {
     private readonly pulls = new Map<string, object>();
     /** Writes awaiting their server ids must be reconciled before their thread is pulled. */
     private readonly unacknowledged = new Map<string, string>();
+    /** An imported server thread and an unassociated local creation awaiting identification. */
+    private readonly blockedCreations = new Map<string, string>();
     /** A creation with no answer may already have reached the server. */
     private readonly uncertainCreations = new Set<string>();
     private again = false;
@@ -145,19 +147,21 @@ export class StoryCommentsTeamSync {
         if (deferred.size > 0) {
             await this.push();
             for (const threadId of deferred) {
-                if (await this.readThread(threadId, true) !== "complete") return false;
+                const result = await this.readThread(threadId, true);
+                if (result === "incomplete" || result === "deferred") return false;
             }
         }
         return !this.stopped;
     }
 
-    /** Take one thread as the server has it; answer whether the complete thread was read. */
+    /** Read one complete thread; an ambiguous local creation remains separate. */
     async pullThread(teamThreadId: string): Promise<boolean> {
-        return await this.readThread(teamThreadId, false) === "complete";
+        const result = await this.readThread(teamThreadId, false);
+        return result === "complete" || result === "blocked";
     }
 
     /** A full read defers uncertain writes until every list and comment page has been read. */
-    private async readThread(teamThreadId: string, deferWrites: boolean): Promise<"complete" | "deferred" | "incomplete"> {
+    private async readThread(teamThreadId: string, deferWrites: boolean): Promise<"complete" | "blocked" | "deferred" | "incomplete"> {
         const request = {};
         this.pulls.set(teamThreadId, request);
         let retried = false;
@@ -205,6 +209,11 @@ export class StoryCommentsTeamSync {
                 if (restart || thread === undefined) continue;
                 const remote = remoteStoryThread(thread, comments);
                 if (remote === null) return "incomplete";
+                const blocked = this.blockedCreations.get(teamThreadId);
+                if (blocked !== undefined) {
+                    if (this.service.getThread(blocked) !== null) return "blocked";
+                    this.blockedCreations.delete(teamThreadId);
+                }
                 const uncertain = this.service.listThreads().some(thread =>
                     this.uncertainCreations.has(thread.id)
                     && thread.storyId === remote.storyId
@@ -277,8 +286,14 @@ export class StoryCommentsTeamSync {
     }
 
     private async pushOnce(): Promise<void> {
+        const blockedLocal = new Set<string>();
+        for (const [teamThreadId, localId] of this.blockedCreations) {
+            if (this.service.getThread(localId) === null) this.blockedCreations.delete(teamThreadId);
+            else blockedLocal.add(localId);
+        }
         for (const thread of this.service.listThreads()) {
             if (this.stopped) return;
+            if (blockedLocal.has(thread.id) || (thread.teamThreadId !== undefined && this.blockedCreations.has(thread.teamThreadId))) continue;
             const first = thread.comments[0];
             if (first === undefined) continue;
             let teamThreadId = thread.teamThreadId;
@@ -297,6 +312,13 @@ export class StoryCommentsTeamSync {
                 }
                 this.uncertainCreations.delete(thread.id);
                 teamThreadId = created.thread.id;
+                if (this.service.listThreads().some(other => other.id !== thread.id && other.teamThreadId === teamThreadId)) {
+                    // The server thread has already been imported. The local opening comment may
+                    // have been removed while offline, so its original id is needed before mapping it.
+                    this.blockedCreations.set(teamThreadId, thread.id);
+                    blockedLocal.add(thread.id);
+                    continue;
+                }
                 let opening = created.opening ?? created.thread.opening;
                 if (opening === undefined) {
                     opening = (await this.transport.getThread(teamThreadId))?.comments[0];

@@ -91,6 +91,7 @@ function fakeServer() {
     const comments = new Map<string, TeamComment[]>();
     const byClient = new Map<string, string>();
     const repliesByClient = new Map<string, TeamComment>();
+    let account = "ada";
     let next = 1;
     const calls: string[] = [];
     const todos = new Map<string, string>();
@@ -102,30 +103,32 @@ function fakeServer() {
         },
         createThread: async input => {
             calls.push(`create:${input.clientId}`);
-            const known = byClient.get(input.clientId);
+            const key = `${account}\0${input.clientId}`;
+            const known = byClient.get(key);
             if (known !== undefined) return { thread: threads.get(known)!, opening: comments.get(known)![0] };
             const id = `t${next++}`;
-            const thread: TeamThread = { id, project: "p", anchor: input.anchor, kind: input.kind ?? "comment", status: "open", createdAt: 1, updatedAt: 1, comments: 1 };
+            const thread: TeamThread = { id, project: "p", anchor: input.anchor, kind: input.kind ?? "comment", status: "open", createdBy: account, createdAt: 1, updatedAt: 1, comments: 1 };
             const opening: TeamComment = {
                 id: `c${next++}`,
                 thread: id,
-                author: "ada",
+                author: account,
                 body: input.body,
                 createdAt: 1,
                 ...(input.suggestion === undefined ? {} : { suggestion: input.suggestion }),
             };
             threads.set(id, thread);
             comments.set(id, [opening]);
-            byClient.set(input.clientId, id);
+            byClient.set(key, id);
             return { thread, opening };
         },
         reply: async input => {
             calls.push(`reply:${input.clientId}`);
-            const known = repliesByClient.get(input.clientId);
+            const key = `${account}\0${input.clientId}`;
+            const known = repliesByClient.get(key);
             if (known !== undefined) return known;
-            const comment: TeamComment = { id: `c${next++}`, thread: input.thread, author: "ada", body: input.body, createdAt: 2 };
+            const comment: TeamComment = { id: `c${next++}`, thread: input.thread, author: account, body: input.body, createdAt: 2 };
             comments.set(input.thread, [...(comments.get(input.thread) ?? []), comment]);
-            repliesByClient.set(input.clientId, comment);
+            repliesByClient.set(key, comment);
             return comment;
         },
         createTodo: async input => {
@@ -145,7 +148,7 @@ function fakeServer() {
             return true;
         },
     };
-    return { threads, comments, calls, todos, transport };
+    return { threads, comments, calls, todos, transport, setAccount: (name: string) => { account = name; } };
 }
 
 function deferred() {
@@ -209,6 +212,134 @@ describe("suggested edits", () => {
 });
 
 describe("keeping story comments in step with Team", () => {
+    it("keeps an unacknowledged local thread separate from imported discussions after restart", async () => {
+        const { service, files } = await createHarness();
+        const server = fakeServer();
+        const local = service.createThread({ ...row, body: "same wording" })!;
+        const create = server.transport.createThread;
+        let loseResponse = true;
+        server.transport.createThread = async input => {
+            const answer = await create(input);
+            if (loseResponse) { loseResponse = false; return null; }
+            return answer;
+        };
+        const first = new StoryCommentsTeamSync(service, server.transport);
+        await first.push();
+        service.reply(local.id, "local reply");
+        await service.save();
+        first.stop();
+        service.dispose();
+
+        server.setAccount("bob");
+        const other = await server.transport.createThread({
+            anchor: { document: "story:story", element: "scene/block-1" },
+            body: "same wording", clientId: local.id,
+        });
+        server.setAccount("ada");
+        const reopened = await createHarness(files.get(documentPath));
+        const sync = new StoryCommentsTeamSync(reopened.service, server.transport);
+        expect(await sync.pullAll()).toBe(true);
+        await sync.push();
+
+        const threads = reopened.service.listThreads();
+        const creates = server.calls.filter(call => call === `create:${local.id}`).length;
+        expect(await sync.pullThread("t1")).toBe(true);
+        expect(server.calls.filter(call => call === `create:${local.id}`)).toHaveLength(creates);
+        expect(threads).toHaveLength(3);
+        expect(reopened.service.getThread(local.id)!.teamThreadId).toBeUndefined();
+        expect(reopened.service.getThread(local.id)!.comments.map(comment => comment.body)).toEqual(["same wording", "local reply"]);
+        expect(threads.find(thread => thread.teamThreadId === "t1")!.comments.map(comment => comment.body)).toEqual(["same wording"]);
+        expect(threads.find(thread => thread.teamThreadId === other!.thread.id)!.comments.map(comment => comment.body)).toEqual(["same wording"]);
+        expect(server.threads.size).toBe(2);
+    });
+
+    it("keeps an edited local opening after an unacknowledged creation", async () => {
+        const { service, files } = await createHarness();
+        const server = fakeServer();
+        const local = service.createThread({ ...row, body: "opening" })!;
+        const create = server.transport.createThread;
+        server.transport.createThread = async input => { await create(input); return null; };
+        const first = new StoryCommentsTeamSync(service, server.transport);
+        await first.push();
+        service.editComment(local.id, local.comments[0].id, "edited offline");
+        await service.save();
+        first.stop();
+        service.dispose();
+
+        server.transport.createThread = create;
+        const reopened = await createHarness(files.get(documentPath));
+        const sync = new StoryCommentsTeamSync(reopened.service, server.transport);
+        await sync.pullAll();
+        await sync.push();
+
+        expect(await sync.pullThread("t1")).toBe(true);
+        expect(reopened.service.getThread(local.id)!.comments[0].body).toBe("edited offline");
+        expect(server.comments.get("t1")![0].body).toBe("opening");
+    });
+
+    it("preserves a later local reply if the opening was removed before reconnection", async () => {
+        const { service, files } = await createHarness();
+        const server = fakeServer();
+        const local = service.createThread({ ...row, body: "opening" })!;
+        const create = server.transport.createThread;
+        server.transport.createThread = async input => { await create(input); return null; };
+        const first = new StoryCommentsTeamSync(service, server.transport);
+        await first.push();
+        service.reply(local.id, "local reply");
+        service.deleteComment(local.id, local.comments[0].id);
+        await service.save();
+        first.stop();
+        service.dispose();
+
+        server.transport.createThread = create;
+        const reopened = await createHarness(files.get(documentPath));
+        const sync = new StoryCommentsTeamSync(reopened.service, server.transport);
+        expect(await sync.pullAll()).toBe(true);
+        await sync.push();
+        expect(await sync.pullThread("t1")).toBe(true);
+        expect(reopened.service.getThread(local.id)!.comments.map(comment => comment.body)).toContain("local reply");
+        expect(reopened.service.getThread(local.id)!.teamThreadId).toBeUndefined();
+        expect(server.comments.get("t1")!.map(comment => comment.body)).toEqual(["opening"]);
+    });
+
+    it("scopes a creation client id to the account that sent it", async () => {
+        const server = fakeServer();
+        const input = { anchor: { document: "story:story", element: "scene/block-1" }, body: "same", clientId: "same-client" };
+        const first = await server.transport.createThread(input);
+        const repeated = await server.transport.createThread(input);
+        server.setAccount("bob");
+        const other = await server.transport.createThread(input);
+
+        expect(repeated!.thread.id).toBe(first!.thread.id);
+        expect(other!.thread.id).not.toBe(first!.thread.id);
+        expect(server.threads.size).toBe(2);
+    });
+
+    it("keeps the original server discussion when a different account retries after restart", async () => {
+        const { service, files } = await createHarness();
+        const server = fakeServer();
+        const local = service.createThread({ ...row, body: "opening" })!;
+        const create = server.transport.createThread;
+        server.transport.createThread = async input => { await create(input); return null; };
+        const first = new StoryCommentsTeamSync(service, server.transport);
+        await first.push();
+        await service.save();
+        first.stop();
+        service.dispose();
+
+        server.setAccount("bob");
+        server.transport.createThread = create;
+        const reopened = await createHarness(files.get(documentPath));
+        const sync = new StoryCommentsTeamSync(reopened.service, server.transport);
+        await sync.pullAll();
+        await sync.push();
+
+        expect(server.threads.size).toBe(2);
+        expect(server.threads.get("t1")!.createdBy).toBe("ada");
+        expect(server.comments.get("t1")!.map(comment => comment.body)).toEqual(["opening"]);
+        expect(reopened.service.getThread(local.id)!.teamThreadId).not.toBe("t1");
+    });
+
     it("reports an incomplete initial read when a thread list page fails", async () => {
         const { service } = await createHarness();
         const server = fakeServer();
