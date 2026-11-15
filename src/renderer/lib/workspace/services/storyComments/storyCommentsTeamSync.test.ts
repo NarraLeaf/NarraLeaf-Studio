@@ -35,6 +35,7 @@ const documentPath = join(ROOT, "editor", "story-comments.json");
 async function createHarness(seed?: string) {
     const files = new Map<string, string>();
     if (seed !== undefined) files.set(documentPath, seed);
+    const faults = { write: false };
     const unreadable = vi.fn();
     const history = new HistoryService();
     const ok = <T,>(data: T): FsRequestResult<T> => ({ ok: true, data });
@@ -47,6 +48,7 @@ async function createHarness(seed?: string) {
                     : ok(value);
             },
             writeFileNoFollowOrCreate: async (path: string, data: string) => {
+                if (faults.write) return { ok: false, error: { code: FsRejectErrorCode.IO_ERROR, message: "write failed" } };
                 files.set(path, data);
                 return ok(undefined);
             },
@@ -77,7 +79,7 @@ async function createHarness(seed?: string) {
     const service = new StoryCommentsService();
     await service.initialize(ctx, async () => undefined);
     await service.resolveAuthor();
-    return { service, files, history, unreadable };
+    return { service, files, history, unreadable, faults };
 }
 
 
@@ -939,6 +941,41 @@ describe("keeping story comments in step with Team", () => {
         server.threads.set("t1", { ...server.threads.get("t1")!, status: "open" });
         await sync.pullThread("t1");
         expect(service.getThread(thread.id)!.resolved).toBe(false);
+    });
+
+    it("retries a refused resolution while the synchroniser is still running", async () => {
+        const { service } = await createHarness();
+        const server = fakeServer();
+        const thread = service.createThread({ ...row, body: "fix this" })!;
+        const sync = new StoryCommentsTeamSync(service, server.transport);
+        await sync.push();
+        service.setResolved(thread.id, true);
+        const resolve = server.transport.resolve;
+        server.transport.resolve = async () => false;
+        await sync.push();
+        expect(service.getThread(thread.id)!.resolved).toBe(true);
+        expect(server.threads.get("t1")!.status).toBe("open");
+
+        server.transport.resolve = resolve;
+        await sync.push();
+        expect(server.threads.get("t1")!.status).toBe("resolved");
+    });
+
+    it("retains a local resolution when saving fails and writes it on retry", async () => {
+        const { service, files, faults } = await createHarness();
+        const thread = service.createThread({ ...row, body: "fix this" })!;
+        await service.save();
+        const saved = files.get(documentPath);
+        service.setResolved(thread.id, true);
+        faults.write = true;
+
+        await expect(service.save()).rejects.toThrow();
+        expect(service.getThread(thread.id)!.resolved).toBe(true);
+        expect(files.get(documentPath)).toBe(saved);
+        faults.write = false;
+        await service.save();
+        const reopened = await createHarness(files.get(documentPath));
+        expect(reopened.service.getThread(thread.id)!.resolved).toBe(true);
     });
 
     it("turns a thread marked as a to-do into a project to-do on the row, finished when the thread is resolved", async () => {
