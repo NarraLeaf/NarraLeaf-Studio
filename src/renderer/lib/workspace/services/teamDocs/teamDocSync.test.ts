@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { opClaimKeys, type LiveStoryOp } from "@shared/live/ops";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { applyStoryOpToDocument } from "@shared/story/applyStoryOp";
@@ -144,6 +144,7 @@ class Window {
     failStateWrites = false;
     failFlush = false;
     flushCalls = 0;
+    loadState: (() => Promise<TeamDocState | null>) | null = null;
     failStateWhen: ((state: TeamDocState) => boolean) | null = null;
     beforeStateSave: ((state: TeamDocState) => Promise<void>) | null = null;
     readonly notices: TeamDocNotice[] = [];
@@ -225,7 +226,7 @@ class Window {
             },
 
             state: {
-                load: async () => this.state,
+                load: async () => this.loadState === null ? this.state : this.loadState(),
                 save: async state => {
                     await this.beforeStateSave?.(state);
                     if (this.failStateWrites || this.failStateWhen?.(state)) throw new Error("state storage failed");
@@ -259,6 +260,10 @@ class Window {
         for (const listener of this.connection) listener(online);
     }
 
+    fileObserverCount(): number {
+        return this.writes.size;
+    }
+
     rows(): string[] {
         return this.document.scenes[SCENE].rootBlockIds;
     }
@@ -273,6 +278,104 @@ const insert = (id: string, value = id): LiveStoryOp => ({ op: "insert-block", s
 const update = (id: string, value: string): LiveStoryOp => ({ op: "update-block", sceneId: SCENE, blockId: id, payload: row(id, value).payload });
 
 describe("following a team project", () => {
+    describe("state-load cancellation", () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        function deferred<T>() {
+            let resolve!: (value: T) => void;
+            const promise = new Promise<T>(done => { resolve = done; });
+            return { promise, resolve };
+        }
+
+        const stale: TeamDocState = {
+            seq: -1,
+            conflicts: [{ kind: "story", storyId: STORY, op: insert("stale"), mine: null, reason: "conflict" }],
+        };
+
+        it("leaves the project and subscriptions alone when stopped during state loading", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            const load = deferred<TeamDocState | null>();
+            ada.loadState = () => load.promise;
+            ada.edit(insert("local", "local work"));
+
+            const starting = ada.sync.start();
+            ada.sync.stop();
+            load.resolve(null);
+            await starting;
+
+            expect(server.listeners.size).toBe(0);
+            expect(ada.connection.size).toBe(0);
+            expect(ada.fileObserverCount()).toBe(0);
+            expect(ada.sink).toBeNull();
+            expect(ada.rows()).toEqual(["local"]);
+            expect(ada.state).toBeNull();
+        });
+
+        it("ignores an old load that finishes while a restart is still loading", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            const oldLoad = deferred<TeamDocState | null>();
+            const newLoad = deferred<TeamDocState | null>();
+            let loads = 0;
+            ada.loadState = () => (++loads === 1 ? oldLoad.promise : newLoad.promise);
+
+            const oldStart = ada.sync.start();
+            ada.sync.stop();
+            const newStart = ada.sync.start();
+            oldLoad.resolve(stale);
+            await oldStart;
+
+            expect(server.listeners.size).toBe(0);
+            expect(ada.connection.size).toBe(0);
+            expect(ada.fileObserverCount()).toBe(0);
+            expect(ada.sync.getView().conflicts).toEqual([]);
+
+            newLoad.resolve({ seq: 0 });
+            await newStart;
+            expect(ada.sync.getView()).toMatchObject({ state: "online", seq: 0, conflicts: [] });
+            expect(server.listeners.size).toBe(1);
+            expect(ada.connection.size).toBe(1);
+            expect(ada.fileObserverCount()).toBe(1);
+        });
+
+        it("keeps a restarted instance's state and subscriptions when an old load finishes last", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            const oldLoad = deferred<TeamDocState | null>();
+            const newLoad = deferred<TeamDocState | null>();
+            let loads = 0;
+            ada.loadState = () => (++loads === 1 ? oldLoad.promise : newLoad.promise);
+
+            const oldStart = ada.sync.start();
+            ada.sync.stop();
+            const newStart = ada.sync.start();
+            newLoad.resolve({ seq: 0 });
+            await newStart;
+            const sink = ada.sink;
+            expect(sink).not.toBeNull();
+            oldLoad.resolve(stale);
+            await oldStart;
+
+            expect(ada.sync.getView()).toMatchObject({ state: "online", seq: 0, conflicts: [] });
+            expect(ada.sink).toBe(sink);
+            expect(server.listeners.size).toBe(1);
+            expect(ada.connection.size).toBe(1);
+            expect(ada.fileObserverCount()).toBe(1);
+            server.call("bob", "doc.intent", {
+                clientId: "bob:after-restart", document: { doc: "story", storyId: STORY }, op: insert("after-restart"),
+            });
+            expect(ada.rows()).toEqual(["after-restart"]);
+            expect(ada.sync.getView().seq).toBe(1);
+
+            ada.sync.stop();
+            expect(server.listeners.size).toBe(0);
+            expect(ada.connection.size).toBe(0);
+            expect(ada.fileObserverCount()).toBe(0);
+        });
+    });
+
     it("sends every edit to the server and applies only what comes back, in the server's order", async () => {
         const server = new FakeServer();
         const ada = new Window(server, "ada");

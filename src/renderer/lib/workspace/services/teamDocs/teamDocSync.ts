@@ -52,6 +52,8 @@ export class TeamDocSync {
     private catchingUp: Promise<void> | null = null;
     private online = false;
     private started = false;
+    /** Identifies the start whose state load is still current. */
+    private startGeneration = 0;
     private stopListening: (() => void) | null = null;
     private stopConnection: (() => void) | null = null;
     private nextClient = 0;
@@ -106,7 +108,11 @@ export class TeamDocSync {
             return;
         }
         this.started = true;
+        const generation = ++this.startGeneration;
         const held = await this.ports.state.load();
+        if (generation !== this.startGeneration) {
+            return;
+        }
         this.offlineBase = held?.offline ?? null;
         this.replay = held?.replay ?? null;
         this.set({ conflicts: (held?.conflicts ?? []).map(loadConflict) });
@@ -132,6 +138,7 @@ export class TeamDocSync {
     }
 
     public stop(): void {
+        this.startGeneration += 1;
         this.stopListening?.();
         this.stopConnection?.();
         this.stopObserving?.();
