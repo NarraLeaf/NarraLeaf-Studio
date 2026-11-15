@@ -821,7 +821,7 @@ export const workspace = {
             failed: "版本已提交，但有 {count} 条待办没能标为完成",
         },
         editingNotice: {
-            here: "{name} 也在编辑这里（{since}）。同时修改的内容会在合并时一起处理。",
+            here: "{name} 也在编辑这里（{since}）。",
             justNow: "刚刚打开",
             minutes: "已经 {minutes} 分钟",
             dismiss: "知道了",

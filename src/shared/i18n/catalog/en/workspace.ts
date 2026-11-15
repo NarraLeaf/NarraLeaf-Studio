@@ -910,7 +910,7 @@ export const workspace = {
             failed: "The version was recorded, but {count} to-dos could not be marked done",
         },
         editingNotice: {
-            here: "{name} is editing this too ({since}). Changes made at the same time are combined when you merge.",
+            here: "{name} is editing this too ({since}).",
             justNow: "just opened",
             minutes: "for {minutes} min",
             dismiss: "Got it",

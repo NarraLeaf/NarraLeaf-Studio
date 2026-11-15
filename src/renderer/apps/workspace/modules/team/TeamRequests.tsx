@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTranslation } from "@/lib/i18n";
 import { teamCall, useTeamCapability, useTeamConnection } from "@/lib/team";
@@ -32,11 +32,14 @@ function useProject() {
 function useMembers(remoteOrigin: string | null, projectId: string | null, ready: boolean): Member[] {
     const [members, setMembers] = useState<Member[]>([]);
     useEffect(() => {
+        setMembers([]);
         if (remoteOrigin === null || projectId === null || !ready) return;
+        let alive = true;
         void teamCall(remoteOrigin, TeamMethod.projectsMembersList, { project: projectId }).then(answer => {
             const list = answer.ok ? (answer.value as { members?: unknown }).members : undefined;
-            if (Array.isArray(list)) setMembers(list as Member[]);
+            if (alive && Array.isArray(list)) setMembers(list as Member[]);
         });
+        return () => { alive = false; };
     }, [remoteOrigin, projectId, ready]);
     return members;
 }
@@ -44,13 +47,33 @@ function useMembers(remoteOrigin: string | null, projectId: string | null, ready
 function useRevisions(remoteOrigin: string | null, projectId: string | null, ready: boolean): Revision[] {
     const [revisions, setRevisions] = useState<Revision[]>([]);
     useEffect(() => {
+        setRevisions([]);
         if (remoteOrigin === null || projectId === null || !ready) return;
+        let alive = true;
         void teamCall(remoteOrigin, TeamMethod.projectsHistory, { project: projectId, limit: 30 }).then(answer => {
             const list = answer.ok ? (answer.value as { revisions?: unknown }).revisions : undefined;
-            if (Array.isArray(list)) setRevisions(list as Revision[]);
+            if (alive && Array.isArray(list)) setRevisions(list as Revision[]);
         });
+        return () => { alive = false; };
     }, [remoteOrigin, projectId, ready]);
     return revisions;
+}
+
+function usePendingRequest() {
+    const [pending, setPending] = useState(false);
+    const inFlight = useRef(false);
+    const run = async (action: () => Promise<void>) => {
+        if (inFlight.current) return;
+        inFlight.current = true;
+        setPending(true);
+        try {
+            await action();
+        } finally {
+            inFlight.current = false;
+            setPending(false);
+        }
+    };
+    return { pending, run };
 }
 
 function Sent({ text }: { text: string | null }) {
@@ -66,29 +89,35 @@ export function ReviewRequestForm() {
     const revisions = useRevisions(remoteOrigin, projectId, ready);
     const [draft, setDraft] = useState({ title: "", reviewer: "", from: "", to: "" });
     const [said, setSaid] = useState<string | null>(null);
+    const { pending, run } = usePendingRequest();
     const to = draft.to || revisions[0]?.id || "";
-    const canSend = remoteOrigin !== null && projectId !== null && draft.title.trim() !== "" && draft.reviewer !== "" && to !== "";
+    const canSend = ready && remoteOrigin !== null && projectId !== null && draft.title.trim() !== ""
+        && members.some(member => member.username === draft.reviewer)
+        && revisions.some(revision => revision.id === to)
+        && (draft.from === "" || revisions.some(revision => revision.id === draft.from));
 
     const send = async () => {
         if (!canSend) return;
-        const answer = await teamCall(remoteOrigin!, TeamMethod.reviewsCreate, {
-            project: projectId,
-            reviewer: draft.reviewer,
-            title: draft.title.trim(),
-            toRevision: to,
-            ...(draft.from ? { fromRevision: draft.from } : {}),
+        await run(async () => {
+            const answer = await teamCall(remoteOrigin!, TeamMethod.reviewsCreate, {
+                project: projectId,
+                reviewer: draft.reviewer,
+                title: draft.title.trim(),
+                toRevision: to,
+                ...(draft.from ? { fromRevision: draft.from } : {}),
+            });
+            setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
+            if (answer.ok) setDraft({ title: "", reviewer: "", from: "", to: "" });
         });
-        setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
-        if (answer.ok) setDraft({ title: "", reviewer: "", from: "", to: "" });
     };
 
     const name = (revision: Revision) => `${revision.id.slice(0, 8)} ${revision.message?.split("\n")[0]?.slice(0, 40) ?? ""}`;
     return (
         <div data-team-request="review" className="flex flex-col gap-1.5 px-2 py-1.5">
-            <input className={field} value={draft.title} placeholder={t("workspace.shell.team.requests.reviewTitle")} onChange={event => setDraft({ ...draft, title: event.target.value })} />
+            <input className={field} value={draft.title} disabled={pending} placeholder={t("workspace.shell.team.requests.reviewTitle")} onChange={event => setDraft({ ...draft, title: event.target.value })} />
             <label className={label}>
                 {t("workspace.shell.team.requests.reviewer")}
-                <select className={field} value={draft.reviewer} onChange={event => setDraft({ ...draft, reviewer: event.target.value })}>
+                <select className={field} value={draft.reviewer} disabled={pending} onChange={event => setDraft({ ...draft, reviewer: event.target.value })}>
                     <option value="">—</option>
                     {members.map(member => <option key={member.username} value={member.username}>{member.displayName || member.username}</option>)}
                 </select>
@@ -96,19 +125,19 @@ export function ReviewRequestForm() {
             <div className="flex gap-1.5">
                 <label className={`${label} flex-1`}>
                     {t("workspace.shell.team.requests.from")}
-                    <select className={field} value={draft.from} onChange={event => setDraft({ ...draft, from: event.target.value })}>
+                    <select className={field} value={draft.from} disabled={pending} onChange={event => setDraft({ ...draft, from: event.target.value })}>
                         <option value="">{t("workspace.shell.team.requests.fromStart")}</option>
                         {revisions.map(revision => <option key={revision.id} value={revision.id}>{name(revision)}</option>)}
                     </select>
                 </label>
                 <label className={`${label} flex-1`}>
                     {t("workspace.shell.team.requests.to")}
-                    <select className={field} value={to} onChange={event => setDraft({ ...draft, to: event.target.value })}>
+                    <select className={field} value={to} disabled={pending} onChange={event => setDraft({ ...draft, to: event.target.value })}>
                         {revisions.map(revision => <option key={revision.id} value={revision.id}>{name(revision)}</option>)}
                     </select>
                 </label>
             </div>
-            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
+            <button type="button" disabled={!canSend || pending} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
                 {t("workspace.shell.team.requests.sendReview")}
             </button>
             <Sent text={said} />
@@ -132,42 +161,47 @@ export function LanguageAssignmentForm() {
     }, [context]);
     const [draft, setDraft] = useState({ kind: "translation" as "translation" | "voice", story: "", locale: "", assignee: "" });
     const [said, setSaid] = useState<string | null>(null);
+    const { pending, run } = usePendingRequest();
     const story = draft.story || stories[0]?.id || "";
-    const canSend = remoteOrigin !== null && projectId !== null && story !== "" && draft.locale.trim() !== "";
+    const canSend = ready && remoteOrigin !== null && projectId !== null && draft.locale.trim() !== ""
+        && stories.some(entry => entry.id === story)
+        && (draft.assignee === "" || members.some(member => member.username === draft.assignee));
 
     const send = async () => {
         if (!canSend) return;
-        const storyName = stories.find(entry => entry.id === story)?.name ?? story;
-        const locale = draft.locale.trim();
-        const answer = await teamCall(remoteOrigin!, TeamMethod.todosCreate, {
-            project: projectId,
-            title: t(draft.kind === "translation" ? "workspace.shell.team.requests.translateTitle" : "workspace.shell.team.requests.voiceTitle", { story: storyName, locale }),
-            kind: draft.kind,
-            locale,
-            visibility: "project",
-            anchor: { document: `story:${story}`, element: "*" },
-            ...(draft.assignee ? { assignee: draft.assignee } : {}),
+        await run(async () => {
+            const storyName = stories.find(entry => entry.id === story)?.name ?? story;
+            const locale = draft.locale.trim();
+            const answer = await teamCall(remoteOrigin!, TeamMethod.todosCreate, {
+                project: projectId,
+                title: t(draft.kind === "translation" ? "workspace.shell.team.requests.translateTitle" : "workspace.shell.team.requests.voiceTitle", { story: storyName, locale }),
+                kind: draft.kind,
+                locale,
+                visibility: "project",
+                anchor: { document: `story:${story}`, element: "*" },
+                ...(draft.assignee ? { assignee: draft.assignee } : {}),
+            });
+            setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
         });
-        setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
     };
 
     return (
         <div data-team-request="language" className="flex flex-col gap-1.5 px-2 py-1.5">
             <div className="flex gap-1.5">
-                <select className={field} value={draft.kind} onChange={event => setDraft({ ...draft, kind: event.target.value as "translation" | "voice" })}>
+                <select className={field} value={draft.kind} disabled={pending} onChange={event => setDraft({ ...draft, kind: event.target.value as "translation" | "voice" })}>
                     <option value="translation">{t("workspace.shell.team.requests.kindTranslation")}</option>
                     <option value="voice">{t("workspace.shell.team.requests.kindVoice")}</option>
                 </select>
-                <input className={field} value={draft.locale} placeholder={t("workspace.shell.team.requests.locale")} maxLength={35} onChange={event => setDraft({ ...draft, locale: event.target.value })} />
+                <input className={field} value={draft.locale} disabled={pending} placeholder={t("workspace.shell.team.requests.locale")} maxLength={35} onChange={event => setDraft({ ...draft, locale: event.target.value })} />
             </div>
-            <select className={field} value={story} onChange={event => setDraft({ ...draft, story: event.target.value })}>
+            <select className={field} value={story} disabled={pending} onChange={event => setDraft({ ...draft, story: event.target.value })}>
                 {stories.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
             </select>
-            <select className={field} value={draft.assignee} onChange={event => setDraft({ ...draft, assignee: event.target.value })}>
+            <select className={field} value={draft.assignee} disabled={pending} onChange={event => setDraft({ ...draft, assignee: event.target.value })}>
                 <option value="">{t("workspace.shell.team.requests.nobodyYet")}</option>
                 {members.map(member => <option key={member.username} value={member.username}>{member.displayName || member.username}</option>)}
             </select>
-            <button type="button" disabled={!canSend} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
+            <button type="button" disabled={!canSend || pending} onClick={() => void send()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
                 {t("workspace.shell.team.requests.assign")}
             </button>
             <Sent text={said} />
@@ -217,23 +251,28 @@ export function RowAssetRequest(props: { storyId: string; sceneId: string; block
     const [title, setTitle] = useState("");
     const [assignee, setAssignee] = useState("");
     const [said, setSaid] = useState<string | null>(null);
+    const { pending, run } = usePendingRequest();
     if (projectId === null || remoteOrigin === null || !offered || role === "viewer") return null;
+    const canSend = connection.state === "ready" && title.trim() !== ""
+        && (assignee === "" || members.some(member => member.username === assignee));
 
     const send = async () => {
-        if (title.trim() === "") return;
-        const answer = await teamCall(remoteOrigin, TeamMethod.todosCreate, {
-            project: projectId,
-            title: title.trim(),
-            kind: "asset",
-            visibility: "project",
-            anchor: { document: `story:${props.storyId}`, element: `${props.sceneId}/${props.blockId}` },
-            ...(assignee ? { assignee } : {}),
+        if (!canSend) return;
+        await run(async () => {
+            const answer = await teamCall(remoteOrigin, TeamMethod.todosCreate, {
+                project: projectId,
+                title: title.trim(),
+                kind: "asset",
+                visibility: "project",
+                anchor: { document: `story:${props.storyId}`, element: `${props.sceneId}/${props.blockId}` },
+                ...(assignee ? { assignee } : {}),
+            });
+            setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
+            if (answer.ok) {
+                setTitle("");
+                setOpen(false);
+            }
         });
-        setSaid(answer.ok ? t("workspace.shell.team.requests.sent") : t("workspace.shell.team.requests.failed"));
-        if (answer.ok) {
-            setTitle("");
-            setOpen(false);
-        }
     };
 
     if (!open) {
@@ -252,15 +291,16 @@ export function RowAssetRequest(props: { storyId: string; sceneId: string; block
                 className={field}
                 autoFocus
                 value={title}
+                disabled={pending}
                 placeholder={t("workspace.shell.team.requests.assetPlaceholder")}
                 onChange={event => setTitle(event.target.value)}
             />
             <div className="flex gap-1">
-                <select className={field} value={assignee} onChange={event => setAssignee(event.target.value)}>
+                <select className={field} value={assignee} disabled={pending} onChange={event => setAssignee(event.target.value)}>
                     <option value="">{t("workspace.shell.team.requests.nobodyYet")}</option>
                     {members.map(member => <option key={member.username} value={member.username}>{member.displayName || member.username}</option>)}
                 </select>
-                <button type="button" disabled={title.trim() === ""} onClick={() => void send()} className="shrink-0 rounded-md bg-primary px-2 text-2xs text-on-primary disabled:opacity-50">
+                <button type="button" disabled={!canSend || pending} onClick={() => void send()} className="shrink-0 rounded-md bg-primary px-2 text-2xs text-on-primary disabled:opacity-50">
                     {t("workspace.shell.team.requests.sendAsset")}
                 </button>
             </div>

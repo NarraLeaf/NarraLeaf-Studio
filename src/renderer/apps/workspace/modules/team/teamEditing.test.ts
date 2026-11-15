@@ -8,6 +8,7 @@ describe("the document a tab is about, in Team's terms", () => {
     it("names a story for any of its scenes and its flow, and a blueprint as ui:", () => {
         expect(teamEditingDocument({ id: "story:scene:s1:c1", payload: { storyId: "s1", sceneId: "c1" } })).toBe("story:s1");
         expect(teamEditingDocument({ id: "story:flow:s1" })).toBe("story:s1");
+        expect(teamEditingDocument({ id: "blueprint-entry:b1", payload: { blueprintId: "b1" } })).toBe("ui:b1");
         expect(teamEditingDocument({ id: "narraleaf-studio:character-editor-x" })).toBeNull();
         expect(teamEditingDocument(null)).toBeNull();
     });

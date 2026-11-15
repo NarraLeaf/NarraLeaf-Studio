@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements/Checkbox";
@@ -34,14 +34,24 @@ export function useCommitTodos(): CommitTodos {
     const username = connection.account?.username;
     const [todos, setTodos] = useState<readonly TeamTodo[]>([]);
     const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+    const latestRead = useRef(0);
+    const scope = useRef({ remoteOrigin, projectId, username });
+
+    useEffect(() => {
+        scope.current = { remoteOrigin, projectId, username };
+        setTodos([]);
+        setPicked(new Set());
+    }, [remoteOrigin, projectId, username]);
 
     const load = useCallback(() => {
+        const ticket = ++latestRead.current;
         if (remoteOrigin === null || projectId === null || username === undefined || !offered) {
             setTodos([]);
+            setPicked(new Set());
             return;
         }
         void teamCall(remoteOrigin, TeamMethod.todosList, { project: projectId }).then(answer => {
-            if (!answer.ok) return;
+            if (ticket !== latestRead.current || !answer.ok) return;
             const list = (answer.value as { todos?: unknown }).todos;
             const mine = (Array.isArray(list) ? (list as TeamTodo[]) : []).filter(todo =>
                 todo.status !== "done"
@@ -53,6 +63,7 @@ export function useCommitTodos(): CommitTodos {
 
     useEffect(() => {
         if (connection.state === "ready") load();
+        return () => { latestRead.current += 1; };
     }, [load, connection.state, connection.since]);
 
     const toggle = useCallback((id: string) => {
@@ -71,10 +82,12 @@ export function useCommitTodos(): CommitTodos {
             const answer = await teamCall(remoteOrigin, TeamMethod.todosUpdate, { todo: id, status: "done", doneRevision: revision });
             if (!answer.ok) failed += 1;
         }
-        setPicked(new Set());
-        load();
+        if (scope.current.remoteOrigin === remoteOrigin && scope.current.projectId === projectId && scope.current.username === username) {
+            setPicked(current => new Set([...current].filter(id => !picked.has(id))));
+            load();
+        }
         return failed;
-    }, [remoteOrigin, picked, load]);
+    }, [remoteOrigin, projectId, username, picked, load]);
 
     return { todos, picked, toggle, finish };
 }

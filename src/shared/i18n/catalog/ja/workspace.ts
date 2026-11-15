@@ -836,7 +836,7 @@ export const workspace = {
             failed: "バージョンは記録されましたが、{count} 件の ToDo を完了にできませんでした",
         },
         editingNotice: {
-            here: "{name} もここを編集しています（{since}）。同時の変更はマージ時にまとめて扱われます。",
+            here: "{name} もここを編集しています（{since}）。",
             justNow: "開いたばかり",
             minutes: "{minutes} 分前から",
             dismiss: "OK",

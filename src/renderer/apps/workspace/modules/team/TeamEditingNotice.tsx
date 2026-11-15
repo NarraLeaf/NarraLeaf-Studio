@@ -38,6 +38,7 @@ export function TeamEditingNotice() {
 
     useEffect(() => {
         if (others.length === 0) return;
+        setNow(Date.now());
         const timer = window.setInterval(() => setNow(Date.now()), 60_000);
         return () => window.clearInterval(timer);
     }, [others.length]);

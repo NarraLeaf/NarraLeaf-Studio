@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements/Button";
 import { Input } from "@/lib/components/elements/Input";
@@ -111,10 +111,12 @@ export function TeamHistoryRail({
     const { context } = useWorkspace();
     const { view, target, service, previewing } = surface;
     const [label, setLabel] = useState("");
+    const [saveFailed, setSaveFailed] = useState(false);
     const [busy, setBusy] = useState(false);
     const [older, setOlder] = useState<VcsServerRevision[]>([]);
     const [more, setMore] = useState(false);
     const [comparison, setComparison] = useState<{ revision: VcsServerRevision; rows: TeamVersionComparison[] } | null>(null);
+    const historyGeneration = useRef(0);
 
     const read = useCallback(
         () => listProjectHistory(target?.remoteOrigin ?? "", target?.project ?? "", { limit: PAGE }),
@@ -127,9 +129,10 @@ export function TeamHistoryRail({
     );
     useEffect(() => {
         // A new first page (a version was saved) starts the older pages again.
+        historyGeneration.current += 1;
         setOlder([]);
         setMore(history.value?.more ?? false);
-    }, [history.value]);
+    }, [history.value, target?.remoteOrigin, target?.project]);
 
     if (view === null || target === null || service === null) {
         return null;
@@ -154,8 +157,9 @@ export function TeamHistoryRail({
     const loadMore = () => run(async () => {
         const last = revisions.at(-1);
         if (last === undefined) return;
+        const generation = historyGeneration.current;
         const page = await listProjectHistory(target.remoteOrigin, target.project, { limit: PAGE, before: last.id });
-        if (page.ok) {
+        if (generation === historyGeneration.current && page.ok) {
             setOlder(current => [...current, ...(page.value.revisions ?? [])]);
             setMore(page.value.more);
         }
@@ -163,7 +167,12 @@ export function TeamHistoryRail({
 
     const save = () => run(async () => {
         const trimmed = label.trim();
-        await service.saveVersion(trimmed === "" ? undefined : trimmed);
+        setSaveFailed(false);
+        const saved = await service.saveVersion(trimmed === "" ? undefined : trimmed).catch(() => null);
+        if (saved === null || !saved.ok) {
+            setSaveFailed(true);
+            return;
+        }
         setLabel("");
         history.refresh();
     });
@@ -242,7 +251,7 @@ export function TeamHistoryRail({
             </header>
 
             {previewing !== null && (
-                <section className="px-3 py-2 border-b border-edge bg-accent/10" data-team-docs-previewing>
+                <section className="px-3 py-2 border-b border-edge bg-primary/10" data-team-docs-previewing>
                     <div className="text-xs text-fg mb-1">{t("workspace.shell.team.docs.previewing")}</div>
                     <Button size="sm" variant="primary" disabled={busy} onClick={() => void run(() => service.endPreview())}>
                         {t("workspace.shell.team.docs.backToPresent")}
@@ -282,12 +291,13 @@ export function TeamHistoryRail({
                         fullWidth
                         value={label}
                         placeholder={t("workspace.shell.team.docs.versionLabel")}
-                        onChange={event => setLabel(event.target.value)}
+                        onChange={event => { setLabel(event.target.value); setSaveFailed(false); }}
                         disabled={busy || !online}
                     />
                     <Button size="sm" variant="primary" disabled={busy || !online} onClick={() => void save()}>
                         {t("workspace.shell.team.docs.saveVersion")}
                     </Button>
+                    {saveFailed && <p role="alert" className="text-xs text-danger">{t("workspace.shell.statusBar.saveFailed")}</p>}
                 </section>
             )}
 
@@ -300,14 +310,14 @@ export function TeamHistoryRail({
             )}
 
             <ol className="flex-1 overflow-auto">
-                {revisions.length === 0 && (
+                {history.value?.revisions !== undefined && revisions.length === 0 && (
                     <li className="px-3 py-4 text-xs text-fg-muted">{t("workspace.shell.team.docs.noVersions")}</li>
                 )}
                 {revisions.map(revision => {
                     const name = versionName(revision);
                     const onScreen = previewing === revision.id;
                     return (
-                        <li key={revision.id} className={onScreen ? "px-3 py-2 border-b border-edge bg-accent/10" : "px-3 py-2 border-b border-edge"} data-team-version={revision.id}>
+                        <li key={revision.id} className={onScreen ? "px-3 py-2 border-b border-edge bg-primary/10" : "px-3 py-2 border-b border-edge"} data-team-version={revision.id}>
                             <div className="text-sm text-fg truncate">{name ?? t("workspace.shell.team.docs.automatic")}</div>
                             <div className="text-xs text-fg-muted flex flex-wrap items-center gap-x-2">
                                 <span>{revision.at === undefined ? "" : new Date(revision.at).toLocaleString()}</span>
