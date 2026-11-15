@@ -47,6 +47,15 @@ describe("auto save configuration", () => {
         expect(normalizeAutoSaveConfiguration({ slots: {} }).slots)
             .toBe(DEFAULT_AUTO_SAVE_CONFIGURATION.slots);
     });
+
+    it("uses defaults for values that do not describe a number", () => {
+        for (const value of [null, false, true, "", "  ", [], {}]) {
+            expect(normalizeAutoSaveConfiguration({ intervalSeconds: value, slots: value }))
+                .toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
+        }
+        expect(normalizeAutoSaveConfiguration({ intervalSeconds: "30", slots: "4" }))
+            .toEqual({ enabled: true, intervalSeconds: 30, slots: 4 });
+    });
 });
 
 describe("auto save slot ids", () => {

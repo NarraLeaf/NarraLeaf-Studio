@@ -138,4 +138,24 @@ describe("planSettingsImport", () => {
         );
         expect(plan.entries[0]?.verdict).toBe("same");
     });
+
+    it("does not report reordered shortcut fields as a settings change", () => {
+        const spec: SettingsValueSpec[] = [{ key: "keybindings.overrides", kind: "json" }];
+        const current = { "keybindings.overrides": { open: "Ctrl+O", save: "Ctrl+S" } };
+        const imported = parseSettingsDocument(serializeSettingsDocument(doc({
+            "keybindings.overrides": { save: "Ctrl+S", open: "Ctrl+O" },
+        })));
+
+        const plan = planSettingsImport(imported, spec, current);
+
+        expect(plan.entries[0]?.verdict).toBe("same");
+        expect(plan.applicable).toEqual([]);
+    });
+
+    it("keeps array order and an absent setting significant", () => {
+        const spec: SettingsValueSpec[] = [{ key: "value", kind: "json" }];
+        expect(planSettingsImport(doc({ value: ["a", "b"] }), spec, { value: ["b", "a"] }).entries[0]?.verdict)
+            .toBe("apply");
+        expect(planSettingsImport(doc({ value: null }), spec, {}).entries[0]?.verdict).toBe("apply");
+    });
 });

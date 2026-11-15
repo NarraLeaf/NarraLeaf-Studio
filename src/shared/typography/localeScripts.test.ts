@@ -46,6 +46,20 @@ describe("scriptProfileForLocale", () => {
         expect(scriptProfileForLocale("JA-JP").id).toBe("japanese");
         expect(scriptProfileForLocale("ZH-HANT").id).toBe("chinese-traditional");
     });
+
+    it("respects explicit script subtags while retaining the Vietnamese profile", () => {
+        expect(scriptProfileForLocale("sr-Latn-RS").id).toBe("latin");
+        expect(scriptProfileForLocale("zh-Latn").id).toBe("latin");
+        expect(scriptProfileForLocale("sr-Cyrl-RS").id).toBe("cyrillic");
+        expect(scriptProfileForLocale("uz-Cyrl-UZ").id).toBe("cyrillic");
+        expect(scriptProfileForLocale("az-Arab-IR").id).toBe("arabic");
+        expect(scriptProfileForLocale("yue-Hant-HK").id).toBe("chinese-traditional");
+        expect(scriptProfileForLocale("vi-Latn").id).toBe("vietnamese");
+    });
+
+    it("keeps an unrecognised explicit script distinct from the language default", () => {
+        expect(scriptProfileForLocale("mn-Mong-CN").id).toBe("unknown");
+    });
 });
 
 describe("suggestLocalesForCoverage", () => {
@@ -93,5 +107,20 @@ describe("suggestLocalesForCoverage", () => {
     it("returns every project language that shares the named writing system", () => {
         expect(suggestLocalesForCoverage(font([936]), ["ja", "zh-Hans", "zh-SG"]))
             .toEqual(["zh-Hans", "zh-SG"]);
+    });
+
+    it("does not suggest a Cyrillic font for a Serbian Latin locale", () => {
+        expect(suggestLocalesForCoverage(font([1251]), ["sr-Latn-RS", "ja"])).toEqual([]);
+        expect(suggestLocalesForCoverage(font([1251]), ["sr-Cyrl-RS", "ja"])).toEqual(["sr-Cyrl-RS"]);
+    });
+
+    it("uses an explicit script for languages without a default profile", () => {
+        expect(suggestLocalesForCoverage(font([1251]), ["uz-Cyrl-UZ", "ja"])).toEqual(["uz-Cyrl-UZ"]);
+        expect(suggestLocalesForCoverage(font([1256]), ["az-Arab-IR", "ja"])).toEqual(["az-Arab-IR"]);
+    });
+
+    it("does not restrict a font when a project script cannot be evaluated", () => {
+        expect(suggestLocalesForCoverage(font([1251]), ["mn-Mong-CN", "ja"])).toEqual([]);
+        expect(suggestLocalesForCoverage(font([932]), ["mn-Mong-CN", "ja", "zh-Hans"])).toEqual([]);
     });
 });

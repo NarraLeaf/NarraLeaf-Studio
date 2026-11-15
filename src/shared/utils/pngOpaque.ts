@@ -185,13 +185,14 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
     const view = new DataView(result.buffer);
     view.setUint32(0, data.length);
     result.set(body, 4);
-    view.setUint32(result.length - 4, crc32(body));
+    view.setUint32(result.length - 4, pngChunkCrc(body));
     return result;
 }
 
 let crcTable: Uint32Array | null = null;
 
-function crc32(bytes: Uint8Array): number {
+/** CRC of a PNG chunk's type and data, excluding its length and CRC fields. */
+export function pngChunkCrc(bytes: Uint8Array): number {
     if (!crcTable) {
         crcTable = new Uint32Array(256);
         for (let n = 0; n < 256; n++) {

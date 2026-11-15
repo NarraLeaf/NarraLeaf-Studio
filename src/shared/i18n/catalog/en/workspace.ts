@@ -161,6 +161,8 @@ export const workspace = {
                     other: "Delete {count} orphan translations?",
                 },
                 deleteDetail: "This cannot be undone. A line that is enabled or restored later needs translating again.",
+                changed: "Stories or translations changed. Review the orphan list before deleting again.",
+                hostOnly: "During a live session, the host can delete orphan translations.",
                 unknown: "A story cannot be read, so orphan translations are not listed.",
             },
         },

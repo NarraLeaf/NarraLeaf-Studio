@@ -1,4 +1,5 @@
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { blueprintValuesEqual } from "@shared/blueprint/blueprintValueEquality";
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
 import type { StoryExpr, StoryExprFunction, StoryExprType, StoryVisitedRef } from "@shared/types/story/expression";
 
@@ -187,14 +188,14 @@ function evaluateBinary(expr: Extract<StoryExpr, { kind: "binary" }>, env: Story
         case "+":
             return typeof left === "string" || typeof right === "string"
                 ? toDisplayString(left) + toDisplayString(right)
-                : toNumber(left) + toNumber(right);
+                : finiteNumber(toNumber(left) + toNumber(right));
         case "-":
-            return toNumber(left) - toNumber(right);
+            return finiteNumber(toNumber(left) - toNumber(right));
         case "*":
-            return toNumber(left) * toNumber(right);
+            return finiteNumber(toNumber(left) * toNumber(right));
         case "/": {
             const divisor = toNumber(right);
-            return divisor === 0 ? 0 : toNumber(left) / divisor;
+            return divisor === 0 ? 0 : finiteNumber(toNumber(left) / divisor);
         }
         case "%": {
             const divisor = toNumber(right);
@@ -213,6 +214,11 @@ function evaluateBinary(expr: Extract<StoryExpr, { kind: "binary" }>, env: Story
         case ">=":
             return compareStoryValues(left, right) >= 0;
     }
+}
+
+/** Arithmetic results stay finite, including when otherwise finite operands overflow. */
+function finiteNumber(value: number): number {
+    return Number.isFinite(value) ? value : 0;
 }
 
 function evaluateCall(expr: Extract<StoryExpr, { kind: "call" }>, env: StoryExpressionEnv): StoryLiteralValue {
@@ -245,7 +251,7 @@ function evaluateCall(expr: Extract<StoryExpr, { kind: "call" }>, env: StoryExpr
             // Inclusive on both ends: `randomInt(1, 6)` is a die, which is what an author means.
             const low = Math.ceil(Math.min(numbers[0], numbers[1]));
             const high = Math.floor(Math.max(numbers[0], numbers[1]));
-            return high < low ? low : low + Math.floor(Math.random() * (high - low + 1));
+            return high < low ? low : finiteNumber(low + Math.floor(Math.random() * (high - low + 1)));
         }
         case "len": {
             // Already the size of whatever it is handed: code points for a string, elements for a
@@ -540,9 +546,7 @@ export function strictEquals(left: StoryLiteralValue, right: StoryLiteralValue):
         return false;
     }
     if (left !== null && right !== null && typeof left === "object") {
-        // Structural, so two equal-looking json variables compare equal - reference identity is not a
-        // concept the author has any way to reason about here.
-        return JSON.stringify(left) === JSON.stringify(right);
+        return blueprintValuesEqual(left, right);
     }
     return left === right;
 }

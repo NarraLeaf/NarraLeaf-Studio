@@ -1,4 +1,4 @@
-import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
     coversCodePoint,
@@ -210,6 +210,44 @@ describe("readFontCoverage / containers", () => {
         expect(readFontCoverage(file)).toEqual({ ok: false, reason: "malformed" });
     });
 
+    it("reports a truncated Unicode cmap subtable as malformed", () => {
+        const truncated = [...u16(4), ...u16(32), ...u16(0), ...u16(4)];
+        const data = cmap([{ platform: 3, encoding: 1, subtable: truncated }]);
+        expect(readFontCoverage(sfnt([{ name: "cmap", data }]))).toEqual({
+            ok: false,
+            reason: "malformed",
+        });
+    });
+
+    it("does not read format 4 glyphs past the subtable's declared length", () => {
+        const subtable = subtableFormat4([{ start: 0x41, end: 0x41, glyphs: [1] }]);
+        subtable.splice(2, 2, ...u16(subtable.length - 2));
+        const data = cmap([{ platform: 3, encoding: 1, subtable }]);
+        expect(readFontCoverage(sfnt([{ name: "cmap", data }]))).toEqual({
+            ok: false,
+            reason: "malformed",
+        });
+    });
+
+    it("reports a format 6 with missing glyph entries as malformed", () => {
+        const subtable = [...u16(6), ...u16(12), ...u16(0), ...u16(0x41), ...u16(2), ...u16(1)];
+        const data = cmap([{ platform: 3, encoding: 1, subtable }]);
+        expect(readFontCoverage(sfnt([{ name: "cmap", data }]))).toEqual({
+            ok: false,
+            reason: "malformed",
+        });
+    });
+
+    it("reports a format 12 with missing groups as malformed", () => {
+        const subtable = subtableFormat12([{ start: 0x41, end: 0x43, startGlyph: 1 }]);
+        subtable.splice(12, 4, ...u32(2));
+        const data = cmap([{ platform: 3, encoding: 10, subtable }]);
+        expect(readFontCoverage(sfnt([{ name: "cmap", data }]))).toEqual({
+            ok: false,
+            reason: "malformed",
+        });
+    });
+
     it("asks for a decompressor rather than guessing at a compressed WOFF table", () => {
         expect(readFontCoverage(woff([0xaa, 0xbb], 400))).toEqual({
             ok: false,
@@ -237,6 +275,14 @@ describe("readFontCoverage / containers", () => {
                 return new Uint8Array(data);
             },
         });
+        expect(result.ok && result.coverage.ranges).toEqual([[0x41, 0x5a]]);
+    });
+
+    it("reads a WOFF cmap through a real zlib round trip", () => {
+        const data = cmapFormat4([{ start: 0x41, end: 0x5a, delta: 1 }]);
+        const compressed = deflateSync(Buffer.from(data));
+        expect(compressed.length).toBeLessThan(data.length);
+        const result = readFontCoverage(woff([...compressed], data.length), { inflate: inflateSync });
         expect(result.ok && result.coverage.ranges).toEqual([[0x41, 0x5a]]);
     });
 
@@ -289,12 +335,22 @@ describe("readFontCoverage / containers", () => {
         const woff2 = new Uint8Array(48);
         woff2.set(tag("wOF2"), 0);
         woff2.set(tag("ttcf"), 4);
+        expect(readFontCoverage(woff2)).toEqual({ ok: false, reason: "unrenderable" });
         expect(readFontCoverage(woff2, { brotli: () => { throw new Error("must not be reached"); } }))
             .toEqual({ ok: false, reason: "unrenderable" });
     });
 });
 
 describe("readFontCoverage / cmap", () => {
+    it("reads a format 0 byte-indexed mapping", () => {
+        const glyphs = new Array<number>(256).fill(0);
+        glyphs[0x41] = 1;
+        glyphs[0x43] = 2;
+        const subtable = [...u16(0), ...u16(262), ...u16(0), ...glyphs];
+        const data = cmap([{ platform: 0, encoding: 0, subtable }]);
+        expect(coverageOf(sfnt([{ name: "cmap", data }])).ranges).toEqual([[0x41, 0x41], [0x43, 0x43]]);
+    });
+
     it("reads a format 4 segment whose glyphs come from the delta", () => {
         const coverage = coverageOf(sfnt([
             { name: "cmap", data: cmapFormat4([{ start: 0x41, end: 0x5a, delta: 1 }]) },
@@ -312,6 +368,13 @@ describe("readFontCoverage / cmap", () => {
         expect(coversCodePoint(coverage, 0x43)).toBe(false);
     });
 
+    it("applies the format 4 delta after reading a nonzero glyph id", () => {
+        const coverage = coverageOf(sfnt([
+            { name: "cmap", data: cmapFormat4([{ start: 0x41, end: 0x43, delta: -1, glyphs: [0, 1, 2] }]) },
+        ]));
+        expect(coverage.ranges).toEqual([[0x43, 0x43]]);
+    });
+
     it("does not report the 0xFFFF terminator segment as coverage", () => {
         const coverage = coverageOf(sfnt([
             { name: "cmap", data: cmapFormat4([{ start: 0x41, end: 0x41, delta: 1 }]) },
@@ -319,25 +382,36 @@ describe("readFontCoverage / cmap", () => {
         expect(coverage.ranges).toEqual([[0x41, 0x41]]);
     });
 
-    it("reads format 12 groups whole, past the BMP", () => {
+    it("reads format 12 groups past the BMP", () => {
         const coverage = coverageOf(sfnt([
             {
                 name: "cmap",
                 data: cmapFormat12([
                     { start: 0x4e00, end: 0x9fff, startGlyph: 1 },
-                    { start: 0x20000, end: 0x2a6df, startGlyph: 20000 },
-                    // A group beginning at .notdef maps its whole run to nothing.
+                    // The first code point maps to .notdef; the following glyph ids increase.
                     { start: 0xe000, end: 0xe100, startGlyph: 0 },
+                    { start: 0x20000, end: 0x2a6df, startGlyph: 20000 },
                 ]),
             },
         ]));
-        expect(coverage.ranges).toEqual([[0x4e00, 0x9fff], [0x20000, 0x2a6df]]);
+        expect(coverage.ranges).toEqual([[0x4e00, 0x9fff], [0xe001, 0xe100], [0x20000, 0x2a6df]]);
         expect(coversCodePoint(coverage, 0x20001)).toBe(true);
-        expect(coversCodePoint(coverage, 0xe050)).toBe(false);
+        expect(coversCodePoint(coverage, 0xe000)).toBe(false);
+        expect(coversCodePoint(coverage, 0xe050)).toBe(true);
+    });
+
+    it("treats format 13 groups as mappings to one glyph", () => {
+        const subtable = subtableFormat12([
+            { start: 0xe000, end: 0xe003, startGlyph: 0 },
+            { start: 0xe010, end: 0xe012, startGlyph: 1 },
+        ]);
+        subtable.splice(0, 2, ...u16(13));
+        const data = cmap([{ platform: 3, encoding: 10, subtable }]);
+        expect(coverageOf(sfnt([{ name: "cmap", data }])).ranges).toEqual([[0xe010, 0xe012]]);
     });
 
     it("reads a format 6 dense run", () => {
-        const subtable = [...u16(6), ...u16(14), ...u16(0), ...u16(0x41), ...u16(3), ...u16(7), ...u16(0), ...u16(9)];
+        const subtable = [...u16(6), ...u16(16), ...u16(0), ...u16(0x41), ...u16(3), ...u16(7), ...u16(0), ...u16(9)];
         const data = cmap([{ platform: 3, encoding: 1, subtable }]);
         expect(coverageOf(sfnt([{ name: "cmap", data }])).ranges).toEqual([[0x41, 0x41], [0x43, 0x43]]);
     });

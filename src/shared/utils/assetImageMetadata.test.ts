@@ -101,6 +101,44 @@ function riffFourccs(bytes: Uint8Array): string[] {
     return out;
 }
 
+/** A TIFF IFD containing a display orientation and an artist name. */
+function exifTiff(orientation: number, littleEndian: boolean): number[] {
+    const artist = ascii("Private Artist\0");
+    const data = new Uint8Array(38 + artist.length);
+    const view = new DataView(data.buffer);
+    data.set(ascii(littleEndian ? "II" : "MM"));
+    view.setUint16(2, 42, littleEndian);
+    view.setUint32(4, 8, littleEndian);
+    view.setUint16(8, 2, littleEndian);
+    view.setUint16(10, 0x0112, littleEndian);
+    view.setUint16(12, 3, littleEndian);
+    view.setUint32(14, 1, littleEndian);
+    view.setUint16(18, orientation, littleEndian);
+    view.setUint16(22, 0x013b, littleEndian);
+    view.setUint16(24, 2, littleEndian);
+    view.setUint32(26, artist.length, littleEndian);
+    view.setUint32(30, 38, littleEndian);
+    data.set(artist, 38);
+    return [...data];
+}
+
+/** Read the orientation back from the IFD, regardless of byte order. */
+function exifOrientation(bytes: Uint8Array, start: number): number | null {
+    if (start < 0 || start + 8 > bytes.length) return null;
+    const little = bytes[start] === 0x49 && bytes[start + 1] === 0x49;
+    if (!little && !(bytes[start] === 0x4d && bytes[start + 1] === 0x4d)) return null;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const ifd = start + view.getUint32(start + 4, little);
+    if (ifd + 2 > bytes.length) return null;
+    const count = view.getUint16(ifd, little);
+    for (let i = 0; i < count; i += 1) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 12 > bytes.length) return null;
+        if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little);
+    }
+    return null;
+}
+
 describe("stripImageMetadata", () => {
     it("hands back the very same bytes when there is nothing to remove", () => {
         const clean = png();
@@ -117,6 +155,43 @@ describe("stripImageMetadata", () => {
         const notAnImage = Uint8Array.from(ascii("ID3\x00artist name"));
 
         expect(stripImageMetadata(notAnImage).bytes).toBe(notAnImage);
+    });
+
+    it("keeps the display orientation while removing the artist from PNG, JPEG and WebP", () => {
+        for (const orientation of [2, 3, 4, 5, 6, 7, 8]) {
+            const tiff = exifTiff(orientation, orientation % 2 === 0);
+            const sources = [
+                { bytes: png([chunk("eXIf", tiff)]), marker: "eXIf", offset: 4 },
+                { bytes: jpeg([segment(0xe1, [...ascii("Exif\0\0"), ...tiff])]), marker: "Exif\0\0", offset: 6 },
+                {
+                    bytes: webp(VP8X_EXIF | VP8X_XMP, [
+                        riffChunk("VP8 ", [0, 1, 2, 3, 4, 5]),
+                        riffChunk("EXIF", [...ascii("Exif\0\0"), ...tiff]),
+                        riffChunk("XMP ", ascii("private xmp")),
+                    ]),
+                    marker: "Exif\0\0", offset: 6, webp: true,
+                },
+            ];
+            for (const source of sources) {
+                const result = stripImageMetadata(source.bytes);
+                const marker = Buffer.from(result.bytes).indexOf(Buffer.from(source.marker));
+                expect(marker).toBeGreaterThanOrEqual(0);
+                expect(exifOrientation(result.bytes, marker + source.offset)).toBe(orientation);
+                expect(Buffer.from(result.bytes).includes(Buffer.from("Private Artist"))).toBe(false);
+                expect(result.removed).toContain("exif");
+                if (source.webp) {
+                    expect(result.bytes[20] & (VP8X_EXIF | VP8X_XMP)).toBe(VP8X_EXIF);
+                }
+                expect(stripImageMetadata(result.bytes).bytes).toBe(result.bytes);
+            }
+        }
+    });
+
+    it("drops EXIF when the orientation is the default", () => {
+        const source = png([chunk("eXIf", exifTiff(1, true))]);
+        const result = stripImageMetadata(source);
+        expect(pngChunkTypes(result.bytes)).not.toContain("eXIf");
+        expect(Buffer.from(result.bytes).includes(Buffer.from("Private Artist"))).toBe(false);
     });
 
     describe("PNG", () => {

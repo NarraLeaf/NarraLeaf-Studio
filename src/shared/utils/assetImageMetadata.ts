@@ -30,6 +30,7 @@
  * alpha and animation chunks, JPEG's Adobe colour-transform marker are all
  * things a "strip everything unknown" pass would take out, and only the first
  * would be obvious.
+ * EXIF orientation stays as a minimal TIFF directory without the other EXIF fields.
  *
  * ## Formats
  *
@@ -51,6 +52,7 @@
  */
 
 import { readImageDimensions } from "@shared/utils/imageDimensions";
+import { pngChunkCrc } from "@shared/utils/pngOpaque";
 
 /** What was taken out, named for a build log rather than for the format spec. */
 export type ImageMetadataKind =
@@ -118,6 +120,51 @@ function ascii(bytes: Uint8Array, offset: number, length: number): string {
     return out;
 }
 
+/** Keep the display orientation without carrying the rest of an EXIF directory. */
+function orientationOnlyExif(bytes: Uint8Array): Uint8Array | null {
+    const prefix = ascii(bytes, 0, 6) === "Exif\0\0" ? 6 : 0;
+    const tiff = bytes.subarray(prefix);
+    if (tiff.length < 8) return null;
+    const order = ascii(tiff, 0, 2);
+    if (order !== "II" && order !== "MM") return null;
+    const little = order === "II";
+    const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
+    if (view.getUint16(2, little) !== 42) return null;
+    const ifd = view.getUint32(4, little);
+    if (ifd + 2 > tiff.length) return null;
+    const count = view.getUint16(ifd, little);
+    let orientation = 0;
+    for (let i = 0; i < count; i += 1) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 12 > tiff.length) return null;
+        if (view.getUint16(entry, little) === 0x0112
+            && view.getUint16(entry + 2, little) === 3
+            && view.getUint32(entry + 4, little) === 1) {
+            orientation = view.getUint16(entry + 8, little);
+            break;
+        }
+    }
+    // 1 is the default orientation; values outside 1..8 have no defined effect.
+    if (orientation < 2 || orientation > 8) return null;
+
+    const out = new Uint8Array(prefix + 26);
+    if (prefix) out.set(bytes.subarray(0, prefix));
+    const result = new DataView(out.buffer, prefix);
+    out.set([0x4d, 0x4d], prefix);
+    result.setUint16(2, 42);
+    result.setUint32(4, 8);
+    result.setUint16(8, 1);
+    result.setUint16(10, 0x0112);
+    result.setUint16(12, 3);
+    result.setUint32(14, 1);
+    result.setUint16(18, orientation);
+    return out;
+}
+
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+    return a.length === b.length && a.every((byte, index) => byte === b[index]);
+}
+
 /* --- PNG ---------------------------------------------------------------- */
 
 const PNG_SIGNATURE_LENGTH = 8;
@@ -172,7 +219,22 @@ function stripPng(bytes: Uint8Array): StrippedImage {
             return rebuild(bytes, kept, removed);
         }
         const kind = PNG_METADATA_CHUNKS[type];
-        if (kind) {
+        const exif = type === "eXIf" ? orientationOnlyExif(bytes.subarray(offset + 8, end - 4)) : null;
+        if (exif) {
+            const original = bytes.subarray(offset + 8, end - 4);
+            if (equalBytes(original, exif)) {
+                kept.push(bytes.subarray(offset, end));
+            } else {
+                const chunk = new Uint8Array(exif.length + 12);
+                const chunkView = new DataView(chunk.buffer);
+                chunkView.setUint32(0, exif.length);
+                chunk.set(bytes.subarray(offset + 4, offset + 8), 4);
+                chunk.set(exif, 8);
+                chunkView.setUint32(chunk.length - 4, pngChunkCrc(chunk.subarray(4, chunk.length - 4)));
+                kept.push(chunk);
+                removed.add("exif");
+            }
+        } else if (kind) {
             removed.add(kind);
         } else {
             kept.push(bytes.subarray(offset, end));
@@ -271,7 +333,21 @@ function stripJpeg(bytes: Uint8Array): StrippedImage {
             break;
         }
         const kind = jpegSegmentKind(bytes, marker, lengthAt + 2);
-        if (kind) {
+        const exif = kind === "exif" ? orientationOnlyExif(bytes.subarray(lengthAt + 2, end)) : null;
+        if (exif) {
+            const original = bytes.subarray(lengthAt + 2, end);
+            if (equalBytes(original, exif)) {
+                kept.push(bytes.subarray(offset, end));
+            } else {
+                const segment = new Uint8Array(exif.length + 4);
+                segment[0] = 0xff;
+                segment[1] = 0xe1;
+                new DataView(segment.buffer).setUint16(2, exif.length + 2);
+                segment.set(exif, 4);
+                kept.push(bytes.subarray(offset, markerAt), segment);
+                removed.add("exif");
+            }
+        } else if (kind) {
             removed.add(kind);
             // Any 0xFF padding ahead of this marker belongs to it and goes too.
             kept.push(bytes.subarray(offset, markerAt));
@@ -314,6 +390,7 @@ function stripWebp(bytes: Uint8Array): StrippedImage {
     const kept: Uint8Array[] = [];
     const removed = new Set<ImageMetadataKind>();
     let vp8xFlagsAt = -1;
+    let clearedFlags = 0;
     let offset = RIFF_HEADER_LENGTH;
 
     // The header is rewritten at the end once the new size is known, so it is
@@ -329,8 +406,24 @@ function stripWebp(bytes: Uint8Array): StrippedImage {
             break;
         }
         const kind = WEBP_METADATA_CHUNKS[fourcc];
-        if (kind) {
+        const exif = fourcc === "EXIF"
+            ? orientationOnlyExif(bytes.subarray(offset + WEBP_CHUNK_HEADER_LENGTH, offset + WEBP_CHUNK_HEADER_LENGTH + payloadLength))
+            : null;
+        if (exif) {
+            const original = bytes.subarray(offset + WEBP_CHUNK_HEADER_LENGTH, offset + WEBP_CHUNK_HEADER_LENGTH + payloadLength);
+            if (equalBytes(original, exif)) {
+                kept.push(bytes.subarray(offset, end));
+            } else {
+                const chunk = new Uint8Array(WEBP_CHUNK_HEADER_LENGTH + exif.length + (exif.length % 2));
+                chunk.set(bytes.subarray(offset, offset + 4));
+                new DataView(chunk.buffer).setUint32(4, exif.length, true);
+                chunk.set(exif, WEBP_CHUNK_HEADER_LENGTH);
+                kept.push(chunk);
+                removed.add("exif");
+            }
+        } else if (kind) {
             removed.add(kind);
+            clearedFlags |= fourcc === "EXIF" ? VP8X_FLAG_EXIF : VP8X_FLAG_XMP;
         } else {
             if (fourcc === "VP8X" && payloadLength >= 1) {
                 // Where the flags byte will land once the kept parts are joined.
@@ -356,7 +449,7 @@ function stripWebp(bytes: Uint8Array): StrippedImage {
     // and the four bytes of the size itself.
     new DataView(out.buffer, out.byteOffset, out.byteLength).setUint32(4, out.length - 8, true);
     if (vp8xFlagsAt >= 0 && vp8xFlagsAt < out.length) {
-        out[vp8xFlagsAt] &= ~(VP8X_FLAG_EXIF | VP8X_FLAG_XMP);
+        out[vp8xFlagsAt] &= ~clearedFlags;
     }
     return result;
 }

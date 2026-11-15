@@ -60,6 +60,20 @@ describe("normalizeAssetCompressionConfiguration", () => {
             .toBe(DEFAULT_ASSET_COMPRESSION_CONFIGURATION.audioBitrateKbps);
     });
 
+    it("uses defaults for non-numeric stored values", () => {
+        for (const value of [null, false, true, "", "   ", [], {}]) {
+            const config = normalizeAssetCompressionConfiguration({
+                compressImages: true, compressAudio: true, compressVideo: true,
+                imageQuality: value, audioBitrateKbps: value, audioSampleRateHz: value, videoCrf: value,
+            });
+            expect(config.imageQuality).toBe(DEFAULT_ASSET_COMPRESSION_CONFIGURATION.imageQuality);
+            expect(config.audioBitrateKbps).toBe(DEFAULT_ASSET_COMPRESSION_CONFIGURATION.audioBitrateKbps);
+            expect(config.audioSampleRateHz).toBe(DEFAULT_ASSET_COMPRESSION_CONFIGURATION.audioSampleRateHz);
+            expect(config.videoCrf).toBe(DEFAULT_ASSET_COMPRESSION_CONFIGURATION.videoCrf);
+        }
+        expect(normalizeAssetCompressionConfiguration({ imageQuality: "55" }).imageQuality).toBe(55);
+    });
+
     it("keeps a cap switchable off without dragging it into its own range", () => {
         // Zero is "leave it alone", not "the smallest allowed", so it must survive
         // a clamp whose floor is far above it.

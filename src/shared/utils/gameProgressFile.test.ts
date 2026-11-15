@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { unpatchedFsPromises } from "./unpatchedFs";
 import { GAME_PROGRESS_SCHEMA_VERSION } from "../types/gameProgress";
 import {
     readGameProgressFile,
@@ -140,6 +141,33 @@ describe("the progress file", () => {
             visitedSceneIds: [],
         });
         expect((await readGameProgressFile(env, KEY)).document?.savedVariables).toEqual({ gold: 41 });
+    });
+
+    it("keeps the previous progress when replacing it fails", async () => {
+        const request = (gold: number) => ({
+            storyId: "story-1", savedVariables: { gold }, persistentVariables: {}, anchor: null, visitedSceneIds: [],
+        });
+        expect((await writeGameProgressFile(env, KEY, request(40))).outcome).toBe("written");
+        const filePath = resolveGameProgressFilePath(env, KEY);
+        const originalOpen = unpatchedFsPromises.open.bind(unpatchedFsPromises);
+        const failure = Object.assign(new Error("disk full"), { code: "ENOSPC" });
+        const probe = vi.spyOn(unpatchedFsPromises, "open").mockImplementation(async (...args: Parameters<typeof unpatchedFsPromises.open>) => {
+            const handle = await originalOpen(...args);
+            if (String(args[0]).endsWith(".nltmp")) {
+                const originalWrite = handle.writeFile.bind(handle);
+                vi.spyOn(handle, "writeFile").mockImplementation(async data => {
+                    await originalWrite(Buffer.from(data as Buffer).subarray(0, 10));
+                    throw failure;
+                });
+            }
+            return handle;
+        });
+        try {
+            expect((await writeGameProgressFile(env, KEY, request(41))).outcome).toBe("failed");
+        } finally {
+            probe.mockRestore();
+        }
+        expect(JSON.parse(await fs.readFile(filePath, "utf-8")).savedVariables).toEqual({ gold: 40 });
     });
 
     it("reads a file that is not there as missing, not as a failure", async () => {

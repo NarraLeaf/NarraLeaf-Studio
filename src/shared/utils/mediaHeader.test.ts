@@ -190,6 +190,14 @@ describe("MPEG audio", () => {
         expect(readMediaHeader(tagged)?.sampleRate).toBe(44100);
     });
 
+    it("skips an ID3v2.4 footer to find the first frame", () => {
+        const tagged = concat(
+            Buffer.from("ID3"), [0x04, 0x00, 0x10], [0, 0, 0, 0],
+            Buffer.from("3DI"), [0x04, 0x00, 0x10], [0, 0, 0, 0], mp3(true),
+        );
+        expect(readMediaHeader(tagged)?.durationMs).toBe(26122);
+    });
+
     it("refuses the reserved version and layer encodings rather than guessing", () => {
         expect(readMediaHeader(concat([0xff, 0xf3, 0x90, 0x00], Buffer.alloc(64)))?.container)
             .toBe("mp3");

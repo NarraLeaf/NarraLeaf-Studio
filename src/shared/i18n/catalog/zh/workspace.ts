@@ -144,6 +144,8 @@ export const workspace = {
                     other: "删除 {count} 条孤立的译文？",
                 },
                 deleteDetail: "删除后无法撤销；这些行再次启用或恢复后需重新翻译",
+                changed: "故事或译文已更改，请检查孤立译文列表后再删除",
+                hostOnly: "协作期间，孤立译文由主机删除",
                 unknown: "有故事无法读取，暂不列出孤立的译文",
             },
         },

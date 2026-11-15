@@ -117,10 +117,9 @@ export const APP_TAG_ID_RELEASE = "main";
 /**
  * What this id was before, still readable where it was written down.
  *
- * Only two documents ever stored it as a value: an edition's position on a build axis
- * ({@link normalizeAppTagAssetAxes}) and the values a release-kind axis promises to cover
- * (`normalizeAssetSetAxis`). Author tag ids are uuids and never collided with either word, and the
- * release tag itself is synthesized rather than stored - so those two are the whole of it.
+ * Edition positions ({@link normalizeAppTagAssetAxes}) and release-axis values are migrated on
+ * read. Asset library tags are authored data and keep their stored spelling. The release tag itself
+ * is synthesized rather than stored.
  */
 export const LEGACY_APP_TAG_ID_RELEASE = "release";
 
@@ -554,6 +553,16 @@ export function resolveAppTagReachableScenes(
     return { ...(base ?? {}), ...(tag.reachableScenes ?? {}) };
 }
 
+// Keep the runtime dependency type-only; the build module also loads project-file utilities.
+const BUILD_CONFIG_PLATFORMS: Record<GameBuildPlatform, true> = {
+    windows: true,
+    macos: true,
+    linux: true,
+    web: true,
+    android: true,
+    ios: true,
+};
+
 /**
  * `config` with the entries a declared field says belong on the project removed.
  *
@@ -576,14 +585,14 @@ export function variantStorablePluginConfig(
     if (rooted.length === 0) {
         return config;
     }
+    const platforms = Object.keys(BUILD_CONFIG_PLATFORMS) as GameBuildPlatform[];
     const result: AppTagPluginConfig = {};
     for (const [pluginId, values] of Object.entries(config)) {
         const kept: Record<string, string> = {};
         for (const [storageKey, value] of Object.entries(values)) {
-            // Matched by prefix so a platform-scoped field's `key@windows` spellings are covered
-            // without enumerating the platforms it happens to name.
             const misplaced = rooted.some(field => field.pluginId === pluginId
-                && (storageKey === field.key || storageKey.startsWith(`${field.key}@`)));
+                && (storageKey === field.key || (isPlatformScopedBuildConfig(field.scope)
+                    && platforms.some(platform => storageKey === pluginBuildConfigStorageKey(field.key, platform)))));
             if (!misplaced) {
                 kept[storageKey] = value;
             }

@@ -511,7 +511,9 @@ function readMp3(bytes: Uint8Array, totalSize?: number): MediaHeader | null {
     if (ascii(bytes, 0, 3) === "ID3" && bytes.length >= 10) {
         // Syncsafe: seven bits per byte, so a tag length can never look like a frame sync.
         const tag = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
-        offset = 10 + tag;
+        // ID3v2.4 may put a ten-byte footer after the tag body.
+        const footer = bytes[3] === 4 && (bytes[5] & 0x10) !== 0 ? 10 : 0;
+        offset = 10 + tag + footer;
     }
     if (offset + 4 > bytes.length || bytes[offset] !== 0xff || (bytes[offset + 1] & 0xe0) !== 0xe0) {
         return null;
