@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAvatarRenderer, planAvatarEncode } from "./avatarRenderer";
 
 /**
@@ -182,5 +182,36 @@ describe("createAvatarRenderer", () => {
         expect(out.width).toBeGreaterThan(80);
         expect(out.width).toBeLessThan(160);
         expect(out.width).toBe(out.height);
+    });
+
+    it("rejects an incomplete stack and closes the layers that did decode", async () => {
+        install();
+        const close = vi.fn();
+        const render = createAvatarRenderer(async id => id === "body"
+            ? { width: 400, height: 800, close } as unknown as ImageBitmap
+            : null);
+
+        const bytes = await render({
+            layers: ["body", "face"],
+            crop: { x: 0, y: 0, w: 0.5, h: 0.25 },
+            maxSize: 1024,
+        });
+
+        expect(bytes).toBeNull();
+        expect(close).toHaveBeenCalledOnce();
+        expect(FakeCanvas.created).toHaveLength(0);
+    });
+
+    it("releases decoded layers when another decoder rejects", async () => {
+        install();
+        const close = vi.fn();
+        const render = createAvatarRenderer(async id => {
+            if (id === "face") throw new Error("unreadable image");
+            return { width: 400, height: 800, close } as unknown as ImageBitmap;
+        });
+
+        await expect(render({ layers: ["body", "face"], crop: undefined, maxSize: 1024 }))
+            .resolves.toBeNull();
+        expect(close).toHaveBeenCalledOnce();
     });
 });

@@ -36,6 +36,9 @@ import {
 import { EMPTY_GAME_MENU_MODEL } from "@shared/types/gameMenu";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
+    resolveAssetVariantMember,
+} from "@shared/types/assetSet";
+import {
     isKeysOnlyLocalization,
     localizationKeyUnitId,
     LOCALE_RESTART_RESUME_KEY,
@@ -71,7 +74,7 @@ import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { resolveDefaultCharacterAvatarReference } from "@shared/utils/characterAvatar";
 import {
     clearCharacterAvatarAssets,
     registerCharacterAvatarAssets,
@@ -893,8 +896,14 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const resolveSpeakerAvatar = useCallback((sourceName: string): BlueprintImageAsset | null => {
         const summary = bundle.storyLibrary?.characters.find(entry => entry.name === sourceName);
-        return toBlueprintImageAsset(resolveDefaultCharacterAvatarAssetId(summary));
-    }, [bundle.storyLibrary]);
+        const reference = resolveDefaultCharacterAvatarReference(summary);
+        const locale = readGameLocale();
+        const assetId = reference
+            ? resolveAssetVariantMember(reference.assetVariants, reference.assetId, locale ?? undefined, bundle.localization?.sourceLocale)
+                ?? reference.assetId
+            : null;
+        return toBlueprintImageAsset(assetId);
+    }, [bundle.localization, bundle.storyLibrary, readGameLocale]);
     /**
      * Read through a ref, because the callbacks that ask are built once per host: see
      * `LiveGameUiCallbackDeps.resolveSpeakerAvatar`.
@@ -932,7 +941,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                         ? resolveLocalizedCharacterName(localization, locale, entry.id, entry.name)
                         : entry.name,
                     color: entry.color,
-                    avatarAssetId: resolveDefaultCharacterAvatarAssetId(entry),
+                    avatarAssetId: (() => {
+                        const reference = resolveDefaultCharacterAvatarReference(entry);
+                        return reference
+                            ? resolveAssetVariantMember(reference.assetVariants, reference.assetId, locale ?? undefined, localization?.sourceLocale)
+                                ?? reference.assetId
+                            : null;
+                    })(),
                 });
                 return info ? [info] : [];
             });

@@ -84,9 +84,16 @@ export function ProjectLetterboxSection({
                     allowOpacity={false}
                     disabled={frozen.disabled}
                     ariaLabel={t("project.settings.letterboxColorTitle")}
-                    onChange={value => setDraftColor(value.hex)}
+                    onChange={value => {
+                        if (!freeze.frozen) {
+                            setDraftColor(value.hex);
+                        }
+                    }}
                     onCommit={value => {
                         setDraftColor(null);
+                        if (freeze.frozen) {
+                            return;
+                        }
                         const color = value.hex.toUpperCase();
                         if (color !== letterbox.color) {
                             void commit({ color });
@@ -145,7 +152,7 @@ export function ProjectLetterboxSection({
                     onConfirm={assets => {
                         setSelectorOpen(false);
                         const assetId = assets[0]?.id;
-                        if (!assetId) {
+                        if (freeze.frozen || !assetId) {
                             return;
                         }
                         void commit({
