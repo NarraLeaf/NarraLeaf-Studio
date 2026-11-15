@@ -10,7 +10,7 @@
  * author is watching without going back to the editor window.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Select } from "@/lib/components/elements/Select";
@@ -23,6 +23,7 @@ import { buildBreakpointContextMenu } from "@/lib/ui-editor/blueprint-debug/brea
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { BlueprintDebuggerToolbar } from "./BlueprintDebuggerToolbar";
+import { resolveBlueprintNodeType } from "./blueprintDebuggerModel";
 /**
  * Loaded when the debugger first shows a graph. It brings React Flow with it, which the Dev Mode
  * window otherwise has no use for until someone opens the debugger.
@@ -50,16 +51,6 @@ export function BlueprintDebuggerOverlay(): ReactNode {
         scope: "trap",
         closeOnEscape: !paused,
     });
-
-    // Landing on a stop with nothing picked yet: the stopped graph is what the overlay shows, and
-    // closing it afterwards should not put the author back on a blank picker.
-    useEffect(() => {
-        if (ctx && paused) {
-            ctx.setView(ctx.snapshot.pausedBlueprintId ?? null, ctx.snapshot.pausedGraphId ?? null);
-        }
-        // Only when the stop itself changes; `setView` is stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paused, ctx?.snapshot.pausedBlueprintId, ctx?.snapshot.pausedGraphId]);
 
     const graphOptions = useMemo(() => {
         if (!ctx) {
@@ -102,94 +93,99 @@ export function BlueprintDebuggerOverlay(): ReactNode {
         });
     }, [ctx, t]);
 
-    if (!ctx || !open) {
+    if (!ctx) {
         return null;
     }
 
     const editing = ctx.editingTarget;
     const editingBreakpoint = editing ? ctx.breakpointsByKey.get(blueprintBreakpointKey(editing)) : undefined;
+    const showingStoppedGraph = paused && ctx.viewBlueprintId === ctx.snapshot.pausedBlueprintId
+        && ctx.viewGraphId === ctx.snapshot.pausedGraphId;
 
     return (
-        <div ref={panelRef} className="pointer-events-auto absolute inset-0 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
-            <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
-                <span className="text-xs font-medium text-fg">{t("devMode.debugger.title")}</span>
-                <BlueprintDebuggerToolbar session={ctx.session} snapshot={ctx.snapshot} />
-                <span className={`min-w-0 flex-1 truncate text-2xs ${paused ? "text-warning" : "text-fg-subtle"}`}>
-                    {paused
-                        ? ctx.snapshot.reason === "breakpoint"
-                            ? t("devMode.debugger.statusBreakpoint")
-                            : t("devMode.debugger.statusStepped")
-                        : t("devMode.debugger.statusRunning")}
-                </span>
-                <Select
-                    size="sm"
-                    className="w-64 shrink-0"
-                    portalMenu
-                    ariaLabel={t("devMode.debugger.graphPicker")}
-                    placeholder={t("devMode.debugger.graphPicker")}
-                    value={
-                        ctx.viewBlueprintId && ctx.viewGraphId
-                            ? `${ctx.viewBlueprintId}\u0000${ctx.viewGraphId}`
-                            : undefined
-                    }
-                    options={graphOptions}
-                    onChange={next => {
-                        const [blueprintId, graphId] = String(next).split("\u0000");
-                        ctx.setView(blueprintId ?? null, graphId ?? null);
-                    }}
-                />
-                <ToolbarButton
-                    size="sm"
-                    aria-label={t("common.close")}
-                    data-tip={t("common.close")}
-                    onClick={ctx.closeGraphBrowser}
-                    disabled={paused}
-                >
-                    <X className="h-3.5 w-3.5" aria-hidden />
-                </ToolbarButton>
-            </div>
-
-            {!ctx.viewPausable ? (
-                <p className="shrink-0 border-b border-edge bg-warning/10 px-2 py-1 text-2xs text-warning">
-                    {t("devMode.debugger.syncGraphNotice")}
-                </p>
-            ) : null}
-
-            <div className="min-h-0 flex-1">
-                {ctx.viewIr ? (
-                    <Suspense fallback={null}>
-                    <BlueprintReadonlyGraphView
-                        ir={ctx.viewIr}
-                        blueprintId={ctx.viewBlueprintId ?? ""}
-                        graphId={ctx.viewGraphId ?? ""}
-                        breakpointsByKey={ctx.breakpointsByKey}
-                        pausable={ctx.viewPausable}
-                        pausedNodeId={paused ? ctx.snapshot.pausedNodeId : undefined}
-                        focusNonce={ctx.snapshot.pausedFrameId}
-                        onNodeContextMenu={ctx.openContextMenu}
-                    />
-                    </Suspense>
-                ) : (
-                    <div className="flex h-full items-center justify-center text-2xs text-fg-subtle">
-                        {t("devMode.debugger.pickGraph")}
+        <>
+            {open ? (
+                <div ref={panelRef} className="pointer-events-auto absolute inset-0 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
+                    <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
+                        <span className="text-xs font-medium text-fg">{t("devMode.debugger.title")}</span>
+                        <BlueprintDebuggerToolbar session={ctx.session} snapshot={ctx.snapshot} />
+                        <span className={`min-w-0 flex-1 truncate text-2xs ${paused ? "text-warning" : "text-fg-subtle"}`}>
+                            {paused
+                                ? ctx.snapshot.reason === "breakpoint"
+                                    ? t("devMode.debugger.statusBreakpoint")
+                                    : t("devMode.debugger.statusStepped")
+                                : t("devMode.debugger.statusRunning")}
+                        </span>
+                        <Select
+                            size="sm"
+                            className="w-64 shrink-0"
+                            portalMenu
+                            ariaLabel={t("devMode.debugger.graphPicker")}
+                            placeholder={t("devMode.debugger.graphPicker")}
+                            value={
+                                ctx.viewBlueprintId && ctx.viewGraphId
+                                    ? `${ctx.viewBlueprintId}\u0000${ctx.viewGraphId}`
+                                    : undefined
+                            }
+                            options={graphOptions}
+                            onChange={next => {
+                                const [blueprintId, graphId] = String(next).split("\u0000");
+                                ctx.setView(blueprintId ?? null, graphId ?? null);
+                            }}
+                        />
+                        <ToolbarButton
+                            size="sm"
+                            aria-label={t("common.close")}
+                            data-tip={t("common.close")}
+                            onClick={ctx.closeGraphBrowser}
+                            disabled={paused}
+                        >
+                            <X className="h-3.5 w-3.5" aria-hidden />
+                        </ToolbarButton>
                     </div>
-                )}
-            </div>
 
-            {ctx.contextMenu ? (
-                <ContextMenu
-                    items={menuItems}
-                    position={ctx.contextMenu.position}
-                    visible
-                    onClose={ctx.closeContextMenu}
-                />
+                    {!ctx.viewPausable ? (
+                        <p className="shrink-0 border-b border-edge bg-warning/10 px-2 py-1 text-2xs text-warning">
+                            {t("devMode.debugger.syncGraphNotice")}
+                        </p>
+                    ) : null}
+
+                    <div className="min-h-0 flex-1">
+                        {ctx.viewIr ? (
+                            <Suspense fallback={null}>
+                                <BlueprintReadonlyGraphView
+                                    ir={ctx.viewIr}
+                                    blueprintId={ctx.viewBlueprintId ?? ""}
+                                    graphId={ctx.viewGraphId ?? ""}
+                                    breakpointsByKey={ctx.breakpointsByKey}
+                                    pausable={ctx.viewPausable}
+                                    pausedNodeId={showingStoppedGraph ? ctx.snapshot.pausedNodeId : undefined}
+                                    focusNonce={showingStoppedGraph ? ctx.snapshot.pausedFrameId : undefined}
+                                    onNodeContextMenu={ctx.openContextMenu}
+                                />
+                            </Suspense>
+                        ) : (
+                            <div className="flex h-full items-center justify-center text-2xs text-fg-subtle">
+                                {t("devMode.debugger.pickGraph")}
+                            </div>
+                        )}
+                    </div>
+
+                    {ctx.contextMenu ? (
+                        <ContextMenu
+                            items={menuItems}
+                            position={ctx.contextMenu.position}
+                            visible
+                            onClose={ctx.closeContextMenu}
+                        />
+                    ) : null}
+                </div>
             ) : null}
-
             <BlueprintBreakpointDialog
                 open={Boolean(editing)}
                 breakpoint={editingBreakpoint}
-                variables={ctx.viewVariables}
-                nodeLabel={editing ? nodeLabelOf(ctx, editing.nodeId, t) : undefined}
+                variables={ctx.editingVariables}
+                nodeLabel={editing ? nodeLabelOf(ctx, editing, t) : undefined}
                 onClose={ctx.closeBreakpointEditor}
                 onSubmit={next => {
                     if (editing) {
@@ -197,16 +193,16 @@ export function BlueprintDebuggerOverlay(): ReactNode {
                     }
                 }}
             />
-        </div>
+        </>
     );
 }
 
 function nodeLabelOf(
     ctx: NonNullable<ReturnType<typeof useBlueprintDebuggerContext>>,
-    nodeId: string,
+    target: { blueprintId: string; graphId: string; nodeId: string },
     t: Parameters<typeof resolveBlueprintNodeTitle>[1],
 ): string | undefined {
-    const type = ctx.viewIr?.nodes?.[nodeId]?.type;
+    const type = resolveBlueprintNodeType(ctx.blueprintDocument, target);
     if (!type) {
         return undefined;
     }

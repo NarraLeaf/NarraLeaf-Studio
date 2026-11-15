@@ -94,7 +94,7 @@ import { BootScreenView } from "@/lib/ui-editor/runtime/app/BootScreenView";
 import { useDevModeInterfaceWarmup } from "./useDevModeInterfaceWarmup";
 import { resolveSurfaceInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
-import { accentForeground } from "@shared/constants/accent";
+import { bootScreenAccent } from "@/lib/ui-editor/runtime/app/bootScreenAccent";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -381,7 +381,7 @@ function DevModeDebugOverlay(props: {
 
     const handleFastForward = useCallback(async () => {
         setDevtoolsMenuOpen(false);
-        if (fastForwarding) {
+        if (fastForwarding || readOnly) {
             return;
         }
         setFastForwarding(true);
@@ -392,7 +392,7 @@ function DevModeDebugOverlay(props: {
         } finally {
             setFastForwarding(false);
         }
-    }, [fastForwarding, fastForwardToNextChoice]);
+    }, [fastForwarding, fastForwardToNextChoice, readOnly]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -865,7 +865,7 @@ function DevModeDebugOverlay(props: {
 
             {/* Last, and above everything else here: a highlight that something else can cover is a
                 highlight that fails on exactly the widget worth pointing at. */}
-            <DevModeWidgetHighlight elementId={highlightedElementId} />
+            <DevModeWidgetHighlight elementId={readOnly ? null : highlightedElementId} />
         </BlueprintDebuggerProvider>
     );
 }
@@ -879,7 +879,6 @@ export function DevModeContent(props: DevModeContentProps) {
         launchRequest,
         projectPath,
         surface,
-        surfaceId,
         rendererRegistry,
         scale,
         handleAspectUpdate,
@@ -2098,7 +2097,7 @@ export function DevModeContent(props: DevModeContentProps) {
                         {/* Inside the box, so it covers the stage and not the letterbox bars. */}
                         <DevModeSafeAreaOverlay
                             designSize={viewportSize}
-                            safeAreaId={safeAreaId}
+                            safeAreaId={readOnly ? null : safeAreaId}
                             mobileOrientation={entry?.kind === "surface" ? entry.mobileOrientation : undefined}
                         />
                     </StageViewportFrame>
@@ -2220,12 +2219,13 @@ export function DevModeContent(props: DevModeContentProps) {
     // The colour the screen it opens on arrives in, by the rule a packaged game's window uses - so the
     // reveal is the interface appearing rather than the stage changing colour.
     const bootBackground = resolveSurfaceInitialBackgroundColor(surface ?? undefined, bundle?.brand);
+    const bootAccent = useMemo(() => bootScreenAccent(bootBackground), [bootBackground]);
     // Null once the window may light up. What it waits for depends on what it opens on.
     const bootScreenProgress = opensOnInterface
         ? (interfaceWarmup.ready ? null : { loaded: interfaceWarmup.loaded, total: interfaceWarmup.total })
         : (bootProgress.firstFrame ? null : { loaded: bootProgress.loaded, total: bootProgress.total });
 
-    if (!bundle || !host) {
+    if (!bundle) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 {/* No session, so no drawer: the strip carries the failure itself here. */}
@@ -2242,7 +2242,7 @@ export function DevModeContent(props: DevModeContentProps) {
         );
     }
 
-    if (!surface) {
+    if (!surface || !host) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <RuntimeIssueStrip
@@ -2252,7 +2252,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     onOpenIssues={null}
                 />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-                    {t("devMode.surfaceNotFound", { surfaceId })}
+                    {t("devMode.surfaceUnavailable")}
                 </div>
             </div>
         );
@@ -2288,7 +2288,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 {bootScreenProgress ? (
                     <BootScreenView
                         background={bootBackground}
-                        accent={`rgb(${accentForeground(bootBackground)})`}
+                        accent={bootAccent}
                         progress={bootScreenProgress}
                         placement="contained"
                     />

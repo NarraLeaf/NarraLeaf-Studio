@@ -693,7 +693,19 @@ function VariableTextEditor(props: {
         }
     }, [initial]);
 
+    useEffect(() => {
+        if (readOnly) {
+            setDraft(initial);
+            setInvalid(false);
+        }
+    }, [readOnly, initial]);
+
     const commit = useCallback(() => {
+        if (readOnly) {
+            setDraft(initial);
+            setInvalid(false);
+            return;
+        }
         // Leaving the field untouched writes nothing: the cell may be showing a scene's name for a
         // stored scene reference, and writing that text back would replace the reference.
         if (draft === initial) {
@@ -707,7 +719,7 @@ function VariableTextEditor(props: {
         }
         setInvalid(false);
         onCommit(parsed.value);
-    }, [draft, initial, onCommit, valueType]);
+    }, [draft, initial, onCommit, readOnly, valueType]);
 
     return (
         <input
@@ -1189,6 +1201,7 @@ function SceneTab(props: {
     trail: StoryRunTrail;
     bundle: DevModeBundle;
 }): ReactNode {
+    const readOnly = useDevModeReadOnly();
     const { storyRuntime, scopeBridge, document, entrySceneId, trail, bundle } = props;
     const registry = useBundleVariableRegistry(bundle);
     // Flat, both scopes: every API below keys an entry by the scope it declares, and a counter an
@@ -1344,11 +1357,14 @@ function SceneTab(props: {
 
     const openScene = useCallback(
         (sceneId: StorySceneId) => {
+            if (readOnly) {
+                return;
+            }
             void storyRuntime.relaunch({ sceneId }).catch(() => {
                 // superseded / failed relaunch — swallow (debug affordance)
             });
         },
-        [storyRuntime],
+        [readOnly, storyRuntime],
     );
 
     return (

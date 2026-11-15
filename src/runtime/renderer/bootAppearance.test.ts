@@ -5,6 +5,7 @@
  *
  * Comments in English per project convention.
  */
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
@@ -14,6 +15,7 @@ import {
     RUNTIME_BOOT_FALLBACK_BACKGROUND,
     resolveRuntimeBootColors,
 } from "./bootAppearance";
+import { resolveRuntimeBootDisplayColors } from "./bootColors";
 
 function packWithEntryBackground(backgroundColor: string | undefined): GameRuntimePackV1 {
     return {
@@ -81,5 +83,28 @@ describe("the colours a game waits in", () => {
         expect(resolveRuntimeBootColors(packWithEntryBackground("#0A090D")).accent).toBe("rgb(255 255 255)");
         expect(resolveRuntimeBootColors(packWithEntryBackground("#FFF8F0")).accent).toBe("rgb(27 33 41)");
         expect(resolveRuntimeBootColors(packWithEntryBackground(undefined)).accent).toBe("rgb(27 33 41)");
+    });
+
+    it("resolves named colours and removes the colour probe", () => {
+        const children = document.documentElement.children.length;
+        const stylesheet = document.createElement("style");
+        stylesheet.textContent = "span { color: white !important; }";
+        document.head.appendChild(stylesheet);
+        try {
+            for (const [background, accent] of [
+                ["white", "rgb(27 33 41)"],
+                ["khaki", "rgb(27 33 41)"],
+                ["navy", "rgb(255 255 255)"],
+                ["rebeccapurple", "rgb(255 255 255)"],
+            ]) {
+                expect(resolveRuntimeBootDisplayColors(packWithEntryBackground(background))).toEqual({ background, accent });
+            }
+            const pack = packWithEntryBackground("nlbrand:pageBackground");
+            pack.bundle.brand = [{ id: "pageBackground", value: "whitesmoke" }];
+            expect(resolveRuntimeBootDisplayColors(pack)).toEqual({ background: "whitesmoke", accent: "rgb(27 33 41)" });
+            expect(document.documentElement.children).toHaveLength(children);
+        } finally {
+            stylesheet.remove();
+        }
     });
 });
