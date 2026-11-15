@@ -9,6 +9,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { loadRenameStories } from "@/lib/workspace/services/refactor/applyRename";
 import { collectVariableReferences, type ReferenceSite } from "@/lib/workspace/services/refactor/renameModel";
 import { resolveVariableSubject } from "@/lib/workspace/services/refactor/resolveRename";
@@ -17,19 +18,21 @@ import { referenceSiteDetail, referenceSitePlace } from "../refactor/referenceSi
 
 /**
  * Where one variable is read and where it is written, read off the whole project while the list is
- * open and again whenever a story or the registry changes under it.
+ * open and again whenever a story, the registry or a blueprint changes under it.
  */
 function useVariableReferences(ref: StoryVariableRef, storyId: StoryId | undefined): ReferenceSite[] | null {
     const { context } = useWorkspace();
     const [sites, setSites] = useState<ReferenceSite[] | null>(null);
     const refKey = `${ref.scope}:${ref.variableId}`;
     useEffect(() => {
+        setSites(null);
         if (!context) {
             return;
         }
         let cancelled = false;
         let timer: number | null = null;
-        const read = async () => {
+        let revision = 0;
+        const read = async (requestedRevision: number) => {
             const stories = await loadRenameStories(context);
             const registry = context.services.get<VariableRegistryService>(Services.VariableRegistry).listEntries();
             let blueprints = null;
@@ -41,19 +44,21 @@ function useVariableReferences(ref: StoryVariableRef, storyId: StoryId | undefin
             const subject = resolveVariableSubject(ref, stories, registry, storyId);
             const found = collectVariableReferences({ stories, ref, declaration: subject?.declaration, registry, blueprints })
                 .filter(site => site.access !== "declaration");
-            if (!cancelled) {
+            if (!cancelled && requestedRevision === revision) {
                 setSites(found);
             }
         };
         const schedule = () => {
+            const requestedRevision = ++revision;
             if (timer !== null) {
                 window.clearTimeout(timer);
             }
-            timer = window.setTimeout(() => void read(), 250);
+            timer = window.setTimeout(() => void read(requestedRevision), 250);
         };
-        void read();
+        void read(++revision);
         const offStory = context.services.get<StoryService>(Services.Story).onDocumentChanged(schedule);
         const offRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry).onRegistryChanged(schedule);
+        const offGraphs = context.services.get<UIGraphService>(Services.UIGraph).onGraphsChanged(schedule);
         return () => {
             cancelled = true;
             if (timer !== null) {
@@ -61,6 +66,7 @@ function useVariableReferences(ref: StoryVariableRef, storyId: StoryId | undefin
             }
             offStory();
             offRegistry();
+            offGraphs();
         };
         // `ref` is identified by its key; a fresh object with the same key is the same variable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
