@@ -24,7 +24,8 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
-import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { DirectorySizeResult } from "@shared/utils/fs";
 import { buildAssetOverview, type AssetOverviewSummary } from "./assetOverviewModel";
 
@@ -52,24 +53,39 @@ export function assetContentRelativePath(asset: Asset): string | null {
 /**
  * Attribute the walk's per-file bytes back to asset ids.
  *
- * The one place the original bug lived: a file listed but addressed by the wrong (stem-only) path
- * counted as zero. Now the bytes arrive keyed by the walk's own relative paths, and an asset only
- * gets a byte count when its content path is actually among them - a missing content file leaves the
- * id absent (unknown bytes), never a spurious zero.
+ * Files use the walk's relative paths. Model assets own a directory at their content path, so their
+ * bytes are the sum of the files beneath it. Missing content stays unknown.
  */
 export function assetBytesFromWalk(
     assets: readonly Asset[],
     bytesByRelativePath: DirectorySizeResult["bytesByRelativePath"],
 ): Map<string, number> {
     const bytesByAssetId = new Map<string, number>();
+    const modelIdsByPath = new Map<string, string>();
     for (const asset of assets) {
         const relative = assetContentRelativePath(asset);
         if (relative === null) {
             continue;
         }
+        if (asset.type === AssetType.Model) {
+            modelIdsByPath.set(relative, asset.id);
+        }
         const bytes = bytesByRelativePath[relative];
         if (bytes !== undefined) {
             bytesByAssetId.set(asset.id, bytes);
+        }
+    }
+    if (modelIdsByPath.size > 0) {
+        for (const [path, bytes] of Object.entries(bytesByRelativePath)) {
+            let separator = path.lastIndexOf("/");
+            while (separator > 0) {
+                const assetId = modelIdsByPath.get(path.slice(0, separator));
+                if (assetId !== undefined) {
+                    bytesByAssetId.set(assetId, (bytesByAssetId.get(assetId) ?? 0) + bytes);
+                    break;
+                }
+                separator = path.lastIndexOf("/", separator - 1);
+            }
         }
     }
     return bytesByAssetId;
@@ -119,6 +135,7 @@ export async function computeAssetOverviewSnapshot(
     await referenceService.ensureReady();
     await referenceService.flushPendingRebuilds();
     const referencesByAssetId = referenceService.getReferencesForAll(assets.map(asset => asset.id));
+    const indexResult = referenceService.getIndexResult();
     const referenceCountByAssetId = new Map<string, number>();
     for (const [assetId, references] of referencesByAssetId) {
         referenceCountByAssetId.set(assetId, references.length);
@@ -129,8 +146,7 @@ export async function computeAssetOverviewSnapshot(
 
     const summary = buildAssetOverview({
         assets,
-        // Read after the same flush the counts came from, so coverage and counts describe one pass.
-        indexResult: referenceService.getIndexResult(),
+        indexResult,
         bytesByAssetId,
         referenceCountByAssetId,
         directoryBytes: measured.totalBytes,

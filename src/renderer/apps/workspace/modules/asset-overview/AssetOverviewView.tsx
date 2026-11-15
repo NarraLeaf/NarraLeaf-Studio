@@ -45,7 +45,7 @@ export function AssetOverviewView({
     const unreferenced = useMemo(
         () =>
             (snapshot?.entries ?? [])
-                .filter(entry => !entry.referenced)
+                .filter(entry => !entry.referenced && entry.usageKnown)
                 .sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0) || a.asset.name.localeCompare(b.asset.name)),
         [snapshot],
     );
@@ -232,7 +232,12 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
 
             <dl className="flex flex-col gap-1.5">
                 <DetailRow label={t("properties.asset.info.size")} value={formatByteSize(entry.bytes)} />
-                <DetailRow label={t("assets.overview.stat.referenced")} value={tn("assets.overview.uses", entry.referenceCount)} />
+                <DetailRow
+                    label={t("assets.overview.stat.referenced")}
+                    value={!entry.usageKnown && !entry.referenced
+                        ? t("properties.references.unknown")
+                        : tn("assets.overview.uses", entry.referenceCount)}
+                />
             </dl>
 
             <div>
