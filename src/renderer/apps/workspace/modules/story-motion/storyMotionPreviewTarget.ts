@@ -7,7 +7,7 @@ import type {
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
-import { displayableSourceIdentity, normalizeStageObjectName, resolveDisplayableTargetRef, sceneLayerStack } from "@shared/types/story";
+import { declaresStageObject, displayableCreatorIdentity, displayableSourceIdentity, normalizeStageObjectName, resolveDisplayableTargetRef, sceneLayerStack } from "@shared/types/story";
 
 export type StoryMotionPreviewTarget = {
     kind: StoryMotionTargetKind;
@@ -16,7 +16,7 @@ export type StoryMotionPreviewTarget = {
     text?: string;
     fontSize?: number;
     fontColor?: string;
-    /** Whether the runtime fits this displayable to the stage width (characters always do). */
+    /** Whether the runtime fits this displayable to the stage width. */
     autoFit?: boolean;
 };
 
@@ -71,6 +71,13 @@ function resolveTargetWithoutPreview(input: {
         return fallback;
     }
     if (block.payload.action !== "displayable") {
+        if ((block.payload.action === "image" || block.payload.action === "text" || block.payload.action === "character")
+            && !declaresStageObject(block.payload)) {
+            const identity = targetIdentityInScene(scene, block);
+            if (identity) {
+                return { ...fallback, ...resolveDisplayableFromScene(scene, input.blockId, { kind: identity.kind, label: identity.label }, identity.name) };
+            }
+        }
         return { ...fallback, ...direct };
     }
     // Resolve the target through its stable anchor first so the preview follows renames, then walk
@@ -82,7 +89,7 @@ function resolveTargetWithoutPreview(input: {
     };
     return {
         ...fallback,
-        ...resolveDisplayableFromScene(scene, input.blockId, resolvedDirect),
+        ...resolveDisplayableFromScene(scene, input.blockId, resolvedDirect, resolvedRef.name),
     };
 }
 
@@ -160,11 +167,8 @@ function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | n
 /**
  * The displayable a row names, with whatever the action that introduced it says about it.
  *
- * Every matching action earlier in the scene is layered on in execution order, so the last one to
- * say a thing wins. That is read here from the other end: walk BACKWARD from the row, let the
- * nearest match say each thing first, and stop at the first creator (`@image`, `@character`,
- * `@text`, `@layer` ...). A creator states every field its kind can carry, so nothing earlier could
- * change the answer.
+ * Walk backward from the row: the nearest action that writes each field wins, and the declaring
+ * action supplies the remaining fields. Layers are declared by the scene rather than a row.
  *
  * This runs once per mounted transform or show/hide row, so its cost is paid on every frame of a
  * scroll. It used to flatten the whole scene and scan every row above this one, allocating a target
@@ -175,39 +179,51 @@ function resolveDisplayableFromScene(
     scene: StoryScene,
     blockId: StoryBlockId,
     requested: StoryMotionPreviewTarget,
+    requestedName: string,
 ): StoryMotionPreviewTarget {
     const resolved: Record<string, unknown> = { ...requested };
     const said = new Set<string>();
     const actions = ACTIONS_TARGETING_KIND[requested.kind];
-    const wantedName = stageNameKey(requested.label);
-    const reachable = walkBlocksBefore(scene, blockId, block => {
+    const wantedName = stageNameKey(requestedName);
+    const visit = (block: StoryBlock) => {
         // Most of what the walk passes is dialogue, unrelated actions and moves of OTHER objects,
         // and on a long scene it passes thousands of them: rule those out before building a target.
         if (block.kind !== "action" || !actions.has(block.payload.action)) {
             return false;
         }
-        if (block.payload.action === "displayable") {
-            const target = block.payload.target;
-            if ((target.kind ?? "image") !== requested.kind || stageNameKey(target.name || "Displayable") !== wantedName) {
-                return false;
-            }
-        }
-        const target = previewTargetFromBlock(block);
-        if (!target || target.kind !== requested.kind || stageNameKey(target.label) !== wantedName) {
+        const identity = targetIdentityInScene(scene, block);
+        if (!identity || identity.kind !== requested.kind || stageNameKey(identity.name) !== wantedName) {
             return false;
         }
-        for (const [key, value] of Object.entries(target)) {
+        if (!said.has("label")) {
+            said.add("label");
+            resolved.label = identity.label;
+        }
+        const payload = block.payload;
+        const declares = declaresStageObject(payload);
+        const target = previewTargetFromBlock(block);
+        for (const [key, value] of Object.entries(target ?? {})) {
+            if (key === "kind" || key === "label" || (!declares && value === undefined)) {
+                continue;
+            }
+            // Fit is set when an image is declared; source and text/font operations change only
+            // their own fields and leave the other properties of the displayable in place.
+            if (key === "autoFit" && !declares) {
+                continue;
+            }
             if (!said.has(key)) {
                 said.add(key);
                 resolved[key] = value;
             }
         }
-        return block.payload.action !== "displayable";
-    });
+        return declares;
+    };
+    const reachable = walkBlocksBefore(scene, blockId, visit);
     if (!reachable) {
-        // Not reachable from the scene's roots: every block counts as "before" it, as the forward
-        // reading had it.
-        return layerMatchesForward(flattenSceneBlocks(scene), requested);
+        // An unreachable row has no position in the scene, so every reachable row precedes it.
+        for (const block of flattenSceneBlocks(scene).reverse()) {
+            if (visit(block)) break;
+        }
     }
     return resolved as StoryMotionPreviewTarget;
 }
@@ -220,21 +236,6 @@ const ACTIONS_TARGETING_KIND: Record<StoryMotionTargetKind, ReadonlySet<string>>
     layer: new Set(["layer", "nvl", "displayable"]),
     camera: new Set(["camera", "displayable"]),
 };
-
-function layerMatchesForward(blocks: StoryBlock[], requested: StoryMotionPreviewTarget): StoryMotionPreviewTarget {
-    let resolved = requested;
-    for (const block of blocks) {
-        if (block.kind !== "action") {
-            continue;
-        }
-        const target = previewTargetFromBlock(block);
-        if (!target || target.kind !== requested.kind || !sameStageName(target.label, requested.label)) {
-            continue;
-        }
-        resolved = { ...resolved, ...target };
-    }
-    return resolved;
-}
 
 /**
  * Visit the blocks that run before `blockId`, nearest first - execution order (a depth-first
@@ -315,12 +316,8 @@ function flattenSceneBlocks(scene: StoryScene): StoryBlock[] {
     return result;
 }
 
-function sameStageName(left: string, right: string): boolean {
-    return stageNameKey(left) === stageNameKey(right);
-}
-
 function stageNameKey(name: string): string {
-    return name.trim().toLowerCase();
+    return name.trim();
 }
 
 function labelForKind(kind: StoryMotionTargetKind): string {
@@ -334,12 +331,11 @@ function labelForKind(kind: StoryMotionTargetKind): string {
 /**
  * Collect the named displayables that are in scope *before* a given action block, so the
  * inspector can present them as pick-from-context targets. Walks the scene in execution
- * order up to (but excluding) `blockId`, keyed by kind + case-insensitive name; the most
+ * order up to (but excluding) `blockId`, keyed by kind and stage name; the most
  * recent asset/text for a name wins so the picker preview matches what is on stage there.
  *
- * Only creator-style actions (character / image / text / layer) and displayable ops that
- * carry an explicit kind contribute — infer-kind displayable references are skipped so a
- * name is never listed under a guessed kind.
+ * Image, character and text declarations contribute entries; later operations refresh their
+ * content. Custom layers come from the scene's layer stack.
  */
 export function listSceneDisplayableTargets(
     document: StoryDocument | null | undefined,
@@ -374,44 +370,55 @@ export function listDisplayableTargetsInScene(scene: StoryScene, blockId: StoryB
         if (layer.kind !== "custom" || !name) {
             continue;
         }
-        const key = `layer\u0000${name.toLowerCase()}`;
+        const key = `layer\u0000${name}`;
         if (!byKey.has(key)) {
             order.push(key);
             byKey.set(key, { kind: "layer", name: normalizeStageObjectName(name), label: name, sourceBlockId: layer.id });
         }
     }
     for (const block of priorBlocks) {
-        const introduced = displayableRefFromBlock(block);
-        if (!introduced) {
+        if (block.kind !== "action") {
             continue;
         }
-        const name = introduced.name.trim();
+        const creator = displayableCreatorIdentity(block);
+        const identity = creator ?? targetIdentityInScene(scene, block);
+        if (!identity) continue;
+        const name = identity.name.trim();
         if (!name) {
             continue;
         }
-        const key = `${introduced.kind}\u0000${name.toLowerCase()}`;
+        const key = `${identity.kind}\u0000${name}`;
         const existing = byKey.get(key);
+        const payload = block.payload;
+        const assetId = payload.action === "character" || payload.action === "image" ? payload.assetId : undefined;
+        const text = payload.action === "text" ? payload.text : undefined;
         if (existing) {
             byKey.set(key, {
                 ...existing,
-                assetId: introduced.assetId ?? existing.assetId,
-                text: introduced.text ?? existing.text,
+                assetId: assetId ?? existing.assetId,
+                text: text ?? existing.text,
             });
             continue;
         }
+        if (!creator) continue;
         order.push(key);
-        byKey.set(key, { ...introduced, name });
+        byKey.set(key, { ...creator, name, assetId, text, sourceBlockId: block.id });
     }
     return order.map(key => byKey.get(key)!);
 }
 
-function displayableRefFromBlock(block: StoryBlock): SceneDisplayableRef | null {
-    const identity = displayableSourceIdentity(block);
-    if (!identity || block.kind !== "action") {
+function targetIdentityInScene(scene: StoryScene, block: StoryBlock): { kind: StoryDisplayableTargetKind; name: string; label: string } | null {
+    if (block.kind !== "action") {
         return null;
     }
     const payload = block.payload;
-    const assetId = payload.action === "character" || payload.action === "image" ? payload.assetId : undefined;
-    const text = payload.action === "text" ? payload.text : undefined;
-    return { ...identity, assetId, text, sourceBlockId: block.id };
+    if (payload.action === "displayable") {
+        const resolved = resolveDisplayableTargetRef(scene, payload.target);
+        return { ...resolved, kind: resolved.kind ?? "image" };
+    }
+    if ((payload.action === "image" || payload.action === "text") && payload.target && !declaresStageObject(payload)) {
+        const resolved = resolveDisplayableTargetRef(scene, payload.target);
+        return { ...resolved, kind: payload.action };
+    }
+    return displayableSourceIdentity(block);
 }

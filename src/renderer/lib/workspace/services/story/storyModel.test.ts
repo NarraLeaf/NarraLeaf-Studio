@@ -18,6 +18,7 @@ import {
     collectUnresolvedSpeakerRows,
     narrowToOneUnresolvedSpeaker,
     createEmptyStoryAnimationIndex,
+    createStoryAnimationAsset,
     createEmptyStoryDocument,
     createEmptyStoryLibraryIndex,
     deleteBlockFromScene,
@@ -365,6 +366,44 @@ describe("storyModel", () => {
                 },
             ],
         });
+    });
+
+    it("keeps an explicitly empty timeline empty instead of restoring legacy sequences", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const asset = createStoryAnimationAsset({ id: STORY_ID_2, name: "Motion", targetKind: "image", now });
+        const empty = normalizeStoryAnimationAsset({ ...asset, timeline: { tracks: [] } }, now);
+
+        expect(empty.timeline?.tracks).toEqual([]);
+    });
+
+    it("migrates a legacy sequence-only motion without losing its values", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const asset = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "Legacy",
+            targetKind: "image",
+            sequences: [{ id: "old", props: { opacity: 0.25 }, options: { durationMs: 100 } }],
+        }, now);
+
+        expect(asset.timeline?.tracks).toHaveLength(1);
+        expect(asset.timeline?.tracks[0]).toMatchObject({ property: "opacity", keyframes: [{ timeMs: 100, value: 0.25 }] });
+    });
+
+    it("keeps the default for a new motion without a supplied timeline", () => {
+        const asset = createStoryAnimationAsset({ id: STORY_ID_2, name: "New", targetKind: "image", now: "2026-06-08T00:00:00.000Z" });
+        expect(asset.timeline?.tracks[0]).toMatchObject({ property: "opacity", keyframes: [{ value: 1 }] });
+    });
+
+    it("imports a zero-duration sequence without properties as an empty timeline", () => {
+        const asset = createStoryAnimationAsset({
+            id: STORY_ID_2,
+            name: "Empty",
+            targetKind: "image",
+            now: "2026-06-08T00:00:00.000Z",
+            sequences: [{ id: "empty", props: {}, options: { durationMs: 0 } }],
+        });
+        expect(asset.timeline?.tracks).toEqual([]);
     });
 
     it("rejects unsafe story ids before building document paths", () => {

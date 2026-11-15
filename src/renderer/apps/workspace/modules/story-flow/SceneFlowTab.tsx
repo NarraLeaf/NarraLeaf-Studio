@@ -485,7 +485,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
         const sceneIds = new Set<StorySceneId>();
         const edgeIds = new Set<string>();
         for (const [sceneId, effects] of focus.sceneEffects) {
-            if (effects.some(effect => effect.variableKey === focus.variable.key)) {
+            if (effects.some(effect => effect.variableKey === focus.variable.key || effect.variableKey === "*")) {
                 sceneIds.add(sceneId);
             }
         }
