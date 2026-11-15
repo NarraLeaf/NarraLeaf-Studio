@@ -47,6 +47,7 @@ class FakeServer {
     /** Whole files, as text, and the seq that last wrote each. */
     readonly files = new Map<string, string>();
     readonly fileWritten = new Map<string, number>();
+    lastFileContent: TeamFileContent | null = null;
 
     call(by: string, method: string, params: Record<string, unknown>): { ok: true; value: unknown } {
         switch (method) {
@@ -108,6 +109,7 @@ class FakeServer {
     private putFile(by: string, params: Record<string, unknown>): { ok: true; value: unknown } {
         const path = (params.document as { path: string }).path;
         const content = (params.op as { content: TeamFileContent | null }).content;
+        this.lastFileContent = content;
         const basedOn = params.basedOn as number | undefined;
         if (basedOn !== undefined && (this.fileWritten.get(path) ?? 0) > basedOn) {
             return { ok: true, value: { kind: "refusal", clientId: params.clientId, reason: "conflict", conflicts: [`file:${path}`] } };
@@ -139,24 +141,30 @@ class Window {
     sink: TeamDocHandler | null = null;
     online = true;
     state: TeamDocState | null = null;
+    failStateWrites = false;
+    failStateWhen: ((state: TeamDocState) => boolean) | null = null;
+    beforeStateSave: ((state: TeamDocState) => Promise<void>) | null = null;
     readonly notices: TeamDocNotice[] = [];
     readonly connection = new Set<(online: boolean) => void>();
     readonly sync: TeamDocSync;
     /** This window's project folder, for files that travel whole: text by path. */
     readonly disk = new Map<string, string>();
+    readonly binary = new Map<string, Uint8Array>();
     reloads = 0;
     private readonly writes = new Set<(path: string) => void>();
 
     constructor(readonly server: FakeServer, readonly name: string, withFiles = false) {
         const encoder = new TextEncoder();
         const files: TeamFilePorts = {
-            list: async () => [...this.disk.keys()].sort(),
-            read: async path => (this.disk.has(path) ? encoder.encode(this.disk.get(path)) : null),
+            list: async () => [...new Set([...this.disk.keys(), ...this.binary.keys()])].sort(),
+            read: async path => this.binary.get(path) ?? (this.disk.has(path) ? encoder.encode(this.disk.get(path)) : null),
             write: async (path, bytes) => {
+                this.binary.delete(path);
                 this.disk.set(path, new TextDecoder().decode(bytes));
             },
             remove: async path => {
                 this.disk.delete(path);
+                this.binary.delete(path);
             },
             flush: async () => undefined,
             reload: async () => {
@@ -211,7 +219,9 @@ class Window {
             state: {
                 load: async () => this.state,
                 save: async state => {
-                    this.state = structuredClone(state);
+                    await this.beforeStateSave?.(state);
+                    if (this.failStateWrites || this.failStateWhen?.(state)) throw new Error("state storage failed");
+                    this.state = JSON.parse(JSON.stringify(state)) as TeamDocState;
                 },
             },
             notify: notice => {
@@ -225,6 +235,7 @@ class Window {
 
     /** The author's editor writes a file, as it would in a personal project. */
     writeFile(path: string, text: string): void {
+        this.binary.delete(path);
         this.disk.set(path, text);
         for (const listener of this.writes) listener(path);
     }
@@ -375,6 +386,153 @@ describe("following a team project", () => {
         expect(again.sync.getView().conflicts).toEqual([]);
     });
 
+    it("preserves unresolved story conflicts and the author's full story across reopening", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada");
+        const bob = new Window(server, "bob");
+        await ada.sync.start();
+        await bob.sync.start();
+        ada.edit(insert("a", "original"));
+        ada.edit(insert("b", "other row"));
+        await settle();
+
+        ada.setOnline(false);
+        await settle();
+        ada.edit(update("a", "author offline change"));
+        const authorStory = structuredClone(ada.document);
+        bob.edit(update("a", "server change"));
+        await settle();
+        ada.setOnline(true);
+        for (let i = 0; i < 5; i += 1) await settle();
+        expect(ada.text("a")).toBe("server change");
+        expect(ada.sync.getView().conflicts).toHaveLength(1);
+
+        ada.sync.stop();
+        const again = new Window(server, "ada");
+        again.document = structuredClone(ada.document);
+        again.state = structuredClone(ada.state);
+        await again.sync.start();
+        expect(again.sync.getView().conflicts).toMatchObject([
+            { kind: "story", storyId: STORY, op: { op: "update-block", blockId: "a" }, mine: authorStory },
+        ]);
+        expect(await again.sync.overrideConflict(0)).toBe(true);
+        await settle();
+        expect(server.document.scenes[SCENE].blocks.a.payload).toEqual(row("a", "author offline change").payload);
+    });
+
+    it("keeps the author's story in place when recovery storage fails", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada");
+        await ada.sync.start();
+        ada.edit(insert("a", "original"));
+        await settle();
+        ada.setOnline(false);
+        await settle();
+        ada.edit(update("a", "author offline change"));
+        const authorStory = structuredClone(ada.document);
+
+        ada.failStateWrites = true;
+        ada.online = true;
+        await (ada.sync as unknown as { goOnline(): Promise<void> }).goOnline().catch(() => undefined);
+        expect(ada.document).toEqual(authorStory);
+    });
+
+    it("recovers an interrupted story replay and its complete author snapshot", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada");
+        const bob = new Window(server, "bob");
+        await ada.sync.start();
+        await bob.sync.start();
+        ada.edit(insert("a", "original"));
+        await settle();
+        ada.setOnline(false);
+        await settle();
+        ada.edit(update("a", "author offline change"));
+        const authorStory = structuredClone(ada.document);
+        bob.edit(update("a", "server change"));
+        await settle();
+
+        ada.failStateWhen = state => (state.conflicts?.length ?? 0) > 0;
+        ada.online = true;
+        await (ada.sync as unknown as { goOnline(): Promise<void> }).goOnline();
+        expect(ada.state?.replay?.stories[STORY]).toEqual(authorStory);
+        expect(ada.state?.replay?.operations).toHaveLength(1);
+        ada.sync.stop();
+
+        const again = new Window(server, "ada");
+        again.document = structuredClone(ada.document);
+        again.state = structuredClone(ada.state);
+        await again.sync.start();
+        expect(again.sync.getView().conflicts).toMatchObject([{ kind: "story", mine: authorStory }]);
+        expect(await again.sync.overrideConflict(0)).toBe(true);
+        await settle();
+        expect(server.document.scenes[SCENE].blocks.a.payload).toEqual(row("a", "author offline change").payload);
+    });
+
+    it("keeps a full story when a refused move carries no row contents", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada");
+        const bob = new Window(server, "bob");
+        await ada.sync.start();
+        await bob.sync.start();
+        ada.edit(insert("a", "author row a"));
+        ada.edit(insert("b", "author row b"));
+        await settle();
+        ada.setOnline(false);
+        await settle();
+        ada.edit({ op: "move-block", sceneId: SCENE, blockId: "a", target: { parentId: null } });
+        const authorStory = structuredClone(ada.document);
+        bob.edit(update("a", "server row a"));
+        bob.edit(update("b", "server row b"));
+        await settle();
+        ada.setOnline(true);
+        for (let i = 0; i < 5; i += 1) await settle();
+        expect(ada.sync.getView().conflicts).toMatchObject([{ kind: "story", op: { op: "move-block" }, mine: authorStory }]);
+        ada.sync.stop();
+
+        const again = new Window(server, "ada");
+        again.document = structuredClone(ada.document);
+        again.state = structuredClone(ada.state);
+        await again.sync.start();
+        expect(again.sync.getView().conflicts).toMatchObject([{ kind: "story", op: { op: "move-block" }, mine: authorStory }]);
+    });
+
+    it("keeps a conflict when saving its dismissal fails", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada");
+        const bob = new Window(server, "bob");
+        await ada.sync.start();
+        await bob.sync.start();
+        ada.edit(insert("a", "original"));
+        await settle();
+        ada.setOnline(false);
+        await settle();
+        ada.edit(update("a", "author offline change"));
+        bob.edit(update("a", "server change"));
+        await settle();
+        ada.setOnline(true);
+        for (let i = 0; i < 5; i += 1) await settle();
+        ada.failStateWrites = true;
+        ada.sync.dismissConflicts();
+        await settle();
+        expect(ada.sync.getView().conflicts).toHaveLength(1);
+        ada.sync.stop();
+
+        const again = new Window(server, "ada");
+        again.document = structuredClone(ada.document);
+        again.state = structuredClone(ada.state);
+        await again.sync.start();
+        expect(again.sync.getView().conflicts).toHaveLength(1);
+        again.sync.dismissConflicts();
+        await settle();
+        again.sync.stop();
+        const afterDismissal = new Window(server, "ada");
+        afterDismissal.document = structuredClone(again.document);
+        afterDismissal.state = structuredClone(again.state);
+        await afterDismissal.sync.start();
+        expect(afterDismissal.sync.getView().conflicts).toEqual([]);
+    });
+
     it("starts a window that never opened the project from the last saved version, then follows the log", async () => {
         const server = new FakeServer();
         const ada = new Window(server, "ada");
@@ -469,6 +627,167 @@ describe("following a team project", () => {
             expect(server.files.get(SCHEMA)).toBe("bob");
             expect(ada.disk.get(SCHEMA)).toBe("bob");
             expect(bob.sync.getView().conflicts).toEqual([]);
+        });
+
+        it("preserves unresolved file conflicts and the author's bytes across reopening", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author offline change");
+            server.call("bob", "doc.intent", {
+                clientId: "bob:1",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+            });
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(ada.disk.get(SCHEMA)).toBe("server change");
+            expect(ada.sync.getView().conflicts).toHaveLength(1);
+
+            ada.sync.stop();
+            const again = new Window(server, "ada", true);
+            again.document = structuredClone(ada.document);
+            again.disk.set(SCHEMA, ada.disk.get(SCHEMA)!);
+            again.state = structuredClone(ada.state);
+            await again.sync.start();
+            const conflicts = again.sync.getView().conflicts;
+            expect(conflicts).toHaveLength(1);
+            expect(new TextDecoder().decode((conflicts[0] as { mine: Uint8Array }).mine)).toBe("author offline change");
+            expect(await again.sync.overrideConflict(0)).toBe(true);
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(server.files.get(SCHEMA)).toBe("author offline change");
+        });
+
+        it("keeps the author's file in place when recovery storage fails", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author change");
+            ada.failStateWrites = true;
+            await (ada.sync as unknown as { applyFile(effect: unknown): Promise<boolean> }).applyFile({
+                seq: 1,
+                clientId: "bob:1",
+                by: "bob",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+                at: NOW,
+            }).catch(() => false);
+            expect(ada.disk.get(SCHEMA)).toBe("author change");
+        });
+
+        it("waits for conflict storage before replacing a file", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author change");
+            let release!: () => void;
+            let entered!: () => void;
+            const saving = new Promise<void>(resolve => { entered = resolve; });
+            const gate = new Promise<void>(resolve => { release = resolve; });
+            ada.beforeStateSave = async state => {
+                if ((state.conflicts?.length ?? 0) > 0) {
+                    entered();
+                    await gate;
+                }
+            };
+            server.call("bob", "doc.intent", {
+                clientId: "bob:1",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+            });
+            await saving;
+            expect(ada.disk.get(SCHEMA)).toBe("author change");
+            release();
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(ada.disk.get(SCHEMA)).toBe("server change");
+        });
+
+        it("keeps an incoming file effect pending when conflict storage fails, then recovers on reopening", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author change");
+            ada.failStateWrites = true;
+            server.call("bob", "doc.intent", {
+                clientId: "bob:1",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+            });
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(ada.disk.get(SCHEMA)).toBe("author change");
+            expect(ada.sync.getView()).toMatchObject({ state: "offline", seq: 0 });
+            expect(ada.state?.seq).toBe(0);
+            ada.sync.stop();
+
+            const again = new Window(server, "ada", true);
+            again.document = structuredClone(ada.document);
+            again.disk.set(SCHEMA, ada.disk.get(SCHEMA)!);
+            again.state = structuredClone(ada.state);
+            await again.sync.start();
+            expect(again.disk.get(SCHEMA)).toBe("server change");
+            const conflict = again.sync.getView().conflicts[0] as { mine: Uint8Array };
+            expect(new TextDecoder().decode(conflict.mine)).toBe("author change");
+        });
+
+        it("round-trips binary author bytes and sends them after reopening", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            await ada.sync.start();
+            const authorBytes = Uint8Array.from([0, 255, 128, 13, 10, 65]);
+            ada.binary.set(SCHEMA, authorBytes);
+            server.call("bob", "doc.intent", {
+                clientId: "bob:1",
+                document: { doc: "file", path: SCHEMA },
+                op: { op: "put-file", content: { encoding: "utf8", data: "server change" } },
+            });
+            for (let i = 0; i < 5; i += 1) await settle();
+            ada.sync.stop();
+
+            const again = new Window(server, "ada", true);
+            again.document = structuredClone(ada.document);
+            again.disk.set(SCHEMA, ada.disk.get(SCHEMA)!);
+            again.state = structuredClone(ada.state);
+            await again.sync.start();
+            expect((again.sync.getView().conflicts[0] as { mine: Uint8Array }).mine).toEqual(authorBytes);
+            expect(await again.sync.overrideConflict(0)).toBe(true);
+            expect(server.lastFileContent).toEqual({ encoding: "base64", data: "AP+ADQpB" });
+        });
+
+        it("keeps multiple file conflicts separately through selection and reopening", async () => {
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            const motion = "editor/story/animations/a.json";
+            await ada.sync.start();
+            ada.disk.set(SCHEMA, "author schema");
+            ada.disk.set(motion, "author motion");
+            for (const [path, text] of [[SCHEMA, "server schema"], [motion, "server motion"]]) {
+                server.call("bob", "doc.intent", {
+                    clientId: `bob:${path}`,
+                    document: { doc: "file", path },
+                    op: { op: "put-file", content: { encoding: "utf8", data: text } },
+                });
+            }
+            for (let i = 0; i < 5; i += 1) await settle();
+            expect(ada.sync.getView().conflicts).toHaveLength(2);
+            ada.sync.stop();
+
+            const again = new Window(server, "ada", true);
+            again.document = structuredClone(ada.document);
+            for (const [path, text] of ada.disk) again.disk.set(path, text);
+            again.state = structuredClone(ada.state);
+            await again.sync.start();
+            expect(again.sync.getView().conflicts.map(conflict => conflict.kind === "file" && conflict.path)).toEqual([SCHEMA, motion]);
+            expect(await again.sync.overrideConflict(0)).toBe(true);
+            for (let i = 0; i < 5; i += 1) await settle();
+            again.sync.stop();
+
+            const last = new Window(server, "ada", true);
+            last.document = structuredClone(again.document);
+            for (const [path, text] of again.disk) last.disk.set(path, text);
+            last.state = structuredClone(again.state);
+            await last.sync.start();
+            expect(last.sync.getView().conflicts).toHaveLength(1);
+            expect(last.sync.getView().conflicts[0]).toMatchObject({ kind: "file", path: motion });
+            expect(new TextDecoder().decode((last.sync.getView().conflicts[0] as { mine: Uint8Array }).mine)).toBe("author motion");
         });
 
         it("sends every file changed offline whole on reconnecting, and puts back the one somebody else changed", async () => {

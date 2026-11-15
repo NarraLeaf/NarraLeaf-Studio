@@ -19,9 +19,12 @@ import type { DocumentDiff } from "@shared/documents/diff";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { ASSET_PAYLOAD_ROOT, liveDocumentPath } from "@shared/live/sharedDocuments";
 import { STORY_LIBRARY_PATH } from "@shared/authority/storyFiles";
+import { FsRejectErrorCode } from "@shared/types/os";
+import { ProjectNameConvention } from "../../project/nameConvention";
 import { TeamDocSync, type TeamDocNotice, type TeamDocState, type TeamDocView } from "./teamDocSync";
 import { TeamDocWiring } from "./teamDocWiring";
 import { createTeamFilePorts } from "./teamFilePorts";
+import { writeTeamDocStore } from "./teamDocStateStore";
 
 /** One document's difference between a saved version and now. */
 export type TeamVersionComparison =
@@ -463,16 +466,21 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
             state: {
                 load: async () => {
                     const read = await stores.readStore<TeamDocStore>(STORE);
-                    if (!read.ok || !read.data || read.data.version !== 1 || read.data.project !== project) {
+                    if (!read.ok) {
+                        if (read.error.code === FsRejectErrorCode.NOT_FOUND) return null;
+                        throw new Error("Could not read the Team state");
+                    }
+                    if (!read.data || read.data.version !== 1 || read.data.project !== project) {
                         return null;
                     }
                     return read.data.state;
                 },
                 save: async state => {
-                    await stores.writeStore(
-                        STORE,
+                    await writeTeamDocStore(
+                        ctx.services.get<FileSystemService>(Services.FileSystem),
+                        ctx.project.resolve(ProjectNameConvention.StudioServices),
+                        ctx.project.resolve(ProjectNameConvention.StudioServices, `${STORE}.json`),
                         { version: 1, project, state },
-                        storeWrite("workspace.shell.save.stores.teamDocs", "notRetried"),
                     );
                 },
             },

@@ -8,6 +8,7 @@ import {
     changesSince,
     contentFor,
     decodeBase64,
+    encodeBase64,
     isAssetContentPath,
     manifestOf,
     type TeamFileBytes,
@@ -58,6 +59,11 @@ export class TeamDocSync {
     private readonly listeners = new Set<(view: TeamDocView) => void>();
     /** Offline: what this window and the server last agreed on, and the seq it stood at. */
     private offlineBase: TeamDocOfflineBase | null = null;
+    /** Offline story operations and the complete documents they came from, until replay finishes. */
+    private replay: TeamDocReplay | null = null;
+    /** State writes share one order with conflict additions and removals. */
+    private stateQueue: Promise<void> = Promise.resolve();
+    private persistenceBlocked = false;
     /** While true, arriving effects wait in {@link pending}. See {@link holdEffects}. */
     private held = false;
     /** Holds taken while a file is put back from the server; effects wait while any is up. */
@@ -102,6 +108,8 @@ export class TeamDocSync {
         this.started = true;
         const held = await this.ports.state.load();
         this.offlineBase = held?.offline ?? null;
+        this.replay = held?.replay ?? null;
+        this.set({ conflicts: (held?.conflicts ?? []).map(loadConflict) });
         this.appliedSeq = held?.seq ?? -1;
         this.known = new Map(Object.entries(held?.files ?? {}));
         this.knownLoaded = held?.files !== undefined;
@@ -114,7 +122,7 @@ export class TeamDocSync {
         }
         this.stopListening = this.ports.listen(payload => this.receive(payload));
         this.stopConnection = this.ports.onConnection(online => {
-            void (online ? this.goOnline() : this.goOffline());
+            void (online ? this.goOnline() : this.goOffline()).catch(error => this.storageFailure(error));
         });
         if (this.ports.isOnline()) {
             await this.goOnline();
@@ -156,7 +164,7 @@ export class TeamDocSync {
 
     /** Forget the conflicts reported so far. */
     public dismissConflicts(): void {
-        this.set({ conflicts: [] });
+        void this.updateConflicts(() => []).catch(error => this.storageFailure(error));
     }
 
     /**
@@ -172,8 +180,12 @@ export class TeamDocSync {
             ? await this.sendFile({ path: conflict.path, bytes: conflict.mine }, this.appliedSeq)
             : await this.send({ doc: "story", storyId: conflict.storyId }, conflict.op);
         if (answer.kind === "effect") {
-            this.set({ conflicts: this.view.conflicts.filter((_, at) => at !== index) });
-            return true;
+            try {
+                await this.updateConflicts(conflicts => conflicts.filter(item => item !== conflict));
+                return true;
+            } catch (error) {
+                this.storageFailure(error);
+            }
         }
         return false;
     }
@@ -181,6 +193,15 @@ export class TeamDocSync {
     /* -------------------------------------------------------------- connection */
 
     private async goOnline(): Promise<void> {
+        try {
+            await this.followOnline();
+        } catch (error) {
+            if (!(error instanceof TeamDocStateError)) throw error;
+            this.storageFailure(error);
+        }
+    }
+
+    private async followOnline(): Promise<void> {
         if (this.online) {
             return;
         }
@@ -190,6 +211,7 @@ export class TeamDocSync {
             await this.goOffline();
             return;
         }
+        this.persistenceBlocked = false;
         this.online = true;
         const seq = readNumber(head.value, "seq") ?? 0;
         const mayEdit = readBoolean(head.value, "mayEdit") ?? true;
@@ -202,52 +224,60 @@ export class TeamDocSync {
         const files = this.ports.files;
         const fileBase = offline?.seq ?? this.appliedSeq;
         let fileChanges: TeamFileChange[] = [];
-        if (files !== undefined && mayEdit && fileBase >= 0) {
-            if (offline?.files !== undefined) {
-                fileChanges = await changesSince(files, new Map(Object.entries(offline.files)), "all");
-            } else if (this.knownLoaded) {
-                fileChanges = await changesSince(files, this.known, "whole");
-            }
-        }
-
-        // Offline edits are taken out of the documents first, so the catch-up applies to the base
-        // the server and this window agreed on.
-        let replay: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> = [];
-        if (offline !== null) {
-            replay = this.offlineOps(offline);
-            this.ports.story.restore(offline.stories);
-            this.appliedSeq = offline.seq;
-        }
-
-        // A window that does not know where it stands - never opened here, or its copy was found
-        // to differ - starts from the last saved version, which holds everything up to its seq.
-        // (A window that does know follows the log from its own seq, which the server keeps whole.)
-        // So does one the server's log no longer reaches back to: it was away longer than the log is
-        // kept, and the last saved version is the nearest point both still have.
-        // Whole files first, against the seq they were based on: one somebody else wrote since comes
-        // back refused, is kept for its author as a conflict, and is put back from the server once
-        // the catch-up is done - nothing that arrives for it meanwhile is applied over the author's
-        // copy.
-        const fileConflicts: TeamDocConflict[] = [];
         const putBack: string[] = [];
-        for (const change of fileChanges) {
-            const answer = await this.sendFile(change, fileBase);
-            if (answer.kind === "refusal" && answer.reason !== "nothing-there") {
-                fileConflicts.push({ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
-                putBack.push(change.path);
-                this.skipThrough.set(change.path, Number.POSITIVE_INFINITY);
+        this.fileHolds += 1;
+        try {
+            if (files !== undefined && mayEdit && fileBase >= 0) {
+                if (offline?.files !== undefined) {
+                    fileChanges = await changesSince(files, new Map(Object.entries(offline.files)), "all");
+                } else if (this.knownLoaded) {
+                    fileChanges = await changesSince(files, this.known, "whole");
+                }
             }
-        }
 
-        if (this.appliedSeq < 0 || this.appliedSeq < prunedThrough) {
-            if (!(await this.adoptBase())) {
-                this.online = false;
-                this.set({ state: "offline" });
-                return;
+            // Keep the complete author documents before restoring the agreed base.
+            if (offline !== null) {
+                if (this.replay === null) {
+                    const stories = this.ports.story.snapshot();
+                    const operations = this.offlineOps(offline, stories);
+                    if (operations.length > 0) {
+                        this.replay = { basedOn: offline.seq, stories, operations };
+                        try {
+                            await this.persist();
+                        } catch (error) {
+                            this.replay = null;
+                            throw error;
+                        }
+                    }
+                }
+                this.ports.story.restore(offline.stories);
+                this.appliedSeq = offline.seq;
             }
+
+            // A refused file is recorded before any server version can replace the author's copy.
+            for (const change of fileChanges) {
+                const answer = await this.sendFile(change, fileBase);
+                if (answer.kind === "refusal" && answer.reason !== "nothing-there") {
+                    await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+                    putBack.push(change.path);
+                    this.skipThrough.set(change.path, Number.POSITIVE_INFINITY);
+                }
+            }
+
+            // An unknown or pruned seq starts again from the server's saved version.
+            if (this.appliedSeq < 0 || this.appliedSeq < prunedThrough) {
+                if (!(await this.adoptBase())) {
+                    this.online = false;
+                    this.set({ state: "offline" });
+                    return;
+                }
+            }
+        } finally {
+            this.fileHolds -= 1;
         }
 
         await this.catchUp(seq);
+        if (this.persistenceBlocked) return;
         for (const path of putBack) {
             await this.putBack(path);
         }
@@ -257,26 +287,25 @@ export class TeamDocSync {
             this.known = await manifestOf(files, "whole");
             this.knownLoaded = true;
         }
-        this.ports.documents.install(mayEdit ? this.handler : null);
+        while (this.replay !== null && this.replay.operations.length > 0) {
+            const { storyId, op } = this.replay.operations[0]!;
+            const answer = await this.send({ doc: "story", storyId }, op, undefined, this.replay.basedOn);
+            await this.finishReplayOperation(answer);
+            if (this.persistenceBlocked) return;
+        }
+        const priorOffline = this.offlineBase;
+        const priorReplay = this.replay;
         this.offlineBase = null;
-        await this.persist();
+        this.replay = null;
+        try {
+            await this.persist();
+        } catch (error) {
+            this.offlineBase = priorOffline;
+            this.replay = priorReplay;
+            throw error;
+        }
+        this.ports.documents.install(mayEdit ? this.handler : null);
         this.set({ state: "online", seq: this.appliedSeq });
-        if (fileConflicts.length > 0) {
-            this.set({ conflicts: [...this.view.conflicts, ...fileConflicts] });
-        }
-
-        if (replay.length > 0) {
-            const conflicts: TeamDocConflict[] = [];
-            for (const { storyId, op } of replay) {
-                const answer = await this.send({ doc: "story", storyId }, op, undefined, offline?.seq);
-                if (answer.kind === "refusal") {
-                    conflicts.push({ kind: "story", storyId, op, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
-                }
-            }
-            if (conflicts.length > 0) {
-                this.set({ conflicts: [...this.view.conflicts, ...conflicts] });
-            }
-        }
     }
 
     private async goOffline(): Promise<void> {
@@ -325,6 +354,8 @@ export class TeamDocSync {
             seq: this.appliedSeq,
             ...(offline === undefined ? {} : { offline }),
             ...(this.knownLoaded ? { files: Object.fromEntries(this.known) } : {}),
+            ...(this.replay === null ? {} : { replay: this.replay }),
+            ...(this.view.conflicts.length === 0 ? {} : { conflicts: this.view.conflicts.map(storeConflict) }),
         };
     }
 
@@ -519,7 +550,7 @@ export class TeamDocSync {
         this.catchingUp = (async () => {
             try {
                 for (;;) {
-                    if (this.isHeld()) {
+                    if (this.persistenceBlocked || this.isHeld()) {
                         return;
                     }
                     const page = await this.ports.call("doc.effects", { after: this.appliedSeq });
@@ -611,7 +642,7 @@ export class TeamDocSync {
     }
 
     private drain(): void {
-        if (this.isHeld() || this.fileBatch !== null) {
+        if (this.persistenceBlocked || this.isHeld() || this.fileBatch !== null) {
             return;
         }
         let moved = false;
@@ -636,7 +667,7 @@ export class TeamDocSync {
             }
         }
         if (moved) {
-            void this.persist();
+            void this.persist().catch(error => this.storageFailure(error));
             this.set({ seq: this.appliedSeq });
         }
     }
@@ -650,8 +681,8 @@ export class TeamDocSync {
             for (;;) {
                 const next = this.pending.get(this.appliedSeq + 1);
                 if (next === undefined || fileOf(next) === null || this.held) break;
-                this.pending.delete(next.seq);
                 wrote = (await this.applyFile(next)) || wrote;
+                this.pending.delete(next.seq);
                 this.appliedSeq = next.seq;
             }
             if (wrote) await files.reload();
@@ -659,10 +690,10 @@ export class TeamDocSync {
             this.set({ seq: this.appliedSeq });
         });
         this.fileBatch = batch;
-        void batch.finally(() => {
+        void batch.catch(error => this.storageFailure(error)).finally(() => {
             if (this.fileBatch === batch) this.fileBatch = null;
             this.drain();
-            if (this.pending.size > 0 && this.online && !this.isHeld() && this.fileBatch === null) {
+            if (this.pending.size > 0 && this.online && !this.persistenceBlocked && !this.isHeld() && this.fileBatch === null) {
                 void this.catchUp();
             }
         });
@@ -716,7 +747,7 @@ export class TeamDocSync {
             const agreed = this.known.get(path) ?? null;
             if (this.sentFiles.get(path) === (theirs ?? "")) this.sentFiles.delete(path);
             if (mine !== agreed && mine !== theirs && this.sentFiles.get(path) !== mine) {
-                this.addConflicts([{ kind: "file", path, mine: disk, reason: "conflict" }]);
+                await this.addConflicts([{ kind: "file", path, mine: disk, reason: "conflict" }]);
             }
             if (theirs === null) this.known.delete(path);
             else this.known.set(path, theirs);
@@ -807,8 +838,14 @@ export class TeamDocSync {
         return null;
     }
 
-    private addConflicts(conflicts: TeamDocConflict[]): void {
-        this.set({ conflicts: [...this.view.conflicts, ...conflicts] });
+    private async addConflicts(conflicts: TeamDocConflict[]): Promise<void> {
+        await this.updateConflicts(current => {
+            const next = [...current];
+            for (const conflict of conflicts) {
+                if (!next.some(existing => sameConflict(existing, conflict))) next.push(conflict);
+            }
+            return next;
+        });
     }
 
     /* -------------------------------------------------------------- whole files */
@@ -818,7 +855,7 @@ export class TeamDocSync {
         if (this.scanTimer !== null) return;
         this.scanTimer = setTimeout(() => {
             this.scanTimer = null;
-            void this.enqueue(() => this.scanWhole());
+            void this.enqueue(() => this.scanWhole()).catch(error => this.storageFailure(error));
         }, SCAN_DELAY_MS);
     }
 
@@ -845,8 +882,8 @@ export class TeamDocSync {
             if (answer.reason === "unreachable") {
                 return;
             }
-            this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
-            void this.putBack(change.path);
+            await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+            void this.putBack(change.path).catch(error => this.storageFailure(error));
         }
         await this.persist();
     }
@@ -888,7 +925,7 @@ export class TeamDocSync {
             // A document this window holds differently from the server: the honest repair is a
             // fresh start from the last version, which the next connection makes.
             this.ports.notify({ kind: "diverged", detail: error instanceof Error ? error.message : String(error) });
-            void this.ports.state.save({ seq: -1 });
+            void this.persist(-1).catch(error => this.storageFailure(error));
         }
     }
 
@@ -935,8 +972,7 @@ export class TeamDocSync {
      * What changed in the stories since `base`, as operations: rows and structure by diff, and a
      * story made or removed here as making or removing it.
      */
-    private offlineOps(base: TeamDocOfflineBase): Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> {
-        const now = this.ports.story.snapshot();
+    private offlineOps(base: TeamDocOfflineBase, now: Record<StoryId, StoryDocument>): TeamDocReplay["operations"] {
         const ops: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> = [];
         for (const [storyId, mine] of Object.entries(now)) {
             const was = base.stories[storyId];
@@ -959,12 +995,66 @@ export class TeamDocSync {
         return ops;
     }
 
-    private async persist(): Promise<void> {
-        await this.ports.state.save({
-            seq: this.appliedSeq,
+    private snapshotState(conflicts = this.view.conflicts, replay = this.replay, seq = this.appliedSeq): TeamDocState {
+        return {
+            seq,
             ...(this.offlineBase === null ? {} : { offline: this.offlineBase }),
             ...(this.knownLoaded ? { files: Object.fromEntries(this.known) } : {}),
+            ...(replay === null ? {} : { replay }),
+            ...(conflicts.length === 0 ? {} : { conflicts: conflicts.map(storeConflict) }),
+        };
+    }
+
+    private async writeState(state: TeamDocState): Promise<void> {
+        try {
+            await this.ports.state.save(state);
+        } catch (error) {
+            throw new TeamDocStateError(error);
+        }
+    }
+
+    private queueState(task: () => Promise<void>): Promise<void> {
+        const result = this.stateQueue.then(task);
+        this.stateQueue = result.catch(() => undefined);
+        return result;
+    }
+
+    private persist(seq?: number): Promise<void> {
+        return this.queueState(() => this.writeState(this.snapshotState(undefined, undefined, seq)));
+    }
+
+    private updateConflicts(update: (conflicts: TeamDocConflict[]) => TeamDocConflict[]): Promise<void> {
+        return this.queueState(async () => {
+            const conflicts = update(this.view.conflicts);
+            await this.writeState(this.snapshotState(conflicts));
+            this.set({ conflicts });
         });
+    }
+
+    private finishReplayOperation(answer: TeamDocAnswer): Promise<void> {
+        return this.queueState(async () => {
+            const replay = this.replay!;
+            const { storyId, op } = replay.operations[0]!;
+            const next = { ...replay, operations: replay.operations.slice(1) };
+            const conflicts: TeamDocConflict[] = answer.kind === "effect" ? this.view.conflicts : [
+                ...this.view.conflicts,
+                { kind: "story", storyId, op, mine: replay.stories[storyId] ?? null, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) },
+            ];
+            await this.writeState(this.snapshotState(conflicts, next));
+            this.replay = next;
+            if (conflicts !== this.view.conflicts) this.set({ conflicts });
+        });
+    }
+
+    private storageFailure(error: unknown): void {
+        if (!(error instanceof TeamDocStateError)) {
+            console.warn("[TeamDocSync] synchronization failed", error);
+            return;
+        }
+        this.persistenceBlocked = true;
+        this.online = false;
+        this.ports.documents.install(null);
+        this.set({ state: "offline", mayEdit: false });
     }
 
     private set(patch: Partial<TeamDocView>): void {
@@ -991,6 +1081,8 @@ export type TeamDocConflict =
         kind: "story";
         storyId: StoryId;
         op: LiveStoryOp | TeamStoryLibraryOp;
+        /** The author's complete story before replay, or null when they removed it. */
+        mine: StoryDocument | null;
         reason: string;
         detail?: string;
     }
@@ -1024,13 +1116,49 @@ export type TeamDocOfflineBase = {
     files?: Record<string, string>;
 };
 
+type TeamDocReplay = {
+    basedOn: number;
+    stories: Record<StoryId, StoryDocument>;
+    operations: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }>;
+};
+
+type StoredTeamDocConflict =
+    | Extract<TeamDocConflict, { kind: "story" }>
+    | (Omit<Extract<TeamDocConflict, { kind: "file" }>, "mine"> & { mine: string | null });
+
 export type TeamDocState = {
     /** The last seq applied here, or -1 when this window's tree is not known to be at any. */
     seq: number;
     offline?: TeamDocOfflineBase;
     /** What this window and the server last agreed each whole file is: its digest, by path. */
     files?: Record<string, string>;
+    /** Story replay work survives interruptions before its conflicts have been recorded. */
+    replay?: TeamDocReplay;
+    /** Unresolved conflicts; file bytes are base64 for the JSON store. */
+    conflicts?: StoredTeamDocConflict[];
 };
+
+class TeamDocStateError extends Error {
+    public constructor(public readonly original: unknown) {
+        super("Could not save team document recovery state");
+    }
+}
+
+function storeConflict(conflict: TeamDocConflict): StoredTeamDocConflict {
+    return conflict.kind === "story"
+        ? conflict
+        : { ...conflict, mine: conflict.mine === null ? null : encodeBase64(conflict.mine) };
+}
+
+function loadConflict(conflict: StoredTeamDocConflict): TeamDocConflict {
+    return conflict.kind === "story"
+        ? conflict
+        : { ...conflict, mine: conflict.mine === null ? null : decodeBase64(conflict.mine) };
+}
+
+function sameConflict(left: TeamDocConflict, right: TeamDocConflict): boolean {
+    return JSON.stringify(storeConflict(left)) === JSON.stringify(storeConflict(right));
+}
 
 export type TeamDocOutcome<T> = { ok: true; value: T } | { ok: false; problem: { detail: string } };
 
