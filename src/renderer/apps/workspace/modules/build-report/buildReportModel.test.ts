@@ -173,6 +173,13 @@ describe("formatBuildDuration", () => {
             .toBe(`build.report.durationMinutes:${JSON.stringify({ minutes: 2, seconds: "05" })}`);
     });
 
+    it("carries rounded seconds into the next minute", () => {
+        expect(formatBuildDuration({ status: "done", progress: null, startedAt: 0, finishedAt: 119_600 }, t))
+            .toBe(`build.report.durationMinutes:${JSON.stringify({ minutes: 2, seconds: "00" })}`);
+        expect(formatBuildDuration({ status: "done", progress: null, startedAt: 0, finishedAt: 59_990 }, t))
+            .toBe(`build.report.durationMinutes:${JSON.stringify({ minutes: 1, seconds: "00" })}`);
+    });
+
     it("says nothing about a run that carries no stamps", () => {
         expect(formatBuildDuration({ status: "error", progress: null }, t)).toBe("");
         expect(formatBuildDuration({ status: "error", progress: null, startedAt: 10 }, t)).toBe("");

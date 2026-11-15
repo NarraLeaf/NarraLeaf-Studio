@@ -7,7 +7,7 @@ const MIN_BAR_PERCENT = 2;
 
 function ColumnMark({ point, peak }: { point: ActivityPoint; peak: number }) {
     if (point.status === "untracked") {
-        return <div className="h-px w-full rounded-full bg-edge" />;
+        return <div className="h-px w-full rounded-full border-t border-edge" />;
     }
     // The first tracked day has no previous total to subtract, and a rebased day's previous total
     // was measured by a different rule — so there is no bar to draw. The same marker says "no
@@ -26,7 +26,7 @@ function ColumnMark({ point, peak }: { point: ActivityPoint; peak: number }) {
         return <div className="h-0.5 w-full rounded-full bg-danger/40" />;
     }
     if (delta === 0) {
-        return <div className="h-px w-full rounded-full bg-edge-strong" />;
+        return <div className="h-px w-full rounded-full border-t border-edge-strong" />;
     }
     const percent = peak > 0 ? (delta / peak) * 100 : 0;
     return (
