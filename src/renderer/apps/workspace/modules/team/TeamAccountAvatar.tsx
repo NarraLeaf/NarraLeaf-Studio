@@ -6,6 +6,8 @@ import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
 import { getProfile, listClients, readAvatar, useTeamCapability, useTeamConnection, useTeamTopics } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
+import { useServers } from "@/lib/vcs/servers";
+import type { VcsServerSession } from "@shared/types/vcs";
 import { teamProjectClientsTopic, type TeamAccountProfile } from "@shared/types/team";
 
 import { resolveOnByDefault, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
@@ -18,9 +20,10 @@ import { isTeamPresenceReachable, openTeamPresence } from "./teamPresenceControl
 /**
  * The signed-in Team account, in the title bar.
  *
- * **Only while this window has a session with a Team server.** A project on no server, or one whose
- * server is not answering, draws nothing: there is no account to show. Where there is one, the
- * author may still hide it (`ui.teamAvatar.visible`).
+ * **Only while this window has a session with a Team server.** The project's own server where it is
+ * on one; otherwise the server this installation signed in to last, so a local project still shows
+ * who the author is on Team. With no sign-in at all, or a server that is not answering, it draws
+ * nothing. Where there is an account, the author may still hide it (`ui.teamAvatar.visible`).
  *
  * **A ring for a team project.** The project followed through its server (`TeamDocumentsService`)
  * is the one place the account is *in* something with other people, so the face in the title bar
@@ -34,7 +37,8 @@ export function TeamAccountAvatar() {
     const { t } = useTranslation();
     const team = useTeamProjectSurface();
     const documents = useTeamDocuments();
-    const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin;
+    const { servers } = useServers();
+    const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin ?? latestSignIn(servers);
     const connection = useTeamConnection(remoteOrigin);
     const ready = connection.state === "ready" && connection.account !== undefined;
     const inTeamProject = documents.view !== null && documents.target !== null;
@@ -186,6 +190,15 @@ function MenuRow({ act, icon, onClick, children }: {
             <span className="min-w-0 truncate">{children}</span>
         </button>
     );
+}
+
+/** The server this installation signed in to most recently, for a project on none. */
+export function latestSignIn(servers: readonly VcsServerSession[]): string | null {
+    let latest: VcsServerSession | null = null;
+    for (const server of servers) {
+        if (latest === null || server.signedInAt > latest.signedInAt) latest = server;
+    }
+    return latest?.remoteOrigin ?? null;
 }
 
 /** Who has the team project open right now, one row per account. */

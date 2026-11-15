@@ -118,9 +118,15 @@ describe("what each may do", () => {
         expect(teamAllows(PROJECT, { op: "connections" })).toBe(false);
     });
 
-    it("lets a project that does not use it do nothing, and a window that never speaks to servers the same", () => {
+    it("lets a project that does not use it read who the account is, and nothing else", () => {
+        expect(teamAllows(UNUSED, { op: "open" })).toBe(true);
+        expect(teamAllows(UNUSED, { op: "avatar" })).toBe(true);
+        expect(teamAllows(UNUSED, call(TeamMethod.accountProfileGet))).toBe(true);
+        expect(teamAllows(UNUSED, call(TeamMethod.accountProfileUpdate))).toBe(false);
+    });
+
+    it("lets a project that does not use it act on nothing, and a window that never speaks to servers do nothing", () => {
         for (const ask of [
-            { op: "open" },
             { op: "connections" },
             { op: "subscribe" },
             { op: "transfer" },
@@ -128,6 +134,9 @@ describe("what each may do", () => {
             call(TeamMethod.clientsAnnounce),
         ] satisfies TeamAsk[]) {
             expect(teamAllows(UNUSED, ask)).toBe(false);
+            expect(teamAllows(NONE, ask)).toBe(false);
+        }
+        for (const ask of [{ op: "open" }, { op: "avatar" }, call(TeamMethod.accountProfileGet)] satisfies TeamAsk[]) {
             expect(teamAllows(NONE, ask)).toBe(false);
         }
     });

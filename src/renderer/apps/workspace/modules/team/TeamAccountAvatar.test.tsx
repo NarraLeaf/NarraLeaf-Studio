@@ -27,11 +27,13 @@ const state = vi.hoisted(() => ({
     connection: null as TeamConnection | null,
     documents: { view: null as unknown, target: null as { remoteOrigin: string; project: string } | null },
     visible: true,
+    projectOrigin: "lore://team.example.lan:41337" as string | null,
+    servers: [] as { remoteOrigin: string; signedInAt: number }[],
     calls: [] as { method: string; params: unknown }[],
 }));
 
 vi.mock("./TeamProjectContext", () => ({
-    useTeamProjectSurface: () => ({ remoteOrigin: ORIGIN, state: { kind: "none" } }),
+    useTeamProjectSurface: () => ({ remoteOrigin: state.projectOrigin, state: { kind: "none" } }),
 }));
 vi.mock("./TeamHistoryRail", () => ({
     useTeamDocuments: () => ({ ...state.documents, previewing: null, detached: null, service: null }),
@@ -82,6 +84,9 @@ vi.mock("@/lib/app/bridge", () => ({
             onConnectionChanged: () => ({ cancel: vi.fn() }),
             onEvent: () => ({ cancel: vi.fn() }),
         },
+        vcs: {
+            listServers: () => Promise.resolve({ success: true, data: { servers: state.servers } }),
+        },
         app: {
             state: {
                 getGlobalState: () => Promise.resolve({ success: true, data: { value: state.visible } }),
@@ -117,6 +122,8 @@ beforeEach(() => {
     state.connection = null;
     state.documents = { view: null, target: null };
     state.visible = true;
+    state.projectOrigin = ORIGIN;
+    state.servers = [];
     state.calls = [];
 });
 afterEach(cleanup);
@@ -140,6 +147,24 @@ describe("when it is drawn", () => {
         const button = container.querySelector("[data-team-account]");
         expect(button?.getAttribute("data-team-account")).toBe("connected");
         expect(button?.innerHTML).not.toContain("ring-primary");
+    });
+
+    it("is drawn in a project on no server, through the latest sign-in", async () => {
+        state.connection = ready();
+        state.projectOrigin = null;
+        state.servers = [
+            { remoteOrigin: "lore://old.example.lan:41337", signedInAt: 1 },
+            { remoteOrigin: ORIGIN, signedInAt: 2 },
+        ];
+        const { container } = await draw();
+        expect(container.querySelector("[data-team-account]")?.getAttribute("data-team-account")).toBe("connected");
+    });
+
+    it("is not drawn in a project on no server when nothing is signed in", async () => {
+        state.connection = ready();
+        state.projectOrigin = null;
+        const { container } = await draw();
+        expect(container.querySelector("[data-team-account]")).toBeNull();
     });
 
     it("wears the ring in a team project", async () => {

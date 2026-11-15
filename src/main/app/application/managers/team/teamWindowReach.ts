@@ -24,9 +24,11 @@
  *    Studio's own windows with no project in them, and `projects.list` is all they are given: a
  *    listing is the one thing the "before a project has answered" moment needs.
  *  - **A workspace** acts for its project and for nothing else. It reaches a server only where the
- *    author said that project uses the sign-in held there. Anywhere else it may only let go of what
- *    it said while it did - see {@link TEAM_LETTING_GO} - because the moment an author says no is
- *    exactly the moment its screen tidies up after itself.
+ *    author said that project uses the sign-in held there. Anywhere else it may read who the account
+ *    is - its profile and its avatar, for the face in the title bar, see {@link TEAM_WHO_I_AM} - and
+ *    let go of what it said while it did - see {@link TEAM_LETTING_GO} - because the moment an author
+ *    says no is exactly the moment its screen tidies up after itself. Nothing it may do there acts
+ *    on a project: no listing, no presence, no rooms, no files.
  *  - **Everything else** - Dev Mode, which runs the project's own scripts, the prompts and the raw
  *    window - reaches nothing. None of them has a reason to, so none is given one.
  *
@@ -81,6 +83,18 @@ export const TEAM_LETTING_GO: ReadonlySet<string> = new Set<string>([
     TeamMethod.clientsWithdraw,
     TeamMethod.liveLeave,
 ]);
+
+/**
+ * What a workspace may ask of a server its project does not use: who the account is.
+ *
+ * The title bar shows the signed-in account in every project, a local one included, and the
+ * account's face and name are all it reads. The author asked for that face everywhere (2026-11-15);
+ * what it costs is that code running in a project window can read the account's own display name,
+ * bio and avatar, and the public profile of any account it names - nothing a project holds, and
+ * nothing the account does. Opening the session is allowed with it because there is no reading
+ * without one; opening announces nothing on the server.
+ */
+export const TEAM_WHO_I_AM: ReadonlySet<string> = new Set<string>([TeamMethod.accountProfileGet]);
 
 /** The one call Settings and the wizard are given. */
 const LISTING_METHODS: ReadonlySet<string> = new Set<string>([TeamMethod.projectsList]);
@@ -138,6 +152,9 @@ export function teamAllows(reach: TeamReach, ask: TeamAsk): boolean {
             // project has one server it is about.
             return ask.op !== "connections";
         case "unused":
+            return ask.op === "open"
+                || ask.op === "avatar"
+                || (ask.op === "call" && TEAM_WHO_I_AM.has(ask.method));
         case "none":
             return false;
     }
