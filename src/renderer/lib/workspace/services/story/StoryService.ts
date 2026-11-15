@@ -744,9 +744,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * Replace every story with the files of a version the Team server saved.
      *
      * What a window that does not know where it stands starts from: the library and every story
-     * document, parsed and migrated the way the server parsed them, written to disk, and drawn.
-     * Story files the version does not hold are left alone; a library entry with no document in
-     * the version is dropped from the library, because the version is the state that counts.
+     * document, parsed through their document specs, written to disk, and drawn. A library with no
+     * stories list is treated as empty. Story files the version does not hold are left alone; a
+     * library entry with no document in the version is dropped from the library, because the version
+     * is the state that counts.
      */
     public async adoptTeamFiles(files: ReadonlyMap<string, string>): Promise<void> {
         const libraryText = files.get(STORY_LIBRARY_PATH);
@@ -754,6 +755,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             return;
         }
         const library = parseStoryLibrary(libraryText);
+        library.stories ??= [];
         const documents = new Map<StoryId, StoryDocument>();
         for (const entry of library.stories) {
             const text = files.get(storyDocumentPath(entry.id));

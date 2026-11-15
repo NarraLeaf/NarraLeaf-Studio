@@ -1,6 +1,7 @@
 import { collectTransfer, listTransfers, offerTransfer } from "@/lib/team/teamTransfer";
 import { isVersioned } from "@shared/vcs/workingSet";
 import { ASSET_CONTENT_ROOT } from "@shared/authority/project";
+import { FsRejectErrorCode } from "@shared/types/os";
 import { BaseFileSystemService } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
 import { flushPendingSaves } from "../autosave/flushPendingSaves";
@@ -38,8 +39,9 @@ export function createTeamFilePorts(ctx: WorkspaceContext, target: { remoteOrigi
         list: async scope => {
             const found: string[] = [];
             const walk = async (relative: string): Promise<void> => {
-                const listed = await BaseFileSystemService.list(relative === "" ? root : absolute(relative));
-                if (!listed.ok) return;
+                const path = relative === "" ? root : absolute(relative);
+                const listed = await BaseFileSystemService.list(path);
+                if (!listed.ok) throw new Error(`Could not list ${path}: ${listed.error.message}`);
                 for (const entry of listed.data) {
                     const path = relative === "" ? entry.fileName : `${relative}/${entry.fileName}`;
                     if (!isVersioned(path)) continue;
@@ -56,7 +58,9 @@ export function createTeamFilePorts(ctx: WorkspaceContext, target: { remoteOrigi
         },
         read: async path => {
             const read = await BaseFileSystemService.readRaw(absolute(path));
-            return read.ok ? read.data : null;
+            if (read.ok) return read.data;
+            if (read.error.code === FsRejectErrorCode.NOT_FOUND) return null;
+            throw new Error(`Could not read ${absolute(path)}: ${read.error.message}`);
         },
         write: async (path, bytes) => {
             await ensureParent(path);
