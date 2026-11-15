@@ -3,7 +3,7 @@ import type { StoryBlock, StoryScene } from "@shared/types/story";
 /**
  * Resolve the row the user selected to the block the preview should target:
  * - `choiceOption` / `conditionBranch` rows target their parent container (the menu / condition),
- * - `code` / `note` rows fall back to the nearest previous non-code/note block in execution order,
+ * - `empty` / `note` rows fall back to the nearest preceding row of another kind in document order,
  * - anything unresolved previews the scene start (`null`).
  */
 export function resolvePreviewTargetBlockId(scene: StoryScene, activeBlockId: string | null): string | null {
@@ -31,7 +31,7 @@ export function resolvePlaybackStartBlockId(scene: StoryScene, blockId: string |
     return resolveRunnableBlock(scene, blockId)?.id ?? null;
 }
 
-/** The nearest block with runtime behaviour: the row itself, or the previous one for code/note rows. */
+/** The row itself, or the previous previewable row for empty and note rows. */
 function resolveRunnableBlock(scene: StoryScene, blockId: string | null): StoryBlock | null {
     if (!blockId || !scene.blocks[blockId]) {
         return null;
@@ -55,7 +55,7 @@ function isNonPreviewableKind(block: StoryBlock): boolean {
     return block.kind === "note" || block.kind === "empty";
 }
 
-/** Depth-first block ids in execution order (the order the compiler emits statements). */
+/** Depth-first block ids in the scene's document order. */
 function executionOrderBlockIds(scene: StoryScene): string[] {
     const order: string[] = [];
     const seen = new Set<string>();

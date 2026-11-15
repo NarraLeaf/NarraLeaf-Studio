@@ -91,6 +91,16 @@ describe("resolveNextPreviewStop", () => {
         expect(resolveNextPreviewStop(scene, "a", NO_BRANCH)).toBe("b");
     });
 
+    it("leaves a disabled container before following jumps inside it", () => {
+        const scene = makeScene([
+            disabled(row("group", "control", { control: "sequence" }, null, ["inside", "jump"])),
+            line("inside", "group"),
+            row("jump", "jump", { targetSceneId: "scene-2" }, "group"),
+            line("after"),
+        ], ["group", "after"]);
+        expect(resolveNextPreviewStop(scene, "inside", NO_BRANCH)).toBe("after");
+    });
+
     it("descends into a container, and from a container row to its first line", () => {
         const scene = makeScene([
             line("a"), row("nvl", "action", { action: "nvl" }, null, ["n1", "n2"]), line("n1", "nvl"), line("n2", "nvl"), line("after"),

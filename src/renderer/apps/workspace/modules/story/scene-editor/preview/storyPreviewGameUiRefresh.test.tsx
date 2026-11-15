@@ -19,7 +19,7 @@ import {
  */
 
 vi.mock("@/lib/workspace/services/services", () => ({
-    Services: { UIDocument: "uiDocument", UIGraph: "uiGraph" },
+    Services: { UIDocument: "uiDocument", UIGraph: "uiGraph", Character: "character" },
 }));
 
 type Listener = () => void;
@@ -27,6 +27,7 @@ type Listener = () => void;
 function fakeContext() {
     const documentListeners = new Set<Listener>();
     const graphListeners = new Set<Listener>();
+    const characterListeners = new Set<Listener>();
     const revision = { document: 0, graphs: 0 };
     const services = {
         uiDocument: {
@@ -43,6 +44,12 @@ function fakeContext() {
                 return () => graphListeners.delete(listener);
             },
         },
+        character: {
+            subscribe: (listener: Listener) => {
+                characterListeners.add(listener);
+                return () => characterListeners.delete(listener);
+            },
+        },
     };
     const context = { services: { get: (id: keyof typeof services) => services[id] } } as unknown as WorkspaceContext;
     return {
@@ -55,9 +62,10 @@ function fakeContext() {
             revision.graphs += 1;
             graphListeners.forEach(listener => listener());
         },
+        editCharacter: () => characterListeners.forEach(listener => listener()),
         /** What the graph document does after an autosave: it announces itself, at the same revision. */
         saveGraphs: () => graphListeners.forEach(listener => listener()),
-        listenerCount: () => documentListeners.size + graphListeners.size,
+        listenerCount: () => documentListeners.size + graphListeners.size + characterListeners.size,
     };
 }
 
@@ -101,6 +109,17 @@ describe("Game UI edits refresh the live preview", () => {
         expect(result.current).toBe(1);
     });
 
+    it("coalesces character and interface edits into one refresh", () => {
+        const fake = fakeContext();
+        const { result } = renderHook(() => useGameUiEditBursts(fake.context, true));
+        act(() => {
+            fake.editCharacter();
+            fake.editDocument();
+            vi.advanceTimersByTime(GAME_UI_REFRESH_DEBOUNCE_MS);
+        });
+        expect(result.current).toBe(1);
+    });
+
     it("does not refresh for a save, which changes nothing on the stage", () => {
         const fake = fakeContext();
         const { result } = renderHook(() => useGameUiEditBursts(fake.context, true));
@@ -129,7 +148,7 @@ describe("Game UI edits refresh the live preview", () => {
         expect(result.current).toBe(0);
 
         rerender({ enabled: true });
-        expect(fake.listenerCount()).toBe(2);
+        expect(fake.listenerCount()).toBe(3);
         act(() => {
             fake.editDocument();
         });

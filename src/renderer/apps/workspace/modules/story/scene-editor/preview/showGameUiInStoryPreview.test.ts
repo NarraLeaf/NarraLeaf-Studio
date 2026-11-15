@@ -92,7 +92,7 @@ function setup(document: StoryDocument = story()) {
     trackStoryPreviewFloatOwner({ store, focus }, hub);
     // A UI editor is the tab in front; story tabs, when there are any, sit behind it.
     store.openEditorTabInGroup({ id: "ui-surface:dialogue", title: "Dialogue", component: () => null });
-    const show = (slotId: "dialog" | "choice" | "notification") =>
+    const show = (slotId: "dialog" | "choice" | "notification" | "onStage") =>
         showGameUiInStoryPreview({ context, slotId, groupId: null, anchor: () => null });
     const openStoryTab = (sceneId: string, activate = true) =>
         store.openEditorTabInGroup(
@@ -127,6 +127,26 @@ describe("showGameUiInStoryPreview", () => {
         expect(getStoryEditorViewState(panelState, "corridor")?.activeBlockId).toBe("c1");
     });
 
+    it("steps past a disabled cursor through the mounted scene editor", async () => {
+        const document = story();
+        document.scenes.corridor.blocks.c1.disabled = true;
+        const { hub, show, openStoryTab } = setup(document);
+        openStoryTab("corridor");
+        hub.publishCursor("corridor", "c1");
+        const stepTo = vi.fn();
+        hub.registerTab({
+            tabId: CORRIDOR,
+            storyId: "story",
+            sceneId: "corridor",
+            stepTo,
+            isRowShown: () => true,
+            editorBody: () => null,
+        });
+
+        expect(await show("dialog")).toBe("shown");
+        expect(stepTo).toHaveBeenCalledWith("c3");
+    });
+
     it("opens the first scene with such a row behind the editor in front, and shows that scene", async () => {
         const { store, hub, show, openStoryTab } = setup();
         openStoryTab("corridor", false);
@@ -154,6 +174,30 @@ describe("showGameUiInStoryPreview", () => {
         expect(await show("notification")).toBe("noRow");
         expect(hub.getLayout().open).toBe(false);
         expect(hub.getTarget()).toBeNull();
+    });
+
+    it("opens the On-Stage Game UI for a scene with only commands", async () => {
+        const silent = story();
+        silent.scenes = { corridor: makeScene("corridor", [command("c0")]) };
+        silent.chapters = [{ id: "ch", name: "One", sceneIds: ["corridor"] }];
+        const { hub, show } = setup(silent);
+        expect(await show("onStage")).toBe("shown");
+        expect(hub.getTarget()).toBe(CORRIDOR);
+        expect(hub.getCursor("corridor")).toBe("c0");
+    });
+
+    it("opens the On-Stage Game UI at the start of an empty scene", async () => {
+        const empty = story();
+        empty.scenes = { corridor: makeScene("corridor", []) };
+        empty.chapters = [{ id: "ch", name: "One", sceneIds: ["corridor"] }];
+        const { hub, show } = setup(empty);
+        expect(await show("onStage")).toBe("shown");
+        expect(hub.getTarget()).toBe(CORRIDOR);
+
+        const alreadyOpen = setup(empty);
+        alreadyOpen.openStoryTab("corridor");
+        expect(await alreadyOpen.show("onStage")).toBe("shown");
+        expect(alreadyOpen.hub.getTarget()).toBe(CORRIDOR);
     });
 
     it("gives the window a place the first time and keeps the place the author gave it after", async () => {

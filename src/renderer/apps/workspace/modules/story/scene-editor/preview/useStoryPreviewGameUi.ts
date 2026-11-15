@@ -181,13 +181,15 @@ export function useStoryPreviewGameUi(input: {
         return projectService.getProjectConfig().metadata?.resolution ?? DEFAULT_UI_SURFACE_SIZE;
     }, [context]);
 
+    const gameUiEdits = useGameUiEditBursts(context, enabled);
+
     const characters = useMemo(() => {
         if (!context || !enabled) {
             return [];
         }
         const characterService = context.services.get<CharacterService>(Services.Character);
         return mapCharacterStoreEntriesToSummaries(characterService.listCharacter().map(character => character.toJSON()));
-    }, [context, enabled]);
+    }, [context, enabled, gameUiEdits]);
 
     /**
      * The blueprint-facing character table, read straight off the character service rather than off
@@ -227,8 +229,6 @@ export function useStoryPreviewGameUi(input: {
     }, [characters]);
     const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
     resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
-
-    const gameUiEdits = useGameUiEditBursts(context, enabled);
 
     // Build the uidoc/blueprints into a synthetic bundle when the preview opens, and again after each
     // settled burst of Game UI edits. A new revision is what makes the runtime core below start over
