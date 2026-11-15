@@ -1140,11 +1140,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     if (isTypingInField()) {
                         return;
                     }
-                    if (undoOverride) {
-                        // A live session owns undo. This editor's own stack holds whole-blueprint
-                        // snapshots of a document only this author ever had, so restoring one would
-                        // delete every node anybody else has added since. See `useLiveUndoOverride`.
-                        undoOverride.undo();
+                    if (undoOverride?.undo()) {
                         return;
                     }
                     localBp.undoBlueprint(payload.blueprintId);
@@ -1157,8 +1153,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     if (isTypingInField()) {
                         return;
                     }
-                    if (undoOverride) {
-                        undoOverride.redo();
+                    if (undoOverride?.redo()) {
                         return;
                     }
                     localBp.redoBlueprint(payload.blueprintId);

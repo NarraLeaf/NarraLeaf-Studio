@@ -21,6 +21,7 @@ import { DlcService } from "../dlc/DlcService";
 import { CharacterService } from "../core/CharacterService";
 import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
+import { flushPendingSaves } from "../autosave/flushPendingSaves";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryEntryTag, HistoryScopeKind, historyScopeParts, isHistoryScopeOf, projectHistoryScope } from "../history/historyScopes";
 import { AssetsService } from "../core/AssetsService";
@@ -730,17 +731,14 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 applyOp: op => this.applyVariableOp(ctx, op),
             },
             version: {
-                checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,
-                head: async () => (await version().getInfo())?.head ?? null,
-                hasUncommittedChanges: async () => {
-                    // A real scan, which this service is otherwise careful never to do on its own.
-                    // Entering a session is an explicit act by a person, and the cheap signal
-                    // ("would an automatic checkpoint record anything") answers false when no
-                    // scheduler is running - which here would mean skipping the checkpoint that
-                    // stands between the author's uncommitted work and the sync about to land on it.
-                    const status = await version().refreshStatus();
-                    return status !== null && !status.clean;
+                checkpoint: async () => {
+                    const saves = await flushPendingSaves(ctx);
+                    if (!saves.flushed) {
+                        throw new Error("Pending changes could not be saved before the live session checkpoint");
+                    }
+                    return (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null;
                 },
+                head: async () => (await version().getInfo())?.head ?? null,
                 push: async () => {
                     try {
                         await version().push();

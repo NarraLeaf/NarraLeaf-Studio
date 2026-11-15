@@ -8,6 +8,7 @@ import { HistoryService } from "@/lib/workspace/services/history/HistoryService"
 import type { HistoryLabel } from "@/lib/workspace/services/history/historyModel";
 import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
+import { liveSessionOwnsUndo } from "@/lib/workspace/services/live/liveSessionView";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
@@ -60,14 +61,14 @@ export function WorkspaceHistoryMenu() {
         }
         const read = () => {
             const view = live.getView();
-            setSession(view.phase === "idle" ? null : { canUndo: view.canUndo, canRedo: view.canRedo });
+            setSession(liveSessionOwnsUndo(view.phase) ? { canUndo: view.canUndo, canRedo: view.canRedo } : null);
         };
         read();
         return live.onChanged(read);
     }, [live]);
 
     const [focus, setFocus] = useState<FocusContext | null>(null);
-    // Bumped whenever any stack moves, so the labels and the greying follow the stacks.
+    // Bumped when a stack moves or the active editor changes, keeping the menu's target current.
     const [revision, setRevision] = useState(0);
 
     useEffect(() => {
@@ -83,7 +84,13 @@ export function WorkspaceHistoryMenu() {
         if (!history) {
             return;
         }
-        return history.on("changed", () => setRevision(current => current + 1));
+        const refresh = () => setRevision(current => current + 1);
+        const stopChanges = history.on("changed", refresh);
+        const stopActiveScope = history.on("activeScopeChanged", refresh);
+        return () => {
+            stopChanges();
+            stopActiveScope();
+        };
     }, [history]);
 
     useEffect(() => {
@@ -99,6 +106,8 @@ export function WorkspaceHistoryMenu() {
         const redoStep = session ? null : name(history.peekRedo(scopeId));
         // The Search panel's replaces have keys of their own; print the ones that would fire there.
         const inSearch = isSearchPanelFocus(focus);
+        const undoLocal = freeze.run(() => history.undo(scopeId));
+        const redoLocal = freeze.run(() => history.redo(scopeId));
 
         registerActionGroup({
             id: groupId,
@@ -129,16 +138,10 @@ export function WorkspaceHistoryMenu() {
                     // second door onto the same behaviour, and the chord is documented in the
                     // keybinding catalog (`workspace.undo`).
                     menuRole: "undo",
-                    // Deliberately outside `freeze.run` in a session, with the keystroke's binding:
-                    // the freeze is the session's own, and sending the inverse of one's own
-                    // operation is the one write it exists to allow.
-                    onClick: session
-                        ? () => {
-                            live?.undo();
-                        }
-                        : freeze.run(() => {
-                            history.undo(scopeId);
-                        }),
+                    onClick: () => {
+                        if (live && liveSessionOwnsUndo(live.getView().phase)) live.undo();
+                        else undoLocal();
+                    },
                     disabled: session ? !session.canUndo : !history.canUndo(scopeId),
                     order: 0,
                 },
@@ -150,13 +153,10 @@ export function WorkspaceHistoryMenu() {
                     icon: <Redo2 className="w-4 h-4" />,
                     shortcutId: inSearch ? "search.redo" : "workspace.redo",
                     menuRole: "redo",
-                    onClick: session
-                        ? () => {
-                            live?.redo();
-                        }
-                        : freeze.run(() => {
-                            history.redo(scopeId);
-                        }),
+                    onClick: () => {
+                        if (live && liveSessionOwnsUndo(live.getView().phase)) live.redo();
+                        else redoLocal();
+                    },
                     disabled: session ? !session.canRedo : !history.canRedo(scopeId),
                     order: 1,
                 },

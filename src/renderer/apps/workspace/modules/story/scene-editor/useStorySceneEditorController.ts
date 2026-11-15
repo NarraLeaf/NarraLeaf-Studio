@@ -49,6 +49,7 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
+import { liveSessionOwnsUndo } from "@/lib/workspace/services/live/liveSessionView";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
@@ -1418,19 +1419,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Inside a session, undo is sending the inverse of this window's own last operation - the
         // stack above holds nothing to restore, and restoring a scene over a shared document would
         // wipe out whatever the others wrote since. The session says why when there is no inverse.
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
+        if (liveSessionService && liveSessionOwnsUndo(liveSessionService.getView().phase)) {
             liveSessionService.undo();
             return;
         }
         sceneHistory.undo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [liveSessionService, sceneHistory]);
     const redoEdit = useCallback(() => {
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
+        if (liveSessionService && liveSessionOwnsUndo(liveSessionService.getView().phase)) {
             liveSessionService.redo();
             return;
         }
         sceneHistory.redo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [liveSessionService, sceneHistory]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {

@@ -31,8 +31,7 @@ export function decideLiveRole(session: TeamLiveSession, instance: string): Live
  *
  * `sync` is the shape for a machine that already has the project: its working tree is somebody's
  * work, so anything uncommitted is recorded first and the tree is then brought to the revision the
- * room opened on. `checkpoint` is false only when there is nothing to record - a checkpoint of a
- * tree that has not changed is a lie about the author's history.
+ * room opened on. A clean tree produces no checkpoint revision.
  *
  * `clone` is the shape for a machine that does not have it. **Nothing is checkpointed there and
  * that is not an oversight**: there is no copy of this project on this machine, so there is nothing
@@ -47,7 +46,7 @@ export function decideLiveRole(session: TeamLiveSession, instance: string): Live
  * case in which an author has to work out whose the bytes on their disk are.
  */
 export type LiveJoinPlan =
-    | { kind: "sync"; checkpoint: boolean }
+    | { kind: "sync" }
     | { kind: "clone"; project: string; revision?: string };
 
 export function planLiveJoin(input: {
@@ -55,8 +54,6 @@ export function planLiveJoin(input: {
     sessionProject: string;
     /** The project this window has open, by repository id, or null for a window with none. */
     openProject: string | null;
-    /** Whether this window's working tree holds anything no revision has. */
-    uncommittedChanges: boolean;
     /** What the room opened on, carried through to the clone that has to reach it. */
     revision?: string;
 }): LiveJoinPlan {
@@ -67,7 +64,7 @@ export function planLiveJoin(input: {
             ...(input.revision === undefined ? {} : { revision: input.revision }),
         };
     }
-    return { kind: "sync", checkpoint: input.uncommittedChanges };
+    return { kind: "sync" };
 }
 
 /**

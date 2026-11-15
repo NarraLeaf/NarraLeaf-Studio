@@ -93,7 +93,7 @@ export type UseUIEditorKeybindingsParams = {
      * Injected rather than reached for, because this module is bundled into the game runtime and the
      * live session is Studio's: the caller is in the workspace and can see both.
      */
-    undoOverride?: { undo(): void; redo(): void } | null;
+    undoOverride?: { undo(): boolean; redo(): boolean } | null;
 };
 
 export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): void {
@@ -199,10 +199,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             if (isTypingInField()) {
                 return;
             }
-            if (undoOverride) {
-                // A live session. See {@link UseUIEditorKeybindingsParams.undoOverride}: this
-                // editor's own stack holds snapshots of a document nobody else has agreed to.
-                undoOverride.undo();
+            if (undoOverride?.undo()) {
                 return;
             }
             if (!historyService) {
@@ -214,8 +211,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             if (isTypingInField()) {
                 return;
             }
-            if (undoOverride) {
-                undoOverride.redo();
+            if (undoOverride?.redo()) {
                 return;
             }
             if (!historyService) {

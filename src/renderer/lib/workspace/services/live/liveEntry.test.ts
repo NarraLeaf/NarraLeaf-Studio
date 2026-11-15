@@ -33,21 +33,11 @@ describe("which half of a session a window is", () => {
 });
 
 describe("what joining a room costs", () => {
-    it("checkpoints before syncing when the tree holds something no revision has", () => {
+    it("syncs when the room is about the open project", () => {
         expect(planLiveJoin({
             sessionProject: "repo-1",
             openProject: "repo-1",
-            uncommittedChanges: true,
-        })).toEqual({ kind: "sync", checkpoint: true });
-    });
-
-    it("skips the checkpoint when there is nothing to record", () => {
-        // A checkpoint of a tree that has not changed is a lie about the author's history.
-        expect(planLiveJoin({
-            sessionProject: "repo-1",
-            openProject: "repo-1",
-            uncommittedChanges: false,
-        })).toEqual({ kind: "sync", checkpoint: false });
+        })).toEqual({ kind: "sync" });
     });
 
     it("needs a clone when the room is about a project this machine does not have", () => {
@@ -56,7 +46,6 @@ describe("what joining a room costs", () => {
         expect(planLiveJoin({
             sessionProject: "repo-2",
             openProject: "repo-1",
-            uncommittedChanges: true,
             revision: "rev-9",
         })).toEqual({ kind: "clone", project: "repo-2", revision: "rev-9" });
     });
@@ -65,7 +54,6 @@ describe("what joining a room costs", () => {
         expect(planLiveJoin({
             sessionProject: "repo-2",
             openProject: null,
-            uncommittedChanges: false,
         })).toEqual({ kind: "clone", project: "repo-2" });
     });
 });

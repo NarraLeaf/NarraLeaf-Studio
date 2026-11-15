@@ -468,6 +468,9 @@ type Window = {
     version: {
         head: string;
         uncommitted: boolean;
+        pendingEdit: boolean;
+        checkpointFailure: boolean;
+        adoptWait?: () => Promise<void>;
         conflicts: string[];
         /** What a sync brings the tree to. */
         syncTo: string | null;
@@ -856,7 +859,7 @@ function createWindow(world: World, instance: string): Window {
         storyId: ids.storyId,
         sceneId: ids.sceneId,
         calls,
-        version: { head: "rev-1", uncommitted: false, conflicts: [], syncTo: null, divergedPushes: 0 },
+        version: { head: "rev-1", uncommitted: false, pendingEdit: false, checkpointFailure: false, conflicts: [], syncTo: null, divergedPushes: 0 },
         freeze: { reason: null, armed: null },
         forgotten: [],
         hosted: null,
@@ -1110,6 +1113,11 @@ function createWindow(world: World, instance: string): Window {
         version: {
             checkpoint: async () => {
                 calls.push("checkpoint");
+                if (window.version.checkpointFailure) throw new Error("checkpoint failed");
+                if (window.version.pendingEdit) {
+                    window.version.pendingEdit = false;
+                    window.version.uncommitted = true;
+                }
                 if (!window.version.uncommitted) {
                     // Nothing to record, which is the ordinary case and not a failure.
                     return null;
@@ -1119,7 +1127,6 @@ function createWindow(world: World, instance: string): Window {
                 return window.version.head;
             },
             head: async () => window.version.head,
-            hasUncommittedChanges: async () => window.version.uncommitted,
             push: async () => {
                 calls.push("push");
                 if (window.version.divergedPushes > 0) {
@@ -1143,6 +1150,7 @@ function createWindow(world: World, instance: string): Window {
             },
             adopt: async revision => {
                 calls.push(`adopt:${revision}`);
+                await window.version.adoptWait?.();
                 // What an adoption leaves behind: this tree IS that version's content, and there is
                 // nothing uncommitted underneath it any more.
                 window.version.head = revision;
@@ -1373,10 +1381,11 @@ describe("a live session", () => {
             expect(guest.session.getView().checkpoint).toBe("rev-checkpoint-instance-guest-1");
         });
 
-        it("adopts without a checkpoint when there was nothing to record", async () => {
+        it("records no checkpoint revision when there was nothing to record", async () => {
             await openRoom();
             await guest.session.join({ session: "room-1" });
-            expect(guest.calls).toEqual(["sync", `adopt:${host.version.head}`, "join", "freeze"]);
+            expect(guest.calls).toEqual(["checkpoint", "sync", `adopt:${host.version.head}`, "join", "freeze"]);
+            expect(guest.session.getView().checkpoint).toBeNull();
         });
 
         it("stops at the sync where that alone lands on the room's version", async () => {
@@ -1386,14 +1395,14 @@ describe("a live session", () => {
             await openRoom();
             guest.version.syncTo = host.version.head;
             await guest.session.join({ session: "room-1" });
-            expect(guest.calls).toEqual(["sync", "join", "freeze"]);
+            expect(guest.calls).toEqual(["checkpoint", "sync", "join", "freeze"]);
         });
 
         it("adopts nothing at all when this tree is already on the room's version", async () => {
             await openRoom();
             guest.version.head = host.version.head;
             await guest.session.join({ session: "room-1" });
-            expect(guest.calls).toEqual(["join", "freeze"]);
+            expect(guest.calls).toEqual(["checkpoint", "join", "freeze"]);
         });
 
         it("throws the merge away rather than handing the author a conflict", async () => {
@@ -1488,7 +1497,7 @@ describe("a live session", () => {
                 .toEqual({ kind: "story-not-here", storyId: "story-nobody-here-has" });
             // The adoption ran - this is only knowable afterwards - but the room was never joined
             // and nothing froze behind a session that could not have worked.
-            expect(guest.calls).toEqual(["sync", `adopt:${host.version.head}`]);
+            expect(guest.calls).toEqual(["checkpoint", "sync", `adopt:${host.version.head}`]);
             expect(guest.freeze.armed).toBeNull();
         });
     });
@@ -1509,7 +1518,7 @@ describe("a live session", () => {
             // Found by asking for it rather than by looking through a list it is deliberately not
             // on, and then joined with the same digits: a `code` room refuses its own id.
             expect(guest.calls).toEqual([
-                `byCode:${code}`, "sync", `adopt:${host.version.head}`, `joinByCode:${code}`, "freeze",
+                `byCode:${code}`, "checkpoint", "sync", `adopt:${host.version.head}`, `joinByCode:${code}`, "freeze",
             ]);
             expect(guest.session.getView().session?.id).toBe("room-1");
         });
@@ -1553,9 +1562,54 @@ describe("a live session", () => {
             expect(await joining).toBeNull();
             // Only now: the checkpoint and the adoption happen on the far side of the answer.
             expect(guest.calls).toEqual([
-                "request:room-1", "sync", `adopt:${host.version.head}`, "join", "freeze",
+                "request:room-1", "checkpoint", "sync", `adopt:${host.version.head}`, "join", "freeze",
             ]);
             expect(host.session.getView().requests).toEqual([]);
+        });
+
+        it("switches to entering before accepting and checkpointing work made while waiting", async () => {
+            await openRoomWith("request");
+            const phases: string[] = [];
+            const checkpointAtEntry: boolean[] = [];
+            const stop = guest.session.onChanged(view => {
+                phases.push(view.phase);
+                if (view.phase === "entering") checkpointAtEntry.push(guest.calls.includes("checkpoint"));
+            });
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+            expect(guest.session.getView().phase).toBe("asking");
+            expect(guest.freeze.armed).toBeNull();
+
+            guest.version.pendingEdit = true;
+            await host.session.answerRequest("instance-guest", true);
+            await drain(world.bus);
+            expect(await joining).toBeNull();
+            stop();
+
+            expect(guest.calls).toEqual([
+                "request:room-1", "checkpoint", "sync", `adopt:${host.version.head}`, "join", "freeze",
+            ]);
+            expect(guest.session.getView().checkpoint).toBe("rev-checkpoint-instance-guest-1");
+            expect(guest.version.pendingEdit).toBe(false);
+            const asking = phases.indexOf("asking");
+            expect(phases[asking + 1]).toBe("entering");
+            expect(checkpointAtEntry).toEqual([false, false]);
+        });
+
+        it("leaves the working tree untouched when the entry checkpoint fails", async () => {
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+            guest.version.pendingEdit = true;
+            guest.version.checkpointFailure = true;
+            await host.session.answerRequest("instance-guest", true);
+            await drain(world.bus);
+
+            expect(await joining).toEqual({ kind: "failed", detail: "checkpoint failed" });
+            expect(guest.calls).toEqual(["request:room-1", "checkpoint"]);
+            expect(guest.version.pendingEdit).toBe(true);
+            expect(guest.session.getView().phase).toBe("idle");
+            expect(guest.freeze.armed).toBeNull();
         });
 
         it("leaves this author's own work where it was when the host says no", async () => {
@@ -1584,6 +1638,8 @@ describe("a live session", () => {
             expect(await joining).toEqual({ kind: "join-unanswered" });
             expect(guest.calls).toEqual(["request:room-1"]);
             expect(guest.session.getView().entryFailure).toEqual({ kind: "join-unanswered" });
+            expect(guest.session.getView().phase).toBe("idle");
+            expect(guest.freeze.armed).toBeNull();
         });
 
         it("lets the author walk away while waiting, which the ordinary way out cannot do", async () => {
@@ -1599,6 +1655,10 @@ describe("a live session", () => {
             expect(guest.session.getView().phase).toBe("idle");
             // And the clock that is still pending must not fire into a window that has moved on.
             fireTimers(guest);
+            expect(guest.session.getView().phase).toBe("idle");
+            await host.session.answerRequest("instance-guest", true);
+            await drain(world.bus);
+            expect(guest.calls).toEqual(["request:room-1"]);
             expect(guest.session.getView().phase).toBe("idle");
         });
 
@@ -1777,10 +1837,32 @@ describe("a live session", () => {
         it("refuses a second session while one is running", async () => {
             await openRoom();
             expect(await host.session.open({ storyId: host.storyId })).toEqual({ kind: "busy" });
+            expect(host.session.getView().phase).toBe("active");
         });
     });
 
     describe("what the room ending leaves behind", () => {
+        it("keeps local undo suspended until the guest's own work is restored", async () => {
+            await openRoom();
+            guest.version.uncommitted = true;
+            await joinRoom();
+            let releaseRestore!: () => void;
+            let markRestoreStarted!: () => void;
+            const restoring = new Promise<void>(resolve => { markRestoreStarted = resolve; });
+            const waitForRestore = new Promise<void>(resolve => { releaseRestore = resolve; });
+            guest.version.adoptWait = () => {
+                markRestoreStarted();
+                return waitForRestore;
+            };
+            const leaving = guest.session.leave();
+            await restoring;
+            expect(guest.session.getView().phase).toBe("leaving");
+            expect(await guest.session.join({ session: "room-1" })).toEqual({ kind: "busy" });
+            expect(guest.session.getView().phase).toBe("leaving");
+            releaseRestore();
+            await leaving;
+            expect(guest.session.getView().phase).toBe("idle");
+        });
         it("publishes what the session produced before the room closes", async () => {
             // ⚠ Exactly one machine records a session's content, and it is the host: everybody
             // else was sending intents at it. Two windows recording the same story - which is what
