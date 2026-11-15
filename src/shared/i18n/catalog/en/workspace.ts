@@ -960,6 +960,7 @@ export const workspace = {
             manage: "Manage Team",
             online: "Online {count}",
             onlineEmpty: "Nobody is online",
+            offline: "Not connected to the Team server",
         },
         notifications: {
             label: "Notifications",

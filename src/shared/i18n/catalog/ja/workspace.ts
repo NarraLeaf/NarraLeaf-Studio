@@ -884,6 +884,7 @@ export const workspace = {
             manage: "Team を管理",
             online: "オンライン {count}",
             onlineEmpty: "オンラインのメンバーはいません",
+            offline: "Team サーバーに未接続",
         },
         notifications: {
             label: "通知",

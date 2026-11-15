@@ -870,6 +870,7 @@ export const workspace = {
             manage: "管理 Team",
             online: "在线 {count}",
             onlineEmpty: "暂无在线成员",
+            offline: "未连接到 Team 服务器",
         },
         notifications: {
             label: "通知",

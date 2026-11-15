@@ -28,7 +28,7 @@ const state = vi.hoisted(() => ({
     documents: { view: null as unknown, target: null as { remoteOrigin: string; project: string } | null },
     visible: true,
     projectOrigin: "lore://team.example.lan:41337" as string | null,
-    servers: [] as { remoteOrigin: string; signedInAt: number }[],
+    servers: [] as { remoteOrigin: string; signedInAt: number; account?: { userId: string; username: string; displayName: string } }[],
     calls: [] as { method: string; params: unknown }[],
 }));
 
@@ -174,6 +174,30 @@ describe("when it is drawn", () => {
         const button = container.querySelector("[data-team-account]");
         expect(button?.getAttribute("data-team-account")).toBe("team-project");
         expect(button?.innerHTML).toContain("ring-primary");
+    });
+});
+
+describe("while the server is not answering", () => {
+    const signedIn = { remoteOrigin: ORIGIN, signedInAt: 1, account: { userId: "1", username: "lightdust", displayName: "Light Dust" } };
+
+    it("still shows the account recorded at sign-in, marked as not connected", async () => {
+        state.servers = [signedIn];
+        const { container } = await draw();
+        const button = container.querySelector("[data-team-account]");
+        expect(button?.getAttribute("data-team-account")).toBe("offline");
+        expect(button?.getAttribute("data-tip")).toContain("workspace.shell.team.account.offline");
+        fireEvent.click(button!);
+        const card = container.querySelector("[data-team-account-card]")!;
+        expect(card.textContent).toContain("Light Dust");
+        expect(card.querySelector("[data-team-account-offline]")).not.toBeNull();
+    });
+
+    it("lists nobody online, since it cannot know", async () => {
+        state.servers = [signedIn];
+        state.documents = { view: {}, target: { remoteOrigin: ORIGIN, project: "p1" } };
+        const { container } = await draw();
+        fireEvent.click(container.querySelector("[data-team-account]")!);
+        expect(container.querySelector("[data-team-account-online]")).toBeNull();
     });
 });
 

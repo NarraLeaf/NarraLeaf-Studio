@@ -20,10 +20,12 @@ import { isTeamPresenceReachable, openTeamPresence } from "./teamPresenceControl
 /**
  * The signed-in Team account, in the title bar.
  *
- * **Only while this window has a session with a Team server.** The project's own server where it is
- * on one; otherwise the server this installation signed in to last, so a local project still shows
- * who the author is on Team. With no sign-in at all, or a server that is not answering, it draws
- * nothing. Where there is an account, the author may still hide it (`ui.teamAvatar.visible`).
+ * **Wherever this installation is signed in to a Team server.** The project's own server where it is
+ * on one; otherwise the server signed in to last, so a local project still shows who the author is
+ * on Team. With no sign-in at all it draws nothing. **A server that is not answering still shows
+ * the account**, from what was recorded at sign-in: dimmed, with the card saying it is not
+ * connected and no online list, and with its monogram unless its avatar was already read in this
+ * window. Where there is an account, the author may still hide it (`ui.teamAvatar.visible`).
  *
  * **A ring for a team project.** The project followed through its server (`TeamDocumentsService`)
  * is the one place the account is *in* something with other people, so the face in the title bar
@@ -41,6 +43,9 @@ export function TeamAccountAvatar() {
     const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin ?? latestSignIn(servers);
     const connection = useTeamConnection(remoteOrigin);
     const ready = connection.state === "ready" && connection.account !== undefined;
+    // Who is signed in there, whether or not the server is answering: the live session's account
+    // where there is one, and the one recorded at sign-in otherwise.
+    const account = connection.account ?? servers.find((server) => server.remoteOrigin === remoteOrigin)?.account;
     const inTeamProject = documents.view !== null && documents.target !== null;
     const visible = useGlobalSetting(TEAM_AVATAR_VISIBLE_KEY, resolveOnByDefault);
 
@@ -50,9 +55,10 @@ export function TeamAccountAvatar() {
     // The account's own profile, read when the session becomes ready and again whenever the card is
     // opened - a profile has no topic, so opening the card is when a changed bio is picked up.
     const [profile, setProfile] = useState<TeamAccountProfile | null>(null);
+    // Kept while the server is away, so a face already read stays up through a dropped connection.
     useEffect(() => {
         setProfile(null);
-    }, [remoteOrigin, connection.account?.username]);
+    }, [remoteOrigin, account?.username]);
     useEffect(() => {
         if (!ready || remoteOrigin === null) return;
         let alive = true;
@@ -80,11 +86,10 @@ export function TeamAccountAvatar() {
         };
     }, [open]);
 
-    if (!ready || !visible || remoteOrigin === null || connection.account === undefined) {
+    if (!visible || remoteOrigin === null || account === undefined) {
         return null;
     }
 
-    const account = connection.account;
     const username = profile?.username ?? account.username;
     const displayName = profile?.displayName ?? account.displayName ?? username;
 
@@ -92,9 +97,9 @@ export function TeamAccountAvatar() {
         <div ref={root} className="relative ml-2">
             <button
                 type="button"
-                data-team-account={inTeamProject ? "team-project" : "connected"}
+                data-team-account={!ready ? "offline" : inTeamProject ? "team-project" : "connected"}
                 aria-label={displayName}
-                data-tip={displayName}
+                data-tip={ready ? displayName : `${displayName} · ${t("workspace.shell.team.account.offline")}`}
                 aria-expanded={open}
                 onClick={() => setOpen((value) => !value)}
                 className="flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-default hover:bg-fill"
@@ -107,6 +112,7 @@ export function TeamAccountAvatar() {
                         // The same visual weight as the 16px glyphs beside it, inside the same 32px
                         // square; the team project's ring stays inside that square too.
                         "h-5 w-5",
+                        !ready && "opacity-50",
                         inTeamProject && "ring-2 ring-primary ring-offset-1 ring-offset-surface-sunken",
                     )}
                 />
@@ -128,10 +134,15 @@ export function TeamAccountAvatar() {
                             {profile?.bio !== undefined && (
                                 <span className="line-clamp-2 break-words text-xs text-fg-muted">{profile.bio}</span>
                             )}
+                            {!ready && (
+                                <span data-team-account-offline className="text-2xs text-fg-subtle">
+                                    {t("workspace.shell.team.account.offline")}
+                                </span>
+                            )}
                         </div>
                     </div>
 
-                    {inTeamProject && documents.target !== null && (
+                    {ready && inTeamProject && documents.target !== null && (
                         <TeamProjectOnline
                             remoteOrigin={remoteOrigin}
                             project={documents.target.project}
