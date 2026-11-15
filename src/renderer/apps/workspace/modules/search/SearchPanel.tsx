@@ -15,8 +15,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { parseSearchQuery } from "@/lib/workspace/services/search/searchIndexModel";
-import type { SearchGroup, SearchGroupResult } from "@/lib/workspace/services/search/searchIndexModel";
-import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
+import type { ParsedSearchQuery, SearchGroup, SearchGroupResult } from "@/lib/workspace/services/search/searchIndexModel";
+import { compileMatcher, type CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
 import {
     applyStoryReplace,
     planForEdit,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/workspace/services/search/storyReplace";
 import { segmentPlainText } from "@/apps/workspace/modules/story/scene-editor/storyFindReplace";
 import type { TranslationKey } from "@shared/i18n";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { SearchBox } from "../assets/components/SearchBox";
 import { jumpToSearchTarget } from "./searchJump";
 import { SEARCH_FOCUS_REQUEST_EVENT, consumeSearchFocusRequest } from "./searchFocusRequest";
@@ -40,6 +41,16 @@ const REPLACE_HISTORY_LABEL = { key: "workspace.history.entry.replaceText" as Tr
  * treatment the scene find bar gives the same three switches, so they read as one control set.
  */
 const ACTIVE_TOGGLE_CLASS = "bg-primary/15 text-primary";
+
+type PlannedReplace = {
+    value: ReplacePlan;
+    context: WorkspaceContext;
+    parsed: ParsedSearchQuery;
+    matcher: CompiledMatcher;
+    replacement: string;
+    results: SearchGroupResult[];
+    nonce: number;
+};
 
 export const SEARCH_GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
     scene: "workspace.shell.search.groups.scene" as TranslationKey,
@@ -147,8 +158,8 @@ export function SearchPanel() {
      * counts, rather than typing in it, so replacing a word with nothing stays reachable.
      */
     const [showReplace, setShowReplace] = useState(false);
-    const [plan, setPlan] = useState<ReplacePlan | null>(null);
-    /** Bumped after a write, so the plan refreshes without waiting for the index rebuild. */
+    const [planned, setPlanned] = useState<PlannedReplace | null>(null);
+    /** Bumped after an apply attempt, so a rejected or completed plan is recomputed. */
     const [planNonce, setPlanNonce] = useState(0);
     const queryRef = useRef(query);
     queryRef.current = query;
@@ -209,6 +220,11 @@ export function SearchPanel() {
         () => compileMatcher(parsed.text, { caseSensitive, wholeWord, regex: useRegex }),
         [parsed.text, caseSensitive, wholeWord, useRegex],
     );
+    const plan = showReplace && planned?.context === context && planned.parsed === parsed
+        && planned.matcher === matcher && planned.replacement === replacement
+        && planned.results === results && planned.nonce === planNonce
+        ? planned.value
+        : null;
     // Only handed to the query when the author asked for refined matching. With all three off this
     // stays undefined and `querySearchIndex` runs the term path it always has.
     const queryMatcherRef = useRef(refined ? matcher : undefined);
@@ -270,11 +286,14 @@ export function SearchPanel() {
      */
     useEffect(() => {
         if (!context || !showReplace || !parsed.text) {
-            setPlan(null);
+            setPlanned(null);
             return;
         }
         const timer = setTimeout(() => {
-            setPlan(planStoryReplace(context, { matcher, replacement, filters: parsed.filters }));
+            setPlanned({
+                value: planStoryReplace(context, { matcher, replacement, filters: parsed.filters }),
+                context, parsed, matcher, replacement, results, nonce: planNonce,
+            });
         }, QUERY_DEBOUNCE_MS);
         return () => clearTimeout(timer);
     }, [context, showReplace, parsed, matcher, replacement, results, planNonce]);
@@ -323,11 +342,10 @@ export function SearchPanel() {
             if (!context || !target) {
                 return;
             }
-            if (applyStoryReplace(context, target, REPLACE_HISTORY_LABEL)) {
-                setPlanNonce(nonce => nonce + 1);
-                if (announce) {
-                    announceReplace(target);
-                }
+            const applied = applyStoryReplace(context, target, REPLACE_HISTORY_LABEL);
+            setPlanNonce(nonce => nonce + 1);
+            if (applied && announce) {
+                announceReplace(target);
             }
         },
         [announceReplace, context],
@@ -586,7 +604,7 @@ export function SearchPanel() {
                                         {edit && (
                                             <ToolbarButton
                                                 size="sm"
-                                                onClick={() => applyPlan(planForEdit(edit))}
+                                                onClick={() => plan && applyPlan(planForEdit(edit, plan.sourceRevision))}
                                                 aria-label={t("workspace.shell.search.replaceRow")}
                                                 {...freeze.writes(false, t("workspace.shell.search.replaceRow"))}
                                                 // Centred on the row by pinning both edges
@@ -604,7 +622,7 @@ export function SearchPanel() {
                                     </div>
                                 );
                             })}
-                            {group.total > group.hits.length && (
+                            {group.total > group.hits.length && !expandedGroups.includes(group.group) && (
                                 <button
                                     type="button"
                                     onClick={() => expandGroup(group.group)}
@@ -612,6 +630,11 @@ export function SearchPanel() {
                                 >
                                     {t("workspace.shell.search.more", { count: group.total - group.hits.length })}
                                 </button>
+                            )}
+                            {group.total > group.hits.length && expandedGroups.includes(group.group) && (
+                                <div className="px-3 py-1 text-xs text-fg-subtle">
+                                    {t("workspace.shell.search.more", { count: group.total - group.hits.length })}
+                                </div>
                             )}
                         </div>
                     ))

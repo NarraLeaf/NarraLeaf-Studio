@@ -115,6 +115,8 @@ describe("registering a new kind of searchable thing", () => {
 
     it("lets a partition failure fail the build, and does not poison the retry", async () => {
         let attempt = 0;
+        const stop = vi.fn();
+        const watch = vi.fn(() => stop);
         const source: SearchSource<string> = {
             id: "flaky",
             groups: ["asset"],
@@ -126,15 +128,19 @@ describe("registering a new kind of searchable thing", () => {
                 return ["only"];
             },
             extract: () => [entry("a", "Recovered")],
-            watch: () => () => {},
+            watch,
         };
 
         const engine = new SearchIndexEngine(ctx, [source]);
         await expect(engine.ensureReady()).rejects.toThrow("library unreadable");
         expect(engine.isReady()).toBe(false);
+        expect(stop).toHaveBeenCalledTimes(1);
 
         await engine.ensureReady();
         expect(titlesOf(engine, "recovered")).toEqual(["Recovered"]);
+        expect(watch).toHaveBeenCalledTimes(2);
+        engine.dispose();
+        expect(stop).toHaveBeenCalledTimes(2);
     });
 });
 
@@ -160,6 +166,78 @@ describe("incremental rebuilds", () => {
         return { source, signal: () => signal! };
     }
 
+    it("keeps changes made while another source is still building", async () => {
+        let title = "Original";
+        let changed: (() => void) | undefined;
+        let finishSlow!: (entries: SearchIndexEntry[]) => void;
+        const fast: SearchSource = {
+            id: "fast",
+            groups: ["asset"],
+            extract: () => [entry("fast", title)],
+            watch: (_ctx, signal) => {
+                changed = () => signal.invalidate();
+                return () => { changed = undefined; };
+            },
+        };
+        const slow: SearchSource = {
+            id: "slow",
+            groups: ["asset"],
+            extract: () => new Promise(resolve => { finishSlow = resolve; }),
+            watch: () => () => {},
+        };
+        const engine = new SearchIndexEngine(ctx, [fast, slow]);
+        const ready = engine.ensureReady();
+        await flush();
+        title = "Revised";
+        changed?.();
+        finishSlow([]);
+        await ready;
+        await vi.advanceTimersByTimeAsync(300);
+        await flush();
+
+        expect(titlesOf(engine, "revised")).toEqual(["Revised"]);
+        engine.dispose();
+    });
+
+    it("does not accept an old rebuild after its slice was removed and recreated", async () => {
+        let keys = ["s1"];
+        let value = "Original";
+        let signal!: SearchInvalidation<string>;
+        let finishOld!: (entries: SearchIndexEntry[]) => void;
+        let slow = false;
+        const source: SearchSource<string> = {
+            id: "story",
+            groups: ["asset"],
+            partition: () => keys,
+            extract: () => slow
+                ? new Promise(resolve => { finishOld = resolve; })
+                : [entry("s1", value)],
+            watch: (_ctx, incoming) => { signal = incoming; return () => {}; },
+        };
+        const engine = new SearchIndexEngine(ctx, [source]);
+        await engine.ensureReady();
+        slow = true;
+        signal.invalidate("s1");
+        await vi.advanceTimersByTimeAsync(300);
+        keys = [];
+        signal.invalidateAll();
+        await vi.advanceTimersByTimeAsync(300);
+        keys = ["s1"];
+        slow = false;
+        value = "Recreated";
+        signal.invalidateAll();
+        await vi.advanceTimersByTimeAsync(300);
+        value = "Newest";
+        signal.invalidate("s1");
+        await vi.advanceTimersByTimeAsync(300);
+        finishOld([entry("s1", "Stale")]);
+        await flush();
+
+        expect(titlesOf(engine, "newest")).toEqual(["Newest"]);
+        expect(titlesOf(engine, "stale")).toEqual([]);
+        engine.dispose();
+    });
+
     it("rebuilds one slice of one source and nothing else", async () => {
         const log: string[] = [];
         const stories = { s1: "Chapter One", s2: "Chapter Two" };
@@ -180,6 +258,83 @@ describe("incremental rebuilds", () => {
         expect(log).toEqual(["story:s1"]);
         expect(titlesOf(engine, "revised")).toEqual(["Chapter One, revised"]);
         expect(titlesOf(engine, "chapter two")).toEqual(["Chapter Two"]);
+    });
+
+    it("reports a source as stale from its invalidation until its rebuild finishes", async () => {
+        const log: string[] = [];
+        const table = { s1: "Old" };
+        const source = tableSource("story", table, log);
+        const engine = new SearchIndexEngine(ctx, [source.source]);
+        await engine.ensureReady();
+        const revision = engine.sourceRevision("story");
+        const changed = vi.fn();
+        engine.onIndexChanged(changed);
+
+        table.s1 = "New";
+        source.signal().invalidate("s1");
+        expect(engine.isSourceCurrent("story")).toBe(false);
+        expect(engine.sourceRevision("story")).toBeGreaterThan(revision);
+        expect(changed).toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(300);
+        await flush();
+        expect(engine.isSourceCurrent("story")).toBe(true);
+        expect(titlesOf(engine, "new")).toEqual(["New"]);
+        engine.dispose();
+    });
+
+    it("keeps a source incomplete when one slice fails, until that slice is rebuilt", async () => {
+        let fail = true;
+        let signal!: SearchInvalidation<string>;
+        const source: SearchSource<string> = {
+            id: "story",
+            groups: ["asset"],
+            partition: () => ["good", "bad"],
+            extract: (_ctx, key) => {
+                if (key === "bad" && fail) throw new Error("unreadable story");
+                return [entry(key, `${key} story`)];
+            },
+            watch: (_ctx, incoming) => { signal = incoming; return () => {}; },
+        };
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const engine = new SearchIndexEngine(ctx, [source]);
+        await engine.ensureReady();
+        expect(titlesOf(engine, "good")).toEqual(["good story"]);
+        expect(engine.isSourceCurrent("story")).toBe(false);
+
+        fail = false;
+        signal.invalidate("bad");
+        await vi.advanceTimersByTimeAsync(300);
+        await flush();
+        expect(engine.isSourceCurrent("story")).toBe(true);
+        expect(titlesOf(engine, "bad")).toEqual(["bad story"]);
+        engine.dispose();
+    });
+
+    it("keeps a source incomplete when repartitioning fails and clears it after a successful retry", async () => {
+        let fail = false;
+        let signal!: SearchInvalidation<string>;
+        const source: SearchSource<string> = {
+            id: "story",
+            groups: ["asset"],
+            partition: () => {
+                if (fail) throw new Error("unreadable library");
+                return ["s1"];
+            },
+            extract: () => [entry("s1", "story")],
+            watch: (_ctx, incoming) => { signal = incoming; return () => {}; },
+        };
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const engine = new SearchIndexEngine(ctx, [source]);
+        await engine.ensureReady();
+        fail = true;
+        signal.invalidateAll();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(engine.isSourceCurrent("story")).toBe(false);
+        fail = false;
+        signal.invalidateAll();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(engine.isSourceCurrent("story")).toBe(true);
+        engine.dispose();
     });
 
     it("coalesces a burst of invalidations into one rebuild", async () => {
@@ -218,7 +373,7 @@ describe("incremental rebuilds", () => {
         expect(titlesOf(engine, "chapter")).toEqual(["Chapter One", "Chapter Three"]);
     });
 
-    it("notifies listeners on every rebuild, and drops the flat cache with them", async () => {
+    it("notifies listeners when a source becomes stale and again after rebuilding it", async () => {
         const log: string[] = [];
         const table: Record<string, string> = { s1: "Chapter One" };
         const a = tableSource("story", table, log);
@@ -233,7 +388,7 @@ describe("incremental rebuilds", () => {
         a.signal().invalidate("s1");
         await vi.advanceTimersByTimeAsync(300);
         await flush();
-        expect(seen).toEqual([1, 0]);
+        expect(seen).toEqual([1, 1, 0]);
     });
 
     it("drops a slow rebuild that a newer one overtook", async () => {
@@ -287,5 +442,27 @@ describe("incremental rebuilds", () => {
         await vi.advanceTimersByTimeAsync(300);
         await flush();
         expect(log).toEqual([]);
+    });
+
+    it("disposes subscriptions while the initial build is still waiting", async () => {
+        let finish!: (entries: SearchIndexEntry[]) => void;
+        const stop = vi.fn();
+        const source: SearchSource = {
+            id: "slow",
+            groups: ["asset"],
+            extract: () => new Promise(resolve => { finish = resolve; }),
+            watch: () => stop,
+        };
+        const engine = new SearchIndexEngine(ctx, [source]);
+        const changed = vi.fn();
+        engine.onIndexChanged(changed);
+        const ready = engine.ensureReady();
+        engine.dispose();
+        finish([entry("late", "Late")]);
+        await ready;
+        expect(stop).toHaveBeenCalledTimes(1);
+        expect(engine.isReady()).toBe(false);
+        expect(engine.size()).toBe(0);
+        expect(changed).not.toHaveBeenCalled();
     });
 });

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { resolveEffectiveBlueprintCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import { fnBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/built-in/fnNodes";
 import type { GraphEdgeFacts, GraphNodeFacts } from "./graphDiffPlan";
 import {
     GRAPH_NODE_MAX_WIDTH,
@@ -186,6 +188,41 @@ describe("laying out both versions at once", () => {
 
         expect(head.outputs.map(row => row.id)).toEqual(["then", "case_3"]);
         expect(graphPinPoint(head, "output", "case_3").y).toBe(head.outputs[1]!.y);
+    });
+
+    it("keeps a generated identifier out of a wire's fallback pin label", () => {
+        const id = "12345678-1234-4234-8234-123456789abc";
+        const shapes = graphNodeShapes(
+            [node("n-head", "unknown"), node("n-log", "unknown")],
+            [wire("n-head", `field:${id}`, "n-log", "in")],
+            describe_,
+        );
+        const pin = graphShapeOf(shapes, node("n-head", "unknown")).outputs[0];
+
+        expect(pin?.id).toBe(`field:${id}`);
+        expect(pin?.label).toBe("field:…");
+    });
+
+    it("lays out the authored name of an unwired Fn parameter from its stored parameters", () => {
+        const definition = fnBlueprintNodes.find(item => item.type === "blueprint.fn.head")!;
+        const facts: GraphNodeFacts = {
+            ...node("fn", definition.type),
+            params: { __fnParamPinIds: ["param_1_value"], __fnParamPinLabels: { param_1_value: "speaker" } },
+        };
+        const shapes = graphNodeShapes([facts], [], (_type, stored) => {
+            const entry = resolveEffectiveBlueprintCatalogEntry(definition, stored.params);
+            return {
+                title: entry.displayName,
+                pins: entry.pins.map(pin => ({
+                    id: pin.id,
+                    kind: pin.kind,
+                    exec: pin.semantic === "exec",
+                    label: pin.label ?? pin.id,
+                })),
+            };
+        });
+
+        expect(graphShapeOf(shapes, facts).outputs.map(pin => pin.label)).toContain("speaker");
     });
 
     it("names a card by what it is, and never with a NUL byte", () => {

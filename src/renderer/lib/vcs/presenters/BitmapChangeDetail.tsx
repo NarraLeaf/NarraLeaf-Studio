@@ -80,12 +80,23 @@ export function BitmapChangeDetail({ entry, change, member, sides }: ChangePrese
     const box = unionBox(before.pixels, after.pixels) ?? PENDING_BOX;
     const settled = isSettled(before) && isSettled(after);
 
+    if (!requested.before && !requested.after) {
+        return <GenericChangeDetail entry={entry} change={change} />;
+    }
+
     // Nothing can be drawn and nothing is still arriving: say why, and hand the pane back to the
     // list of rows, which can always describe a file even when nothing can show it.
     if (settled && !before.pixels && !after.pixels) {
         return (
             <div className="flex flex-col gap-2">
-                <p className="text-2xs text-fg-muted">{t(failureKey(before, after))}</p>
+                {pair && stateKey(before) !== stateKey(after)
+                    ? (
+                        <>
+                            <p className="text-2xs text-fg-muted">{t("documentDiff.presenter.before")} · {t(stateKey(before))}</p>
+                            <p className="text-2xs text-fg-muted">{t("documentDiff.presenter.after")} · {t(stateKey(after))}</p>
+                        </>
+                    )
+                    : <p className="text-2xs text-fg-muted">{t(failureKey(before, after))}</p>}
                 <GenericChangeDetail entry={entry} change={change} />
             </div>
         );
@@ -287,10 +298,8 @@ function Swipe({ before, after, box }: { before: BitmapSide; after: BitmapSide; 
 /**
  * The two stacked, with everything that matches turned black.
  *
- * Only offered for images of one size (see `comparableModes`), and drawn on black because that is
- * what the blend mode is defined against: the result is the per-channel distance between the two,
- * so an unchanged pixel is 0 and the backdrop has to be 0 as well. A themed backdrop would add
- * itself to every pixel of the answer.
+ * Only offered for images of one size (see `comparableModes`). Comparing both black and white
+ * composites reveals changes to transparency as well as colour. The brighter result is drawn.
  */
 function Difference({ before, after, box }: { before: BitmapSide; after: BitmapSide; box: PixelSize }) {
     const { t } = useTranslation();
@@ -304,16 +313,25 @@ function Difference({ before, after, box }: { before: BitmapSide; after: BitmapS
                 className="relative isolate w-full overflow-hidden rounded-md border border-edge bg-black"
                 style={frameStyle(box)}
             >
-                {before.pixels && before.url && (
-                    <img src={before.url} alt="" style={framedImageStyle(before.pixels, box)} />
-                )}
-                {after.pixels && after.url && (
-                    <img
-                        src={after.url}
-                        alt=""
-                        style={{ ...framedImageStyle(after.pixels, box), mixBlendMode: "difference" }}
-                    />
-                )}
+                {["black", "white"].map(backdrop => (
+                    <div
+                        key={backdrop}
+                        className={cn("absolute inset-0 isolate", backdrop === "black" ? "bg-black" : "bg-white")}
+                        style={backdrop === "white" ? { mixBlendMode: "lighten" } : undefined}
+                    >
+                        {before.pixels && before.url && (
+                            <img src={before.url} alt="" style={framedImageStyle(before.pixels, box)} />
+                        )}
+                        {after.pixels && after.url && (
+                            <div
+                                className={cn("absolute inset-0", backdrop === "black" ? "bg-black" : "bg-white")}
+                                style={{ mixBlendMode: "difference" }}
+                            >
+                                <img src={after.url} alt="" style={framedImageStyle(after.pixels, box)} />
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
             <figcaption className="text-2xs text-fg-subtle">
                 {t("documentDiff.presenter.before")} · {t("documentDiff.presenter.after")}

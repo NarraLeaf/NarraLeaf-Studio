@@ -173,7 +173,7 @@ describe("comparing two versions of one image", () => {
         expect(container.textContent?.match(/1088 × 1984/g)).toHaveLength(1);
     });
 
-    it("draws one image over the other for the difference comparison", async () => {
+    it("compares both black and white composites to show transparency changes", async () => {
         decoded.set("blob:a", { width: 64, height: 64 });
         decoded.set("blob:b", { width: 64, height: 64 });
         sideStates.set("before", ready("blob:a"));
@@ -184,8 +184,12 @@ describe("comparing two versions of one image", () => {
         fireEvent.click(getByText("documentDiff.presenter.image.difference"));
 
         const images = [...container.querySelectorAll("img")];
-        expect(images).toHaveLength(2);
-        expect(images[1].style.mixBlendMode).toBe("difference");
+        expect(images.map(image => image.getAttribute("src"))).toEqual(["blob:a", "blob:b", "blob:a", "blob:b"]);
+        expect(images[1].parentElement?.className).toContain("bg-black");
+        expect(images[3].parentElement?.className).toContain("bg-white");
+        expect(images[1].parentElement?.style.mixBlendMode).toBe("difference");
+        expect(images[3].parentElement?.style.mixBlendMode).toBe("difference");
+        expect(images[3].parentElement?.parentElement?.style.mixBlendMode).toBe("lighten");
     });
 
     it("scales the smaller version smaller instead of fitting each to its own frame", async () => {
@@ -228,6 +232,25 @@ describe("an image that exists on one side", () => {
 });
 
 describe("when an image cannot be shown", () => {
+    it("reports both reasons when the two versions fail differently", async () => {
+        sideStates.set("before", { status: "tooLarge", url: null, size: 0, error: null });
+        sideStates.set("after", { status: "unsupported", url: null, size: 14, error: null });
+
+        const { container } = draw();
+
+        await waitFor(() => expect(container.textContent).toContain("documentDiff.presenter.image.unsupported"));
+        expect(container.textContent).toContain("documentDiff.presenter.image.tooLarge");
+        expect(container.textContent).toContain("documentDiff.presenter.before");
+        expect(container.textContent).toContain("documentDiff.presenter.after");
+    });
+
+    it("shows the rows without a loading message when no versions were supplied", () => {
+        const { container } = render(<ChangeDetailHost entry={entry()} />);
+
+        expect(container.textContent).toContain("documentDiff.content.changed");
+        expect(container.textContent).not.toContain("documentDiff.rows.loading");
+    });
+
     it("says which limit was met and falls back to the rows, not to a blank pane", async () => {
         sideStates.set("before", { status: "tooLarge", url: null, size: 0, error: null });
         sideStates.set("after", { status: "tooLarge", url: null, size: 0, error: null });

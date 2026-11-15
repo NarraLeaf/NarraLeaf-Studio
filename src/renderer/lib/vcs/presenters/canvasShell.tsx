@@ -5,6 +5,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import type { RowReveal } from "../DocumentChangeList";
+import { elideGeneratedIdentifiers } from "../identifierDisplay";
 import { GenericChangeDetail } from "./GenericChangeDetail";
 import { CHANGE_MASK_CLASS, CHANGE_MASK_LABEL, CHANGE_MASK_TONES, type ChangeMaskTone } from "./changeMask";
 
@@ -207,7 +208,7 @@ export function canvasReadFailure(
                 key: side.status === "unreadable"
                     ? "documentDiff.canvas.unreadable"
                     : "documentDiff.canvas.readFailed",
-                error: side.error ?? "",
+                error: elideGeneratedIdentifiers(side.error ?? ""),
             };
         }
         if (side.status === "tooLarge") {

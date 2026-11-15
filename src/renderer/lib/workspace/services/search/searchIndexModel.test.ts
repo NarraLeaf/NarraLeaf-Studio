@@ -167,6 +167,14 @@ describe("querySearchIndex", () => {
         expect(groups).toEqual([]);
     });
 
+    it("requires both supplied and query-syntax asset and name filters to match", () => {
+        expect(querySearchIndex(entries, "morning asset:audio", { filters: { assetTypes: ["image"] } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning scene:opening", { filters: { sceneName: "corridor" } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning speaker:inko", { filters: { speaker: "other" } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning scene:open", { filters: { sceneName: "opening" } })
+            .find(group => group.group === "storyText")?.total).toBe(2);
+    });
+
     it("returns nothing for a facet-only query", () => {
         expect(querySearchIndex(entries, "type:storyText")).toEqual([]);
     });
