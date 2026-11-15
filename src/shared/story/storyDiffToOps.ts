@@ -1,5 +1,6 @@
 import type { LiveSceneFields, LiveStoryOp } from "@shared/live/ops";
 import type { StoryBlock, StoryBlockId, StoryChapter, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import { canAcceptChildren, insertBlockInScene, moveBlockInScene, updateBlockPayload } from "./storyModel";
 
 /**
  * The operations that turn one story document into another.
@@ -16,10 +17,10 @@ import type { StoryBlock, StoryBlockId, StoryChapter, StoryDocument, StoryScene,
  * file.
  *
  * The order matters and is fixed: chapters appear before the scenes filed in them, scenes
- * before the rows inside them, parents before their children, deletions of rows before the
- * rows around them move, and chapter deletions last, after any scene that was moved out of a
- * chapter has left it. Each group is stated so that applying it in order against `base`
- * produces `mine`'s structure.
+ * before the rows inside them, parents before their children, retained rows before deletion of
+ * their former ancestors, and chapter deletions last, after any scene that was moved out of a
+ * chapter has left it. Each group is stated so that applying it in order against `base` produces
+ * `mine`'s structure.
  *
  * Pure. Neither input is modified, and the operations carry copies.
  */
@@ -109,11 +110,72 @@ export function storyDiffToOps(base: StoryDocument, mine: StoryDocument): LiveSt
     return ops;
 }
 
-/** The rows of one scene: deletions, then insertions in document order, then moves, then edits. */
+/** The rows of one scene: place the target tree, delete former subtrees, and apply remaining edits. */
 function rowOps(sceneId: StorySceneId, was: StoryScene, now: StoryScene): LiveStoryOp[] {
     const ops: LiveStoryOp[] = [];
+    const existing = new Set(Object.keys(was.blocks).filter(id => now.blocks[id] !== undefined));
+    const earlyUpdates = new Set<StoryBlockId>();
+    // Track the same structural mutations the applier will make, without changing either input.
+    const working: StoryScene = {
+        ...was,
+        rootBlockIds: [...was.rootBlockIds],
+        blocks: Object.fromEntries(Object.entries(was.blocks).map(([id, block]) => [id, {
+            ...block,
+            childrenIds: [...block.childrenIds],
+        }])),
+    };
 
-    // Deleted rows. Only the outermost of a deleted subtree is named: deleting it takes the rest.
+    // Place each parent's target children right to left, so the anchor is already in place. Visit
+    // parents before descendants: moving a descendant out first permits an ancestor to move into it.
+    const walk = (parentId: StoryBlockId | null, children: readonly StoryBlockId[]): void => {
+        // A row that becomes a container must accept children before they are placed in it.
+        if (parentId !== null && !canAcceptChildren(working.blocks[parentId]) && canAcceptChildren(now.blocks[parentId])) {
+            const payload = copy(now.blocks[parentId].payload);
+            ops.push({ op: "update-block", sceneId, blockId: parentId, payload });
+            updateBlockPayload(working, parentId, copy(payload));
+            earlyUpdates.add(parentId);
+        }
+        const wanted = new Set(children);
+        for (let index = children.length - 1; index >= 0; index -= 1) {
+            const id = children[index];
+            const block = now.blocks[id];
+            if (block === undefined) {
+                continue;
+            }
+            const target = { parentId, beforeBlockId: children[index + 1] ?? null };
+            const current = working.blocks[id];
+            if (current === undefined) {
+                const inserted: StoryBlock = { ...copy(block), childrenIds: [] };
+                ops.push({ op: "insert-block", sceneId, block: inserted, target });
+                insertBlockInScene(working, copy(inserted), target);
+                continue;
+            }
+            const siblings = parentId === null ? working.rootBlockIds : working.blocks[parentId].childrenIds;
+            const at = siblings.indexOf(id);
+            // Rows leaving this parent do not affect the final order of its target children.
+            let next: StoryBlockId | null = null;
+            for (let siblingIndex = at + 1; at >= 0 && siblingIndex < siblings.length; siblingIndex += 1) {
+                if (wanted.has(siblings[siblingIndex])) {
+                    next = siblings[siblingIndex];
+                    break;
+                }
+            }
+            if (current.parentId !== parentId || at < 0 || next !== target.beforeBlockId) {
+                ops.push({ op: "move-block", sceneId, blockId: id, target });
+                moveBlockInScene(working, id, target);
+            }
+        }
+        for (const id of children) {
+            const block = now.blocks[id];
+            if (block && block.childrenIds.length > 0) {
+                walk(id, block.childrenIds);
+            }
+        }
+    };
+    walk(null, now.rootBlockIds);
+
+    // Deleting a container takes its remaining subtree. Retained descendants have already left it;
+    // only the outermost of each deleted subtree needs to be named.
     const deleted = Object.keys(was.blocks).filter(id => now.blocks[id] === undefined);
     const outermost = deleted.filter(id => {
         const parent = was.blocks[id]?.parentId;
@@ -125,51 +187,6 @@ function rowOps(sceneId: StorySceneId, was: StoryScene, now: StoryScene): LiveSt
         ops.push({ op: "delete-blocks", sceneId, blockIds: outermost });
     }
 
-    // New rows, parents before children, each placed before the next sibling that already exists
-    // by the time it is inserted. Walking siblings left to right and anchoring every new row on the
-    // first kept sibling to its right keeps a run of new rows in their order.
-    const existing = new Set(Object.keys(was.blocks).filter(id => now.blocks[id] !== undefined));
-    const walk = (parentId: StoryBlockId | null, children: readonly StoryBlockId[]): void => {
-        for (const [index, id] of children.entries()) {
-            const block = now.blocks[id];
-            if (block === undefined) {
-                continue;
-            }
-            if (!existing.has(id)) {
-                const before = children.slice(index + 1).find(next => existing.has(next)) ?? null;
-                const inserted: StoryBlock = { ...copy(block), childrenIds: [] };
-                ops.push({ op: "insert-block", sceneId, block: inserted, target: { parentId, beforeBlockId: before } });
-            }
-            walk(id, block.childrenIds);
-        }
-    };
-    walk(null, now.rootBlockIds);
-
-    // Kept rows whose parent changed, or whose order among the kept rows of their parent did.
-    // Moved right to left, each before its right-hand neighbour in `mine`, which by then is where it
-    // belongs - so the final order is `mine`'s however the rows were shuffled.
-    const parents: Array<{ parentId: StoryBlockId | null; children: readonly StoryBlockId[] }> = [
-        { parentId: null, children: now.rootBlockIds },
-        ...Object.values(now.blocks).map(block => ({ parentId: block.id, children: block.childrenIds })),
-    ];
-    for (const { parentId, children } of parents) {
-        const kept = children.filter(id => existing.has(id));
-        const wasChildren = parentId === null ? was.rootBlockIds : (was.blocks[parentId]?.childrenIds ?? []);
-        const wasKept = wasChildren.filter(id => existing.has(id) && kept.includes(id));
-        const movedIn = kept.some(id => (was.blocks[id]?.parentId ?? null) !== parentId);
-        if (!movedIn && same(wasKept, kept)) {
-            continue;
-        }
-        for (let index = children.length - 1; index >= 0; index -= 1) {
-            const id = children[index];
-            if (!existing.has(id)) {
-                continue;
-            }
-            const before = children[index + 1] ?? null;
-            ops.push({ op: "move-block", sceneId, blockId: id, target: { parentId, beforeBlockId: before } });
-        }
-    }
-
     // Edited rows: what they say, and whether they are compiled out.
     for (const id of existing) {
         const previous = was.blocks[id];
@@ -177,7 +194,7 @@ function rowOps(sceneId: StorySceneId, was: StoryScene, now: StoryScene): LiveSt
         if (previous === undefined || current === undefined) {
             continue;
         }
-        if (!same(previous.payload, current.payload)) {
+        if (!earlyUpdates.has(id) && !same(previous.payload, current.payload)) {
             ops.push({ op: "update-block", sceneId, blockId: id, payload: copy(current.payload) });
         }
         if ((previous.disabled === true) !== (current.disabled === true)) {
