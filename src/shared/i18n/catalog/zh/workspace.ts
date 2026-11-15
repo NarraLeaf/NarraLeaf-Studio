@@ -664,6 +664,16 @@ export const workspace = {
     team: {
         docs: {
             refused: "服务器没有接受这次修改",
+            areaRefused: "你不能修改项目的这一部分",
+            areaRefusedDetail: "项目所有者允许你修改：{areas}",
+            areaNames: {
+                story: "故事",
+                characters: "角色",
+                assets: "素材",
+                ui: "界面",
+                localization: "本地化",
+                config: "游戏配置",
+            },
             restored: "{{by}} 恢复了之前的一个版本，所有人现在看到的都是它。",
             diverged: "此窗口与服务器不一致，将从最近保存的版本重新开始",
             history: "历史版本",

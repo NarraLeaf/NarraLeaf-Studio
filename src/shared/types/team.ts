@@ -76,6 +76,8 @@ export type TeamCapability =
     | "webhooks"
     /** Threads and comments anchored in a project. */
     | "comments"
+    /** A project's own chat channel, kept on the server. */
+    | "chat"
     /** Which installations are connected, and what each has open. */
     | "clients"
     /** Live sessions: rooms on a project, for finding installations and broadcasting to them. */
@@ -236,6 +238,11 @@ export function teamProjectDocTopic(projectId: string): string {
     return `project:${projectId}/doc`;
 }
 
+/** A project's chat: a message sent or taken back. */
+export function teamProjectChatTopic(projectId: string): string {
+    return `project:${projectId}/chat`;
+}
+
 /** The signed-in account's own to-dos. Only that account may subscribe. */
 export function teamAccountTodosTopic(accountId: string): string {
     return `account:${accountId}/todos`;
@@ -318,6 +325,9 @@ export const TEAM_INSTANCE_FIELD_LIMIT = 256;
 
 /** The most one `doc.intent` may carry, as JSON: its document address and its operation. */
 export const TEAM_DOC_INTENT_LIMIT = 96 * 1024;
+
+/** The longest chat message, in characters. */
+export const TEAM_CHAT_BODY_LIMIT = 4096;
 
 /**
  * The most a server sends in one answer, and so the least this build's reader may hold.
@@ -441,8 +451,24 @@ export type TeamProjectsEvent =
  */
 export type TeamProjectRole = "owner" | "editor" | "reviewer" | "viewer";
 
-/** Whether a role may open the repository: pull, commit and push. */
-export function teamRoleReachesRepository(role: TeamProjectRole | undefined): boolean {
+/**
+ * The parts of a project an owner grants editing of separately. An editor kept to some of them
+ * has `areas` on its member row and on the project rows it is answered; no list means all.
+ */
+export const TEAM_PROJECT_AREAS = ["story", "characters", "assets", "ui", "localization", "config"] as const;
+export type TeamProjectArea = (typeof TEAM_PROJECT_AREAS)[number];
+
+/**
+ * Whether a role may open the repository: pull, commit and push. An editor kept to some areas
+ * may not - the repository cannot tell one file from another - and edits through Team instead.
+ */
+export function teamRoleReachesRepository(
+    role: TeamProjectRole | undefined,
+    areas?: readonly TeamProjectArea[],
+): boolean {
+    if (role === "editor" && areas !== undefined && areas.length < TEAM_PROJECT_AREAS.length) {
+        return false;
+    }
     return role === undefined || role === "owner" || role === "editor";
 }
 
@@ -453,6 +479,8 @@ export interface TeamProjectMember {
     role: TeamProjectRole;
     addedBy?: string;
     addedAt: number;
+    /** The areas an editor may change, when the owners kept them to some. */
+    areas?: TeamProjectArea[];
 }
 
 /** One installation the account is signed in on through the browser, as `account.devices.list` answers. */
@@ -744,6 +772,9 @@ export const TeamMethod = {
     reviewsCreate: "reviews.create",
     reviewsUpdate: "reviews.update",
     milestonesList: "milestones.list",
+    chatList: "chat.list",
+    chatSend: "chat.send",
+    chatDelete: "chat.delete",
     milestonesCreate: "milestones.create",
     milestonesDelete: "milestones.delete",
     adminWebhooksList: "admin.webhooks.list",
@@ -808,6 +839,7 @@ export const TeamMethod = {
     adminUsersGrantAdmin: "admin.users.grantAdmin",
     adminUsersRevokeAdmin: "admin.users.revokeAdmin",
     adminUsersRevokeTokens: "admin.users.revokeTokens",
+    adminUsersSetCreator: "admin.users.setCreator",
     adminTokensMint: "admin.tokens.mint",
     adminSettingsList: "admin.settings.list",
     adminSettingsSet: "admin.settings.set",

@@ -1,5 +1,5 @@
 import type { LiveDerived, LiveDocument, LiveStoryOp } from "@shared/live/ops";
-import { isProjectDocumentPath, isWholeFilePath, projectDocumentPath, type ProjectOp, type TeamFileContent, type TeamFileDocument, type TeamFileOp, type TeamStoryLibraryOp } from "@shared/authority/project";
+import { isProjectDocumentPath, isWholeFilePath, PROJECT_AREAS, projectAreaOf, projectDocumentPath, type ProjectArea, type ProjectOp, type TeamFileContent, type TeamFileDocument, type TeamFileOp, type TeamStoryLibraryOp } from "@shared/authority/project";
 import type { StoryDocument, StoryId, StoryLibraryEntry } from "@shared/types/story";
 import { storyDiffToOps } from "@shared/story/storyDiffToOps";
 import type { TeamDocHandler } from "./teamDocWiring";
@@ -194,7 +194,7 @@ export class TeamDocSync {
         const seq = readNumber(head.value, "seq") ?? 0;
         const mayEdit = readBoolean(head.value, "mayEdit") ?? true;
         const prunedThrough = readNumber(head.value, "prunedThrough") ?? 0;
-        this.set({ state: "syncing", mayEdit });
+        this.set({ state: "syncing", mayEdit, areas: readAreas(head.value) });
 
         // Files changed here since this window and the server last agreed - offline, or while this
         // window was closed - are read before anything is written over them.
@@ -898,6 +898,14 @@ export class TeamDocSync {
         if (!this.online || !this.view.mayEdit) {
             return false;
         }
+        // An editor kept to some areas is told here rather than after a round trip; the server
+        // refuses the same edit for the same reason, so this only saves the author the wait.
+        const area = areaOf(document);
+        const areas = this.view.areas;
+        if (areas !== undefined && area !== undefined && !areas.includes(area)) {
+            this.ports.notify({ kind: "refused", reason: "area", detail: area });
+            return true;
+        }
         void this.send(document, op, derived).then(answer => {
             if (answer.kind === "refusal") {
                 this.ports.notify({ kind: "refused", reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
@@ -984,7 +992,30 @@ export type TeamDocView = {
     conflicts: TeamDocConflict[];
     /** Whether this account's role edits the project. A reviewer follows read-only. */
     mayEdit: boolean;
+    /**
+     * The areas of the project this account may change, when the server says (a newer Team).
+     * An editor the owners kept to some areas has fewer than all of them.
+     */
+    areas?: readonly ProjectArea[];
 };
+
+/** The areas a `doc.head` answer names, or undefined from a server that does not send them. */
+function readAreas(value: unknown): readonly ProjectArea[] | undefined {
+    const list = readRecord(value)?.["areas"];
+    if (!Array.isArray(list)) {
+        return undefined;
+    }
+    return PROJECT_AREAS.filter(area => list.includes(area));
+}
+
+/** The area an edit reaches, or undefined for an address that names no file. */
+function areaOf(document: LiveDocument | TeamFileDocument): ProjectArea | undefined {
+    try {
+        return projectAreaOf(projectDocumentPath(document));
+    } catch {
+        return undefined;
+    }
+}
 
 export type TeamDocConflict =
     | {

@@ -9,6 +9,7 @@ import {
     isTeamFilePath,
     isWholeFilePath,
     parseProjectFile,
+    projectAreaOf,
     projectDocumentPath,
     projectOpClaimKeys,
     serializeProjectFile,
@@ -241,5 +242,32 @@ describe("a team project's documents", () => {
             expect(fileBytesOf(doc, op)).toEqual({ path: "icon.png", transferId: "t1", digest: DIGEST, size: 9 });
             expect(projectOpClaimKeys(doc, op)).toEqual(["file:icon.png"]);
         });
+    });
+});
+
+describe("the area an edit falls in", () => {
+    it("names each part of a project the team grants separately", () => {
+        expect(projectAreaOf(`editor/story/stories/${STORY}/storydoc.json`)).toBe("story");
+        expect(projectAreaOf(STORY_LIBRARY_FILE)).toBe("story");
+        expect(projectAreaOf("editor/story/animations/index.json")).toBe("story");
+        expect(projectAreaOf("editor/variables.json")).toBe("story");
+        expect(projectAreaOf("editor/services/character.json")).toBe("characters");
+        expect(projectAreaOf("assets/assets.metadata.image.json")).toBe("assets");
+        expect(projectAreaOf("assets/content/ab/abcdef")).toBe("assets");
+        expect(projectAreaOf("editor/audio-tracks.json")).toBe("assets");
+        expect(projectAreaOf("editor/ui/uidoc.json")).toBe("ui");
+        expect(projectAreaOf("editor/localization/en.json")).toBe("localization");
+        expect(projectAreaOf("editor/voice/ja.json")).toBe("localization");
+        expect(projectAreaOf("editor/dictionary.json")).toBe("localization");
+    });
+
+    it("counts the project file, brand, variants and anything new as the game's configuration", () => {
+        expect(projectAreaOf("project.json")).toBe("config");
+        expect(projectAreaOf("editor/brand.json")).toBe("config");
+        expect(projectAreaOf("editor/app-tags.json")).toBe("config");
+        expect(projectAreaOf("editor/dlc.json")).toBe("config");
+        expect(projectAreaOf("editor/save-schema.json")).toBe("config");
+        expect(projectAreaOf("resources/icons/source/app.png")).toBe("config");
+        expect(projectAreaOf("editor/something-a-later-studio-adds.json")).toBe("config");
     });
 });

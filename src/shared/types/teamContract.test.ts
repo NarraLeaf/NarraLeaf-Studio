@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import {
     TEAM_ANCHOR_FIELD_LIMIT,
     TEAM_ANSWER_BYTES_LIMIT,
+    TEAM_CHAT_BODY_LIMIT,
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
@@ -47,6 +48,7 @@ import {
     teamProjectTodosTopic,
     teamProjectReviewsTopic,
     teamProjectMilestonesTopic,
+    teamProjectChatTopic,
     teamProjectDocTopic,
     teamAccountTodosTopic,
     teamAccountNotificationsTopic,
@@ -80,6 +82,7 @@ const contract = JSON.parse(
 const CAPABILITIES: TeamCapability[] = [
     "session",
     "comments",
+    "chat",
     "clients",
     "live",
     "overlay",
@@ -135,6 +138,7 @@ describe("the protocol contract", () => {
             "adminUsers",
             "live",
             "project",
+            "projectChat",
             "projectClients",
             "projectDoc",
             "projectLive",
@@ -168,6 +172,7 @@ describe("the protocol contract", () => {
         expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
         expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
         expect(teamProjectDocTopic("abc")).toBe(contract.topics["projectDoc"]?.replace("{project}", "abc"));
+        expect(teamProjectChatTopic("abc")).toBe(contract.topics["projectChat"]?.replace("{project}", "abc"));
         expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
         expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
@@ -188,6 +193,7 @@ describe("the protocol contract", () => {
         expect(Object.keys(contract.limits).slice().sort()).toEqual([
             "anchorField",
             "answerBytes",
+            "chatBody",
             "commentBody",
             "docIntent",
             "instanceField",
@@ -205,6 +211,7 @@ describe("the protocol contract", () => {
         expect(TEAM_DOC_INTENT_LIMIT).toBe(contract.limits["docIntent"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
         expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
+        expect(TEAM_CHAT_BODY_LIMIT).toBe(contract.limits["chatBody"]);
 
         // `pageBytes` is where a server ends a page, and nothing on this side composes
         // one: it is named above so that it cannot arrive unnoticed, and pinned to no

@@ -673,6 +673,16 @@ export const workspace = {
     team: {
         docs: {
             refused: "サーバーがこの編集を受け付けませんでした",
+            areaRefused: "プロジェクトのこの部分は変更できません",
+            areaRefusedDetail: "プロジェクトのオーナーが編集を許可している範囲：{areas}",
+            areaNames: {
+                story: "ストーリー",
+                characters: "キャラクター",
+                assets: "アセット",
+                ui: "UI",
+                localization: "ローカライズ",
+                config: "ゲーム設定",
+            },
             restored: "{{by}} が以前のバージョンを復元しました。全員に反映されています。",
             diverged: "このウィンドウはサーバーと食い違ったため、最後に保存されたバージョンからやり直します",
             history: "履歴",

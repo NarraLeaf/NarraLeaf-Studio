@@ -46,6 +46,8 @@ export {
     isTeamFilePath,
     isWholeFilePath,
     parseProjectFile,
+    PROJECT_AREAS,
+    projectAreaOf,
     projectDocumentPath,
     projectOpClaimKeys,
     serializeProjectFile,
@@ -54,6 +56,7 @@ export {
 export type {
     HeldFile,
     KernelProjectView,
+    ProjectArea,
     ProjectDocument,
     ProjectOp,
     ProjectOpApplied,

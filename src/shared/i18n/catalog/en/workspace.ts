@@ -717,6 +717,16 @@ export const workspace = {
     team: {
         docs: {
             refused: "The server did not take that edit",
+            areaRefused: "You may not change this part of the project",
+            areaRefusedDetail: "The project's owners let you edit: {areas}",
+            areaNames: {
+                story: "story",
+                characters: "characters",
+                assets: "assets",
+                ui: "UI",
+                localization: "localization",
+                config: "game config",
+            },
             restored: "{{by}} restored an earlier version. Everyone now has it.",
             diverged: "This window fell out of step with the server and will start again from the last saved version",
             history: "History",
