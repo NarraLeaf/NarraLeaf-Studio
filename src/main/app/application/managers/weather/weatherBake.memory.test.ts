@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 /** Run the real baker in a fresh process so a forced collection measures only this bake's frames. */
 describe("weather bake frame lifetime", () => {
     it.each(["unblocked", "backpressure"])("releases consumed frames with %s writes", mode => {
+        const retainedLimitMiB = 8;
         const probe = String.raw`
             const fs = require("fs");
             const os = require("os");
@@ -62,8 +63,16 @@ describe("weather bake frame lifetime", () => {
                     );
                     await fed;
                     await new Promise(resolve => setImmediate(resolve));
-                    global.gc();
-                    const retainedMiB = (process.memoryUsage().arrayBuffers - before) / bytes;
+                    // ArrayBuffer sweeping can finish after a forced collection returns. Wait for
+                    // it while the encoder is still open; genuinely retained frames remain counted.
+                    const deadline = Date.now() + 2000;
+                    let retainedMiB;
+                    do {
+                        global.gc();
+                        retainedMiB = (process.memoryUsage().arrayBuffers - before) / bytes;
+                        if (retainedMiB < Number(process.argv[2]) || Date.now() >= deadline) break;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    } while (true);
                     child.emit("close", 1, null);
                     const result = await handle.result;
                     console.log(JSON.stringify({ written, retainedMiB, status: result.status }));
@@ -72,7 +81,7 @@ describe("weather bake frame lifetime", () => {
                 }
             })().catch(error => { console.error(error); process.exitCode = 1; });
         `;
-        const output = execFileSync(process.execPath, ["--expose-gc", "-e", probe, mode], {
+        const output = execFileSync(process.execPath, ["--expose-gc", "-e", probe, mode, String(retainedLimitMiB)], {
             cwd: process.cwd(),
             encoding: "utf8",
             timeout: 15_000,
@@ -81,6 +90,6 @@ describe("weather bake frame lifetime", () => {
 
         expect(measured.written).toBe(80);
         expect(measured.status).toBe("error");
-        expect(measured.retainedMiB).toBeLessThan(8);
+        expect(measured.retainedMiB).toBeLessThan(retainedLimitMiB);
     });
 });
