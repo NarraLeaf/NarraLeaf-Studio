@@ -8,6 +8,7 @@ import { TeamMethod } from "@shared/types/team";
 
 import { useWorkspace } from "../../context";
 import { useTeamProjectSurface } from "./TeamProjectContext";
+import { teamVersionLabel } from "./teamVersionLabel";
 
 /**
  * Asking things of other people on the project, from Studio: a review of a range of versions, a
@@ -111,7 +112,6 @@ export function ReviewRequestForm() {
         });
     };
 
-    const name = (revision: Revision) => `${revision.id.slice(0, 8)} ${revision.message?.split("\n")[0]?.slice(0, 40) ?? ""}`;
     return (
         <div data-team-request="review" className="flex flex-col gap-1.5 px-2 py-1.5">
             <input className={field} value={draft.title} disabled={pending} placeholder={t("workspace.shell.team.requests.reviewTitle")} onChange={event => setDraft({ ...draft, title: event.target.value })} />
@@ -127,13 +127,13 @@ export function ReviewRequestForm() {
                     {t("workspace.shell.team.requests.from")}
                     <select className={field} value={draft.from} disabled={pending} onChange={event => setDraft({ ...draft, from: event.target.value })}>
                         <option value="">{t("workspace.shell.team.requests.fromStart")}</option>
-                        {revisions.map(revision => <option key={revision.id} value={revision.id}>{name(revision)}</option>)}
+                        {revisions.map((revision, index) => <option key={revision.id} value={revision.id}>{teamVersionLabel(revision.message, index, t)}</option>)}
                     </select>
                 </label>
                 <label className={`${label} flex-1`}>
                     {t("workspace.shell.team.requests.to")}
                     <select className={field} value={to} disabled={pending} onChange={event => setDraft({ ...draft, to: event.target.value })}>
-                        {revisions.map(revision => <option key={revision.id} value={revision.id}>{name(revision)}</option>)}
+                        {revisions.map((revision, index) => <option key={revision.id} value={revision.id}>{teamVersionLabel(revision.message, index, t)}</option>)}
                     </select>
                 </label>
             </div>

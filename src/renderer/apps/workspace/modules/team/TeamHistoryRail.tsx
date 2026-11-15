@@ -20,6 +20,7 @@ import { teamProjectDocTopic } from "@shared/types/team";
 import type { VcsServerRevision } from "@shared/types/vcs";
 import { useWorkspace } from "../../context";
 import { VERSION_RAIL_COLLAPSED_WIDTH, VERSION_RAIL_EXPANDED_WIDTH } from "../../components/layout/versionRailModel";
+import { teamVersionLabel } from "./teamVersionLabel";
 
 /** What a screen needs to know about a team project followed through its server. */
 export type TeamDocumentsSurface = {
@@ -56,14 +57,6 @@ export function useTeamDocuments(): TeamDocumentsSurface {
         return service.onChanged(read);
     }, [service]);
     return { ...state, service };
-}
-
-/** The machine-written trailer every snapshot carries; a hand-saved version has its name above it. */
-const SNAPSHOT_TRAILER = /(?:^|\n\n)Team snapshot at seq \d+\s*$/;
-
-function versionName(revision: VcsServerRevision): string | null {
-    const message = (revision.message ?? "").replace(SNAPSHOT_TRAILER, "").trim();
-    return message === "" ? null : message.split("\n")[0];
 }
 
 const PAGE = 50;
@@ -352,10 +345,7 @@ export function TeamHistoryRail({
                     <li className="px-3 py-4 text-xs text-fg-muted">{t("workspace.shell.team.docs.noVersions")}</li>
                 )}
                 {revisions.map((revision, index) => {
-                    const name = versionName(revision);
-                    const label = name === null
-                        ? t("documentDiff.name.numbered", { name: t("workspace.shell.team.docs.automatic"), index: String(index + 1) })
-                        : elideGeneratedIdentifiers(name);
+                    const label = teamVersionLabel(revision.message, index, t);
                     const rawAuthor = revisionAuthorLabel(revision.by, account);
                     const author = rawAuthor !== null && !containsGeneratedIdentifier(rawAuthor) ? rawAuthor : null;
                     const onScreen = previewing === revision.id;
