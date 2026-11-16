@@ -35,7 +35,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
-import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
+import type { DevModeAgentAction, DevModeAgentResult, DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -110,6 +110,9 @@ import type {
     TeamConnection,
     TeamEventMessage,
     TeamSubscribeOutcome,
+    TeamAttachment,
+    TeamBuild,
+    TeamUploadBuildRequest,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsDeviceSignInStart, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
@@ -842,6 +845,10 @@ export interface RendererPreloadedInterface {
         openStoryRowInWorkspace(payload: DevModeStoryRowOpenPayload): Promise<RequestStatus<void>>;
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
+        /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+        sendPlaytestFeedback(payload: DevModePlaytestFeedbackRequest): Promise<RequestStatus<void>>;
+        /** Workspace side of {@link sendPlaytestFeedback}. */
+        onPlaytestFeedback(handler: (payload: WorkspacePlaytestFeedback) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         /**
          * Produce the clip a weather seed describes, and grant this window a URL for it.
@@ -1356,6 +1363,15 @@ export interface RendererPreloadedInterface {
          * `path` is the `avatarUrl` the server put in a profile; the token stays in the main process.
          */
         avatar(remoteOrigin: string, path: string): Promise<RequestStatus<{ dataUrl: string | null }>>;
+        /**
+         * Put one artifact of this project's last build on its server. Names a path; the main
+         * process holds it to the artifacts the last build recorded and does the reading.
+         */
+        uploadBuild(request: TeamUploadBuildRequest): Promise<RequestStatus<{ build: TeamBuild }>>;
+        /** How far an upload this window started has got. */
+        onUploadProgress(handler: (payload: { artifact: string; sent: number; total: number }) => void): AppEventToken;
+        /** Put one picture (a `data:` URL) beside this project's comments on its server. */
+        uploadAttachment(remoteOrigin: string, projectId: string, dataUrl: string): Promise<RequestStatus<{ attachment: TeamAttachment; url: string }>>;
     };
 
     gameBuild: {

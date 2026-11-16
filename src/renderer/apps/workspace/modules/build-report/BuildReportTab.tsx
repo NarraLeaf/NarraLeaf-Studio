@@ -17,6 +17,7 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../context";
+import { TeamBuildUploadButton } from "../team/TeamBuildUploadButton";
 import { DashboardSection, StatTile } from "../dashboard/DashboardPrimitives";
 import { formatByteSize } from "../asset-overview/assetOverviewModel";
 import {
@@ -194,6 +195,7 @@ export function BuildReportTab() {
                                         <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
                                             {artifact.bytes === undefined ? t("build.size.unknown") : formatByteSize(artifact.bytes)}
                                         </span>
+                                        <TeamBuildUploadButton path={artifact.path} name={artifact.name} platforms={platforms} />
                                     </li>
                                 ))}
                             </ul>

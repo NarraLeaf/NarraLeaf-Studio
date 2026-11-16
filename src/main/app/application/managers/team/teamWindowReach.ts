@@ -65,7 +65,9 @@ export type TeamAsk =
     | { op: "call"; method: string }
     | { op: "subscribe" }
     | { op: "transfer" }
-    | { op: "avatar" };
+    | { op: "avatar" }
+    /** Putting a build or a picture on the project's server - bytes, like a transfer. */
+    | { op: "upload" };
 
 /**
  * The calls that only take back something this window said, and are answered even where the project
@@ -143,8 +145,8 @@ export function teamAllows(reach: TeamReach, ask: TeamAsk): boolean {
     switch (reach.kind) {
         case "account":
             // Everything but bytes: a transfer reads or writes a file of a project, and the launcher
-            // has no project for a file to be in.
-            return ask.op !== "transfer";
+            // has no project for a file to be in. An upload is the same.
+            return ask.op !== "transfer" && ask.op !== "upload";
         case "listing":
             return ask.op === "call" && LISTING_METHODS.has(ask.method);
         case "project":

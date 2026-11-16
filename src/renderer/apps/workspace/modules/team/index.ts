@@ -26,6 +26,8 @@ export { StoryCommentsTeamSyncMount } from "./StoryCommentsTeamSync";
 export { TeamNotificationsBell } from "./TeamNotificationsBell";
 export { TeamRoleNotice } from "./TeamRoleNotice";
 export { TeamAssetRequestPrompt } from "./TeamAssetRequestPrompt";
+export { TeamPlaytestFeedbackPrompt } from "./TeamPlaytestFeedbackPrompt";
+export { TeamBuildUploadButton } from "./TeamBuildUploadButton";
 export { TeamEditingNotice } from "./TeamEditingNotice";
 export { TeamAssetLockNotice } from "./TeamAssetLockNotice";
 export { LiveCursorBroadcaster, LiveSessionChat } from "./LiveCursorAndChat";

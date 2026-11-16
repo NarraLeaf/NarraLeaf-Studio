@@ -117,7 +117,13 @@ export type TeamCapability =
     /** Where each scene and asset stands - draft, waiting, approved or sent back. Team's record only. */
     | "approvals"
     /** An asset held by one person for a while; the server refuses edits to it from anybody else. */
-    | "locks";
+    | "locks"
+    /** Playable builds kept beside a project, uploaded over HTTP to `/api/team/v1/projects/{project}/builds`. */
+    | "builds"
+    /** Pictures put beside a comment, uploaded to `/api/team/v1/projects/{project}/attachments`. */
+    | "attachments"
+    /** Read-only links for somebody without an account. */
+    | "shares";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -245,6 +251,11 @@ export function teamProjectApprovalsTopic(projectId: string): string {
 /** Who holds which of one project's assets (the `locks` capability). */
 export function teamProjectLocksTopic(projectId: string): string {
     return `project:${projectId}/locks`;
+}
+
+/** One project's playable builds (the `builds` capability). */
+export function teamProjectBuildsTopic(projectId: string): string {
+    return `project:${projectId}/builds`;
 }
 
 /** One project's applied edits, saved versions and restores (the `documents` capability). */
@@ -635,6 +646,67 @@ export type TeamLocksEvent =
 /** How long `assets.lock` holds an asset when it is not told, in minutes. */
 export const TEAM_ASSET_LOCK_DEFAULT_MINUTES = 4 * 60;
 
+/** One playable build kept beside a project. The bytes are at `/api/team/v1/projects/{project}/builds/{id}`. */
+export interface TeamBuild {
+    id: string;
+    project: string;
+    name: string;
+    note?: string;
+    /** The revision it was built from, where the uploader said. */
+    revision?: string;
+    /** What it runs on, as the uploader put it: `windows`, `mac`, `web`... Never interpreted. */
+    platform?: string;
+    /** The file's own name, for the download. */
+    file: string;
+    size: number;
+    sha256: string;
+    uploadedBy?: string;
+    createdAt: number;
+    /** The one build of the project to play now. At most one is. */
+    latest: boolean;
+}
+
+export type TeamBuildsEvent =
+    | { kind: "build-set"; build: TeamBuild }
+    | { kind: "build-removed"; build: string };
+
+/** A picture kept beside a comment. Its bytes are at `/api/team/v1/projects/{project}/attachments/{id}`. */
+export interface TeamAttachment {
+    id: string;
+    project: string;
+    type: "png" | "jpg" | "webp";
+    size: number;
+    uploadedBy?: string;
+    createdAt: number;
+}
+
+/** A read-only link for somebody without an account. The token is shown once, at creation. */
+export interface TeamShareLink {
+    id: string;
+    project: string;
+    label: string;
+    /** `project`, or `story:{id}`. Never read by the server. */
+    scope: string;
+    revision: string;
+    paths?: string[];
+    allowComments: boolean;
+    expiresAt?: number;
+    revokedAt?: number;
+    createdBy?: string;
+    createdAt: number;
+    lastUsedAt?: number;
+    uses: number;
+}
+
+/** The largest build a server takes. */
+export const TEAM_BUILD_MAX_BYTES = 1024 * 1024 * 1024;
+/** The largest picture a server keeps beside a comment. */
+export const TEAM_ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+/** How a comment body points at a picture kept beside it. */
+export function teamAttachmentMarker(id: string): string {
+    return `[[attachment:${id}]]`;
+}
+
 export type TeamTodosEvent =
     | { kind: "todo-set"; todo: TeamTodo }
     | { kind: "todo-removed"; todo: string };
@@ -909,6 +981,13 @@ export const TeamMethod = {
     assetsLocks: "assets.locks",
     assetsLock: "assets.lock",
     assetsUnlock: "assets.unlock",
+    buildsList: "builds.list",
+    buildsUpdate: "builds.update",
+    buildsDelete: "builds.delete",
+    attachmentsDelete: "attachments.delete",
+    sharesList: "shares.list",
+    sharesCreate: "shares.create",
+    sharesRevoke: "shares.revoke",
     filtersList: "filters.list",
     filtersSave: "filters.save",
     filtersDelete: "filters.delete",
@@ -1080,4 +1159,18 @@ export interface TeamEventMessage {
     topic: string;
     seq: number;
     payload: unknown;
+}
+
+/** What a workspace asks of the main process to put one artifact of its last build on its server. */
+export interface TeamUploadBuildRequest {
+    readonly remoteOrigin: string;
+    readonly projectId: string;
+    /** Absolute path of one artifact of the project's last build. */
+    readonly artifact: string;
+    readonly name: string;
+    readonly note?: string;
+    /** Studio's platform name (`macos` and so on). */
+    readonly platform?: string;
+    readonly revision?: string;
+    readonly latest?: boolean;
 }

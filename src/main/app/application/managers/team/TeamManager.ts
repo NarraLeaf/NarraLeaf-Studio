@@ -35,6 +35,8 @@ import type { BaseApp } from "../../baseApp";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import type { VcsServerSession } from "@shared/types/vcs";
 import type {
+    TeamAttachment,
+    TeamBuild,
     TeamCallOutcome,
     TeamConnection,
     TeamSubscribeOutcome,
@@ -46,6 +48,14 @@ import { readSessionUses, sessionStanding, SESSION_USES_KEY } from "../vcs/serve
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
 import { fetchAvatar, isAvatarPath } from "./avatarRequest";
+import {
+    pictureOfDataUrl,
+    uploadAttachmentBytes,
+    uploadBuildFile,
+    type BuildUploadMeta,
+    type UploadOutcome,
+    type UploadTarget,
+} from "./uploadRequest";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
 import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
@@ -258,6 +268,45 @@ export class TeamManager {
             this.avatars.delete(oldest);
         }
         return reading;
+    }
+
+    /** Where to put bytes for one server, with the session's token, or null when not signed in there. */
+    private uploadTarget(remoteOrigin: string): UploadTarget | null {
+        const server = this.servers().find((each) => each.remoteOrigin === remoteOrigin);
+        const token = server === undefined ? null : this.tokenFor(remoteOrigin);
+        if (server === undefined || token === null) return null;
+        return { authUrl: server.authUrl, token, userDataDir: this.app.getUserDataDir() };
+    }
+
+    /**
+     * Stream one file to a project's builds on a server.
+     *
+     * ⚠ The path is not checked here: the handler has already held it to the artifacts the
+     * project's own last build recorded.
+     */
+    async uploadBuild(
+        remoteOrigin: string,
+        projectId: string,
+        filePath: string,
+        meta: BuildUploadMeta,
+        onProgress?: (sent: number, total: number) => void,
+    ): Promise<UploadOutcome<TeamBuild>> {
+        const target = this.uploadTarget(remoteOrigin);
+        if (target === null) return { ok: false, status: 401, message: "not signed in to that server" };
+        return await uploadBuildFile(target, projectId, filePath, meta, onProgress);
+    }
+
+    /** Put one picture, given as a `data:` URL, beside a project's comments on a server. */
+    async uploadAttachment(
+        remoteOrigin: string,
+        projectId: string,
+        dataUrl: string,
+    ): Promise<UploadOutcome<{ attachment: TeamAttachment; url: string }>> {
+        const target = this.uploadTarget(remoteOrigin);
+        if (target === null) return { ok: false, status: 401, message: "not signed in to that server" };
+        const bytes = pictureOfDataUrl(dataUrl);
+        if (bytes === null) return { ok: false, status: 0, message: "that is not a PNG, JPEG or WebP picture small enough to keep" };
+        return await uploadAttachmentBytes(target, projectId, bytes);
     }
 
     /* ------------------------------------------------------------------ who may ask */

@@ -22,7 +22,7 @@ import type {
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload, DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "@shared/types/devMode";
 import type { DevModeAgentAction, DevModeAgentResult } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
@@ -65,6 +65,9 @@ import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
 import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type {
+    TeamAttachment,
+    TeamBuild,
+    TeamUploadBuildRequest,
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
@@ -616,6 +619,12 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
+        /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+        sendPlaytestFeedback: (payload: DevModePlaytestFeedbackRequest) =>
+            ipcClient.invoke(IPCEventType.devModePlaytestFeedback, payload) as Promise<RequestStatus<void>>,
+        /** A playtest note's picture arrived from Dev Mode. Workspace side. */
+        onPlaytestFeedback: (handler: (payload: WorkspacePlaytestFeedback) => void) =>
+            ipcClient.onMessage(IPCEventType.workspacePlaytestFeedback, handler),
         resolveWeatherClip: (spec: WeatherBakeSpec, attempt: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec, attempt }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
@@ -916,6 +925,18 @@ export const IPCInterface: RendererPreloadedInterface = {
         /** An account's avatar, as a `data:` URL, or null. `path` is the profile's `avatarUrl`. */
         avatar: (remoteOrigin: string, path: string) =>
             ipcClient.invoke(IPCEventType.teamAvatar, { remoteOrigin, path }) as Promise<RequestStatus<{ dataUrl: string | null }>>,
+        /**
+         * Put one artifact of this project's last build on its server. Names a path; the main
+         * process holds it to the artifacts the last build recorded and does the reading.
+         */
+        uploadBuild: (request: TeamUploadBuildRequest) =>
+            ipcClient.invoke(IPCEventType.teamUploadBuild, request) as Promise<RequestStatus<{ build: TeamBuild }>>,
+        /** How far an upload this window started has got. */
+        onUploadProgress: (handler: (payload: { artifact: string; sent: number; total: number }) => void) =>
+            ipcClient.onMessage(IPCEventType.teamUploadProgress, handler),
+        /** Put one picture (a `data:` URL) beside this project's comments on its server. */
+        uploadAttachment: (remoteOrigin: string, projectId: string, dataUrl: string) =>
+            ipcClient.invoke(IPCEventType.teamUploadAttachment, { remoteOrigin, projectId, dataUrl }) as Promise<RequestStatus<{ attachment: TeamAttachment; url: string }>>,
     },
 
     gameBuild: {

@@ -293,3 +293,85 @@ export class TeamAvatarHandler extends IPCHandler<IPCEventType.teamAvatar> {
         });
     }
 }
+
+/**
+ * Whether a path is one of the files the project's own last build recorded as an artifact.
+ *
+ * ⚠ **The only paths a window may have read off its disk and sent.** The record is written by the
+ * build pipeline, never by a window, so a path that matches one of its artifacts - resolved on both
+ * sides, and a regular file now - is a build of this project and nothing else. A folder (an unpacked
+ * app) is not sent: a server keeps one file per build.
+ */
+export async function isLastBuildArtifact(
+    artifacts: readonly string[] | undefined,
+    file: string,
+): Promise<boolean> {
+    if (artifacts === undefined || artifacts.length === 0) return false;
+    const wanted = path.resolve(file);
+    if (!artifacts.some((each) => path.resolve(each) === wanted)) return false;
+    try {
+        return (await fs.stat(wanted)).isFile();
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Put one artifact of the project's last build on its server, as a playable build.
+ *
+ * Reached like a transfer - a workspace for a project that uses the sign-in at that server - and the
+ * path is held to {@link isLastBuildArtifact} before a byte is read. How far it has got goes back to
+ * the window that asked, a few times a second.
+ */
+export class TeamUploadBuildHandler extends IPCHandler<IPCEventType.teamUploadBuild> {
+    readonly name = IPCEventType.teamUploadBuild;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.teamUploadBuild]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.teamUploadBuild]["response"]>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, data.remoteOrigin, { op: "upload" });
+            const projectPath = (window.getProps() as { projectPath?: string } | undefined)?.projectPath;
+            if (projectPath === undefined || projectPath === "") throw new Error("This window has no project.");
+            const run = await window.app.getGameBuildManager().readLastRun(projectPath);
+            if (!(await isLastBuildArtifact(run?.state.artifacts, data.artifact))) {
+                throw new Error("Only a file the project's last build produced can be uploaded.");
+            }
+            const outcome = await window.app.getTeamManager().uploadBuild(
+                data.remoteOrigin,
+                data.projectId,
+                data.artifact,
+                {
+                    name: data.name,
+                    ...(data.note === undefined ? {} : { note: data.note }),
+                    ...(data.platform === undefined ? {} : { platform: data.platform }),
+                    ...(data.revision === undefined ? {} : { revision: data.revision }),
+                    ...(data.latest === undefined ? {} : { latest: data.latest }),
+                },
+                (sent, total) => window.sendIpcEvent(IPCEventType.teamUploadProgress, { artifact: data.artifact, sent, total }),
+            );
+            if (!outcome.ok) throw new Error(outcome.message);
+            return { build: outcome.value };
+        });
+    }
+}
+
+/** Put one picture beside the project's comments. Reached like a transfer; the picture is checked by its type and size. */
+export class TeamUploadAttachmentHandler extends IPCHandler<IPCEventType.teamUploadAttachment> {
+    readonly name = IPCEventType.teamUploadAttachment;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.teamUploadAttachment]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.teamUploadAttachment]["response"]>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, data.remoteOrigin, { op: "upload" });
+            const outcome = await window.app.getTeamManager().uploadAttachment(data.remoteOrigin, data.projectId, data.dataUrl);
+            if (!outcome.ok) throw new Error(outcome.message);
+            return outcome.value;
+        });
+    }
+}

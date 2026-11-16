@@ -18,6 +18,7 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
+import type { DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type {
@@ -142,10 +143,13 @@ import type {
     VcsWorkingTreeDiffResult,
 } from "./vcs";
 import type {
+    TeamAttachment,
+    TeamBuild,
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
     TeamSubscribeOutcome,
+    TeamUploadBuildRequest,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
@@ -326,6 +330,8 @@ export enum IPCEventType {
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     workspaceStoryRowHighlight = "workspace.storyRow.highlight",
     workspaceStoryRowOpen = "workspace.storyRow.open",
+    /** A picture of a playtest moment, from Dev Mode, for the author to send to the team as a note. */
+    workspacePlaytestFeedback = "workspace.playtestFeedback",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -342,6 +348,8 @@ export enum IPCEventType {
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
     devModeOpenStoryRowInWorkspace = "devMode.storyRow.openInWorkspace",
+    /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+    devModePlaytestFeedback = "devMode.playtestFeedback",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -577,6 +585,17 @@ export enum IPCEventType {
      * against the one shape avatars are served under before anything is fetched.
      */
     teamAvatar = "team.avatar",
+    /**
+     * Put one artifact of the project's last build on its Team server, as a playable build.
+     *
+     * Names an artifact; never carries a byte. The path has to be one the project's own last build
+     * recorded - a window cannot have any other file read off its disk and sent.
+     */
+    teamUploadBuild = "team.uploadBuild",
+    /** How far an upload has got. Sent to the window that started it. */
+    teamUploadProgress = "team.uploadProgress",
+    /** Put one picture beside the project's comments on its Team server. Carries the picture as a `data:` URL. */
+    teamUploadAttachment = "team.uploadAttachment",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -2042,6 +2061,24 @@ export type IPCTeamEvents = {
         data: { remoteOrigin: string; path: string },
         response: { dataUrl: string | null };
     };
+    [IPCEventType.teamUploadBuild]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamUploadBuildRequest,
+        response: { build: TeamBuild };
+    };
+    [IPCEventType.teamUploadProgress]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { artifact: string; sent: number; total: number },
+        response: never;
+    };
+    [IPCEventType.teamUploadAttachment]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; dataUrl: string },
+        response: { attachment: TeamAttachment; url: string };
+    };
 };
 
 export type IPCFsEvents = {
@@ -3149,6 +3186,12 @@ export type IPCWorkspaceEvents = {
         data: DevModeStoryRowOpenRequest;
         response: never;
     };
+    [IPCEventType.workspacePlaytestFeedback]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: WorkspacePlaytestFeedback;
+        response: never;
+    };
 };
 
 export type IPCDevModeEvents = {
@@ -3552,6 +3595,12 @@ export type IPCDevModeEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: DevModeStoryRowOpenPayload;
+        response: void;
+    };
+    [IPCEventType.devModePlaytestFeedback]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: DevModePlaytestFeedbackRequest;
         response: void;
     };
     [IPCEventType.devModeSaveWrite]: {

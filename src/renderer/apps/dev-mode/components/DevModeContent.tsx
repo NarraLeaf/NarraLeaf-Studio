@@ -11,7 +11,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { AGENT_HOLD_SHIELD_ATTRIBUTE, prepareWindowCapture } from "../agentHoldShield";
 import { useDevModeReadOnly } from "../devModeReadOnly";
-import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
+import { Bug, Camera, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
@@ -137,6 +137,7 @@ const FAST_FORWARD_BINDING = "mod+arrowright";
  * Reaching it through a menu every time is the part that makes the loop expensive.
  */
 const LOCATE_STORY_ROW_BINDING = "mod+shift+l";
+const PLAYTEST_FEEDBACK_BINDING = "mod+shift+f";
 
 /** The debug button's menu rows, for the keyboard walk its floating layer gives it. */
 const DEVTOOLS_MENU_ITEM_SELECTOR = '[role="menuitem"]';
@@ -251,6 +252,7 @@ function DevModeDebugOverlay(props: {
     const [playHeadRow, setPlayHeadRow] = useState<StoryRowLocation | null>(null);
     /** Set when the workspace could not be pointed at the row; cleared whenever the menu opens. */
     const [locateFailed, setLocateFailed] = useState(false);
+    const [feedbackFailed, setFeedbackFailed] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -379,6 +381,28 @@ function DevModeDebugOverlay(props: {
         setDevtoolsMenuOpen(false);
     }, [projectPath, readPlayHeadRow]);
 
+    /**
+     * Take a picture of the game and hand it to the project's workspace as a playtest note.
+     *
+     * This window has no Team reach of its own, so it only takes the picture: the workspace asks for
+     * the note, puts the picture on the server and opens the thread, anchored at the line playing now
+     * when there is one. The menu is closed first, and a frame let go by, so the picture is of the
+     * game rather than of the menu over it.
+     */
+    const handlePlaytestFeedback = useCallback(async () => {
+        if (!projectPath) {
+            return;
+        }
+        setDevtoolsMenuOpen(false);
+        setFeedbackFailed(false);
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const result = await getInterface().devMode.sendPlaytestFeedback({ projectPath, row: readPlayHeadRow() });
+        if (!result.success) {
+            setFeedbackFailed(true);
+            setDevtoolsMenuOpen(true);
+        }
+    }, [projectPath, readPlayHeadRow]);
+
     const handleFastForward = useCallback(async () => {
         setDevtoolsMenuOpen(false);
         if (fastForwarding) {
@@ -414,10 +438,15 @@ function DevModeDebugOverlay(props: {
                 e.preventDefault();
                 void handleLocateStoryRow();
             }
+            // Ctrl/Cmd + Shift + F : a playtest note - a picture of the game, sent to the workspace.
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+                e.preventDefault();
+                void handlePlaytestFeedback();
+            }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleFastForward, handleLocateStoryRow, setFabHidden]);
+    }, [handleFastForward, handleLocateStoryRow, handlePlaytestFeedback, setFabHidden]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -603,6 +632,7 @@ function DevModeDebugOverlay(props: {
             fastForward: formatKeybinding(FAST_FORWARD_BINDING, mac),
             hideFab: formatKeybinding(DEBUG_FAB_TOGGLE_BINDING, mac),
             locateRow: formatKeybinding(LOCATE_STORY_ROW_BINDING, mac),
+            feedback: formatKeybinding(PLAYTEST_FEEDBACK_BINDING, mac),
         };
     }, []);
 
@@ -763,6 +793,33 @@ function DevModeDebugOverlay(props: {
                                     <span className="shrink-0 text-2xs text-fg-subtle">{shortcuts.locateRow}</span>
                                 </button>
                                 {locateFailed ? (
+                                    <p className="px-3 pb-1.5 text-2xs text-fg-subtle">
+                                        {t("devMode.openInStudioFailed")}
+                                    </p>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    disabled={projectPath === null}
+                                    className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                                        projectPath !== null
+                                            ? "text-fg-muted hover:bg-fill hover:text-fg"
+                                            : "text-fg-subtle"
+                                    }`}
+                                    onClick={() => { void handlePlaytestFeedback(); }}
+                                >
+                                    <span
+                                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                        aria-hidden
+                                    >
+                                        <Camera className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">
+                                        {t("devMode.devtools.playtestFeedback")}
+                                    </span>
+                                    <span className="shrink-0 text-2xs text-fg-subtle">{shortcuts.feedback}</span>
+                                </button>
+                                {feedbackFailed ? (
                                     <p className="px-3 pb-1.5 text-2xs text-fg-subtle">
                                         {t("devMode.openInStudioFailed")}
                                     </p>

@@ -98,6 +98,7 @@ describe("what each may do", () => {
         expect(teamAllows(ACCOUNT, call(TeamMethod.threadsCreate))).toBe(true);
         expect(teamAllows(ACCOUNT, call(TeamMethod.projectsForget))).toBe(true);
         expect(teamAllows(ACCOUNT, { op: "transfer" })).toBe(false);
+        expect(teamAllows(ACCOUNT, { op: "upload" })).toBe(false);
     });
 
     it("lets Settings and the wizard list what a server holds, and nothing else", () => {
@@ -108,12 +109,14 @@ describe("what each may do", () => {
         expect(teamAllows(LISTING, { op: "subscribe" })).toBe(false);
         expect(teamAllows(LISTING, { op: "connections" })).toBe(false);
         expect(teamAllows(LISTING, { op: "transfer" })).toBe(false);
+        expect(teamAllows(LISTING, { op: "upload" })).toBe(false);
     });
 
     it("lets a project that uses the sign-in do what its workspace does, but not list every server", () => {
         expect(teamAllows(PROJECT, { op: "open" })).toBe(true);
         expect(teamAllows(PROJECT, { op: "subscribe" })).toBe(true);
         expect(teamAllows(PROJECT, { op: "transfer" })).toBe(true);
+        expect(teamAllows(PROJECT, { op: "upload" })).toBe(true);
         expect(teamAllows(PROJECT, call(TeamMethod.liveOpen))).toBe(true);
         expect(teamAllows(PROJECT, { op: "connections" })).toBe(false);
     });
@@ -130,6 +133,7 @@ describe("what each may do", () => {
             { op: "connections" },
             { op: "subscribe" },
             { op: "transfer" },
+            { op: "upload" },
             call(TeamMethod.projectsList),
             call(TeamMethod.clientsAnnounce),
         ] satisfies TeamAsk[]) {

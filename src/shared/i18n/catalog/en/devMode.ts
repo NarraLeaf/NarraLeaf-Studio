@@ -80,6 +80,8 @@ export const devMode = {
         // The line the game is on right now, opened in the story editor. Named for the row
         // rather than for the window, because what the author is after is the line.
         locateRow: "Open this line in Studio",
+        // A picture of the game sent to the workspace, which asks for a note and opens a Team thread.
+        playtestFeedback: "Send a playtest note",
         skipToNextChoice: "Skip to next choice",
         skipToNextChoiceBusy: "Skipping…",
         // Takes the debug button off the game for this window. The item shows its own chord, which

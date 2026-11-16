@@ -44,6 +44,8 @@ import {
 import { VcsUseServerSessionHandler } from "./handlers/vcsServerSessionAction";
 import {
     TeamAvatarHandler,
+    TeamUploadAttachmentHandler,
+    TeamUploadBuildHandler,
     TeamCallHandler,
     TeamConnectionsHandler,
     TeamOpenHandler,
@@ -105,6 +107,7 @@ import {
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
     DevModeOpenStoryRowInWorkspaceHandler,
+    DevModePlaytestFeedbackHandler,
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -384,6 +387,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),
         new DevModeOpenStoryRowInWorkspaceHandler(),
+        new DevModePlaytestFeedbackHandler(),
         new DevModeResolveAssetUrlHandler(),
         new DevModeResolveAllAssetUrlsHandler(),
         new DevModeResolveImageAssetUrlHandler(),
@@ -565,6 +569,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new TeamTransferHandler(),
         // An account's face, read with the session's token. See TeamAvatarHandler.
         new TeamAvatarHandler(),
+        // A build of this project, or a picture beside its comments, put on its server.
+        new TeamUploadBuildHandler(),
+        new TeamUploadAttachmentHandler(),
     new VcsSignInWithPasswordHandler(),
     new VcsSignInWithBrowserHandler(),
     new VcsCompleteBrowserSignInHandler(),

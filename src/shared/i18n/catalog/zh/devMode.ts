@@ -52,6 +52,8 @@ export const devMode = {
         closeMenu: "关闭预览调试工具菜单",
         panelsAria: "界面面板",
         locateRow: "在 Studio 中打开此行",
+        // A picture of the game sent to the workspace, which asks for a note and opens a Team thread.
+        playtestFeedback: "发送试玩反馈",
         skipToNextChoice: "跳到下一个选项",
         skipToNextChoiceBusy: "跳转中…",
         hide: "隐藏此按钮",
