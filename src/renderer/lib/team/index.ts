@@ -11,6 +11,7 @@
  */
 export {
     announceClient,
+    applyTemplate,
     closeLiveSession,
     createThread,
     deleteComment,
@@ -30,6 +31,7 @@ export {
     listProjectHistory,
     listProjects,
     listReactions,
+    listTemplates,
     listThreads,
     listWatches,
     openLiveSession,

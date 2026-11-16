@@ -26,11 +26,13 @@ import {
     type TeamLiveSession,
     type TeamOverlayRecord,
     type TeamProblem,
+    type TeamProjectTemplate,
     type TeamReaction,
     type TeamReactionEmoji,
     type TeamThread,
     type TeamThreadKind,
     type TeamThreadStatus,
+    type TeamTemplateApplied,
     type TeamWatch,
     TEAM_REACTIONS,
 } from "@shared/types/team";
@@ -1096,4 +1098,60 @@ export async function toggleReaction(
     const from = record(answered.value);
     const reaction = from === null ? null : readReaction(from["reaction"]);
     return reaction === null ? unreadable() : { ok: true, value: reaction };
+}
+
+/* ---------------------------------------------------------------- templates */
+
+function readTemplate(value: unknown): TeamProjectTemplate | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    const name = text(from, "name");
+    const createdAt = count(from, "createdAt");
+    const updatedAt = count(from, "updatedAt");
+    const body = record(from["body"]);
+    if (id === undefined || name === undefined || createdAt === undefined || updatedAt === undefined || body === null) return null;
+    const description = text(from, "description");
+    const createdBy = text(from, "createdBy");
+    return {
+        id,
+        name,
+        body: body as TeamProjectTemplate["body"],
+        createdAt,
+        updatedAt,
+        ...(description === undefined || description === "" ? {} : { description }),
+        ...(createdBy === undefined ? {} : { createdBy }),
+    };
+}
+
+/** The project templates on a server. */
+export async function listTemplates(remoteOrigin: string): Promise<TeamOutcome<TeamProjectTemplate[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.templatesList, {});
+    if (!answered.ok) return answered;
+    const templates = readList(answered.value, "templates", readTemplate);
+    return templates === null ? unreadable() : { ok: true, value: templates };
+}
+
+/** Put a template's members, milestones and to-dos into a project. The project's owners only. */
+export async function applyTemplate(
+    remoteOrigin: string,
+    input: { project: string; template: string },
+): Promise<TeamOutcome<TeamTemplateApplied>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.templatesApply, input);
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const members = from?.["members"];
+    const skipped = from?.["skipped"];
+    const milestones = from === null ? undefined : count(from, "milestones");
+    const todos = from === null ? undefined : count(from, "todos");
+    if (!Array.isArray(members) || !Array.isArray(skipped) || milestones === undefined || todos === undefined) return unreadable();
+    return {
+        ok: true,
+        value: {
+            members: members.filter((name): name is string => typeof name === "string"),
+            skipped: skipped.filter((name): name is string => typeof name === "string"),
+            milestones,
+            todos,
+        },
+    };
 }

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useTranslation } from "@/lib/i18n";
-import { teamCall, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { applyTemplate, listTemplates, teamCall, useTeamCapability, useTeamConnection } from "@/lib/team";
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
-import { TeamMethod } from "@shared/types/team";
+import { TeamMethod, type TeamProjectTemplate } from "@shared/types/team";
 
 import { useWorkspace } from "../../context";
 import { useTeamProjectSurface } from "./TeamProjectContext";
@@ -175,15 +175,75 @@ export function LanguageAssignmentForm() {
     );
 }
 
-/** The two forms, each behind a row of the Team panel. Nothing while the project is not on a server that has them. */
+/**
+ * Put a project template's members, planned milestones and to-dos into this project - what a
+ * project that has just been sent to the server starts with. The project's owner only; nothing in
+ * the project's files changes.
+ */
+export function TemplateApplyForm() {
+    const { t } = useTranslation();
+    const { connection, projectId, remoteOrigin } = useProject();
+    const ready = connection.state === "ready";
+    const [templates, setTemplates] = useState<TeamProjectTemplate[] | null>(null);
+    const [chosen, setChosen] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [said, setSaid] = useState<string | null>(null);
+    useEffect(() => {
+        if (remoteOrigin === null || !ready) return;
+        void listTemplates(remoteOrigin).then(answer => setTemplates(answer.ok ? answer.value : []));
+    }, [remoteOrigin, ready]);
+    const template = templates?.find(entry => entry.id === (chosen || templates[0]?.id));
+
+    if (templates !== null && templates.length === 0) {
+        return <p className="px-2 py-1.5 text-2xs text-fg-subtle">{t("workspace.shell.team.requests.noTemplates")}</p>;
+    }
+    const apply = async () => {
+        if (remoteOrigin === null || projectId === null || template === undefined) return;
+        setBusy(true);
+        const answer = await applyTemplate(remoteOrigin, { project: projectId, template: template.id });
+        setBusy(false);
+        setSaid(answer.ok
+            ? t("workspace.shell.team.requests.templateApplied", {
+                members: String(answer.value.members.length),
+                milestones: String(answer.value.milestones),
+                todos: String(answer.value.todos),
+            })
+            : t("workspace.shell.team.requests.failed"));
+    };
+    const body = template?.body;
+    return (
+        <div data-team-request="template" className="flex flex-col gap-1.5 px-2 py-1.5">
+            <select className={field} value={template?.id ?? ""} disabled={templates === null} onChange={event => setChosen(event.target.value)}>
+                {(templates ?? []).map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+            </select>
+            {template !== undefined && (
+                <p className="text-2xs text-fg-subtle">
+                    {template.description ? `${template.description} · ` : ""}
+                    {t("workspace.shell.team.requests.templateHolds", {
+                        members: String(body?.members?.length ?? 0),
+                        milestones: String(body?.milestones?.length ?? 0),
+                        todos: String(body?.todos?.length ?? 0),
+                    })}
+                </p>
+            )}
+            <button type="button" disabled={template === undefined || busy} onClick={() => void apply()} className="self-end rounded-md bg-primary px-2 py-1 text-2xs text-on-primary disabled:opacity-50">
+                {t("workspace.shell.team.requests.applyTemplate")}
+            </button>
+            <Sent text={said} />
+        </div>
+    );
+}
+
+/** The forms, each behind a row of the Team panel. Nothing while the project is not on a server that has them. */
 export function TeamRequestsSection() {
     const { t } = useTranslation();
     const { connection, projectId, role } = useProject();
     const reviews = useTeamCapability(connection, "reviews");
     const todos = useTeamCapability(connection, "todos");
-    const [open, setOpen] = useState<"review" | "language" | null>(null);
-    if (projectId === null || role === "viewer" || (!reviews && !todos)) return null;
-    const row = (key: "review" | "language", text: string) => (
+    const templates = useTeamCapability(connection, "templates") && role === "owner";
+    const [open, setOpen] = useState<"review" | "language" | "template" | null>(null);
+    if (projectId === null || role === "viewer" || (!reviews && !todos && !templates)) return null;
+    const row = (key: "review" | "language" | "template", text: string) => (
         <button
             type="button"
             aria-expanded={open === key}
@@ -200,6 +260,8 @@ export function TeamRequestsSection() {
             {open === "review" && <ReviewRequestForm />}
             {todos && row("language", t("workspace.shell.team.requests.assignLanguage"))}
             {open === "language" && <LanguageAssignmentForm />}
+            {templates && row("template", t("workspace.shell.team.requests.useTemplate"))}
+            {open === "template" && <TemplateApplyForm />}
         </div>
     );
 }

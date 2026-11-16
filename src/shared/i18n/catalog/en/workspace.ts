@@ -961,6 +961,11 @@ export const workspace = {
             sendAsset: "Send",
             sent: "Sent; follow it on the board in the web console",
             failed: "Not sent; check the connection or your role",
+            useTemplate: "Apply a project template",
+            noTemplates: "There are no templates on this server yet. Save a project as one under Progress → Templates in the web console.",
+            templateHolds: "{members} members · {milestones} milestones · {todos} to-dos",
+            applyTemplate: "Apply",
+            templateApplied: "Applied: {members} members, {milestones} milestones and {todos} to-dos added",
         },
         buildUpload: {
             upload: "Upload to Team",

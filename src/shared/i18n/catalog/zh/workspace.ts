@@ -871,6 +871,11 @@ export const workspace = {
             sendAsset: "发出",
             sent: "已发出，可以在网页的看板上跟进",
             failed: "没有发出去，请检查连接或权限",
+            useTemplate: "套用项目模板",
+            noTemplates: "服务器上还没有模板。可以在网页控制台「进度 → 模板」里把一个项目存成模板。",
+            templateHolds: "{members} 位成员 · {milestones} 个里程碑 · {todos} 个待办",
+            applyTemplate: "套用",
+            templateApplied: "已套用：加入 {members} 位成员、{milestones} 个里程碑、{todos} 个待办",
         },
         buildUpload: {
             upload: "上传到 Team",

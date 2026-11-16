@@ -885,6 +885,11 @@ export const workspace = {
             sendAsset: "送信",
             sent: "送信しました。Web コンソールのボードで確認できます",
             failed: "送信できませんでした。接続か権限を確認してください",
+            useTemplate: "プロジェクトテンプレートを適用",
+            noTemplates: "このサーバーにはまだテンプレートがありません。Web コンソールの「進捗 → テンプレート」でプロジェクトをテンプレートとして保存できます。",
+            templateHolds: "メンバー {members} 人 · マイルストーン {milestones} 件 · ToDo {todos} 件",
+            applyTemplate: "適用",
+            templateApplied: "適用しました：メンバー {members} 人、マイルストーン {milestones} 件、ToDo {todos} 件を追加",
         },
         buildUpload: {
             upload: "Teamにアップロード",

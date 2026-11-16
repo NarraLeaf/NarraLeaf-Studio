@@ -113,6 +113,9 @@ const CAPABILITIES: TeamCapability[] = [
     "push",
     "watches",
     "reactions",
+    "glossary",
+    "voice",
+    "templates",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",

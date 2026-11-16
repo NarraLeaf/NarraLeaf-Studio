@@ -131,7 +131,13 @@ export type TeamCapability =
     /** Following a project or one scene, to be told when it changes. */
     | "watches"
     /** An emoji on a comment or a chat message. */
-    | "reactions";
+    | "reactions"
+    /** A project's glossary: terms and how each language says them, kept by Team for translators. */
+    | "glossary"
+    /** Which voiced lines are recorded, and which need another take, per language. Team state only. */
+    | "voice"
+    /** Project templates: members, milestones and to-dos to start a project with, or to add to one. */
+    | "templates";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -484,6 +490,54 @@ export interface TeamReaction {
     by: string[];
 }
 
+/** One term of a project's glossary and how each language says it. */
+export interface TeamGlossaryEntry {
+    id: string;
+    project: string;
+    term: string;
+    /** Locale tag → how that language says it. */
+    translations: Record<string, string>;
+    note?: string;
+    createdAt: number;
+    updatedAt: number;
+    updatedBy?: string;
+}
+
+/** Where one voiced line (by textId) stands in one language. A line with no record is not recorded. */
+export interface TeamVoiceLine {
+    project: string;
+    locale: string;
+    line: string;
+    status: "recorded" | "retake";
+    take?: number;
+    note?: string;
+    updatedAt: number;
+    updatedBy?: string;
+}
+
+/** A project template: members, planned milestones and to-dos it puts into a project. */
+export interface TeamProjectTemplate {
+    id: string;
+    name: string;
+    description?: string;
+    body: {
+        members?: { username: string; template: string }[];
+        milestones?: { name: string; note?: string; dueInDays?: number }[];
+        todos?: { title: string; body?: string; kind?: string; locale?: string; labels?: string[]; milestone?: string; dueInDays?: number }[];
+    };
+    createdBy?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+/** What `templates.apply` put into a project. */
+export interface TeamTemplateApplied {
+    members: string[];
+    milestones: number;
+    todos: number;
+    skipped: string[];
+}
+
 /** Following a project (no scope) or one scene of it (`scene:{id}`), as `watches.list` answers. */
 export interface TeamWatch {
     project: string;
@@ -643,6 +697,8 @@ export interface TeamTodo {
     doneAt?: number;
     /** The revision that finished it, where it was ticked off in a commit. */
     doneRevision?: string;
+    /** The milestone of the same project it counts toward, by id. */
+    milestone?: string;
 }
 
 /** Where one scene or asset stands. `target` is `scene:{id}` or `asset:{id}`. */
@@ -1042,6 +1098,15 @@ export const TeamMethod = {
     watchesSet: "watches.set",
     reactionsList: "reactions.list",
     reactionsToggle: "reactions.toggle",
+    glossaryList: "glossary.list",
+    glossarySet: "glossary.set",
+    glossaryDelete: "glossary.delete",
+    voiceList: "voice.list",
+    voiceSet: "voice.set",
+    templatesList: "templates.list",
+    templatesSave: "templates.save",
+    templatesDelete: "templates.delete",
+    templatesApply: "templates.apply",
     membersList: "members.list",
     threadsList: "threads.list",
     threadsGet: "threads.get",
