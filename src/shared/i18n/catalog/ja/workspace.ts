@@ -937,6 +937,7 @@ export const workspace = {
             "review-answered": "{who} がレビュー依頼に回答しました",
             "access-requested": "{who} が権限を申請しました",
             "access-decided": "{who} があなたの権限申請に回答しました",
+            watch: "{who} があなたのウォッチ中の内容を更新しました",
         },
         liveConnecting: "そのサーバーに接続中",
         liveUnsupported: "そのサーバーはライブセッションに対応していない",

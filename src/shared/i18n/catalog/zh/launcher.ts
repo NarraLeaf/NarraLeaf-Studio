@@ -206,6 +206,10 @@ export const launcher = {
             resolved: "已解决",
             failed: "备注未发送。",
             unavailable: "无法读取该项目的讨论。",
+            watch: "关注",
+            watching: "已关注",
+            watchHint: "项目有改动时通知我",
+            react: "添加表情回应",
         },
         forget: {
             action: "从这台服务器移除",

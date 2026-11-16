@@ -234,6 +234,10 @@ export const launcher = {
             // The list could not be read at all. Never the empty state, which says nobody
             // has written anything.
             unavailable: "This project's discussion is not available.",
+            watch: "Watch",
+            watching: "Watching",
+            watchHint: "Be told when this project changes",
+            react: "Add a reaction",
         },
         forget: {
             action: "Remove from this server",

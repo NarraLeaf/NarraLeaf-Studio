@@ -1013,6 +1013,7 @@ export const workspace = {
             "review-answered": "{who} answered your review request",
             "access-requested": "{who} asked for access",
             "access-decided": "{who} answered your access request",
+            watch: "{who} changed something you watch",
         },
         liveConnecting: "Connecting to that server.",
         liveUnsupported: "That server does not offer live sessions.",

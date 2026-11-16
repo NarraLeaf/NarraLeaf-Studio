@@ -208,6 +208,10 @@ export const launcher = {
             resolved: "解決済み",
             failed: "メモを送信できませんでした。",
             unavailable: "このプロジェクトのディスカッションを読み取れません。",
+            watch: "ウォッチ",
+            watching: "ウォッチ中",
+            watchHint: "このプロジェクトが変わったら通知する",
+            react: "リアクションを追加",
         },
         forget: {
             action: "このサーバーから取り除く",

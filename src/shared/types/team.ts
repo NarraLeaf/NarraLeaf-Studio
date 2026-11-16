@@ -123,7 +123,15 @@ export type TeamCapability =
     /** Pictures put beside a comment, uploaded to `/api/team/v1/projects/{project}/attachments`. */
     | "attachments"
     /** Read-only links for somebody without an account. */
-    | "shares";
+    | "shares"
+    /** A daily or weekly letter of what is unread, and a person's own Feishu or Slack address. */
+    | "digests"
+    /** Browser push notifications (Web Push) for the web console. */
+    | "push"
+    /** Following a project or one scene, to be told when it changes. */
+    | "watches"
+    /** An emoji on a comment or a chat message. */
+    | "reactions";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -149,6 +157,10 @@ export interface TeamAccountProfile {
     /** A line the account wrote about itself. Absent where it wrote none. */
     bio?: string;
     avatarUrl?: string;
+    /** An IANA time zone the account chose, for showing its local time. Absent where unset. */
+    timezone?: string;
+    /** Whether it has a session open now. Absent on servers that do not say. */
+    online?: boolean;
 }
 
 /** What a server says before anything is asked of it. */
@@ -458,7 +470,26 @@ export type TeamThreadEvent =
     | { kind: "thread-created"; thread: TeamThread }
     | { kind: "thread-updated"; thread: TeamThread }
     | { kind: "comment-created"; thread: string; comment: TeamComment }
-    | { kind: "comment-updated"; thread: string; comment: TeamComment };
+    | { kind: "comment-updated"; thread: string; comment: TeamComment }
+    | { kind: "reaction"; reaction: TeamReaction };
+
+/** The eight emoji a server keeps as reactions, in the order it lists them. */
+export const TEAM_REACTIONS = ["👍", "👎", "😄", "🎉", "😕", "❤️", "🚀", "👀"] as const;
+export type TeamReactionEmoji = (typeof TEAM_REACTIONS)[number];
+
+/** One emoji on one comment or chat message, and who gave it. `by` is empty once nobody has. */
+export interface TeamReaction {
+    target: string;
+    emoji: TeamReactionEmoji;
+    by: string[];
+}
+
+/** Following a project (no scope) or one scene of it (`scene:{id}`), as `watches.list` answers. */
+export interface TeamWatch {
+    project: string;
+    scope?: string;
+    createdAt: number;
+}
 
 /**
  * What arrives on the projects topic. Each goes only to the accounts it concerns: a project
@@ -714,7 +745,7 @@ export type TeamTodosEvent =
 /** One notification, as `notifications.list` answers. */
 export interface TeamNotification {
     id: number;
-    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered" | "access-requested" | "access-decided";
+    kind: "mention" | "reply" | "assigned" | "review-requested" | "review-answered" | "access-requested" | "access-decided" | "watch";
     project?: string;
     ref?: string;
     actor?: string;
@@ -999,6 +1030,18 @@ export const TeamMethod = {
     adminWebhooksRedeliver: "admin.webhooks.redeliver",
     notificationsList: "notifications.list",
     notificationsRead: "notifications.read",
+    notificationsPrefs: "notifications.prefs",
+    notificationsPrefsSet: "notifications.prefs.set",
+    notificationsHookTest: "notifications.hook.test",
+    notificationsDigestNow: "notifications.digest.now",
+    pushKey: "push.key",
+    pushSubscribe: "push.subscribe",
+    pushUnsubscribe: "push.unsubscribe",
+    pushTest: "push.test",
+    watchesList: "watches.list",
+    watchesSet: "watches.set",
+    reactionsList: "reactions.list",
+    reactionsToggle: "reactions.toggle",
     membersList: "members.list",
     threadsList: "threads.list",
     threadsGet: "threads.get",
@@ -1065,6 +1108,7 @@ export const TeamMethod = {
     adminAuditList: "admin.audit.list",
     adminServerStatus: "admin.server.status",
     adminBrandSet: "admin.brand.set",
+    adminEmailTest: "admin.email.test",
 } as const;
 
 /**

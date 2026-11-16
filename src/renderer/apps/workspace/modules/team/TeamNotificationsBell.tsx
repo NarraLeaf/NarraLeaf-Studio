@@ -87,6 +87,12 @@ export function TeamNotificationsBell() {
             setOpen(false);
             return;
         }
+        if (notification.kind === "watch" && notification.project) {
+            // Something one follows changed: the project's history in the web console says what.
+            void getInterface().app.openExternal(`${remoteOrigin}/console/p/${encodeURIComponent(notification.project)}/history`);
+            setOpen(false);
+            return;
+        }
         const thread = notification.ref === undefined
             ? undefined
             : service?.listThreads().find(candidate => candidate.teamThreadId === notification.ref);

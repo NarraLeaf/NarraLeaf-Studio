@@ -923,6 +923,7 @@ export const workspace = {
             "review-answered": "{who} 回复了你的评审请求",
             "access-requested": "{who} 申请了权限",
             "access-decided": "{who} 处理了你的权限申请",
+            watch: "{who} 更新了你关注的内容",
         },
         liveConnecting: "正在连接该服务器",
         liveUnsupported: "该服务器不提供实时会话",

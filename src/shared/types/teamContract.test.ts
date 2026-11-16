@@ -109,6 +109,10 @@ const CAPABILITIES: TeamCapability[] = [
     "builds",
     "attachments",
     "shares",
+    "digests",
+    "push",
+    "watches",
+    "reactions",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",

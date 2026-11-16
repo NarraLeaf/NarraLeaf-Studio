@@ -26,9 +26,13 @@ import {
     type TeamLiveSession,
     type TeamOverlayRecord,
     type TeamProblem,
+    type TeamReaction,
+    type TeamReactionEmoji,
     type TeamThread,
     type TeamThreadKind,
     type TeamThreadStatus,
+    type TeamWatch,
+    TEAM_REACTIONS,
 } from "@shared/types/team";
 import type {
     VcsServerMember,
@@ -394,11 +398,15 @@ export function readProfile(value: unknown): TeamAccountProfile | null {
     if (username === undefined) return null;
     const bio = text(inner, "bio");
     const avatarUrl = text(inner, "avatarUrl");
+    const timezone = text(inner, "timezone");
+    const online = inner["online"];
     return {
         username,
         displayName: text(inner, "displayName") ?? username,
         ...(bio === undefined ? {} : { bio }),
         ...(avatarUrl === undefined ? {} : { avatarUrl }),
+        ...(timezone === undefined ? {} : { timezone }),
+        ...(typeof online === "boolean" ? { online } : {}),
     };
 }
 
@@ -1018,4 +1026,74 @@ export async function dropOverlay(
 ): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayDrop, { id });
     return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/* ------------------------------------------------------------------ watches */
+
+function readWatch(value: unknown): TeamWatch | null {
+    const from = record(value);
+    if (from === null) return null;
+    const project = text(from, "project");
+    const createdAt = count(from, "createdAt");
+    if (project === undefined || createdAt === undefined) return null;
+    const scope = text(from, "scope");
+    return { project, createdAt, ...(scope === undefined || scope === "" ? {} : { scope }) };
+}
+
+/** What the caller follows, in one project or everywhere. */
+export async function listWatches(remoteOrigin: string, project?: string): Promise<TeamOutcome<TeamWatch[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.watchesList, project === undefined ? {} : { project });
+    if (!answered.ok) return answered;
+    const watches = readList(answered.value, "watches", readWatch);
+    return watches === null ? unreadable() : { ok: true, value: watches };
+}
+
+/**
+ * Follow a project (no scope) or one scene of it (`scene:{id}`), or stop. Answers what the
+ * caller follows in that project afterwards.
+ */
+export async function setWatch(
+    remoteOrigin: string,
+    input: { project: string; scope?: string; watching: boolean },
+): Promise<TeamOutcome<TeamWatch[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.watchesSet, input);
+    if (!answered.ok) return answered;
+    const watches = readList(answered.value, "watches", readWatch);
+    return watches === null ? unreadable() : { ok: true, value: watches };
+}
+
+/* ---------------------------------------------------------------- reactions */
+
+function readReaction(value: unknown): TeamReaction | null {
+    const from = record(value);
+    if (from === null) return null;
+    const target = text(from, "target");
+    const emoji = text(from, "emoji");
+    const by = from["by"];
+    if (target === undefined || emoji === undefined || !(TEAM_REACTIONS as readonly string[]).includes(emoji)) return null;
+    if (!Array.isArray(by) || by.some(name => typeof name !== "string")) return null;
+    return { target, emoji: emoji as TeamReactionEmoji, by: by as string[] };
+}
+
+/** The reactions on several comments (or chat messages) of one project, flat. */
+export async function listReactions(
+    remoteOrigin: string,
+    input: { project: string; kind: "comment" | "chat"; targets: string[] },
+): Promise<TeamOutcome<TeamReaction[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.reactionsList, input);
+    if (!answered.ok) return answered;
+    const reactions = readList(answered.value, "reactions", readReaction);
+    return reactions === null ? unreadable() : { ok: true, value: reactions };
+}
+
+/** Give one emoji, or take it back if the caller already gave it. Answers that emoji's reaction now. */
+export async function toggleReaction(
+    remoteOrigin: string,
+    input: { project: string; kind: "comment" | "chat"; target: string; emoji: TeamReactionEmoji },
+): Promise<TeamOutcome<TeamReaction>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.reactionsToggle, input);
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const reaction = from === null ? null : readReaction(from["reaction"]);
+    return reaction === null ? unreadable() : { ok: true, value: reaction };
 }
