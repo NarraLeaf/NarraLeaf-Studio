@@ -15,6 +15,8 @@
  * is the whole of what distinguishes "this server has no such route" from "these are not
  * the right credentials", and those two send the author to different places.
  */
+import type { VcsPasswordSignInReason } from "@shared/types/vcs";
+
 import { endpointOf, request, STUDIO_API_ROOT } from "./serverApi";
 
 /** Where a server that offers this serves it. */
@@ -23,13 +25,15 @@ const SIGN_IN_PATH = `${STUDIO_API_ROOT}/sign-in`;
 /** What a password sign-in came to, in the terms the interface has sentences for. */
 export type ServerPasswordResult =
     | { ok: true; token: string }
-    | { ok: false; reason: "refused" | "unavailable" | "unreachable" | "unknown" };
+    | { ok: false; reason: VcsPasswordSignInReason };
 
 export interface ServerPasswordRequest {
     /** The endpoint the discovery document named, e.g. `https://team.example.lan:41402`. */
     authUrl: string;
     username: string;
     password: string;
+    /** The code from the authenticator app, sent on the second try once the server asked for one. */
+    code?: string;
     userDataDir: string;
 }
 
@@ -53,7 +57,9 @@ export async function signInWithPassword(
             method: "POST",
             path: SIGN_IN_PATH,
             userDataDir: input.userDataDir,
-            body: JSON.stringify({ username: input.username, password: input.password }),
+            body: JSON.stringify(input.code === undefined
+                ? { username: input.username, password: input.password }
+                : { username: input.username, password: input.password, code: input.code }),
         });
     } catch {
         return { ok: false, reason: "unreachable" };
@@ -64,7 +70,7 @@ export async function signInWithPassword(
         return { ok: false, reason: "unavailable" };
     }
     if (answer.status === 401 || answer.status === 403) {
-        return { ok: false, reason: "refused" };
+        return { ok: false, reason: refusalOf(answer.body, input.code !== undefined) };
     }
     if (answer.status !== 200) {
         return { ok: false, reason: "unknown" };
@@ -85,4 +91,26 @@ export async function signInWithPassword(
     return typeof token === "string" && token.trim() !== ""
         ? { ok: true, token: token.trim() }
         : { ok: false, reason: "unknown" };
+}
+
+/**
+ * Which refusal a 401 or 403 was.
+ *
+ * A server that knows about codes says so in the body, and only once the password was
+ * right: `secondFactor` asks for a code (or, when one was sent, says it was wrong), and
+ * `enrollTwoFactor` says this account must set one up in the web console first. Anything
+ * else - including a body that is not JSON - is the one refusal it always was.
+ */
+function refusalOf(body: string, sentCode: boolean): VcsPasswordSignInReason {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(body);
+    } catch {
+        return "refused";
+    }
+    if (typeof parsed !== "object" || parsed === null) return "refused";
+    const flags = parsed as { secondFactor?: unknown; enrollTwoFactor?: unknown };
+    if (flags.enrollTwoFactor === true) return "enroll-two-factor";
+    if (flags.secondFactor === true) return sentCode ? "bad-code" : "second-factor";
+    return "refused";
 }

@@ -116,6 +116,10 @@ const CAPABILITIES: TeamCapability[] = [
     "glossary",
     "voice",
     "templates",
+    "two-factor",
+    "api-tokens",
+    "archive",
+    "storage",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",

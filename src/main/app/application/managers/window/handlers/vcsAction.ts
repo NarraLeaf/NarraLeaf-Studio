@@ -691,10 +691,10 @@ export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSig
 
     public async handle(
         window: AppWindow,
-        { authUrl, username, password }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
+        { authUrl, username, password, code }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
     ): Promise<RequestStatus<VcsPasswordSignInOutcome>> {
         return this.tryUse(async () =>
-            window.app.getVcsManager().signInWithPassword(authUrl, username, password));
+            window.app.getVcsManager().signInWithPassword(authUrl, username, password, code));
     }
 }
 

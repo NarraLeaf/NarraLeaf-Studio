@@ -492,6 +492,10 @@ export const settings = {
         },
         signInRefused: "服务器未接受该用户名和密码",
         signInUnavailable: "本机无法使用密码登录",
+        codeLabel: "验证码",
+        codeLead: "这个账号还需要验证器应用里的 6 位验证码",
+        signInBadCode: "验证码不对，请输入验证器里当前显示的那一个",
+        signInNeedsEnrollment: "服务器要求两步验证，请先在网页控制台的“安全”里设置好，再回来登录",
         noAccount: "{name} 不签发账号，无法添加。请向其管理员索取账号",
         joined: {
             signedInAs: "已以 {name} 的身份登录",

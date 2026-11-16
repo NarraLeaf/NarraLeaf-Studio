@@ -508,6 +508,10 @@ export const settings = {
         },
         signInRefused: "サーバーはそのユーザー名とパスワードを受け付けなかった",
         signInUnavailable: "この端末ではパスワードでサインインできない",
+        codeLabel: "確認コード",
+        codeLead: "このアカウントは認証アプリの 6 桁のコードも必要",
+        signInBadCode: "コードが違う。認証アプリに今表示されているコードを入力して",
+        signInNeedsEnrollment: "このサーバーは 2 段階認証が必須。Web コンソールの「セキュリティ」で設定してから、ここでサインインして",
         noAccount: "{name} はアカウントを発行しないため追加できない。管理者にアカウントを求めること",
         joined: {
             signedInAs: "{name} としてサインインしている",

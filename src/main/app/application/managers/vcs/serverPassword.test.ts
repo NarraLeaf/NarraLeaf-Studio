@@ -72,6 +72,33 @@ describe("signing in with a password", () => {
         await expect(signInWithPassword(INPUT)).resolves.toEqual({ ok: false, reason: "refused" });
     });
 
+    it("asks for a code when the password was right and the account wants one", async () => {
+        answers(401, { error: "this account signs in with a code from its authenticator app as well", secondFactor: true });
+        await expect(signInWithPassword(INPUT)).resolves.toEqual({ ok: false, reason: "second-factor" });
+    });
+
+    it("sends the code with the credentials on the second try", async () => {
+        answers(200, { token: "t" });
+        await signInWithPassword({ ...INPUT, code: "123456" });
+        const [, options] = request.mock.calls[0] as [unknown, { body: string }];
+        expect(JSON.parse(options.body)).toEqual({ username: "ada", password: "harbourlight", code: "123456" });
+    });
+
+    it("says the code was wrong when one was sent and the server still wants one", async () => {
+        answers(401, { error: "that code is not right", secondFactor: true });
+        await expect(signInWithPassword({ ...INPUT, code: "000000" })).resolves.toEqual({ ok: false, reason: "bad-code" });
+    });
+
+    it("says the account must set up two-step sign-in in the console first", async () => {
+        answers(403, { error: "set up two-step sign-in in the web console first", enrollTwoFactor: true });
+        await expect(signInWithPassword(INPUT)).resolves.toEqual({ ok: false, reason: "enroll-two-factor" });
+    });
+
+    it("reads a refusal whose body is not JSON as the one refusal", async () => {
+        answers(401, "nope");
+        await expect(signInWithPassword(INPUT)).resolves.toEqual({ ok: false, reason: "refused" });
+    });
+
     it.each([404, 405])("says a server without the route cannot do this, on %i", async status => {
         answers(status, { error: "this server has nothing at that address." });
         await expect(signInWithPassword(INPUT)).resolves.toEqual({ ok: false, reason: "unavailable" });

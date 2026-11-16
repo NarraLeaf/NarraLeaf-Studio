@@ -137,7 +137,15 @@ export type TeamCapability =
     /** Which voiced lines are recorded, and which need another take, per language. Team state only. */
     | "voice"
     /** Project templates: members, milestones and to-dos to start a project with, or to add to one. */
-    | "templates";
+    | "templates"
+    /** Accounts may sign in with a code from an authenticator app as well; set up in the web console. */
+    | "two-factor"
+    /** Personal access tokens an account mints for itself, for scripts and tools. */
+    | "api-tokens"
+    /** A project can be archived: read-only and out of the lists, until it is restored. */
+    | "archive"
+    /** How much space each project's files take, against a quota the operator sets. */
+    | "storage";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -1174,6 +1182,25 @@ export const TeamMethod = {
     adminServerStatus: "admin.server.status",
     adminBrandSet: "admin.brand.set",
     adminEmailTest: "admin.email.test",
+    adminUsersResetLink: "admin.users.resetLink",
+    adminUsersResetTwoFactor: "admin.users.resetTwoFactor",
+    adminStorageList: "admin.storage.list",
+    adminBackupsList: "admin.backups.list",
+    adminBackupsCreate: "admin.backups.create",
+    // The account's own two-step sign-in and access tokens (`two-factor`, `api-tokens`).
+    // Set up in the web console, which can show a secret; Studio only sends codes.
+    accountTotpStatus: "account.totp.status",
+    accountTotpBegin: "account.totp.begin",
+    accountTotpConfirm: "account.totp.confirm",
+    accountTotpDisable: "account.totp.disable",
+    accountTotpRecovery: "account.totp.recovery",
+    accountTokensList: "account.tokens.list",
+    accountTokensCreate: "account.tokens.create",
+    accountTokensRevoke: "account.tokens.revoke",
+    // Archiving a project, and how much it stores (`archive`, `storage`).
+    projectsArchive: "projects.archive",
+    projectsRestore: "projects.restore",
+    projectsStorage: "projects.storage",
 } as const;
 
 /**

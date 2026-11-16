@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsServerDiscovery, VcsServerSession } from "@shared/types/vcs";
-import { AddServerModal, type BrowserSignIn, type PasswordSignIn } from "./AddServerModal";
+import { AddServerModal, type BrowserSignIn, type PasswordSignIn, type PasswordSignInRequest } from "./AddServerModal";
 
 /**
  * Adding a server, from an address to a sentence about what was joined.
@@ -282,6 +282,73 @@ describe("a password the server will not accept", () => {
         const problem = await find("problem");
         expect(problem.textContent).toBe("settings.servers.signInUnavailable");
         expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
+describe("an account that signs in with a code as well", () => {
+    it("asks for the code in place of the password, and sends both on the second try", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session("Blackwood Studio"), servers: [] } });
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        const calls: PasswordSignInRequest[] = [];
+        const wantsCode: PasswordSignIn = request => {
+            calls.push(request);
+            return Promise.resolve(request.code === "123456"
+                ? { ok: true, token: "minted-token" }
+                : { ok: false, reason: request.code === undefined ? "second-factor" : "bad-code" });
+        };
+        await reachIdentity(WITH_PASSWORD, wantsCode);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        await find("field-code");
+        // Asked, not refused: no red sentence, and the password field is gone.
+        expect(seam("problem")).toBeNull();
+        expect(seam("field-password")).toBeNull();
+
+        type("field-code", "000000");
+        submit();
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInBadCode");
+        expect((seam("field-code") as HTMLInputElement).value).toBe("");
+
+        type("field-code", "123456");
+        submit();
+        await waitFor(() => expect(bridge.addServer).toHaveBeenCalled());
+        expect(calls.map(call => [call.password, call.code])).toEqual([
+            ["hunter2", undefined],
+            ["hunter2", "000000"],
+            ["hunter2", "123456"],
+        ]);
+    });
+
+    it("sends an account with no code set up to the web console", async () => {
+        const enroll: PasswordSignIn = () => Promise.resolve({ ok: false, reason: "enroll-two-factor" });
+        await reachIdentity(WITH_PASSWORD, enroll);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInNeedsEnrollment");
+        expect(seam("field-code")).toBeNull();
+        expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+
+    it("forgets the code step when the username changes", async () => {
+        const secondFactor: PasswordSignIn = () => Promise.resolve({ ok: false, reason: "second-factor" });
+        await reachIdentity(WITH_PASSWORD, secondFactor);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+        await find("field-code");
+
+        type("field-username", "grace");
+        expect(seam("field-code")).toBeNull();
+        expect((seam("field-password") as HTMLInputElement).value).toBe("");
     });
 });
 

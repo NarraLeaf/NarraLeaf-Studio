@@ -74,7 +74,13 @@ export type PasswordSignInProblem =
     /** Nothing answered at the sign-in address. */
     | "unreachable"
     /** Anything else. */
-    | "unknown";
+    | "unknown"
+    /** The password was right, and the account asks for a code from its authenticator as well. */
+    | "second-factor"
+    /** A code was sent with it, and it was not right. */
+    | "bad-code"
+    /** The server requires a code and this account has none set up; only the web console can. */
+    | "enroll-two-factor";
 
 export interface PasswordSignInRequest {
     /** Where a token is minted, from the server's own discovery answer. */
@@ -88,6 +94,8 @@ export interface PasswordSignInRequest {
      * it in an error it hands back.
      */
     password: string;
+    /** The code from the authenticator app, on the second try for an account that asks for one. */
+    code?: string;
 }
 
 export type PasswordSignInOutcome =
@@ -167,6 +175,9 @@ const PASSWORD_PROBLEM_KEYS: Record<PasswordSignInProblem, TranslationKey> = {
     unavailable: "settings.servers.signInUnavailable",
     unreachable: "settings.servers.problems.unreachable",
     unknown: "settings.servers.problems.unknown",
+    "second-factor": "settings.servers.codeLead",
+    "bad-code": "settings.servers.signInBadCode",
+    "enroll-two-factor": "settings.servers.signInNeedsEnrollment",
 };
 
 /**
@@ -274,6 +285,14 @@ export function AddServerModal({
     const [token, setToken] = useState("");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    // An account that signs in with a code as well: once the server has said the password
+    // was right and asked for one, the code field takes the password's place. The password
+    // is held for that second try in a ref - never in state or in a field - and let go the
+    // moment the try ends one way or the other, or the dialog does.
+    const [code, setCode] = useState("");
+    const [codeWanted, setCodeWanted] = useState(false);
+    const heldPassword = useRef<string | null>(null);
+    useEffect(() => () => { heldPassword.current = null; }, []);
     // Which way of signing in the reader picked, where they picked one. Unpicked, the
     // first the server offers is shown: the browser, then a password, then a token.
     const [chosen, setChosen] = useState<Method | null>(null);
@@ -422,27 +441,49 @@ export function AddServerModal({
     const addWithPassword = useCallback(async () => {
         if (stage.kind !== "identity" || busy) return;
         const name = username.trim();
-        const secret = password;
+        const secret = codeWanted ? heldPassword.current : password;
+        const typedCode = code.trim();
         if (!name || !secret) return;
+        if (codeWanted && !typedCode) return;
         setBusy(true);
         setError(null);
         // Out of state before the call that uses it is even awaited, and typed again after a
         // refusal rather than left sitting in a box. The token field is cleared on the same
         // principle; a password is the one credential a reader can be made to say twice.
         setPassword("");
+        setCode("");
         const outcome = await signInWithPassword({
             authUrl: stage.discovery.auth.url,
             username: name,
             password: secret,
+            ...(codeWanted ? { code: typedCode } : {}),
         }).catch((): PasswordSignInOutcome => ({ ok: false, reason: "unknown" }));
         if (!outcome.ok) {
-            setError(PASSWORD_PROBLEM_KEYS[outcome.reason]);
+            if (outcome.reason === "second-factor" || outcome.reason === "bad-code") {
+                // The password was right: keep it for the try with a code, and ask for one.
+                heldPassword.current = secret;
+                setCodeWanted(true);
+                setError(outcome.reason === "bad-code" ? PASSWORD_PROBLEM_KEYS["bad-code"] : null);
+            } else {
+                heldPassword.current = null;
+                setCodeWanted(false);
+                setError(PASSWORD_PROBLEM_KEYS[outcome.reason]);
+            }
             setBusy(false);
             return;
         }
+        heldPassword.current = null;
+        setCodeWanted(false);
         await storeServer(stage.discovery, outcome.token);
         setBusy(false);
-    }, [busy, password, signInWithPassword, stage, storeServer, username]);
+    }, [busy, code, codeWanted, password, signInWithPassword, stage, storeServer, username]);
+
+    /** Back from the code to the password, letting go of the one held for the second try. */
+    const forgetPassword = useCallback(() => {
+        heldPassword.current = null;
+        setCodeWanted(false);
+        setCode("");
+    }, []);
 
     const endBrowserWait = useCallback(() => {
         if (slowTimer.current !== null) clearTimeout(slowTimer.current);
@@ -675,11 +716,35 @@ export function AddServerModal({
                                     autoComplete="username"
                                     spellCheck={false}
                                     value={username}
-                                    onChange={event => setUsername(event.target.value)}
+                                    onChange={event => {
+                                        // A different account is a different password, so a
+                                        // code asked for the last one no longer applies.
+                                        if (codeWanted) forgetPassword();
+                                        setUsername(event.target.value);
+                                    }}
                                     onKeyDown={submitOnEnter(addWithPassword)}
                                     disabled={busy}
                                 />
                             </div>
+                            {codeWanted ? (
+                                <div data-servers-seam="identity-code">
+                                    <p className="mb-2 text-xs text-fg-muted">{t("settings.servers.codeLead")}</p>
+                                    <FieldLabel as="div">{t("settings.servers.codeLabel")}</FieldLabel>
+                                    <Input
+                                        data-servers-seam="field-code"
+                                        aria-label={t("settings.servers.codeLabel")}
+                                        fullWidth
+                                        autoFocus
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        spellCheck={false}
+                                        value={code}
+                                        onChange={event => setCode(event.target.value)}
+                                        onKeyDown={submitOnEnter(addWithPassword)}
+                                        disabled={busy}
+                                    />
+                                </div>
+                            ) : (
                             <div>
                                 <FieldLabel as="div">{t("settings.servers.passwordLabel")}</FieldLabel>
                                 <Input
@@ -694,6 +759,7 @@ export function AddServerModal({
                                     disabled={busy}
                                 />
                             </div>
+                            )}
                         </div>
                     ) : (
                         <div data-servers-seam="identity-token" className="flex flex-col gap-2">
@@ -770,6 +836,7 @@ export function AddServerModal({
                                 // password typed into it has no business outliving it.
                                 setError(null);
                                 setPassword("");
+                                forgetPassword();
                                 setOthersOpen(false);
                                 setChosen(other);
                             }}
@@ -842,7 +909,8 @@ export function AddServerModal({
                     {leaveButton}
                     {submitButton(
                         busy ? "settings.servers.signingIn" : "settings.servers.signIn",
-                        !busy && username.trim().length > 0 && password.length > 0,
+                        !busy && username.trim().length > 0
+                            && (codeWanted ? code.trim().length > 0 : password.length > 0),
                         addWithPassword,
                     )}
                 </>

@@ -1817,7 +1817,7 @@ export type IPCVcsEvents = {
     [IPCEventType.vcsSignInWithPassword]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; username: string; password: string },
+        data: { authUrl: string; username: string; password: string; code?: string },
         response: VcsPasswordSignInOutcome;
     };
     /**

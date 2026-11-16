@@ -543,6 +543,10 @@ export const settings = {
         // stranger which usernames exist.
         signInRefused: "The server did not accept that username and password.",
         signInUnavailable: "This installation cannot sign in with a password.",
+        codeLabel: "Code",
+        codeLead: "This account also signs in with the 6-digit code from its authenticator app.",
+        signInBadCode: "That code is not right. Enter the one your authenticator shows now.",
+        signInNeedsEnrollment: "This server requires two-step sign-in. Set it up under Security in the web console, then sign in here.",
         // The server answered but issues no accounts, and an account is what Studio stores.
         // Said rather than hidden: the absence of an entry afterwards is otherwise
         // indistinguishable from a failure.

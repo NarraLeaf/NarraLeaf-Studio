@@ -842,8 +842,8 @@ export const IPCInterface: RendererPreloadedInterface = {
          * Goes to the network, carrying no token because this is where one comes from.
          * The password reaches the main process and is kept by neither side.
          */
-        signInWithPassword: (authUrl: string, username: string, password: string) =>
-            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
+        signInWithPassword: (authUrl: string, username: string, password: string, code?: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, code === undefined ? { authUrl, username, password } : { authUrl, username, password, code }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
         signInWithBrowser: (authUrl: string) =>
             ipcClient.invoke(IPCEventType.vcsSignInWithBrowser, { authUrl }) as Promise<RequestStatus<VcsBrowserSignInOutcome>>,
         completeBrowserSignIn: (callbackUrl: string) =>

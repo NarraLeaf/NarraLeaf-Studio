@@ -1313,8 +1313,21 @@ export interface VcsServerMember {
  * what a server says about credentials: measured against a real one, an unknown account,
  * a wrong password, a disabled account and a machine account are one identical refusal,
  * so nothing here may claim to tell them apart.
+ *
+ * Three more come from an account that signs in with a code from an authenticator app as
+ * well: the password was right and a code is wanted (`second-factor`), a code was sent and
+ * was wrong (`bad-code`), or the server requires one and this account has not set one up
+ * yet (`enroll-two-factor`) - which only the web console can do, since setting up shows a
+ * secret Studio has nowhere to show.
  */
-export type VcsPasswordSignInReason = "refused" | "unavailable" | "unreachable" | "unknown";
+export type VcsPasswordSignInReason =
+    | "refused"
+    | "unavailable"
+    | "unreachable"
+    | "unknown"
+    | "second-factor"
+    | "bad-code"
+    | "enroll-two-factor";
 
 /**
  * What presenting a username and password came to.

@@ -2552,11 +2552,13 @@ export class VcsManager extends Manager {
         authUrl: string,
         username: string,
         password: string,
+        code?: string,
     ): Promise<VcsPasswordSignInOutcome> {
         const outcome = await signInWithPassword({
             authUrl,
             username,
             password,
+            ...(code === undefined ? {} : { code }),
             userDataDir: this.app.getUserDataDir(),
         });
         this.app.logger.info(

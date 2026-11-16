@@ -1237,6 +1237,7 @@ export interface RendererPreloadedInterface {
             authUrl: string,
             username: string,
             password: string,
+            code?: string,
         ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
         /**
          * Sign in through the system browser, on a server that announces `oauth`.
