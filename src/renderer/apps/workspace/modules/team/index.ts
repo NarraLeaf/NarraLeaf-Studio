@@ -27,5 +27,6 @@ export { TeamNotificationsBell } from "./TeamNotificationsBell";
 export { TeamRoleNotice } from "./TeamRoleNotice";
 export { TeamAssetRequestPrompt } from "./TeamAssetRequestPrompt";
 export { TeamEditingNotice } from "./TeamEditingNotice";
+export { TeamAssetLockNotice } from "./TeamAssetLockNotice";
 export { LiveCursorBroadcaster, LiveSessionChat } from "./LiveCursorAndChat";
 export { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiveSession";

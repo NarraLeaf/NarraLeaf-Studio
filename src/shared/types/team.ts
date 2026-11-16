@@ -113,7 +113,11 @@ export type TeamCapability =
      * history versions are snapshots it commits. Opening a team project on such a server is
      * following that topic - there is no room to open or join.
      */
-    | "documents";
+    | "documents"
+    /** Where each scene and asset stands - draft, waiting, approved or sent back. Team's record only. */
+    | "approvals"
+    /** An asset held by one person for a while; the server refuses edits to it from anybody else. */
+    | "locks";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -231,6 +235,16 @@ export function teamProjectReviewsTopic(projectId: string): string {
 /** One project's milestones. */
 export function teamProjectMilestonesTopic(projectId: string): string {
     return `project:${projectId}/milestones`;
+}
+
+/** Where one project's scenes and assets stand (the `approvals` capability). */
+export function teamProjectApprovalsTopic(projectId: string): string {
+    return `project:${projectId}/approvals`;
+}
+
+/** Who holds which of one project's assets (the `locks` capability). */
+export function teamProjectLocksTopic(projectId: string): string {
+    return `project:${projectId}/locks`;
 }
 
 /** One project's applied edits, saved versions and restores (the `documents` capability). */
@@ -579,6 +593,8 @@ export interface TeamTodo {
     locale?: string;
     /** The asset that answered an asset request. */
     asset?: string;
+    /** Free labels - "chapter 1", "voice" - absent from a server older than them. */
+    labels?: string[];
     dueAt?: number;
     createdAt: number;
     updatedAt: number;
@@ -586,6 +602,38 @@ export interface TeamTodo {
     /** The revision that finished it, where it was ticked off in a commit. */
     doneRevision?: string;
 }
+
+/** Where one scene or asset stands. `target` is `scene:{id}` or `asset:{id}`. */
+export interface TeamApproval {
+    project: string;
+    target: string;
+    status: "draft" | "pending" | "approved" | "changes";
+    /** Who moved it there, by username. */
+    by?: string;
+    /** Why - always there when it was sent back. */
+    note?: string;
+    at: number;
+}
+
+export type TeamApprovalsEvent = { kind: "approval-set"; approval: TeamApproval };
+
+/** Somebody holds one asset of a project until `expiresAt`. */
+export interface TeamAssetLock {
+    project: string;
+    asset: string;
+    /** Who holds it, by username. */
+    holder: string;
+    note?: string;
+    at: number;
+    expiresAt: number;
+}
+
+export type TeamLocksEvent =
+    | { kind: "lock-set"; lock: TeamAssetLock }
+    | { kind: "lock-released"; project: string; asset: string };
+
+/** How long `assets.lock` holds an asset when it is not told, in minutes. */
+export const TEAM_ASSET_LOCK_DEFAULT_MINUTES = 4 * 60;
 
 export type TeamTodosEvent =
     | { kind: "todo-set"; todo: TeamTodo }
@@ -854,6 +902,16 @@ export const TeamMethod = {
     chatDelete: "chat.delete",
     milestonesCreate: "milestones.create",
     milestonesDelete: "milestones.delete",
+    milestonesUpdate: "milestones.update",
+    approvalsList: "approvals.list",
+    approvalsSet: "approvals.set",
+    approvalsHistory: "approvals.history",
+    assetsLocks: "assets.locks",
+    assetsLock: "assets.lock",
+    assetsUnlock: "assets.unlock",
+    filtersList: "filters.list",
+    filtersSave: "filters.save",
+    filtersDelete: "filters.delete",
     adminWebhooksList: "admin.webhooks.list",
     adminWebhooksCreate: "admin.webhooks.create",
     adminWebhooksDelete: "admin.webhooks.delete",

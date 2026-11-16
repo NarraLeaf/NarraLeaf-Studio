@@ -832,6 +832,12 @@ export const workspace = {
             minutes: "已经 {minutes} 分钟",
             dismiss: "知道了",
         },
+        assetLock: {
+            theirs: "{name} 锁定了这个资源，到 {until}。在那之前，其他人对它的修改都会被服务器拒绝。",
+            mine: "你锁定了这个资源，到 {until}。在那之前其他人无法修改它。",
+            release: "解锁",
+            dismiss: "知道了",
+        },
         liveChat: {
             title: "会话聊天",
             open: "打开会话聊天",

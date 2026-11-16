@@ -846,6 +846,12 @@ export const workspace = {
             minutes: "{minutes} 分前から",
             dismiss: "OK",
         },
+        assetLock: {
+            theirs: "{name} がこのアセットを {until} までロックしています。それまで他の人の変更はサーバーに拒否されます。",
+            mine: "このアセットを {until} までロックしています。それまで他の人は変更できません。",
+            release: "ロック解除",
+            dismiss: "OK",
+        },
         liveChat: {
             title: "セッションチャット",
             open: "セッションチャットを開く",

@@ -922,6 +922,12 @@ export const workspace = {
             minutes: "for {minutes} min",
             dismiss: "Got it",
         },
+        assetLock: {
+            theirs: "{name} has locked this asset until {until}. Until then the server refuses changes to it from anybody else.",
+            mine: "You have locked this asset until {until}. Nobody else can change it until then.",
+            release: "Unlock",
+            dismiss: "Got it",
+        },
         liveChat: {
             title: "Session chat",
             open: "Open session chat",

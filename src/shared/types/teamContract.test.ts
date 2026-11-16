@@ -50,6 +50,8 @@ import {
     teamProjectTodosTopic,
     teamProjectReviewsTopic,
     teamProjectMilestonesTopic,
+    teamProjectApprovalsTopic,
+    teamProjectLocksTopic,
     teamProjectChatTopic,
     teamProjectDocTopic,
     teamAccountTodosTopic,
@@ -101,6 +103,8 @@ const CAPABILITIES: TeamCapability[] = [
     "project-history",
     "blobs",
     "documents",
+    "approvals",
+    "locks",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
@@ -141,10 +145,12 @@ describe("the protocol contract", () => {
             "adminUsers",
             "live",
             "project",
+            "projectApprovals",
             "projectChat",
             "projectClients",
             "projectDoc",
             "projectLive",
+            "projectLocks",
             "projectMembers",
             "projectMilestones",
             "projectOverlay",
@@ -174,6 +180,8 @@ describe("the protocol contract", () => {
         expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
         expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
         expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
+        expect(teamProjectApprovalsTopic("abc")).toBe(contract.topics["projectApprovals"]?.replace("{project}", "abc"));
+        expect(teamProjectLocksTopic("abc")).toBe(contract.topics["projectLocks"]?.replace("{project}", "abc"));
         expect(teamProjectDocTopic("abc")).toBe(contract.topics["projectDoc"]?.replace("{project}", "abc"));
         expect(teamProjectChatTopic("abc")).toBe(contract.topics["projectChat"]?.replace("{project}", "abc"));
         expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));

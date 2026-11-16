@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionDialogHost, StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, TeamAssetRequestPrompt, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
+import { LiveSessionDialogHost, StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamAssetLockNotice, TeamProjectProvider, TeamRoleNotice, TeamAssetRequestPrompt, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -900,6 +900,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TeamRoleNotice />
             <TeamAssetRequestPrompt />
             <TeamEditingNotice />
+            <TeamAssetLockNotice />
             <LiveCursorBroadcaster />
             <LiveSessionChat />
             <div
