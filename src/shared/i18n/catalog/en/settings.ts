@@ -513,6 +513,7 @@ export const settings = {
         useToken: "Use an access token instead",
         usePassword: "Use a username and password instead",
         useBrowser: "Sign in with the browser instead",
+        useDevice: "Sign in with a device code instead",
         otherMethods: "Other sign-in options",
         browserCallback: {
             done: "I've finished signing in",
@@ -524,6 +525,11 @@ export const settings = {
         browserLead: "{name}'s sign-in page opens in your browser. Sign in and allow Studio, and you come back here.",
         browserSignIn: "Sign in with browser",
         browserWaiting: "Finish signing in in your browser…",
+        deviceLead: "For when the browser cannot come back to Studio (a remote desktop, a browser on another device). You get a code to type into {name}'s page, then allow Studio.",
+        deviceSignIn: "Get a device code",
+        deviceWaiting: "Waiting for you to approve in the browser…",
+        deviceCode: "Type this code at {url}:",
+        deviceOpened: "Studio tried to open that page in your browser; you can also open it by hand on any device.",
         browserProblems: {
             denied: "The sign-in was denied in the browser.",
             timeout: "The browser sign-in took too long. Try again.",

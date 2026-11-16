@@ -125,6 +125,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
     VcsBrowserCallbackOutcome,
     VcsPublishOutcome,
     VcsProjectServerSession,
@@ -512,6 +513,9 @@ export enum IPCEventType {
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsSignInWithBrowser = "vcs.signInWithBrowser",
     vcsCompleteBrowserSignIn = "vcs.completeBrowserSignIn",
+    vcsStartDeviceSignIn = "vcs.startDeviceSignIn",
+    vcsFinishDeviceSignIn = "vcs.finishDeviceSignIn",
+    vcsCancelDeviceSignIn = "vcs.cancelDeviceSignIn",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsDetachRecentProject = "vcs.detachRecentProject",
@@ -1819,6 +1823,31 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host;
         data: { callbackUrl: string };
         response: { outcome: VcsBrowserCallbackOutcome };
+    };
+    /**
+     * Begin a device sign-in (RFC 8628) on a server that announces `oauth`: answers the code
+     * to show and opens the page to type it on. The approval is collected by
+     * `vcs.finishDeviceSignIn`.
+     */
+    [IPCEventType.vcsStartDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: { authUrl: string };
+        response: VcsDeviceSignInStart;
+    };
+    /** Wait for the device sign-in under way to be approved, refused or run out. */
+    [IPCEventType.vcsFinishDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: Record<string, never>;
+        response: VcsBrowserSignInOutcome;
+    };
+    /** Stop waiting for the device sign-in under way. */
+    [IPCEventType.vcsCancelDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: Record<string, never>;
+        response: Record<string, never>;
     };
     /**
      * Put the project that is open on to a server: register it, connect it, send it.

@@ -464,6 +464,7 @@ export const settings = {
         useToken: "改用访问令牌",
         usePassword: "改用用户名和密码",
         useBrowser: "改用浏览器登录",
+        useDevice: "改用设备码登录",
         otherMethods: "其他登录方式",
         // 浏览器没能自动回到 Studio 时（代理、端口被拦、扩展改写），回调地址仍停在浏览器地址栏里，
         // 粘贴进来等同于回调本身。
@@ -477,6 +478,11 @@ export const settings = {
         browserLead: "将在浏览器中打开 {name} 的登录页。登录并允许后，会自动回到这里。",
         browserSignIn: "在浏览器中登录",
         browserWaiting: "请在浏览器中完成登录…",
+        deviceLead: "适合浏览器无法回到 Studio 的情况（远程桌面、其他设备上的浏览器）。会显示一个代码，在 {name} 的页面上输入它并允许即可。",
+        deviceSignIn: "获取设备码",
+        deviceWaiting: "等待在浏览器中确认…",
+        deviceCode: "在 {url} 输入此代码：",
+        deviceOpened: "已尝试在浏览器中打开这个页面；也可以在任何设备上手动打开。",
         browserProblems: {
             denied: "已在浏览器中拒绝授权",
             timeout: "等待浏览器登录超时，请重试",

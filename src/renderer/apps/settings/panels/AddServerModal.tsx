@@ -10,10 +10,11 @@ import {
     Modal,
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
-import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
+import { deviceSignIn as deviceSignInOverBridge, serverDisplayName, serverHost, type DeviceSignIn } from "@/lib/vcs/servers";
 import { cn } from "@/lib/utils/cn";
 import type {
     VcsBrowserCallbackOutcome,
+    VcsDeviceSignInStart,
     VcsServerAuthority,
     VcsServerDiscovery,
     VcsServerSession,
@@ -187,6 +188,9 @@ async function askToTrust(address: string, authority: VcsServerAuthority): Promi
     return answer?.success === true && answer.data.trusted;
 }
 
+/** The ways of signing in, in the order a server's offer puts them. */
+type Method = "browser" | "device" | "password" | "token";
+
 /**
  * How far adding a server has got.
  *
@@ -224,6 +228,8 @@ export interface AddServerModalProps {
     signInWithBrowser?: BrowserSignIn;
     /** How a pasted callback address reaches the waiting sign-in. See {@link BrowserCallback}. */
     completeBrowserSignIn?: BrowserCallback;
+    /** How a device-code sign-in is carried out. Offered wherever the browser one is. */
+    deviceSignIn?: DeviceSignIn;
     /**
      * An address to start with, from a `narraleaf://team/connect` link. Only filled in:
      * the person still reaches it, sees what it is and signs in, as with a typed one.
@@ -259,6 +265,7 @@ export function AddServerModal({
     signInWithPassword = passwordSignInUnavailable,
     signInWithBrowser = browserSignInUnavailable,
     completeBrowserSignIn = browserCallbackOverBridge,
+    deviceSignIn = deviceSignInOverBridge,
     initialAddress,
 }: AddServerModalProps) {
     const { t, tn } = useTranslation();
@@ -269,7 +276,10 @@ export function AddServerModal({
     const [password, setPassword] = useState("");
     // Which way of signing in the reader picked, where they picked one. Unpicked, the
     // first the server offers is shown: the browser, then a password, then a token.
-    const [chosen, setChosen] = useState<"browser" | "password" | "token" | null>(null);
+    const [chosen, setChosen] = useState<Method | null>(null);
+    // The code a device sign-in under way asks the person to type, and where.
+    const [deviceCode, setDeviceCode] = useState<{ userCode: string; verificationUri: string } | null>(null);
+    const deviceWaiting = useRef(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<TranslationKey | null>(null);
     // The other ways of signing in, folded away in the footer until asked for.
@@ -290,17 +300,21 @@ export function AddServerModal({
         alive.current = true;
         return () => { alive.current = false; };
     }, []);
+    // Leaving while a device sign-in waits stops the main process polling for it.
+    useEffect(() => () => {
+        if (deviceWaiting.current) deviceSignIn.cancel();
+    }, [deviceSignIn]);
 
     const offersPassword = stage.kind === "identity"
         && stage.discovery.capabilities.includes(PASSWORD_SIGN_IN_CAPABILITY);
     const offersBrowser = stage.kind === "identity"
         && stage.discovery.capabilities.includes(OAUTH_CAPABILITY);
-    const offered: ("browser" | "password" | "token")[] = [
-        ...(offersBrowser ? ["browser" as const] : []),
+    const offered: Method[] = [
+        ...(offersBrowser ? ["browser" as const, "device" as const] : []),
         ...(offersPassword ? ["password" as const] : []),
         "token",
     ];
-    const method: "browser" | "password" | "token" =
+    const method: Method =
         chosen !== null && offered.includes(chosen) ? chosen : (offered[0] ?? "token");
 
     /**
@@ -461,6 +475,36 @@ export function AddServerModal({
         setBusy(false);
     }, [busy, endBrowserWait, signInWithBrowser, stage, storeServer]);
 
+    const addWithDevice = useCallback(async () => {
+        if (stage.kind !== "identity" || busy) return;
+        setBusy(true);
+        setError(null);
+        setOthersOpen(false);
+        setDeviceCode(null);
+        const started = await deviceSignIn.start({ authUrl: stage.discovery.auth.url })
+            .catch((): VcsDeviceSignInStart => ({ ok: false, reason: "unknown" }));
+        if (!alive.current) return;
+        if (!started.ok) {
+            setError(BROWSER_PROBLEM_KEYS[started.reason]);
+            setBusy(false);
+            return;
+        }
+        setDeviceCode({ userCode: started.userCode, verificationUri: started.verificationUri });
+        deviceWaiting.current = true;
+        const outcome = await deviceSignIn.finish()
+            .catch((): BrowserSignInOutcome => ({ ok: false, reason: "unknown" }));
+        deviceWaiting.current = false;
+        if (!alive.current) return;
+        setDeviceCode(null);
+        if (!outcome.ok) {
+            setError(BROWSER_PROBLEM_KEYS[outcome.reason]);
+            setBusy(false);
+            return;
+        }
+        await storeServer(stage.discovery, outcome.token);
+        setBusy(false);
+    }, [busy, deviceSignIn, stage, storeServer]);
+
     /**
      * Finish the waiting browser sign-in with the address pasted by hand.
      *
@@ -594,6 +638,28 @@ export function AddServerModal({
                                 </div>
                             )}
                         </div>
+                    ) : method === "device" ? (
+                        <div data-servers-seam="identity-device" className="flex flex-col gap-2">
+                            <p className="text-xs text-fg-muted">
+                                {t(busy ? "settings.servers.deviceWaiting" : "settings.servers.deviceLead", {
+                                    name: stage.discovery.name,
+                                })}
+                            </p>
+                            {deviceCode && (
+                                <div className="flex flex-col gap-1.5 rounded-md border border-edge bg-fill-subtle p-3">
+                                    <p className="break-all text-xs text-fg-muted">
+                                        {t("settings.servers.deviceCode", { url: deviceCode.verificationUri })}
+                                    </p>
+                                    <p
+                                        data-servers-seam="device-code"
+                                        className="select-all text-center font-mono text-xl font-semibold tracking-[0.2em] text-fg"
+                                    >
+                                        {deviceCode.userCode}
+                                    </p>
+                                    <p className="text-xs text-fg-subtle">{t("settings.servers.deviceOpened")}</p>
+                                </div>
+                            )}
+                        </div>
                     ) : method === "password" ? (
                         <div data-servers-seam="identity-password" className="flex flex-col gap-2">
                             <div>
@@ -710,7 +776,9 @@ export function AddServerModal({
                         >
                             {t(other === "browser"
                                 ? "settings.servers.useBrowser"
-                                : other === "password"
+                                : other === "device"
+                                    ? "settings.servers.useDevice"
+                                    : other === "password"
                                     ? "settings.servers.usePassword"
                                     : "settings.servers.useToken")}
                         </button>
@@ -751,6 +819,19 @@ export function AddServerModal({
                     {otherMethods}
                     {leaveButton}
                     {button}
+                </>
+            );
+        }
+        if (stage.kind === "identity" && method === "device") {
+            return (
+                <>
+                    {otherMethods}
+                    {leaveButton}
+                    {submitButton(
+                        busy ? "settings.servers.deviceWaiting" : "settings.servers.deviceSignIn",
+                        !busy,
+                        addWithDevice,
+                    )}
                 </>
             );
         }

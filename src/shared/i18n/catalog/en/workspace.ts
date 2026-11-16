@@ -956,6 +956,11 @@ export const workspace = {
             sent: "Sent; follow it on the board in the web console",
             failed: "Not sent; check the connection or your role",
         },
+        assetRequest: {
+            title: "Is “{name}” the answer to an asset request?",
+            detail: "Pick the request and the asset is linked to it, closing it.",
+            none: "No",
+        },
         roleNotice: {
             reviewer: "You are a reviewer of this project: you can read, comment and take to-dos, but not commit or send changes.",
             viewer: "You are a viewer of this project: you can read it, but not comment, commit or send changes.",

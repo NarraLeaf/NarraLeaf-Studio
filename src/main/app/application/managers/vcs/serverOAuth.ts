@@ -227,6 +227,98 @@ export async function signInWithBrowser(input: ServerOAuthRequest): Promise<Serv
     return tokens === null ? { ok: false, reason: "unknown" } : { ok: true, ...tokens };
 }
 
+/** What the person types, and where, for a device sign-in (RFC 8628). */
+export interface ServerDeviceCode {
+    userCode: string;
+    verificationUri: string;
+    /** The same page with the code already filled in. */
+    verificationUriComplete: string;
+    /** When the code stops working, in milliseconds since the epoch. */
+    expiresAt: number;
+}
+
+const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
+
+/** Read the device endpoint's answer, or null when it is not one. */
+export function readDeviceStart(body: string, now = Date.now()): (ServerDeviceCode & { deviceCode: string; interval: number }) | null {
+    try {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        const { device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval } = parsed;
+        if (typeof device_code !== "string" || typeof user_code !== "string" || typeof verification_uri !== "string") return null;
+        return {
+            deviceCode: device_code,
+            userCode: user_code,
+            verificationUri: verification_uri,
+            verificationUriComplete: typeof verification_uri_complete === "string" ? verification_uri_complete : verification_uri,
+            expiresAt: now + (typeof expires_in === "number" ? expires_in : 600) * 1000,
+            interval: typeof interval === "number" && interval > 0 ? interval : 5,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Sign in with a device code: for a machine whose browser cannot reach the loopback listener -
+ * a remote desktop, a locked-down proxy - or a person who would rather approve on their phone.
+ *
+ * Asks the server for a code, hands it to `onCode` so the screen can show it, opens the page, and
+ * polls the token endpoint at the interval the server asked for until the person approves, refuses,
+ * or the code runs out. Nothing listens locally.
+ */
+export async function signInWithDevice(
+    input: ServerOAuthRequest & { onCode: (code: ServerDeviceCode) => void; sleep?: (ms: number) => Promise<void> },
+): Promise<ServerOAuthResult> {
+    const endpoint = endpointOf(input.authUrl);
+    if (endpoint === null) return { ok: false, reason: "unknown" };
+    let started: ReturnType<typeof readDeviceStart>;
+    try {
+        const answer = await request(endpoint, {
+            method: "POST",
+            path: "/oauth/device",
+            userDataDir: input.userDataDir,
+            body: JSON.stringify({ client_id: STUDIO_OAUTH_CLIENT_ID, device_name: input.deviceName }),
+        });
+        if (answer.status !== 200) return { ok: false, reason: "refused" };
+        started = readDeviceStart(answer.body);
+    } catch {
+        return { ok: false, reason: "unreachable" };
+    }
+    if (started === null) return { ok: false, reason: "unknown" };
+    const { deviceCode, interval, ...shown } = started;
+    input.onCode(shown);
+    void input.openExternal(shown.verificationUriComplete).catch(() => undefined);
+
+    const sleep = input.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
+    let wait = interval * 1000;
+    while (Date.now() < shown.expiresAt) {
+        await sleep(wait);
+        if (input.signal?.aborted) return { ok: false, reason: "timeout" };
+        const answer = await askTokenEndpoint(input.authUrl, input.userDataDir, { grant_type: DEVICE_GRANT, device_code: deviceCode });
+        if (answer === "unreachable") continue;
+        if (answer === "unknown") return { ok: false, reason: "unknown" };
+        if (answer.status === 200) {
+            const tokens = readTokens(answer.body);
+            return tokens === null ? { ok: false, reason: "unknown" } : { ok: true, ...tokens };
+        }
+        let error = "";
+        try {
+            error = String((JSON.parse(answer.body) as { error?: unknown }).error ?? "");
+        } catch {
+            // Not JSON: treated as a refusal below.
+        }
+        if (error === "authorization_pending") continue;
+        if (error === "slow_down") {
+            wait += 5000;
+            continue;
+        }
+        if (error === "access_denied") return { ok: false, reason: "denied" };
+        if (error === "expired_token") return { ok: false, reason: "timeout" };
+        return { ok: false, reason: "refused" };
+    }
+    return { ok: false, reason: "timeout" };
+}
+
 /**
  * Trade a refresh token for a fresh token and the next refresh token.
  *

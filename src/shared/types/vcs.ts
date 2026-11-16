@@ -1344,6 +1344,14 @@ export type VcsBrowserSignInOutcome =
     | { ok: false; reason: VcsBrowserSignInReason };
 
 /**
+ * A device sign-in under way (RFC 8628): the code to type and the page to type it on. The wait
+ * for the approval is a second call, `finishDeviceSignIn`, so the screen can show this meanwhile.
+ */
+export type VcsDeviceSignInStart =
+    | { ok: true; userCode: string; verificationUri: string; verificationUriComplete: string; expiresAt: number }
+    | { ok: false; reason: VcsBrowserSignInReason };
+
+/**
  * What handing over a callback address by hand came to, for a browser sign-in whose
  * redirect never reached Studio on its own.
  *

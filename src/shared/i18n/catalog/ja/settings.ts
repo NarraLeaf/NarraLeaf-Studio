@@ -482,6 +482,7 @@ export const settings = {
         useToken: "代わりにアクセストークンを使う",
         usePassword: "代わりにユーザー名とパスワードを使う",
         useBrowser: "代わりにブラウザでサインインする",
+        useDevice: "代わりにデバイスコードでサインインする",
         otherMethods: "その他のサインイン方法",
         browserCallback: {
             done: "サインインを完了しました",
@@ -493,6 +494,11 @@ export const settings = {
         browserLead: "ブラウザで {name} のサインインページを開く。サインインして許可すると、ここに戻る",
         browserSignIn: "ブラウザでサインイン",
         browserWaiting: "ブラウザでサインインを完了してください…",
+        deviceLead: "ブラウザが Studio に戻れない場合（リモートデスクトップや別の端末のブラウザ）に使う。表示されるコードを {name} のページに入力して許可する",
+        deviceSignIn: "デバイスコードを取得",
+        deviceWaiting: "ブラウザでの承認を待っています…",
+        deviceCode: "{url} でこのコードを入力：",
+        deviceOpened: "ブラウザでこのページを開こうとした。どの端末からでも手動で開ける",
         browserProblems: {
             denied: "ブラウザで許可が拒否された",
             timeout: "ブラウザでのサインインがタイムアウトした。もう一度試す",

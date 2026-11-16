@@ -21,6 +21,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
     VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
@@ -723,6 +724,42 @@ export class VcsCompleteBrowserSignInHandler extends IPCHandler<IPCEventType.vcs
         { callbackUrl }: IPCEvents[IPCEventType.vcsCompleteBrowserSignIn]["data"],
     ): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>> {
         return this.tryUse(async () => ({ outcome: window.app.getVcsManager().completeBrowserSignIn(callbackUrl) }));
+    }
+}
+
+/** Begin a device sign-in: answers the code to show, and opens the page to type it on. */
+export class VcsStartDeviceSignInHandler extends IPCHandler<IPCEventType.vcsStartDeviceSignIn> {
+    readonly name = IPCEventType.vcsStartDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl }: IPCEvents[IPCEventType.vcsStartDeviceSignIn]["data"],
+    ): Promise<RequestStatus<VcsDeviceSignInStart>> {
+        return this.tryUse(async () => window.app.getVcsManager().startDeviceSignIn(authUrl));
+    }
+}
+
+/** Wait for the device sign-in under way to be approved, refused or run out. */
+export class VcsFinishDeviceSignInHandler extends IPCHandler<IPCEventType.vcsFinishDeviceSignIn> {
+    readonly name = IPCEventType.vcsFinishDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<VcsBrowserSignInOutcome>> {
+        return this.tryUse(async () => window.app.getVcsManager().finishDeviceSignIn());
+    }
+}
+
+/** Stop waiting for the device sign-in under way. */
+export class VcsCancelDeviceSignInHandler extends IPCHandler<IPCEventType.vcsCancelDeviceSignIn> {
+    readonly name = IPCEventType.vcsCancelDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<Record<string, never>>> {
+        return this.tryUse(async () => {
+            window.app.getVcsManager().cancelDeviceSignIn();
+            return {};
+        });
     }
 }
 

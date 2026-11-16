@@ -866,6 +866,11 @@ export const workspace = {
             sent: "已发出，可以在网页的看板上跟进",
             failed: "没有发出去，请检查连接或权限",
         },
+        assetRequest: {
+            title: "“{name}”是在回应某个素材请求吗？",
+            detail: "选一个请求，这份素材会链接过去，请求随之完成。",
+            none: "不是",
+        },
         roleNotice: {
             reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
             viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",

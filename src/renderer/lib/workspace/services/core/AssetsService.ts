@@ -324,6 +324,8 @@ interface AssetsEvents {
     groupsUpdated: { category: AssetCategory; groupId?: string };
     /** Which files are on their way in has changed, or one of them has got further. */
     transfers: readonly AssetTransfer[];
+    /** Files were brought into the project from disk, by this window. Not for a peer's import. */
+    imported: readonly Asset<AssetType, AssetSource.Local>[];
 }
 
 /**
@@ -3134,7 +3136,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // ⚠ Inside a transaction so that a directory of forty files is ONE operation. The importer
         // loops, and forty operations would be forty things for every other screen in the room to
         // draw and forty presses to take back.
-        return this.transactionResult(() => this.getLocalAssetsManager().importFromPaths(type, paths, options));
+        const result = await this.transactionResult(() => this.getLocalAssetsManager().importFromPaths(type, paths, options));
+        if (result.success) {
+            const assets = result.data.flatMap(status => (status.success ? [status.data] : []));
+            if (assets.length > 0) this.events.emit("imported", assets);
+        }
+        return result;
     }
 
     /**

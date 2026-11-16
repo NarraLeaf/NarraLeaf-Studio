@@ -19,6 +19,7 @@ import type {
     VcsMergeState,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
     VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
@@ -105,7 +106,7 @@ import {
     rememberServerRefreshToken,
     rememberServerToken,
 } from "./serverTokens";
-import { completeBrowserSignIn, refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
+import { completeBrowserSignIn, refreshWithServer, signInWithBrowser, signInWithDevice, tokenExpiry, type ServerDeviceCode, type ServerOAuthResult } from "./serverOAuth";
 // Pure policy over the global state, with nothing of Lore's in it: which project may act as which
 // account. See that module's header for the rule.
 import {
@@ -2588,6 +2589,51 @@ export class VcsManager extends Manager {
         }
         this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: now });
         return { ok: true, token: outcome.token };
+    }
+
+    /** The device sign-in under way, if one is: the wait for its approval. */
+    private deviceSignIn: { result: Promise<ServerOAuthResult>; abort: AbortController } | null = null;
+
+    /**
+     * Begin a device sign-in: answers the code to show as soon as the server has given one, and
+     * keeps polling for the approval in the background until {@link finishDeviceSignIn} collects it.
+     * Starting another abandons the one before.
+     */
+    public async startDeviceSignIn(authUrl: string): Promise<VcsDeviceSignInStart> {
+        this.deviceSignIn?.abort.abort();
+        const abort = new AbortController();
+        let shown: (code: ServerDeviceCode) => void = () => undefined;
+        const code = new Promise<ServerDeviceCode>(resolve => (shown = resolve));
+        const result = signInWithDevice({
+            authUrl,
+            deviceName: `${os.hostname().replace(/\.local$/, "")}`,
+            userDataDir: this.app.getUserDataDir(),
+            openExternal: (url) => shell.openExternal(url),
+            signal: abort.signal,
+            onCode: (value) => shown(value),
+        });
+        this.deviceSignIn = { result, abort };
+        const first = await Promise.race([code, result]);
+        if ("userCode" in first) return { ok: true, ...first };
+        this.deviceSignIn = null;
+        return first.ok ? { ok: false, reason: "unknown" } : first;
+    }
+
+    /** Wait for the device sign-in {@link startDeviceSignIn} began, and answer as a browser sign-in does. */
+    public async finishDeviceSignIn(): Promise<VcsBrowserSignInOutcome> {
+        const pending = this.deviceSignIn;
+        if (pending === null) return { ok: false, reason: "unknown" };
+        const outcome = await pending.result;
+        if (this.deviceSignIn === pending) this.deviceSignIn = null;
+        this.app.logger.info("[Vcs] Device sign-in", outcome.ok ? "accepted" : outcome.reason);
+        if (!outcome.ok) return outcome;
+        this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: Date.now() });
+        return { ok: true, token: outcome.token };
+    }
+
+    /** Stop waiting for a device sign-in the person gave up on. */
+    public cancelDeviceSignIn(): void {
+        this.deviceSignIn?.abort.abort();
     }
 
     /**

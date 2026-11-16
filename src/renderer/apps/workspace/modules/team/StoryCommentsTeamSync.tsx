@@ -67,6 +67,14 @@ function transportFor(remoteOrigin: string, project: string, withTodos: boolean)
             const answer = await teamCall(remoteOrigin, TeamMethod.threadsResolve, { thread, resolved });
             return answer.ok;
         },
+        async editComment(comment, body) {
+            const answer = await teamCall(remoteOrigin, TeamMethod.commentsEdit, { comment, body });
+            return answer.ok;
+        },
+        async deleteComment(comment) {
+            const answer = await teamCall(remoteOrigin, TeamMethod.commentsDelete, { comment });
+            return answer.ok;
+        },
         ...(withTodos ? {
             async createTodo(input: { title: string; anchor: { document?: string; element?: string }; clientId: string }) {
                 const answer = await teamCall(remoteOrigin, TeamMethod.todosCreate, {

@@ -112,7 +112,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsDeviceSignInStart, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -1243,6 +1243,12 @@ export interface RendererPreloadedInterface {
          * to, when that redirect did not reach Studio by itself.
          */
         completeBrowserSignIn(callbackUrl: string): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>>;
+        /** Begin a device sign-in: the code to show, and the page it is typed on (opened too). */
+        startDeviceSignIn(authUrl: string): Promise<RequestStatus<VcsDeviceSignInStart>>;
+        /** Wait for the device sign-in {@link startDeviceSignIn} began. Answers as {@link signInWithBrowser} does. */
+        finishDeviceSignIn(): Promise<RequestStatus<VcsBrowserSignInOutcome>>;
+        /** Stop waiting for that device sign-in. */
+        cancelDeviceSignIn(): Promise<RequestStatus<Record<string, never>>>;
         /**
          * Put this project on a server: register it, connect it, send it.
          *
