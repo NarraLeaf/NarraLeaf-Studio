@@ -211,7 +211,11 @@
     "admin.policies.save",
     "admin.policies.delete",
     "admin.users.policy",
-    "admin.users.policySet"
+    "admin.users.policySet",
+    "admin.users.delete",
+    "admin.users.lock",
+    "admin.users.unlock",
+    "admin.users.update"
   ],
   "topics": {
     "projects": "projects",
