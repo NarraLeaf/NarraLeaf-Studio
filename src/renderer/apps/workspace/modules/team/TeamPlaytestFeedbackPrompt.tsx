@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { createThread, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { storyCommentAnchor } from "@/lib/workspace/services/storyComments/storyCommentsTeamSync";
 import type { WorkspacePlaytestFeedback } from "@shared/types/devMode";
 import { teamAttachmentMarker, type TeamAnchor } from "@shared/types/team";
@@ -111,6 +112,8 @@ export function TeamPlaytestFeedbackPrompt() {
                     className="resize-none rounded-md border border-edge bg-surface px-2 py-1 text-xs text-fg outline-none focus:border-primary"
                     onChange={event => setNote(event.target.value)}
                     onKeyDown={event => {
+                        // A composing input method keeps Enter and Escape for its candidate window.
+                        if (isImeKeyEvent(event)) return;
                         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                             event.preventDefault();
                             void send();

@@ -366,7 +366,7 @@ function Reactions({
                         type="button"
                         disabled={busy}
                         onClick={() => void give(reaction.emoji)}
-                        title={reaction.by.join(", ")}
+                        data-tip={reaction.by.join(", ")}
                         aria-pressed={mine}
                         className={`rounded-full border px-1.5 text-2xs leading-5 ${
                             mine ? "border-primary bg-primary/10 text-fg" : "border-edge text-fg-subtle"
@@ -392,7 +392,7 @@ function Reactions({
                 <button
                     type="button"
                     onClick={() => setPicking(true)}
-                    title={t("launcher.servers.discussion.react")}
+                    data-tip={t("launcher.servers.discussion.react")}
                     aria-label={t("launcher.servers.discussion.react")}
                     className="rounded-full border border-dashed border-edge px-1.5 text-2xs leading-5 text-fg-subtle"
                     data-discussion-action="react"
