@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamLiveSession } from "@shared/types/team";
 import type { VcsLocalRepository, VcsServerProject } from "@shared/types/vcs";
-import { JoinByPasscode, ProjectLiveSessions } from "./ServerLiveSessions";
+import { ProjectLiveSessions } from "./ServerLiveSessions";
 
 /**
  * The launcher's half of joining a live session.
@@ -200,87 +200,5 @@ describe("the rooms open on one project", () => {
         render(<ProjectLiveSessions remoteOrigin={ORIGIN} project={project()} localPath={null} />);
 
         await waitFor(() => expect(action()?.textContent).toBe("launcher.servers.live.ask"));
-    });
-});
-
-describe("the four digits", () => {
-    function field(): HTMLInputElement {
-        return document.querySelector("[data-servers-passcode-field]") as HTMLInputElement;
-    }
-    function press(): void {
-        fireEvent.click(document.querySelector("[data-servers-action='join-by-code']") as HTMLElement);
-    }
-
-    function draw(projects: VcsServerProject[] = [project()]): void {
-        render(
-            <JoinByPasscode
-                remoteOrigin={ORIGIN}
-                projects={projects}
-                repositories={[here()]}
-            />,
-        );
-    }
-
-    it("takes digits and nothing else, and no more than a passcode has", async () => {
-        applyDispatch();
-        draw();
-        await waitFor(() => expect(field()).not.toBeNull());
-
-        fireEvent.change(field(), { target: { value: "4a8-2 19" } });
-
-        // A field that accepted anything would send the server strings it can only refuse, and
-        // an author would read that refusal as their own code being wrong.
-        expect(field().value).toBe("4821");
-    });
-
-    it("finds which project the room is on, then opens the copy this machine has", async () => {
-        dispatch["live.byCode"] = { ok: true, value: { session: room() } };
-        applyDispatch();
-        draw();
-        await waitFor(() => expect(field()).not.toBeNull());
-
-        fireEvent.change(field(), { target: { value: "4821" } });
-        press();
-
-        // ⚠ The digits travel on rather than the room's id: a room reached this way refuses its
-        // own id, which is what keeps knowing the id from being enough to walk in.
-        await waitFor(() => expect(bridge.launch).toHaveBeenCalledWith(
-            { projectPath: "D:/projects/moonlit", joinLive: { code: "4821" } },
-            true,
-        ));
-    });
-
-    it("says one sentence for a wrong passcode and for one nobody is using", async () => {
-        dispatch["live.byCode"] = { ok: false, problem: { kind: "refused" } };
-        applyDispatch();
-        draw();
-        await waitFor(() => expect(field()).not.toBeNull());
-
-        fireEvent.change(field(), { target: { value: "0000" } });
-        press();
-
-        // Telling the two apart would turn ten thousand guesses into a map of which rooms exist,
-        // which is why the server answers both the same and this must not elaborate.
-        await waitFor(() => expect(
-            document.querySelector("[data-passcode-problem]")?.textContent,
-        ).toBe("launcher.servers.live.noSuchCode"));
-        expect(bridge.launch).not.toHaveBeenCalled();
-    });
-
-    it("refuses to guess an address for a project the server did not list", async () => {
-        dispatch["live.byCode"] = { ok: true, value: { session: room({ project: "some-other-id" }) } };
-        applyDispatch();
-        draw();
-        await waitFor(() => expect(field()).not.toBeNull());
-
-        fireEvent.change(field(), { target: { value: "4821" } });
-        press();
-
-        // Nothing here can fetch a repository it has no address for, and opening the clone wizard
-        // with an empty field would look like a flow that had begun.
-        await waitFor(() => expect(
-            document.querySelector("[data-passcode-problem]")?.textContent,
-        ).toBe("launcher.servers.live.unreachable"));
-        expect(bridge.wizard).not.toHaveBeenCalled();
     });
 });

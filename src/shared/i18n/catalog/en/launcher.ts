@@ -216,10 +216,6 @@ export const launcher = {
             // A room that is joined by asking does not let anybody in when this is pressed: it
             // puts a question in front of its host. "Join" would be promising something else.
             ask: "Ask to join",
-            passcodePrompt: "Have a passcode?",
-            // One sentence for a passcode that is wrong and for one nobody is using, because the
-            // server answers both with one - see the join rules.
-            noSuchCode: "No live session has that passcode.",
             unreachable: "That session is on a project this server did not list.",
         },
         discussion: {

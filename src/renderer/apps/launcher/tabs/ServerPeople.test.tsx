@@ -30,10 +30,10 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 // The roster comes over the session now, so what a test drives is `team.call` answering
 // `members.list` rather than a REST wrapper. The shape is one method's business - the
 // members hang under `value`, the way the wire carries them.
-const bridge = vi.hoisted(() => ({ call: vi.fn() }));
+const bridge = vi.hoisted(() => ({ call: vi.fn(), avatar: vi.fn() }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ team: { call: bridge.call } }),
+    getInterface: () => ({ team: { call: bridge.call, avatar: bridge.avatar } }),
 }));
 
 const ORIGIN = "lore://team.example.lan:41337";
@@ -64,6 +64,28 @@ function row(username: string): HTMLElement {
 afterEach(() => {
     cleanup();
     bridge.call.mockReset();
+    bridge.avatar.mockReset();
+});
+
+describe("a member's face", () => {
+    it("is the avatar the account set, read through the session", async () => {
+        const avatarUrl = "/api/team/v1/avatars/ada/abc.png";
+        bridge.avatar.mockResolvedValue({ success: true, data: { dataUrl: "data:image/png;base64,AAAA" } });
+        open([member({ avatarUrl })]);
+
+        await waitFor(() => expect(row("ada").querySelector("img")?.getAttribute("src"))
+            .toBe("data:image/png;base64,AAAA"));
+        // Never fetched by the window itself: the server serves avatars to signed-in callers.
+        expect(bridge.avatar).toHaveBeenCalledWith(ORIGIN, avatarUrl);
+    });
+
+    it("is the monogram for an account that set none", async () => {
+        open([member({ username: "bob", displayName: "Bob Stone" })]);
+
+        await waitFor(() => expect(row("bob").textContent).toContain("BS"));
+        expect(row("bob").querySelector("img")).toBeNull();
+        expect(bridge.avatar).not.toHaveBeenCalled();
+    });
 });
 
 describe("a member row", () => {

@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { History, Settings2 } from "lucide-react";
 
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
-import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
-import { getProfile, listClients, readAvatar, useTeamCapability, useTeamConnection, useTeamTopics } from "@/lib/team";
-import { cn } from "@/lib/utils/cn";
+import { getProfile, listClients, useTeamCapability, useTeamConnection, useTeamTopics } from "@/lib/team";
+import { TeamAvatar } from "@/lib/team/TeamAvatar";
+import { latestSignIn, TeamAccountMenu, TeamAccountMenuActs, TeamAccountMenuRow } from "@/lib/team/TeamAccountMenu";
 import { useServers } from "@/lib/vcs/servers";
-import type { VcsServerSession } from "@shared/types/vcs";
 import { teamProjectClientsTopic, type TeamAccountProfile } from "@shared/types/team";
 
 import { resolveOnByDefault, TEAM_AVATAR_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
@@ -18,7 +17,8 @@ import { isTeamHistoryReachable, openTeamHistory } from "./teamHistoryController
 import { isTeamPresenceReachable, openTeamPresence } from "./teamPresenceController";
 
 /**
- * The signed-in Team account, in the title bar.
+ * The signed-in Team account, in the title bar. The face and the card are `TeamAccountMenu`,
+ * which the launcher's sidebar draws too; what is particular to the workspace is chosen here.
  *
  * **Wherever this installation is signed in to a Team server.** The project's own server where it is
  * on one; otherwise the server signed in to last, so a local project still shows who the author is
@@ -41,108 +41,22 @@ export function TeamAccountAvatar() {
     const documents = useTeamDocuments();
     const { servers } = useServers();
     const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin ?? latestSignIn(servers);
-    const connection = useTeamConnection(remoteOrigin);
-    const ready = connection.state === "ready" && connection.account !== undefined;
-    // Who is signed in there, whether or not the server is answering: the live session's account
-    // where there is one, and the one recorded at sign-in otherwise.
-    const account = connection.account ?? servers.find((server) => server.remoteOrigin === remoteOrigin)?.account;
     const inTeamProject = documents.view !== null && documents.target !== null;
     const visible = useGlobalSetting(TEAM_AVATAR_VISIBLE_KEY, resolveOnByDefault);
 
-    const [open, setOpen] = useState(false);
-    const root = useRef<HTMLDivElement>(null);
-
-    // The account's own profile, read when the session becomes ready and again whenever the card is
-    // opened - a profile has no topic, so opening the card is when a changed bio is picked up.
-    const [profile, setProfile] = useState<TeamAccountProfile | null>(null);
-    // Kept while the server is away, so a face already read stays up through a dropped connection.
-    useEffect(() => {
-        setProfile(null);
-    }, [remoteOrigin, account?.username]);
-    useEffect(() => {
-        if (!ready || remoteOrigin === null) return;
-        let alive = true;
-        void getProfile(remoteOrigin).then((answer) => {
-            if (alive && answer.ok) setProfile(answer.value);
-        });
-        return () => {
-            alive = false;
-        };
-    }, [ready, remoteOrigin, connection.since, open]);
-
-    useEffect(() => {
-        if (!open) return;
-        const away = (event: MouseEvent) => {
-            if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
-        };
-        const escape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") setOpen(false);
-        };
-        window.addEventListener("mousedown", away);
-        window.addEventListener("keydown", escape);
-        return () => {
-            window.removeEventListener("mousedown", away);
-            window.removeEventListener("keydown", escape);
-        };
-    }, [open]);
-
-    if (!visible || remoteOrigin === null || account === undefined) {
+    if (!visible) {
         return null;
     }
 
-    const username = profile?.username ?? account.username;
-    const displayName = profile?.displayName ?? account.displayName ?? username;
-
     return (
-        <div ref={root} className="relative ml-2">
-            <button
-                type="button"
-                data-team-account={!ready ? "offline" : inTeamProject ? "team-project" : "connected"}
-                aria-label={displayName}
-                data-tip={ready ? displayName : `${displayName} · ${t("workspace.shell.team.account.offline")}`}
-                aria-expanded={open}
-                onClick={() => setOpen((value) => !value)}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-default hover:bg-fill"
-            >
-                <TeamFace
-                    remoteOrigin={remoteOrigin}
-                    username={username}
-                    avatarUrl={profile?.avatarUrl}
-                    className={cn(
-                        // The same visual weight as the 16px glyphs beside it, inside the same 32px
-                        // square; the team project's ring stays inside that square too.
-                        "h-5 w-5",
-                        !ready && "opacity-50",
-                        inTeamProject && "ring-2 ring-primary ring-offset-1 ring-offset-surface-sunken",
-                    )}
-                />
-            </button>
-            {open && (
-                <div
-                    data-team-account-card
-                    className="absolute right-0 top-9 z-50 w-72 rounded-lg border border-edge bg-surface-overlay p-3 shadow-xl"
-                >
-                    <div className="flex items-center gap-3">
-                        <TeamFace
-                            remoteOrigin={remoteOrigin}
-                            username={username}
-                            avatarUrl={profile?.avatarUrl}
-                            className="h-10 w-10 text-sm"
-                        />
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                            <span className="truncate text-sm font-medium text-fg">{displayName}</span>
-                            {profile?.bio !== undefined && (
-                                <span className="line-clamp-2 break-words text-xs text-fg-muted">{profile.bio}</span>
-                            )}
-                            {!ready && (
-                                <span data-team-account-offline className="text-2xs text-fg-subtle">
-                                    {t("workspace.shell.team.account.offline")}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {ready && inTeamProject && documents.target !== null && (
+        <TeamAccountMenu
+            remoteOrigin={remoteOrigin}
+            ringed={inTeamProject}
+            className="ml-2"
+            cardClassName="right-0 top-9"
+            sections={({ ready, close }) => (
+                <>
+                    {ready && inTeamProject && remoteOrigin !== null && documents.target !== null && (
                         <TeamProjectOnline
                             remoteOrigin={remoteOrigin}
                             project={documents.target.project}
@@ -150,66 +64,37 @@ export function TeamAccountAvatar() {
                     )}
 
                     {(inTeamProject && isTeamHistoryReachable()) || isTeamPresenceReachable() ? (
-                        <div className="mt-3 flex flex-col gap-0.5 border-t border-edge pt-2">
+                        <TeamAccountMenuActs>
                             {inTeamProject && isTeamHistoryReachable() && (
-                                <MenuRow
+                                <TeamAccountMenuRow
                                     act="history"
                                     icon={<History className="h-4 w-4" />}
                                     onClick={() => {
-                                        setOpen(false);
+                                        close();
                                         openTeamHistory();
                                     }}
                                 >
                                     {t("workspace.shell.team.account.history")}
-                                </MenuRow>
+                                </TeamAccountMenuRow>
                             )}
                             {isTeamPresenceReachable() && (
-                                <MenuRow
+                                <TeamAccountMenuRow
                                     act="manage"
                                     icon={<Settings2 className="h-4 w-4" />}
                                     onClick={() => {
-                                        setOpen(false);
+                                        close();
                                         openTeamPresence();
                                     }}
                                 >
                                     {t("workspace.shell.team.account.manage")}
-                                </MenuRow>
+                                </TeamAccountMenuRow>
                             )}
-                        </div>
+                        </TeamAccountMenuActs>
                     ) : null}
-                </div>
+                </>
             )}
-        </div>
+        />
     );
-}
-
-/** One act in the account menu, drawn as a menu row rather than a button. */
-function MenuRow({ act, icon, onClick, children }: {
-    act: string;
-    icon: React.ReactNode;
-    onClick: () => void;
-    children: React.ReactNode;
-}) {
-    return (
-        <button
-            type="button"
-            data-team-account-act={act}
-            onClick={onClick}
-            className="flex min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-fg transition-colors cursor-default hover:bg-fill"
-        >
-            <span className="flex shrink-0 text-fg-muted">{icon}</span>
-            <span className="min-w-0 truncate">{children}</span>
-        </button>
-    );
-}
-
-/** The server this installation signed in to most recently, for a project on none. */
-export function latestSignIn(servers: readonly VcsServerSession[]): string | null {
-    let latest: VcsServerSession | null = null;
-    for (const server of servers) {
-        if (latest === null || server.signedInAt > latest.signedInAt) latest = server;
-    }
-    return latest?.remoteOrigin ?? null;
 }
 
 /** Who has the team project open right now, one row per account. */
@@ -254,9 +139,9 @@ function TeamProjectOnline({ remoteOrigin, project }: { remoteOrigin: string; pr
                                 data-team-online={username}
                                 className="flex min-h-7 items-center gap-2 text-sm text-fg"
                             >
-                                <TeamFace
+                                <TeamAvatar
                                     remoteOrigin={remoteOrigin}
-                                    username={username}
+                                    name={username}
                                     avatarUrl={known?.avatarUrl}
                                     className="h-5 w-5"
                                 />
@@ -270,71 +155,14 @@ function TeamProjectOnline({ remoteOrigin, project }: { remoteOrigin: string; pr
     );
 }
 
-/**
- * An account's face: its avatar where it set one and it could be read, its monogram otherwise.
- *
- * The monogram is the same coloured initials the account wears everywhere else in Studio, keyed on
- * the username, so the fallback is never a stranger.
- */
-function TeamFace({ remoteOrigin, username, avatarUrl, className }: {
-    remoteOrigin: string;
-    username: string;
-    avatarUrl?: string;
-    className?: string;
-}) {
-    const src = useAvatarImage(remoteOrigin, avatarUrl);
-    return (
-        <span
-            className={cn(
-                "flex shrink-0 items-center justify-center overflow-hidden rounded-full text-2xs font-medium text-white",
-                className,
-            )}
-            style={src === null ? { backgroundColor: nameMonogramColor(username) } : undefined}
-        >
-            {src === null
-                ? nameInitials(username)
-                : <img src={src} alt="" draggable={false} className="h-full w-full object-cover" />}
-        </span>
-    );
-}
-
 /* ------------------------------------------------------------------------- reads */
 
 /**
- * Avatars and other accounts' profiles, remembered for as long as the window is open.
- *
- * An avatar's path is its content hash, so a remembered image can never be out of date. Other
- * accounts' profiles are remembered too because the online list redraws on every arrival and
- * departure; a changed name reaches it the next time the window opens.
+ * Other accounts' profiles, remembered for as long as the window is open, because the online list
+ * redraws on every arrival and departure; a changed name reaches it the next time the window
+ * opens. Avatars are remembered by `TeamAvatar` itself.
  */
-const avatarImages = new Map<string, Promise<string | null>>();
 const otherProfiles = new Map<string, Promise<TeamAccountProfile | null>>();
-
-function useAvatarImage(remoteOrigin: string, avatarUrl: string | undefined): string | null {
-    const [src, setSrc] = useState<string | null>(null);
-    useEffect(() => {
-        setSrc(null);
-        if (avatarUrl === undefined) return;
-        const key = `${remoteOrigin}\n${avatarUrl}`;
-        let reading = avatarImages.get(key);
-        if (reading === undefined) {
-            reading = readAvatar(remoteOrigin, avatarUrl).then((value) => {
-                // A failed read is not remembered: the server may only have been away.
-                if (value === null) avatarImages.delete(key);
-                return value;
-            });
-            avatarImages.set(key, reading);
-        }
-        let alive = true;
-        void reading.then((value) => {
-            if (alive) setSrc(value);
-        });
-        return () => {
-            alive = false;
-        };
-    }, [remoteOrigin, avatarUrl]);
-    return src;
-}
 
 function useTeamProfiles(remoteOrigin: string, usernames: readonly string[]): Record<string, TeamAccountProfile> {
     const [profiles, setProfiles] = useState<Record<string, TeamAccountProfile>>({});

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
 import { listMembers } from "@/lib/team";
+import { TeamAvatar } from "@/lib/team/TeamAvatar";
 import { cn } from "@/lib/utils/cn";
 import type { TranslationKey } from "@shared/i18n";
 import { serverProblemFromTeam } from "@shared/types/vcs";
@@ -84,6 +84,7 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
                 {members !== null && peopleFirst(members).map(member => (
                     <MemberRow
                         key={member.username}
+                        remoteOrigin={remoteOrigin}
                         member={member}
                         opened={opened === member.username}
                         onToggle={() => setOpened(current => (
@@ -114,7 +115,7 @@ export function peopleFirst(members: readonly VcsServerMember[]): VcsServerMembe
 }
 
 /**
- * One account: a name, the name it answers to, and what is true of it.
+ * One account: its face, a name, the name it answers to, and what is true of it.
  *
  * The marks are words, not badges. An operator and a disabled account are worth knowing
  * about on the day they matter and are noise on every other day, so they read at the size
@@ -123,10 +124,12 @@ export function peopleFirst(members: readonly VcsServerMember[]): VcsServerMembe
  * whose subject is who works here.
  */
 function MemberRow({
+    remoteOrigin,
     member,
     opened,
     onToggle,
 }: {
+    remoteOrigin: string;
     member: VcsServerMember;
     opened: boolean;
     onToggle: () => void;
@@ -149,19 +152,17 @@ function MemberRow({
                 "cursor-default transition-colors duration-150 hover:bg-fill",
             )}
         >
-            <span
-                aria-hidden
+            <TeamAvatar
+                remoteOrigin={remoteOrigin}
+                name={member.displayName}
+                avatarUrl={member.avatarUrl}
                 className={cn(
-                    "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                    "text-2xs font-medium text-white",
+                    "mt-0.5 h-7 w-7",
                     // An account the server has stopped accepting is still on the list and
                     // still worth recognising; it is just not somebody to write to.
                     member.disabled && "opacity-40 saturate-50",
                 )}
-                style={{ backgroundColor: nameMonogramColor(member.displayName) }}
-            >
-                {nameInitials(member.displayName)}
-            </span>
+            />
             <span className="min-w-0 flex-1">
                 <span className={cn(
                     "block truncate text-sm",

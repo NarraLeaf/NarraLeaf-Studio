@@ -366,6 +366,7 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Mem
         const username = text(from, "username");
         if (username === undefined) return null;
         const createdAt = count(from, "createdAt");
+        const avatarUrl = text(from, "avatarUrl");
         return {
             username,
             displayName: text(from, "displayName") ?? username,
@@ -376,6 +377,7 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Mem
             disabled: from["disabled"] === true,
             serviceAccount: from["serviceAccount"] === true,
             ...(createdAt === undefined ? {} : { createdAt }),
+            ...(avatarUrl === undefined ? {} : { avatarUrl }),
         } satisfies VcsServerMember;
     });
     const from = record(answered.value);

@@ -1302,6 +1302,11 @@ export interface VcsServerMember {
     serviceAccount: boolean;
     /** When it was made. Epoch ms; absent from a server that did not say. */
     createdAt?: number;
+    /**
+     * The server's path for this account's avatar, absent where it set none. Served only to a
+     * signed-in caller, so a renderer reads it through `team.avatar` and never directly.
+     */
+    avatarUrl?: string;
 }
 
 /**
