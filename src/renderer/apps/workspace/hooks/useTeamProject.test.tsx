@@ -45,7 +45,7 @@ const ONE = "lore://one.example.lan:41337";
 const REPO = "1a2b3c4d5e6f70819a2b3c4d5e6f7081";
 
 /** A session that is open and offers everything. */
-function ready(capabilities = ["session", "clients", "live", "overlay"]) {
+function ready(capabilities = ["session", "clients", "overlay"]) {
     return {
         success: true,
         data: {
@@ -98,7 +98,6 @@ describe("checking this project's server", () => {
             "projects.list": { projects: [project(REPO, "something-else")] },
             "clients.announce": { client: { id: `me.${REPO}`, account: "ada", label: "Nomen", agent: "", since: 1 } },
             "clients.list": { clients: [] },
-            "live.list": { sessions: [] },
             "overlay.list": { records: [], total: 0, head: "rev-9" },
         });
 
@@ -123,7 +122,6 @@ describe("checking this project's server", () => {
             "projects.list": { projects: [project(REPO)] },
             "clients.announce": { client: { id: `me.${REPO}`, account: "ada", label: "Nomen", agent: "", since: 1 } },
             "clients.list": { clients: [] },
-            "live.list": { sessions: [] },
             "overlay.list": { records: [], total: 0 },
         });
 
@@ -194,7 +192,6 @@ describe("checking this project's server", () => {
             "projects.list": { projects: [project(REPO)] },
             "clients.announce": { client: { id: "me", account: "ada", label: "Nomen", agent: "", since: 1 } },
             "clients.list": { clients: [] },
-            "live.list": { sessions: [] },
             "overlay.list": {
                 total: 1,
                 head: "rev-9",
@@ -238,7 +235,6 @@ describe("checking this project's server", () => {
         // everywhere else: a screen for something a deployment does not offer is simply
         // not drawn.
         expect(asked).not.toContain("overlay.list");
-        expect(asked).not.toContain("live.list");
         expect(asked).not.toContain("clients.announce");
     });
 });

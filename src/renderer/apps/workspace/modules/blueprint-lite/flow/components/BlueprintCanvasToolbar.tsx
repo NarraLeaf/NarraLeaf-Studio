@@ -33,7 +33,7 @@ import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "@/lib/ui-e
 import { BlueprintZoomMenu } from "./BlueprintZoomMenu";
 import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
 import type { BlueprintMinimapPreference } from "../blueprintMinimapPreference";
-import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiFreezeScope";
 
 /** What a drag on empty canvas does. */
 export type BlueprintCanvasTool = "select" | "pan";

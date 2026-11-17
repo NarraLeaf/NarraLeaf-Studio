@@ -35,7 +35,7 @@ import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/componen
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { translate } from "@/lib/i18n";
-import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 import { editableTextTarget } from "@/apps/workspace/components/EditableTextContextMenu";
 
 /**

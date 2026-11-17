@@ -471,7 +471,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     }
 
     /**
-     * Whether a live session owns this registry's edits.
+     * Whether a shared (Team) document owns this registry's edits.
      *
      * What a caller has to ask before doing anything ALONGSIDE a deletion. The node sweep is derived
      * from the effect, so performing it here as well would be a second write for work the effect
@@ -552,7 +552,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     public applyLiveOp(op: LiveVariableOp): void {
         // ⚠ **The node-ref sweep of a deleted variable is not here, and its absence is deliberate.**
         // It is a write to the blueprint document, which this service does not own; the caller
-        // performs it around this call. See `LiveSessionService.applyVariableOp`.
+        // performs it around this call, or the server derives it from the effect.
         // The same applier the Team server runs over the file it holds (`@shared/authority/project`),
         // so a document both apply one operation to comes out the same.
         this.applyRegistryMutation(registry => {

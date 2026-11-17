@@ -18,15 +18,15 @@
  *  2. **Does it hold this project?** Matched on the repository id - the only identity that
  *     survives a rename - against the list the server serves. A project whose folder was
  *     copied, or whose server had it taken off, says so instead of failing at Send.
- *  3. **Who else has it open?** Presence, which is what a room is opened out of.
+ *  3. **Who else has it open?** Presence.
  *  4. **What is attached to it that is not in it?** The overlay, pulled with the head the
  *     server last read, so that a record about an old revision can be told from one about
  *     this one.
  *
  * **Nothing here is a poll.** One read happens when the session becomes ready, and after
  * that the server says when to read again: `project:{id}` when it has re-read the
- * repository, `/overlay` when a record moved, `/clients` when somebody arrived or left,
- * `/live` when a room opened or closed. That is the whole freshness story, and it is the
+ * repository, `/overlay` when a record moved, `/clients` when somebody arrived or left.
+ * That is the whole freshness story, and it is the
  * same one `useTeamTopics` already tells - an event says the collection moved, and the
  * collection is read rather than patched.
  *
@@ -40,7 +40,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     announceClient,
     listClients,
-    listLiveSessions,
     listOverlay,
     listProjects,
     useTeamCapability,
@@ -52,11 +51,9 @@ import {
 import { getInterface } from "@/lib/app/bridge";
 import {
     teamProjectClientsTopic,
-    teamProjectLiveTopic,
     teamProjectOverlayTopic,
     teamProjectTopic,
     type TeamClientInstance,
-    type TeamLiveSession,
 } from "@shared/types/team";
 import { parseVcsRemoteUrl, type VcsServerProject } from "@shared/types/vcs";
 
@@ -108,15 +105,11 @@ export interface TeamProjectSurface {
      * Composed in the main process out of this installation's id and the project's, and
      * learnt here from the answer rather than worked out - a renderer that could compose
      * an instance id could compose somebody else's. It is what tells this window's own
-     * row in a room from anybody else's.
+     * row in the presence list from anybody else's.
      */
     instance?: string;
-    /** The rooms open on this project. */
-    live: TeamLiveSession[];
     /** What is attached to this project without being in it. */
     overlay: OverlayReading | null;
-    /** Whether the server offers rooms at all, so a control for one is drawn or is not. */
-    canLive: boolean;
     /** Whether it offers attached data. */
     canOverlay: boolean;
     /** Whether it says who is connected. */
@@ -129,9 +122,7 @@ const NOTHING: TeamProjectSurface = {
     state: { kind: "none" },
     remoteOrigin: null,
     clients: [],
-    live: [],
     overlay: null,
-    canLive: false,
     canOverlay: false,
     canSeeClients: false,
     refresh: () => undefined,
@@ -156,7 +147,6 @@ export function useTeamProject(
     );
     const connection = useTeamConnection(remoteOrigin);
     const canSeeClients = useTeamCapability(connection, "clients");
-    const canLive = useTeamCapability(connection, "live");
     const canOverlay = useTeamCapability(connection, "overlay");
     const ready = connection.state === "ready";
 
@@ -164,18 +154,17 @@ export function useTeamProject(
     /** Whether the last successful project read found this repository. Null before one. */
     const [held, setHeld] = useState<boolean | null>(null);
     const [clients, setClients] = useState<TeamClientInstance[]>([]);
-    const [live, setLive] = useState<TeamLiveSession[]>([]);
     const [overlay, setOverlay] = useState<OverlayReading | null>(null);
     const [instance, setInstance] = useState<string | null>(null);
     /** Which read is the current one, so an older answer cannot land last. */
     const latest = useRef(0);
 
     /**
-     * Read the four collections.
+     * Read the three collections.
      *
-     * One function rather than four hooks because they share a precondition - a session
+     * One function rather than three hooks because they share a precondition - a session
      * that is ready and a project the server holds - and because every event that
-     * invalidates one of them is a reason to have another look at the rest. Reading four
+     * invalidates one of them is a reason to have another look at the rest. Reading three
      * small collections costs one round trip each on a connection that is already open.
      */
     const refresh = useCallback(() => {
@@ -208,10 +197,9 @@ export function useTeamProject(
                 if (ticket === latest.current && answer.ok) set(answer.value);
             };
             if (canSeeClients) keep(await listClients(remoteOrigin, mine.id), setClients);
-            if (canLive) keep(await listLiveSessions(remoteOrigin, mine.id), setLive);
             if (canOverlay) keep(await listOverlay(remoteOrigin, mine.id), setOverlay);
         })();
-    }, [remoteOrigin, repositoryId, ready, canSeeClients, canLive, canOverlay]);
+    }, [remoteOrigin, repositoryId, ready, canSeeClients, canOverlay]);
 
     /**
      * Say this window is here, and take it back when it is not.
@@ -267,9 +255,8 @@ export function useTeamProject(
         const wanted = [teamProjectTopic(project.id)];
         if (canOverlay) wanted.push(teamProjectOverlayTopic(project.id));
         if (canSeeClients) wanted.push(teamProjectClientsTopic(project.id));
-        if (canLive) wanted.push(teamProjectLiveTopic(project.id));
         return wanted;
-    }, [project, canOverlay, canSeeClients, canLive]);
+    }, [project, canOverlay, canSeeClients]);
 
     useEffect(() => {
         if (remoteOrigin === null || !ready || topics.length === 0) return;
@@ -311,7 +298,6 @@ export function useTeamProject(
         setProject(null);
         setHeld(null);
         setClients([]);
-        setLive([]);
         setOverlay(null);
         setInstance(null);
     }, [remoteOrigin, repositoryId]);
@@ -352,9 +338,7 @@ export function useTeamProject(
         ...(overlay?.head === undefined ? {} : { head: overlay.head }),
         clients,
         ...(instance === null ? {} : { instance }),
-        live,
         overlay,
-        canLive,
         canOverlay,
         canSeeClients,
         refresh,

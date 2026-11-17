@@ -82,8 +82,7 @@ import {
     resolveBlueprintNodeTitle,
 } from "../../blueprintNodeI18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
-import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiLiveSession";
-import { UINodeClaimMark, useUINodeClaimAt } from "../../blueprintLiveSession";
+import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiFreezeScope";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -2682,9 +2681,6 @@ function BlueprintFlowNodeBreakpointMarker(props: { nodeId: string; children: Re
 
 function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const { t } = useTranslation();
-    // Who else in the room has this node open. Null outside a live session, and null for this
-    // window's own claim - a mark on the card its author selected would read as being about them.
-    const claimedBy = useUINodeClaimAt((data as BlueprintFlowNodeData).nodeId);
     const {
         catalog,
         nodeId,
@@ -2989,7 +2985,6 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                                 onRetypeNode={onRetypeNode}
                             />
                         ) : null}
-                        {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
                     </div>
                 </div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (

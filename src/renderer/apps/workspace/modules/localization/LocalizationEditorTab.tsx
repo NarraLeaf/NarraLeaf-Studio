@@ -67,14 +67,8 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { characterTranslationUnitId, isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
-import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
-import {
-    TranslationClaimsProvider,
-    translationDocumentFreezeScope,
-    useLocalizationKeyClaimHold,
-    useTranslationClaimHold,
-} from "./localizationLiveSession";
+import { translationDocumentFreezeScope } from "./localizationFreezeScopes";
 import { useTranslationExchange } from "./translationExchange";
 import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "./OrphanUnits";
 import { orphanTranslationUnitIds } from "@/lib/lint/rules/text/textSegments";
@@ -166,10 +160,6 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         () => (context && isInitialized ? context.services.get<UIDocumentService>(Services.UIDocument) : null),
         [context, isInitialized],
     );
-    const liveService = useMemo(
-        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context, isInitialized],
-    );
     const projectService = useMemo(
         () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
         [context, isInitialized],
@@ -232,16 +222,6 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
      * them would pay for all of it while only one can ever hold the caret.
      */
     const [inlineEdit, setInlineEdit] = useState<{ unitId: string; caret: number | null } | null>(null);
-    /**
-     * The line whose plain box holds the caret, for the rows that have no inline field.
-     *
-     * Beside {@link inlineEdit} rather than folded into it: that one carries where the caret went in
-     * and drives which row is drawn as a field, and a plain box needs neither. What both feed is the
-     * claim - a session holds the line somebody is inside, whichever shape of row it is.
-     */
-    const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
-    /** The named string whose source box has focus, or null. What the key registry's claim is over. */
-    const [focusedKeyName, setFocusedKeyName] = useState<string | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -777,28 +757,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         caret: inlineEdit?.caret ?? null,
         onEdit: (unitId, caret) => setInlineEdit({ unitId, caret }),
         onStopEdit: () => setInlineEdit(null),
-        onFocusUnit: setFocusedUnitId,
     }), [inlineEdit]);
-
-    /**
-     * Hold the line this table has open, so nobody in the room writes over it.
-     *
-     * Two ways a line can be open and both count: the inline field, for a line that carries tags,
-     * and the plain box for everything else. A claim asserted for one shape and not the other is a
-     * line somebody can be written over while they are inside it - and the claim is what the write
-     * boundary's refusal is built on, so it has to be true of every row.
-     *
-     * Silent outside a session.
-     */
-    useTranslationClaimHold({ service: liveService, locale, unitId: inlineEdit?.unitId ?? focusedUnitId });
-
-    /**
-     * Hold the named string whose source text is open, so nobody in the room rewords it underneath.
-     *
-     * Beside the translation hold rather than folded into it: they are two documents, and the two
-     * boxes of one named-key row can be held by two different people at once.
-     */
-    useLocalizationKeyClaimHold({ service: liveService, name: focusedKeyName });
 
     /**
      * The last refusal said to the author, so a run of keystrokes refused for one reason is said once.
@@ -1020,10 +979,6 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
     const reviewQueueEmpty = mode === "review" && reviewFilter === "unreviewed" && rows.length > 0 && visibleRows.length === 0;
 
     return (
-        // One subscription for the whole table rather than one per row: a session publishes on every
-        // operation anybody in the room applies, and three hundred rows reading the service would
-        // re-render on every remote keystroke.
-        <TranslationClaimsProvider locale={locale}>
         <div className="flex h-full min-h-0 flex-col bg-surface">
             {/* Wraps rather than squeezes: in a narrow editor the controls move to a second line
                 instead of breaking their own labels one character per line. */}
@@ -1217,7 +1172,6 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                             onTargetChange={handleTargetChange}
                                             onSourceChange={handleKeySourceChange}
                                             onRemove={removed => void handleKeyRemove(removed)}
-                                            onFocusKey={setFocusedKeyName}
                                         />
                                     )}
                                 </div>
@@ -1228,7 +1182,6 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             </div>
             </div>
         </div>
-        </TranslationClaimsProvider>
     );
 }
 

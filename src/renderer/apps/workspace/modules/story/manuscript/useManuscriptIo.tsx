@@ -24,7 +24,6 @@ import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -163,10 +162,6 @@ export function useManuscriptIo(): ManuscriptIo {
 
     const beginImport = useCallback(async (storyId: StoryId) => {
         if (!context || !isInitialized) {
-            return;
-        }
-        if (context.services.get<LiveSessionService>(Services.Live).ownsStory(storyId)) {
-            context.services.get<UIService>(Services.UI).showError(t("workspace.shell.freeze.unavailableLive"));
             return;
         }
         const selection = await appPrivilegedFacade.fs.selectFile(MANUSCRIPT_IMPORT_EXTENSIONS, false, t("manuscript.importPickerTitle"));

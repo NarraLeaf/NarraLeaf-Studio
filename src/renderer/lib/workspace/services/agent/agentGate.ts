@@ -32,8 +32,6 @@ export type AgentGateInput = {
     pausedBy?: "author" | "devModeTakeover" | null;
     /** `getProjectWriteFreeze()` at the moment of the call. */
     freeze: WorkspaceFreeze | null;
-    /** A Team live session is running in this window, or being entered or left. */
-    liveSession: boolean;
 };
 
 /** Null when the call may run; otherwise the refusal to answer with. */
@@ -77,13 +75,14 @@ export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
             "Wait for the author to resume, then read the page or scene again before writing - they may have changed it.",
         );
     }
-    // A live session arms a freeze of its own, a partial one; it is reported as the session rather
-    // than as a freeze, because the remedy is different (leave the session) and so is the sentence.
-    if (input.liveSession || input.freeze?.reason.kind === "live-session") {
+    // A Team project arms a partial freeze of its own (the kind is still called "live-session",
+    // and so is the code on the wire, which agents already match). It is reported as the Team
+    // project rather than as a freeze, because the remedy is different and so is the sentence.
+    if (input.freeze?.reason.kind === "live-session") {
         return agentRefusal(
             "live_session",
-            "A Team live session is running in this project, so agent writes would race the room.",
-            "Ask the author to leave the live session, or work read-only until it ends.",
+            "This is a Team project: its shared documents take edits only from Studio's own editors, so agent writes would bypass the server.",
+            "Work read-only, or ask the author to make the change in Studio.",
         );
     }
     if (input.freeze) {

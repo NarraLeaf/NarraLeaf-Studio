@@ -5,7 +5,7 @@ import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core
 import { Asset } from '@/lib/workspace/services/assets/types';
 import { useFloatingLayer, useWindowOverlayHost } from '@/lib/components/layout';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { useTranslation } from '@/lib/i18n';
 
 export interface MagicTagDialogProps {

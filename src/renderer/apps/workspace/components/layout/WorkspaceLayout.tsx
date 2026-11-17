@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionDialogHost, StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
+import { StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -30,7 +30,6 @@ import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
-import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { ManuscriptCommands } from "../../modules/story/manuscript/ManuscriptCommands";
@@ -899,8 +898,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <StoryCommentsTeamSyncMount />
             <TeamRoleNotice />
             <TeamEditingNotice />
-            <LiveCursorBroadcaster />
-            <LiveSessionChat />
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
@@ -955,11 +952,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                     controlBar={
                         <>
-                            {/* Team notifications, left of the window's own controls. The live session
-                                dialog has no control of its own here any more; the host only keeps it
-                                reachable from the frozen strip and the collaboration panel. */}
+                            {/* Team notifications, left of the window's own controls. */}
                             <TeamNotificationsBell />
-                            <LiveSessionDialogHost />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}
                             <UpdateIndicator />
@@ -1133,7 +1127,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 )}
                 <EditorCommands />
                 <WorkspaceFreezeCommands />
-                <LiveSessionFreezeCommands />
                 <LintCommands />
                 <StoryScriptCommands />
                 <ManuscriptCommands />

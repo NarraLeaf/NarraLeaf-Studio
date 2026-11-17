@@ -176,8 +176,6 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
-import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
-import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -276,8 +274,6 @@ enum Services {
     VersionControl = "versionControl",
     /** Whether project data may be written at all, and why not - the write-boundary freeze */
     WorkspaceFreeze = "workspaceFreeze",
-    /** The live session this window is in: which half of it this is, and the story it is about */
-    Live = "live",
     /** A team project followed through its Team server, which holds its documents. */
     TeamDocuments = "teamDocuments",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
@@ -540,7 +536,7 @@ interface IVariableRegistryService extends IService {
     setEntryValueType(id: string, valueType: StoryVariableValueType, defaultValue?: StoryLiteralValue): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
     setEntryDescription(id: string, description: string | undefined): void;
-    /** False when a live session owns this registry - see `VariableRegistryService.canDeleteEntry`. */
+    /** False when the registry's shared document cannot carry a deletion - see `VariableRegistryService.canDeleteEntry`. */
     canDeleteEntry(): boolean;
     deleteEntry(id: string): boolean;
     replaceRegistry(registry: VariableRegistry): boolean;
@@ -1624,71 +1620,6 @@ interface IWorkspaceFreezeService extends IService {
 }
 
 /**
- * The live session this window is in, if it is in one.
- *
- * One per window: the freeze a session arms is a module-level latch carrying one writable path set,
- * so a second session would take the first one's away. Everything it answers is a value the
- * interface renders - see `live/liveSessionView` - because a service that produced sentences would
- * produce them in one language at a moment when nobody knows which surface is going to show them.
- */
-interface ILiveSessionService extends IService {
-    /** What the session is, right now. Read whole; a session's state changes as one thing. */
-    getView(): LiveSessionView;
-    onChanged(handler: (view: LiveSessionView) => void): () => void;
-    /** Whether a session owns this story document - the one question the story editor asks. */
-    ownsStory(storyId: StoryId): boolean;
-    /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
-    open(input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }): Promise<LiveEntryFailure | null>;
-    /** Change how people get into the running room. Host only; false where the server refused. */
-    setRule(rule: TeamLiveJoinRule): Promise<boolean>;
-    /** Say yes or no to somebody waiting to be let in. Host only. */
-    answerRequest(instance: string, admit: boolean): Promise<boolean>;
-    /**
-     * Join one somebody else opened, checkpointing and syncing on the way in.
-     *
-     * No story to name: which document the room is about is the room's own answer, and a caller
-     * that supplied one could only ever supply a document this machine already has.
-     */
-    join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null>;
-    /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
-    leave(): Promise<void>;
-    /**
-     * Say that this window is writing a row, or that it has stopped.
-     *
-     * One method for taking and for giving back, because the two must be impossible to wire up
-     * separately: a claim that is never given back is a row nobody can edit for the rest of the
-     * session. Silent outside a session and for any other story's rows.
-     */
-    claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void;
-    /**
-     * Say that this window is editing one character record, or that it has stopped.
-     *
-     * The cast's half of the same seam. Held while the record is open in the properties panel - the
-     * box being open, not the keyboard - because an author who has stopped to think about a
-     * description still has one half typed, and a claim that lapsed on their pause is a claim that
-     * lets somebody else take it.
-     */
-    claimCharacter(characterId: string, holding: boolean): void;
-    /**
-     * Say that this window is editing one variable registry entry, or that it has stopped.
-     *
-     * The registry's half of the same seam, held for the same span. One registry per project, so
-     * there is no document to name.
-     */
-    claimVariable(variableId: string, holding: boolean): void;
-    /** Say that this window is editing one named string, or that it has stopped. Addressed by name. */
-    claimLocalizationKey(name: string, holding: boolean): void;
-    /**
-     * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
-     *
-     * False when there is nothing to send, and the view says why - never a snapshot as a fallback,
-     * and never a silent nothing.
-     */
-    undo(): boolean;
-    redo(): boolean;
-}
-
-/**
  * "The working tree is no longer what the editors are showing." Drops every in-memory document and
  * re-reads it, with project writes held off for the whole pass. Thaw is the first caller, restore
  * (`vcs:working-tree-changed`) the second - see WorkspaceReloadService, whose participant table is
@@ -1736,7 +1667,7 @@ export {
     IFileSystemService, ILocalizationService,
     IGlobalSettingsService, IPreviewService, IProjectService,
     IService, IServiceAssetsService, IPanelStateService, IStoryService,
-    IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
+    IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
     IWorkspaceReloadService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,

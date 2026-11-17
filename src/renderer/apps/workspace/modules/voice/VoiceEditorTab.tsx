@@ -67,7 +67,7 @@ import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "../localization/OrphanUnits";
-import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
 import { orphanVoiceUnitIds } from "@/lib/lint/rules/text/textSegments";
 
 type EditorMode = "assign" | "audition";

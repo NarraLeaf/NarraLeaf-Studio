@@ -411,17 +411,6 @@ export interface RendererPreloadedInterface {
          * window holds may be written - see `workspace.sessionTakenOver`.
          */
         onSessionTakenOver(handler: (holder: ProjectSessionHolder) => void): AppEventToken;
-        /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
-        liveIntentTaken(): Promise<RequestStatus<void>>;
-        /**
-         * A room the launcher wants this window to join, for a project it already had open.
-         *
-         * The prop's other half: one project is one window, so the launcher's request reaches a
-         * window that exists and has already read its props. See `workspace.joinLive`.
-         */
-        onJoinLive(
-            handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void,
-        ): AppEventToken;
         /** Reveal this window's project folder in the OS file manager. */
         openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;

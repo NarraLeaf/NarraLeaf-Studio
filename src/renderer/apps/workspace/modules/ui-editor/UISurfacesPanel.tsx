@@ -66,7 +66,7 @@ import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/sur
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
-import { interfaceDocumentFreezeScope } from "./uiLiveSession";
+import { interfaceDocumentFreezeScope } from "./uiFreezeScope";
 import { openBlueprintWallTab } from "../blueprint-wall/openBlueprintWallTab";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";

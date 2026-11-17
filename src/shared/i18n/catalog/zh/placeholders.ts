@@ -25,6 +25,5 @@ export const placeholders = {
         variables: "变量",
         dictionary: "词典",
         storyComments: "批注",
-        collaboration: "协作",
     },
 } satisfies LocaleNamespace<"placeholders">;

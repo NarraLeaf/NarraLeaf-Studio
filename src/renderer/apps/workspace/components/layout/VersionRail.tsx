@@ -18,7 +18,6 @@ import {
     GitMerge,
     History,
     Loader2,
-    LogOut,
     Pin,
     PinOff,
     Plus,
@@ -56,10 +55,6 @@ import { getInterface } from "@/lib/app/bridge";
 import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
-import { openLiveSessionDialog } from "../../modules/team/liveSessionController";
-import { liveLeaveAct } from "../../modules/team/liveSessionText";
-import { useLiveSession } from "../../modules/team/useLiveSession";
-import { LiveMemberAvatars } from "../../modules/team/LiveMemberAvatars";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -129,17 +124,11 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
     const { state, busy, failure, history } = surface;
     const onRevision = state.kind === "revision";
     /*
-     * The live session, for the frozen strip alone.
-     *
-     * The strip is the only part of the window that is always visible while a session is running,
-     * so it is where the session's identity and its exit belong. Read here rather than passed in
-     * because the rail's caller holds a version surface, and a session is not one of its facts.
+     * A team project's partial freeze, for the frozen strip alone. Only a team project arms the
+     * `live-session` kind now: its server holds some documents and the rest stay read-only for as
+     * long as the project is open, so the strip says so and opens the Team panel.
      */
-    const live = useLiveSession();
-    const inSession = surface.frozen === "live-session";
-    // Named after what it does: a host walking out of a room with somebody else in it hands it over,
-    // and the strip and the dialog have to say the same thing about the same press.
-    const leaveSessionLabel = t(liveLeaveAct(live.view).key);
+    const inTeamProject = surface.frozen === "live-session";
     const visible = isVersionSurfaceVisible(state);
     const open = presence === "panel";
 
@@ -186,9 +175,9 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         // carries the way out. Nothing else on screen has to be coloured for the author to know their
         // project is not being saved.
         // Named after the mode it leaves. `returnToCurrent` is the way out of exactly one freeze -
-        // a version on screen - and it was being offered as the way out of all of them: during a
-        // live session the strip said "Exit history view" and, pressed, did nothing at all. A live
-        // session leaves through the session, so that branch is drawn below rather than here.
+        // a version on screen - and must not be offered as the way out of a team project, where it
+        // would do nothing at all. A team project has no way out but closing it, so that branch
+        // draws no escape.
         const escapeLabel = surface.frozen === "manual"
             ? t("workspace.shell.freeze.release")
             : t("workspace.shell.versionControl.returnToCurrent");
@@ -202,18 +191,15 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 className="flex shrink-0 flex-col items-center gap-1 bg-primary/15 px-1 py-2"
                 style={{ width: VERSION_RAIL_COLLAPSED_WIDTH }}
             >
-                {/* **A live session is a different mode wearing the same strip.** The strip is
-                    what says project data is not being saved and carries the way out, and during a
-                    session both halves of that are the session's: what it opens is the session
-                    dialog, and the way out is leaving the room. A history clock over a control
-                    that called `returnToCurrent` told an author in a session that they were
-                    looking at an old version, and then did nothing when pressed. */}
-                {inSession ? (
+                {/* **A team project is a different mode wearing the same strip.** A history clock
+                    over a control that called `returnToCurrent` would tell its author they were
+                    looking at an old version; what it opens instead is the Team panel. */}
+                {inTeamProject ? (
                     <button
                         type="button"
-                        onClick={openLiveSessionDialog}
-                        data-tip={t("workspace.shell.team.liveFrozenTitle")}
-                        aria-label={t("workspace.shell.team.livePresence")}
+                        onClick={openTeamPresence}
+                        data-tip={t("workspace.shell.team.projectFrozenTitle")}
+                        aria-label={t("workspace.shell.team.title")}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
                     >
                         {/* Not the history clock the other freezes wear. The strip is the same
@@ -245,21 +231,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     rewriting, and the editors would hold a project that is part one version and
                     part another. Every other busy state is a read, and an escape hatch that greys
                     out whenever anything is loading is not an escape hatch. */}
-                {inSession ? (
-                    <button
-                        type="button"
-                        onClick={live.leave}
-                        disabled={live.busy || live.view.phase === "leaving"}
-                        data-tip={leaveSessionLabel}
-                        aria-label={leaveSessionLabel}
-                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
-                    >
-                        {/* Leaving a mode, not undoing anything - the same reasoning as the `X`
-                            below, and a door rather than a cross because for a host this control
-                            closes the room for everybody rather than merely stepping out of it. */}
-                        <LogOut className="h-4 w-4" />
-                    </button>
-                ) : surface.frozen === "merge" && context ? (
+                {inTeamProject ? null : surface.frozen === "merge" && context ? (
                     <button
                         type="button"
                         onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
@@ -284,19 +256,6 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                             the most expensive thing to get wrong. */}
                         <X className="h-4 w-4" />
                     </button>
-                )}
-
-                {/* **Who is in the room, down the strip.** The stack was in the title bar, which is
-                    the scarcest row in the window on a small screen; this column is the session's
-                    own, is drawn for the whole of one, and has height to spend. The title bar keeps
-                    it only for a room this window has been offered, where there is no strip. */}
-                {inSession && live.view.session !== null && live.view.session.members.length > 0 && (
-                    <LiveMemberAvatars
-                        vertical
-                        className="mt-1"
-                        members={live.view.session.members}
-                        host={live.view.session.openedBy}
-                    />
                 )}
 
                 {onRevision && (
@@ -1512,15 +1471,15 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
     const { remote, syncState, busy } = surface;
     const running = busy !== null;
     /*
-     * ⚠ **Both buttons below move the working tree, and a live session IS that tree.**
+     * ⚠ **Both buttons below move the working tree, and a team project syncs that tree itself.**
      *
-     * A session opens on a committed revision and everybody in it applies the host's operations to
-     * their own copy of it. Sending puts a half-written session on the server under the others;
-     * getting rewrites the very document the room is editing, under this window's own feet. Neither
-     * is refused by the write boundary - they go through the version backend rather than through a
-     * document write - so this is the only thing that stops them.
+     * Its documents travel through the team server as operations. Sending would put a snapshot on
+     * the server beside them; getting would rewrite the very documents the team is editing, under
+     * this window's own feet. Neither is refused by the write boundary - they go through the
+     * version backend rather than through a document write - so this is the only thing that stops
+     * them.
      */
-    const inSession = surface.frozen === "live-session";
+    const inTeamProject = surface.frozen === "live-session";
 
     if (remote === null) {
         return (
@@ -1606,8 +1565,8 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
                 <button
                     type="button"
                     onClick={() => void surface.pushToRemote()}
-                    disabled={running || inSession}
-                    data-tip={inSession ? t("workspace.shell.team.liveUnavailableHere") : undefined}
+                    disabled={running || inTeamProject}
+                    data-tip={inTeamProject ? t("workspace.shell.team.projectUnavailableHere") : undefined}
                     data-vcs-seam="server-push"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
@@ -1619,8 +1578,8 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
                 <button
                     type="button"
                     onClick={() => void surface.syncFromRemote()}
-                    disabled={running || inSession}
-                    data-tip={inSession ? t("workspace.shell.team.liveUnavailableHere") : undefined}
+                    disabled={running || inTeamProject}
+                    data-tip={inTeamProject ? t("workspace.shell.team.projectUnavailableHere") : undefined}
                     data-vcs-seam="server-sync"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
@@ -1766,14 +1725,13 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
     const focused = state.kind === "revision" ? state.revision : state.kind === "current" ? state.head : null;
     const [query, setQuery] = useState("");
     /*
-     * ⚠ **Showing a past version during a live session takes the session's freeze away.**
+     * ⚠ **Showing a past version in a team project would take the team's freeze away.**
      *
      * The freeze is a module-level latch holding one reason, so arming the revision freeze on top
-     * REPLACES the session's - and leaving the revision view then thaws the workspace entirely
-     * while the room is still open, with Commit offered again and the write boundary no longer
-     * holding the session's set of writable paths. Measured on a real machine before this line.
+     * REPLACES the team's partial one - and leaving the revision view then thaws the workspace
+     * entirely, with the write boundary no longer holding the set of paths the server syncs.
      */
-    const inSession = surface.frozen === "live-session";
+    const inTeamProject = surface.frozen === "live-session";
     const rows = useMemo(() => filterHistoryRows(allRows, query, t), [allRows, query, t]);
     // Read once per render rather than per row, so a list drawn across midnight cannot label two
     // adjacent days "Today". Not state: nothing here re-renders on the hour, and a list whose
@@ -1920,7 +1878,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                         <button
                             type="button"
                             onClick={() => surface.showRevision(row.revision, revisionLabel(row.number))}
-                            disabled={isFocused || surface.busy !== null || inSession}
+                            disabled={isFocused || surface.busy !== null || inTeamProject}
                             // The whole message plus the hash, because the row shows one truncated line of
                             // the first and none of the second. Without it a version whose message is
                             // longer than the column is a version the author cannot read at all.
@@ -1931,8 +1889,8 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                 headline.isIdentity ? null : headline.text,
                                 headline.original === headline.text ? null : headline.original,
                                 shortRevision(row.revision),
-                                inSession
-                                    ? t("workspace.shell.team.liveUnavailableHere")
+                                inTeamProject
+                                    ? t("workspace.shell.team.projectUnavailableHere")
                                     : isFocused ? null : t("workspace.shell.versionControl.showVersion"),
                             ].filter(Boolean).join("\n")}
                             className={cn(

@@ -6,7 +6,6 @@ import { HistoryService } from "@/lib/workspace/services/history/HistoryService"
 import type { HistoryScopeId } from "@/lib/workspace/services/history/historyModel";
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
@@ -34,18 +33,6 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * This used to call `projectHistoryScope()` directly, which is how the two answers drifted apart
  * without anyone noticing: the menu offered "Undo change background colour" while the keystroke
  * beside it reached an empty stack and did nothing.
- *
- * ⚠ **Inside a live session none of that applies and this sends an inverse instead.** Two things
- * would otherwise be wrong at once. The stacks here hold whole-document snapshots taken before
- * anybody else joined, so applying one would delete every edit the others have made since - the
- * catastrophe the session's own undo exists to avoid. And the freeze guard below would refuse the
- * keystroke outright, which is what it was observed doing on a real machine: an author who created a
- * character in a session and pressed Ctrl+Z got nothing at all, with no way to tell whether the
- * stack was empty or the press had been swallowed.
- *
- * Which document the inverse is about is not this binding's business. A session keeps one stack per
- * WINDOW - "my last operation", whatever panel it was made in - so undo means the same thing here as
- * it does in the story editor, which routes to the same place for the same reason.
  */
 export function WorkspaceUndoKeybindings() {
     const { context } = useWorkspace();
@@ -101,8 +88,8 @@ export function WorkspaceUndoKeybindings() {
 }
 
 /**
- * What an Undo or Redo key does to one stack: the stack's step, refused while the project is frozen
- * - or, inside a live session, the session's own inverse, for the reasons above. Shared with the
+ * What an Undo or Redo key does to one stack: the stack's step, refused while the project is frozen.
+ * Shared with the
  * Search panel's keys, which differ from these only in the stack they name.
  */
 export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => void; redo: () => void } {
@@ -112,42 +99,15 @@ export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => v
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
-    const live = useMemo(
-        () => (context ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context],
-    );
-    const [inSession, setInSession] = useState(false);
-
-    useEffect(() => {
-        if (!live) {
-            setInSession(false);
-            return;
-        }
-        const read = () => setInSession(live.getView().phase !== "idle");
-        read();
-        return live.onChanged(read);
-    }, [live]);
-
     return useMemo(
         () => ({
-            // Deliberately outside `freeze.run` in a session: the freeze is the session's own, and
-            // sending the inverse of one's own operation is the one write it exists to allow.
-            // Everywhere else the guard still refuses, which is what a frozen project is.
-            undo: inSession
-                ? () => {
-                    live?.undo();
-                }
-                : freeze.run(() => {
-                    history?.undo(scopeId);
-                }),
-            redo: inSession
-                ? () => {
-                    live?.redo();
-                }
-                : freeze.run(() => {
-                    history?.redo(scopeId);
-                }),
+            undo: freeze.run(() => {
+                history?.undo(scopeId);
+            }),
+            redo: freeze.run(() => {
+                history?.redo(scopeId);
+            }),
         }),
-        [freeze, history, inSession, live, scopeId],
+        [freeze, history, scopeId],
     );
 }

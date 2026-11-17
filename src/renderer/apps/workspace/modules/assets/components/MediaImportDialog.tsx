@@ -5,7 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { basename } from "@shared/utils/path";
 import { mediaConvertTargetExtension } from "@shared/types/mediaConvert";

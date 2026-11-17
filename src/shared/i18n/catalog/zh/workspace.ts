@@ -147,10 +147,6 @@ export const workspace = {
                 unknown: "有故事无法读取，暂不列出孤立的译文",
             },
         },
-        live: {
-            entryClaimed: "{name} 正在翻译该行",
-            keyClaimed: "{name} 正在编辑该字符串",
-        },
     },
     voice: {
         panel: {
@@ -559,7 +555,7 @@ export const workspace = {
                 writes_disabled: "未允许修改",
                 paused: "已暂停",
                 frozen: "项目已冻结",
-                live_session: "实时会话进行中",
+                live_session: "团队项目",
                 stale_revision: "内容已变更",
                 check_failed: "检查未通过",
                 not_found: "未找到",
@@ -733,94 +729,6 @@ export const workspace = {
         presence: "协作",
         hereAlone: "只有本机",
         hereMany: "{count} 台设备",
-        // 这个面板里唯一一个需要主动去做的动作，其余都是打开窗口的附带结果。
-        liveOpen: "开始实时会话",
-        liveUntitled: "实时会话",
-        liveMembers: "{count} 人",
-        liveLeave: "离开",
-        liveEnd: "结束",
-        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
-        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
-        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
-        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
-        liveBlockedRecovery: "恢复模式下无法使用实时会话",
-        liveBlockedSession: "该工作区已在一场实时会话中",
-        liveBlockedTakenOver: "该项目现已在另一个 NarraLeaf Studio 中打开",
-        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
-        liveHost: "主持",
-        liveGuest: "参与",
-        liveEntering: "正在进入",
-        // 站在一个还没作答的主持方面前。单独一个词而不是「正在进入」——本机什么都还没发生，
-        // 而且在别人看一眼通知之前也不会发生。
-        liveAsking: "等待放行",
-        liveLeaving: "正在离开",
-        // 已加入，正在把加入之前会话里发生的事全部应用完。
-        liveRebase: "移到最新版本",
-        liveRebaseHint: "把会话里的修改记成一个版本，在这个版本上重开会话，成员会自动跟过来",
-        liveCatchingUp: "正在跟上会话进度",
-        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
-        liveNoStory: "先添加一个故事才能开始实时会话",
-        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
-        liveNoInstance: "该服务器还没有回应本机",
-        liveNoRepository: "此项目没有版本历史",
-        liveNoRevision: "先记录一个版本才能开始实时会话",
-        liveCloneRequired: "该会话属于 {project}，打开该项目才能加入",
-        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
-        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
-        // 与分叉那条一样写成第二行，而不是把第一行拉长。
-        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
-        liveRoomGone: "该会话已经关闭",
-        liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
-        // 口令错和口令没人用是同一句，因为服务器答的就是同一句：分开答等于把猜测变成一张
-        // 「哪些房间存在」的地图。
-        liveNoSuchCode: "没有实时会话用这个口令",
-        liveJoinRefused: "主持方没有放行",
-        // 这不是拒绝。申请还挂在服务器上，只是这个窗口不再等了。
-        liveJoinUnanswered: "无人应答",
-        liveJoinUnansweredNext: "等对方回来后，从启动器的 Team 页面再申请一次",
-        liveRoomStoryUnknown: "该会话未指明所编辑的故事，请主持方更新 Studio",
-        liveStoryNotHere: "该会话所改的故事不在此项目中",
-        liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
-        liveRefused: "服务器拒绝了这场会话",
-        liveRefusedNext: "等服务器恢复响应后再试一次",
-        liveFailed: "无法开始实时会话",
-        liveFailedNext: "再试一次",
-        liveNoInstanceNext: "检查与该服务器的连接，然后再试一次",
-        liveNoRepositoryNext: "先为此项目启用版本控制，然后再试一次",
-        liveMergeConflictsNext: "先完成合并，然后再试一次",
-        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
-        // 两半都要说，因为后半句正是作者马上会在屏幕上看到的：加入时房间那份文档覆盖了这棵树，
-        // 现在又被写了回来。不说的话，编辑器自己变了一次就成了第三件没人解释的事。
-        liveEndedHostLeft: "主持方已离开，会话结束，本机已恢复到你自己的进度",
-        // 每个人每间房只说一次；本窗口进来时已经在房里的人不说 —— 那是房间本身，不是房里发生的事。
-        liveJoined: "{name} 加入了会话",
-        // 主机看的，两个答案就在通知上 —— 让作者去找面板而对方在等，正是这条要避免的打断。
-        liveAsked: "{name} 请求加入会话",
-        // 标题栏那个控件上，圆点旁边。给数不给名字：名字就在一按之内，
-        // 而三个人里只念一个名字等于用排头那位去描述整条队。
-        liveWaitingToJoin: "{count} 人等待加入",
-        // 对话框里那两个答案上面的小标题——标题栏那个点指向的就是这里。写个数字等于把点已经说过的话再说一遍。
-        liveWaitingLabel: "等待放行",
-        liveAdmit: "同意",
-        liveTurnAway: "暂不",
-        // 三个控件各说两半：房间能不能被找到，以及要不要人来决定谁进来。
-        liveRuleOpen: "服务器上的任何人",
-        liveRuleOpenDetail: "所有人都看得到，不用申请直接加入",
-        liveRuleRequest: "任何人，但要你同意",
-        liveRuleRequestDetail: "所有人都看得到，每个申请由你回答",
-        liveRuleCode: "仅凭口令",
-        liveRuleCodeDetail: "不出现在列表里。拿到这四位数的人不用申请直接加入",
-        // 写在口令旁边。不写的话作者只能靠试出来。
-        liveCodeFixed: "一场会话一个口令。要换口令，结束这场再开一场。",
-        liveCodeLabel: "口令",
-        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
-        // 已经不是其他人正在看的那一份。
-        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
-        liveEndedDivergedNext: "重新加入前先从服务器获取",
-        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的项目都画这个控件，
-        // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
-        // 所以它改为置灰并说明自己在等哪一个答复。
-        livePresence: "实时会话",
         commitTodos: {
             title: "随这个版本完成",
             hint: "勾选的待办会在提交后标为完成，并记下是哪个版本完成的",
@@ -831,18 +739,6 @@ export const workspace = {
             justNow: "刚刚打开",
             minutes: "已经 {minutes} 分钟",
             dismiss: "知道了",
-        },
-        liveChat: {
-            title: "会话聊天",
-            open: "打开会话聊天",
-            close: "收起",
-            placeholder: "说点什么…",
-            send: "发送",
-            empty: "还没有人说话",
-            nobodyElse: "会话里只有你",
-            follow: "跟随 {name}：TA 去哪里你就去哪里",
-            stopFollowing: "停止跟随 {name}",
-            followingShort: "跟随中",
         },
         requests: {
             askReview: "请求评审",
@@ -894,43 +790,9 @@ export const workspace = {
             "access-requested": "{who} 申请了权限",
             "access-decided": "{who} 处理了你的权限申请",
         },
-        liveConnecting: "正在连接该服务器",
-        liveUnsupported: "该服务器不提供实时会话",
-        liveNobody: "此项目没有进行中的实时会话",
-        liveRoomOpen: "{name} 开着一场实时会话",
-        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结项目。
-        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
-        // 报告有别人的房间时，同时说清楚从哪里进。所有入口都在启动器，因为加入往往要先取得项目。
-        liveJoinFromLauncher: "从启动器的 Team 页面加入",
-        // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
-        liveStory: "故事",
-        liveHostedBy: "主持方 {name}",
-        // 房间里有谁，按账号。主持方要标出来：那扇窗口离开的含义不同，它会替所有人结束房间。
-        liveMembersLabel: "会话成员",
-        liveThisMachine: "本机",
-        // 进入会话时未提交的内容去了哪里。一个说不出名字的检查点等于回不去，
-        // 所以这里直接陈述，而不是留给作者去版本面板里找。
-        liveCheckpoint: "检查点",
-        liveCheckpointAt: "进入会话前未提交的内容已记录在 {version}",
-        liveCheckpointNone: "进入会话时没有未提交的内容",
-        // 参与方自己的往返。只在不为零时画出来：主持方答复之前文档不会在参与方手下变化，
-        // 不写出来的话，这与编辑器停止工作在屏幕上是同一件事。
-        livePendingOne: "1 项修改正在等待主持方",
-        livePendingMany: "{count} 项修改正在等待主持方",
-        // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间只保存该会话的故事，此项目中其余内容是当前的，且为只读",
-        liveUnavailableHere: "实时会话期间不可用",
-        // 别人正在写的行，集中在一处读，不必逐行去找标记。
-        liveClaimsLabel: "正在被编辑的行",
-        liveClaimOne: "{name} 正在写 1 行",
-        liveClaimMany: "{name} 正在写 {count} 行",
+        projectUnavailableHere: "团队项目中不可用",
         // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
-        liveFrozenTitle: "实时会话进行中",
-        liveLeaveSession: "离开实时会话",
-        liveEndSession: "结束实时会话",
-        // 主持方离开一间还有别人的房间会怎样。没有继任者：主持方手里是唯一算数的那份，
-        // 因此其他人各自回到自己的进度上。
-        liveEndSessionForEveryone: "结束会话（所有人退出）",
+        projectFrozenTitle: "团队项目：修改由团队服务器同步",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",

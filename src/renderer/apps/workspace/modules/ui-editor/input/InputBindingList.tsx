@@ -29,7 +29,7 @@ import {
     type InputBindingDevice,
     type TranslateFn,
 } from "./inputBindingLabels";
-import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 
 type InputBindingListProps = {
     bindings: readonly UIInputBinding[];

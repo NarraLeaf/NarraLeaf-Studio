@@ -48,7 +48,7 @@ import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/s
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { IconButtonSegGroup } from "./framework/fields/IconButtonSegGroup";
 import type { CustomFieldProps } from "./framework/types";
-import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../ui-editor/uiFreezeScope";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves - the same bargain the

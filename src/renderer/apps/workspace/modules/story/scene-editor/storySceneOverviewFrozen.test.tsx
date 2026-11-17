@@ -7,16 +7,11 @@ import { makeFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { StorySceneOverviewBlock } from "./StorySceneEditorTab";
 
 /**
- * The card above the rows, while it may not be written.
+ * The card above the rows, while the story's freeze says it may not be written.
  *
- * One guard covers both refusals - see `storyEditGuard`. These cases pass the session's, because
- * that is the harder of the two to get right: a session leaves the rest of the editor working, so
- * this card is the one control that has to switch itself off.
- *
- * Its controls all commit through `updateSceneMetadata`, which is `StoryService.updateScene` - not
- * one of the operations a session hands to its sink, and every field it writes is part of what the
- * machines in a room fingerprint. So a name typed here during a session would be written on this
- * machine alone, and the next effect about the scene would eject this window from the room.
+ * Its controls all commit through `updateSceneMetadata`, so before this guard reached the card an
+ * ordinary freeze - a version on screen, a merge, recovery - left its fields taking input that the
+ * write boundary then discarded: the scene appeared to be renamed until the tab was reopened.
  *
  * The name and the description are checked through `readOnly` rather than `:disabled`: they are the
  * two fields whose text is worth reading and selecting while it cannot be changed, so they are left
@@ -24,7 +19,7 @@ import { StorySceneOverviewBlock } from "./StorySceneEditorTab";
  * `:disabled`.
  */
 
-const IN_A_SESSION = en.live.editUnavailable;
+const FROZEN_REASON = "Unavailable while a version is on screen";
 
 vi.mock("@/apps/workspace/context", () => ({
     useWorkspace: () => ({ context: null, isInitialized: false }),
@@ -62,7 +57,7 @@ const document = { id: "chapter-one", name: "Story", scenes: { "scene-1": scene 
  * Read positionally rather than by text: three of them show the same "No background" phrase, which
  * is the point of the plate and the picker being two ways to the same choice.
  */
-function renderCard(owned: boolean) {
+function renderCard(frozen: boolean) {
     const onUpdateScene = vi.fn(() => true);
     const { container } = render(
         <StorySceneOverviewBlock
@@ -71,7 +66,7 @@ function renderCard(owned: boolean) {
             backgroundAsset={null}
             onUpdateScene={onUpdateScene}
             panelStateService={null}
-            writes={makeFreezeGuard(owned, IN_A_SESSION)}
+            writes={makeFreezeGuard(frozen, FROZEN_REASON)}
         />,
     );
     const buttons = [...container.querySelectorAll("button")];
@@ -87,14 +82,14 @@ function renderCard(owned: boolean) {
 
 afterEach(cleanup);
 
-describe("the scene overview card inside a session on this story", () => {
+describe("the scene overview card while frozen", () => {
     it("leaves the name and the description readable and refuses to change them", () => {
         const card = renderCard(true);
 
         expect(card.name.readOnly).toBe(true);
-        expect(card.name.getAttribute("data-tip")).toBe(IN_A_SESSION);
+        expect(card.name.getAttribute("data-tip")).toBe(FROZEN_REASON);
         expect(card.description.readOnly).toBe(true);
-        expect(card.description.getAttribute("data-tip")).toBe(IN_A_SESSION);
+        expect(card.description.getAttribute("data-tip")).toBe(FROZEN_REASON);
         // Disabled, not hidden: the scene's own name is exactly what an author wants to read here.
         expect(card.name.value).toBe("Rooftop");
         expect(card.description.value).toBe("Ten at night.");
@@ -104,9 +99,9 @@ describe("the scene overview card inside a session on this story", () => {
         const card = renderCard(true);
 
         expect(card.plate.matches(":disabled")).toBe(true);
-        expect(card.plate.getAttribute("data-tip")).toBe(IN_A_SESSION);
+        expect(card.plate.getAttribute("data-tip")).toBe(FROZEN_REASON);
         expect(card.picker.matches(":disabled")).toBe(true);
-        expect(card.picker.getAttribute("data-tip")).toBe(IN_A_SESSION);
+        expect(card.picker.getAttribute("data-tip")).toBe(FROZEN_REASON);
 
         fireEvent.click(card.plate);
         fireEvent.click(card.picker);
@@ -114,7 +109,7 @@ describe("the scene overview card inside a session on this story", () => {
     });
 });
 
-describe("the scene overview card with no session on this story", () => {
+describe("the scene overview card on a writable story", () => {
     it("keeps every control live", () => {
         const card = renderCard(false);
 
@@ -123,7 +118,7 @@ describe("the scene overview card with no session on this story", () => {
         expect(card.description.readOnly).toBe(false);
         expect(card.plate.matches(":disabled")).toBe(false);
         expect(card.picker.matches(":disabled")).toBe(false);
-        // Still off for its own reason - there is no backdrop to clear - and the session is not
+        // Still off for its own reason - there is no backdrop to clear - and the freeze is not
         // allowed to claim that as its doing.
         expect(card.clear.matches(":disabled")).toBe(true);
         expect(card.clear.getAttribute("data-tip")).toBe(en.sceneEditor.clearBackground);

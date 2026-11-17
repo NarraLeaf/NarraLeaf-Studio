@@ -131,7 +131,6 @@ function open(options: {
             project={options.entry ?? project()}
             server={SERVER}
             account={options.account ?? null}
-            localPath={null}
             canDetail={options.canDetail ?? true}
             canHistory={options.canHistory ?? true}
             action={<button type="button" data-project-action="get">get</button>}
@@ -385,7 +384,6 @@ describe("a project the server has read, whose versions it did not give", () => 
                     remoteOrigin={ORIGIN}
                     project={project()}
                     server={SERVER}
-                    localPath={null}
                     canDetail
                     canHistory
                     action={<button type="button" data-project-action="get">get</button>}

@@ -547,7 +547,6 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                                     project={openedProject}
                                     server={serverDisplayName(session)}
                                     account={session.account}
-                                    localPath={localCopyOf(openedProject, repositories)?.path ?? null}
                                     canDetail={canDetail}
                                     canHistory={canHistory}
                                     onBack={() => setOpened(null)}

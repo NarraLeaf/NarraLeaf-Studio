@@ -74,22 +74,21 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
     const writes = useInspectorWrites();
     const freeze = useFreezeGuard(writes.scope);
     /**
-     * Three reasons a field stands down, and they are not the same thing.
+     * Two reasons a field stands down, and they are not the same thing.
      *
-     * A freeze is the write boundary refusing the bytes; a claim is somebody else being inside this
-     * record in a live session, where the document IS writable and the host would refuse the
-     * operation; a schema declared read-only is a view that never had a write to offer, such as one
-     * half of a version comparison, whose element comes out of a revision the workspace no longer
-     * holds. All three end in the same place - the author must not be able to type a paragraph and
-     * be told afterwards - so they are collapsed here rather than in each field.
+     * A freeze is the write boundary refusing the bytes; a schema declared read-only is a view that
+     * never had a write to offer, such as one half of a version comparison, whose element comes out
+     * of a revision the workspace no longer holds. Both end in the same place - the author must not
+     * be able to type a paragraph and be told afterwards - so they are collapsed here rather than in
+     * each field.
      *
-     * The third one reaches the clamp below and not only the flag, so that the flag alone is enough.
+     * The second one reaches the clamp below and not only the flag, so that the flag alone is enough.
      * A field type that hands its rendering to the caller cannot honour `readOnly` itself - there is
      * nothing to thread it into - so a schema that declares a field read-only inside a workspace
      * that is not frozen would otherwise get the flag on the types that read it and nothing at all
      * around the types that cannot.
      */
-    const readOnly = freeze.frozen || writes.heldBy !== undefined || definition.readOnly === true;
+    const readOnly = freeze.frozen || definition.readOnly === true;
     const field = useMemo(
         () => (readOnly ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
         [definition, readOnly],

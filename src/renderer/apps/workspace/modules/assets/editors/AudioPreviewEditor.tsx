@@ -27,7 +27,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { audioLoopHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
