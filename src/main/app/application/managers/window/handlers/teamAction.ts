@@ -38,7 +38,7 @@ import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import type { TeamCallOutcome, TeamConnection, TeamSubscribeOutcome } from "@shared/types/team";
+import type { TeamCallOutcome, TeamConnection, TeamStudioConfigOutcome, TeamSubscribeOutcome } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 import { WindowAppType } from "@shared/types/window";
 
@@ -290,6 +290,31 @@ export class TeamAvatarHandler extends IPCHandler<IPCEventType.teamAvatar> {
         return this.tryUse(async () => {
             requireTeamReach(window, remoteOrigin, { op: "avatar" });
             return { dataUrl: await window.app.getTeamManager().avatar(remoteOrigin, avatarPath) };
+        });
+    }
+}
+
+/**
+ * Back the author's Studio settings up to a server, or read them back.
+ *
+ * Asked of Settings and the launcher only - the preferences are the author's, not a project's, so a
+ * workspace is not given this whatever its project answered. The main process carries the document
+ * and never reads it: the renderer composed it and checks what comes back.
+ */
+export class TeamStudioConfigHandler extends IPCHandler<IPCEventType.teamStudioConfig> {
+    readonly name = IPCEventType.teamStudioConfig;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.teamStudioConfig]["data"],
+    ): Promise<RequestStatus<TeamStudioConfigOutcome>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, request.remoteOrigin, { op: "studioConfig" });
+            if (request.action === "upload" && typeof request.content !== "string") {
+                throw new Error("a settings backup carries its document as text");
+            }
+            return await window.app.getTeamManager().studioConfig(request);
         });
     }
 }

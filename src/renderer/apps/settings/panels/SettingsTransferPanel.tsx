@@ -1,9 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { Button } from "@/lib/components/elements";
+import { getInterface } from "@/lib/app/bridge";
+import { Button, Select } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
-import { applyImport, exportSettings, planImport } from "@/lib/settings/transferSettings";
+import { applyImport, backupToTeam, exportSettings, planImport, planTeamRestore } from "@/lib/settings/transferSettings";
 import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
+import type { VcsServerSession } from "@shared/types/vcs";
 
 /**
  * Moving preferences between machines.
@@ -19,12 +21,79 @@ import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
  *
  * The preview is inline rather than a modal: it is a short list, it is the only thing this panel
  * is doing at that moment, and a dialog over a settings window is a layer nothing here needs.
+ *
+ * Signed in to a Team server, the same document can also be kept there and read back on the next
+ * computer. A restore from the server goes through the same preview as a file: it is a document
+ * that could have been edited (the web console takes uploads too), so it is read before it is
+ * applied, never applied blind.
  */
 export function SettingsTransferPanel() {
     const { t, tn } = useTranslation();
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
     const [plan, setPlan] = useState<SettingsImportPlan | null>(null);
+    const [servers, setServers] = useState<VcsServerSession[]>([]);
+    const [server, setServer] = useState<string | null>(null);
+
+    useEffect(() => {
+        let live = true;
+        void getInterface().vcs.listServers().then(listed => {
+            if (!live || !listed.success) {
+                return;
+            }
+            setServers(listed.data.servers);
+            setServer(current => current ?? listed.data.servers[0]?.remoteOrigin ?? null);
+        }).catch(() => undefined);
+        return () => {
+            live = false;
+        };
+    }, []);
+
+    const serverLabel = useCallback(
+        (origin: string | null) => {
+            const found = servers.find(each => each.remoteOrigin === origin);
+            return found?.name ?? found?.authUrl ?? origin ?? "";
+        },
+        [servers],
+    );
+
+    const runBackup = useCallback(async () => {
+        if (server === null) {
+            return;
+        }
+        setBusy(true);
+        setMessage(null);
+        setPlan(null);
+        try {
+            await backupToTeam(server);
+            setMessage({ tone: "ok", text: t("settings.transfer.team.backedUp", { server: serverLabel(server) }) });
+        } catch (error) {
+            setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setBusy(false);
+        }
+    }, [server, serverLabel, t]);
+
+    const runRestore = useCallback(async () => {
+        if (server === null) {
+            return;
+        }
+        setBusy(true);
+        setMessage(null);
+        setPlan(null);
+        try {
+            const result = await planTeamRestore(server);
+            if (result) {
+                setPlan(result);
+            } else {
+                setMessage({ tone: "ok", text: t("settings.transfer.team.nothingKept", { server: serverLabel(server) }) });
+            }
+        } catch (error) {
+            setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setBusy(false);
+        }
+    }, [server, serverLabel, t]);
 
     const runExport = useCallback(async () => {
         setBusy(true);
@@ -89,6 +158,30 @@ export function SettingsTransferPanel() {
                     </Button>
                 </div>
             </div>
+
+            {servers.length > 0 && (
+                <div className="flex flex-col gap-2">
+                    <p className="text-xs text-fg-muted">{t("settings.transfer.team.hint")}</p>
+                    <div className="flex items-center gap-2">
+                        {servers.length > 1 && (
+                            <Select
+                                size="sm"
+                                className="w-48"
+                                ariaLabel={t("settings.transfer.team.server")}
+                                value={server ?? undefined}
+                                options={servers.map(each => ({ value: each.remoteOrigin, label: each.name ?? each.authUrl }))}
+                                onChange={value => setServer(String(value))}
+                            />
+                        )}
+                        <Button size="sm" variant="secondary" className="h-7" disabled={busy || server === null} onClick={() => void runBackup()}>
+                            {t("settings.transfer.team.backup")}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7" disabled={busy || server === null} onClick={() => void runRestore()}>
+                            {t("settings.transfer.team.restore")}
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {plan && (
                 <div className="flex flex-col gap-2 rounded-md border border-edge bg-fill-subtle p-2">

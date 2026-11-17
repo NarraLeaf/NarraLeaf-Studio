@@ -39,6 +39,15 @@
 /** Where the socket is, on the same TLS listener the discovery document arrives over. */
 export const TEAM_SOCKET_PATH = "/api/team/v1/socket";
 
+/**
+ * Where a server keeps the account's Studio settings document (`studio-config`): GET reads it, PUT
+ * replaces it. Read and written by the main process with the account's token, never by a window.
+ */
+export const TEAM_STUDIO_CONFIG_PATH = "/api/team/v1/studio-config";
+
+/** The largest settings document a server keeps. */
+export const TEAM_STUDIO_CONFIG_MAX_BYTES = 1024 * 1024;
+
 /** What the shapes in this file are, as a whole. Compared with the server's opening frame. */
 export const TEAM_PROTOCOL_VERSION = 2;
 
@@ -145,7 +154,11 @@ export type TeamCapability =
     /** A project can be archived: read-only and out of the lists, until it is restored. */
     | "archive"
     /** How much space each project's files take, against a quota the operator sets. */
-    | "storage";
+    | "storage"
+    /** An operator can fix an account's settings, by template or one by one; the account reads what is fixed. */
+    | "account-policy"
+    /** The server keeps one copy of an account's Studio settings, for a new computer to restore. */
+    | "studio-config";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -1201,6 +1214,17 @@ export const TeamMethod = {
     projectsArchive: "projects.archive",
     projectsRestore: "projects.restore",
     projectsStorage: "projects.storage",
+    // What an operator fixed on the account, and the Studio settings kept for it
+    // (`account-policy`, `studio-config`). The settings themselves travel over HTTP at
+    // TEAM_STUDIO_CONFIG_PATH; these only read and forget them.
+    accountPolicy: "account.policy",
+    accountStudioConfig: "account.studioConfig",
+    accountStudioConfigDelete: "account.studioConfig.delete",
+    adminPoliciesList: "admin.policies.list",
+    adminPoliciesSave: "admin.policies.save",
+    adminPoliciesDelete: "admin.policies.delete",
+    adminUsersPolicy: "admin.users.policy",
+    adminUsersPolicySet: "admin.users.policySet",
 } as const;
 
 /**
@@ -1296,6 +1320,33 @@ export interface TeamEventMessage {
     seq: number;
     payload: unknown;
 }
+
+/** Backing the author's Studio settings up to a server, or reading them back. */
+export type TeamStudioConfigRequest =
+    | { readonly remoteOrigin: string; readonly action: "download" }
+    | { readonly remoteOrigin: string; readonly action: "upload"; readonly content: string };
+
+/** Why a settings backup or restore did not happen. */
+export type TeamStudioConfigRefusal =
+    /** No sign-in is held for that server, or the server no longer takes it. */
+    | "signed-out"
+    /** The account's policy does not allow it: settings kept read-only, or not kept at all. */
+    | "forbidden"
+    /** Larger than the server keeps. */
+    | "too-large"
+    /** The server is older than `studio-config`. */
+    | "unsupported"
+    /** The server could not be reached. */
+    | "unreachable"
+    /** Anything else the server said no to; `message` carries its sentence. */
+    | "failed";
+
+/**
+ * What came of it. A download with no `content` means the server keeps nothing for this account yet.
+ */
+export type TeamStudioConfigOutcome =
+    | { ok: true; content?: string }
+    | { ok: false; reason: TeamStudioConfigRefusal; message?: string };
 
 /** What a workspace asks of the main process to put one artifact of its last build on its server. */
 export interface TeamUploadBuildRequest {

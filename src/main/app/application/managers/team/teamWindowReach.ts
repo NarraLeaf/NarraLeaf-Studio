@@ -22,7 +22,9 @@
  *    server's projects once it has been added, and the wizard's server picker lists them so one can
  *    be cloned - before any project here exists, so before any project could have answered. Both are
  *    Studio's own windows with no project in them, and `projects.list` is all they are given: a
- *    listing is the one thing the "before a project has answered" moment needs.
+ *    listing is the one thing the "before a project has answered" moment needs. Settings may also
+ *    back Studio's own preferences up to the account and read them back (`studioConfig`): those are
+ *    the author's, not any project's.
  *  - **A workspace** acts for its project and for nothing else. It reaches a server only where the
  *    author said that project uses the sign-in held there. Anywhere else it may read who the account
  *    is - its profile and its avatar, for the face in the title bar, see {@link TEAM_WHO_I_AM} - and
@@ -67,7 +69,9 @@ export type TeamAsk =
     | { op: "transfer" }
     | { op: "avatar" }
     /** Putting a build or a picture on the project's server - bytes, like a transfer. */
-    | { op: "upload" };
+    | { op: "upload" }
+    /** Backing Studio's own settings up to the account, or reading them back. */
+    | { op: "studioConfig" };
 
 /**
  * The calls that only take back something this window said, and are answered even where the project
@@ -148,11 +152,13 @@ export function teamAllows(reach: TeamReach, ask: TeamAsk): boolean {
             // has no project for a file to be in. An upload is the same.
             return ask.op !== "transfer" && ask.op !== "upload";
         case "listing":
-            return ask.op === "call" && LISTING_METHODS.has(ask.method);
+            // Settings also keeps Studio's own preferences with the account. They are the author's,
+            // not a project's, so no project's answer is needed - and a workspace is not given it.
+            return ask.op === "studioConfig" || (ask.op === "call" && LISTING_METHODS.has(ask.method));
         case "project":
             // Not the list of every server: that is the launcher's picture of the machine, and a
-            // project has one server it is about.
-            return ask.op !== "connections";
+            // project has one server it is about. Nor the author's own settings: not a project's.
+            return ask.op !== "connections" && ask.op !== "studioConfig";
         case "unused":
             return ask.op === "open"
                 || ask.op === "avatar"

@@ -32,6 +32,8 @@
     "api-tokens",
     "archive",
     "storage",
+    "account-policy",
+    "studio-config",
     "chat",
     "webhooks",
     "project-history",
@@ -201,7 +203,15 @@
     "admin.users.resetTwoFactor",
     "admin.storage.list",
     "admin.backups.list",
-    "admin.backups.create"
+    "admin.backups.create",
+    "account.policy",
+    "account.studioConfig",
+    "account.studioConfig.delete",
+    "admin.policies.list",
+    "admin.policies.save",
+    "admin.policies.delete",
+    "admin.users.policy",
+    "admin.users.policySet"
   ],
   "topics": {
     "projects": "projects",

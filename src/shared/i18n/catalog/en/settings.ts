@@ -754,6 +754,21 @@ export const settings = {
         planSummary: "{change} to change, {same} already the same, {skipped} skipped.",
         skippedUnknown: "{key}: this version of Studio has no such setting",
         skippedInvalid: "{key}: {reason}",
+        team: {
+            hint: "Signed in to Team, you can keep these settings on the server and restore them on another computer by signing in to the same account.",
+            server: "Team server",
+            backup: "Back up to Team",
+            restore: "Restore from Team…",
+            backedUp: "Backed up to {server}.",
+            nothingKept: "{server} keeps no settings for this account yet.",
+            signedOut: "Not signed in to this server, or the sign-in has expired. Sign in again.",
+            forbidden: "An administrator has not turned on settings sync for this account.",
+            forbiddenUpload: "An administrator lets this account restore its settings but not upload new ones.",
+            tooLarge: "The settings are larger than the server keeps.",
+            unsupported: "This server's version cannot keep Studio settings yet.",
+            unreachable: "The server could not be reached.",
+            failed: "The server refused.",
+        },
     },
     // The Network panel's own chrome, outside the per-setting labels above.
     network: {

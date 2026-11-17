@@ -44,6 +44,7 @@ import {
 import { VcsUseServerSessionHandler } from "./handlers/vcsServerSessionAction";
 import {
     TeamAvatarHandler,
+    TeamStudioConfigHandler,
     TeamUploadAttachmentHandler,
     TeamUploadBuildHandler,
     TeamCallHandler,
@@ -572,6 +573,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // A build of this project, or a picture beside its comments, put on its server.
         new TeamUploadBuildHandler(),
         new TeamUploadAttachmentHandler(),
+        // Studio's own settings kept with the account, from Settings. See TeamStudioConfigHandler.
+        new TeamStudioConfigHandler(),
     new VcsSignInWithPasswordHandler(),
     new VcsSignInWithBrowserHandler(),
     new VcsCompleteBrowserSignInHandler(),

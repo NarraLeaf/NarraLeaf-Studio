@@ -120,6 +120,8 @@ const CAPABILITIES: TeamCapability[] = [
     "api-tokens",
     "archive",
     "storage",
+    "account-policy",
+    "studio-config",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",

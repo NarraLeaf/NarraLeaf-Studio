@@ -68,6 +68,8 @@ import type {
     TeamAttachment,
     TeamBuild,
     TeamUploadBuildRequest,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
@@ -922,6 +924,12 @@ export const IPCInterface: RendererPreloadedInterface = {
          */
         transfer: (request: TeamTransferRequest) =>
             ipcClient.invoke(IPCEventType.teamTransfer, request) as Promise<RequestStatus<TeamTransferOutcome>>,
+        /**
+         * Back Studio's settings up to a server, or read them back. Settings and the launcher only;
+         * the document is composed and checked here, and only carried by the main process.
+         */
+        studioConfig: (request: TeamStudioConfigRequest) =>
+            ipcClient.invoke(IPCEventType.teamStudioConfig, request) as Promise<RequestStatus<TeamStudioConfigOutcome>>,
         /** An account's avatar, as a `data:` URL, or null. `path` is the profile's `avatarUrl`. */
         avatar: (remoteOrigin: string, path: string) =>
             ipcClient.invoke(IPCEventType.teamAvatar, { remoteOrigin, path }) as Promise<RequestStatus<{ dataUrl: string | null }>>,

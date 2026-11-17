@@ -112,6 +112,14 @@ describe("what each may do", () => {
         expect(teamAllows(LISTING, { op: "upload" })).toBe(false);
     });
 
+    it("lets Settings and the launcher keep the author's Studio settings with the account, and no project", () => {
+        expect(teamAllows(LISTING, { op: "studioConfig" })).toBe(true);
+        expect(teamAllows(ACCOUNT, { op: "studioConfig" })).toBe(true);
+        expect(teamAllows(PROJECT, { op: "studioConfig" })).toBe(false);
+        expect(teamAllows(UNUSED, { op: "studioConfig" })).toBe(false);
+        expect(teamAllows(NONE, { op: "studioConfig" })).toBe(false);
+    });
+
     it("lets a project that uses the sign-in do what its workspace does, but not list every server", () => {
         expect(teamAllows(PROJECT, { op: "open" })).toBe(true);
         expect(teamAllows(PROJECT, { op: "subscribe" })).toBe(true);

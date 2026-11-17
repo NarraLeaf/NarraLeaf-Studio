@@ -113,6 +113,8 @@ import type {
     TeamAttachment,
     TeamBuild,
     TeamUploadBuildRequest,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsDeviceSignInStart, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
@@ -1364,6 +1366,11 @@ export interface RendererPreloadedInterface {
          * `path` is the `avatarUrl` the server put in a profile; the token stays in the main process.
          */
         avatar(remoteOrigin: string, path: string): Promise<RequestStatus<{ dataUrl: string | null }>>;
+        /**
+         * Back Studio's settings up to a server, or read them back. Settings and the launcher only;
+         * the renderer composes and checks the document, the main process only carries it.
+         */
+        studioConfig(request: TeamStudioConfigRequest): Promise<RequestStatus<TeamStudioConfigOutcome>>;
         /**
          * Put one artifact of this project's last build on its server. Names a path; the main
          * process holds it to the artifacts the last build recorded and does the reading.

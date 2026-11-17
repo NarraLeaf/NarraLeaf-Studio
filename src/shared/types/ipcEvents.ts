@@ -148,6 +148,8 @@ import type {
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamSubscribeOutcome,
     TeamUploadBuildRequest,
 } from "./team";
@@ -596,6 +598,11 @@ export enum IPCEventType {
     teamUploadProgress = "team.uploadProgress",
     /** Put one picture beside the project's comments on its Team server. Carries the picture as a `data:` URL. */
     teamUploadAttachment = "team.uploadAttachment",
+    /**
+     * Back the author's Studio settings up to a Team server, or read them back. The renderer composes
+     * and reads the document; the main process only carries it, with the account's token.
+     */
+    teamStudioConfig = "team.studioConfig",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -2078,6 +2085,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string; projectId: string; dataUrl: string },
         response: { attachment: TeamAttachment; url: string };
+    };
+    [IPCEventType.teamStudioConfig]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamStudioConfigRequest,
+        response: TeamStudioConfigOutcome;
     };
 };
 

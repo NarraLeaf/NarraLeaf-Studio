@@ -39,6 +39,8 @@ import type {
     TeamBuild,
     TeamCallOutcome,
     TeamConnection,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
@@ -56,6 +58,7 @@ import {
     type UploadOutcome,
     type UploadTarget,
 } from "./uploadRequest";
+import { downloadStudioConfig, uploadStudioConfig } from "./studioConfigRequest";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
 import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
@@ -268,6 +271,20 @@ export class TeamManager {
             this.avatars.delete(oldest);
         }
         return reading;
+    }
+
+    /**
+     * Back the author's Studio settings up to a server, or read them back.
+     *
+     * The document is carried, not read: the renderer composed it and will check what comes back.
+     */
+    async studioConfig(request: TeamStudioConfigRequest): Promise<TeamStudioConfigOutcome> {
+        const upload = this.uploadTarget(request.remoteOrigin);
+        if (upload === null) return { ok: false, reason: "signed-out" };
+        const target = { ...upload, studioVersion: this.app.getAppInfo().version };
+        return request.action === "upload"
+            ? await uploadStudioConfig(target, request.content)
+            : await downloadStudioConfig(target);
     }
 
     /** Where to put bytes for one server, with the session's token, or null when not signed in there. */

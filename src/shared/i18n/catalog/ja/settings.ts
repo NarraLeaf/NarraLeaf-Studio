@@ -699,6 +699,21 @@ export const settings = {
         planSummary: "変更 {change} 件、すでに同じ {same} 件、対象外 {skipped} 件",
         skippedUnknown: "{key}：このバージョンの Studio にその設定はない",
         skippedInvalid: "{key}：{reason}",
+        team: {
+            hint: "Team にサインインしていれば、この設定をサーバーに保存し、別の端末で同じアカウントにサインインして復元できる",
+            server: "Team サーバー",
+            backup: "Team に保存",
+            restore: "Team から復元…",
+            backedUp: "{server} に保存した",
+            nothingKept: "{server} にはこのアカウントの設定がまだない",
+            signedOut: "このサーバーにサインインしていないか、サインインが切れている。もう一度サインインしてほしい",
+            forbidden: "管理者がこのアカウントの設定同期を有効にしていない",
+            forbiddenUpload: "管理者の設定により、復元はできるが新しい設定は保存できない",
+            tooLarge: "設定がサーバーの上限を超えている",
+            unsupported: "このサーバーのバージョンは Studio の設定の保存にまだ対応していない",
+            unreachable: "サーバーに接続できない",
+            failed: "サーバーに拒否された",
+        },
     },
     // ネットワークのパネル自身の文言。上の設定ごとのラベルとは別。
     network: {
