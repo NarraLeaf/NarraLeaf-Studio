@@ -63,7 +63,6 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
             await requireOpenableFromWorkspace(window, props.projectPath);
             await window.getApp().openProject(window, props.projectPath, {
                 replaceOpener: closeCurrentWindow,
-                ...(props.joinLive ? { joinLive: props.joinLive } : {}),
             });
         });
     }
@@ -210,29 +209,6 @@ export class WorkspaceSetRecoveryModeHandler extends IPCHandler<IPCEventType.wor
             recoveryReason: enabled ? reason : undefined,
         });
         workspace.reload();
-
-        return this.success(void 0);
-    }
-}
-
-/**
- * Forget the room this window was told to join, now that it has been acted on.
- *
- * Not a reload, unlike its neighbour above: this exists so that the *next* load reads no intent,
- * and the window doing the clearing is the one carrying it out. See the prop's own note.
- */
-export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.workspaceLiveIntentTaken> {
-    readonly name = IPCEventType.workspaceLiveIntentTaken;
-    readonly type = IPCMessageType.request;
-
-    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.Workspace) {
-            return this.failed("Only a workspace window carries a live session intent.");
-        }
-
-        const workspace = window as AppWindow<WindowAppType.Workspace>;
-        const { joinLive: _dropped, ...rest } = workspace.getProps();
-        workspace.setProps(rest);
 
         return this.success(void 0);
     }

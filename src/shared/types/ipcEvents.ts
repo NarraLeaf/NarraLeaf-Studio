@@ -301,8 +301,6 @@ export enum IPCEventType {
     projectTrustList = "projectTrust.list",
     projectTrustForget = "projectTrust.forget",
     projectTrustPrompt = "projectTrust.prompt",
-    workspaceLiveIntentTaken = "workspace.liveIntentTaken",
-    workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
@@ -2884,20 +2882,6 @@ export type IPCWorkspaceEvents = {
         };
     };
     /**
-     * Forget the live session this window was told to join, having now acted on it.
-     *
-     * Window props are read once by each load of the renderer and survive a reload, so an intent
-     * left in place would be taken up again by every later load of this window - dragging an
-     * author back into a room they had deliberately left. Cleared rather than remembered in the
-     * renderer, because the renderer is the thing a reload throws away.
-     */
-    [IPCEventType.workspaceLiveIntentTaken]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: Record<string, never>;
-        response: void;
-    };
-    /**
      * Show this window's project folder in the OS file manager.
      *
      * Only ever the window's own project - the path is not a parameter - because "open a folder for
@@ -4799,21 +4783,6 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { view: WorkspaceViewRequest },
-        response: never;
-    };
-    /**
-     * Main telling the already-open workspace which live session to join.
-     *
-     * The other half of the `joinLive` window prop, and needed for the same reason Settings needs
-     * `settingsHighlight`: one project is one window, so a launcher asking to join a room in a
-     * project this machine already has open reaches a window that exists - and a prop is read once,
-     * at load. Without this the intent would be dropped in silence, which is the commonest case of
-     * all now that the workspace has no join control of its own.
-     */
-    [IPCEventType.workspaceJoinLive]: {
-        type: IPCMessageType.message,
-        consumer: IPCType.Client,
-        data: { joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]> },
         response: never;
     };
     /**

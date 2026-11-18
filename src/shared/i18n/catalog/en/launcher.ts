@@ -195,33 +195,6 @@ export const launcher = {
             versionsUnavailable: "This project's versions are not available.",
             olderVersions: "Older versions are not shown.",
         },
-        // Taking a project off a server's list, for the one a failed publish left behind.
-        //
-        // **The message is the reason this is a dialog at all.** "Remove" beside a project
-        // name reads as deleting the project, and the route behind it does not do that - it
-        // drops the entry the server lists and leaves what the repository holds where it is.
-        // So the limit is written out rather than implied, in the sentence that names both
-        // the project and the list it is coming off.
-        // What people have said about one project, over the session this Studio holds
-        // with the server. Only reached on a deployment that serves conversations.
-        // Somebody else's live session, and every way into one. They are here rather than in
-        // the editor because joining usually begins with fetching the project, and that needs a
-        // window with no project open - which is this one.
-        live: {
-            title: "Live sessions",
-            untitled: "Untitled session",
-            hostedBy: "Hosted by {name}",
-            members: "{count} in the session",
-            join: "Join",
-            // A room that is joined by asking does not let anybody in when this is pressed: it
-            // puts a question in front of its host. "Join" would be promising something else.
-            ask: "Ask to join",
-            passcodePrompt: "Have a passcode?",
-            // One sentence for a passcode that is wrong and for one nobody is using, because the
-            // server answers both with one - see the join rules.
-            noSuchCode: "No live session has that passcode.",
-            unreachable: "That session is on a project this server did not list.",
-        },
         discussion: {
             title: "Discussion",
             empty: "No notes on this project.",

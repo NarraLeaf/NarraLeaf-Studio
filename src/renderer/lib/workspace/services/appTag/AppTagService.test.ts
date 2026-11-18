@@ -511,7 +511,7 @@ describe("build variant undo", () => {
 
 describe("AppTagService inside a live session", () => {
     /**
-     * A sink that takes everything and remembers it - what `LiveSession` installs, minus the room.
+     * A sink that takes everything and remembers it - what a Team project installs, minus the server.
      *
      * The contract this exercises is the one every mutator on this service now shares: with a sink
      * installed the edit becomes an operation and the document is not touched, and the panel moves

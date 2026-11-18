@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { StackSection } from "../../../components/ui/SectionStack";
 import { LivePreviewFrame } from "./LivePreviewFrame";
-import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 import { onComponentLibraryReveal } from "./componentLibraryReveal";
 import { linkedComponentIdsForSelection, scrollRowIntoListView } from "./selectionHighlights";
 import { useSelectionHighlight } from "./useSelectionHighlight";

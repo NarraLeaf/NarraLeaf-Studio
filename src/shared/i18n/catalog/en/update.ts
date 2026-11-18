@@ -54,7 +54,10 @@ export const update = {
      * than as a disabled control - a button that cannot work explains nothing.
      */
     unsupported: {
-        macos: "Studio cannot install its own updates on macOS yet. Download the new version and replace the app.",
+        /** A macOS copy signed ad hoc: every build from before release signing, or a local pack. */
+        macos: "This copy of Studio cannot install its own updates. Download the new version and replace the app once; later updates install themselves.",
+        /** A macOS copy running from the disk image, a translocated folder, or a folder it cannot write. */
+        macosLocation: "Studio cannot replace itself where it is now. Move NarraLeaf Studio to the Applications folder and reopen it.",
         development: "A development build cannot update itself.",
         platform: "This build cannot install its own updates. Download the new version from the releases page.",
     },

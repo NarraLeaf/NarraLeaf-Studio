@@ -12,6 +12,7 @@ import { autoUpdater } from "electron-updater";
 import { spawn } from "child_process";
 import { readPreparedVersion, removeStagedCopy, UPDATE_WAIT_PID_ENV } from "./updateStaging";
 import { askGitCode, chooseUpdateSource, type UpdateOffer } from "./updateSource";
+import { macSelfUpdateBlocker } from "./updateMacSupport";
 import { UPDATE_RETRY_DELAYS_MS, UpdateManager } from "./updateManager";
 
 // electron-updater reaches for Electron's app at import time, so the whole module is a stand-in:
@@ -50,6 +51,9 @@ vi.mock("./updateSource", async importOriginal => ({
     chooseUpdateSource: vi.fn(async () => null),
     askGitCode: vi.fn(async () => null),
 }));
+
+// Whether a macOS copy is signed and writable is updateMacSupport.test.ts's business.
+vi.mock("./updateMacSupport", () => ({ macSelfUpdateBlocker: vi.fn(async () => "unsigned") }));
 
 vi.mock("./releaseDirectoryProvider", () => ({
     releaseDirectoryFeed: (url: string) => ({ provider: "custom", url }),
@@ -483,6 +487,73 @@ describe("UpdateManager on packaged Windows", () => {
             expect(autoUpdater.autoInstallOnAppQuit).toBe(true);
             expect(process.env[UPDATE_WAIT_PID_ENV]).toBe(String(process.pid));
         });
+    });
+});
+
+describe("UpdateManager on packaged macOS", () => {
+    const realPlatform = process.platform;
+    const realWaitPid = process.env[UPDATE_WAIT_PID_ENV];
+
+    beforeEach(() => {
+        Object.defineProperty(process, "platform", { value: "darwin" });
+        vi.mocked(autoUpdater.on).mockClear();
+        vi.mocked(autoUpdater.quitAndInstall).mockClear();
+        vi.mocked(spawn).mockReset();
+        delete process.env[UPDATE_WAIT_PID_ENV];
+    });
+
+    afterEach(() => {
+        Object.defineProperty(process, "platform", { value: realPlatform });
+        if (realWaitPid === undefined) {
+            delete process.env[UPDATE_WAIT_PID_ENV];
+        } else {
+            process.env[UPDATE_WAIT_PID_ENV] = realWaitPid;
+        }
+    });
+
+    async function managerFor(blocker: "unsigned" | "location" | null) {
+        vi.mocked(macSelfUpdateBlocker).mockResolvedValue(blocker);
+        const made = makeApp({ launchUpdateCheck: false, packaged: true });
+        const manager = new UpdateManager(made.app);
+        manager.initialize();
+        await flush();
+        return { manager, ...made };
+    }
+
+    it("checks only, and says why, when this copy is not signed with a certificate", async () => {
+        const { manager } = await managerFor("unsigned");
+
+        expect(manager.canSelfUpdate()).toBe(false);
+        expect(manager.getState()).toMatchObject({ canInstall: false, blockedReason: "unsigned" });
+        expect(vi.mocked(autoUpdater.on).mock.calls).toHaveLength(0);
+    });
+
+    it("checks only when it runs from somewhere it cannot replace itself", async () => {
+        const { manager } = await managerFor("location");
+
+        expect(manager.getState()).toMatchObject({ canInstall: false, blockedReason: "location" });
+    });
+
+    it("installs its own updates once signed and writable, with no unpacking step", async () => {
+        const { manager } = await managerFor(null);
+
+        expect(manager.getState()).toMatchObject({ canInstall: true });
+        expect(manager.getState().blockedReason).toBeUndefined();
+
+        updaterListener<{ version: string; downloadedFile: string }>("update-downloaded")({
+            version: "1.2.4",
+            downloadedFile: "/Users/someone/Library/Caches/narraleaf-studio-updater/pending/NarraLeaf-Studio-1.2.4-arm64.zip",
+        });
+        await flush();
+
+        expect(spawn).not.toHaveBeenCalled();
+        expect(manager.getState()).toMatchObject({ status: "ready", availableVersion: "1.2.4", fastRestart: true });
+
+        manager.installNow();
+
+        expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+        // The Windows installer's handshake; Squirrel.Mac waits for the quit on its own.
+        expect(process.env[UPDATE_WAIT_PID_ENV]).toBeUndefined();
     });
 });
 

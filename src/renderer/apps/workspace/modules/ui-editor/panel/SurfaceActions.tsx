@@ -1,7 +1,7 @@
 import { ClipboardPaste, LayoutTemplate, Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
-import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 
 type SurfaceActionsProps = {
     onCreate: () => void;

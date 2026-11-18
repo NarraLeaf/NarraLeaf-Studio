@@ -64,7 +64,7 @@ async function createHarness(): Promise<{ service: DlcService; files: Map<string
     return { service, files, history };
 }
 
-/** A sink that takes everything and remembers it - what `LiveSession` installs, minus the room. */
+/** A sink that takes everything and remembers it - what a Team project installs, minus the server. */
 function sink(): { ops: LiveDlcOp[]; handle(op: LiveDlcOp): boolean } {
     const ops: LiveDlcOp[] = [];
     return {

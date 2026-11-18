@@ -79,7 +79,7 @@ import {
     ProjectTrustForgetHandler,
     ProjectTrustPromptHandler,
 } from "./handlers/projectTrustAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineRunHandler, WorkspaceSetRecoveryModeHandler, WorkspaceAcquireSessionLockHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineRunHandler, WorkspaceSetRecoveryModeHandler, WorkspaceAcquireSessionLockHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
@@ -358,7 +358,6 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AgentInstallSkillHandler(),
         new AgentRevealExportedSkillHandler(),
         new AgentRequestFolderAccessHandler(),
-        new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
         new WorkspaceReportLoadResultHandler(),

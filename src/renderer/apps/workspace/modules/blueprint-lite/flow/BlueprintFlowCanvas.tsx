@@ -162,7 +162,7 @@ import {
     withInferredBlueprintStructTypes,
     type BlueprintStructTypeInferenceContext,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
-import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiFreezeScope";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { useHostVisible } from "@/lib/components/layout/hostVisibility";
 import {

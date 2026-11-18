@@ -824,10 +824,6 @@ export const assets = {
      */
     /** What a live session adds to the library: who else is inside a record. */
     live: {
-        // On the mark a row wears while somebody else has its record open in the inspector. A person
-        // is named: there is no width for a name beside the monogram, and a truncated one names
-        // nobody.
-        recordClaimed: "{name} is editing this asset",
         // On the band a row wears while its file is still coming in over a session. A share of the
         // file, not a time: how long is a property of the network and is not knowable from here.
         transferring: "{percent}% of this asset has arrived",

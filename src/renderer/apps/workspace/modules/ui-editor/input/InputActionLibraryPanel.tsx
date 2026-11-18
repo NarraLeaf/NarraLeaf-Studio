@@ -21,7 +21,7 @@ import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { StackSection } from "../../../components/ui/SectionStack";
 import { InputBindingList } from "./InputBindingList";
-import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 import { onInputActionPanelFocus } from "./inputActionPanelFocus";
 import { answeredActionIdsForSelection, scrollRowIntoListView } from "../panel/selectionHighlights";
 import { useSelectionHighlight } from "../panel/useSelectionHighlight";

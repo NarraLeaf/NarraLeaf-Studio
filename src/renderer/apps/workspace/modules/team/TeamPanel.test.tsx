@@ -86,9 +86,7 @@ function team(overrides: Partial<TeamProjectSurface> = {}): TeamProjectSurface {
         },
         remoteOrigin: ONE,
         clients: [],
-        live: [],
         overlay: null,
-        canLive: false,
         canOverlay: false,
         canSeeClients: false,
         refresh: vi.fn(),
@@ -328,7 +326,7 @@ describe("what the server answered", () => {
     });
 
     it("draws nothing about collaboration until the project is confirmed", () => {
-        panel({}, team({ state: { kind: "connecting" }, canLive: true, canSeeClients: true }));
+        panel({}, team({ state: { kind: "connecting" }, canSeeClients: true }));
         expect(seam("collaboration")).toBeNull();
     });
 
@@ -344,24 +342,9 @@ describe("what the server answered", () => {
 
         cleanup();
         // Alone with nothing attached, the section has nothing to report and is not drawn. It used
-        // to say "only this machine" every working day, under a heading, beside a room row.
+        // to say "only this machine" every working day, under a heading.
         panel({}, team({ canSeeClients: true, clients: [{ id: "a", account: "ada", label: "Nomen", agent: "", since: 1 }] }));
         expect(seam("collaboration")).toBeNull();
-    });
-
-    /*
-     * ⚠ **The live session is not in this dialog and must not come back to it.**
-     *
-     * It was one row here, with the only deliberate act in the panel drawn smaller than the address
-     * above it, behind two clicks, in a dialog that is shut for the whole of a working day. A
-     * session is a mode the window is in and it outlives every tab, so it belongs to the title bar
-     * and to a surface of its own - `LiveSessionDialogHost` and `LiveSessionDialog`, whose own file
-     * holds everything that used to be pinned here.
-     */
-    it("says nothing about live sessions", () => {
-        panel({}, team({ canLive: true, head: "rev-9" }));
-        expect(seam("live")).toBeNull();
-        expect(seam("live-open")).toBeNull();
     });
 
     it("counts what is attached, and how much of it is about an older version", () => {

@@ -5,7 +5,6 @@ import { printNarralangScene } from "@/lib/story/narralang/narralangPrinter";
 import { reconcileNarralangScene, type NarralangParseDiagnostic } from "@/lib/story/narralang/narralangReconcile";
 import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
@@ -112,22 +111,6 @@ export function useNarralangCommit(
             return NOTHING;
         }
         const { services } = state.context;
-
-        // A session owns this story, so the buffer goes nowhere.
-        //
-        // `replaceScene` is not one of the operations a session carries, so a commit here would be
-        // written into this machine's document and into nobody else's; the next effect the host
-        // broadcasts about this scene would then find two different scenes and eject this window
-        // from the room. The view is already read-only with the reason on it - this is the second
-        // enforcement point, because a commit fires from a timer and from a blur handler, either of
-        // which can be in flight when a session opens.
-        //
-        // First, before anything is read or printed: nothing below this line can change the answer,
-        // and a refusal that had already walked the scene would be doing the work twice a second
-        // for the whole of a session.
-        if (services.get<LiveSessionService>(Services.Live).ownsStory(state.document.id)) {
-            return NOTHING;
-        }
 
         const storyService = services.get<StoryService>(Services.Story);
                 // Both directions off one pass: the names this commit prints and the names it reads back are

@@ -51,7 +51,7 @@ import { SectionCard } from "@/lib/components/elements/SectionCard";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetSetFreezeScope } from "@/apps/workspace/modules/assets/assetLiveSession";
+import { assetSetFreezeScope } from "@/apps/workspace/modules/assets/assetFreezeScopes";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";

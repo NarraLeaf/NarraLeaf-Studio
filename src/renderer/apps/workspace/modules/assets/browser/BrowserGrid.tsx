@@ -10,7 +10,7 @@ import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_SET_REVEAL_RING, useAssetSetRevealMark, useSetSummary } from "../components/AssetSetRow";
-import { AssetTransferSweep } from "../assetLiveSession";
+import { AssetTransferSweep } from "../assetTransfers";
 import { ASSET_TYPE_ICONS } from "../constants";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import {

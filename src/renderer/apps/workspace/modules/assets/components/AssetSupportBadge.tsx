@@ -3,7 +3,7 @@ import { Badge } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { cn } from "@/lib/utils/cn";
 import type { MediaAssetSupportRecord } from "@/lib/workspace/services/media/mediaAssetSupport";
 

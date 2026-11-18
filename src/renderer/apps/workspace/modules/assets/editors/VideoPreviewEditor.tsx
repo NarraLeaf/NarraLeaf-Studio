@@ -21,7 +21,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { TooltipGroup } from "@/lib/tooltip";

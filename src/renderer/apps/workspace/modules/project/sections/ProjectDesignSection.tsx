@@ -73,13 +73,7 @@ import {
 } from "@shared/types/localization";
 import { suggestLocalesForCoverage } from "@shared/typography/localeScripts";
 import { useWorkspace } from "../../../context";
-import {
-    BRAND_COLOR_CLAIMS,
-    brandDocumentFreezeScope,
-    ConfigClaimMark,
-    useConfigClaim,
-    useConfigClaimHold,
-} from "../configLiveSession";
+import { brandDocumentFreezeScope } from "../configFreezeScopes";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -151,9 +145,8 @@ export function brandLinkExclusions(palette: BrandPalette, id: string): string[]
 export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
     const { t, tn, has } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    // Scoped, so a live session leaves the palette live: every gesture on it is an operation the
-    // session carries. The scope is the file `BrandService` writes, and it is the same predicate
-    // the write boundary asks - see `configLiveSession`. Every guard in this file takes it: the
+    // Scoped to the file `BrandService` writes, which is the same predicate the write boundary
+    // asks - see `configFreezeScopes`. Every guard in this file takes it: the
     // section reads other services to count references and to offer fonts, and writes only this.
     const freeze = useFreezeGuard(brandDocumentFreezeScope());
     const colorLabel = useBrandColorLabel();
@@ -799,20 +792,6 @@ function ColorRow({
     const freeze = useFreezeGuard(brandDocumentFreezeScope());
     const edit = freeze.writes(!service, t("brand.panel.editColor", { name: label }));
     /**
-     * The row somebody is inside, which is what a claim is held for.
-     *
-     * The name field's focus rather than the row's presence: the name is the one thing on this
-     * row that keeps a draft, and after a blur there is nothing left for somebody else's edit to
-     * take. The swatch commits when its panel closes and holds nothing in between.
-     */
-    const [focused, setFocused] = useState(false);
-    useConfigClaimHold(BRAND_COLOR_CLAIMS, focused ? color.id : null);
-    const heldBy = useConfigClaim(BRAND_COLOR_CLAIMS, color.id);
-    const claimedTip = heldBy === null
-        ? undefined
-        : t("project.live.entryClaimed", { name: heldBy });
-
-    /**
      * What the picker is showing, which is the stored value except while its panel is open.
      *
      * Not memoized on `color.value`: a linked entry's resolved hex changes when the colour it points
@@ -862,7 +841,7 @@ function ColorRow({
                     brandPalette
                     brandExclude={exclusions}
                     disabled={!service}
-                    readOnly={freeze.frozen || heldBy !== null}
+                    readOnly={freeze.frozen}
                     ariaLabel={edit["data-tip"]}
                     onChange={setDraft}
                     onCommit={commit}
@@ -873,13 +852,9 @@ function ColorRow({
                 name={color.name ?? ""}
                 placeholder={label}
                 disabled={edit.disabled}
-                title={claimedTip ?? edit["data-tip"]}
+                title={edit["data-tip"]}
                 onCommit={next => service?.renameColor(color.id, next)}
-                readOnly={heldBy !== null}
-                onFocusChange={setFocused}
             />
-
-            {heldBy === null ? null : <ConfigClaimMark account={heldBy} />}
 
             {onDelete ? (
                 <IconButton
@@ -887,7 +862,7 @@ function ColorRow({
                     aria-label={t("brand.panel.deleteColor", { name: label })}
                     className="shrink-0 hover:text-danger"
                     onClick={onDelete}
-                    {...freeze.writes(!service || heldBy !== null, claimedTip)}
+                    {...freeze.writes(!service)}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
                 </IconButton>
@@ -911,17 +886,12 @@ function NameField({
     disabled,
     title,
     onCommit,
-    readOnly,
-    onFocusChange,
 }: {
     name: string;
     placeholder: string;
     disabled: boolean;
     title: string | undefined;
     onCommit: (name: string) => void;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
 }) {
     const [draft, setDraft] = useState(name);
 
@@ -944,16 +914,11 @@ function NameField({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            readOnly={readOnly}
             data-tip={title}
             aria-label={placeholder}
             className="min-w-0 flex-1"
             onChange={event => setDraft(event.target.value)}
-            onFocus={() => onFocusChange?.(true)}
-            onBlur={() => {
-                onFocusChange?.(false);
-                commit();
-            }}
+            onBlur={commit}
             onKeyDown={event => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();

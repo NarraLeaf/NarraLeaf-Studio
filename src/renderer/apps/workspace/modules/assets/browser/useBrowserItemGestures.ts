@@ -4,7 +4,7 @@ import type { AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { isWorkspaceAssetDragEvent } from "../dnd/assetDragContract";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import type { AssetBrowserItem } from "./assetBrowserModel";
 

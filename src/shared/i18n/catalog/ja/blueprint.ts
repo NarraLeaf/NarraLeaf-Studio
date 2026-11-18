@@ -1702,9 +1702,6 @@ export const blueprint = {
         getVideoVolume: "動画の音量（0 から 1）。ウィジェットで設定した値、または「動画の音量を設定」で設定した値で、プレイヤーの音量設定は含まない",
         isVideoMuted: "動画が消音されているとき真",
     },
-    live: {
-        nodeClaimed: "{name} がこのノードを編集している",
-    },
     overview: {
         title: "ブループリント一覧",
         count: {

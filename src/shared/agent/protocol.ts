@@ -41,7 +41,7 @@ export type AgentErrorCode =
     | "paused"
     /** The project is frozen for writing (a version-control operation, a recovery, a reload). */
     | "frozen"
-    /** A Team live session is running; agent writes would race the room. */
+    /** The project is open as a Team project; agent writes would bypass the server. (Named for the live sessions it outlived.) */
     | "live_session"
     /** The page or scene changed since the agent read it - read it again and redo the edit. */
     | "stale_revision"

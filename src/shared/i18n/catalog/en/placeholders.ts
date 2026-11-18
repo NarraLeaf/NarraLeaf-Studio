@@ -24,6 +24,5 @@ export const placeholders = {
         variables: "Variables",
         dictionary: "Dictionary",
         storyComments: "Comments",
-        collaboration: "Collaboration",
     },
 } as const;

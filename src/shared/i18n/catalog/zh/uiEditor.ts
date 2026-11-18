@@ -377,7 +377,4 @@ export const uiEditor = {
             apply: "无法应用该模板",
         },
     },
-    live: {
-        elementClaimed: "{name} 正在编辑该元素",
-    },
 } satisfies LocaleNamespace<"uiEditor">;

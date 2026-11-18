@@ -18,9 +18,7 @@ export {
     registerTeamPresenceBridge,
     type TeamPresenceBridge,
 } from "./teamPresenceController";
-export { LiveSessionDialogHost } from "./LiveSessionDialogHost";
 export { TeamAccountAvatar } from "./TeamAccountAvatar";
-export { LiveSessionDialog } from "./LiveSessionDialog";
 export { TeamProjectProvider, useTeamProjectSurface } from "./TeamProjectContext";
 export { StoryCommentsTeamSyncMount } from "./StoryCommentsTeamSync";
 export { TeamNotificationsBell } from "./TeamNotificationsBell";
@@ -30,5 +28,3 @@ export { TeamPlaytestFeedbackPrompt } from "./TeamPlaytestFeedbackPrompt";
 export { TeamBuildUploadButton } from "./TeamBuildUploadButton";
 export { TeamEditingNotice } from "./TeamEditingNotice";
 export { TeamAssetLockNotice } from "./TeamAssetLockNotice";
-export { LiveCursorBroadcaster, LiveSessionChat } from "./LiveCursorAndChat";
-export { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiveSession";

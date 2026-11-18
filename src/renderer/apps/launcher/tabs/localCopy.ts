@@ -4,10 +4,9 @@ import type { VcsLocalRepository, VcsServerProject } from "@shared/types/vcs";
 /**
  * Which project on a server this machine already has, if it has it.
  *
- * Its own module rather than a member of the Servers tab, because the question is asked from
- * both directions: the tab asks it about a project somebody is looking at, and the passcode
- * field asks it about a project a room turned out to be on. The tab imports the field, so the
- * field cannot import the tab.
+ * Its own module rather than a member of the Servers tab. A passcode field above the project
+ * list used to ask it too; that field is gone, and the module stays so the question can be
+ * tested without drawing the tab.
  */
 
 /** Where a project's remote lives, without the repository name on the end. */

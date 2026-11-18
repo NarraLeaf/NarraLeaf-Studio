@@ -59,7 +59,6 @@ import {
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { useProjectDistrusted } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
-import { StoryRowClaimsProvider } from "./storyRowClaims";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import {
     StoryDocumentScopeProvider,
@@ -100,7 +99,6 @@ import {
     STORY_EDITOR_DENSITIES,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
-import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
@@ -248,11 +246,7 @@ export function StorySceneOverviewBlock(props: {
     backgroundAsset: Asset<AssetType.Image> | null;
     onUpdateScene: (patch: StorySceneUpdate) => boolean;
     panelStateService: PanelStateService | null;
-    /**
-     * Whichever refusal applies to this card: the workspace's freeze, or a live session on this
-     * story. See `storyEditGuard` - the two are one question here, because every field commits
-     * through the same call.
-     */
+    /** The workspace's freeze on this story: every field commits through the same call. */
     writes: FreezeGuard;
 }) {
     const { t } = useTranslation();
@@ -534,18 +528,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // density is editor state, not project data, and find on its own only navigates. Replace does
     // write, and is gated on the guard in both the bar and the callbacks (`replaceCurrentMatch`).
     //
-    // Scoped to this tab's story: everything routed through this guard writes that one document, so
-    // a live session on it leaves the editor working. The paths that reach further - a paste that
-    // creates characters or carries translations - ask the controller's unscoped answer instead.
+    // Scoped to this tab's story: everything routed through this guard writes that one document. The
+    // paths that reach further - a paste that creates characters or carries translations - ask the
+    // controller's unscoped answer instead.
     const storyScope = storyDocumentFreezeScope(payload?.storyId);
     const freeze = useFreezeGuard(storyScope);
-    // The other half of the same question, and the freeze cannot answer it: a session leaves this
-    // document writable on purpose, so what it takes away is not a file but a *route*. The three
-    // surfaces below rewrite the scene by routes a session does not carry - the script view replaces
-    // the whole scene, the overview card patches the scene record, and the launch prompt mints a
-    // Scene Snapshot inside it - and every one of them would leave this machine holding a scene the
-    // room has never seen.
-    const liveSession = useStoryLiveSessionGuard(payload?.storyId);
     // A third refusal, and neither of the two above stands in for it: a project that arrived from a
     // package or a remote source stays fully readable and fully editable, and only its EXECUTION
     // waits on the author vouching for it in Settings. The one thing in this editor that executes is
@@ -1653,15 +1640,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     /**
      * Whether the script may be written back, and what to say when it may not.
      *
-     * Three independent refusals with one surface: a scene the script cannot say is read-only for
-     * good (the gate), a frozen workspace refuses every write of project data, and a live session
-     * refuses this one because a script commit rewrites the whole scene at once - which is not
-     * something a session can carry to the other machines. The freeze reason is the shared one
-     * `useFreezeGuard` hands every other control, so the author learns what frozen looks like once
-     * instead of reading a different excuse per panel; the session has a sentence of its own,
-     * because it is the case where the rest of the editor is still working.
+     * Two independent refusals with one surface: a scene the script cannot say is read-only for good
+     * (the gate), and a frozen workspace refuses every write of project data. The freeze reason is
+     * the shared one `useFreezeGuard` hands every other control, so the author learns what frozen
+     * looks like once instead of reading a different excuse per panel.
      */
-    const scriptWrites = storyEditGuard(freeze, liveSession);
+    const scriptWrites = freeze;
     const scriptEditable = script.editable && !scriptWrites.frozen;
     const scriptReadOnlyReason = scriptWrites.frozen ? scriptWrites.reason : t("story.narralang.view.readOnly");
     const scriptCommit = useNarralangCommit(
@@ -2434,10 +2418,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             which no scope of this document's covers. See `storySceneReadOnly`. */}
         <StoryDocumentScopeProvider value={storyScope}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
-        {/* Who else in a live session is writing which row. One subscription for the whole list:
-            the session publishes on every operation anybody in the room applies, and a row asking
-            for itself would repaint the screenful on every remote keystroke. */}
-        <StoryRowClaimsProvider storyId={payload?.storyId}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
@@ -2623,18 +2603,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 onMouseDown={editor.focusRoot}
                 onScroll={handleScroll}
             >
-                {/* Both refusals, not one. The card used to be held back by the session alone, so
-                    an ordinary freeze - a version on screen, a merge, recovery - left its three
-                    fields taking input that the write boundary then discarded: the scene appeared
-                    to be renamed until the tab was reopened. `storyEditGuard` picks whichever of
-                    the two applies and hands over its sentence. */}
+                {/* The freeze, so an ordinary freeze - a version on screen, a merge, recovery -
+                    does not leave its fields taking input the write boundary then discards. */}
                 <StorySceneOverviewBlock
                     document={document}
                     scene={scene}
                     backgroundAsset={backgroundAsset}
                     onUpdateScene={editor.updateSceneMetadata}
                     panelStateService={panelStateService}
-                    writes={storyEditGuard(freeze, liveSession)}
+                    writes={freeze}
                 />
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
@@ -2978,7 +2955,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
         </div>
-        </StoryRowClaimsProvider>
         </StoryRowActionsContext.Provider>
         </StoryDocumentScopeProvider>
         </StoryRefNavigationProvider>

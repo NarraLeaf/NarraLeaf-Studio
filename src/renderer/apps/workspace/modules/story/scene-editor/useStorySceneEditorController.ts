@@ -34,8 +34,6 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { planSceneSplit, type StorySceneCutTie } from "@/lib/workspace/services/story/storyStructuralOps";
 import { moveStoryRowsToScene } from "../storyStructuralGestures";
 import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
-import { rowClaimHolder } from "./storyRowClaims";
-import { useStoryRowClaimHold } from "./storyRowClaimHold";
 import { Services } from "@/lib/workspace/services/services";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -48,7 +46,6 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
@@ -185,16 +182,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
     const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
     /**
-     * The live session this window is in, which changes what undo means for this document.
-     *
-     * Two things hang off it, and both are the same statement: while a session owns this story,
-     * nothing here may record a scene snapshot ({@link captureHistoryState}) and Ctrl+Z sends the
-     * inverse of this window's last operation instead of restoring one ({@link undoEdit}). A
-     * snapshot taken during a session describes a scene as only this author had it, so restoring
-     * one would delete everything the others wrote since, with nothing on any screen saying so.
-     */
-    const liveSessionService = useMemo(() => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null), [context, isInitialized]);
-    /**
      * This window's own project, as the clipboard describes it.
      *
      * The path is the identity a pasted payload is compared against - rows carrying another
@@ -263,18 +250,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
-    /**
-     * Whether somebody else in a live session is writing this row.
-     *
-     * Read from the session rather than from the rows' own context, because this hook runs outside
-     * the provider the rows read - both go through `rowClaimHolder`, so a row cannot be marked as
-     * taken on screen and still open for typing. False for every row outside a session, which is
-     * the whole document most of the time.
-     */
-    const rowHeldByOther = useCallback((blockId: StoryBlockId): boolean => (
-        liveSessionService !== null
-        && rowClaimHolder(liveSessionService.getView(), storyId, blockId) !== null
-    ), [liveSessionService, storyId]);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -626,18 +601,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
-     * The row this window is writing, taken from whoever else might want it and given back the
-     * moment the box closes — by a commit, a blur, an Escape, a click on another line, a freeze, or
-     * the tab going away. See {@link useStoryRowClaimHold}: every one of those is the open row
-     * changing, so there is no list of endings here that a later one could fall off.
-     */
-    useStoryRowClaimHold({
-        service: liveSessionService,
-        storyId,
-        blockId: editorMode.kind === "text" ? editorMode.blockId : null,
-    });
-
-    /**
      * A character landed in the open row. Deliberately not a state write — see {@link textDraftRef}.
      */
     const updateTextDraft = useCallback((blockId: StoryBlockId, value: string, rich: StoryRichRun[]) => {
@@ -650,9 +613,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // The one thing a keystroke does beyond writing this ref: start the clock that moves the
         // words into the document, if it is not already running. See `armTextSettle`.
         armTextSettle();
-        // Nothing about a live session happens here. A row is held for as long as its box is open
-        // rather than for as long as somebody is typing into it, so keystrokes have nothing to say
-        // about the claim — see `useStoryRowClaimHold` for why that distinction is load-bearing.
     }, [armTextSettle]);
 
     /**
@@ -1152,10 +1112,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Frozen: the row stays selected (the mousedown already did that) and the native text selection
         // stays where the author dragged it, so the line is still readable and copyable - it just does
         // not become a caret. This gesture never goes through `StoryRowActions.startTextEdit`, so the
-        // no-op there did not cover it; see `isRowTextEditable`. A row somebody else in the room is
-        // writing behaves exactly the same way, and for the same reason: what the click would open is
-        // a box for typing an edit the host is certain to refuse.
-        if (!isRowTextEditable(frozen, rowHeldByOther(pending.blockId))) {
+        // no-op there did not cover it; see `isRowTextEditable`.
+        if (!isRowTextEditable(frozen)) {
             return;
         }
         const range = getSelectionUnitRange(pending.textEl);
@@ -1173,7 +1131,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const segment = getTextSegment(block);
         const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
         setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
-    }, [frozen, rowHeldByOther, scene, startLineEdit]);
+    }, [frozen, scene, startLineEdit]);
 
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;
@@ -1357,22 +1315,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!scene) {
             return null;
         }
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
-            // Nothing to snapshot: this scene is shared, and a snapshot of it is a statement about
-            // a document only this window ever had. Answered here rather than at the eleven places
-            // that ask for one, because this is what a scene snapshot MEANS - `HistoryService`
-            // records nothing when a scope says its state cannot be read, so every checkpoint
-            // against this scene stops recording at once, including the ones taken outside this
-            // editor (a script import, the flow tab, a NarraLang commit).
-            return null;
-        }
         return {
             scene: cloneScene(scene),
             activeBlockId,
             selectedBlockIds: [...selectedBlockIds],
             collapsedBlockIds: [...collapsedBlockIds],
         };
-    }, [activeBlockId, collapsedBlockIds, liveSessionService, scene, selectedBlockIds, storyId]);
+    }, [activeBlockId, collapsedBlockIds, scene, selectedBlockIds]);
 
     const restoreHistoryState = useCallback((state: StorySceneHistoryState) => {
         if (!storyService || !storyId || !sceneId) {
@@ -1415,22 +1364,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         [sceneHistory],
     );
     const undoEdit = useCallback(() => {
-        // Inside a session, undo is sending the inverse of this window's own last operation - the
-        // stack above holds nothing to restore, and restoring a scene over a shared document would
-        // wipe out whatever the others wrote since. The session says why when there is no inverse.
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
-            liveSessionService.undo();
-            return;
-        }
         sceneHistory.undo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [sceneHistory]);
     const redoEdit = useCallback(() => {
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
-            liveSessionService.redo();
-            return;
-        }
         sceneHistory.redo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [sceneHistory]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
@@ -1469,21 +1407,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!storyService || !storyId || !sceneId || !scene) {
             return false;
         }
-        // A session owns this story, so the scene record is not this window's to patch.
-        //
-        // `updateScene` is not one of the operations a session hands to its sink, and the fields it
-        // writes - the name, the description, the default backdrop, the BGM - are all part of what
-        // every machine in the room fingerprints. Writing one here would leave this copy holding a
-        // scene the room has never seen, and the next effect about it would eject this window.
-        //
-        // Refused here as well as on the overview card, which greys its fields and says why. The
-        // property rail edits the same scene through this function and is already inert - its
-        // fields ask the unscoped freeze - so this is what makes the two agree, and it is the one
-        // function both of them commit through.
-        if (liveSessionService?.ownsStory(storyId)) {
-            return false;
-        }
-
         const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || translate("story.sceneEditor.defaultSceneName") : scene.name;
         const nextDescription = patch.description !== undefined ? patch.description.trim() : scene.description ?? "";
         const nextBackgroundAssetId = patch.defaultBackgroundAssetId !== undefined
@@ -1514,7 +1437,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
         }
         return changed;
-    }, [liveSessionService, recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
 
     /**
      * One undo step per edit session, wherever in it the first write happens.

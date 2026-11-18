@@ -14,7 +14,7 @@ import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, Switch, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
-import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
 
 /**
  * The voice locale menu rows that keep working under ANY freeze: the two exports.

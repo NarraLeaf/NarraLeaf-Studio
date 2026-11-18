@@ -14,7 +14,7 @@ traps that do not produce a refusal at all.
 | `writes_disabled` | The author has not allowed changes | Ask them: *Settings -> Agent access -> Allow agents to change projects*. Keep reading and planning meanwhile |
 | `paused` | The author paused you from the status bar | Stop. Tell them where you are; continue when they resume |
 | `frozen` | The project is busy (version control, recovery, reload) | Wait a moment and retry once; if it persists, ask the author |
-| `live_session` | A Team live session is running | Writes would race the room; ask the author to end the session or to write themselves |
+| `live_session` | The project is open as a Team project | Its shared documents take edits only from Studio's editors; work read-only or ask the author to make the change |
 | `stale_revision` | The page or scene changed since you read it | Read it again (`story_show` / `ui_show`), redo your edit on the new text, write with the new revision. Never re-send the old text |
 | `check_failed` | The source had errors; **nothing was written** | Read every finding, fix them all, write again (a `dryRun` is free) |
 | `not_found` | A scene, page, element, asset or character name/id does not exist | `story_list`, `ui_surfaces`, `assets_list`, `characters_list`, `story_targets` |

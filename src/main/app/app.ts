@@ -156,14 +156,6 @@ export type OpenProjectOptions = {
      * See `WindowProps[WindowAppType.Workspace].commandLineRun`.
      */
     commandLineRun?: WindowProps[WindowAppType.Workspace]["commandLineRun"];
-    /**
-     * A live session the window should join once it is up. See the prop of the same name.
-     *
-     * ⚠ **Carried into the props for a window this opens, and SENT to one it finds already open.**
-     * One project is one window, so the launcher's request lands on an existing workspace as often
-     * as not - and that window read its props at load, long before anybody asked.
-     */
-    joinLive?: WindowProps[WindowAppType.Workspace]["joinLive"];
 };
 
 /**
@@ -2185,13 +2177,6 @@ export class App extends BaseApp {
 
         const existing = this.findWorkspaceForProject(projectPath);
         if (existing) {
-            if (options.joinLive) {
-                // ⚠ Sent rather than passed, because props are read once at load and this window
-                // loaded long ago. Dropping it here would be the commonest case of all: the
-                // workspace has no join control of its own, so a launcher asking to join a room in
-                // a project already on screen would do nothing at all and say nothing about it.
-                existing.sendIpcEvent(IPCEventType.workspaceJoinLive, { joinLive: options.joinLive });
-            }
             // A minimized window ignores focus() on macOS, so bring it back up first.
             if (existing.win.isMinimized()) {
                 existing.win.restore();
@@ -2249,7 +2234,6 @@ export class App extends BaseApp {
             {
                 projectPath,
                 ...(options.commandLineRun ? { commandLineRun: options.commandLineRun } : {}),
-                ...(options.joinLive ? { joinLive: options.joinLive } : {}),
             },
             options.background
                 // Never sized, never placed, never shown. A window with no frame on screen has no

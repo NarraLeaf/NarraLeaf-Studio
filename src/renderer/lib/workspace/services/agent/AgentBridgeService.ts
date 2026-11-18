@@ -41,7 +41,6 @@ import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import type { ConsoleService, ConsoleLogLevel } from "../core/ConsoleService";
-import type { LiveSessionService } from "../live/LiveSessionService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentActivityLog, type AgentActivityToolMeta } from "./AgentActivityLog";
 import { AgentOffscreenRenderer } from "./agentOffscreenRenderer";
@@ -229,7 +228,6 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
             paused: follow.getState().paused,
             pausedBy: follow.getState().pausedBy,
             freeze: getProjectWriteFreeze(),
-            liveSession: this.liveSessionActive(ctx),
         });
         if (refused) {
             this.log("warning", request, `${request.tool} refused: ${refused.ok ? "" : refused.error.code}`);
@@ -292,14 +290,6 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
     /** A call refused before it started: one finished entry, no running row. */
     private recordAtOnce(request: AgentCallRequest, result: AgentCallResult, meta?: AgentActivityToolMeta): void {
         this.activity.record(request.tool, request.clientName, "workspace", { ...finishOf(result), durationMs: 0 }, meta);
-    }
-
-    private liveSessionActive(ctx: WorkspaceContext): boolean {
-        try {
-            return ctx.services.get<LiveSessionService>(Services.Live).getView().phase !== "idle";
-        } catch {
-            return false;
-        }
     }
 
     private log(level: ConsoleLogLevel, request: AgentCallRequest, message: string): void {

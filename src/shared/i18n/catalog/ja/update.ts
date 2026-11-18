@@ -35,7 +35,8 @@ export const update = {
         openDownloadPage: "ダウンロードページを開く",
     },
     unsupported: {
-        macos: "macOS では Studio 自身が更新をインストールできない。新しいバージョンをダウンロードしてアプリを置き換える",
+        macos: "この Studio は自身で更新をインストールできない。新しいバージョンをダウンロードしてアプリを一度置き換えると、以降の更新は自動でインストールされる",
+        macosLocation: "現在の場所では Studio 自身を置き換えられない。NarraLeaf Studio を「アプリケーション」フォルダに移動してから開き直す",
         development: "開発ビルドは自身を更新できない",
         platform: "このビルドは自身で更新をインストールできない。リリースページから新しいバージョンをダウンロードする",
     },

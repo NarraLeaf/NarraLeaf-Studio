@@ -55,7 +55,6 @@ const workspace = {
     context: {
         services: {
             get: (id: unknown) => {
-                if (id === Services.Live) return { ownsStory: () => false, onChanged: () => () => undefined };
                 if (id === Services.Story) return storyService;
                 if (id === Services.PanelState) {
                     return {

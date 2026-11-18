@@ -15,7 +15,7 @@ import {
 import type { WorkspaceAssetDragSession } from "@/apps/workspace/dnd/types";
 import { applyMultiAssetDragImage } from "@/apps/workspace/modules/assets/dnd/multiAssetDragImage";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 
 /** Report ids moved by an in-panel drop so cut-clipboard styling can be updated. */
 export interface InternalAssetDropCompletedInfo {

@@ -2,7 +2,7 @@ import { RotateCcw, X } from "lucide-react";
 import { basename } from "@shared/utils/path";
 import { Progress } from "@/lib/components/elements/Progress";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { useTranslation } from "@/lib/i18n";
 import type { ImportQueueState } from "../state/useImportQueue";
 

@@ -7,7 +7,7 @@ import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
 import type { SelectionModifiers } from './state/useMultiSelection';
-import type { AssetClaims, AssetTransfers } from './assetLiveSession';
+import type { AssetTransfers } from './assetTransfers';
 
 /**
  * The set a jump asked this panel to put on screen.
@@ -33,17 +33,9 @@ export interface AssetSetRevealState {
 
 interface AssetsPanelContextType {
     /**
-     * Asset id to the account editing that record in a live session, for every record somebody else
-     * has open. Empty outside one.
-     *
-     * Here rather than in a context of its own so that one subscription serves every row: a session
-     * publishes on every operation anybody in the room applies.
-     */
-    assetClaims: AssetClaims;
-    /**
      * How far each file that is still arriving has got, by asset id. Empty when none is.
      *
-     * Alongside the claims and for the same reason: the service reports progress in steps, and a row
+     * Here rather than in a context of its own: the service reports progress in steps, and a row
      * that subscribed for itself would be one subscription per row of a library that has hundreds.
      */
     assetTransfers: AssetTransfers;

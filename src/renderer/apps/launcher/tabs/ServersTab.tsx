@@ -34,7 +34,6 @@ import type {
 } from "@shared/types/vcs";
 import { createProjectFromWizard } from "../projectActions";
 import { localCopyOf } from "./localCopy";
-import { JoinByPasscode } from "./ServerLiveSessions";
 import { ServerPeople } from "./ServerPeople";
 import { ServerProjectDetailView } from "./ServerProjectDetail";
 import { revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
@@ -548,7 +547,6 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                                     project={openedProject}
                                     server={serverDisplayName(session)}
                                     account={session.account}
-                                    localPath={localCopyOf(openedProject, repositories)?.path ?? null}
                                     canDetail={canDetail}
                                     canHistory={canHistory}
                                     onBack={() => setOpened(null)}
@@ -570,15 +568,6 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                             "flex min-h-0 flex-1 flex-col",
                             (current !== "projects" || openedProject !== null) && "hidden",
                         )}>
-                            {/* Above the list rather than under a project, because somebody
-                                typing four digits does not know which project the room is
-                                about - not having to know is the whole of what a passcode
-                                buys them. See `ServerLiveSessions`. */}
-                            <JoinByPasscode
-                                remoteOrigin={session.remoteOrigin}
-                                projects={projects ?? []}
-                                repositories={repositories}
-                            />
                             <ProjectList
                                 projects={projects}
                                 problem={problem}

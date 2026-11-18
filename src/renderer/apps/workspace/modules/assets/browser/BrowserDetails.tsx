@@ -10,7 +10,7 @@ import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_SET_REVEAL_RING, useAssetSetRevealMark, useSetSummary } from "../components/AssetSetRow";
-import { AssetClaimMark, AssetTransferSweep } from "../assetLiveSession";
+import { AssetTransferSweep } from "../assetTransfers";
 import { ASSET_TYPE_ICONS } from "../constants";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { formatByteSize } from "../../asset-overview/assetOverviewModel";
@@ -173,7 +173,6 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
         groups,
         mediaSupport,
         handleConvertMedia,
-        assetClaims,
         assetTransfers,
     } = useAssetsPanelContext();
     const drop = useBrowserDropTarget(
@@ -256,7 +255,6 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
 
     const asset = item.kind === "asset" ? item.asset : null;
     const support = asset ? mediaSupport.get(asset.id) : undefined;
-    const claimedBy = asset ? assetClaims[asset.id] ?? null : null;
     const arriving = asset ? assetTransfers[asset.id] : undefined;
     const bytes = assetBrowserItemBytes(item, measures);
     const usage = assetBrowserItemUsage(item, measures);
@@ -291,7 +289,6 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
                 {icon}
                 <span className={cn("min-w-0 truncate", nameClassName)}>{name}</span>
                 {trailing}
-                {claimedBy && <AssetClaimMark account={claimedBy} />}
                 {support && asset && (
                     <AssetSupportBadge
                         record={support}

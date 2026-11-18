@@ -3,7 +3,7 @@ import { useTranslation } from "@/lib/i18n";
 import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 
 /**
  * The asset-menu rows a frozen library keeps: the ones that only read.

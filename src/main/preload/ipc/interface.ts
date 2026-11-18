@@ -353,9 +353,6 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
-        liveIntentTaken: () => ipcClient.invoke(IPCEventType.workspaceLiveIntentTaken, {}),
-        onJoinLive: (handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void) =>
-            ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         acquireSessionLock: () =>
