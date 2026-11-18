@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Wand2, AlertCircle, Check } from 'lucide-react';
-import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core/MagicTagManager';
+import { MagicTagManager, type MagicTagTemplate } from '@/lib/workspace/services/core/MagicTagManager';
 import { Asset } from '@/lib/workspace/services/assets/types';
 import { useFloatingLayer, useWindowOverlayHost } from '@/lib/components/layout';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
@@ -13,7 +13,7 @@ export interface MagicTagDialogProps {
     assets: Asset[];
     template: MagicTagTemplate | null;
     onClose: () => void;
-    onApply: (categoryMapping: Record<number, string>) => Promise<void>;
+    onApply: (categoryMapping: Record<number, string>, template: MagicTagTemplate) => Promise<void>;
 }
 
 export function MagicTagDialog({ visible, assets, template, onClose, onApply }: MagicTagDialogProps) {
@@ -26,7 +26,6 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const [categoryMapping, setCategoryMapping] = useState<Record<number, string>>({});
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
-    const [preview, setPreview] = useState<MagicTagPreview[]>([]);
     const [applying, setApplying] = useState(false);
     const dialogRef = useRef<HTMLDivElement | null>(null);
     // A dialog drawn by hand rather than through `Modal`, with a `Modal`'s keyboard behaviour: focus
@@ -42,48 +41,36 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
         dismissWhenHidden: false,
     });
 
-    // Initialize selected delimiters when template changes
     useEffect(() => {
-        if (template?.mode === 'auto' && template.delimiters && template.delimiters.length > 0) {
-            // Auto-select the most frequent delimiter
-            setSelectedDelimiters([template.delimiters[0].char]);
-        }
-    }, [template]);
+        setCategoryMapping({});
+        setSelectedDelimiters(visible && template?.mode === 'auto'
+            ? (template.delimiters ?? []).map(delimiter => delimiter.char)
+            : []);
+    }, [template, visible]);
 
-    // Update preview when category mapping changes
-    useEffect(() => {
-        if (!template) return;
-        
-        // For regex mode, use template as-is
-        // For auto mode, we need to regenerate segments with selected delimiters
-        // But for now, we'll use the template's existing segments
-        setPreview(generatePreview(template, categoryMapping));
-    }, [template, categoryMapping]);
+    const selectedTemplate = useMemo(() => {
+        if (!template || template.mode !== 'auto') return template;
+        const pattern = selectedDelimiters.map(char => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        const separator = pattern ? new RegExp(pattern, 'g') : null;
+        const fileSegments = template.filenames.map(filename => separator
+            ? filename.split(separator).map(segment => segment.trim()).filter(Boolean)
+            : [filename]);
+        const exampleIndex = fileSegments.reduce(
+            (best, segments, index) => segments.length > fileSegments[best].length ? index : best,
+            0,
+        );
+        return {
+            ...template,
+            fileSegments,
+            example: template.filenames[exampleIndex] ?? template.example,
+            exampleSegments: fileSegments[exampleIndex] ?? [],
+        };
+    }, [selectedDelimiters, template]);
 
-    const generatePreview = (tmpl: MagicTagTemplate, mapping: Record<number, string>): MagicTagPreview[] => {
-        const previews: MagicTagPreview[] = [];
-
-        for (let i = 0; i < tmpl.filenames.length; i++) {
-            const filename = tmpl.filenames[i];
-            const segments = tmpl.fileSegments[i];
-            const tags: string[] = [];
-
-            // Generate tags based on category mapping
-            for (const [indexStr, category] of Object.entries(mapping)) {
-                const index = parseInt(indexStr, 10);
-                if (index >= 0 && index < segments.length) {
-                    const value = segments[index].trim();
-                    if (value && category.trim()) {
-                        tags.push(`${category.trim()}:${value}`);
-                    }
-                }
-            }
-
-            previews.push({ filename, tags });
-        }
-
-        return previews;
-    };
+    const preview = useMemo(
+        () => selectedTemplate ? MagicTagManager.generatePreview(selectedTemplate, categoryMapping) : [],
+        [categoryMapping, selectedTemplate],
+    );
 
     const handleCategoryChange = (index: number, value: string) => {
         setCategoryMapping(prev => {
@@ -98,10 +85,10 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
     };
 
     const handleApply = async () => {
-        if (freeze.frozen) return;
+        if (freeze.frozen || !selectedTemplate) return;
         setApplying(true);
         try {
-            await onApply(categoryMapping);
+            await onApply(categoryMapping, selectedTemplate);
             onClose();
         } finally {
             setApplying(false);
@@ -112,7 +99,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
         return preview.reduce((sum, p) => sum + p.tags.length, 0);
     }, [preview]);
 
-    if (!visible || !template) return null;
+    if (!visible || !selectedTemplate) return null;
 
     // Raised into the window's overlay layer for the same reason `Modal` is: rendered by the assets
     // panel, this layer's `z-50` would otherwise be trapped in whatever stacking context that panel
@@ -151,14 +138,15 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                 {/* Content */}
                 <div className="px-6 py-6 overflow-y-auto space-y-6" style={{ maxHeight: 'calc(90vh - 140px)' }}>
                     {/* Delimiter Selection (Auto mode only) */}
-                    {template.mode === 'auto' && template.delimiters && template.delimiters.length > 0 && (
+                    {selectedTemplate.mode === 'auto' && selectedTemplate.delimiters && selectedTemplate.delimiters.length > 0 && (
                         <div className="space-y-3">
                             <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.detectedDelimiters")}</label>
                             <div className="flex flex-wrap gap-2">
-                                {template.delimiters.map((delim) => (
+                                {selectedTemplate.delimiters.map((delim) => (
                                     <button
                                         key={delim.char}
                                         onClick={() => {
+                                            setCategoryMapping({});
                                             setSelectedDelimiters(prev =>
                                                 prev.includes(delim.char)
                                                     ? prev.filter(d => d !== delim.char)
@@ -182,14 +170,14 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     )}
 
                     {/* Pattern Description */}
-                    {template.mode === 'regex' && template.regex && (
+                    {selectedTemplate.mode === 'regex' && selectedTemplate.regex && (
                         <div className="space-y-3">
                             <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.regexPattern")}</label>
                             <div className="bg-fill rounded-md p-3 font-mono text-sm text-fg-muted">
-                                {template.regex.pattern}
+                                {selectedTemplate.regex.pattern}
                             </div>
                             <p className="text-xs text-fg-muted">
-                                {t("assets.magicTag.captureGroups", { groups: template.regex.captureGroups.join(', ') })}
+                                {t("assets.magicTag.captureGroups", { groups: selectedTemplate.regex.captureGroups.join(', ') })}
                             </p>
                         </div>
                     )}
@@ -200,13 +188,13 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         <div className="bg-fill rounded-lg p-4 space-y-4">
                             {/* Example display */}
                             <div className="pb-4 border-b border-edge">
-                                <div className="text-xs text-fg-muted mb-3">{t("assets.magicTag.exampleFilename", { filename: template.example })}</div>
+                                <div className="text-xs text-fg-muted mb-3">{t("assets.magicTag.exampleFilename", { filename: selectedTemplate.example })}</div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    {template.exampleSegments.map((segment, index) => (
+                                    {selectedTemplate.exampleSegments.map((segment, index) => (
                                         <div key={index} className="flex items-center gap-1">
                                             {index > 0 && (
                                                 <span className="text-fg-subtle text-sm">
-                                                    {template.mode === 'auto' && selectedDelimiters.length > 0
+                                                    {selectedTemplate.mode === 'auto' && selectedDelimiters.length > 0
                                                         ? selectedDelimiters[0]
                                                         : '_'}
                                                 </span>
@@ -221,7 +209,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
 
                             {/* Category input fields */}
                             <div className="space-y-4">
-                                {template.exampleSegments.map((segment, index) => (
+                                {selectedTemplate.exampleSegments.map((segment, index) => (
                                     <div key={index} className="flex items-center gap-4">
                                         <div className="flex items-center gap-3 flex-1">
                                             <span className="text-sm text-fg-muted w-12 text-center font-mono">{index}</span>

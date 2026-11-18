@@ -43,7 +43,12 @@ type MountedScript = { scriptRef: string; module: Record<string, unknown> };
  * On `globalThis` because Dev Mode replaces the whole bundle on a reload and the dispatcher is
  * reached from several module instances; a module-local map would be one per copy.
  */
-type ScriptMountState = { modules: Record<string, MountedScript>; urls: string[] };
+type ScriptMountState = {
+    modules: Record<string, MountedScript>;
+    urls: string[];
+    /** The latest mount or unmount request that may publish a registry state. */
+    generation: number;
+};
 
 declare global {
     // eslint-disable-next-line no-var
@@ -51,8 +56,15 @@ declare global {
 }
 
 function state(): ScriptMountState {
-    globalThis.__NL_BP_SCRIPTS__ ??= { modules: {}, urls: [] };
-    return globalThis.__NL_BP_SCRIPTS__;
+    const current = globalThis.__NL_BP_SCRIPTS__;
+    if (current) {
+        // A live Dev Mode page can retain a registry created by an earlier module instance.
+        current.generation ??= 0;
+        return current;
+    }
+    const initial: ScriptMountState = { modules: {}, urls: [], generation: 0 };
+    globalThis.__NL_BP_SCRIPTS__ = initial;
+    return initial;
 }
 
 /** What a bundle carries for each script layer: where its compiled module was written. */
@@ -60,6 +72,10 @@ export type CompiledScriptEntry = { scriptRef: string; url?: string };
 
 /**
  * Mount every compiled script, replacing whatever was mounted before.
+ *
+ * The request takes its generation before the first module import. A completed request publishes
+ * only while that generation is still current, so callers can start a new mount without carrying
+ * a separate commit-order protocol.
  */
 export async function mountCompiledScripts(
     scripts: Readonly<Record<string, CompiledScriptEntry>> | undefined,
@@ -68,9 +84,13 @@ export async function mountCompiledScripts(
     // takes its bundler. The default is the real thing: a URL, imported.
     loadModule: (url: string) => Promise<Record<string, unknown>> = importAsModule,
 ): Promise<void> {
-    const next: ScriptMountState = { modules: {}, urls: [] };
+    const current = state();
+    const generation = current.generation + 1;
+    current.generation = generation;
+    const next: ScriptMountState = { modules: {}, urls: [], generation };
 
     for (const [layerKey, entry] of Object.entries(scripts ?? {})) {
+        if (state().generation !== generation) return;
         if (typeof entry?.url !== "string") {
             // Already reported as a compile diagnostic by whatever produced the bundle. Its layer
             // simply listens to nothing.
@@ -82,11 +102,14 @@ export async function mountCompiledScripts(
         } catch (error) {
             // A module that throws while it is being evaluated - a top-level statement that failed.
             // The author's own code, so the message is theirs and names their file.
+            if (state().generation !== generation) return;
             onError(layerKey, entry.scriptRef, error instanceof Error ? error.message : String(error));
         }
     }
 
-    globalThis.__NL_BP_SCRIPTS__ = next;
+    if (state().generation === generation) {
+        globalThis.__NL_BP_SCRIPTS__ = next;
+    }
 }
 
 /**
@@ -133,9 +156,10 @@ export function resolveScriptModuleUrl(url: string, baseUri: string | undefined)
     }
 }
 
-/** Drop every mounted script, so a session's modules do not outlive it. */
+/** Drop every mounted script and invalidate imports that have not committed. */
 export function unmountCompiledScripts(): void {
-    globalThis.__NL_BP_SCRIPTS__ = { modules: {}, urls: [] };
+    const generation = state().generation + 1;
+    globalThis.__NL_BP_SCRIPTS__ = { modules: {}, urls: [], generation };
 }
 
 /**

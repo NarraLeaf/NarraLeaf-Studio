@@ -494,8 +494,6 @@ export type LiveVersionPort = {
     checkpoint(): Promise<string | null>;
     /** The newest revision, or null in a repository with none. */
     head(): Promise<string | null>;
-    /** Whether the working tree holds anything no revision has. */
-    hasUncommittedChanges(): Promise<boolean>;
     /**
      * Put this branch on the server, so the revision a room opens on is one others can fetch.
      *

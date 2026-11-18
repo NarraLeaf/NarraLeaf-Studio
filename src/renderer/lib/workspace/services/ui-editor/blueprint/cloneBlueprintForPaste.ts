@@ -1,10 +1,13 @@
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIElementValueBinding } from "@shared/types/ui-editor/document";
+import { BLUEPRINT_NODE_TYPE_FN_CALL, BLUEPRINT_NODE_TYPE_LOCAL_GET, BLUEPRINT_NODE_TYPE_LOCAL_SET } from "@shared/types/blueprint/graph";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
     ELEMENT_REF_PARAM_SURFACE_ID,
 } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { isBlueprintElementRefNodeType } from "./elementRefSites";
+import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
+import { createExplicitBlueprintVariableRef, parseBlueprintVariableRef } from "./blueprintVariableRefs";
 
 /**
  * Deep-clone a widgetMain blueprint for paste/duplicate: new id, new owner element, remap binding targets
@@ -41,8 +44,36 @@ export function cloneWidgetMainBlueprintForPaste(input: {
     }
 
     remapGraphElementRefs(cloned, input.surfaceId, input.elementIdMap);
+    remapCopiedBlueprintReferences(cloned, { [input.oldBlueprintId]: input.newBlueprintIdForSourceRemap });
 
     return cloned;
+}
+
+/** Repoint graph references whose blueprint was copied with this one. */
+export function remapCopiedBlueprintReferences(blueprint: Blueprint, blueprintIds: Record<string, string>): void {
+    const graphs = [
+        ...Object.values(blueprint.graphs.events ?? {}),
+        ...Object.values(blueprint.graphs.functions ?? {}),
+        ...Object.values(blueprint.graphs.macros ?? {}),
+    ];
+    for (const graph of graphs) {
+        for (const node of Object.values(graph.graph?.nodes ?? {})) {
+            if (!node.params) continue;
+            if (node.type === BLUEPRINT_NODE_TYPE_FN_CALL) {
+                const ref = parseBlueprintFnRef(node.params.fnRef);
+                const mapped = ref ? blueprintIds[ref.blueprintId] : undefined;
+                if (ref && mapped) {
+                    node.params.fnRef = createBlueprintFnRef(mapped, ref.headNodeId);
+                }
+            } else if (node.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || node.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+                const ref = parseBlueprintVariableRef(node.params.variableId, blueprint.id);
+                const mapped = ref?.explicit ? blueprintIds[ref.blueprintId] : undefined;
+                if (ref && mapped) {
+                    node.params.variableId = createExplicitBlueprintVariableRef(mapped, ref.variableId);
+                }
+            }
+        }
+    }
 }
 
 /**

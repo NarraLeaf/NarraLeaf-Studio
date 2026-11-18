@@ -1,4 +1,5 @@
 import type { CharacterAppearanceSummary, CharacterAvatarSummaryEntry, DevModeCharacterSummary } from "@shared/types/devMode";
+import type { StoryAssetVariants } from "@shared/types/story";
 import { resolveTagSelection } from "@shared/utils/characterVariant";
 
 /**
@@ -189,6 +190,44 @@ function avatarEntry(
     return appearance.avatars?.[key];
 }
 
+/** An avatar asset plus the language members of the set that supplied it, when applicable. */
+export type CharacterAvatarAssetReference = {
+    assetId: string;
+    assetVariants?: StoryAssetVariants;
+};
+
+function avatarReference(
+    assetId: string | null | undefined,
+    assetVariants?: StoryAssetVariants,
+): CharacterAvatarAssetReference | null {
+    const id = assetId?.trim();
+    return id
+        ? { assetId: id, ...(assetVariants ? { assetVariants } : {}) }
+        : null;
+}
+
+/**
+ * Resolve one differential while retaining the asset-set answers attached to that differential.
+ * The id-only helper below remains the public answer for callers that cannot carry a carrier.
+ */
+export function resolveCharacterAvatarReference(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
+    key: string | null,
+): CharacterAvatarAssetReference | null {
+    if (!character) {
+        return null;
+    }
+    const entry = avatarEntry(character.appearance, key);
+    const override = avatarReference(entry?.overrideAssetId, entry?.assetVariants);
+    if (override) {
+        return override;
+    }
+    if (entry?.baked && key) {
+        return avatarReference(characterAvatarAssetId(character.id, key), entry.assetVariants);
+    }
+    return avatarReference(character.defaultAvatarAssetId, character.assetVariants);
+}
+
 /**
  * The asset id to show for one differential: the author's override first, then the bake, then the
  * character's default, then nothing.
@@ -197,21 +236,17 @@ function avatarEntry(
  * image in a 96px box, and for a layered character there is no sprite to fall back to at all.
  */
 export function resolveCharacterAvatarAssetId(
-    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
     key: string | null,
 ): string | null {
-    if (!character) {
-        return null;
-    }
-    const entry = avatarEntry(character.appearance, key);
-    const override = entry?.overrideAssetId?.trim();
-    if (override) {
-        return override;
-    }
-    if (entry?.baked && key) {
-        return characterAvatarAssetId(character.id, key);
-    }
-    return character.defaultAvatarAssetId?.trim() || null;
+    return resolveCharacterAvatarReference(character, key)?.assetId ?? null;
+}
+
+/** The default differential with any asset-set carrier it owns. */
+export function resolveDefaultCharacterAvatarReference(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
+): CharacterAvatarAssetReference | null {
+    return resolveCharacterAvatarReference(character, characterAvatarKey(character?.appearance, {}));
 }
 
 /**
@@ -230,12 +265,20 @@ export function resolveCharacterAvatarAssetId(
  * character depending on which panel asked.
  */
 export function resolveDefaultCharacterAvatarAssetId(
-    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
 ): string | null {
+    return resolveDefaultCharacterAvatarReference(character)?.assetId ?? null;
+}
+
+/** The off-stage avatar reference, retaining the profile or default-look asset-set carrier. */
+export function resolveOffStageCharacterAvatarReference(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
+): CharacterAvatarAssetReference | null {
     if (!character) {
         return null;
     }
-    return resolveCharacterAvatarAssetId(character, characterAvatarKey(character.appearance, {}));
+    return avatarReference(character.defaultAvatarAssetId, character.assetVariants)
+        ?? resolveDefaultCharacterAvatarReference(character);
 }
 
 /**
@@ -247,7 +290,7 @@ export function resolveDefaultCharacterAvatarAssetId(
  * does not show.
  */
 export function resolveOffStageCharacterAvatarAssetId(
-    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId" | "assetVariants"> | undefined,
 ): string | null {
-    return character?.defaultAvatarAssetId?.trim() || resolveDefaultCharacterAvatarAssetId(character);
+    return resolveOffStageCharacterAvatarReference(character)?.assetId ?? null;
 }

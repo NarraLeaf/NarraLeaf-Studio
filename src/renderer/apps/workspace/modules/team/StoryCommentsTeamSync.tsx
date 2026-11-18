@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { getInterface } from "@/lib/app/bridge";
-import { teamCall, readThread, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { teamCall, readThread, listThreads, getThread, useTeamCapability, useTeamConnection } from "@/lib/team";
 import { StoryCommentsTeamSync, type StoryCommentsTeamTransport } from "@/lib/workspace/services/storyComments/storyCommentsTeamSync";
 import { TeamMethod, teamProjectThreadsTopic, type TeamComment } from "@shared/types/team";
 
@@ -15,38 +15,16 @@ function record(value: unknown): Record<string, unknown> | null {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-function readComments(value: unknown): TeamComment[] {
-    const list = record(value)?.["comments"];
-    if (!Array.isArray(list)) return [];
-    return list.flatMap(entry => {
-        const comment = record(entry);
-        return comment && typeof comment.id === "string" && typeof comment.body === "string"
-            ? [comment as unknown as TeamComment]
-            : [];
-    });
-}
-
 /** The transport over this window's session to one server, for one project. */
 function transportFor(remoteOrigin: string, project: string, withTodos: boolean): StoryCommentsTeamTransport {
     return {
         async listThreads(page) {
-            const answer = await teamCall(remoteOrigin, TeamMethod.threadsList, { project, limit: 200, ...page });
-            if (!answer.ok) return null;
-            const list = record(answer.value)?.["threads"];
-            const cursor = record(answer.value)?.["cursor"];
-            return {
-                threads: Array.isArray(list) ? list.flatMap(entry => {
-                    const thread = readThread(entry);
-                    return thread === null ? [] : [thread];
-                }) : [],
-                ...(typeof cursor === "string" ? { cursor } : {}),
-            };
+            const answer = await listThreads(remoteOrigin, project, { limit: 200, ...page });
+            return answer.ok ? answer.value : null;
         },
-        async getThread(thread) {
-            const answer = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread, limit: 200 });
-            if (!answer.ok) return null;
-            const read = readThread(record(answer.value)?.["thread"]);
-            return read === null ? null : { thread: read, comments: readComments(answer.value) };
+        async getThread(thread, after) {
+            const answer = await getThread(remoteOrigin, thread, { limit: 200, ...(after === undefined ? {} : { after }) });
+            return answer.ok ? answer.value : null;
         },
         async createThread(input) {
             const answer = await teamCall(remoteOrigin, TeamMethod.threadsCreate, { project, ...input });
@@ -104,13 +82,84 @@ export function StoryCommentsTeamSyncMount(): null {
         if (service === null || remoteOrigin === null || projectId === null || !ready || !canComment) return;
         const sync = new StoryCommentsTeamSync(service, transportFor(remoteOrigin, projectId, canTodo));
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const schedulePush = () => {
+        let readyForPush = false;
+        let pulling = false;
+        let refreshRequested = false;
+        let pendingPush = false;
+        let alive = true;
+        const activePulls = new Map<string, object>();
+
+        function clearPushTimer() {
             if (timer !== undefined) clearTimeout(timer);
-            timer = setTimeout(() => void sync.push().catch(() => undefined), PUSH_DELAY_MS);
+            timer = undefined;
+        }
+
+        function push() {
+            if (!readyForPush || pulling || activePulls.size > 0) {
+                pendingPush = true;
+                return;
+            }
+            pendingPush = false;
+            void sync.push().catch(() => undefined);
+        }
+
+        function finishRead(complete: boolean) {
+            pulling = false;
+            if (!alive) return;
+            if (!complete) {
+                readyForPush = false;
+                clearPushTimer();
+                if (refreshRequested) readAll();
+                return;
+            }
+            if (refreshRequested) {
+                readAll();
+                return;
+            }
+            readyForPush = true;
+            clearPushTimer();
+            push();
+        }
+
+        function readAll(againIfPulling = true) {
+            if (!alive) return;
+            if (pulling) {
+                if (againIfPulling) refreshRequested = true;
+                return;
+            }
+            if (activePulls.size > 0) {
+                refreshRequested = true;
+                return;
+            }
+            pulling = true;
+            refreshRequested = false;
+            void sync.pullAll().then(finishRead, () => finishRead(false));
+        }
+
+        function finishThread(id: string, request: object, complete: boolean) {
+            if (!alive || activePulls.get(id) !== request) return;
+            activePulls.delete(id);
+            if (!complete) {
+                readyForPush = false;
+                clearPushTimer();
+                if (pendingPush) refreshRequested = true;
+            }
+            if (activePulls.size > 0) return;
+            if (refreshRequested) readAll();
+            else if (readyForPush && pendingPush) push();
+        }
+
+        const schedulePush = () => {
+            clearPushTimer();
+            timer = setTimeout(() => {
+                timer = undefined;
+                if (readyForPush) push();
+                else readAll(false);
+            }, PUSH_DELAY_MS);
         };
         // Pull first, so a thread somebody else opened on a row is known before this window
         // decides a local thread on the same row is new.
-        void sync.pullAll().then(() => sync.push()).catch(() => undefined);
+        readAll();
         const offChanged = service.onChanged(schedulePush);
 
         const topic = teamProjectThreadsTopic(projectId);
@@ -120,13 +169,24 @@ export function StoryCommentsTeamSyncMount(): null {
             const payload = record(message.payload);
             const thread = record(payload?.["thread"]);
             const id = typeof payload?.["thread"] === "string" ? payload["thread"] : (typeof thread?.id === "string" ? thread.id : null);
-            if (id !== null) void sync.pullThread(id).catch(() => undefined);
+            if (id === null) return;
+            if (!readyForPush) {
+                readAll();
+                return;
+            }
+            const request = {};
+            activePulls.set(id, request);
+            void sync.pullThread(id).then(
+                complete => finishThread(id, request, complete),
+                () => finishThread(id, request, false),
+            );
         });
         return () => {
+            alive = false;
             sync.stop();
             offChanged();
             token.cancel();
-            if (timer !== undefined) clearTimeout(timer);
+            clearPushTimer();
             void getInterface().team.unsubscribe(remoteOrigin, topic).catch(() => undefined);
         };
     // `connection.since` re-runs this after a reconnect: whatever was missed is recovered by pulling.

@@ -159,6 +159,20 @@ describe("restrictLocalizationToTextIds", () => {
         expect(result.bundle.tables["zh-CN"]).toEqual({ "scene:alive": "走廊" });
         expect(result.removedUnitCount).toBe(0);
     });
+
+    it("preserves translation ids that overlap Object.prototype names", () => {
+        const table = JSON.parse('{"__proto__":"原型","constructor":"构造"}') as Record<string, string>;
+        const result = restrictLocalizationToTextIds(
+            { ...bundle, tables: { "zh-CN": table } },
+            new Set(["__proto__", "constructor"]),
+        );
+        const kept = result.bundle.tables["zh-CN"]!;
+
+        expect(Object.keys(kept)).toEqual(["__proto__", "constructor"]);
+        expect(Object.getPrototypeOf(kept)).toBe(Object.prototype);
+        expect(Object.getOwnPropertyDescriptor(kept, "__proto__")?.value).toBe("原型");
+        expect(Object.getOwnPropertyDescriptor(kept, "constructor")?.value).toBe("构造");
+    });
 });
 
 describe("restrictVoiceToTextIds", () => {

@@ -7,8 +7,9 @@ import {
     buildSaveCompatibilityStamp,
     type SaveCompatibilityConfiguration,
 } from "@shared/types/saveCompatibility";
-import { autoSaveSlotId, LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
+import { autoSaveSlotId, DEFAULT_AUTO_SAVE_CONFIGURATION, LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
 import { translate } from "@/lib/i18n";
+import { AutoSaveScheduler } from "./autoSaveScheduler";
 import {
     collectUnresolvedSaveReferences,
     readSavePosition,
@@ -287,6 +288,51 @@ function loadWith(
 const PLAYING: PlayHead = { sceneId: "scene-a", line: 3, backlog: ["one", "two"], audio: "bgm:town" };
 
 describe("loadSaveIntoGame", () => {
+    it("invalidates an old autosave before a completed load yields to its screenshot", async () => {
+        async function run(markOnApply: boolean) {
+            const harness = createHarness({ head: PLAYING });
+            let playthrough = 1;
+            let finishPicture = () => undefined as void;
+            let pictureStarted = () => undefined as void;
+            const started = new Promise<void>(resolve => { pictureStarted = resolve; });
+            const picture = new Promise<void>(resolve => { finishPicture = resolve; });
+            const written: number[] = [];
+            const scheduler = new AutoSaveScheduler({
+                getConfig: () => DEFAULT_AUTO_SAVE_CONFIGURATION,
+                isPlaying: () => true,
+                playthrough: () => playthrough,
+                listStored: async () => [],
+                write: async (_id, _reason, captured, isCurrent) => {
+                    pictureStarted();
+                    await picture;
+                    if (!isCurrent()) return false;
+                    written.push(harness.head().line);
+                    captured();
+                },
+                log: () => undefined,
+            });
+            scheduler.markStoryAdvanced();
+            const saving = scheduler.tick();
+            await started;
+            const apply = harness.game.apply;
+            harness.game.apply = saved => {
+                apply(saved);
+                finishPicture();
+                if (markOnApply) playthrough += 1;
+            };
+            const loading = loadWith(harness, { savedGame: makeSave({ ...PLAYING, line: 12 }) })
+                .then(outcome => {
+                    if (!markOnApply) playthrough += 1;
+                    return outcome;
+                });
+            await Promise.all([saving, loading]);
+            return written;
+        }
+
+        expect(await run(false)).toEqual([12]);
+        expect(await run(true)).toEqual([]);
+    });
+
     it("advances the run when the save loads", async () => {
         const harness = createHarness({ head: PLAYING });
         const saved = makeSave({ sceneId: "scene-a", line: 9, backlog: ["one", "two", "three"], audio: "bgm:night" });
@@ -523,8 +569,29 @@ describe("loadSaveIntoGame", () => {
         const outcome = await loadWith(harness, { savedGame: makeSave(PLAYING) });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "engine", game: "lost" });
-        expect(harness.calls).toMatchObject({ restore: 0 });
+        expect(harness.calls).toMatchObject({ restore: 0, releaseLoadLock: 1 });
         expect(harness.reports[0].level).toBe("error");
+    });
+
+    it("releases a failed apply's lock so a later load can proceed", async () => {
+        const harness = createHarness({ head: PLAYING, snapshotFails: true });
+        let locked = false;
+        let failures = 1;
+        const apply = harness.game.apply;
+        harness.game.apply = save => {
+            if (locked) throw new Error("the previous load still holds the lock");
+            locked = true;
+            if (failures-- > 0) throw new Error("deserialize failed");
+            apply(save);
+            locked = false;
+        };
+        harness.game.releaseLoadLock = () => { locked = false; };
+
+        const first = await loadWith(harness, { savedGame: makeSave(PLAYING) });
+        const second = await loadWith(harness, { savedGame: makeSave(PLAYING) });
+        expect(first).toMatchObject({ status: "refused", game: "lost" });
+        expect(second).toMatchObject({ status: "loaded" });
+        expect(locked).toBe(false);
     });
 
     // The three ways the pre-check can be unavailable. None of them may reject, and all of them

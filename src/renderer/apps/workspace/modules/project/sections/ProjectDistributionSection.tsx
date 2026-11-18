@@ -20,6 +20,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { normalizeDistributionConfiguration } from "@/lib/workspace/project/configuration";
 import { SettingsGroup } from "../components/SettingsGroup";
 import { rotateDistributionKey } from "../distributionKeyAction";
@@ -27,6 +28,7 @@ import type { ProjectSectionProps } from "./types";
 
 export function ProjectDistributionSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const [busy, setBusy] = useState(false);
     const distribution = useMemo(
         () => normalizeDistributionConfiguration(config.app?.distribution),
@@ -34,7 +36,7 @@ export function ProjectDistributionSection({ projectService, uiService, config, 
     );
 
     const rotate = useCallback(async () => {
-        if (busy) {
+        if (busy || freeze.frozen) {
             return;
         }
         // The confirmation before a replace, and the report of a failure, live in the shared
@@ -48,7 +50,7 @@ export function ProjectDistributionSection({ projectService, uiService, config, 
         } finally {
             setBusy(false);
         }
-    }, [busy, onConfigChange, projectService, uiService]);
+    }, [busy, freeze.frozen, onConfigChange, projectService, uiService]);
 
     return (
         <SettingsGroup
@@ -58,7 +60,7 @@ export function ProjectDistributionSection({ projectService, uiService, config, 
                 <Button
                     size="sm"
                     variant={distribution ? "ghost" : "secondary"}
-                    disabled={busy}
+                    {...freeze.writes(busy)}
                     onClick={() => { void rotate(); }}
                 >
                     {distribution ? t("project.distribution.replaceAction") : t("project.distribution.createAction")}

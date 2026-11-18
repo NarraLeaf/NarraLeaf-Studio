@@ -50,7 +50,7 @@ describe("matchEnumOptionLocalized", () => {
     });
 
     it("keeps canonical values and English aliases working in every locale", () => {
-        for (const locale of ["en", "zh"] as const) {
+        for (const locale of ["en", "zh", "ja"] as const) {
             i18nStore.setLocale(locale);
             const t = enumType("bg", "t");
             expect(matchEnumOptionLocalized(t, "fade")?.value, locale).toBe("fade");
@@ -110,7 +110,7 @@ describe("localizedEnumValue", () => {
     it("offers the spelling it will accept back — every enum, every locale", () => {
         // The invariant: whatever the menu shows is what it inserts, and what it inserts parses back
         // to the very option it came from.
-        for (const locale of ["en", "zh"] as const) {
+        for (const locale of ["en", "zh", "ja"] as const) {
             i18nStore.setLocale(locale);
             for (const def of listCommandDefs()) {
                 for (const param of def.params) {

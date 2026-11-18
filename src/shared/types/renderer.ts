@@ -1629,7 +1629,8 @@ export interface RendererPreloadedInterface {
      * failure. See `@shared/types/studioClipboard`.
      */
     clipboard: {
-        writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
+        beginUiPublication(kind: "ui-elements" | "ui-surfaces"): Promise<RequestStatus<{ stored: boolean; publicationId?: number }>>;
+        writeEditorSelection(kind: StudioClipboardKind, payload: string, publicationId?: number): Promise<RequestStatus<{ stored: boolean }>>;
         readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
         /** The clipboard's plain text; `null` when it holds none. Read by the blueprint canvas's text paste. */
         readPlainText(): Promise<RequestStatus<{ text: string | null }>>;

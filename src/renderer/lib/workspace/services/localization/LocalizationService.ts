@@ -48,6 +48,7 @@ import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { getLocalizationUnit, setLocalizationUnit } from "./localizationUnits";
 import {
     LocalizationProgress,
     StoryTranslationRow,
@@ -399,7 +400,7 @@ export class LocalizationService extends Service<LocalizationService> implements
      */
     public updateUnit(locale: string, unitId: string, sourceText: string, patch: LocalizationUnitPatch): LocalizationDocument {
         const document = this.requireLoadedDocument(locale);
-        const existing = document.units[unitId];
+        const existing = getLocalizationUnit(document.units, unitId);
         const unit = this.unitFromPatch(existing, sourceText, patch);
         if (unit === null && !existing) {
             return document;
@@ -463,7 +464,7 @@ export class LocalizationService extends Service<LocalizationService> implements
             if (entry.unit === null) {
                 delete units[entry.unitId];
             } else {
-                units[entry.unitId] = entry.unit;
+                setLocalizationUnit(units, entry.unitId, entry.unit);
             }
         }
         const next: LocalizationDocument = { ...document, units };
@@ -492,15 +493,15 @@ export class LocalizationService extends Service<LocalizationService> implements
         const next = { ...document.units };
         let adopted = 0;
         for (const [unitId, unit] of Object.entries(units)) {
-            if (!unitId || !unit.target || next[unitId]) {
+            if (!unitId || !unit.target || Object.hasOwn(next, unitId)) {
                 continue;
             }
-            next[unitId] = {
+            setLocalizationUnit(next, unitId, {
                 target: unit.target,
                 sourceHash: unit.sourceHash,
                 status: unit.status,
                 ...(unit.note ? { note: unit.note } : {}),
-            };
+            });
             adopted += 1;
         }
         if (adopted === 0) {
@@ -526,7 +527,8 @@ export class LocalizationService extends Service<LocalizationService> implements
     public applyUnitEdits(locale: string, edit: { set: Readonly<Record<string, LocalizationUnit>>; remove: readonly string[] }): void {
         const document = this.requireLoadedDocument(locale);
         const entries: { unitId: string; unit: LocalizationUnit | null }[] = [
-            ...edit.remove.filter(unitId => document.units[unitId] && !(unitId in edit.set)).map(unitId => ({ unitId, unit: null })),
+            ...edit.remove.filter(unitId => Object.hasOwn(document.units, unitId) && !Object.hasOwn(edit.set, unitId))
+                .map(unitId => ({ unitId, unit: null })),
             ...Object.entries(edit.set).map(([unitId, unit]) => ({ unitId, unit: { ...unit } })),
         ];
         if (entries.length === 0) {
@@ -607,11 +609,16 @@ export class LocalizationService extends Service<LocalizationService> implements
             if (document) {
                 await this.writeDocument(document);
             }
-            this.dirtyLocales.delete(locale);
+            if (this.documents.get(locale) === document) {
+                this.dirtyLocales.delete(locale);
+            }
         }
-        if (this.keysDirty && this.keysDocument) {
-            await this.writeKeysDocument(this.keysDocument);
-            this.keysDirty = false;
+        const keys = this.keysDocument;
+        if (this.keysDirty && keys) {
+            await this.writeKeysDocument(keys);
+            if (this.keysDocument === keys) {
+                this.keysDirty = false;
+            }
         }
     }
 
@@ -769,7 +776,7 @@ export class LocalizationService extends Service<LocalizationService> implements
                 status,
                 ...(row.note ? { note: row.note } : {}),
             };
-            const existing = units[row.unitId];
+            const existing = getLocalizationUnit(units, row.unitId);
             if (existing
                 && existing.target === unit.target
                 && existing.status === unit.status
@@ -778,7 +785,7 @@ export class LocalizationService extends Service<LocalizationService> implements
                 summary.unchanged += 1;
                 continue;
             }
-            units[row.unitId] = unit;
+            setLocalizationUnit(units, row.unitId, unit);
             changed.push({ unitId: row.unitId, unit });
             summary.applied += 1;
         }

@@ -1,5 +1,5 @@
 import type { SearchJumpTarget } from "./searchJumpTarget";
-import type { CompiledMatcher } from "./textMatcher";
+import { isWordCharacterBefore, type CompiledMatcher } from "./textMatcher";
 
 /**
  * Global project search - the pure query model.
@@ -271,24 +271,6 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
     return { terms, filters, text: literals.join(" ") };
 }
 
-/** Merge query-syntax facets with UI-supplied ones; both must hold (intersection semantics). */
-function mergeFilters(parsed: SearchFilters, supplied?: SearchFilters): SearchFilters {
-    if (!supplied) {
-        return parsed;
-    }
-    const intersectGroups = parsed.groups && supplied.groups
-        ? parsed.groups.filter(group => supplied.groups!.includes(group))
-        : parsed.groups ?? supplied.groups;
-    return {
-        ...supplied,
-        ...parsed,
-        ...(intersectGroups ? { groups: intersectGroups } : {}),
-        storyIds: supplied.storyIds,
-        sceneIds: supplied.sceneIds,
-        assetTypes: parsed.assetTypes ?? supplied.assetTypes,
-    };
-}
-
 /**
  * Whether an entry survives a facet narrowing. Exported so a caller that walks the index itself -
  * project replace enumerates its own candidates, uncapped - narrows by exactly the rule the query
@@ -376,10 +358,7 @@ const DEFAULT_MAX_PER_GROUP = 20;
 const EXPANDED_MAX_PER_GROUP = 500;
 
 function isWordBoundary(text: string, index: number): boolean {
-    if (index === 0) {
-        return true;
-    }
-    return !/[\p{L}\p{N}]/u.test(text[index - 1]);
+    return !isWordCharacterBefore(text, index);
 }
 
 /** Score a case-folded substring occurrence; higher is better, null when absent. */
@@ -525,7 +504,6 @@ export function querySearchIndex(
     options?: SearchQueryOptions,
 ): SearchGroupResult[] {
     const parsed = parseSearchQuery(rawQuery);
-    const filters = mergeFilters(parsed.filters, options?.filters);
     // A facet-only query (`type:asset` with no terms) is not a search - it would return the whole
     // slice, which is a browse view's job, not this panel's.
     if (parsed.terms.length === 0) {
@@ -538,7 +516,7 @@ export function querySearchIndex(
 
     const byGroup = new Map<SearchGroup, SearchHit[]>();
     for (const entry of entries) {
-        if (!passesFilters(entry, filters)) {
+        if (!passesFilters(entry, parsed.filters) || (options?.filters && !passesFilters(entry, options.filters))) {
             continue;
         }
         const hit = matcher ? matchEntryWith(entry, matcher) : matchEntry(entry, parsed.terms);

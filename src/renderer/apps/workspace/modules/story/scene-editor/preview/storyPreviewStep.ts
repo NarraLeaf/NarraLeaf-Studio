@@ -98,6 +98,12 @@ class StepWalker {
      * already is, so only what runs after it counts - its own children included, which run after it.
      */
     fromRow(startId: StoryBlockId | null, includeStart: boolean): StoryBlockId | null {
+        const start = startId ? this.scene.blocks[startId] : undefined;
+        const disabledAncestor = start ? this.outermostDisabledAncestor(start) : null;
+        if (disabledAncestor) {
+            startId = disabledAncestor.id;
+            includeStart = false;
+        }
         const plan = collectStoryPlaybackPlan(this.scene, startId);
         let brokenLoopId: StoryBlockId | null = null;
         for (const [index, step] of plan.steps.entries()) {
@@ -111,7 +117,7 @@ class StepWalker {
             }
             brokenLoopId = null;
             // A row inside a disabled container is compiled out with it.
-            if (this.hasDisabledAncestor(block)) {
+            if (this.outermostDisabledAncestor(block)) {
                 continue;
             }
             const isStart = index === 0 && step.blockId === startId;
@@ -225,16 +231,17 @@ class StepWalker {
         return false;
     }
 
-    private hasDisabledAncestor(block: StoryBlock): boolean {
+    private outermostDisabledAncestor(block: StoryBlock): StoryBlock | null {
         const seen = new Set<StoryBlockId>([block.id]);
         let cursor = block.parentId ? this.scene.blocks[block.parentId] : undefined;
+        let disabled: StoryBlock | null = null;
         while (cursor && !seen.has(cursor.id)) {
             if (cursor.disabled) {
-                return true;
+                disabled = cursor;
             }
             seen.add(cursor.id);
             cursor = cursor.parentId ? this.scene.blocks[cursor.parentId] : undefined;
         }
-        return false;
+        return disabled;
     }
 }

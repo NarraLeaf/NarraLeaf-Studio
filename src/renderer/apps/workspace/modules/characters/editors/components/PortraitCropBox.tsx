@@ -63,6 +63,7 @@ export function PortraitCropBox(props: {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [pane, setPane] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [live, setLive] = useState<ScreenBox | null>(null);
+    const liveRef = useRef<ScreenBox | null>(null);
     const dragRef = useRef<{ mode: DragMode; pointerX: number; pointerY: number; from: ScreenBox } | null>(null);
 
     useEffect(() => {
@@ -97,7 +98,7 @@ export function PortraitCropBox(props: {
 
     const clamp = useCallback((next: ScreenBox): ScreenBox => {
         if (!rect) return next;
-        const size = Math.max(MIN_BOX_PX, Math.min(next.size, rect.width, rect.height));
+        const size = Math.min(rect.width, rect.height, Math.max(MIN_BOX_PX, next.size));
         return {
             size,
             x: Math.max(rect.left, Math.min(next.x, rect.left + rect.width - size)),
@@ -116,7 +117,9 @@ export function PortraitCropBox(props: {
             const dy = event.clientY - drag.pointerY;
             const from = drag.from;
             if (drag.mode === "move") {
-                setLive(clamp({ ...from, x: from.x + dx, y: from.y + dy }));
+                const next = clamp({ ...from, x: from.x + dx, y: from.y + dy });
+                liveRef.current = next;
+                setLive(next);
                 return;
             }
             // One scalar drives both edges, which is what keeps the box square. Each corner reads the
@@ -128,21 +131,23 @@ export function PortraitCropBox(props: {
             const size = Math.max(MIN_BOX_PX, from.size + grow);
             const x = drag.mode === "ne" || drag.mode === "se" ? from.x : from.x + from.size - size;
             const y = drag.mode === "sw" || drag.mode === "se" ? from.y : from.y + from.size - size;
-            setLive(clamp({ x, y, size }));
+            const next = clamp({ x, y, size });
+            liveRef.current = next;
+            setLive(next);
         };
         const up = () => {
+            const current = liveRef.current;
             dragRef.current = null;
-            setLive(current => {
-                if (current && rect) {
-                    onCommit({
-                        x: (current.x - rect.left) / rect.width,
-                        y: (current.y - rect.top) / rect.height,
-                        w: current.size / rect.width,
-                        h: current.size / rect.height,
-                    });
-                }
-                return null;
-            });
+            liveRef.current = null;
+            setLive(null);
+            if (current && rect) {
+                onCommit({
+                    x: (current.x - rect.left) / rect.width,
+                    y: (current.y - rect.top) / rect.height,
+                    w: current.size / rect.width,
+                    h: current.size / rect.height,
+                });
+            }
         };
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
@@ -157,6 +162,7 @@ export function PortraitCropBox(props: {
         event.preventDefault();
         event.stopPropagation();
         dragRef.current = { mode, pointerX: event.clientX, pointerY: event.clientY, from: box };
+        liveRef.current = box;
         setLive(box);
     };
 

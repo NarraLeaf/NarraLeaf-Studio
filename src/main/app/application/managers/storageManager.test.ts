@@ -166,6 +166,24 @@ describe("StorageManager filesystem policy", () => {
             path.join(builtInPlugins, "gallery", "main.js"),
         )).resolves.toBe(true);
     });
+
+    it.runIf(process.platform === "darwin" || process.platform === "linux")("refuses a directory-grant read when the Windows handle resolver is unavailable", async () => {
+        const root = path.join(tempDir, "project");
+        await fs.mkdir(root);
+        const file = path.join(root, "file.txt");
+        await fs.writeFile(file, "content");
+        const manager = new StorageManager({ logger: { warn: vi.fn() } } as any);
+        const hash = await manager.allocateDirectoryHash(root, 1);
+        const handle = await fs.open(file, "r");
+        const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+        try {
+            Object.defineProperty(process, "platform", { value: "win32" });
+            await expect(manager.isDirectoryGrantHandleAllowed(manager.get(hash)!, handle)).resolves.toBe(false);
+        } finally {
+            Object.defineProperty(process, "platform", originalPlatform);
+            await handle.close();
+        }
+    });
 });
 
 /**

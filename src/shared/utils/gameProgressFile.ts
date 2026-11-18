@@ -13,8 +13,9 @@
  * Comments in English per project convention.
  */
 
-import fs from "fs/promises";
 import path from "path";
+import { Fs } from "./fs";
+import { unpatchedFsPromises as fs } from "./unpatchedFs";
 import {
     GAME_PROGRESS_DIRECTORY_SEGMENTS,
     buildGameProgressDocument,
@@ -86,7 +87,10 @@ export async function writeGameProgressFile(
         const document = buildGameProgressDocument(key, request, now);
         // Two spaces: the file is an interchange document that a player or a support desk may open,
         // and it is small enough that legibility costs nothing worth counting.
-        await fs.writeFile(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
+        const result = await Fs.write(filePath, `${JSON.stringify(document, null, 2)}\n`);
+        if (!result.ok) {
+            return { outcome: "failed", error: result.error.message };
+        }
         return { outcome: "written", error: null };
     } catch (error) {
         return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };

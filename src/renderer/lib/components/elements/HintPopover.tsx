@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { useHostWindow } from "../layout/hostWindow";
+import { useDismissWhenHidden } from "../layout/hostVisibility";
 
 /** Gap between the trigger icon and the popover. */
 const HINT_GAP_PX = 4;
@@ -134,6 +135,7 @@ export function HintPopover({ text, icon, width = HINT_DEFAULT_WIDTH_PX, classNa
     const show = useCallback(() => setOpen(true), []);
     const hide = useCallback(() => setOpen(false), []);
     const anchor = useCallback(() => triggerRef.current?.getBoundingClientRect() ?? null, []);
+    useDismissWhenHidden(hide, open);
 
     return (
         <>

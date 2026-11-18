@@ -32,6 +32,8 @@ export default defineRuntimePlugin({
 
 ## RuntimePluginApp
 
+以下展示核心注册接口；完整成员及其可用性以 `RuntimePluginGame` 类型为准。
+
 ```ts
 type RuntimePluginApp = {
   plugin: PluginIdentity;              // { id, name?, version?, publisher? }
@@ -302,7 +304,7 @@ studio entry 的 palette 动作也可以只插入标准故事块（不写 `{acti
 
 ## 限制
 
-- 当前 API 面：`blueprintNodes` + `widgets` + `storyActions` + `data` + `config` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`），以及不需要声明的性能时间线。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
+- 当前 API 面：`blueprintNodes` + `widgets` + `inlineTextEffects` + `storyActions` + `data` + `config` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory` / `sidecar` / `navigation`），以及不需要声明的性能时间线。各能力的可用性见 `RuntimePluginGame`。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
 - runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件；React 相关包与 `narraleaf-studio/runtime` 除外（host external）。
 - `react-dom/client` 不可用：插件不得在游戏内挂载自己的 React root。
 - 无 cleanup、无跨插件依赖排序。

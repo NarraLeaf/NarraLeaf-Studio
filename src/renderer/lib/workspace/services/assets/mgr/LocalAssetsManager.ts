@@ -16,7 +16,7 @@ import { describeFileWriteFailure } from "../../core/writeFailureReason";
 import { itemWrite } from "../../autosave/writeReport";
 import { translate } from "@/lib/i18n";
 import { RendererError } from "@shared/utils/error";
-import { basename, dirname, extname } from "@shared/utils/path";
+import { basename, dirname, extname, join } from "@shared/utils/path";
 import { expandImportPaths, type ExpandImportPathsResult } from "../importPathExpansion";
 import type { AssetImportRefusal, AssetImportStatus, RefusableStatus } from "../assetImportRefusal";
 import type { FileFormatValidationResult } from "../FileFormatValidator";
@@ -332,6 +332,9 @@ export class LocalAssetsManager {
         if (!written.ok) {
             return { success: false, error: describeFileWriteFailure(asset.name, written.error, translate) };
         }
+        if (written.refused) {
+            return { success: false, error: translate("workspace.shell.import.reason.projectNotAccepting") };
+        }
 
         // Recomputed from the destination, exactly as the path-based replace does: the hash is the
         // cache key every downstream reader compares against, and one that did not move means they
@@ -408,6 +411,9 @@ export class LocalAssetsManager {
         );
         if (!written.ok) {
             return { success: false, error: describeFileWriteFailure(name, written.error, translate) };
+        }
+        if (written.refused) {
+            return { success: false, error: translate("workspace.shell.import.reason.projectNotAccepting") };
         }
 
         const hashResult = await appPrivilegedFacade.fs.hash(destPath);
@@ -520,11 +526,8 @@ export class LocalAssetsManager {
     }
 
     /**
-     * Swap a bundle's whole tree for another folder, keeping the asset id.
-     *
-     * The old tree is removed first rather than copied over: a merge would leave the previous
-     * export's orphaned textures and motions in place, and since the manifest is the only thing that
-     * knows which files belong, nothing downstream could ever tell them apart from live ones.
+     * Prepare the replacement tree before moving the current bundle aside. The copy is checked
+     * against the source; an interrupted copy cannot replace a working model with a partial one.
      */
     private async writeBundleContentFromPath<T extends AssetType>(
         asset: Asset<T, AssetSource.Local>,
@@ -544,42 +547,107 @@ export class LocalAssetsManager {
                 refusal: { kind: "notAFolder" },
             };
         }
+        const source = await modelService.listBundle(sourceDir);
+        if (!source.success || !source.data) {
+            return { success: false, error: source.error ?? "Failed to read the model bundle", refusal: { kind: "sourceUnreadable" } };
+        }
 
         const destPath = this.getLocalAssetPath(asset.id);
         const existing = await fsService.isDirExists(destPath);
-        if (existing.ok && existing.data) {
-            const removed = await appPrivilegedFacade.fs.deleteDir(destPath);
-            if (!removed.success || !removed.data.ok) {
-                const removeError = removed.success ? (removed.data as FsRequestResult<void, false>).error : undefined;
+        if (!existing.ok) {
+            return {
+                success: false,
+                error: `Failed to check the existing bundle: ${destPath}`,
+                refusal: { kind: "copyFailed", fsCode: existing.error.code },
+            };
+        }
+
+        const scratchDir = this.getContext().project.resolve(ProjectNameConvention.MediaConvertScratchDir(this.getUuidService().generate()));
+        const replacement = join(scratchDir, "replacement");
+        const previous = join(scratchDir, "previous");
+        const created = await fsService.createDir(scratchDir);
+        if (!created.ok) {
+            return { success: false, error: `Failed to prepare a model replacement: ${scratchDir}`, refusal: { kind: "copyFailed", fsCode: created.error.code } };
+        }
+        if (created.refused) {
+            return { success: false, error: "The project is not accepting changes right now", refusal: { kind: "projectNotAccepting" } };
+        }
+
+        let movedPrevious = false;
+        let preserveScratch = false;
+        try {
+            const copied = await appPrivilegedFacade.fs.copyDir(sourceDir, replacement);
+            if (!copied.success || !copied.data.ok || copied.data.refused) {
+                const copyError = copied.success && !copied.data.ok ? copied.data.error : undefined;
                 return {
                     success: false,
-                    error: `Failed to clear the existing bundle: ${destPath}`,
-                    refusal: { kind: "copyFailed", fsCode: removeError?.code },
+                    error: `Failed to prepare model bundle: ${sourceDir}`,
+                    refusal: copied.success && copied.data.ok && copied.data.refused
+                        ? { kind: "projectNotAccepting" }
+                        : { kind: "copyFailed", fsCode: copyError?.code },
                 };
             }
-        }
 
-        const copyResult = await appPrivilegedFacade.fs.copyDir(sourceDir, destPath);
-        if (!copyResult.success || !copyResult.data.ok) {
-            const copyError = copyResult.success ? (copyResult.data as FsRequestResult<void, false>).error : undefined;
-            const message = copyResult.error || `[${copyError?.code}] ${copyError?.message}`;
-            return {
-                success: false,
-                error: `Failed to replace model bundle: ${sourceDir} to ${destPath}. ${message}`,
-                refusal: { kind: "copyFailed", fsCode: copyError?.code },
-            };
-        }
+            const listing = await modelService.listBundle(replacement);
+            if (!listing.success || !listing.data) {
+                return { success: false, error: listing.error ?? "Failed to read the replacement bundle", refusal: { kind: "copyIncomplete" } };
+            }
+            const arrived = new Set(listing.data.files);
+            if (arrived.size !== source.data.files.length || source.data.files.some(file => !arrived.has(file))) {
+                return { success: false, error: `The replacement bundle does not match its source: ${sourceDir}`, refusal: { kind: "copyIncomplete" } };
+            }
 
-        const listing = await modelService.listBundle(destPath);
-        if (!listing.success || !listing.data) {
-            return {
-                success: false,
-                error: listing.error ?? "Failed to read the replaced bundle",
-                refusal: { kind: "copyIncomplete" },
-            };
-        }
+            const prepared = await this.ensureAssetShardDir(destPath, asset.name);
+            if (!prepared.success) {
+                return { success: false, error: prepared.error, refusal: { kind: "copyFailed" } };
+            }
+            if (existing.data) {
+                const moved = await appPrivilegedFacade.fs.moveDir(destPath, previous);
+                if (!moved.success || !moved.data.ok || moved.data.refused) {
+                    const moveError = moved.success && !moved.data.ok ? moved.data.error : undefined;
+                    return {
+                        success: false,
+                        error: `Failed to set aside the existing bundle: ${destPath}`,
+                        refusal: moved.success && moved.data.ok && moved.data.refused
+                            ? { kind: "projectNotAccepting" }
+                            : { kind: "copyFailed", fsCode: moveError?.code },
+                    };
+                }
+                movedPrevious = true;
+            }
 
-        return { success: true, data: { hash: bundleListingFingerprint(listing.data.files) } };
+            const installed = await appPrivilegedFacade.fs.moveDir(replacement, destPath);
+            if (!installed.success || !installed.data.ok || installed.data.refused) {
+                const moveError = installed.success && !installed.data.ok ? installed.data.error : undefined;
+                return {
+                    success: false,
+                    error: `Failed to install the replacement bundle: ${destPath}`,
+                    refusal: installed.success && installed.data.ok && installed.data.refused
+                        ? { kind: "projectNotAccepting" }
+                        : { kind: "copyFailed", fsCode: moveError?.code },
+                };
+            }
+            movedPrevious = false;
+            return { success: true, data: { hash: bundleListingFingerprint(listing.data.files) } };
+        } finally {
+            if (movedPrevious) {
+                try {
+                    const restored = await appPrivilegedFacade.fs.moveDir(previous, destPath);
+                    preserveScratch = !restored.success || !restored.data.ok || !!restored.data.refused;
+                } catch {
+                    preserveScratch = true;
+                }
+                if (preserveScratch) {
+                    console.warn(`[assets] could not restore the previous model bundle; it remains at ${previous}`);
+                }
+            }
+            if (!preserveScratch) {
+                const removed = await appPrivilegedFacade.fs.deleteDir(scratchDir).catch(() => null);
+                if (!removed?.success || !removed.data.ok || removed.data.refused) {
+                    console.warn(`[assets] could not remove the model replacement directory ${scratchDir}`);
+                }
+            }
+        }
     }
 
     public async duplicateAsset<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {

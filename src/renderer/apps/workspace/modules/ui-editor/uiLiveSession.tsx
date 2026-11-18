@@ -4,7 +4,7 @@ import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
-import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
+import { liveSessionOwnsUndo, type LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 import { uiElementClaimKey, UI_ELEMENT_CLAIM_PREFIX } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
@@ -39,38 +39,30 @@ export function interfaceDocumentFreezeScope(): readonly string[] {
 /**
  * Who owns Ctrl+Z in the interface editor and on the blueprint canvas right now.
  *
- * **Null outside a session, and inside one it is the session.** Both editors keep snapshot stacks -
- * a whole Surface, a whole blueprint - of a document only this author ever had, so applying one
- * inside a shared session would put the screen back the way it was before anybody else joined and
- * delete everything they have written since, with nothing on either machine reporting it. That is
- * the catastrophe the session's own undo exists to avoid: it sends the inverse of this window's own
- * last operation and nothing else.
- *
- * ⚠ **A session keeps one stack per WINDOW rather than one per editor** - "my last operation",
- * whatever panel it was made in - so this answers the same thing wherever it is asked, exactly as
- * the shell's binding and the story editor's do.
+ * Returns whether the session took responsibility for the step. Entry and exit also keep local
+ * snapshots out of the changing document; the session may decline a step during those transitions.
+ * The phase is read at the keypress, including before React has rendered an incoming state change.
  */
-export function useLiveUndoOverride(): { undo(): void; redo(): void } | null {
+export function useLiveUndoOverride(): { undo(): boolean; redo(): boolean } | null {
     const { context, isInitialized } = useWorkspace();
     const service = useMemo(
         () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
         [context, isInitialized],
     );
-    const [inSession, setInSession] = useState(false);
-
-    useEffect(() => {
-        if (!service) {
-            setInSession(false);
-            return;
-        }
-        const read = () => setInSession(service.getView().phase !== "idle");
-        read();
-        return service.onChanged(read);
-    }, [service]);
-
     return useMemo(
-        () => (service && inSession ? { undo: () => void service.undo(), redo: () => void service.redo() } : null),
-        [service, inSession],
+        () => service ? {
+            undo: () => {
+                if (!liveSessionOwnsUndo(service.getView().phase)) return false;
+                service.undo();
+                return true;
+            },
+            redo: () => {
+                if (!liveSessionOwnsUndo(service.getView().phase)) return false;
+                service.redo();
+                return true;
+            },
+        } : null,
+        [service],
     );
 }
 

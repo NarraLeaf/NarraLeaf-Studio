@@ -46,9 +46,9 @@ import { parseStoryEasing } from "@shared/utils/storyEasing";
 import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
-    resolveCharacterAvatarAssetId,
-    resolveDefaultCharacterAvatarAssetId,
-    resolveOffStageCharacterAvatarAssetId,
+    resolveCharacterAvatarReference,
+    resolveDefaultCharacterAvatarReference,
+    resolveOffStageCharacterAvatarReference,
 } from "@shared/utils/characterAvatar";
 import type {
     StoryActionableKind,
@@ -1328,6 +1328,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        localization,
         voiceIndex,
         voiceUrlsByLocale,
         voiceVolumesByLocale,
@@ -1336,7 +1337,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         audioTracks,
         characters: characterSummaries,
         backgroundMusic: sceneBackgroundMusic,
-        localization,
     });
     const allScenes = scenesBuild.scenes;
     // Built only for a host that has a player to tell. Every reference audit and save-anchor compile
@@ -1508,6 +1508,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        localization,
     });
 
     const sceneLocalNamespaceNames: Record<string, string> = {};
@@ -1711,7 +1712,7 @@ async function buildLaunchEntryScene(params: {
     // Seed scene variables to the snapshot's accumulated values, so conditions and interpolations in
     // the tail read the state as it was on the path to the target row.
     for (const def of Object.values(ctx.sceneVariables)) {
-        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        const value = snapshotSceneVariableValue(snapshot, def);
         statements.push(launchScene.local.set(def.storageKey, value as any));
     }
     // The names the walked path's `/rename` rows left, so the first line of the tail is spoken under
@@ -1866,6 +1867,11 @@ function previewMarker(callback: () => void): NlrStatement {
     });
 }
 
+function snapshotSceneVariableValue(snapshot: StoryStageSnapshot, def: StorySceneVariableDefinition): StoryLiteralValue {
+    const assigned = snapshot.sceneVariables[def.storageKey];
+    return assigned === undefined ? def.defaultValue ?? null : assigned;
+}
+
 /**
  * Compile a Studio-computed stage snapshot into a minimal "state player" story: one scene whose
  * elements are constructed pre-posed at their settled transform state (constructor config, so the
@@ -2000,7 +2006,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     // Seed scene variables (defaults overlaid with the snapshot's assignments) so conditions and
     // inline interpolations in the target line read the accumulated values.
     for (const def of Object.values(ctx.sceneVariables)) {
-        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        const value = snapshotSceneVariableValue(snapshot, def);
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
     // And the speaker names the path left, so a previewed line shows the name it is played under.
@@ -2088,6 +2094,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        localization: ctx.localization,
     });
 
     // Register every image URL this compile resolved (snapshot poses AND the target's own
@@ -7597,14 +7604,18 @@ async function compileCharacterAvatars(
     // so the only thing the order decided was how long it took.
     const avatarKeys = Object.keys(avatarTable ?? {});
     const avatarUrls = await Promise.all(avatarKeys.map(async key => {
-        const assetId = resolveCharacterAvatarAssetId(summary, key);
-        const url = assetId
-            ? await resolveAsset(ctx, assetId, "image", blockId, {
-                variants: avatarTable?.[key]?.assetVariants,
+        const reference = resolveCharacterAvatarReference(summary, key);
+        const url = reference
+            ? await resolveAsset(ctx, reference.assetId, "image", blockId, {
+                variants: reference.assetVariants,
                 owner: avatarOwner,
             })
             : null;
-        return { key, assetId, url };
+        return {
+            key,
+            assetId: reference ? resolvedAssetReferenceId(ctx, reference) : null,
+            url,
+        };
     }));
     for (const { key, assetId, url } of avatarUrls) {
         if (url && assetId) {
@@ -7631,22 +7642,30 @@ async function compileCharacterAvatars(
         }
     }
 
-    const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
-    const fallback = defaultAvatarAssetId
-        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId, {
-            variants: summary.assetVariants,
+    const fallbackReference = summary.defaultAvatarAssetId
+        ? {
+            assetId: summary.defaultAvatarAssetId,
+            ...(summary.assetVariants ? { assetVariants: summary.assetVariants } : {}),
+        }
+        : null;
+    const fallback = fallbackReference
+        ? await resolveAsset(ctx, fallbackReference.assetId, "image", blockId, {
+            variants: fallbackReference.assetVariants,
             owner: avatarOwner,
         })
         : null;
-    if (fallback && defaultAvatarAssetId) {
-        ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
+    if (fallback && fallbackReference) {
+        ctx.avatarAssetIdByUrl.set(fallback, resolvedAssetReferenceId(ctx, fallbackReference));
     }
-    const defaultLookAssetId = fallback ? null : resolveDefaultCharacterAvatarAssetId(summary);
-    const defaultLook = defaultLookAssetId
-        ? await resolveAsset(ctx, defaultLookAssetId, "image", blockId, { owner: avatarOwner })
+    const defaultLookReference = fallback ? null : resolveDefaultCharacterAvatarReference(summary);
+    const defaultLook = defaultLookReference
+        ? await resolveAsset(ctx, defaultLookReference.assetId, "image", blockId, {
+            variants: defaultLookReference.assetVariants,
+            owner: avatarOwner,
+        })
         : null;
-    if (defaultLook && defaultLookAssetId) {
-        ctx.avatarAssetIdByUrl.set(defaultLook, defaultLookAssetId);
+    if (defaultLook && defaultLookReference) {
+        ctx.avatarAssetIdByUrl.set(defaultLook, resolvedAssetReferenceId(ctx, defaultLookReference));
     }
     return { byKey, poseByUrl, fallback, offStage: fallback ?? defaultLook };
 }
@@ -7749,6 +7768,7 @@ async function bindOffstageDefaultAvatars(params: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
+    localization?: SceneLocalizationResolver;
 }): Promise<void> {
     for (const [key, character] of params.characters) {
         // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
@@ -7756,11 +7776,12 @@ async function bindOffstageDefaultAvatars(params: {
         const summary = params.characterSummaries.get(key);
         // The profile's avatar, or her default look's when it has none: the picture the backlog and
         // `Get Character` show for the same line.
-        const assetId = resolveOffStageCharacterAvatarAssetId(summary) || undefined;
-        if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
+        const reference = resolveOffStageCharacterAvatarReference(summary);
+        if (!summary || !reference || params.avatarBoundCharacterIds.has(summary.id)) {
             continue;
         }
         params.avatarBoundCharacterIds.add(summary.id);
+        const assetId = resolvedAssetReferenceIdFromLocalization(params.localization, reference);
         const url = await resolveAssetUrlCached({
             assetId,
             assetType: "image",
@@ -7777,6 +7798,25 @@ async function bindOffstageDefaultAvatars(params: {
             character.setAvatar(url);
         }
     }
+}
+
+function resolvedAssetReferenceId(
+    ctx: Pick<SceneCompileContext, "localization">,
+    reference: { assetId: string; assetVariants?: StoryAssetVariants },
+): string {
+    return resolvedAssetReferenceIdFromLocalization(ctx.localization, reference);
+}
+
+function resolvedAssetReferenceIdFromLocalization(
+    localization: SceneLocalizationResolver | undefined,
+    reference: { assetId: string; assetVariants?: StoryAssetVariants },
+): string {
+    if (!reference.assetVariants) {
+        return reference.assetId;
+    }
+    return localization?.variant(reference.assetVariants, reference.assetId)
+        ?? Object.values(reference.assetVariants[reference.assetId] ?? {})[0]
+        ?? reference.assetId;
 }
 
 /**

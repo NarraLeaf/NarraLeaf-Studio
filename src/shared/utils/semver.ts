@@ -10,6 +10,7 @@
  */
 
 export interface SemVer {
+    /** Numeric views of the core fields; precedence uses `raw` for full integer precision. */
     major: number;
     minor: number;
     patch: number;
@@ -41,6 +42,11 @@ export function parseSemver(value: unknown): SemVer | null {
     };
 }
 
+function coreVersion(version: SemVer): [bigint, bigint, bigint] {
+    const [major, minor, patch] = version.raw.split(/[.+-]/, 3);
+    return [BigInt(major), BigInt(minor), BigInt(patch)];
+}
+
 /**
  * Compare two semver strings. Returns -1 if a < b, 1 if a > b, 0 if equal.
  * Unparseable versions sort before parseable ones so they never look "newer".
@@ -53,9 +59,11 @@ export function compareSemver(a: string, b: string): number {
     if (!left) return -1;
     if (!right) return 1;
 
-    if (left.major !== right.major) return left.major < right.major ? -1 : 1;
-    if (left.minor !== right.minor) return left.minor < right.minor ? -1 : 1;
-    if (left.patch !== right.patch) return left.patch < right.patch ? -1 : 1;
+    const leftCore = coreVersion(left);
+    const rightCore = coreVersion(right);
+    for (let index = 0; index < leftCore.length; index += 1) {
+        if (leftCore[index] !== rightCore[index]) return leftCore[index] < rightCore[index] ? -1 : 1;
+    }
 
     return comparePrerelease(left.prerelease, right.prerelease);
 }
@@ -79,8 +87,8 @@ function comparePrereleaseIdentifier(a: string, b: string): number {
     const aNumeric = /^\d+$/.test(a);
     const bNumeric = /^\d+$/.test(b);
     if (aNumeric && bNumeric) {
-        const an = Number(a);
-        const bn = Number(b);
+        const an = BigInt(a);
+        const bn = BigInt(b);
         return an === bn ? 0 : an < bn ? -1 : 1;
     }
     // Numeric identifiers always have lower precedence than alphanumeric ones.
@@ -152,8 +160,10 @@ function satisfiesComparator(version: string, comparator: string): boolean {
             return cmp <= 0;
         case "^":
             return cmp >= 0 && compareSemver(version, caretCeiling(target)) < 0;
-        case "~":
-            return cmp >= 0 && compareSemver(version, `${target.major}.${target.minor + 1}.0`) < 0;
+        case "~": {
+            const [major, minor] = coreVersion(target);
+            return cmp >= 0 && compareSemver(version, `${major}.${minor + 1n}.0`) < 0;
+        }
         default:
             return cmp === 0;
     }
@@ -165,13 +175,14 @@ function satisfiesComparator(version: string, comparator: string): boolean {
  * 0.2.x but not 0.3.0, and `^0.0.3` allows nothing but 0.0.3.
  */
 function caretCeiling(target: SemVer): string {
-    if (target.major > 0) {
-        return `${target.major + 1}.0.0`;
+    const [major, minor, patch] = coreVersion(target);
+    if (major > 0n) {
+        return `${major + 1n}.0.0`;
     }
-    if (target.minor > 0) {
-        return `0.${target.minor + 1}.0`;
+    if (minor > 0n) {
+        return `0.${minor + 1n}.0`;
     }
-    return `0.0.${target.patch + 1}`;
+    return `0.0.${patch + 1n}`;
 }
 
 export type CompatibilityVerdict = "satisfied" | "outdated" | "incompatible";
@@ -193,7 +204,7 @@ export function classifyCompatibility(authoredVersion: string, installedVersion:
     if (!authored || !installed) {
         return "incompatible";
     }
-    if (authored.major !== installed.major) {
+    if (coreVersion(authored)[0] !== coreVersion(installed)[0]) {
         return "incompatible";
     }
     if (compareSemver(installedVersion, authoredVersion) < 0) {

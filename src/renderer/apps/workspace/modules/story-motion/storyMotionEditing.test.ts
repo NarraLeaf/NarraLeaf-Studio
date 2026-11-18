@@ -110,6 +110,17 @@ describe("storyMotionEditing", () => {
         expect(source.tracks[1].keyframes[0].value).toEqual({ xoffset: -120 });
     });
 
+    it("pastes a default easing over an explicitly eased keyframe", () => {
+        const source: StoryAnimationTimeline = {
+            tracks: [{ id: "source", property: "opacity", keyframes: [{ id: "copied", timeMs: 0, value: 0.5 }] }],
+        };
+        const destination: StoryAnimationTimeline = {
+            tracks: [{ id: "destination", property: "opacity", keyframes: [{ id: "existing", timeMs: 0, value: 1, easing: "linear" }] }],
+        };
+        const result = pasteStoryMotionKeyframes(destination, copyStoryMotionKeyframes(source, ids("copied"))!, 0);
+        expect(result.timeline.tracks[0].keyframes[0]).toEqual({ id: "existing", timeMs: 0, value: 0.5 });
+    });
+
     it("sets one easing on several keyframes, and clears it back to the default", () => {
         const eased = setStoryMotionKeyframesEasing(timeline(), ids("o0", "p500"), "backOut");
         expect(eased.tracks[0].keyframes.map(keyframe => keyframe.easing)).toEqual(["backOut", "easeOut"]);

@@ -291,7 +291,9 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             });
         const dispose = storyService.onDocumentChanged(event => {
             if (event.storyId === payload.actionContext?.storyId) {
-                setDocument(event.document);
+                // StoryService mutates the document in place; a fresh reference refreshes the
+                // target preview when an earlier row changes its image or text.
+                setDocument({ ...event.document });
             }
         });
         return () => {

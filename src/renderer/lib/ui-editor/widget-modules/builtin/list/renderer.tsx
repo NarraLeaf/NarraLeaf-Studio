@@ -328,10 +328,14 @@ export function ListRenderer(props: WidgetRendererProps) {
     const runtimeSelectedIndex = runtimeSnapshot.listSelectedIndexes.get(runtimeElementKey);
     const runtimeScrollRequest = runtimeSnapshot.listScrollRequests.get(runtimeElementKey);
     const suppressContentClickRef = useRef(false);
+    const dragDisposeRef = useRef<(() => void) | null>(null);
     const reachedScrollEndRef = useRef(false);
     const selectedIndex = runtimeSelectedIndex ?? p.selectedIndex;
     const selectedIndexRef = useRef(selectedIndex);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
+    const repeatLayout = resolveListRepeatLayout(p);
+    const overflowIsHorizontal = repeatLayout.overflowIsHorizontal;
+    useEffect(() => () => dragDisposeRef.current?.(), []);
     // Published on every measurement rather than only on scroll: a list that never moves still has
     // to be able to answer where it is, and "never moved" is exactly the list no scroll event will
     // ever describe.
@@ -341,7 +345,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [runtimeElementKey, widgetRuntimeStore],
     );
-    const metrics = useScrollMetrics(viewportRef, horizontalScrollbar, publishScrollMetrics);
+    const metrics = useScrollMetrics(viewportRef, overflowIsHorizontal, publishScrollMetrics);
     useEffect(() => {
         selectedIndexRef.current = selectedIndex;
     }, [selectedIndex]);
@@ -360,9 +364,9 @@ export function ListRenderer(props: WidgetRendererProps) {
             return undefined;
         }
         const dispatchScroll = () => {
-            const viewportSize = horizontalScrollbar ? viewport.clientWidth : viewport.clientHeight;
-            const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
-            const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
+            const viewportSize = overflowIsHorizontal ? viewport.clientWidth : viewport.clientHeight;
+            const contentSize = overflowIsHorizontal ? viewport.scrollWidth : viewport.scrollHeight;
+            const offset = overflowIsHorizontal ? viewport.scrollLeft : viewport.scrollTop;
             const payload = resolveUIListScrollMetrics(viewportSize, contentSize, offset);
             void dispatchEvent("scroll", {
                 ...payload,
@@ -375,7 +379,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         };
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
-    }, [dispatchEvent, horizontalScrollbar, hostAdapter.blueprintRuntime]);
+    }, [dispatchEvent, overflowIsHorizontal, hostAdapter.blueprintRuntime]);
     const boundItems = resolveBoundItems(p, runtimeData);
     const itemStruct = resolveUIStruct(document, p.itemStructId);
     // Placeholder rows carry the declared shape at its empty values rather than `{index: n}`: a
@@ -449,9 +453,6 @@ export function ListRenderer(props: WidgetRendererProps) {
     // Which way the items actually run on screen, and which way the box therefore scrolls.
     // `repeatDirection` names a flex axis rather than a screen axis, and a wrap moves the growing
     // axis across it, so everything physical below reads the resolved answer instead.
-    const repeatLayout = resolveListRepeatLayout(p);
-    const overflowIsHorizontal = repeatLayout.overflowIsHorizontal;
-
     const viewportStyle: CSSProperties = {
         width: "100%",
         height: "100%",
@@ -700,7 +701,8 @@ export function ListRenderer(props: WidgetRendererProps) {
     });
 
     const scrollRange = Math.max(1, metrics.content - metrics.viewport);
-    const fallbackTrackLength = Math.max(1, metrics.viewport - p.scrollbar.contentInset * 2);
+    const trackViewportLength = horizontalScrollbar ? viewportRef.current?.clientWidth : viewportRef.current?.clientHeight;
+    const fallbackTrackLength = Math.max(1, (trackViewportLength || metrics.viewport) - p.scrollbar.contentInset * 2);
     const fallbackThumbLength = Math.max(
         minThumbLength,
         Math.min(fallbackTrackLength, (metrics.viewport / Math.max(metrics.content, metrics.viewport)) * fallbackTrackLength),
@@ -728,13 +730,13 @@ export function ListRenderer(props: WidgetRendererProps) {
             const position = (clientPosition - trackStart) * screenToDesign - thumbLength / 2;
             const ratio = Math.max(0, Math.min(1, position / Math.max(1, thumbTravel)));
             const nextOffset = ratio * scrollRange;
-            if (horizontalScrollbar) {
+            if (overflowIsHorizontal) {
                 viewport.scrollLeft = nextOffset;
             } else {
                 viewport.scrollTop = nextOffset;
             }
         },
-        [horizontalScrollbar, scrollRange],
+        [horizontalScrollbar, overflowIsHorizontal, scrollRange],
     );
 
     const startThumbDrag = useCallback(
@@ -745,8 +747,9 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!viewport) {
                 return;
             }
+            dragDisposeRef.current?.();
             const startPointer = horizontalScrollbar ? event.clientX : event.clientY;
-            const startOffset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
+            const startOffset = overflowIsHorizontal ? viewport.scrollLeft : viewport.scrollTop;
             // Pointer deltas arrive in screen px while thumbTravel is design px;
             // fold them back through the rendered track length so dragging stays
             // 1:1 under a scaled stage (captured once per drag — resizing while
@@ -759,7 +762,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 const delta = (pointer - startPointer) * screenToDesign;
                 const ratioDelta = delta / Math.max(1, thumbTravel);
                 const nextOffset = startOffset + ratioDelta * scrollRange;
-                if (horizontalScrollbar) {
+                if (overflowIsHorizontal) {
                     viewport.scrollLeft = nextOffset;
                 } else {
                     viewport.scrollTop = nextOffset;
@@ -769,12 +772,16 @@ export function ListRenderer(props: WidgetRendererProps) {
                 window.removeEventListener("pointermove", onMove);
                 window.removeEventListener("pointerup", onUp);
                 window.removeEventListener("pointercancel", onUp);
+                if (dragDisposeRef.current === onUp) {
+                    dragDisposeRef.current = null;
+                }
             };
+            dragDisposeRef.current = onUp;
             window.addEventListener("pointermove", onMove, { passive: false });
             window.addEventListener("pointerup", onUp, { once: true });
             window.addEventListener("pointercancel", onUp, { once: true });
         },
-        [horizontalScrollbar, scrollRange],
+        [horizontalScrollbar, overflowIsHorizontal, scrollRange],
     );
 
     const handleFallbackThumbPointerDown = useCallback(
@@ -858,6 +865,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!scrollable) {
                 return;
             }
+            dragDisposeRef.current?.();
 
             const startX = event.clientX;
             const startY = event.clientY;
@@ -894,10 +902,16 @@ export function ListRenderer(props: WidgetRendererProps) {
                 window.removeEventListener("pointermove", onMove);
                 window.removeEventListener("pointerup", cleanup);
                 window.removeEventListener("pointercancel", cleanup);
-                bodyStyle.userSelect = originalUserSelect;
-                bodyStyle.cursor = originalCursor;
+                if (dragging) {
+                    bodyStyle.userSelect = originalUserSelect;
+                    bodyStyle.cursor = originalCursor;
+                }
+                if (dragDisposeRef.current === cleanup) {
+                    dragDisposeRef.current = null;
+                }
             };
 
+            dragDisposeRef.current = cleanup;
             window.addEventListener("pointermove", onMove, { passive: false });
             window.addEventListener("pointerup", cleanup, { once: true });
             window.addEventListener("pointercancel", cleanup, { once: true });

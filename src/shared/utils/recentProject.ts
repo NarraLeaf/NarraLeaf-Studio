@@ -97,11 +97,17 @@ export function recentProjectDisplayName(project: { name?: string | null; path?:
  * offering both until one of them happened to be opened again. The list is newest-first, so the
  * first spelling of a project wins - the one it was last opened by.
  */
-export function withRecentProjectNames(projects: readonly RecentlyOpenedProject[]): RecentlyOpenedProject[] {
+export function withRecentProjectNames(projects: unknown): RecentlyOpenedProject[] {
+    if (!Array.isArray(projects)) {
+        return [];
+    }
     const seen = new Set<string>();
     const unique: RecentlyOpenedProject[] = [];
     for (const project of projects) {
-        const identity = normalizeProjectPath(project?.path);
+        if (project === null || typeof project !== "object" || typeof project.path !== "string" || !project.path.trim()) {
+            continue;
+        }
+        const identity = normalizeProjectPath(project.path);
         if (seen.has(identity)) {
             continue;
         }

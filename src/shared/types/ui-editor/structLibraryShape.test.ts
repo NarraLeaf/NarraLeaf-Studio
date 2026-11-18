@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { UI_STRUCT_ID_ENDING, resolveUIStruct } from "./builtinStructs";
 import type { UIDocument, UIElement } from "./document";
 import type { UIStructDef } from "./struct";
-import { applyUIStructShapeForOwner, remapUIListFieldIds } from "./structLibrary";
+import { applyUIStructFieldsForOwner, applyUIStructShapeForOwner, pruneUIStructs, remapUIListFieldIds } from "./structLibrary";
 
 const OWN: UIStructDef = {
     id: "own",
@@ -34,8 +34,9 @@ function element(id: string, type: string, parentId: string | null, extra: Parti
     };
 }
 
-function listDocument(): Pick<UIDocument, "elements" | "components" | "structs"> {
+function listDocument(): Pick<UIDocument, "elements" | "components" | "surfaces" | "structs"> {
     return {
+        surfaces: [],
         elements: {
             list: element("list", "nl.list", null, {
                 childrenIds: ["title", "outside"],
@@ -54,6 +55,25 @@ function listDocument(): Pick<UIDocument, "elements" | "components" | "structs">
                 valueBindings: { text: { kind: "listItemField", fieldId: "f-name" } },
             }),
         },
+        structs: { own: OWN },
+    };
+}
+
+function documentWithPageParamStruct(): UIDocument {
+    return {
+        schemaVersion: 14,
+        id: "doc",
+        name: "Doc",
+        surfaces: [{
+            id: "page",
+            name: "Page",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 1, height: 1 },
+            rootElementId: "root",
+            params: [{ id: "rows", name: "rows", type: "list", struct: "own" }],
+        }],
+        elements: { root: element("root", "nl.root", null) },
         structs: { own: OWN },
     };
 }
@@ -113,5 +133,67 @@ describe("going back to a shape of the list's own", () => {
         });
         expect(applied.structId).toBe("own");
         expect(applied.fieldIds).toEqual({});
+    });
+});
+
+describe("copy-on-write and reachability", () => {
+    it("keeps field identities when a compatible shape already exists", () => {
+        const document = listDocument();
+        document.structs!.other = {
+            id: "other",
+            fields: OWN.fields.map(field => ({ ...field, id: `other-${field.id}` })),
+        };
+        const applied = applyUIStructFieldsForOwner({
+            document,
+            ownerElementId: "list",
+            currentStructId: "own",
+            fields: OWN.fields,
+            generateId: () => "new",
+        });
+
+        expect(applied.structId).toBe("own");
+        expect(applied.structs.own.fields.map(field => field.id)).toEqual(OWN.fields.map(field => field.id));
+    });
+
+    it("forks a shared shape even when another compatible shape exists", () => {
+        const document = listDocument();
+        document.elements.otherList = element("otherList", "nl.list", null, { props: { itemStructId: "own" } });
+        document.structs!.other = {
+            id: "other",
+            fields: OWN.fields.map(field => ({ ...field, id: `other-${field.id}` })),
+        };
+        const applied = applyUIStructFieldsForOwner({
+            document,
+            ownerElementId: "list",
+            currentStructId: "own",
+            fields: OWN.fields,
+            generateId: () => "forked",
+        });
+
+        expect(applied.structId).toBe("forked");
+        expect(applied.forked).toBe(true);
+    });
+
+    it("keeps a struct used only by a page list parameter", () => {
+        const document = documentWithPageParamStruct();
+        expect(pruneUIStructs(document)).toEqual({ own: OWN });
+    });
+
+    it("does not reshape a page parameter when a list edits the same shape", () => {
+        const document = documentWithPageParamStruct();
+        document.elements.list = element("list", "nl.list", "root", { props: { itemStructId: "own" } });
+        const changed = [{ id: "f-name", key: "heading", type: "string" as const }];
+        const applied = applyUIStructFieldsForOwner({
+            document,
+            ownerElementId: "list",
+            currentStructId: "own",
+            fields: changed,
+            generateId: () => "forked",
+        });
+
+        expect(applied.structId).toBe("forked");
+        expect(applied.forked).toBe(true);
+        expect(applied.structs.own).toEqual(OWN);
+        expect(applied.structs.forked.fields).toEqual(changed);
     });
 });

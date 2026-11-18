@@ -62,10 +62,12 @@ function Harness({
     unreadableCategories = new Set<AssetCategory>(),
     onImport = () => undefined,
     onCreateGroup = () => undefined,
+    onAssetClick = () => undefined,
 }: {
     onRender?: () => void;
     onImport?: (category: AssetCategory, groupId?: string) => void;
     onCreateGroup?: (category: AssetCategory, parentGroupId?: string) => void;
+    onAssetClick?: (asset: Asset, multi: boolean) => void;
     library?: Asset[];
     /** Sets of clips, filed at the top of the Media section. */
     sets?: ResolvedAssetSet[];
@@ -98,7 +100,7 @@ function Harness({
         setExpandedGroups: () => undefined,
         handleItemSelect: () => undefined,
         publishRowOrder: () => undefined,
-        handleAssetClick: () => undefined,
+        handleAssetClick: onAssetClick,
         handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
@@ -151,6 +153,16 @@ function enter(groupId: string): void {
 }
 
 describe("AssetsIconView on a large library", () => {
+    it("opens a plain click and keeps modified clicks in selection mode", () => {
+        const onAssetClick = vi.fn();
+        render(<Harness library={[clip(0)]} onAssetClick={onAssetClick} />);
+        const tile = document.querySelector("[data-asset-row]") as HTMLElement;
+        expect(tile).toBeTruthy();
+        fireEvent.click(tile);
+        fireEvent.click(tile, { ctrlKey: true });
+        expect(onAssetClick.mock.calls.map(call => call[1])).toEqual([false, true]);
+    });
+
     it("draws a screenful of tiles, not the library", () => {
         render(<Harness library={Array.from({ length: 2000 }, (_, index) => clip(index))} />);
 

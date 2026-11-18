@@ -170,6 +170,42 @@ describe("DebouncedSaver", () => {
         expect(onError).not.toHaveBeenCalled();
     });
 
+    it("reports failure when flush joins a timer-driven write already in flight", async () => {
+        let rejectWrite!: (error: Error) => void;
+        const save = vi.fn()
+            .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }))
+            .mockResolvedValue(undefined);
+        const saver = makeSaver(save);
+
+        saver.schedule();
+        await vi.advanceTimersByTimeAsync(800);
+        expect(save).toHaveBeenCalledTimes(1);
+        const flushing = expect(saver.flush()).rejects.toThrow("disk full");
+        rejectWrite(new Error("disk full"));
+        await flushing;
+
+        expect(saver.isPending()).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(save).toHaveBeenCalledTimes(2);
+        expect(saver.getState()).toBe("clean");
+    });
+
+    it("abandons debt even when the in-flight write fails", async () => {
+        let rejectWrite!: (error: Error) => void;
+        const save = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }));
+        const saver = makeSaver(save);
+
+        saver.schedule();
+        await vi.advanceTimersByTimeAsync(800);
+        const abandoning = saver.abandon();
+        rejectWrite(new Error("disk full"));
+        await expect(abandoning).resolves.toBeUndefined();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(save).toHaveBeenCalledTimes(1);
+        expect(saver.isPending()).toBe(false);
+        expect(saver.getState()).toBe("clean");
+    });
+
     it("retries a rejected write on its own, with no further edits", async () => {
         // The other half of the defect: the old copies logged a failed save and forgot it, leaving
         // the document dirty with nothing scheduled. Only the next keystroke could rescue it.

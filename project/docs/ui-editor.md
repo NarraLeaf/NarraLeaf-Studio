@@ -5,7 +5,7 @@
 ## 当前实现
 
 - 用户概念分为 Page 和 Game UI。
-- Page 表示完整可打开的界面，例如标题页、设置页、存档页、历史页或画廊页。Page 未来可通过 page API 作为游戏外界面打开，也可通过 layer API 在游戏中叠加显示。
+- Page 表示完整可打开的界面，例如标题页、设置页、存档页、历史页或画廊页。Page 可通过页面导航打开，也可作为 layer 在游戏中叠加显示。
 - Game UI 表示游戏运行时固有界面，例如 On-Stage、Dialog、Notification、Choice、HUD 或快捷栏等，服务于正在进行的剧情和 Player 状态。
 - 底层仍保留 `appSurface` / `stageSurface` 作为内部数据边界：`appSurface` 映射 Page，`stageSurface` 映射 Game UI。
 - UI document 由 `UIDocumentService` 负责 `editor/ui/uidoc.json` 的创建、迁移、编辑、保存。
@@ -15,10 +15,10 @@
 - Notification / Choice / NVL Game UI 创建时生成 list 驱动的默认模板：Notification 为左上角深色胶囊堆叠（item 模板 = 胶囊 Container + Text 读 `item.message`）；Choice 为居中垂直堆叠（浅色条目 + 居中 Text 读 `item.text`，Choice List 蓝图预接 `Item Click → Select Choice`）；NVL 为全屏半透明黑 panel + NVL 列表（普通 Text 读 `item.nametag` + 私有 `NVL Texts` 叶子）。NVL 推进接线（点击/Space → `Next`）挂在 **NVL Panel（`nl.container`）** 的 widgetMain 上，而不是 NVL List——collection widget 不暴露 `Mouse Click` 事件头；panel 自身 Mouse Click 借 DOM 冒泡覆盖 panel 内所有点击，Interaction Layer 的 Element Click 覆盖 panel 外区域。On-Stage 创建为透明空根，点击穿透。
 - 已有 canvas 编辑、outline、inspector、拖拽/缩放、复制粘贴、分组排列、undo/redo、图片拖放、静态诊断、card preview。
 - 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。slot 私有控件按 slot 过滤：Dialog 的 `Sentence`（`nl.dialog.sentence`）、Notification 的 `Notification List`（`nl.notification.list`）、Choice 的 `Choice List`（`nl.choice.list`）、NVL 的 `NVL List`（`nl.nvl.list`）与 `NVL Texts`（`nl.nvl.texts`）。说话人名使用普通 Text 配合 Game `Get Nametag` 蓝图节点。
-- Notification / Choice / NVL 的包装控件复用 `nl.list` 的 item template 机制（`isListLikeWidgetType`）：item 模板子树、per-item scope 隔离、`listItemRefresh`、item context 纯读取节点、List Self 节点全部可用；运行时 items 由 slot bridge 注入（Notification `{id,message}`、Choice `{text,index,disabled}`（hidden 已过滤，index 为原始选项序号）、NVL `{nametag,isActive,index}`），编辑器画布回退到 `previewItems` 占位。`element:nl.list` 派生节点仍只针对 `nl.list`（后续跟进）。
+- Notification / Choice / NVL 的包装控件复用 `nl.list` 的 item template 机制（`isListLikeWidgetType`）：item 模板子树、per-item scope 隔离、`listItemRefresh`、item context 纯读取节点、List Self 节点全部可用；运行时 items 由 slot bridge 注入（Notification `{id,message}`、Choice `{text,index,disabled}`（hidden 已过滤，index 为原始选项序号）、NVL `{nametag,isActive,index}`），编辑器画布使用 `items` 的示例数据和 `placeholderCount` 占位。`element:nl.list` 派生节点仍只针对 `nl.list`。
 - 已有 local blueprint document：`UIGraphService` 持久化 `editor/ui/uigraphs.json`，`LocalBlueprintService` 操作 private blueprint。
-- 已有 Blueprint Lite editor，可编辑 Page / Game UI / widget private blueprint 的 event graph、variables、fields、TypeScript module source。
-- 已有 Dev Mode UI runtime，可读取磁盘 bundle、执行最小 blueprint runtime、应用 Host API 变更并展示 debug panel。
+- Blueprint Lite editor 可编辑 Page / Game UI / widget private blueprint 的 event graph、variables 和 fields；脚本图层的源码以只读视图展示，由外部编辑器修改。
+- Dev Mode 使用共享的游戏 UI runtime，读取 bundle、执行蓝图、应用 Host API 变更并展示 debug panel。
 
 ## 入口文件
 
@@ -51,7 +51,7 @@
 - Page 底层为 `appSurface`，host 为 `app`。
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`、`nvl`。
 - Dialog Game UI 默认模板把推进逻辑集中在 Dialog Content 的 widgetMain 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 和默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连接到同一个 Game `Next` 节点，触发 NarraLeaf virtual click 路径。全屏透明 `nl.container` 只作为工具控件负责命中面板外点击；Dialog Panel 是视觉壳，Dialog Content 是实际顶层点击区。句子仍使用私有 `nl.dialog.sentence` 映射 NarraLeaf React `<Texts />`；说话人名使用普通 `nl.text`，通过自身 `Init` / `On Flush` 事件图读取 Game `Get Nametag` 并在空值时隐藏，不再提供特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog hook 在文本/说话人变化时会对带 Blueprint Value 或 `On Flush` 逻辑的 Dialog 元素派发 flush，因此 Dialog 不重新挂载时也会更新。
-- Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
+- Game UI 不暴露 link 或 layer 配置；Page 在游戏中可通过页面导航或 layer 节点显示在舞台之上。
 - Flow parent 由 `isUIFlowLayoutParentElement` 判定：`nl.list` 及其特化类型，以及布局为 `stack` 或 `scroll` 的 `nl.container`。
 - `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。
 - Slider 的 `track` / `handle` 可以双击进入后按普通 Container 编辑外观，但它们不是普通用户子元素；运行时布局由 Slider renderer 拥有，`handle` 位置由当前映射值推导。
@@ -60,7 +60,7 @@
 
 ## Blueprint 模型
 
-- 事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`。文档根上那张 legacy `graphs` map 已删除。
+- 蓝图图层存放在 `UIGraphDocument.blueprintDocument.blueprints[*].graphs`，每个图层持有图或脚本引用。
 - Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`、`widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`。
 - Blueprint Value 是单点属性动态数据提供方案。目标由 `BlueprintValueRuntimeStore.ts` 的 `valueTargetsFor` 解析：每个文本位点接受值绑定的控件（`uiTextSiteOf`，如 `nl.text` 的文本、`nl.button` 的标签），以及 `nl.image` 的 `imageFill.assetId`、Page 组件 `nl.frame` 的 `params`、`nl.slider` 的 `value`、`nl.switch` 的 `checked`，特化类型继承父类型的目标。检视器不使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
 - 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal，`float` 值使用 Float literal。不会创建额外刷新 layer；刷新由 Blueprint Value 内部记录的 Element 属性依赖驱动。
@@ -88,7 +88,7 @@
 - Page 组件的静态 Page 下拉框以及 `Set Frame Page` 节点卡片会在能确定目标 Frame 时过滤掉该 Frame 所在 Page 和会形成循环嵌套的 Page。Element 版 `Set Frame Page` 通过连接到 `element` 输入的 Frame Element Ref 推断过滤上下文。
 - 在 Workspace 编辑器中，Page 组件内部是只读预览，不注入可编辑的子 Page editor chrome，也不会让选择/resize 命中子 Page 的元素。选中 Page 组件时，resize 控制器上方的浮动按钮组显示 Share 图标按钮，用于打开目标 Page 的独立编辑器 tab。
 - Page 组件在属性面板中隐藏通用 Width / Height 行，改用 Scale。Scale 基于目标 Page 的 `designSize` 换算；`100%` 会把 Page 组件布局尺寸设为目标 Page 的真实分辨率。
-- Page 组件首版为静态目标：props 包含 `targetSurfaceId`、`params`、`navigationMode: "static"`，并预留动画字段；不实现 frame-local push / replace / back。嵌入内容仍会渲染子 Page 内已有 widget / appearance 动画能力。
+- Page 组件的 props 包含 `targetSurfaceId`、`params` 和 `navigationMode: "static"`，支持通过 `animation` 覆盖目标 Page 的进出动画；未指定时使用目标 Page 的动画设置。组件内不提供独立的 push / replace / back 导航栈，子 Page 内的元素动画正常播放。
 - Dev Mode 中每个 Page 组件实例创建独立 `runtimeScopeId`。`surfaceId` 仍用于查找 blueprint owner，`runtimeScopeId` 用于 surface state、widget locals、widget runtime state 和 lifecycle 隔离。
 - 子 Page 在 Frame 实例首次挂载时触发自己的 `surfaceInit`，目标变化或组件卸载时触发 `surfaceUnmount`。同一个目标 Page 被多个 Page 组件引用时，这些 lifecycle 和本地状态互不共享。
 - 子 Page 可通过 Page props 读取父级传入参数，并通过 `frame.emit(event, data)` 向父 Page 上的 Page 组件实例发送固定 widget 事件 `pageEvent`；事件 head 输出 `event` 和 `data`。
@@ -99,8 +99,7 @@
 - 脚本图层的源码由磁盘拥有：Studio 以只读 Monaco 视图显示 `scripts/` 下的文件（`ScriptPreviewEditor.tsx`），编辑交给外部编辑器（`ScriptOpenMenu.tsx`）。
 - 文档模型中的 `function` / `macro` graph kind 仍受校验与迁移支持，但作者无法创建它们；可复用逻辑通过 Fn head 与 Call Fn 节点表达（`built-in/fnNodes.ts`）。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
-- Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。
-- Page 作为游戏内 layer 的真实运行时 host 语义仍待 page/layer API 完成。
+- Widget logic 中视频 `setSource` 仍为 planned；图片 `setSource` 和列表 `refreshItems` 已登记为可用。
 
 ## 修改建议
 

@@ -26,6 +26,53 @@ describe("reading a story row against the project dictionary", () => {
         expect(marks[0]).toMatchObject({ kind: "variant", unitStart: 4, unitEnd: 10, replacement: "color" });
     });
 
+    it.each(["❤️", "か\u3099", "漢\u{E0100}"])("finds a variant after %s", prefix => {
+        const runs: StoryRichRun[] = [{ text: `${prefix}colour` }];
+
+        expect(dictionaryMarks(runs, needles([{ term: "color", variants: ["colour"] }]))).toMatchObject([
+            { kind: "variant", text: "colour", replacement: "color", unitStart: prefix.length, unitEnd: prefix.length + 6 },
+        ]);
+    });
+
+    it("finds a reading for a decomposed Japanese character before Latin text", () => {
+        const runs: StoryRichRun[] = [{ text: "か\u3099word" }];
+
+        expect(dictionaryMarks(runs, needles([{ term: "か\u3099", reading: "が" }]))).toMatchObject([
+            { kind: "reading", text: "か\u3099", unitStart: 0, unitEnd: 2 },
+        ]);
+    });
+
+    it("marks a supplementary-plane variant at the end of a row", () => {
+        const runs: StoryRichRun[] = [{ text: "𐐀olour" }];
+
+        expect(dictionaryMarks(runs, needles([{ term: "𐐨olor", variants: ["𐐨olour"] }]))).toMatchObject([
+            { kind: "variant", text: "𐐀olour", replacement: "𐐀olor", unitStart: 0, unitEnd: 7 },
+        ]);
+    });
+
+    it("tracks ruby after supplementary-plane characters and offers the unannotated occurrence", () => {
+        const runs: StoryRichRun[] = [
+            { text: "😀" },
+            { text: "京", marks: { ruby: "きょう" } },
+            { text: " 京" },
+        ];
+
+        expect(dictionaryMarks(runs, needles([{ term: "京", reading: "きょう" }]))).toMatchObject([
+            { kind: "reading", text: "京", start: 4, end: 5, unitStart: 4, unitEnd: 5 },
+        ]);
+    });
+
+    it("keeps ruby on a supplementary-plane character separate from the next occurrence", () => {
+        const runs: StoryRichRun[] = [
+            { text: "𠮷", marks: { ruby: "よし" } },
+            { text: "𠮷" },
+        ];
+
+        expect(dictionaryMarks(runs, needles([{ term: "𠮷", reading: "よし" }]))).toMatchObject([
+            { kind: "reading", text: "𠮷", start: 2, end: 4, unitStart: 2, unitEnd: 4 },
+        ]);
+    });
+
     it("counts an inline chip as one unit, so a mark after one is not shifted left", () => {
         const runs: StoryRichRun[] = [
             { text: "Hi " },

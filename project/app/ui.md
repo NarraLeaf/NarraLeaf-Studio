@@ -513,6 +513,15 @@ A page's parameters are checked where the file declares or names them:
   type. A warning: the list draws no rows, or draws those fields as authored in
   every row. Rows that carry more than the list draws are fine.
 
+Surface, component and element identities are checked before applying a file:
+
+- **`ui.duplicate_surface`**, **`ui.duplicate_component`** - the same page or
+  component is declared more than once in the file. Errors.
+- **`ui.element_id_in_use`** - two declared elements use the same id, or an
+  element takes the id of an element on a page or component the file does not
+  replace. An error. An element can move when both its source and destination
+  are replaced and only the destination keeps its id.
+
 Three findings are notes rather than refusals, deliberately:
 
 - **`ui.unknown_prop`** - see the note on the prop table above. Reported once per

@@ -17,6 +17,16 @@ describe("sniffMediaType", () => {
         expect(sniffMediaType(file("RIFF", [0, 0, 0, 0], "WEBP"))).toBe("image/webp");
     });
 
+    it("recognises AVIF before treating ISO base media as video", () => {
+        const avif = file([0, 0, 0, 0x20], "ftyp", "avif", [0, 0, 0, 0], "avifmif1miafMA1B");
+        expect(sniffMediaType(avif)).toBe("image/avif");
+        expect(fileExtensionFromBytes(avif)).toBe("avif");
+        const compatible = file([0, 0, 0, 0x18], "ftyp", "mif1", [0, 0, 0, 0], "mif1avif");
+        expect(sniffMediaType(compatible)).toBe("image/avif");
+        const outsideFtyp = file([0, 0, 0, 0x14], "ftyp", "mif1", [0, 0, 0, 0], "mif1", "avif");
+        expect(sniffMediaType(outsideFtyp)).toBe("video/mp4");
+    });
+
     it("separates the two RIFF payloads by their form type rather than by their magic", () => {
         // Both start `RIFF`; serving a wav as an image is the failure this guards.
         expect(sniffMediaType(file("RIFF", [0, 0, 0, 0], "WAVE"))).toBe("audio/wav");
@@ -31,6 +41,13 @@ describe("sniffMediaType", () => {
         // `ftyp` alone does not say which; the major brand does.
         expect(sniffMediaType(file([0, 0, 0, 0x20], "ftyp", "M4A "))).toBe("audio/mp4");
         expect(sniffMediaType(file([0, 0, 0, 0x20], "ftyp", "isom"))).toBe("video/mp4");
+    });
+
+    it("recognises an MPEG Layer III frame with CRC protection", () => {
+        // A header emitted by LAME with error protection enabled.
+        const mp3 = file([0xff, 0xfa, 0x90, 0x64]);
+        expect(sniffMediaType(mp3)).toBe("audio/mpeg");
+        expect(fileExtensionFromBytes(mp3)).toBe("mp3");
     });
 
     it("names video containers", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Services } from "../services";
+import { DebouncedSaver } from "./DebouncedSaver";
 import { flushPendingSaves } from "./flushPendingSaves";
 
 /**
@@ -38,5 +39,36 @@ describe("flushPendingSaves", () => {
         expect(result.flushed).toBe(false);
         expect(result.failures).toHaveLength(1);
         expect(log).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a document write that fails while the shutdown flush is waiting", async () => {
+        vi.useFakeTimers();
+        try {
+            let rejectWrite!: (error: Error) => void;
+            const saver = new DebouncedSaver({
+                delayMs: 10,
+                maxWaitMs: 100,
+                save: () => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }),
+            });
+            saver.schedule();
+            await vi.advanceTimersByTimeAsync(10);
+            const log = vi.fn();
+            const flushing = flushPendingSaves(contextWith({
+                [Services.SaveStatus]: {
+                    settlePendingEdits: () => undefined,
+                    listSavers: () => [{ labelKey: "workspace.shell.save.stores.characters", saver }],
+                },
+                [Services.Console]: { log },
+            }));
+
+            rejectWrite(new Error("disk full"));
+            const result = await flushing;
+            expect(result.flushed).toBe(false);
+            expect(result.failures).toHaveLength(1);
+            expect(log).toHaveBeenCalledTimes(1);
+            await saver.abandon();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

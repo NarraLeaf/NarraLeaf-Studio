@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DevTools, Pause } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
-import { compileStagePreviewToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStagePreviewToNlr, compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
@@ -381,6 +381,32 @@ describe("compileStagePreviewToNlr", () => {
         // A seed statement precedes the injection script.
         expect(types.length).toBeGreaterThanOrEqual(4);
         expect(compiled.diagnostics).toEqual([]);
+    });
+
+    it("keeps a null scene-variable assignment in a preview and a row launch", async () => {
+        const document = baseDocument({
+            data: block("data", "declaration", { scope: "scene", name: "data", valueType: "json", defaultValue: { active: true }, storageKey: "data" }),
+            other: block("other", "declaration", { scope: "scene", name: "other", valueType: "number", defaultValue: 7, storageKey: "other" }),
+            clear: block("clear", "action", { action: "setVariable", target: { scope: "scene", variableId: "data" }, value: null }),
+            target: say("target"),
+        }, ["data", "other", "clear", "target"]);
+        const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
+        expect(snapshot.sceneVariables).toEqual({ data: null });
+
+        const preview = await compilePreview(document, "target");
+        const launch = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            launch: { targetBlockId: "target", snapshot },
+        });
+        for (const compiled of [preview, launch]) {
+            const statements = (compiled.scene as unknown as { actions: unknown[] }).actions;
+            const seeds = statements.flatMap(statementActions)
+                .filter(action => action.type === "persistent:set")
+                .map(action => action.contentNode.getContent());
+            expect(seeds).toContainEqual(["data", null]);
+            expect(seeds).toContainEqual(["other", 7]);
+        }
     });
     /**
      * A layered character is a stack of images the engine switches by tag, and an Image's src shape

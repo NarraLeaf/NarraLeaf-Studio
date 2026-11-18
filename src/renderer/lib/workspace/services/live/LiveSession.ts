@@ -435,7 +435,7 @@ export class LiveSession {
     }): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
-            return this.failEntry(blocked);
+            return blocked.kind === "busy" ? blocked : this.failEntry(blocked);
         }
         this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
@@ -571,7 +571,7 @@ export class LiveSession {
     public async join(target: LiveJoinTarget): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
-            return this.failEntry(blocked);
+            return blocked.kind === "busy" ? blocked : this.failEntry(blocked);
         }
         this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
@@ -610,7 +610,6 @@ export class LiveSession {
             const plan = planLiveJoin({
                 sessionProject: room.project,
                 openProject: ready.project.repositoryId,
-                uncommittedChanges: await this.deps.version.hasUncommittedChanges(),
                 ...(room.revision === undefined ? {} : { revision: room.revision }),
             });
             if (plan.kind === "clone") {
@@ -632,7 +631,9 @@ export class LiveSession {
                     return this.failEntry(refused);
                 }
             }
-            const checkpoint = plan.checkpoint ? await this.deps.version.checkpoint() : null;
+            // Settle pending editor saves at the checkpoint, including work made while awaiting the
+            // host. A clean working tree returns null without recording an empty revision.
+            const checkpoint = await this.deps.version.checkpoint();
             // Read BEFORE the room's version is written over this tree, because afterwards there is
             // nothing on this machine that remembers where its own work was. The checkpoint when one
             // was recorded, and otherwise the revision the tree is already sitting on - a clean tree
@@ -1622,6 +1623,8 @@ export class LiveSession {
                 // others are offered rather than pulled into.
                 ? session.rooms.close(session.room.id)
                 : session.rooms.leave(session.room.id);
+        await said.catch(() => undefined);
+        await this.giveBackOwnWork(session, cause, silent);
         this.set({
             ...IDLE_LIVE_SESSION,
             ended: {
@@ -1634,8 +1637,6 @@ export class LiveSession {
                 ...(session.divergence === null ? {} : { divergence: session.divergence }),
             },
         });
-        await said.catch(() => undefined);
-        await this.giveBackOwnWork(session, cause, silent);
     }
 
     /**
@@ -2802,6 +2803,9 @@ export class LiveSession {
                 this.waitingToBeLetIn = null;
                 stopWatching?.();
                 cancelClock?.();
+                if (answer === null) {
+                    this.patch({ phase: "entering" });
+                }
                 resolve(answer);
             };
             // Walking away is an ending like the others, and the one the author drives. Reported as

@@ -15,6 +15,7 @@ import {
     type TestRunStatus,
 } from "@/lib/testing/types";
 import { useWorkspace } from "../../context";
+import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useRegistry } from "../../registry";
 import { jumpToSearchTarget } from "../search/searchJump";
 import { getTestRunService } from "./testRunService";
@@ -70,6 +71,8 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
+    // Freeze changes independently of the run service's notifications.
+    const operationsFrozen = useWorkspaceOperationsFrozen();
 
     const testRun = useMemo(
         () => (context && isInitialized ? getTestRunService(context) : null),
@@ -78,18 +81,25 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
 
     const runId = payload?.runId;
     const [record, setRecord] = useState<TestRunRecord | null>(null);
+    const [rerunAvailable, setRerunAvailable] = useState(false);
     const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!testRun || !runId) {
             setRecord(null);
+            setRerunAvailable(false);
             return;
         }
-        const sync = () => setRecord(testRun.getRun(runId));
+        const sync = () => {
+            const next = testRun.getRun(runId);
+            setRecord(next);
+            // Another run changes availability without changing this report's record.
+            setRerunAvailable(Boolean(next && testRun.getAvailability(next.testId).available));
+        };
         sync();
         return testRun.onChanged(sync);
-    }, [testRun, runId]);
+    }, [testRun, runId, operationsFrozen]);
 
     const findings = useMemo(() => {
         const sorted = sortTestFindings(record?.findings ?? []);
@@ -117,7 +127,7 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
     const rerunBlocked = !record
         || running
         || !testRun
-        || testRun.getAvailability(record.testId).available === false;
+        || !rerunAvailable;
 
     const handleRerun = useCallback(() => {
         if (!testRun || !record) {

@@ -60,10 +60,11 @@ const FOLDER: AssetGroup = {
 const importToGroup = vi.fn();
 const dropOnItem = vi.fn();
 
-function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
+function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>(), onAssetClick = () => undefined }: {
     publishRowOrder?: (keys: readonly string[]) => void;
     assetTransfers?: Readonly<Record<string, number>>;
     unreadableCategories?: ReadonlySet<AssetCategory>;
+    onAssetClick?: (asset: Asset, multi: boolean) => void;
 }) {
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -92,7 +93,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unrea
         setExpandedGroups,
         handleItemSelect: () => undefined,
         publishRowOrder,
-        handleAssetClick: () => undefined,
+        handleAssetClick: onAssetClick,
         handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
@@ -142,6 +143,16 @@ function drawnRows(): number {
 }
 
 describe("AssetsListView on a large library", () => {
+    it("opens a plain click and keeps modified clicks in selection mode", () => {
+        const onAssetClick = vi.fn();
+        render(<Harness onAssetClick={onAssetClick} />);
+        const row = document.querySelector("[data-asset-row]") as HTMLElement;
+        expect(row).toBeTruthy();
+        fireEvent.click(row);
+        fireEvent.click(row, { shiftKey: true });
+        expect(onAssetClick.mock.calls.map(call => call[1])).toEqual([false, true]);
+    });
+
     it("draws a screenful of rows, not the library", () => {
         render(<Harness />);
 

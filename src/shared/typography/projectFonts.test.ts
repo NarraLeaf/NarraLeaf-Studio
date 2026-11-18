@@ -9,6 +9,7 @@ import {
     setActiveProjectFonts,
     setActiveProjectLocale,
     subscribeActiveProjectFonts,
+    subscribeActiveProjectLocale,
 } from "./projectFonts";
 
 afterEach(() => {
@@ -150,6 +151,33 @@ describe("setActiveProjectLocale", () => {
         expect(listener).toHaveBeenCalledTimes(1);
         expect(getActiveProjectFontIds()).toEqual(["a"]);
         unsubscribe();
+    });
+
+    it("notifies language readers after resolving the stack, including unchanged stacks", () => {
+        setActiveProjectFonts([{assetId: "jp", locales: ["ja"]}, {assetId: "serif"}]);
+        setActiveProjectLocale("ja");
+        const snapshots: {kind: string; locale: string; ids: readonly string[]}[] = [];
+        const capture = (kind: string) => snapshots.push({
+            kind,
+            locale: getActiveProjectLocale(),
+            ids: getActiveProjectFontIds(),
+        });
+        const unsubscribeFonts = subscribeActiveProjectFonts(() => capture("fonts"));
+        const unsubscribeLocale = subscribeActiveProjectLocale(() => capture("locale"));
+
+        setActiveProjectLocale("en");
+        setActiveProjectLocale("fr");
+        setActiveProjectLocale(" fr ");
+        expect(snapshots).toEqual([
+            {kind: "fonts", locale: "en", ids: ["serif"]},
+            {kind: "locale", locale: "en", ids: ["serif"]},
+            {kind: "locale", locale: "fr", ids: ["serif"]},
+        ]);
+
+        unsubscribeFonts();
+        unsubscribeLocale();
+        setActiveProjectLocale("ja");
+        expect(snapshots).toHaveLength(3);
     });
 });
 

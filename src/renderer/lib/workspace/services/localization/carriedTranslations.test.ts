@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { LocalizationUnit } from "@shared/types/localization";
-import { readCarriedTranslations, readProjectTranslations } from "./carriedTranslations";
+import {
+    collectClipboardTranslations,
+    planCarriedTranslations,
+    readCarriedTranslations,
+    readProjectTranslations,
+} from "./carriedTranslations";
 
 /**
  * Reading translations to carry: from a clipboard another Studio wrote, and from this project's own
@@ -24,6 +29,26 @@ describe("readCarriedTranslations", () => {
         expect(readCarriedTranslations(undefined)).toBeUndefined();
         expect(readCarriedTranslations([])).toBeUndefined();
         expect(readCarriedTranslations({ en: {} })).toBeUndefined();
+    });
+
+    it("retains special unit ids when copying and reading a clipboard", () => {
+        const units = Object.fromEntries([["__proto__", unit("First")], ["constructor", unit("Second")]]);
+        const copied = collectClipboardTranslations(["__proto__", "constructor"], ["ja"], () => units);
+        const read = readCarriedTranslations(copied);
+        for (const id of ["__proto__", "constructor"]) {
+            expect(Object.hasOwn(copied!.ja, id)).toBe(true);
+            expect(Object.hasOwn(read!.ja, id)).toBe(true);
+            expect(read!.ja[id]).toEqual(units[id]);
+        }
+    });
+
+    it("keeps special destination ids when planning a paste", () => {
+        const carried = { ja: { a: unit("First"), b: unit("Second") } };
+        const plan = planCarriedTranslations(carried, new Map([["a", "__proto__"], ["b", "constructor"]]), new Set(["ja"]));
+        expect(plan.carried).toBe(2);
+        for (const id of ["__proto__", "constructor"]) {
+            expect(Object.hasOwn(plan.writes[0].units, id)).toBe(true);
+        }
     });
 });
 

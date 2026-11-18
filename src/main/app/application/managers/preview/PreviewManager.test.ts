@@ -234,6 +234,19 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
         await Promise.all(launches.map(launch => expect(launch).resolves.toBe("idle")));
     });
 
+    it("stopAll cancels launches that have not registered a session yet", async () => {
+        const manager = makeManager();
+        const second = path.join(os.tmpdir(), "nls-preview-queued-project-2");
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockRejectedValue(new Error("unexpected compile"));
+        const launches = [manager.launch(projectPath, entry), manager.launch(second, entry)];
+
+        await manager.stopAll();
+
+        await Promise.all(launches.map(launch => expect(launch).resolves.toBe("idle")));
+        expect(compileGameRuntimeArtifactInWorker).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
     it("never spawns the runtime it was told to abandon", async () => {
         const compile = stallingCompile();
         const manager = makeManager();

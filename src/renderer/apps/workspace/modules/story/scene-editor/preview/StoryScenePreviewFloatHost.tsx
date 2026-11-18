@@ -243,7 +243,7 @@ function useAreaBox(areaRef: RefObject<HTMLElement | null>, hub: StoryPreviewHub
 
 /** A story document, loaded once and kept current with its edits. */
 export function useStoryDocument(context: WorkspaceContext | null, storyId: StoryId | null): StoryDocument | null {
-    const [state, setState] = useState<{ storyId: StoryId; document: StoryDocument } | null>(null);
+    const [state, setState] = useState<{ context: WorkspaceContext; storyId: StoryId; document: StoryDocument } | null>(null);
     useEffect(() => {
         if (!context || !storyId) {
             return;
@@ -253,7 +253,7 @@ export function useStoryDocument(context: WorkspaceContext | null, storyId: Stor
         storyService.loadStory(storyId)
             .then(document => {
                 if (!cancelled) {
-                    setState({ storyId, document: { ...document } });
+                    setState({ context, storyId, document: { ...document } });
                 }
             })
             .catch(() => {
@@ -263,7 +263,7 @@ export function useStoryDocument(context: WorkspaceContext | null, storyId: Stor
             });
         const unsubscribe = storyService.onDocumentChanged(event => {
             if (event.storyId === storyId) {
-                setState({ storyId, document: { ...event.document } });
+                setState({ context, storyId, document: { ...event.document } });
             }
         });
         return () => {
@@ -271,6 +271,6 @@ export function useStoryDocument(context: WorkspaceContext | null, storyId: Stor
             unsubscribe();
         };
     }, [context, storyId]);
-    // A document still loading for a different story is not this story's.
-    return state && state.storyId === storyId ? state.document : null;
+    // A story id can recur in another project, so the workspace owns the cached document too.
+    return state && state.context === context && state.storyId === storyId ? state.document : null;
 }

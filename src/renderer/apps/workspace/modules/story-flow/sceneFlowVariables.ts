@@ -12,11 +12,9 @@
  *
  * Two approximations are deliberate, and stated rather than hidden:
  *
- * - **In-scene position is not modelled.** A write authored *after* the jump that leaves the scene
- *   never runs, and this module still counts it. The scene map has never modelled in-scene control
- *   flow — `goto` is invisible to it by design (§12.6) — so tracking a write against a jump's row
- *   position would need the row-level walk the runtime debug model does, on a map whose whole value
- *   is that it is not that.
+ * - **Scene-internal loops and concurrent groups are conservative.** Jump and guard positions use
+ *   document order where it is meaningful; loops, concurrent writes and calls widen affected values
+ *   when that order cannot bound their execution.
  * - **Ranges over-approximate.** Where two conditional writes could not both happen, the interval is
  *   widened as if they could. A range that is too wide never claims a reachable value is impossible;
  *   the reverse error hides an ending.
@@ -40,6 +38,7 @@
  *   this module has never answered.
  */
 
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { BlueprintDocument, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import type {
     StoryActionPayload,
@@ -57,6 +56,7 @@ import {
     listScenesInDocumentOrder,
     savedVariableDefs,
     sceneVariableDefs,
+    resolveStoryGroupRunMode,
     storyPersistentDefs,
     storyRowAssignedVariable,
     storyVariableRefKey,
@@ -200,6 +200,8 @@ export type SceneFlowBlueprintWrites = {
     byBlueprintId: ReadonlyMap<string, ReadonlySet<string>>;
     /** Keys written from a graph no row in the document runs. Unknown everywhere, not at one row. */
     ambient: ReadonlySet<string>;
+    /** A script layer can write variables whose keys are not visible in the graph. */
+    opaque?: boolean;
 };
 
 const NO_BLUEPRINT_WRITES: SceneFlowBlueprintWrites = {
@@ -296,7 +298,8 @@ export function collectBlueprintVariableWrites(
             }
         }
     }
-    return { byBlueprintId, ambient };
+    const opaque = Object.values(document.blueprints ?? {}).some(blueprint => hasScriptLayer(blueprint));
+    return { byBlueprintId, ambient, opaque };
 }
 
 /**
@@ -309,14 +312,16 @@ type SceneFlowWrite = {
     delta: SceneFlowDelta;
     /** The fork arms above this write, nearest first. Empty means the scene's own spine. */
     armChain: StoryBlockId[];
+    /** A loop may finish or break before the write runs. */
+    maySkip?: boolean;
 };
 
 /**
  * Whether a block forks — the same two-block test `sceneFlowModel.describeArm` applies, restated as a
  * predicate because attribution needs the ancestry, not the wording.
  *
- * `sequence` / `parallel` / `race` / `repeat` are ordering, not choosing: every write inside them
- * runs, so a write under a `sequence` is as certain as one at the top of the scene.
+ * Group execution is recorded separately from fork ancestry; a sequence runs its rows in order,
+ * while repeats and concurrent groups need conservative effects.
  */
 function isForkArm(block: StoryBlock): boolean {
     return (block.kind === "nodeAction" && block.payload.action === "choiceOption")
@@ -330,6 +335,7 @@ function isRepeat(block: StoryBlock): boolean {
 type SceneFlowAncestry = {
     armChain: StoryBlockId[];
     insideRepeat: boolean;
+    insideConcurrent: boolean;
 };
 
 /**
@@ -342,6 +348,7 @@ type SceneFlowAncestry = {
 function readAncestry(scene: StoryScene, block: StoryBlock): SceneFlowAncestry {
     const armChain: StoryBlockId[] = [];
     let insideRepeat = false;
+    let insideConcurrent = false;
     const seen = new Set<StoryBlockId>();
     let parentId = block.parentId;
     while (parentId && !seen.has(parentId)) {
@@ -354,10 +361,14 @@ function readAncestry(scene: StoryScene, block: StoryBlock): SceneFlowAncestry {
             armChain.push(parent.id);
         } else if (isRepeat(parent)) {
             insideRepeat = true;
+        } else if (parent.kind === "control" && (parent.payload.control === "sequence"
+            || parent.payload.control === "parallel" || parent.payload.control === "race")) {
+            const mode = resolveStoryGroupRunMode(parent.payload);
+            insideConcurrent ||= mode === "all" || mode === "allAsync" || mode === "any";
         }
         parentId = parent.parentId;
     }
-    return { armChain, insideRepeat };
+    return { armChain, insideRepeat, insideConcurrent };
 }
 
 function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBlueprintWrites): SceneFlowWrite[] {
@@ -365,9 +376,22 @@ function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBluepri
     // A disabled row is compiled out with its whole subtree (schema v7), so a write inside one never
     // runs. Counting it would move a counter the shipped game never moves — the one lie a author
     // greying a row out is explicitly trying to avoid.
-    const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: candidate => candidate.disabled === true });
+    const blocks = listSceneBlocksInDocumentOrder(scene, {
+        skipSubtree: candidate => candidate.disabled === true
+            || (candidate.kind === "control" && candidate.payload.control === "repeat"
+                && !candidate.payload.until && candidate.payload.times !== undefined && candidate.payload.times <= 0),
+    });
     for (const block of blocks) {
         if (block.kind !== "action") {
+            continue;
+        }
+        if (block.payload.action === "plugin") {
+            writes.push({
+                blockId: block.id,
+                variableKey: "*",
+                delta: { op: "unknown" },
+                armChain: readAncestry(scene, block).armChain,
+            });
             continue;
         }
         if (block.payload.action === "blueprint") {
@@ -411,13 +435,13 @@ function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBluepri
         writes.push({
             blockId: block.id,
             variableKey: storyVariableRefKey(block.payload.target),
-            // A `repeat` runs its body an author-declared number of times — `times` is optional, and
-            // nothing here knows whether the loop was broken out of — so an accumulate inside one
-            // compounds an amount this module cannot count. A `set` survives: assigning the same
-            // literal N times leaves the same value, so the only thing at stake is whether the loop
-            // ran at all, and an author writing a loop means it to run.
-            delta: ancestry.insideRepeat && delta.op === "add" ? { op: "unknown" } : delta,
+            // Loops can repeat an increment; concurrent groups can race or reorder any write.
+            // A loop's literal assignment keeps its value, but may be skipped by a break.
+            delta: ancestry.insideConcurrent || (ancestry.insideRepeat && delta.op === "add")
+                ? { op: "unknown" }
+                : delta,
             armChain: ancestry.armChain,
+            maySkip: ancestry.insideRepeat,
         });
     }
     return writes;
@@ -437,6 +461,7 @@ function collectWritesByScene(
 type SceneFlowDocumentIndex = {
     writesByScene: Map<StorySceneId, SceneFlowWrite[]>;
     numericVariables: SceneFlowNumericVariable[];
+    callEffectsByScene: Map<StorySceneId, SceneFlowVariableEffect[]>;
 };
 
 /**
@@ -475,9 +500,11 @@ function documentIndex(
     if (cached) {
         return cached;
     }
+    const writesByScene = collectWritesByScene(document, blueprintWrites);
     const index: SceneFlowDocumentIndex = {
-        writesByScene: collectWritesByScene(document, blueprintWrites),
+        writesByScene,
         numericVariables: listNumericStoryVariables(document),
+        callEffectsByScene: collectCallEffects(document, writesByScene),
     };
     byWrites.set(blueprintWrites, index);
     return index;
@@ -501,7 +528,45 @@ function findNumericDeclaration(
 }
 
 function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEffect {
-    return { variableKey: write.variableKey, delta: write.delta, certain };
+    return { variableKey: write.variableKey, delta: write.delta, certain: certain && !write.maySkip };
+}
+
+/** Writes reachable from a call may have changed the caller's state when it resumes. */
+function collectCallEffects(
+    document: StoryDocument,
+    writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
+): Map<StorySceneId, SceneFlowVariableEffect[]> {
+    const outgoing = new Map<StorySceneId, StorySceneId[]>();
+    const calls = new Map<StorySceneId, StorySceneId[]>();
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: row => Boolean(row.disabled) })) {
+            if (block.kind !== "jump" || !block.payload.targetSceneId || !document.scenes[block.payload.targetSceneId]) {
+                continue;
+            }
+            const target = block.payload.targetSceneId;
+            outgoing.set(scene.id, [...(outgoing.get(scene.id) ?? []), target]);
+            if (block.payload.returnable) {
+                calls.set(scene.id, [...(calls.get(scene.id) ?? []), target]);
+            }
+        }
+    }
+    const result = new Map<StorySceneId, SceneFlowVariableEffect[]>();
+    for (const [caller, targets] of calls) {
+        const seen = new Set<StorySceneId>();
+        const keys = new Set<string>();
+        const queue = [...targets];
+        for (let cursor = 0; cursor < queue.length; cursor++) {
+            const sceneId = queue[cursor];
+            if (seen.has(sceneId)) continue;
+            seen.add(sceneId);
+            for (const write of writesByScene.get(sceneId) ?? []) keys.add(write.variableKey);
+            queue.push(...(outgoing.get(sceneId) ?? []));
+        }
+        result.set(caller, [...keys].map(variableKey => ({
+            variableKey, delta: { op: "unknown" }, certain: true,
+        })));
+    }
+    return result;
 }
 
 /**
@@ -581,7 +646,7 @@ export function branchDeltaFor(
     effects: SceneFlowVariableEffect[],
     variableKey: string,
 ): SceneFlowDelta | null {
-    const mine = effects.filter(effect => effect.variableKey === variableKey);
+    const mine = effects.filter(effect => effect.variableKey === variableKey || effect.variableKey === "*");
     if (mine.length === 0) {
         return null;
     }
@@ -732,7 +797,7 @@ function applyEffects(
 ): SceneFlowRange {
     let current = range;
     for (const effect of effects) {
-        if (effect.variableKey !== variableKey) {
+        if (effect.variableKey !== variableKey && effect.variableKey !== "*") {
             continue;
         }
         if (current.kind === "unknown" || effect.delta.op === "unknown") {
@@ -769,10 +834,8 @@ function applyEffects(
  * of the callee's rows ran depends on where the return sits inside it, which is the in-scene position
  * this module does not model. A row-level walk is what answers that, and this is not one.
  *
- * **The call edge itself is exempt**, so arrival at the subroutine is still the value the caller had
- * when it left - which is the number an author reading the callee's box wants. The exemption is for
- * edges where EVERY jump comes back, matching `SceneFlowEdgeModel.returns`: an edge carrying a plain
- * jump as well can be walked after the call returned, and that reading has to absorb.
+ * A scene with one call can enter its callee without that call's own effects. With multiple calls,
+ * earlier calls can affect later callees, so all call-reachable writes remain unknown on those edges.
  */
 type SceneFlowCallAbsorption = {
     bySceneId: Map<StorySceneId, SceneFlowVariableEffect[]>;
@@ -782,62 +845,21 @@ type SceneFlowCallAbsorption = {
 
 function callAbsorbedEffects(
     graph: SceneFlowGraph,
-    writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites,
 ): SceneFlowCallAbsorption {
-    const outgoing = new Map<StorySceneId, StorySceneId[]>();
-    const callees = new Map<StorySceneId, StorySceneId[]>();
     const pureCallEdges = new Set<string>();
+    const callCount = new Map<StorySceneId, number>();
     for (const edge of graph.edges) {
-        const onward = outgoing.get(edge.source);
-        if (onward) {
-            onward.push(edge.target);
-        } else {
-            outgoing.set(edge.source, [edge.target]);
-        }
-        if (!edge.jumps.some(jump => jump.returnable)) {
-            continue;
-        }
-        if (edge.jumps.every(jump => jump.returnable)) {
+        const count = edge.jumps.filter(jump => jump.returnable && !jump.disabled).length;
+        callCount.set(edge.source, (callCount.get(edge.source) ?? 0) + count);
+    }
+    for (const edge of graph.edges) {
+        if (callCount.get(edge.source) === 1 && edge.jumps.every(jump => jump.returnable)) {
             pureCallEdges.add(`${edge.source}->${edge.target}`);
         }
-        // `some`, not `every`: an edge carrying one plain jump and one call is still a call, and the
-        // caller still has to absorb what the call did.
-        const called = callees.get(edge.source);
-        if (called) {
-            called.push(edge.target);
-        } else {
-            callees.set(edge.source, [edge.target]);
-        }
     }
-    if (callees.size === 0) {
-        return { bySceneId: new Map(), pureCallEdges };
-    }
-
-    const absorbed = new Map<StorySceneId, SceneFlowVariableEffect[]>();
-    for (const [callerSceneId, entryPoints] of callees) {
-        const keys = new Set<string>();
-        const seen = new Set<StorySceneId>();
-        const frontier = [...entryPoints];
-        for (let cursor = 0; cursor < frontier.length; cursor++) {
-            const sceneId = frontier[cursor];
-            if (seen.has(sceneId)) {
-                continue;
-            }
-            seen.add(sceneId);
-            for (const write of writesByScene.get(sceneId) ?? []) {
-                keys.add(write.variableKey);
-            }
-            frontier.push(...(outgoing.get(sceneId) ?? []));
-        }
-        if (keys.size > 0) {
-            absorbed.set(callerSceneId, Array.from(keys, variableKey => ({
-                variableKey,
-                delta: { op: "unknown" } as const,
-                certain: true,
-            })));
-        }
-    }
-    return { bySceneId: absorbed, pureCallEdges };
+    return { bySceneId: documentIndex(document, blueprintWrites).callEffectsByScene, pureCallEdges };
 }
 
 /**
@@ -863,6 +885,9 @@ type SceneFlowTraversalStep =
 type SceneFlowTraversal = {
     source: StorySceneId;
     target: StorySceneId;
+    jumpBlockId: StoryBlockId;
+    returnable: boolean;
+    disabled: boolean;
     /** Applied first: what the scene's calls did, which is `unknown` and so does not depend on order. */
     effects: SceneFlowVariableEffect[];
     /** The scene's own rows up to the jump, in the order they run. */
@@ -936,6 +961,7 @@ type SceneFlowSceneOrder = {
     ordered: StoryBlock[];
     /** A `goto` can send the run backwards, so document order says nothing about what ran first. */
     hasGoto: boolean;
+    hasSelfJump: boolean;
 };
 
 function readSceneOrder(scene: StoryScene): SceneFlowSceneOrder {
@@ -945,6 +971,7 @@ function readSceneOrder(scene: StoryScene): SceneFlowSceneOrder {
         ordered,
         position: new Map(ordered.map((block, index) => [block.id, index])),
         hasGoto: ordered.some(block => block.kind === "control" && block.payload.control === "goto"),
+        hasSelfJump: ordered.some(block => block.kind === "jump" && block.payload.targetSceneId === scene.id),
     };
 }
 
@@ -972,15 +999,24 @@ function jumpTraversalSteps(
     sceneId: StorySceneId,
     jumpBlockId: StoryBlockId,
     order: SceneFlowSceneOrder | undefined,
+    chosenArms: ReadonlySet<StoryBlockId> = new Set(),
 ): SceneFlowTraversalStep[] {
     const scene = document.scenes[sceneId];
     const jump = scene?.blocks[jumpBlockId];
-    const ancestry = scene && jump ? readAncestry(scene, jump) : { armChain: [], insideRepeat: false };
+    const ancestry = scene && jump ? readAncestry(scene, jump)
+        : { armChain: [], insideRepeat: false, insideConcurrent: false };
     const jumpChain = ancestry.armChain;
     const onPath = (write: SceneFlowWrite): boolean => isChainSuffix(write.armChain, jumpChain);
     const jumpIndex = order?.position.get(jumpBlockId);
 
-    if (!scene || !order || jumpIndex === undefined || order.hasGoto) {
+    if (order?.hasGoto || order?.hasSelfJump) {
+        // A backward goto or scene re-entry can repeat a write before this jump.
+        return writes.map(write => ({
+            kind: "effect" as const,
+            effect: { ...effectOf(write, false), delta: { op: "unknown" as const } },
+        }));
+    }
+    if (!scene || !order || jumpIndex === undefined) {
         return writes.map(write => ({ kind: "effect" as const, effect: effectOf(write, false) }));
     }
     if (ancestry.insideRepeat) {
@@ -1043,13 +1079,15 @@ function jumpTraversalSteps(
         });
     }
     for (const fork of forks.values()) {
+        const selected = fork.arms.filter(armId => chosenArms.has(armId));
+        const arms = selected.length > 0 ? selected : fork.arms;
         located.push({
             index: fork.index,
             step: {
                 kind: "fork",
                 fork: {
-                    exhaustive: fork.exhaustive,
-                    arms: fork.arms.map(armId => writes
+                    exhaustive: selected.length > 0 || fork.exhaustive,
+                    arms: arms.map(armId => writes
                         .filter(write => write.armChain.includes(armId))
                         // On the arm's own spine it ran whenever the arm did; deeper, another fork decided.
                         .map(write => effectOf(write, write.armChain[0] === armId))),
@@ -1081,6 +1119,74 @@ function applyTraversalSteps(
         current = joined ?? current;
     }
     return current;
+}
+
+/** Prepare the row-ordered variable effects for every jump once. */
+function collectTraversals(
+    graph: SceneFlowGraph,
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites,
+): SceneFlowTraversal[] {
+    const { writesByScene } = documentIndex(document, blueprintWrites);
+    const callAbsorbed = callAbsorbedEffects(graph, document, blueprintWrites);
+    const traversals: SceneFlowTraversal[] = [];
+    const orderByScene = new Map<StorySceneId, SceneFlowSceneOrder>();
+    for (const edge of graph.edges) {
+        const scene = document.scenes[edge.source];
+        let order = orderByScene.get(edge.source);
+        if (!order && scene) {
+            order = readSceneOrder(scene);
+            orderByScene.set(edge.source, order);
+        }
+        const effects = callAbsorbed.pureCallEdges.has(`${edge.source}->${edge.target}`)
+            ? []
+            : [...(callAbsorbed.bySceneId.get(edge.source) ?? [])];
+        for (const jump of edge.jumps) {
+            traversals.push({
+                source: edge.source,
+                target: edge.target,
+                jumpBlockId: jump.blockId,
+                returnable: jump.returnable,
+                disabled: jump.disabled,
+                effects,
+                steps: jumpTraversalSteps(document, writesByScene.get(edge.source) ?? [], edge.source, jump.blockId, order),
+            });
+        }
+    }
+    return traversals;
+}
+
+/** Evaluate a continuation using the same row-order rules as the map's arrival ranges. */
+export function createSceneFlowExitEvaluator(
+    graph: SceneFlowGraph,
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): (
+    sceneId: StorySceneId,
+    target: StorySceneId,
+    returnable: boolean,
+    jumpIds: ReadonlySet<StoryBlockId>,
+    variableKey: string,
+    arrival: SceneFlowRange,
+) => SceneFlowRange | null {
+    const byScene = new Map<StorySceneId, SceneFlowTraversal[]>();
+    for (const traversal of collectTraversals(graph, document, blueprintWrites)) {
+        const list = byScene.get(traversal.source) ?? [];
+        list.push(traversal);
+        byScene.set(traversal.source, list);
+    }
+    return (sceneId, target, returnable, jumpIds, variableKey, arrival) => {
+        let result: SceneFlowRange | null = null;
+        for (const traversal of byScene.get(sceneId) ?? []) {
+            if (traversal.disabled || traversal.target !== target || traversal.returnable !== returnable
+                || !jumpIds.has(traversal.jumpBlockId)) continue;
+            const candidate = applyTraversalSteps(
+                applyEffects(arrival, traversal.effects, variableKey), traversal.steps, variableKey,
+            );
+            result = result ? unionRange(result, candidate) : candidate;
+        }
+        return result;
+    };
 }
 
 /**
@@ -1180,7 +1286,7 @@ export function computeVariableRanges(
     const sceneIds = graph.nodes.map(node => node.sceneId);
     const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map(id => [id, UNKNOWN_RANGE]));
 
-    if (blueprintWrites.ambient.has(variableKey)) {
+    if (blueprintWrites.opaque || blueprintWrites.ambient.has(variableKey)) {
         // Something outside the story writes this one on the player's schedule. Every arrival value
         // would be a number contradicted by the next button press.
         return ranges;
@@ -1214,33 +1320,10 @@ export function computeVariableRanges(
         return ranges;
     }
 
-    const { writesByScene } = documentIndex(document, blueprintWrites);
-    const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
-
     // One traversal per jump, because that is the granularity the variable moves at: five options
     // into one hallway are five different counters on arrival, and so are a jump written inside a menu
     // option and one written after the menu. Every jump is on a scene edge, whichever arm owns it.
-    const traversals: SceneFlowTraversal[] = [];
-    const orderByScene = new Map<StorySceneId, SceneFlowSceneOrder>();
-    for (const edge of graph.edges) {
-        const scene = document.scenes[edge.source];
-        let order = orderByScene.get(edge.source);
-        if (!order && scene) {
-            order = readSceneOrder(scene);
-            orderByScene.set(edge.source, order);
-        }
-        const effects = callAbsorbed.pureCallEdges.has(`${edge.source}->${edge.target}`)
-            ? []
-            : [...(callAbsorbed.bySceneId.get(edge.source) ?? [])];
-        for (const jump of edge.jumps) {
-            traversals.push({
-                source: edge.source,
-                target: edge.target,
-                effects,
-                steps: jumpTraversalSteps(document, writesByScene.get(edge.source) ?? [], edge.source, jump.blockId, order),
-            });
-        }
-    }
+    const traversals = collectTraversals(graph, document, blueprintWrites);
 
     const outgoing = new Map<StorySceneId, SceneFlowTraversal[]>();
     const inboundCount = new Map<StorySceneId, number>();
@@ -1305,11 +1388,8 @@ export function computeVariableRanges(
 /**
  * The effects that apply on the way out through each arm, keyed by branch node id.
  *
- * The **arrival** reading, which is not what `collectBranchEffects` answers: that one is subtree-only
- * because an arm's own chip is about what that arm does, while this is the arm's subtree plus the
- * spines of every arm it is nested inside - what the counter is worth having come out this way. The
- * two must stay different and must stay derived from one place, which is why this exposes the walk
- * {@link computeVariableRanges} already runs rather than letting a caller rebuild it.
+ * The arm's subtree plus the spines of every arm it is nested inside. `collectBranchEffects` instead
+ * reports the changes attributable to the arm itself.
  */
 export function collectArmArrivalEffects(
     graph: SceneFlowGraph,
@@ -1354,8 +1434,16 @@ export function sceneWritesAsUncertain(
     sceneId: StorySceneId,
     blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): SceneFlowVariableEffect[] {
-    const writes = documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? [];
-    return writes.map(write => effectOf(write, false));
+    const index = documentIndex(document, blueprintWrites);
+    const scene = document.scenes[sceneId];
+    const order = scene ? readSceneOrder(scene) : undefined;
+    const mayRepeat = order?.hasGoto || order?.hasSelfJump;
+    return [
+        ...(index.callEffectsByScene.get(sceneId) ?? []),
+        ...(index.writesByScene.get(sceneId) ?? []).map(write => mayRepeat
+            ? { ...effectOf(write, false), delta: { op: "unknown" as const } }
+            : effectOf(write, false)),
+    ];
 }
 
 /**
@@ -1376,7 +1464,8 @@ export function sceneWritesAsUncertain(
  * this over a real project rather than by reasoning about it:
  *
  *  - A `goto` can send the run backwards, so any row can precede any other.
- *  - A guard *inside* a `repeat` is re-tested after its own body has run a lap.
+ *  - A guard *inside* a `repeat` is re-tested after its own body has run a lap; a concurrent guard
+ *    can see writes from sibling branches in an order the document does not establish.
  *  - **A `repeat`'s own `until` condition is the loop's stop test**, evaluated after each lap of the
  *    body - so the body's writes precede it even though every one of them is written below it.
  *    `/repeat until gold >= 10` around rows that earn gold reads, in document order, as a condition
@@ -1396,12 +1485,13 @@ export function sceneWritesBefore(
         return null;
     }
     const ordered = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => block.disabled === true });
-    if (ordered.some(block => block.kind === "control" && block.payload.control === "goto")) {
+    if (ordered.some(block => (block.kind === "control" && block.payload.control === "goto")
+        || (block.kind === "jump" && block.payload.targetSceneId === sceneId))) {
         return null;
     }
     const guardAncestry = readAncestry(scene, guard);
     // `insideRepeat` answers for the ancestors; a `repeat` carrying an `until` is its own case.
-    if (guardAncestry.insideRepeat || isRepeat(guard)) {
+    if (guardAncestry.insideRepeat || guardAncestry.insideConcurrent || isRepeat(guard)) {
         return null;
     }
     const position = new Map(ordered.map((block, index) => [block.id, index]));
@@ -1410,8 +1500,9 @@ export function sceneWritesBefore(
         return null;
     }
 
-    const effects: SceneFlowVariableEffect[] = [];
-    for (const write of documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? []) {
+    const index = documentIndex(document, blueprintWrites);
+    const effects: SceneFlowVariableEffect[] = [...(index.callEffectsByScene.get(sceneId) ?? [])];
+    for (const write of index.writesByScene.get(sceneId) ?? []) {
         const index = position.get(write.blockId);
         if (index === undefined || index > guardIndex) {
             continue;
@@ -1443,25 +1534,15 @@ export function widenRangeAcrossScene(
     variableKey: string,
     blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): SceneFlowRange {
-    const writes = documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? [];
-    return applyEffects(arrival, writes.map(write => effectOf(write, false)), variableKey);
+    return applyEffects(arrival, sceneWritesAsUncertain(document, sceneId, blueprintWrites), variableKey);
 }
 
 /**
  * What the focused variable is worth when one enumerated route ends — the number the route rail
  * sorts by, and the payoff of the whole layer ("which choices give me the 好感 route").
  *
- * **Final, not on-arrival**: the ending scene's own spine writes are applied, because the rail labels
- * this the route's final value and a counter the last scene moves is part of what the player leaves
- * with. It therefore equals {@link computeVariableRanges}'s arrival range for that ending exactly
- * when the ending writes nothing of its own and one route reaches it — and both count an arm the same
- * way (`armTraversalEffects` here, the path half of {@link jumpTraversalSteps} there: the arm's
- * subtree plus the spines of the arms it is nested inside), which is the point of it living here.
- * Where the range walk joins a menu the run falls out of, a route has already chosen one of its
- * options as that scene's arm. The rail folding `collectBranchEffects` instead was subtree-only, so a
- * story with a fork nested inside an option had the route's value and the ending's chip disagree —
- * two readings of one number, which is the drift `storyRuntimeDebugModel`'s header exists to warn
- * about.
+ * Writes are folded in document order up to each jump and the ending row. The selected arm narrows a
+ * passed fork; other forks are joined as they are for arrival ranges.
  *
  * Honesty rules, all absorbing — one `?` anywhere on the path is the whole answer:
  *
@@ -1473,80 +1554,92 @@ export function widenRangeAcrossScene(
  * - An arm the graph does not know, or one that leaves a scene this route never visits, is a route
  *   this function cannot place in order — `unknown` rather than a value folded from what was left.
  *
- * Takes the two fields it uses rather than `SceneFlowRoute`, so this module never depends on
- * `sceneFlowRoutes.ts` (which already depends on this one's siblings).
+ * The route fields are structural so this module does not depend on `sceneFlowRoutes.ts`.
  */
 export function foldRouteVariableValue(
     graph: SceneFlowGraph,
     document: StoryDocument,
     variableKey: string,
-    route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
+    route: {
+        sceneIds: readonly StorySceneId[];
+        branchIds: readonly string[];
+        endingId?: string | null;
+        truncatedByCycle?: boolean;
+    },
     registry: readonly VariableRegistryEntry[] = [],
     blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): SceneFlowRange {
     const { writesByScene } = documentIndex(document, blueprintWrites);
     const declaration = findNumericDeclaration(document, variableKey, registry);
     const startValue = declaration ? startOfRunValue(declaration) : null;
-    if (startValue === null || blueprintWrites.ambient.has(variableKey)) {
+    if (startValue === null || blueprintWrites.opaque || blueprintWrites.ambient.has(variableKey)
+        || route.truncatedByCycle || route.sceneIds.length === 0) {
         return UNKNOWN_RANGE;
     }
-    const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
+    if (declaration?.scope === "scene") {
+        const owner = findDeclarationBlock(document, declaration.variableId);
+        if (!owner || route.sceneIds.length !== 1 || route.sceneIds[0] !== owner.sceneId) {
+            return UNKNOWN_RANGE;
+        }
+    }
+    const callAbsorbed = callAbsorbedEffects(graph, document, blueprintWrites);
 
-    // Keyed by the scene the arm leaves. A route takes at most one arm per scene: `sceneIds` promises
-    // no repeats, each step's arm is the one that owns that scene's exit, and the trailing arm a
-    // route can end *on* belongs to the ending scene, which no step leaves.
     const branchByNodeId = new Map(graph.branches.map(branch => [branch.id, branch]));
-    const armBySceneId = new Map<StorySceneId, SceneFlowBranchNodeModel>();
+    const armsBySceneId = new Map<StorySceneId, Set<StoryBlockId>>();
     for (const branchId of route.branchIds) {
         const branch = branchByNodeId.get(branchId);
-        if (!branch) {
+        if (!branch || !route.sceneIds.includes(branch.sceneId)) {
             return UNKNOWN_RANGE;
         }
-        armBySceneId.set(branch.sceneId, branch);
+        const arms = armsBySceneId.get(branch.sceneId) ?? new Set<StoryBlockId>();
+        arms.add(branch.blockId);
+        armsBySceneId.set(branch.sceneId, arms);
     }
 
-    const sceneEffects = collectSceneEffects(document, blueprintWrites);
-    let value = startValue;
-    let armsApplied = 0;
-    const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
-        for (const effect of effects) {
-            if (effect.variableKey !== variableKey) {
-                continue;
-            }
-            if (effect.delta.op === "unknown" || !effect.certain) {
-                return false;
-            }
-            value = effect.delta.op === "set" ? effect.delta.value : value + effect.delta.amount;
-        }
-        return true;
-    };
-
-    for (const sceneId of route.sceneIds) {
-        // Scene spine first, then the arm taken out of it — the order `computeVariableRanges` applies
-        // them in, and the order the author wrote them in.
-        if (!apply(sceneEffects.get(sceneId) ?? [])) {
+    let range: SceneFlowRange = { kind: "known", min: startValue, max: startValue };
+    for (const [index, sceneId] of route.sceneIds.entries()) {
+        const scene = document.scenes[sceneId];
+        if (!scene) {
             return UNKNOWN_RANGE;
         }
-        // A route lists the scenes it passes in order, so the scene after a caller is where the
-        // call's work is already done. The callee, when a route enters one, is reached by the exempt
-        // edge and so is not absorbed here either.
-        const next = route.sceneIds[route.sceneIds.indexOf(sceneId) + 1];
+        const next = route.sceneIds[index + 1];
         const entersCallee = next !== undefined && callAbsorbed.pureCallEdges.has(`${sceneId}->${next}`);
-        if (!entersCallee && !apply(callAbsorbed.bySceneId.get(sceneId) ?? [])) {
+        if (!entersCallee) {
+            range = applyEffects(range, callAbsorbed.bySceneId.get(sceneId) ?? [], variableKey);
+        }
+        const order = readSceneOrder(scene);
+        let targets: StoryBlockId[];
+        if (next) {
+            const edge = graph.edges.find(candidate => candidate.source === sceneId && candidate.target === next);
+            targets = edge?.jumps.filter(jump => !jump.disabled).map(jump => jump.blockId) ?? [];
+        } else if (route.endingId && scene.blocks[route.endingId]) {
+            targets = [route.endingId];
+        } else {
+            let endId = "scene-flow:end";
+            while (scene.blocks[endId]) endId += ":end";
+            order.position.set(endId, order.ordered.length);
+            targets = [endId];
+        }
+        if (targets.length === 0) {
             return UNKNOWN_RANGE;
         }
-        const arm = armBySceneId.get(sceneId);
-        if (arm) {
-            armsApplied += 1;
-            if (!apply(armTraversalEffects(document, writesByScene, arm))) {
-                return UNKNOWN_RANGE;
-            }
+        let joined: SceneFlowRange | null = null;
+        for (const target of targets) {
+            const steps = jumpTraversalSteps(
+                document, writesByScene.get(sceneId) ?? [], sceneId, target, order, armsBySceneId.get(sceneId),
+            );
+            const candidate = applyTraversalSteps(range, steps, variableKey);
+            joined = joined ? unionRange(joined, candidate) : candidate;
+        }
+        if (joined) {
+            range = joined;
+        }
+        if (range.kind === "unknown") {
+            return range;
         }
     }
-    if (armsApplied !== armBySceneId.size) {
-        // An arm on the route left a scene the route never lists. Nothing here can say where in the
-        // sequence its writes belong, and folding the rest would report a number missing one.
+    if (range.min !== range.max) {
         return UNKNOWN_RANGE;
     }
-    return { kind: "known", min: value, max: value };
+    return range;
 }

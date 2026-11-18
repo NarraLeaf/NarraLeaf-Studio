@@ -31,10 +31,9 @@ export const ASSET_OVERVIEW_CATEGORY_ORDER: readonly AssetCategory[] = ASSET_CAT
 export interface AssetOverviewEntry {
     asset: Asset;
     /**
-     * Bytes of the asset's content file, or `null` when there is no local file behind the record —
-     * a remote asset (fetched by URL at runtime, cached under `editor/`), or a record whose content
-     * file is missing. `null` is not `0`: one means "does not weigh anything here", the other would
-     * claim we measured an empty file.
+     * Bytes of the asset's local content, or `null` when the content is missing from the walk.
+     * Remote assets can also have local snapshots. `null` means the size is unknown, while `0`
+     * means an empty file was measured.
      */
     bytes: number | null;
     referenced: boolean;
@@ -79,7 +78,7 @@ export interface AssetOverviewPackaging {
 export interface AssetOverviewSummary {
     total: AssetOverviewGroupTotals;
     referenced: AssetOverviewGroupTotals;
-    /** The complement of the referenced set: nothing in the project points at these. */
+    /** Assets known to have no references; entries with incomplete coverage are excluded. */
     orphan: AssetOverviewGroupTotals;
     byCategory: AssetOverviewCategoryBucket[];
     /** Heaviest first; ties broken by name so the list does not shuffle between rebuilds. */

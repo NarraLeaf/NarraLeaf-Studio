@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { isReportedToAuthor } from "@/lib/workspace/services/autosave/reportedFailure";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { UuidService } from "@/lib/workspace/services/core/UuidService";
@@ -72,6 +73,7 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
     const { context } = useWorkspace();
     const [name, setName] = useState("");
     const [busy, setBusy] = useState(false);
+    const [failure, setFailure] = useState<{ name: string; missing: boolean } | null>(null);
 
     /**
      * What the members are.
@@ -207,6 +209,7 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
         setKind(next);
         setOverride(null);
         setFallback(null);
+        setFailure(null);
     }, []);
 
     // A different type is a different set of files, so nothing chosen against the old one survives.
@@ -214,6 +217,7 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
         setChosenType(next);
         setPickedAssets([]);
         setOverride({});
+        setFailure(null);
     }, []);
 
     /** The files answering a value right now, in axis order. What the default name is read off. */
@@ -225,6 +229,7 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
     );
 
     const chooseMember = useCallback((value: string, assetId: string) => {
+        setFailure(null);
         setOverride(current => {
             const next: Record<string, string> = { ...(current ?? Object.fromEntries(suggested)) };
             // One file answers one value: leaving it in both places would make the set ambiguous at
@@ -244,18 +249,36 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
             return;
         }
         setBusy(true);
+        setFailure(null);
         try {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
             const setService = context.services.get<AssetSetService>(Services.AssetSets);
-            // One transaction for the tags, so a set is never made against a library half-written.
+            const result: { failure: { name: string; missing: boolean } | null } = { failure: null };
             await assetsService.transaction(async service => {
+                // Check every member before editing: the wizard can outlive a selected asset.
+                for (const assetId of plan.tagsByFile.keys()) {
+                    const asset = assetsById.get(assetId);
+                    if (!asset || !service.exists(asset)) {
+                        result.failure = { name: asset?.name ?? "", missing: true };
+                        return;
+                    }
+                }
                 for (const [assetId, tags] of plan.tagsByFile) {
                     const asset = assetsById.get(assetId);
                     if (asset && !sameTags(tags, asset.tags)) {
-                        await service.updateAssetTags(asset, tags);
+                        const update = await service.updateAssetTags(asset, tags);
+                        if (!update.success) {
+                            console.warn("[assets] could not tag an asset for a set", update.error);
+                            result.failure = { name: asset.name, missing: !service.exists(asset) };
+                            return;
+                        }
                     }
                 }
             });
+            if (result.failure) {
+                setFailure(result.failure);
+                return;
+            }
             setService.createSet({
                 id: setId,
                 name: name.trim() || defaultName(chosenAssets),
@@ -265,6 +288,11 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
                 ...(groupId ? { groupId } : {}),
             });
             onClose();
+        } catch (error) {
+            console.warn("[assets] could not create an asset set", error);
+            if (!isReportedToAuthor(error)) {
+                setFailure({ name: "", missing: false });
+            }
         } finally {
             setBusy(false);
         }
@@ -339,6 +367,13 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
                             ariaLabel={t("assets.sets.create.type")}
                         />
                     </div>
+                )}
+
+                {failure && (
+                    <p role="alert" className="text-xs text-danger">
+                        {failure.name && <span>{failure.name}: </span>}
+                        {t(failure.missing ? "assets.reference.missing" : "assets.unknownError")}
+                    </p>
                 )}
 
                 <div className="grid gap-1">

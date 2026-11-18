@@ -1,26 +1,62 @@
 import type { Layer, Psd } from "ag-psd";
-import type { PsdBakeTarget, PsdBakedLayer, PsdDocument, PsdLayerNode } from "@shared/types/psdImport";
+import type { PsdBakeTarget, PsdBakedLayer, PsdDocument, PsdLayerNode, PsdLayerReference } from "@shared/types/psdImport";
 import { encodeRgbaPng } from "@shared/utils/pngOpaque";
-import { joinPath } from "@shared/utils/psdLayerPlan";
+import { joinPath, psdLayerKey, psdLayerReference } from "@shared/utils/psdLayerPlan";
 import { blendOver } from "./blendModes";
 
 type Deflate = (bytes: Uint8Array) => Uint8Array | Promise<Uint8Array>;
 
+/** Identify drawable layers in the same order for the description and for the bake. */
+function identifiedLayers(psd: Psd): Array<{ layer: Layer; ref: PsdLayerReference }> {
+    const leaves: Array<{ layer: Layer; path: string[] }> = [];
+    const walk = (layers: Layer[], prefix: string[]): void => {
+        for (const layer of layers) {
+            const path = [...prefix, layer.name ?? ""];
+            if (layer.children) walk(layer.children, path);
+            else leaves.push({ layer, path });
+        }
+    };
+    walk(psd.children ?? [], []);
+    const pathCounts = new Map<string, number>();
+    const idCounts = new Map<number, number>();
+    for (const { layer, path } of leaves) {
+        const key = psdLayerKey({ path });
+        pathCounts.set(key, (pathCounts.get(key) ?? 0) + 1);
+        if (layer.id !== undefined) idCounts.set(layer.id, (idCounts.get(layer.id) ?? 0) + 1);
+    }
+    const positions = new Map<string, number>();
+    return leaves.map(({ layer, path }) => {
+        const key = psdLayerKey({ path });
+        const position = positions.get(key) ?? 0;
+        positions.set(key, position + 1);
+        return {
+            layer,
+            ref: {
+                path,
+                ...(pathCounts.get(key)! > 1 ? { occurrence: position } : {}),
+                ...(layer.id !== undefined && idCounts.get(layer.id) === 1 ? { sourceId: layer.id } : {}),
+            },
+        };
+    });
+}
+
 /** The tree, geometry only. Pixels stay in the worker until a bake asks for them. */
 export function describePsd(psd: Psd, fileName: string): PsdDocument {
-    const walk = (layers: Layer[], prefix: string[]): PsdLayerNode[] => layers.map(layer => {
+    const references = new Map(identifiedLayers(psd).map(({ layer, ref }) => [layer, ref]));
+    const walk = (layers: Layer[], prefix: string[], parentHidden: boolean): PsdLayerNode[] => layers.map(layer => {
         const name = layer.name ?? "";
         const path = [...prefix, name];
+        const hidden = parentHidden || layer.hidden === true;
         const node: PsdLayerNode = {
-            path,
+            ...(references.get(layer) ?? { path }),
             name,
             blendMode: layer.blendMode ?? "normal",
             opacity: layer.opacity ?? 1,
-            hidden: layer.hidden === true,
+            hidden,
             clipping: layer.clipping === true,
         };
         if (layer.children) {
-            node.children = walk(layer.children, path);
+            node.children = walk(layer.children, path, hidden);
         } else {
             node.bounds = {
                 left: layer.left ?? 0,
@@ -31,24 +67,23 @@ export function describePsd(psd: Psd, fileName: string): PsdDocument {
         }
         return node;
     });
-    return { width: psd.width, height: psd.height, fileName, layers: walk(psd.children ?? [], []) };
+    return { width: psd.width, height: psd.height, fileName, layers: walk(psd.children ?? [], [], false) };
 }
 
-/** Index every drawable layer by its joined path, so a bake request can address them by name. */
+/** Index every drawable layer by its PSD reference, so a bake can address repeated names. */
 export function indexLayers(psd: Psd): Map<string, Layer> {
     const index = new Map<string, Layer>();
-    const walk = (layers: Layer[], prefix: string[]): void => {
-        for (const layer of layers) {
-            const path = [...prefix, layer.name ?? ""];
-            if (layer.children) {
-                walk(layer.children, path);
-            } else {
-                index.set(joinPath(path), layer);
-            }
-        }
-    };
-    walk(psd.children ?? [], []);
+    for (const { layer, ref } of identifiedLayers(psd)) index.set(psdLayerKey(ref), layer);
     return index;
+}
+
+function requestedLayer(index: ReadonlyMap<string, Layer>, ref: PsdLayerReference): Layer {
+    const layer = index.get(psdLayerKey(ref));
+    if (!layer) throw new Error(`PSD layer ${joinPath(ref.path)} is no longer in the PSD`);
+    if (ref.occurrence !== undefined && ref.sourceId !== undefined && ref.sourceId !== layer.id) {
+        throw new Error(`PSD layer ${joinPath(ref.path)} changed before it was baked`);
+    }
+    return layer;
 }
 
 /**
@@ -172,15 +207,13 @@ export async function bakeLayers(
     const index = indexLayers(psd);
     const baked: PsdBakedLayer[] = [];
     for (const [position, target] of targets.entries()) {
-        const layer = index.get(joinPath(target.path));
-        if (!layer) continue;
+        const layer = requestedLayer(index, target);
         const canvas = rasterizeLayer(layer, psd);
         // Taken before the first merge: a clip is defined against the base layer, and merging into
         // the canvas first would let one flattened layer widen the mask for the next.
         const baseAlpha = target.mergeFrom?.some(source => source.clip) ? alphaChannel(canvas) : null;
         for (const source of target.mergeFrom ?? []) {
-            const above = index.get(joinPath(source.path));
-            if (!above) continue;
+            const above = requestedLayer(index, source);
             const pixels = rasterizeLayer(above, psd);
             if (source.clip && baseAlpha) {
                 clipToAlpha(pixels, baseAlpha);
@@ -190,7 +223,7 @@ export async function bakeLayers(
         const name = layer.name ?? target.path[target.path.length - 1] ?? "";
         const png = await encodeRgbaPng(canvas, psd.width, psd.height, deflate);
         baked.push({
-            path: target.path,
+            ...psdLayerReference(target),
             name,
             // One directory per position, so two layers of the same name in different groups do not
             // collide on disk. Not a prefix on the name: the asset library names an asset after the

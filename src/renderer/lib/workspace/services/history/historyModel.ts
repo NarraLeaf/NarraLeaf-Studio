@@ -201,6 +201,8 @@ export function mergeHistoryEntries(previous: HistoryEntry, incoming: HistoryEnt
 export class HistoryStack {
     private undoEntries: HistoryEntry[] = [];
     private redoEntries: HistoryEntry[] = [];
+    /** Entries being applied; a cleared entry is released once its operation has finished. */
+    private readonly inFlight = new Map<HistoryEntry, boolean>();
     private limit: number;
     /**
      * Set when something states that the next edit begins a new step even if it would otherwise
@@ -284,39 +286,58 @@ export class HistoryStack {
 
     /** Take the top undo entry off. The caller runs it and then calls {@link acceptUndo} or {@link restoreUndo}. */
     public takeUndo(): HistoryEntry | null {
-        return this.undoEntries.pop() ?? null;
+        return this.take(this.undoEntries);
     }
 
     public takeRedo(): HistoryEntry | null {
-        return this.redoEntries.pop() ?? null;
+        return this.take(this.redoEntries);
     }
 
     /** The entry ran: it is now redoable. */
-    public acceptUndo(entry: HistoryEntry): void {
-        this.redoEntries.push(entry);
-        this.mergeBarrier = true;
+    public acceptUndo(entry: HistoryEntry): boolean {
+        return this.finish(entry, this.redoEntries, true);
     }
 
     /** The entry ran: it is undoable again. */
-    public acceptRedo(entry: HistoryEntry): void {
-        this.undoEntries.push(entry);
-        this.mergeBarrier = true;
+    public acceptRedo(entry: HistoryEntry): boolean {
+        return this.finish(entry, this.undoEntries, true);
     }
 
     /** The entry did not run - put it back where it was, unchanged. */
-    public restoreUndo(entry: HistoryEntry): void {
-        this.undoEntries.push(entry);
+    public restoreUndo(entry: HistoryEntry): boolean {
+        return this.finish(entry, this.undoEntries, false);
     }
 
-    public restoreRedo(entry: HistoryEntry): void {
-        this.redoEntries.push(entry);
+    public restoreRedo(entry: HistoryEntry): boolean {
+        return this.finish(entry, this.redoEntries, false);
     }
 
     public clear(): void {
         [...this.undoEntries, ...this.redoEntries].forEach(disposeEntry);
         this.undoEntries = [];
         this.redoEntries = [];
+        for (const entry of this.inFlight.keys()) {
+            this.inFlight.set(entry, true);
+        }
         this.mergeBarrier = false;
+    }
+
+    private take(entries: HistoryEntry[]): HistoryEntry | null {
+        const entry = entries.pop() ?? null;
+        if (entry) this.inFlight.set(entry, false);
+        return entry;
+    }
+
+    private finish(entry: HistoryEntry, entries: HistoryEntry[], barrier: boolean): boolean {
+        const discarded = this.inFlight.get(entry) === true;
+        this.inFlight.delete(entry);
+        if (discarded) {
+            disposeEntry(entry);
+            return false;
+        }
+        entries.push(entry);
+        if (barrier) this.mergeBarrier = true;
+        return true;
     }
 
     /**
@@ -342,14 +363,16 @@ export class HistoryStack {
             ...this.undoEntries.filter(entry => !keep(entry)),
             ...this.redoEntries.filter(entry => !keep(entry)),
         ];
-        if (dropped.length === 0) {
+        const running = [...this.inFlight].filter(([entry, discarded]) => !discarded && !keep(entry));
+        if (dropped.length === 0 && running.length === 0) {
             return 0;
         }
         this.undoEntries = this.undoEntries.filter(keep);
         this.redoEntries = this.redoEntries.filter(keep);
+        for (const [entry] of running) this.inFlight.set(entry, true);
         this.mergeBarrier = true;
         dropped.forEach(disposeEntry);
-        return dropped.length;
+        return dropped.length + running.length;
     }
 
     /** Entries oldest-first. For tests and diagnostics; callers must not mutate them. */

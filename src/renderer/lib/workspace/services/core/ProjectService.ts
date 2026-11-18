@@ -151,7 +151,7 @@ export class ProjectFileAccessError extends RendererError {
  * by what the author knows it as. The filesystem's own message names the path, and for a derived
  * file that is a directory the author never chose.
  */
-function throwWriteFailure(name: SavedFileName, result: FsRequestResult<void>): void {
+function throwWriteFailure<T>(name: SavedFileName, result: FsRequestResult<T>): void {
     if (!result.ok) {
         throw new ProjectFileAccessError(describeFileWriteFailure(name, result.error, translate), { cause: result.error });
     }
@@ -170,11 +170,17 @@ type ProjectServiceEvents = {
     configChanged: ProjectConfig;
 };
 
+type ProjectIconBakeIO = Pick<ProjectService,
+    "readProjectIconFile" | "projectIconFileExists" | "writeProjectIconBake" | "deleteProjectIconFile">
+    & { projectIconBakePath: (relativePath: string) => string };
+
+class ProjectIconWriteRefused extends Error {}
+
 export class ProjectService extends Service<ProjectService> implements IProjectService {
     private projectConfig: ProjectConfig | null = null;
     private projectConfigPath: string | null = null;
-    private projectConfigFormat: "nlproj" | "json" | null = null;
     private readonly events = new EventEmitter<ProjectServiceEvents>();
+    private activeProjectToken: object | null = null;
     /**
      * The manifest operation the next one waits for.
      *
@@ -205,11 +211,16 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
 
         const configPath = join(projectPath, configFileName);
-        const isNlproj = configFileName.endsWith(".nlproj");
 
         this.projectConfigPath = configPath;
-        this.projectConfigFormat = isNlproj ? "nlproj" : "json";
         this.projectConfig = await this.readProjectConfigFile();
+        this.activeProjectToken = {};
+    }
+
+    public override async dispose(): Promise<void> {
+        // The queue owns the current project's context until every accepted operation settles.
+        this.activeProjectToken = null;
+        await this.manifestQueue;
     }
 
     public getProjectConfig(): ProjectConfig {
@@ -267,11 +278,22 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * call back into this method - a nested call would wait on the queue it is holding.
      */
     public updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
+        return this.updateProjectConfigOperation(updater);
+    }
+
+    private updateProjectConfigOperation(
+        updater: (config: ProjectConfig) => ProjectConfig,
+        options?: { requireWrite?: boolean; onWritten?: () => void },
+    ): Promise<ProjectConfig> {
         return this.enqueueManifestOperation(async () => {
             const current = this.cloneProjectConfig(this.getProjectConfig());
             const next = updater(current);
             this.assertValidProjectConfig(next);
-            await this.writeProjectConfig(next);
+            const written = await this.writeProjectConfig(next);
+            if (!written && options?.requireWrite) {
+                throw new ProjectIconWriteRefused();
+            }
+            if (written) options?.onWritten?.();
             this.projectConfig = next;
             // After the write, so a subscriber that reads back through this service sees what is on
             // disk rather than a value a failed write would have rolled back.
@@ -281,6 +303,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     private enqueueManifestOperation<T>(operation: () => Promise<T>): Promise<T> {
+        if (!this.activeProjectToken) {
+            return Promise.reject(new RendererError("Project service is closing or not initialized"));
+        }
         // Run whether the previous one resolved or threw: a refused write is the caller's to report,
         // and it must not strand every change queued behind it.
         const run = this.manifestQueue.then(operation, operation);
@@ -1015,10 +1040,21 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * null when the picker was dismissed.
      */
     public async importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null> {
+        return this.pickProjectIconSource(slot);
+    }
+
+    private async pickProjectIconSource(
+        slot: string,
+        staging?: { id: string; files: Set<string> },
+    ): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null> {
+        const token = this.activeProjectToken;
+        this.assertProjectActive(token);
+        const ctx = this.getContext();
         // Every failure below is thrown as the sentence the icon section shows: the file by the name
         // it has on the author's disk, never the path, and the filesystem's reason only where the
         // author can act on it.
         const selection = await appPrivilegedFacade.fs.selectFile(PROJECT_ICON_PICKER_EXTENSIONS, false);
+        this.assertProjectActive(token);
         if (!selection.success || !selection.data.ok) {
             throw new ProjectFileAccessError(translate("project.assets.pickFailed"), {
                 cause: selection.success ? selection.data : selection.error,
@@ -1035,8 +1071,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             throw new ProjectFileAccessError(translate("project.assets.unsupported", { name: sourceName }));
         }
 
-        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const read = await filesystemService.readRaw(sourcePath);
+        this.assertProjectActive(token);
         if (!read.ok) {
             // "Missing from the project folder" is not offered: the file was picked from anywhere.
             throw new ProjectFileAccessError(withReadFailureReason(
@@ -1047,32 +1084,153 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
         const bytes = read.data;
         const sourcesDir = await filesystemService.createDir(
-            this.getContext().project.resolve(ProjectNameConvention.ProjectIconSources),
+            ctx.project.resolve(ProjectNameConvention.ProjectIconSources),
         );
+        this.assertProjectActive(token);
         if (!sourcesDir.ok) {
             throwWriteFailure(PROJECT_ICON, sourcesDir);
         }
 
-        // A slot holds one file. Importing a .svg over a .png would otherwise
-        // leave the old one behind, tracked and dead.
-        await this.removeIconSourceSiblings(slot, extension);
-
-        const relativeSegments = ProjectNameConvention.ProjectIconSource(slot, extension);
-        throwWriteFailure(PROJECT_ICON, await filesystemService.writeRaw(
-            this.getContext().project.resolve(relativeSegments),
+        const relativeSegments = ProjectNameConvention.ProjectIconSource(staging ? `${slot}-${staging.id}` : slot, extension);
+        const relativePath = relativeSegments.join("/");
+        if (staging) {
+            const existing = await filesystemService.isFileExists(ctx.project.resolve(relativeSegments));
+            this.assertProjectActive(token);
+            if (!existing.ok) throwWriteFailure(PROJECT_ICON, existing);
+            if (existing.ok && existing.data) throw new RendererError("Project icon staging path already exists");
+            staging.files.add(relativePath);
+        }
+        const written = await filesystemService.writeRaw(
+            ctx.project.resolve(relativeSegments),
             bytes,
             storeWrite(PROJECT_ICON.store, "handledByWriter"),
-        ));
+        );
+        this.assertProjectActive(token);
+        throwWriteFailure(PROJECT_ICON, written);
+        if (staging && written.ok && written.refused) throw new ProjectIconWriteRefused();
+
+        if (!staging) {
+            await this.removeIconSourceSiblings(slot, extension, token);
+            this.assertProjectActive(token);
+        }
 
         return {
             bytes,
             source: {
-                path: relativeSegments.join("/"),
+                path: relativePath,
                 sourceName,
                 mediaType: ICON_MEDIA_TYPES[extension] ?? "application/octet-stream",
                 updatedAt: new Date().toISOString(),
             },
         };
+    }
+
+    /** Import and bake into new files, then publish the set in one manifest write. */
+    public async importProjectIconAndBake(
+        slot: string,
+        bake: (current: ProjectIconSet, source: ProjectIconSource, io: ProjectIconBakeIO) => Promise<ProjectIconSet>,
+    ): Promise<ProjectIconSet | null> {
+        const token = this.activeProjectToken;
+        this.assertProjectActive(token);
+        const ctx = this.getContext();
+        const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
+        const id = crypto.randomUUID();
+        const staged = new Set<string>();
+        const deferredDeletes = new Set<string>();
+        let committed = false;
+        let obsolete: string[] = [];
+        let published: ProjectIconSet | null = null;
+
+        const io: ProjectIconBakeIO = {
+            readProjectIconFile: async path => {
+                this.assertProjectActive(token);
+                const result = await fs.readRaw(ctx.project.resolve(path));
+                this.assertProjectActive(token);
+                return result.ok ? result.data : null;
+            },
+            projectIconFileExists: async path => {
+                this.assertProjectActive(token);
+                const result = await fs.isFileExists(ctx.project.resolve(path));
+                this.assertProjectActive(token);
+                return result.ok && result.data;
+            },
+            projectIconBakePath: path => path.replace(/\.png$/, `-${id}.png`),
+            writeProjectIconBake: async (path, bytes) => {
+                this.assertProjectActive(token);
+                const absolutePath = ctx.project.resolve(path);
+                const parent = path.split("/").slice(0, -1).join("/");
+                const created = await fs.createDir(ctx.project.resolve(parent));
+                this.assertProjectActive(token);
+                throwWriteFailure(PROJECT_ICON, created);
+                const existing = await fs.isFileExists(absolutePath);
+                this.assertProjectActive(token);
+                throwWriteFailure(PROJECT_ICON, existing);
+                if (existing.ok && existing.data) throw new RendererError("Project icon staging path already exists");
+                staged.add(path);
+                const result = await fs.writeRaw(absolutePath, bytes, storeWrite(PROJECT_ICON.store, "handledByWriter"));
+                this.assertProjectActive(token);
+                throwWriteFailure(PROJECT_ICON, result);
+                if (result.ok && result.refused) throw new ProjectIconWriteRefused();
+                return true;
+            },
+            deleteProjectIconFile: async path => {
+                this.assertProjectActive(token);
+                deferredDeletes.add(path);
+            },
+        };
+
+        try {
+            const imported = await this.pickProjectIconSource(slot, { id, files: staged });
+            if (!imported) return null;
+            this.assertProjectActive(token);
+            const previous = this.getProjectIconSet();
+            const next = await bake(previous, imported.source, io);
+            this.assertProjectActive(token);
+            published = next;
+            const retained = projectIconPaths(next);
+            const unused = new Set([...projectIconPaths(previous), ...deferredDeletes, ...staged]);
+            for (const extension of PROJECT_ICON_PICKER_EXTENSIONS) {
+                unused.add(ProjectNameConvention.ProjectIconSource(slot, extension).join("/"));
+            }
+            obsolete = [...unused].filter(path => !retained.has(path));
+            await this.updateProjectConfigOperation(config => {
+                if (JSON.stringify(normalizeProjectIconSet(config.metadata?.icons)) !== JSON.stringify(previous)) {
+                    throw new RendererError("Project icons changed while importing");
+                }
+                return { ...config, metadata: { ...config.metadata, icons: next } };
+            }, { requireWrite: true, onWritten: () => { committed = true; } });
+        } catch (error) {
+            if (committed && published) {
+                console.warn("[project icons] a configuration observer failed", error);
+            } else if (error instanceof ProjectIconWriteRefused) {
+                return null;
+            } else {
+                throw error;
+            }
+        } finally {
+            await this.cleanProjectIconFiles(ctx, committed ? obsolete : staged);
+        }
+        return this.activeProjectToken === token ? published : null;
+    }
+
+    private async cleanProjectIconFiles(ctx: WorkspaceContext, paths: Iterable<string>): Promise<void> {
+        for (const path of paths) {
+            const folder = ["resources/icons/source/", "resources/icons/derived/"].find(prefix => path.startsWith(prefix));
+            const name = folder ? path.slice(folder.length) : "";
+            if (!name || name === "." || name === ".." || /[\\/]/.test(name)) continue;
+            try {
+                const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
+                const absolutePath = ctx.project.resolve(path);
+                const exists = await fs.isFileExists(absolutePath);
+                if (!exists.ok) throw exists.error;
+                if (exists.data) {
+                    const deleted = await fs.deleteFile(absolutePath);
+                    if (!deleted.ok) throw deleted.error;
+                }
+            } catch (error) {
+                console.warn("[project icons] could not remove an unused file", error);
+            }
+        }
     }
 
     /** Read a source or baked icon's bytes, or null when it is not on disk. */
@@ -1111,22 +1269,29 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         bytes: Uint8Array,
         name: SavedFileName & { store: TranslationKey },
     ): Promise<boolean> {
-        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const absolutePath = this.getContext().project.resolve(relativePath);
+        const token = this.activeProjectToken;
+        this.assertProjectActive(token);
+        const ctx = this.getContext();
+        const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
+        const absolutePath = ctx.project.resolve(relativePath);
         const existing = await filesystemService.readRaw(absolutePath);
+        this.assertProjectActive(token);
         if (existing.ok && sameBytes(existing.data, bytes)) {
             return false;
         }
         const parent = relativePath.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
         if (parent) {
-            const created = await filesystemService.createDir(this.getContext().project.resolve(parent));
+            const created = await filesystemService.createDir(ctx.project.resolve(parent));
+            this.assertProjectActive(token);
             if (!created.ok) {
                 throwWriteFailure(name, created);
             }
         }
         // Derived, so baked again the next time it is asked for: the caller that asked is the one to
         // say it did not happen, and the error it throws already says it in the author's words.
-        throwWriteFailure(name, await filesystemService.writeRaw(absolutePath, bytes, storeWrite(name.store, "handledByWriter")));
+        const written = await filesystemService.writeRaw(absolutePath, bytes, storeWrite(name.store, "handledByWriter"));
+        this.assertProjectActive(token);
+        throwWriteFailure(name, written);
         return true;
     }
 
@@ -1150,12 +1315,19 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
     }
 
-    private async removeIconSourceSiblings(slot: string, keepExtension: string): Promise<void> {
+    private async removeIconSourceSiblings(slot: string, keepExtension: string, token: object): Promise<void> {
         for (const extension of PROJECT_ICON_PICKER_EXTENSIONS) {
             if (extension === keepExtension) {
                 continue;
             }
+            this.assertProjectActive(token);
             await this.deleteProjectIconFile(ProjectNameConvention.ProjectIconSource(slot, extension).join("/"));
+        }
+    }
+
+    private assertProjectActive(token: object | null): asserts token is object {
+        if (!token || this.activeProjectToken !== token) {
+            throw new RendererError("Project service is closing or has changed");
         }
     }
 
@@ -1181,24 +1353,15 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         });
     }
 
-    /**
-     * Load the manifest from the path resolved at init, in whichever format that
-     * file uses. The format is never re-sniffed: a session that opened a .nlproj
-     * keeps reading a .nlproj.
-     */
+    /** Load the `.nlproj` manifest from the path resolved at init. */
     private async readProjectConfigFile(): Promise<ProjectConfig> {
-        if (!this.projectConfigPath || !this.projectConfigFormat) {
+        if (!this.projectConfigPath) {
             throw new RendererError("Project config path not initialized");
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        let projectConfig: ProjectConfig;
-        if (this.projectConfigFormat === "nlproj") {
-            const rawData = throwException(await filesystemService.readRaw(this.projectConfigPath));
-            projectConfig = decodeProjectConfig(rawData) as ProjectConfig;
-        } else {
-            projectConfig = throwException(await filesystemService.readJSON<ProjectConfig>(this.projectConfigPath));
-        }
+        const rawData = throwException(await filesystemService.readRaw(this.projectConfigPath));
+        const projectConfig = decodeProjectConfig(rawData) as ProjectConfig;
 
         // Normalize (or drop) a possibly-malformed dependency table up front so a
         // corrupt table can never propagate - a broken table must not block load.
@@ -1212,18 +1375,19 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         return projectConfig;
     }
 
-    private async writeProjectConfig(config: ProjectConfig): Promise<void> {
-        if (!this.projectConfigPath || !this.projectConfigFormat) {
+    private async writeProjectConfig(config: ProjectConfig): Promise<boolean> {
+        if (!this.projectConfigPath) {
             throw new RendererError("Project config path not initialized");
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const result = this.projectConfigFormat === "nlproj"
-            ? await filesystemService.writeRaw(this.projectConfigPath, encodeProjectConfig(config as any), PROJECT_FILE_WRITE)
-            : await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8", PROJECT_FILE_WRITE);
+        const result = await filesystemService.writeRaw(
+            this.projectConfigPath, encodeProjectConfig(config as any), PROJECT_FILE_WRITE,
+        );
         if (!result.ok) {
             throw new ProjectFileWriteError(result.error);
         }
+        return result.refused !== true;
     }
 
     private cloneProjectConfig(config: ProjectConfig): ProjectConfig {
@@ -1256,6 +1420,18 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
 
 function normalizeIconExtension(sourcePath: string): string {
     return extname(sourcePath).replace(/^\./, "").toLowerCase();
+}
+
+function projectIconPaths(set: ProjectIconSet): Set<string> {
+    const paths = new Set<string>();
+    if (set.master) paths.add(set.master.path);
+    for (const spec of Object.values(set.specs)) {
+        if (spec.override) paths.add(spec.override.path);
+    }
+    for (const bake of Object.values(set.baked)) {
+        if (bake) paths.add(bake.path);
+    }
+    return paths;
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

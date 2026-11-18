@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUnrenderableFontFormat, sniffFontFormat } from "./fontFormats";
+import { fontFormatConversionHint, isUnrenderableFontFormat, sniffFontFormat } from "./fontFormats";
 
 /** A buffer whose first four bytes are `tag`, padded to a plausible header length. */
 function header(tag: string | readonly number[]): Uint8Array {
@@ -8,6 +8,25 @@ function header(tag: string | readonly number[]): Uint8Array {
     bytes.set(head, 0);
     return bytes;
 }
+
+describe("unrenderable font formats", () => {
+    it.each([
+        [".TTC", "a single-face .ttf or .otf"],
+        ["otc", "a single-face .ttf or .otf"],
+        [" EOT ", ".ttf or .otf"],
+        ["svg", ".ttf or .otf"],
+    ])("reports %s with its conversion hint", (extension, hint) => {
+        expect(isUnrenderableFontFormat(extension)).toBe(true);
+        expect(fontFormatConversionHint(extension)).toBe(hint);
+    });
+
+    it("leaves renderable and absent formats without a conversion hint", () => {
+        for (const extension of ["ttf", "woff2", "unknown", "", null, undefined]) {
+            expect(isUnrenderableFontFormat(extension)).toBe(false);
+            expect(fontFormatConversionHint(extension)).toBeNull();
+        }
+    });
+});
 
 describe("sniffFontFormat", () => {
     it("reads a TrueType-outline sfnt from its version field", () => {

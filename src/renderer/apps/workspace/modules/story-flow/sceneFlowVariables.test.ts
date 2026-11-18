@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryActionPayload, StoryBlock, StoryDocument, StoryExpr, StoryScene, StoryVariableScope } from "@shared/types/story";
 import { buildSceneFlowGraph } from "./sceneFlowModel";
+import { buildSceneFlowRouteMap } from "./sceneFlowRoutes";
 import {
     branchDeltaFor,
     collectBlueprintVariableWrites,
@@ -434,6 +435,81 @@ describe("computeVariableRanges", () => {
         return rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, variableKey));
     }
 
+    it("does not bound a counter repeatedly changed by a backward goto", () => {
+        const story = document([
+            scene("a", "Loop", [
+                affectionDecl,
+                { id: "label", kind: "control", parentId: null, childrenIds: [], payload: { control: "label", name: "top" } } as StoryBlock,
+                setExpressionBlock("w1", stepAst("+", 10), "好感 + (10)"),
+                { id: "cond", kind: "control", parentId: null, childrenIds: ["if1"], payload: { control: "condition" } } as StoryBlock,
+                conditionBranchBlock("if1", ["goto"], "if", "好感 < 20", "cond"),
+                { id: "goto", kind: "control", parentId: "if1", childrenIds: [], payload: { control: "goto", targetLabel: "top" } } as StoryBlock,
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangesOf(story).b).toBe("?");
+    });
+
+    it("does not bound a saved counter repeatedly changed on scene re-entry", () => {
+        const story = document([
+            scene("a", "Loop", [
+                affectionDecl,
+                setExpressionBlock("w1", stepAst("+", 10), "好感 + (10)"),
+                { id: "cond", kind: "control", parentId: null, childrenIds: ["if1"], payload: { control: "condition" } } as StoryBlock,
+                conditionBranchBlock("if1", ["repeat"], "if", "好感 < 20", "cond"),
+                jumpBlock("repeat", "a", "if1"),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangesOf(story).b).toBe("?");
+    });
+
+    it("does not assume a repeated body runs when its count is zero", () => {
+        const repeat = { ...repeatBlock("r1", ["w1"]), payload: { control: "repeat", times: 0 } } as StoryBlock;
+        const story = document([
+            scene("a", "Start", [affectionDecl, repeat, setLiteralBlock("w1", 5, "r1"), jumpBlock("j1", "b")]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangesOf(story).b).toBe("0..0");
+    });
+
+    it("keeps the starting value when a loop can break before a write", () => {
+        const story = document([
+            scene("a", "Start", [
+                affectionDecl,
+                repeatBlock("r1", ["break", "w1"]),
+                { id: "break", kind: "control", parentId: "r1", childrenIds: [], payload: { control: "break" } } as StoryBlock,
+                setLiteralBlock("w1", 5, "r1"),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangesOf(story).b).toBe("0..5");
+    });
+
+    it("does not assume a competing race branch writes before another branch finishes", () => {
+        const story = document([
+            scene("a", "Start", [
+                affectionDecl,
+                { id: "race", kind: "control", parentId: null, childrenIds: ["slow", "instant"], payload: { control: "race" } } as StoryBlock,
+                { id: "slow", kind: "control", parentId: "race", childrenIds: ["wait", "write"], payload: { control: "sequence" } } as StoryBlock,
+                { id: "wait", kind: "action", parentId: "slow", childrenIds: [], payload: { action: "wait", mode: "duration", durationMs: 1000 } } as StoryBlock,
+                setLiteralBlock("write", 5, "slow"),
+                setLiteralBlock("instant", 9, "race", GOLD),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangesOf(story).b).toBe("?");
+    });
+
     it("names no number for a persistent counter, which a run starts where the last one left it", () => {
         // A clear count: the ending adds one, and the next run begins with it. Within one run it
         // would read 0 on the way in and 1 at the end, and the second run would read 1 and 2 - so
@@ -728,7 +804,7 @@ describe("computeVariableRanges", () => {
         expect(rangesOf(story)).toEqual({ a: "0..0", b: "1..101" });
     });
 
-    it("treats every write as possible where a goto makes row order unreadable", () => {
+    it("leaves written counters unknown where a goto can repeat them", () => {
         const story = document([
             scene("a", "Opening", [
                 affectionDecl,
@@ -743,13 +819,48 @@ describe("computeVariableRanges", () => {
             scene("b", "Hallway", []),
         ], "a");
 
-        // The loop can take `留下` any number of times, but that is the cycle budget's question; one
-        // pass of "may have run" for every write, the rows after the jump included, is what holds.
-        expect(rangesOf(story)).toEqual({ a: "0..0", b: "0..11" });
+        // The loop can take `留下` any number of times before it reaches the jump.
+        expect(rangesOf(story)).toEqual({ a: "0..0", b: "?" });
     });
 });
 
 describe("foldRouteVariableValue", () => {
+    it("applies an option's write before a later scene-spine write", () => {
+        const story = document([
+            scene("a", "Crossroads", [
+                affectionDecl,
+                choiceBlock("c1", ["o1"]),
+                choiceOptionBlock("o1", ["w1"], "Continue", "c1"),
+                setExpressionBlock("w1", stepAst("+", 2), "好感 + (2)", "o1"),
+                setLiteralBlock("w2", 5),
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "End", []),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+        const route = buildSceneFlowRouteMap(graph, story).routes[0];
+        expect(route.branchIds).toEqual(["scene-flow:branch:o1"]);
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, route))
+            .toEqual({ kind: "known", min: 5, max: 5 });
+    });
+
+    it("stops folding at the authored ending", () => {
+        const story = document([
+            scene("a", "End", [
+                affectionDecl,
+                setLiteralBlock("before", 5),
+                { id: "end", kind: "control", parentId: null, childrenIds: [], payload: { control: "ending", name: "End" } } as StoryBlock,
+                setLiteralBlock("after", 9),
+            ]),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+        const route = buildSceneFlowRouteMap(graph, story).routes[0];
+        expect(route.endingId).toBe("end");
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, route))
+            .toEqual({ kind: "known", min: 5, max: 5 });
+    });
     /**
      * A fork nested inside an option: the jump belongs to `if1`, so the route's arm is `if1` and the
      * option's own `+2` is only reachable through `if1`'s ancestry. This is the shape that made the
@@ -921,6 +1032,40 @@ describe("writers the module cannot read", () => {
      * because it says a value the player can reach is out of reach.
      */
 
+    it("leaves ranges and route values unknown when a plugin row may write variables", () => {
+        const story = document([
+            scene("a", "Start", [
+                affectionDecl,
+                { id: "plugin", kind: "action", parentId: null, childrenIds: [], payload: { action: "plugin", pluginId: "p", actionId: "p:x", params: {} } } as StoryBlock,
+                jumpBlock("j1", "b"),
+            ]),
+            scene("b", "After", []),
+        ], "a");
+        const graph = buildSceneFlowGraph(story);
+        const route = buildSceneFlowRouteMap(graph, story).routes[0];
+
+        expect(rangeTuples(computeVariableRanges(graph, story, AFFECTION_KEY)).b).toBe("?");
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, route)).toEqual({ kind: "unknown" });
+    });
+
+    it("leaves ranges unknown when a blueprint has a script layer", () => {
+        const story = document([
+            scene("a", "Start", [affectionDecl, jumpBlock("j1", "b")]),
+            scene("b", "After", []),
+        ], "a");
+        const blueprints = {
+            blueprints: {
+                script: { id: "script", owner: { kind: "surface", surfaceId: "s" }, graphs: { events: { e: { script: { file: "logic.ts" } } } } },
+            },
+        } as unknown as Parameters<typeof collectBlueprintVariableWrites>[0];
+        const writes = collectBlueprintVariableWrites(blueprints);
+        const graph = buildSceneFlowGraph(story);
+
+        expect(rangeTuples(computeVariableRanges(graph, story, AFFECTION_KEY, [], writes)).b).toBe("?");
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, buildSceneFlowRouteMap(graph, story).routes[0], [], writes))
+            .toEqual({ kind: "unknown" });
+    });
+
     it("counts a /blueprint row as an unreadable write to every key its graph may set", () => {
         const story = document([
             scene("a", "Start", [affectionDecl, blueprintBlock("bp1", "graph-1"), jumpBlock("j1", "b")]),
@@ -985,6 +1130,16 @@ describe("writers the module cannot read", () => {
 
         expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY)))
             .toEqual({ a: "0..0", sub: "0..0", b: "0..0" });
+    });
+
+    it("accounts for an earlier call when entering a later called scene", () => {
+        const story = document([
+            scene("a", "Caller", [affectionDecl, callBlock("call1", "first"), callBlock("call2", "second")]),
+            scene("first", "First", [setLiteralBlock("w1", 5)]),
+            scene("second", "Second", []),
+        ], "a");
+
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY)).second).toBe("?");
     });
 
     it("follows the call past its first scene", () => {

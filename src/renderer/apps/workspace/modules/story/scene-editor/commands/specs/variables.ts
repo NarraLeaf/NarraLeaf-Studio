@@ -163,6 +163,30 @@ function buildIncDec(op: "+" | "-", args: { readonly variable?: StoryCommandValu
     };
 }
 
+/** Check the expression the shorthand assigns using the same type rule as `/set`. */
+function validateShorthand(
+    op: "+" | "-" | "!",
+    args: { readonly variable?: StoryCommandValue; readonly by?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const target = args.variable;
+    if (target?.kind !== "variable" || (ctx.spanOf("by") && args.by?.kind !== "expression")) {
+        return [];
+    }
+    const self: StoryExpr = { kind: "var", target: target.ref, name: target.name };
+    const ast: StoryExpr = op === "!"
+        ? { kind: "unary", op, operand: self }
+        : { kind: "binary", op, left: self, right: args.by?.kind === "expression" ? args.by.expression.ast : { kind: "literal", value: 1 } };
+    const inferred = inferStoryExpressionType(ast, ref => {
+        const key = storyVariableRefKey(ref);
+        return ctx.context.variables.find(entry => storyVariableRefKey(entry.ref) === key)?.valueType;
+    });
+    const span = ctx.spanOf("by") ?? ctx.spanOf("variable");
+    return span && !storyExprTypeFits(inferred, target.valueType)
+        ? [{ code: "expressionTypeMismatch", span, value: target.name, variable: target.name, expected: target.valueType, received: inferred }]
+        : [];
+}
+
 export const inc = defineStoryCommand({
     id: "inc",
     token: "inc",
@@ -175,6 +199,7 @@ export const inc = defineStoryCommand({
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
     },
     build: (args, ctx) => buildIncDec("+", args, ctx.generateId),
+    validate: (args, ctx) => validateShorthand("+", args, ctx),
 });
 
 export const dec = defineStoryCommand({
@@ -189,6 +214,7 @@ export const dec = defineStoryCommand({
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
     },
     build: (args, ctx) => buildIncDec("-", args, ctx.generateId),
+    validate: (args, ctx) => validateShorthand("-", args, ctx),
 });
 
 export const toggle = defineStoryCommand({
@@ -209,6 +235,7 @@ export const toggle = defineStoryCommand({
             payload: withExpression(payload, { source: `!${formatStoryExpressionName(name)}`, ast: { kind: "unary", op: "!", operand: self } }),
         };
     },
+    validate: (args, ctx) => validateShorthand("!", args, ctx),
 });
 
 /**

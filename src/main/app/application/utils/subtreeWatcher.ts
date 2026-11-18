@@ -1,4 +1,5 @@
-import type { FSWatcher } from "fs";
+import type { FSWatcher, Stats } from "fs";
+import { performance } from "node:perf_hooks";
 import { unpatchedFs, unpatchedFsPromises } from "../../../utils/unpatchedFs";
 import * as path from "path";
 import { rememberWatchedFile, watchedFileChanged } from "./watchedFileIdentity";
@@ -47,11 +48,21 @@ export type SubtreeWatcher = {
     close(): void;
 };
 
+function directoryIdentity(stats: Pick<Stats, "dev" | "ino" | "mtimeMs" | "ctimeMs">): string {
+    return `${stats.dev}:${stats.ino}:${stats.mtimeMs}:${stats.ctimeMs}`;
+}
+
 export function watchSubtree(
     root: string,
     identities: Map<string, string>,
     onChange: (file: string) => void,
 ): SubtreeWatcher | null {
+    let initialRootIdentity: string | null = null;
+    try {
+        initialRootIdentity = directoryIdentity(unpatchedFs.statSync(root));
+    } catch {
+        // The watcher may still be available when a root identity cannot be read.
+    }
     let watcher: FSWatcher;
     try {
         watcher = unpatchedFs.watch(root, { recursive: true });
@@ -62,11 +73,15 @@ export function watchSubtree(
     let closed = false;
     // Everything under the root is as the watch found it. A file whose modification time is not
     // newer than this has not been written since, whatever the notification says.
-    const startedAt = Date.now();
+    // File modification times can carry fractions of a millisecond. Use the process clock's
+    // fractional time while it agrees with the wall clock, and fall back if the clock has shifted.
+    const preciseNow = performance.timeOrigin + performance.now();
+    const wallNow = Date.now();
+    const startedAt = Math.abs(preciseNow - wallNow) < 2 ? preciseNow : wallNow;
     // A tree that goes away under the watch - the project moved, the drive was unplugged - is not
     // something to reload into, and an unhandled `error` on an FSWatcher takes the process with it.
     watcher.on("error", () => {});
-    watcher.on("change", (_event, name) => {
+    watcher.on("change", (event, name) => {
         if (closed || !name) {
             return;
         }
@@ -83,6 +98,17 @@ export function watchSubtree(
                 return;
             }
             if (!stats) {
+                // Recursive macOS watches can report the root's own name. Distinguish that from a
+                // deleted child with the same name by checking whether the root directory changed.
+                if (event === "rename" && name.toString() === path.basename(root) && initialRootIdentity !== null) {
+                    const currentRoot = await unpatchedFsPromises.stat(root).catch(() => null);
+                    if (closed) {
+                        return;
+                    }
+                    if (currentRoot && directoryIdentity(currentRoot) === initialRootIdentity) {
+                        return;
+                    }
+                }
                 // Gone: an unlink, or a rename's old name. Forget it, so the same path appearing
                 // again reads as new rather than as unchanged.
                 identities.delete(file);

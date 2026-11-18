@@ -109,7 +109,9 @@ export function createStoryAnimationAsset(input: {
     now: string;
 }): StoryAnimationAsset {
     assertValidStoryEntityId(input.id, "Story animation id");
-    const sequences = input.sequences ?? [createDefaultAnimationSequence(input.id)];
+    const sequences = hasEmptyAnimationTimeline(input.timeline)
+        ? [createEmptyAnimationSequence(input.id)]
+        : input.sequences ?? [createDefaultAnimationSequence(input.id)];
     return {
         schemaVersion: STORY_ANIMATION_SCHEMA_VERSION,
         id: input.id,
@@ -307,7 +309,9 @@ export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: st
     assertSupportedStoryAnimationAsset(asset);
     assertValidStoryEntityId(asset.id, "Story animation id");
     const sequences = normalizeAnimationSequences(asset.sequences);
-    const normalizedSequences = sequences.length > 0 ? sequences : [createDefaultAnimationSequence(asset.id)];
+    const normalizedSequences = hasEmptyAnimationTimeline(asset.timeline)
+        ? [createEmptyAnimationSequence(asset.id)]
+        : sequences.length > 0 ? sequences : [createDefaultAnimationSequence(asset.id)];
     const config = {
         repeat: normalizeOptionalPositiveNumber(asset.config?.repeat),
         repeatDelayMs: normalizeOptionalNonNegativeNumber(asset.config?.repeatDelayMs),
@@ -556,6 +560,10 @@ const STRING_TRACK_PROPERTIES = new Set<StoryAnimationTrackProperty>([
     "mixBlendMode",
 ]);
 
+function hasEmptyAnimationTimeline(timeline: StoryAnimationTimeline | undefined): boolean {
+    return Boolean(timeline && Array.isArray(timeline.tracks) && timeline.tracks.length === 0);
+}
+
 function normalizeAnimationTimeline(
     timeline: StoryAnimationTimeline | undefined,
     fallbackSequences: StoryAnimationSequence[],
@@ -575,7 +583,7 @@ function normalizeAnimationTimeline(
     ));
     return {
         durationMs,
-        tracks: tracks.length > 0 ? tracks : migrated.tracks,
+        tracks: hasEmptyAnimationTimeline(timeline) ? [] : tracks.length > 0 ? tracks : migrated.tracks,
     };
 }
 
@@ -677,8 +685,20 @@ function migrateAnimationSequencesToTimeline(sequences: StoryAnimationSequence[]
     const durationMs = Math.min(MAX_ANIMATION_DURATION_MS, Math.max(DEFAULT_ANIMATION_DURATION_MS, ...spans.map(span => span.endMs)));
     return {
         durationMs: Math.round(durationMs),
-        tracks: tracks.length > 0 ? tracks : createDefaultAnimationTimeline(animationId).tracks,
+        tracks: tracks.length > 0 || isEmptyAnimationSequence(sequences)
+            ? tracks
+            : createDefaultAnimationTimeline(animationId).tracks,
     };
+}
+
+/** A zero-duration sequence without properties is an empty motion. */
+function isEmptyAnimationSequence(sequences: StoryAnimationSequence[]): boolean {
+    if (sequences.length !== 1) return false;
+    const sequence = sequences[0];
+    return Object.keys(normalizeTransformSequenceProps(sequence.props)).length === 0
+        && sequence.options?.durationMs === 0
+        && (sequence.options.delayMs ?? 0) === 0
+        && (sequence.options.at ?? 0) === 0;
 }
 
 function buildAnimationSequenceSpans(sequences: StoryAnimationSequence[]): {
@@ -816,6 +836,14 @@ function normalizeSequenceAt(value: unknown): StoryAnimationSequenceOptions["at"
         return value as `+${number}` | `-${number}`;
     }
     return undefined;
+}
+
+/**
+ * The runtime and motion exchange also read sequences. A zero-duration empty sequence carries an
+ * empty timeline through those paths without restoring an older sequence's values.
+ */
+function createEmptyAnimationSequence(id: string): StoryAnimationSequence {
+    return { id: `${id}-empty`, props: {}, options: { durationMs: 0 } };
 }
 
 function createDefaultAnimationSequence(id: string): StoryAnimationSequence {

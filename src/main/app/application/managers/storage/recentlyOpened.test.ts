@@ -53,4 +53,15 @@ describe("RecentlyOpened", () => {
     it("tolerates an absent history", () => {
         expect(new RecentlyOpened(stateWith(undefined)).list()).toEqual([]);
     });
+
+    it("keeps valid projects when the stored history contains unusable entries", () => {
+        const project = { path: "/projects/game", name: "Game", openedAt: 1 };
+        const history = new RecentlyOpened(stateWith([null, project, { name: "No path" }, 42]));
+
+        expect(history.list()).toEqual([project]);
+    });
+
+    it("tolerates a stored history that is not a list", () => {
+        expect(new RecentlyOpened(stateWith({ invalid: true })).list()).toEqual([]);
+    });
 });

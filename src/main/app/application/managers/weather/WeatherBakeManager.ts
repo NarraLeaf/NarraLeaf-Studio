@@ -156,6 +156,8 @@ export type WeatherBakeStarter = (
 
 export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
     startBake?: WeatherBakeStarter;
+    /** Whether the caller has abandoned the request before its tasks reach the scheduler. */
+    cancelled?: () => boolean;
 };
 
 export class WeatherBakeManager {
@@ -225,6 +227,21 @@ export class WeatherBakeManager {
             }
         };
         const wanted = dedupe(request.specs);
+        const cancelled = (): boolean => {
+            if (!options.cancelled?.()) {
+                return false;
+            }
+            for (const spec of wanted) {
+                const key = weatherBakeKey(spec);
+                if (!paths.has(key)) {
+                    failures.set(key, "cancelled");
+                }
+            }
+            return true;
+        };
+        if (cancelled()) {
+            return { paths, failures };
+        }
         if (wanted.length === 0) {
             retire();
             return { paths, failures };
@@ -243,12 +260,18 @@ export class WeatherBakeManager {
                 missing.push({ spec, key, target: this.pathFor(request.projectRoot, spec, request.quality) });
             }
         }
+        if (cancelled()) {
+            return { paths, failures };
+        }
         if (missing.length === 0) {
             retire();
             return { paths, failures };
         }
 
         const tool = await resolveFfmpegBinary(this.app, "ffmpeg", options);
+        if (cancelled()) {
+            return { paths, failures };
+        }
         if (!tool.available) {
             logger.warn(`No ffmpeg on this host, so ${missing.length} weather clip(s) were not produced: ${tool.detail}`);
             for (const item of missing) {

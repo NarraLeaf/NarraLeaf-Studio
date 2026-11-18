@@ -64,6 +64,16 @@ describe("voice CSV round-trip", () => {
         expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 2 } }]);
         expect(parseVoiceCsv("filename\na.wav").problems).toEqual([{ code: "noIdColumn" }]);
     });
+
+    it("keeps spreadsheet row numbers after blank rows and multiline cells", () => {
+        const csv = '\nfilename,unit_id,line\n\na.wav,t-a,"first\nsecond"\nb.wav,,orphan\nc.wav,t-c,last\n';
+        const parsed = parseVoiceCsv(csv);
+        expect(parsed.rows.map(({ unitId, row }) => ({ unitId, row }))).toEqual([
+            { unitId: "t-a", row: 4 },
+            { unitId: "t-c", row: 6 },
+        ]);
+        expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 5 } }]);
+    });
 });
 
 describe("voice filename convention", () => {

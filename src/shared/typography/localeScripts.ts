@@ -35,6 +35,7 @@
 import { coversCodePoint, type FontCoverage } from "./fontCoverage";
 
 export type ScriptProfileId =
+    | "unknown"
     | "latin"
     | "cyrillic"
     | "greek"
@@ -62,12 +63,13 @@ export type ScriptProfile = {
     /**
      * Whether a font has to *declare* this script for a suggestion, its repertoire being no evidence.
      *
-     * True for the three Han languages and nothing else. See the note above.
+     * True for the three Han languages and unrecognised scripts. See the note above.
      */
     readonly declaredOnly: boolean;
 };
 
 const SCRIPT_PROFILES: readonly ScriptProfile[] = [
+    { id: "unknown", probes: [], declaredOnly: true },
     // "A", "a", "é" - the last one is what separates a font with real Latin coverage from one
     // carrying only the ASCII range for its own digits and punctuation.
     { id: "latin", codePage: 1252, probes: [0x0041, 0x0061, 0x00e9], declaredOnly: false },
@@ -92,13 +94,27 @@ const SCRIPT_PROFILES: readonly ScriptProfile[] = [
 
 const PROFILE_BY_ID = new Map(SCRIPT_PROFILES.map(profile => [profile.id, profile]));
 
+/** Explicit BCP-47 scripts whose coverage profiles this module can distinguish. */
+const PROFILE_BY_SCRIPT: ReadonlyMap<string, ScriptProfileId> = new Map([
+    ["latn", "latin"],
+    ["cyrl", "cyrillic"],
+    ["grek", "greek"],
+    ["arab", "arabic"],
+    ["hebr", "hebrew"],
+    ["deva", "devanagari"],
+    ["thai", "thai"],
+    ["hang", "korean"],
+    ["jpan", "japanese"],
+    ["hans", "chinese-simplified"],
+    ["hant", "chinese-traditional"],
+]);
+
 /**
  * Locale prefix -> writing system, longest prefix first.
  *
  * Matched on BCP-47 subtag boundaries, so `zh-Hant-HK` finds `zh-hant` and `pt-BR` falls through to
- * the Latin default. Only languages whose script is *not* Latin need an entry; everything absent is
- * Latin, which is the right answer for the long tail of European languages and the wrong answer for
- * nothing this list forgets to name loudly.
+ * the Latin default. Only languages whose default script is *not* Latin need an entry. Explicit
+ * script subtags are handled separately.
  */
 const LOCALE_SCRIPTS: readonly (readonly [prefix: string, id: ScriptProfileId])[] = [
     ["zh-hant", "chinese-traditional"],
@@ -132,7 +148,7 @@ const LOCALE_SCRIPTS: readonly (readonly [prefix: string, id: ScriptProfileId])[
     ["ne", "devanagari"],
 ];
 
-/** The writing system a language is set in. Latin when nothing else claims it. */
+/** The writing system a locale names, or the language default when no script is specified. */
 export function scriptProfileForLocale(locale: string): ScriptProfile {
     const code = locale.trim().toLowerCase();
     let best: { prefix: string; id: ScriptProfileId } | null = null;
@@ -144,7 +160,15 @@ export function scriptProfileForLocale(locale: string): ScriptProfile {
             best = { prefix, id };
         }
     }
-    return PROFILE_BY_ID.get(best?.id ?? "latin") ?? PROFILE_BY_ID.get("latin")!;
+    const id = best?.id ?? "latin";
+    // An explicit script overrides the language default. Vietnamese keeps its own Latin profile
+    // because its distinctive repertoire has a dedicated code page.
+    const script = code.split("-")[1];
+    const explicit = PROFILE_BY_SCRIPT.get(script ?? "");
+    const resolved = script && /^[a-z]{4}$/.test(script) && !explicit
+        ? "unknown"
+        : explicit === "latin" && id === "vietnamese" ? id : (explicit ?? id);
+    return PROFILE_BY_ID.get(resolved) ?? PROFILE_BY_ID.get("latin")!;
 }
 
 /**
@@ -165,6 +189,11 @@ export function suggestLocalesForCoverage(
     const byProfile = new Map<ScriptProfileId, string[]>();
     for (const locale of projectLocales) {
         const profile = scriptProfileForLocale(locale);
+        // An unrecognised explicit script could be served by this font, so a restriction would
+        // exclude a language the probe cannot evaluate.
+        if (profile.id === "unknown") {
+            return [];
+        }
         // Latin is every project's fallthrough and never a restriction worth suggesting.
         if (profile.id === "latin") {
             continue;

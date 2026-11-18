@@ -13,6 +13,7 @@ export type LivePeerCursor = {
 };
 
 export type LiveChatLine = {
+    /** A room-local key derived from the sender and that sender's message id. */
     id: string;
     instance: string;
     account: string;
@@ -87,9 +88,10 @@ export class LivePresence {
     receive(message: LivePresenceMessage, from: string, account: string): void {
         if (message.kind === "moving") return; // the session's business, not presence's
         if (message.kind === "chat") {
-            if (this.seenLines.has(message.id)) return;
-            this.seenLines.add(message.id);
-            this.lines.push({ id: message.id, instance: from, account, text: message.text, at: this.deps.now(), mine: from === this.deps.self });
+            const id = JSON.stringify([from, message.id]);
+            if (this.seenLines.has(id)) return;
+            this.seenLines.add(id);
+            this.lines.push({ id, instance: from, account, text: message.text, at: this.deps.now(), mine: from === this.deps.self });
             if (this.lines.length > LIVE_CHAT_KEPT) {
                 const dropped = this.lines.splice(0, this.lines.length - LIVE_CHAT_KEPT);
                 for (const line of dropped) this.seenLines.delete(line.id);

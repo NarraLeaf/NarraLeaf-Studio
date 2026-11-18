@@ -246,7 +246,7 @@ function normalizeLabel(value: unknown): string {
     // one line by definition - so they become spaces here rather than a reason to drop the item.
     const flattened = value.replace(/[\r\n\t]+/g, " ").trim();
     return flattened.length > GAME_MENU_MAX_LABEL_LENGTH
-        ? flattened.slice(0, GAME_MENU_MAX_LABEL_LENGTH)
+        ? Array.from(flattened).slice(0, GAME_MENU_MAX_LABEL_LENGTH).join("")
         : flattened;
 }
 

@@ -141,6 +141,23 @@ describe("buildStoryScriptPlan presence", () => {
         expect(slots.some(slot => slot.key === "block:s1/b1")).toBe(false);
         expect(slotFor(slots, "block:s2/b9").onBase).toBe(false);
     });
+
+    it("shows the script of an entirely added or removed story", () => {
+        const document = story([scene("s1", "Opening", THREE)]);
+        for (const kind of ["added", "removed"] as const) {
+            const diff = {
+                changes: [{ path: [], kind, label: { key: `documentDiff.${kind}` } }],
+                complete: true,
+                total: 1,
+                tier: "opaque" as const,
+            };
+            const rows = buildDocumentChangeRows(diff, 200).rows;
+            const plan = buildStoryScriptPlan(rows, kind === "removed" ? document : null, kind === "added" ? document : null);
+            const line = slotFor(plan.slots, "block:s1/b1");
+            expect([line.onBase, line.onHead]).toEqual(kind === "added" ? [false, true] : [true, false]);
+            expect(plan.slots.filter(slot => slot.stop)).toHaveLength(1);
+        }
+    });
 });
 
 describe("buildStoryScriptPlan coverage", () => {
@@ -180,6 +197,33 @@ describe("buildStoryScriptPlan coverage", () => {
         // group row, and the line inside it. Nothing an author could previously reach is gone.
         expect(slots.filter(slot => slot.stop)).toHaveLength(rows.length);
         expect(slotFor(slots, "block:s1/b1").stop).toBe(false);
+    });
+
+    it("keeps each scene field change when several changes share its heading", () => {
+        const baseScene = { ...scene("s1", "Opening", THREE), description: "Before" };
+        const headScene = { ...baseScene, name: "Renamed", description: "After" };
+        const base = story([baseScene]);
+        const head = story([headScene]);
+        const rows = buildDocumentChangeRows(diffStoryDocument(base, head, { limit: 200 }), 200).rows;
+
+        const { slots } = planOf(base, head);
+
+        expect(slots.filter(slot => slot.stop)).toHaveLength(rows.length);
+        const individualChanges = slots.filter(slot => slot.kind === "change").map(slot => slot.row.change.path);
+        expect(individualChanges).toContainEqual(["scenes", "s1", "name"]);
+        expect(individualChanges).toContainEqual(["scenes", "s1", "description"]);
+    });
+
+    it("keeps each change when a line is edited and disabled together", () => {
+        const base = story([scene("s1", "Opening", [block("b1", "Before")])]);
+        const head = story([scene("s1", "Opening", [block("b1", "After", { disabled: true })])]);
+        const rows = buildDocumentChangeRows(diffStoryDocument(base, head, { limit: 200 }), 200).rows;
+
+        const { slots } = planOf(base, head);
+
+        expect(slots.filter(slot => slot.stop)).toHaveLength(rows.length);
+        const individualChanges = slots.filter(slot => slot.kind === "change").map(slot => slot.row.change.path);
+        expect(individualChanges).toContainEqual(["scenes", "s1", "blocks", "b1", "disabled"]);
     });
 
     it("counts the lines it drew, so a caller can refuse to draw too many", () => {

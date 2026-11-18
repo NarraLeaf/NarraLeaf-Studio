@@ -353,8 +353,12 @@ export function updateStoryMotionKeyframe(
     for (const track of next.tracks) {
         const index = track.keyframes.findIndex(keyframe => keyframe.id === keyframeId);
         if (index >= 0) {
-            track.keyframes[index] = updater(track.keyframes[index], track);
-            track.keyframes[index].timeMs = clampStoryMotionTimeMs(track.keyframes[index].timeMs);
+            const updated = updater(track.keyframes[index], track);
+            updated.timeMs = clampStoryMotionTimeMs(updated.timeMs);
+            track.keyframes = track.keyframes.filter((keyframe, keyframeIndex) => (
+                keyframeIndex !== index && keyframe.timeMs !== updated.timeMs
+            ));
+            track.keyframes.push(updated);
             track.keyframes.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
             next.durationMs = getStoryMotionDurationMs(next);
             return next;

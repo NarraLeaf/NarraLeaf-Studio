@@ -7,6 +7,7 @@ import { useTranslation } from "@/lib/i18n";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { useFollowedAsset } from "./useFollowedAsset";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 
 /** A font file that was read and that the browser would not load as a face. */
@@ -36,7 +37,7 @@ export function FontPreviewEditor(props: EditorComponentProps<FontPreviewPayload
 
 function FontPreviewBody({ tabId, payload }: EditorComponentProps<FontPreviewPayload>) {
     const { t } = useTranslation();
-    const asset = payload?.asset;
+    const asset = useFollowedAsset(payload?.asset);
     const { url, loading, failure } = useAssetBlobUrl(asset);
     const [family, setFamily] = useState<string | null>(null);
     const [fontFailure, setFontFailure] = useState<AssetReadFailure | null>(null);

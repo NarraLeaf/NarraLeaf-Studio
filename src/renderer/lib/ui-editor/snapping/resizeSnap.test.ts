@@ -38,6 +38,63 @@ function makeDocument(): UIDocument {
 }
 
 describe("snapResizeLayoutInSurface", () => {
+    it("keeps the opposite edge fixed when the closest guide would collapse the box", () => {
+        const verticalLines: SnapGuideLine[] = [
+            { axis: "vertical", value: 199.5, kind: "element-edge", sourceElementId: "too-close" },
+            { axis: "vertical", value: 190, kind: "element-edge", sourceElementId: "valid" },
+        ];
+        const snapped = snapResizeLayoutInSurface(
+            makeDocument(), "box", { x: 195, y: 100, width: 5, height: 50, rotation: 0 },
+            [-1, 0], verticalLines, [], 1, "surface",
+        );
+
+        expect(snapped.layout).toEqual({ x: 190, y: 100, width: 10, height: 50 });
+        expect(snapped.activeGuides.vertical).toEqual([{ value: 190, kind: "element-edge" }]);
+    });
+
+    it.each([
+        { direction: [1, 0] as const, axis: "vertical" as const, layout: { x: 100, y: 100, width: 5, height: 5 }, valid: 110, invalid: 100.5, expected: { x: 100, y: 100, width: 10, height: 5 } },
+        { direction: [0, -1] as const, axis: "horizontal" as const, layout: { x: 100, y: 195, width: 5, height: 5 }, valid: 190, invalid: 199.5, expected: { x: 100, y: 190, width: 5, height: 10 } },
+        { direction: [0, 1] as const, axis: "horizontal" as const, layout: { x: 100, y: 100, width: 5, height: 5 }, valid: 110, invalid: 100.5, expected: { x: 100, y: 100, width: 5, height: 10 } },
+    ])("selects a valid $axis guide for resize direction $direction", ({ direction, axis, layout, valid, invalid, expected }) => {
+        const lines: SnapGuideLine[] = [invalid, valid].map(value => ({ axis, value, kind: "element-edge", sourceElementId: "guide" }));
+        const snapped = snapResizeLayoutInSurface(
+            makeDocument(), "box", { ...layout, rotation: 0 }, direction,
+            axis === "vertical" ? lines : [], axis === "horizontal" ? lines : [], 1, "surface",
+        );
+        expect(snapped.layout).toEqual(expected);
+        expect(snapped.activeGuides[axis]).toEqual([{ value: valid, kind: "element-edge" }]);
+    });
+
+    it("keeps the opposite edge fixed when the dragged edge is inside the minimum size", () => {
+        const snapped = snapResizeLayoutInSurface(
+            makeDocument(), "box", { x: 199.8, y: 100, width: 0.2, height: 50, rotation: 0 },
+            [-1, 0], [], [], 1, "surface",
+        );
+        expect(snapped.layout).toEqual({ x: 199, y: 100, width: 1, height: 50 });
+        expect(snapped.activeGuides.vertical).toEqual([]);
+
+        const top = snapResizeLayoutInSurface(
+            makeDocument(), "box", { x: 100, y: 199.8, width: 50, height: 0.2, rotation: 0 },
+            [0, -1], [], [], 1, "surface",
+        );
+        expect(top.layout).toEqual({ x: 100, y: 199, width: 50, height: 1 });
+    });
+
+    it("uses the nearest valid guide when preserving the aspect ratio", () => {
+        const verticalLines: SnapGuideLine[] = [
+            { axis: "vertical", value: 199, kind: "element-edge", sourceElementId: "too-close" },
+            { axis: "vertical", value: 194, kind: "element-edge", sourceElementId: "valid" },
+        ];
+        const snapped = snapResizeLayoutInSurface(
+            makeDocument(), "box", { x: 197, y: 100, width: 3, height: 1.5, rotation: 0 },
+            [-1, 0], verticalLines, [], 1, "surface", { preserveAspectRatio: true, aspectRatio: 2 },
+        );
+
+        expect(snapped.layout).toEqual({ x: 194, y: 99.25, width: 6, height: 3 });
+        expect(snapped.activeGuides.vertical).toEqual([{ value: 194, kind: "element-edge" }]);
+    });
+
     it("preserves aspect ratio when a locked bottom-right resize snaps horizontally", () => {
         const verticalLines: SnapGuideLine[] = [
             { axis: "vertical", value: 300, kind: "element-edge", sourceElementId: "guide" },

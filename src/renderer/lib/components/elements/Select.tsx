@@ -24,6 +24,8 @@ export interface SelectOption {
 export type SelectMenuPlacement = "auto" | "above" | "below";
 
 export interface SelectProps {
+    /** Identifies the trigger for a field label. */
+    id?: string;
     options: SelectOption[];
     value?: string | number;
     onChange?: (value: string | number) => void;
@@ -151,6 +153,7 @@ function measureNaturalWidth(node: HTMLElement): number {
  * Select dropdown component with VS Code-like styling
  */
 export function Select({
+    id,
     options,
     value,
     onChange,
@@ -564,6 +567,7 @@ export function Select({
                 // the two triggers are indistinguishable; the dimming is computed rather than left
                 // to `disabled:`, which a span never matches.
                 <InspectOnlyButton
+                    id={id}
                     disabled={disabled}
                     aria-expanded={isOpen}
                     aria-label={ariaLabel}
@@ -581,6 +585,7 @@ export function Select({
                 </InspectOnlyButton>
             ) : (
                 <Button
+                    id={id}
                     variant="ghost"
                     size={size}
                     fullWidth={fullWidth}
@@ -604,6 +609,7 @@ export function Select({
  * Combobox component with search functionality
  */
 export function Combobox({
+    id,
     options,
     value,
     onChange,
@@ -726,6 +732,7 @@ export function Combobox({
                 isOpen && "border-primary ring-1 ring-primary/30 shadow-lg shadow-primary/10",
             )}>
                 <input
+                    id={id}
                     ref={inputRef}
                     type="text"
                     value={isOpen ? searchTerm : displayValue}

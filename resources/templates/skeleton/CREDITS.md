@@ -33,7 +33,7 @@ Studio's intro→loop audio track wants.
 ## Character — NarraLeaf's own
 
 `narra` — Narra, the project's mascot, supplied by the project owner. Upper body
-only, 1289×1620, cropped and padded so the head sits on the horizontal centre.
+only, 1600×1586, cropped and padded so the head sits on the horizontal centre.
 
 ## Rejected, and why — so nobody re-researches them
 

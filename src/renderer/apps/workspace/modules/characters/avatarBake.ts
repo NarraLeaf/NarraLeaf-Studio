@@ -181,7 +181,7 @@ export async function bakeCharacterAvatars(
 
         if (override) {
             // The author's own artwork wins, so any bake under this key is dead weight on disk.
-            if (existing?.baked) {
+            if (existing?.baked || await io.projectFileExists(relativePath)) {
                 await io.deleteProjectFile(relativePath);
             }
             assign(avatars, target.key, withAuthorFields(existing, { overrideAssetId: override }));

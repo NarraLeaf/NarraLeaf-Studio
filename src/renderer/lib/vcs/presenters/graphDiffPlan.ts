@@ -71,7 +71,9 @@ export type OffGraphReason =
     /** A blueprint's own fields, or which blueprint is live for an owner slot. */
     | "blueprint"
     /** The order the author arranged the layers in - a fact about a list, not about a canvas. */
-    | "order";
+    | "order"
+    /** A script layer has no graph canvas. */
+    | "script";
 
 export interface OffGraphChange {
     readonly index: number;
@@ -85,6 +87,8 @@ export interface GraphNodeFacts {
     readonly type: string;
     readonly x: number;
     readonly y: number;
+    /** Parameters saved with this version of the node. */
+    readonly params?: Record<string, unknown>;
 }
 
 export interface GraphEdgeFacts {
@@ -133,8 +137,10 @@ export function buildGraphDiffPlan(
     base: UIGraphDocument | null,
     head: UIGraphDocument | null,
 ): GraphDiffPlan {
-    const baseGraphs = readGraphs(base);
-    const headGraphs = readGraphs(head);
+    const baseInventory = readGraphInventory(base);
+    const headInventory = readGraphInventory(head);
+    const baseGraphs = baseInventory.graphs;
+    const headGraphs = headInventory.graphs;
 
     const masks: GraphMask[] = [];
     const offCanvas: OffGraphChange[] = [];
@@ -153,6 +159,11 @@ export function buildGraphDiffPlan(
             return;
         }
         const graphKey = graphKeyOf(located.address);
+        if (!baseGraphs.has(graphKey) && !headGraphs.has(graphKey)
+            && (baseInventory.scripts.has(graphKey) || headInventory.scripts.has(graphKey))) {
+            offCanvas.push({ index, change, reason: "script", leaves });
+            return;
+        }
         masks.push({
             index,
             change,
@@ -254,7 +265,15 @@ const GRAPH_SLOTS = new Set(["events", "functions", "macros"]);
  * exists or holds the type it is declared with.
  */
 export function readGraphs(document: UIGraphDocument | null): Map<string, GraphFacts> {
+    return readGraphInventory(document).graphs;
+}
+
+function readGraphInventory(document: UIGraphDocument | null): {
+    graphs: Map<string, GraphFacts>;
+    scripts: Set<string>;
+} {
     const out = new Map<string, GraphFacts>();
+    const scripts = new Set<string>();
 
     const blueprints = recordOf(recordOf((document as Record<string, unknown> | null)?.blueprintDocument)?.blueprints);
     for (const [blueprintId, blueprint] of Object.entries(blueprints ?? {})) {
@@ -267,7 +286,12 @@ export function readGraphs(document: UIGraphDocument | null): Map<string, GraphF
                 const wrapper = recordOf(graph);
                 if (!wrapper) continue;
                 const address: GraphAddress = { blueprintId, slot, graphId };
-                out.set(graphKeyOf(address), graphFacts(address, wrapper, blueprintName));
+                const key = graphKeyOf(address);
+                if (recordOf(wrapper.script)) {
+                    scripts.add(key);
+                } else {
+                    out.set(key, graphFacts(address, wrapper, blueprintName));
+                }
             }
         }
     }
@@ -276,10 +300,15 @@ export function readGraphs(document: UIGraphDocument | null): Map<string, GraphF
         const wrapper = recordOf(graph);
         if (!wrapper) continue;
         const address: GraphAddress = { blueprintId: null, slot: null, graphId };
-        out.set(graphKeyOf(address), graphFacts(address, wrapper, null));
+        const key = graphKeyOf(address);
+        if (recordOf(wrapper.script)) {
+            scripts.add(key);
+        } else {
+            out.set(key, graphFacts(address, wrapper, null));
+        }
     }
 
-    return out;
+    return { graphs: out, scripts };
 }
 
 function graphFacts(
@@ -297,11 +326,13 @@ function graphFacts(
         const record = recordOf(node);
         if (!record) continue;
         const layout = recordOf(recordOf(record.meta)?.editorLayout);
+        const params = recordOf(record.params);
         nodes.push({
             id: nodeId,
             type: typeof record.type === "string" ? record.type : "",
             x: finiteOr(layout?.x, 0),
             y: finiteOr(layout?.y, 0),
+            ...(params ? { params } : {}),
         });
     }
 

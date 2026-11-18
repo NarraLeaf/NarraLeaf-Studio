@@ -16,12 +16,16 @@ import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
-import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
+import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { VoiceDocument } from "@shared/types/voice";
-import type { StoryBlockId } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlockId, StoryScene } from "@shared/types/story";
+import { buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { walkStoryStageTimeline } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { getStoryPreviewHub, useStoryPreviewHubValue, type StoryPreviewHub } from "../story/scene-editor/preview/storyPreviewHub";
 import { useStoryDocument } from "../story/scene-editor/preview/StoryScenePreviewFloatHost";
@@ -69,14 +73,29 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
     const [picks, setPicks] = useState<{ sceneId: string | null; map: ReadonlyMap<StoryBlockId, StoryBlockId> }>({ sceneId: null, map: new Map() });
     const scenePicks = picks.sceneId === sceneId ? picks.map : EMPTY_PICKS;
     const pick = useCallback((choiceId: StoryBlockId, optionId: StoryBlockId) => {
+        let current = cursor && scene ? scene.blocks[cursor] : undefined;
+        while (current?.parentId && current.parentId !== choiceId) {
+            current = scene?.blocks[current.parentId];
+        }
+        if (current?.parentId === choiceId && current.id !== optionId) {
+            tab?.stepTo(choiceId);
+        }
         setPicks(current => {
             const map = new Map(current.sceneId === sceneId ? current.map : EMPTY_PICKS);
             map.set(choiceId, optionId);
             return { sceneId, map };
         });
-    }, [sceneId]);
+    }, [cursor, scene, sceneId, tab]);
 
     const names = useTimelineNames(context, ready);
+    const animations = useTimelineAnimations(context, ready, scene);
+    const registryService = useMemo(() => (context && ready ? context.services.get<VariableRegistryService>(Services.VariableRegistry) : null), [context, ready]);
+    const [registryRevision, setRegistryRevision] = useState(0);
+    useEffect(() => registryService?.onRegistryChanged(() => setRegistryRevision(revision => revision + 1)), [registryService]);
+    const savedVariables = useMemo(
+        () => registryService ? buildSavedRuntimeTable(registryService.getRegistry()) : undefined,
+        [registryRevision, registryService],
+    );
 
     const throughKey = scene ? stageTimelineThrough(scene, cursor, scenePicks).join("\n") : "";
     const model = useMemo(() => {
@@ -87,9 +106,11 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
             document,
             sceneId,
             through: throughKey ? throughKey.split("\n") : [],
+            savedVariables,
+            animations,
         });
         return buildStageTimelineModel({ walk, scene, names: names.names });
-    }, [document, names, scene, sceneId, throughKey]);
+    }, [animations, document, names, savedVariables, scene, sceneId, throughKey]);
 
     const order = useMemo(() => (scene ? sceneBlockOrder(scene) : new Map<StoryBlockId, number>()), [scene]);
     const textWidths = useMemo(() => (model ? model.lines.map(line => (line === null ? null : measureLine(line))) : []), [model]);
@@ -135,6 +156,54 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
 }
 
 const EMPTY_PICKS: ReadonlyMap<StoryBlockId, StoryBlockId> = new Map();
+const EMPTY_ANIMATIONS: ReadonlyMap<string, StoryAnimationAsset> = new Map();
+
+/** Load the same referenced motions the story preview passes to its stage walk. */
+function useTimelineAnimations(context: ReturnType<typeof useWorkspace>["context"], ready: boolean, scene: StoryScene | null) {
+    const service = useMemo(() => (context && ready ? context.services.get<StoryService>(Services.Story) : null), [context, ready]);
+    const [loaded, setLoaded] = useState<{ scene: StoryScene; service: StoryService; animations: ReadonlyMap<string, StoryAnimationAsset> } | null>(null);
+    useEffect(() => {
+        if (!scene || !service) {
+            return;
+        }
+        const ids = new Set<string>();
+        const visit = (value: unknown): void => {
+            if (!value || typeof value !== "object") {
+                return;
+            }
+            if (Array.isArray(value)) {
+                value.forEach(visit);
+                return;
+            }
+            const record = value as Record<string, unknown>;
+            if (typeof record.animationId === "string" && record.animationId) {
+                ids.add(record.animationId);
+            }
+            Object.values(record).forEach(visit);
+        };
+        Object.values(scene.blocks).forEach(block => visit(block.payload));
+        let generation = 0;
+        let disposed = false;
+        const load = () => {
+            const current = ++generation;
+            void Promise.all([...ids].map(async id => {
+                try {
+                    return [id, await service.loadAnimationAsset(id)] as const;
+                } catch {
+                    return null;
+                }
+            })).then(entries => {
+                if (!disposed && current === generation) {
+                    setLoaded({ scene, service, animations: new Map(entries.filter(entry => entry !== null)) });
+                }
+            });
+        };
+        load();
+        const unsubscribe = service.onAnimationsChanged(load);
+        return () => { disposed = true; unsubscribe(); };
+    }, [scene, service]);
+    return loaded?.scene === scene && loaded.service === service ? loaded.animations : EMPTY_ANIMATIONS;
+}
 
 let measureContext: CanvasRenderingContext2D | null | undefined;
 
@@ -161,8 +230,8 @@ function measureLine(text: string): number {
  */
 function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], ready: boolean) {
     const characterService = useMemo(() => (context && ready ? context.services.get<CharacterService>(Services.Character) : null), [context, ready]);
-    const assetsService = useMemo(() => (context && ready ? context.services.get<AssetsService>(Services.Assets) : null), [context, ready]);
     const voiceService = useMemo(() => (context && ready ? context.services.get<VoiceService>(Services.Voice) : null), [context, ready]);
+    const assetRevision = useAssetLibraryRevision();
 
     const [characterRevision, setCharacterRevision] = useState(0);
     useEffect(() => characterService?.subscribe(() => setCharacterRevision(revision => revision + 1)), [characterService]);
@@ -175,7 +244,9 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
             return;
         }
         let disposed = false;
+        let generation = 0;
         const load = () => {
+            const current = ++generation;
             const primary = voiceService.getConfiguration().voicedLocales[0];
             if (!primary) {
                 setVoice(null);
@@ -183,7 +254,7 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
             }
             setVoice(voiceService.getDocumentIfLoaded(primary.code) ?? null);
             void voiceService.loadDocument(primary.code).then(loaded => {
-                if (!disposed) {
+                if (!disposed && current === generation) {
                     setVoice(loaded);
                 }
             }).catch(() => undefined);
@@ -192,6 +263,7 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
         const offConfig = voiceService.onConfigChanged(load);
         const offDocument = voiceService.onDocumentChanged(event => {
             if (event.locale === voiceService.getConfiguration().voicedLocales[0]?.code) {
+                generation += 1;
                 setVoice(event.document);
             }
         });
@@ -204,15 +276,7 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
 
     return useMemo(() => {
         const names: StageTimelineNames = {
-            asset: assetId => {
-                for (const group of Object.values(assetsService?.getAssets() ?? {})) {
-                    const asset = (group as Record<string, { name?: string }> | undefined)?.[assetId];
-                    if (asset?.name) {
-                        return asset.name;
-                    }
-                }
-                return null;
-            },
+            asset: assetId => resolveAssetDisplayName(ready ? context?.services : null, assetId),
             character: characterId => characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? null,
             appearance: (characterId, appearanceId) => {
                 const appearance = characters.find(character => character.profile.getId() === characterId)?.profile.appearance;
@@ -226,5 +290,5 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
             voiceSeconds: textId => voice?.units[textId]?.duration,
         };
         return { names, characters };
-    }, [assetsService, characters, voice]);
+    }, [assetRevision, characters, context, ready, voice]);
 }

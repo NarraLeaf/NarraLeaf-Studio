@@ -230,6 +230,14 @@ describe("evaluation semantics", () => {
         expect(evaluate("met == true")).toBe(true);
     });
 
+    it("compares dictionaries by content regardless of insertion order", () => {
+        const reversed = 'setKey(setKey(dict(), "ch2", false), "ch1", true)';
+        expect(evaluate(`flags == ${reversed}`)).toBe(true);
+        expect(evaluate(`flags != ${reversed}`)).toBe(false);
+        expect(evaluate(`contains(list(flags), ${reversed})`)).toBe(true);
+        expect(evaluate(`indexOf(list(flags), ${reversed})`)).toBe(0);
+    });
+
     it("returns booleans from && and ||, not the surviving operand", () => {
         expect(evaluate("playerName || \"Stranger\"")).toBe(true);
         expect(evaluate("gold && playerName")).toBe(true);
@@ -250,6 +258,19 @@ describe("evaluation semantics", () => {
     it("returns 0 rather than Infinity or NaN on division by zero", () => {
         expect(evaluate("1 / 0")).toBe(0);
         expect(evaluate("1 % 0")).toBe(0);
+    });
+
+    it("returns a finite result when arithmetic overflows", () => {
+        const scope = createStoryExpressionScope([
+            { name: "large", ref: { scope: "scene", variableId: "large" } },
+            { name: "tiny", ref: { scope: "scene", variableId: "tiny" } },
+        ]);
+        const read = (ref: StoryVariableRef) => ref.variableId === "large" ? Number.MAX_VALUE : Number.MIN_VALUE;
+        for (const source of ["large + large", "large * 2", "large / tiny", "randomInt(-large, large)", 'str(large * 2)']) {
+            const parsed = parseStoryExpression(source, scope);
+            expect(parsed.issues).toEqual([]);
+            expect(evaluateStoryExpression(parsed.expression.ast, { read }), source).toBe(source.startsWith("str") ? "0" : 0);
+        }
     });
 
     it("treats a missing variable as null", () => {
@@ -532,6 +553,15 @@ describe("failure handling", () => {
         // `gold + 1 oops` must not quietly become `gold + 1`.
         const { expression } = parseStoryExpression("gold + 1 oops", SCOPE);
         expect(isStoryExpressionEvaluable(expression.ast)).toBe(false);
+    });
+
+    it("does not evaluate an expression after discarding an invalid character", () => {
+        for (const source of ["gold @ + 1", "gold #", "[1, @ 2]"]) {
+            const { expression, issues } = parseStoryExpression(source, SCOPE);
+            expect(issues.some(issue => issue.code === "unexpectedToken"), source).toBe(true);
+            expect(isStoryExpressionEvaluable(expression.ast), source).toBe(false);
+            expect(expression.source).toBe(source);
+        }
     });
 });
 

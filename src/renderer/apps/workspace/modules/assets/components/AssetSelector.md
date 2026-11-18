@@ -101,7 +101,7 @@ export interface AssetSelectorVirtualGroup {
 ### 多选（`multiple={true}`）
 
 - 点击切换选中；底部 **Choose** 调用 `onConfirm(selectedAssets)` 后 `onClose()`。
-- **selectedAssets** 由项目 `typeAssets` 与当前搜索过滤后的**虚拟** `virtualAssetsFlat` 合并成 `Map` 再按 `selection` 解析；虚拟条目必须能被 `id` 解析到。
+- **selectedAssets** 由项目 `typeAssets` 与全部虚拟分组条目合并成 `Map` 再按 `selection` 解析；搜索只改变可见行，已选条目仍会保留。
 - **Clear** 清空选择。
 
 ---

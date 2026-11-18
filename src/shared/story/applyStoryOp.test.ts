@@ -53,6 +53,7 @@ describe("applyStoryOpToDocument", () => {
 
         apply(document, { op: "delete-blocks", sceneId, blockIds: ["a", "b"] });
         expect(document.scenes[sceneId].rootBlockIds).toEqual([]);
+        expect(document.scenes[sceneId].blocks).toEqual({});
     });
 
     it("refuses a row operation on a scene that is not there by throwing", () => {
@@ -70,11 +71,14 @@ describe("applyStoryOpToDocument", () => {
 
     it("pins a scene's runtime name before renaming it", () => {
         const { document, sceneId } = freshDocument();
+        document.scenes[sceneId].name = "Opening";
         document.scenes[sceneId].runtimeName = "";
         apply(document, { op: "rename-scene", sceneId, name: "Renamed" });
         expect(document.scenes[sceneId].name).toBe("Renamed");
-        expect(document.scenes[sceneId].runtimeName).not.toBe("");
+        expect(document.scenes[sceneId].runtimeName).toBe("Opening");
         expect(document.scenes[sceneId].meta?.updatedAt).toBe(LATER);
+        apply(document, { op: "rename-scene", sceneId, name: "Renamed again" });
+        expect(document.scenes[sceneId].runtimeName).toBe("Opening");
     });
 
     it("creates, moves and deletes scenes, keeping the entry pointer on a scene that exists", () => {
@@ -91,7 +95,7 @@ describe("applyStoryOpToDocument", () => {
         expect(document.entrySceneId).toBe("s2");
     });
 
-    it("deletes a chapter with its scenes and keeps unnamed chapters when reordering", () => {
+    it("deletes a chapter with its scenes and keeps omitted chapters when reordering", () => {
         const { document, chapterId } = freshDocument();
         const other = { id: "c2", name: "Two", sceneIds: [], meta: { createdAt: NOW, updatedAt: NOW } };
         apply(document, { op: "create-chapter", chapter: other, beforeChapterId: chapterId });
@@ -106,7 +110,7 @@ describe("applyStoryOpToDocument", () => {
         expect(document.entrySceneId).toBeUndefined();
     });
 
-    it("produces the same document on two machines from the same operations", () => {
+    it("replays the same operations deterministically across independent documents", () => {
         const a = freshDocument();
         const b = freshDocument();
         const ops: LiveStoryOp[] = [
@@ -120,9 +124,31 @@ describe("applyStoryOpToDocument", () => {
         }
         expect(a.document).toEqual(b.document);
         expect(a.document.name).toBe("Renamed");
+        expect(a.document.scenes[a.sceneId].blocks.x.payload).toEqual(narration("x", "hello").payload);
+        expect(a.document.scenes[a.sceneId]).toMatchObject({ name: "S", runtimeName: "s", description: "d" });
     });
 
-    it("names the scenes a row operation reaches, and nothing for a structural one", () => {
+    it("updates rows in several scenes and names every scene for serialisation", () => {
+        const { document, chapterId, sceneId } = freshDocument();
+        const second = { ...structuredClone(document.scenes[sceneId]), id: "s2", name: "Two", runtimeName: "two" };
+        apply(document, { op: "create-scene", scene: second, chapterId, beforeSceneId: null });
+        apply(document, { op: "insert-block", sceneId, block: narration("a", "one"), target: { parentId: null } });
+        apply(document, { op: "insert-block", sceneId: "s2", block: narration("b", "two"), target: { parentId: null } });
+
+        const op: LiveStoryOp = {
+            op: "update-blocks",
+            edits: [
+                { sceneId, blockId: "a", payload: narration("a", "uno").payload },
+                { sceneId: "s2", blockId: "b", payload: narration("b", "dos").payload },
+            ],
+        };
+        expect(storyOpSceneReach(op)).toEqual([sceneId, "s2"]);
+        expect(apply(document, op)).toEqual({ changed: true });
+        expect(document.scenes[sceneId].blocks.a.payload).toEqual(narration("a", "uno").payload);
+        expect(document.scenes.s2.blocks.b.payload).toEqual(narration("b", "dos").payload);
+    });
+
+    it("names the scene a row operation reaches, and nothing for a structural one", () => {
         expect(storyOpSceneReach({ op: "delete-block", sceneId: "s", blockId: "b" })).toEqual(["s"]);
         expect(storyOpSceneReach({ op: "delete-scene", sceneId: "s" })).toBeUndefined();
     });

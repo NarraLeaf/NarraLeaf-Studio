@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { ScopeStoreBridge } from "../../renderer/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { StorySavedVariableDefinition } from "../types/story/document";
 import type { VariableRegistryEntry } from "../types/variables/registry";
-import { buildMergedPersistentView, buildMergedVariableView, mergedPersistentStorageKeys } from "./mergedPersistentView";
+import {
+    buildMergedPersistentView,
+    buildMergedVariableView,
+    declaredPersistentDefaults,
+    declaredSavedDefaults,
+    mergedPersistentStorageKeys,
+    persistentDefaultsByStorageKey,
+} from "./mergedPersistentView";
 
 function registryEntry(
     id: string,
@@ -80,5 +88,39 @@ describe("buildMergedVariableView", () => {
         const registry = [registryEntry("gold", "Gold")];
         const story = [storyDef("hp", "HP")];
         expect(buildMergedPersistentView(registry, story)).toEqual(buildMergedVariableView(registry, story));
+    });
+});
+
+describe("declared defaults with special keys", () => {
+    it("answers a persistent default without writing it to the store", async () => {
+        const entry = { ...registryEntry("id", "Progress", "__proto__"), defaultValue: 7 };
+        const defaults = declaredPersistentDefaults({ ui: { persistentVariables: { id: entry } } });
+        const bridge = new ScopeStoreBridge({ persistentDefaults: defaults });
+
+        expect(Object.prototype.hasOwnProperty.call(defaults, "__proto__")).toBe(true);
+        expect(bridge.persistenceGet("__proto__")).toBe(7);
+        expect(await bridge.persistenceGetAsync("__proto__")).toBe(7);
+        expect(await bridge.persistenceStoredAsync("__proto__")).toBeUndefined();
+        expect(bridge.getPersistenceSnapshot().size).toBe(0);
+    });
+
+    it("keeps a registry object default ahead of a story default for the same key", () => {
+        const entry = { ...registryEntry("id", "Progress", "__proto__"), defaultValue: { chapter: 2 } };
+        const story = { ...storyDef("row", "Old Progress", "__proto__"), defaultValue: { chapter: 1 } };
+        const defaults = persistentDefaultsByStorageKey(buildMergedPersistentView([entry], [story]));
+        const bridge = new ScopeStoreBridge({ persistentDefaults: defaults });
+
+        expect(Object.prototype.hasOwnProperty.call(defaults, "__proto__")).toBe(true);
+        expect(bridge.persistenceGet("__proto__")).toEqual({ chapter: 2 });
+        expect(Object.getPrototypeOf(defaults)).toBe(Object.prototype);
+    });
+
+    it("includes a saved default whose variable id is __proto__", () => {
+        const entry = { ...registryEntry("__proto__", "Progress", "saved-key", "saved"), defaultValue: 4 };
+        const defaults = declaredSavedDefaults({ ui: { savedVariables: { entry } } });
+
+        expect(Object.prototype.hasOwnProperty.call(defaults, "__proto__")).toBe(true);
+        expect(defaults["__proto__"]).toBe(4);
+        expect(Object.getPrototypeOf(defaults)).toBe(Object.prototype);
     });
 });

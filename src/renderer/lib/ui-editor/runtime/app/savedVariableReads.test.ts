@@ -3,6 +3,8 @@ import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
+import { variableRegistrySpec } from "@shared/documents/specs/variables";
+import { buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen, type SavedVariableStorable } from "./savedVariableReads";
 
 /**
@@ -56,6 +58,48 @@ describe("declaredSavedDefaults", () => {
 
 describe("readSavedVariableForScreen", () => {
     const defaults = copyDeclaredSavedDefaults(declaredSavedDefaults(bundle));
+
+    it("carries a special id from a project document to a title screen default", () => {
+        const data = JSON.parse(`{"schemaVersion":2,"entries":{"__proto__":{"name":"Progress","scope":"saved","valueType":"number","storageKey":"progress","defaultValue":7}}}`);
+        const registry = variableRegistrySpec.parse(data, { path: "editor/variables.json" } as Parameters<typeof variableRegistrySpec.parse>[1]);
+        const saved = buildSavedRuntimeTable(registry);
+        const declaredDefaults = copyDeclaredSavedDefaults(declaredSavedDefaults({ ui: { savedVariables: saved } }));
+        expect(readSavedVariableForScreen({
+            variableId: "__proto__", compiled: null, storable: null, declaredDefaults,
+        })).toEqual({ value: 7, found: false });
+    });
+
+    it("copies and reads a declared special id without sharing object defaults", () => {
+        const objectDefault = { route: ["north"] };
+        const declared = Object.fromEntries([["__proto__", objectDefault]]);
+        const copies = copyDeclaredSavedDefaults(declared);
+        expect(Object.keys(copies)).toEqual(["__proto__"]);
+        const first = readSavedVariableForScreen({ variableId: "__proto__", compiled: null, storable: null, declaredDefaults: copies });
+        const second = readSavedVariableForScreen({ variableId: "__proto__", compiled: null, storable: null, declaredDefaults: copies });
+        expect(first).toEqual({ value: objectDefault, found: false });
+        expect(first.value).toBe(second.value);
+        expect(first.value).not.toBe(objectDefault);
+    });
+
+    it.each(["__proto__", "constructor", "toString"])("treats undeclared inherited id %s as missing", variableId => {
+        const compiled = { savedNamespaceName: "__saved__", savedVariables: {} };
+        expect(readSavedVariableForScreen({
+            variableId,
+            compiled,
+            storable: () => storableHolding({}),
+            declaredDefaults: {},
+        })).toEqual({ value: null, found: false });
+    });
+
+    it("reads a declared special id in an active playthrough", () => {
+        const compiled = {
+            savedNamespaceName: "__saved__",
+            savedVariables: Object.fromEntries([["__proto__", { storageKey: "progress", defaultValue: 7 }]]),
+        };
+        expect(readSavedVariableForScreen({
+            variableId: "__proto__", compiled, storable: () => storableHolding({ progress: 12 }), declaredDefaults: {},
+        })).toEqual({ value: 12, found: true });
+    });
 
     it("answers the declared default, not found, on a screen with no game and no compile", () => {
         expect(readSavedVariableForScreen({ variableId: AFFECTION_ID, compiled: null, storable: null, declaredDefaults: defaults }))

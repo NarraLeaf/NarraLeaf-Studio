@@ -149,6 +149,19 @@ export function useSurfaceInteractionEvents({
             panStateRef.current.active = false;
         };
 
+        const cancelInsert = () => {
+            if (!insertStateRef.current?.active) {
+                return;
+            }
+            insertStateRef.current = null;
+            stateService.setSnapGuides(null);
+            updateInsertPreview(null);
+        };
+
+        if (!insertDrawEnabled || tool.kind !== "insert") {
+            cancelInsert();
+        }
+
         const finishInsert = () => {
             if (!insertStateRef.current?.active) {
                 return;
@@ -273,7 +286,11 @@ export function useSurfaceInteractionEvents({
                 window.setTimeout(() => applySelectionPress(held), 0);
             }
             if (insertStateRef.current?.active) {
-                finishInsert();
+                if (event.type === "pointercancel") {
+                    cancelInsert();
+                } else {
+                    finishInsert();
+                }
             }
             stopPan();
         };

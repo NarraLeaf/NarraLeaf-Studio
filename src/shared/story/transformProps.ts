@@ -109,7 +109,8 @@ export function composeStoryFilter(filter: StoryFilterProps | null | undefined):
         if (value === undefined || !Number.isFinite(value)) {
             continue;
         }
-        terms.push(`${CSS_NAME[fn]}(${round(Math.max(0, value))}${CSS_UNIT[fn] ?? ""})`);
+        const amount = fn === "hueRotate" ? value : Math.max(0, value);
+        terms.push(`${CSS_NAME[fn]}(${round(amount)}${CSS_UNIT[fn] ?? ""})`);
     }
     return terms.length > 0 ? terms.join(" ") : "none";
 }
@@ -148,10 +149,13 @@ export function parseStoryFilter(css: string | null | undefined): { filter?: Sto
         // A percentage is the same value on a 0..1 scale; anything else (`rem`, `turn`) is a term this
         // record cannot hold without converting, and a wrong conversion is worse than the escape hatch.
         const expected = CSS_UNIT[fn] ?? "";
-        const normalized = unit === "%" && !expected ? value / 100 : value;
-        if (unit && unit !== "%" && unit !== expected) {
+        const validUnit = expected
+            ? unit === expected || (unit === "" && value === 0)
+            : unit === "" || unit === "%";
+        if (!validUnit) {
             return { filterRaw: source };
         }
+        const normalized = unit === "%" ? value / 100 : value;
         if (fn in filter) {
             return { filterRaw: source };
         }

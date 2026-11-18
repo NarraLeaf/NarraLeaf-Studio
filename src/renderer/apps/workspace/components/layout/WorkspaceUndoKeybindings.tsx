@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useKeybindings } from "@/apps/workspace/hooks";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../ui/freezeGuard";
@@ -7,6 +7,7 @@ import type { HistoryScopeId } from "@/lib/workspace/services/history/historyMod
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
+import { liveSessionOwnsUndo } from "@/lib/workspace/services/live/liveSessionView";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
@@ -53,20 +54,16 @@ export function WorkspaceUndoKeybindings() {
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
-    const [focus, setFocus] = useState<FocusContext | null>(null);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        setFocus(uiService.focus.getFocus());
-        return uiService.focus.onFocusChange(setFocus);
-    }, [context]);
-
-    const scopeId = useMemo(
-        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
-        [focus, history],
+    // The active editor can change while the inspector keeps focus, so resolve at the keypress.
+    const scopeId = useCallback(
+        () => {
+            if (!context || !history) {
+                return projectHistoryScope();
+            }
+            const uiService = context.services.get<UIService>(Services.UI);
+            return resolveWorkspaceUndoScope(history, uiService.focus.getFocus());
+        },
+        [context, history],
     );
 
     const outsideEditorsAndSearch = useCallback(
@@ -105,7 +102,7 @@ export function WorkspaceUndoKeybindings() {
  * - or, inside a live session, the session's own inverse, for the reasons above. Shared with the
  * Search panel's keys, which differ from these only in the stack they name.
  */
-export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => void; redo: () => void } {
+export function useHistoryStepHandlers(scopeId: HistoryScopeId | (() => HistoryScopeId)): { undo: () => void; redo: () => void } {
     const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const history = useMemo(
@@ -116,38 +113,28 @@ export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => v
         () => (context ? context.services.get<LiveSessionService>(Services.Live) : null),
         [context],
     );
-    const [inSession, setInSession] = useState(false);
-
-    useEffect(() => {
-        if (!live) {
-            setInSession(false);
-            return;
-        }
-        const read = () => setInSession(live.getView().phase !== "idle");
-        read();
-        return live.onChanged(read);
-    }, [live]);
-
     return useMemo(
-        () => ({
-            // Deliberately outside `freeze.run` in a session: the freeze is the session's own, and
-            // sending the inverse of one's own operation is the one write it exists to allow.
-            // Everywhere else the guard still refuses, which is what a frozen project is.
-            undo: inSession
-                ? () => {
-                    live?.undo();
-                }
-                : freeze.run(() => {
-                    history?.undo(scopeId);
-                }),
-            redo: inSession
-                ? () => {
-                    live?.redo();
-                }
-                : freeze.run(() => {
-                    history?.redo(scopeId);
-                }),
-        }),
-        [freeze, history, inSession, live, scopeId],
+        () => {
+            const targetScope = () => typeof scopeId === "function" ? scopeId() : scopeId;
+            const undoLocal = freeze.run(() => history?.undo(targetScope()));
+            const redoLocal = freeze.run(() => history?.redo(targetScope()));
+            return {
+                undo: () => {
+                    if (live && liveSessionOwnsUndo(live.getView().phase)) {
+                        live?.undo();
+                    } else {
+                        undoLocal();
+                    }
+                },
+                redo: () => {
+                    if (live && liveSessionOwnsUndo(live.getView().phase)) {
+                        live?.redo();
+                    } else {
+                        redoLocal();
+                    }
+                },
+            };
+        },
+        [freeze, history, live, scopeId],
     );
 }

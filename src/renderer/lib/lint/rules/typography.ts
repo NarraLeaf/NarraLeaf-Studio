@@ -5,6 +5,8 @@ import {
     localizationKeyUnitId,
     sceneTranslationUnitId,
 } from "@shared/types/localization";
+import type { StoryTextSegment } from "@shared/types/story";
+import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveProjectFontStackForLocale, type ProjectFontEntry } from "@shared/types/typography";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
@@ -12,7 +14,7 @@ import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule, LintRuleOptions } from "../types";
 import { listSurfaceTextSites, surfaceLocation, surfaceTarget, type SurfaceTextFace } from "./ui";
 import { segmentLiteralText } from "./text/displayWidth";
-import { listLiveTextSegments, storyBlockTarget, storyLocation } from "./text/textSegments";
+import { isBlankSegment, listLiveTextSegments, storyBlockTarget, storyLocation } from "./text/textSegments";
 
 /**
  * `typography` - what the project's fonts cannot draw.
@@ -103,6 +105,8 @@ type TextSite = {
     source: string;
     location: LintLocation;
     target?: SearchJumpTarget;
+    /** Story translations contain run tags and interpolation placeholders. */
+    storySegment?: StoryTextSegment;
     /**
      * The faces this site is drawn in, when it is a widget: its resting one first, then each one its
      * other states switch to, each naming the font the widget chose for it, if any.
@@ -120,12 +124,13 @@ function collectTextSites(ctx: LintContext): TextSite[] {
 
     for (const ref of listLiveTextSegments(ctx)) {
         const source = segmentLiteralText(ref.segment);
-        if (source.trim()) {
+        if (!isBlankSegment(ref.segment)) {
             sites.push({
                 unitId: ref.textId,
                 source,
                 location: storyLocation(ref),
                 target: storyBlockTarget(ref),
+                storySegment: ref.segment,
             });
         }
     }
@@ -246,7 +251,12 @@ function textForLocale(ctx: LintContext, site: TextSite, locale: string | null):
         return site.source;
     }
     const target = ctx.localization.documents.get(locale)?.units[site.unitId]?.target;
-    return target && target.trim() ? target : site.source;
+    if (!target || !target.trim()) {
+        return site.source;
+    }
+    return site.storySegment
+        ? parseTranslatedRuns(target, site.storySegment.rich ?? []).map(part => part.kind === "text" ? part.text : "").join("")
+        : target;
 }
 
 /**
@@ -402,16 +412,16 @@ export function findMissingCharacters(input: {
 
         for (const character of input.textFor(site)) {
             const codePoint = character.codePointAt(0)!;
-            const already = found.get(codePoint);
-            if (already) {
-                already.count += 1;
-                continue;
-            }
             if (isIgnored(codePoint)) {
                 continue;
             }
             const lacking = faces.find(({ covers }) => !covers(codePoint));
             if (!lacking) {
+                continue;
+            }
+            const already = found.get(codePoint);
+            if (already) {
+                already.count += 1;
                 continue;
             }
             found.set(codePoint, {

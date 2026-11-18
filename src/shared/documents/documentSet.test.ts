@@ -244,6 +244,21 @@ describe("the files a set is made of", () => {
         expect(scan.pathOf("cover.png")).toBeUndefined();
     });
 
+    it("refuses to serialize a member onto the manifest path", () => {
+        const subsuming = defineDocumentSetSpec({
+            kind: "test-subsuming" as unknown as DocumentKind,
+            version: 1,
+            manifestPath: "editor/books/<bookId>/index.json",
+            memberPath: "editor/books/<bookId>/<pageId>.json",
+            parse: (raw: unknown) => raw,
+            summarize: () => ({title: "", counts: []}),
+            assemble: parts => parts.manifest,
+            disassemble: () => ({manifest: {title: "Book"}, members: new Map([["index", {title: "Page"}]])}),
+        });
+
+        expect(() => serializeDocumentSet(subsuming, {bookId: "b1"}, {})).toThrow(/manifest/);
+    });
+
     it("scans the directory a nested member family lives in", () => {
         const scan = documentSetMemberScan(notebookSpec, KEY);
 

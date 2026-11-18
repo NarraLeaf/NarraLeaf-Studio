@@ -93,8 +93,8 @@ import {
     type BlueprintSaveSlot,
 } from "@shared/types/blueprint/valueTypes";
 import {
-    isSaveCaptureLimitReached,
     readSaveCapture,
+    reserveSaveCapture,
     storeSaveCapture,
 } from "./saveCaptureStore";
 import type { TranslationKey } from "@shared/i18n";
@@ -2055,23 +2055,29 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, execNext, saveSlotOut],
         async execute(ctx) {
-            if (isSaveCaptureLimitReached(requireGameLocals(ctx))) {
+            const locals = requireGameLocals(ctx);
+            const release = reserveSaveCapture(locals);
+            if (!release) {
                 throw new BlueprintGraphExecutionError(
                     translate("blueprint.runtimeError.captureRepeated", { node: translate("blueprint.node.currentGame") }),
                     ctx.node.id,
                 );
             }
-            const captured = await requireHostApi(ctx).game.captureRun();
-            if (captured === null || captured === undefined) {
-                throw new BlueprintGraphExecutionError(
-                    translate("blueprint.runtimeError.noGameToCapture", { node: translate("blueprint.node.currentGame") }),
-                    ctx.node.id,
-                );
+            try {
+                const captured = await requireHostApi(ctx).game.captureRun();
+                if (captured === null || captured === undefined) {
+                    throw new BlueprintGraphExecutionError(
+                        translate("blueprint.runtimeError.noGameToCapture", { node: translate("blueprint.node.currentGame") }),
+                        ctx.node.id,
+                    );
+                }
+                return {
+                    nextPort: "next",
+                    outputValues: { slot: storeSaveCapture(locals, ctx.node.id, captured) },
+                };
+            } finally {
+                release();
             }
-            return {
-                nextPort: "next",
-                outputValues: { slot: storeSaveCapture(requireGameLocals(ctx), ctx.node.id, captured) },
-            };
         },
     },
     {

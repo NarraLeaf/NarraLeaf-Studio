@@ -57,8 +57,7 @@ import { buildSceneFlowGraph, type SceneFlowBranchNodeModel, type SceneFlowGraph
 import { collectSceneFlowContinuations, type SceneFlowContinuation } from "./sceneFlowRoutes";
 import {
     applyVariableEffects,
-    collectArmArrivalEffects,
-    collectSceneEffects,
+    createSceneFlowExitEvaluator,
     listNumericStoryVariables,
     sceneWritesAsUncertain,
     sceneWritesBefore,
@@ -295,11 +294,13 @@ export function computeSceneFlowCoverage(
     const graph = options.graph ?? buildSceneFlowGraph(document);
     const continuations = collectSceneFlowContinuations(graph, document);
     const armsById = new Map(graph.branches.map(branch => [branch.id, branch]));
-    const variables = options.opaqueWriters || hasOpaqueRows(document)
+    const jumpsByEdgeId = new Map([...graph.edges, ...graph.branchEdges].map(edge => [
+        edge.id, new Set(edge.jumps.map(jump => jump.blockId)),
+    ]));
+    const evaluateExit = createSceneFlowExitEvaluator(graph, document, options.blueprintWrites);
+    const variables = options.opaqueWriters || options.blueprintWrites?.opaque || hasOpaqueRows(document)
         ? []
         : listNumericStoryVariables(document, options.registry ?? []);
-    const armEffects = collectArmArrivalEffects(graph, document, options.blueprintWrites);
-    const sceneEffects = collectSceneEffects(document, options.blueprintWrites);
 
     const declaringSceneOf = new Map<string, StorySceneId>();
     for (const scene of listScenesInDocumentOrder(document)) {
@@ -365,10 +366,8 @@ export function computeSceneFlowCoverage(
         reachableSceneIds.add(sceneId);
 
         const entered = reseedSceneLocals(arrival.get(sceneId) ?? seed, variables, sceneId, declaringSceneOf);
-        // The scene's own unguarded writes run on every visit, so they are applied before anything
-        // leaves; the arms' writes are applied per arm, on the way out.
-        const afterScene = applyToState(entered, sceneEffects.get(sceneId) ?? [], variables);
-        // The blunt bound, used for any arm whose position in the scene cannot be read.
+        // A continuation can leave before a later spine write, or after a call returns. This bound
+        // includes each possible write without assuming it ran on every path to the continuation.
         const wholeSceneBound = applyToState(
             entered,
             sceneWritesAsUncertain(document, sceneId, options.blueprintWrites),
@@ -393,12 +392,17 @@ export function computeSceneFlowCoverage(
             if (arm) {
                 takenBranchIds.add(arm.id);
             }
-            const outgoing = arm
-                ? applyToState(afterScene, armEffects.get(arm.id) ?? [], variables)
-                : afterScene;
             if (exit.kind === "ending") {
                 reachedEndingIds.add(exit.endingId);
             } else if (exit.kind !== "stop" && exit.kind !== "quit") {
+                const jumpIds = jumpsByEdgeId.get(exit.edgeId) ?? new Set<StoryBlockId>();
+                const outgoing = new Map(variables.map(variable => [
+                    variable.key,
+                    evaluateExit(
+                        sceneId, exit.target, exit.kind === "call", jumpIds,
+                        variable.key, entered.get(variable.key) ?? UNKNOWN,
+                    ) ?? wholeSceneBound.get(variable.key) ?? UNKNOWN,
+                ]));
                 // A quit is terminal and reaches no ending: it has no `target` to walk into, and
                 // nothing about it belongs in the endings this path covered.
                 push(exit.target, outgoing);

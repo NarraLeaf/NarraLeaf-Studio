@@ -19,7 +19,8 @@ import {
     throwIfBlueprintExecutionCancelled,
 } from "./GraphExecutionError";
 import { eventLoopTurnedSince, readEventLoopTurn } from "./eventLoopTurns";
-import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { unpublishBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { createGraphExecutionFrame, readGraphNodeOutputs, writeGraphNodeOutputs } from "./graphExecutionFrame";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import {
     blueprintNodeDisplayName,
@@ -40,6 +41,8 @@ export type ExecuteGraphOptions = {
     maxSteps?: number;
     trace?: BehaviorGraphExecutionTrace;
     blueprintLocals?: Record<string, unknown>;
+    /** Data outputs supplied to the entry node, such as a Fn's arguments. */
+    entryOutputs?: Record<string, unknown>;
     eventName?: string;
     eventPayload?: Record<string, unknown>;
     eventControl?: BehaviorGraphEventControl;
@@ -76,9 +79,8 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  * Run a graph from one entry until it ends, returns, fails or is cancelled.
  *
  * **The step budget counts nodes between waits, not nodes per run.** It exists to stop one failure:
- * exec wires that go round in a circle through nodes that never wait. Every node is awaited, but an
- * await on something already settled only lets other microtasks run, so such a circle holds the
- * window forever - no input, no paint, no way to close Dev Mode. A circle through a node that does
+ * exec wires that go round in a circle through nodes that never wait. Such a circle holds the window
+ * forever - no input, no paint, no way to close Dev Mode. A circle through a node that does
  * wait (a `Delay` of any real length, an animation, a file read) gives the window back on every pass;
  * it is a timer or a poll the author wrote, and counting its passes against a per-run total stopped
  * it after a few hundred of them with nothing on screen to say why. So the count starts again
@@ -89,6 +91,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
     const blueprintLocals = options.blueprintLocals ?? {};
+    const executionFrame = createGraphExecutionFrame(graph.id, entry.start.nodeId, options.entryOutputs);
     const valueResult: ExecuteGraphResult = { returnValueSet: false, returnValue: undefined };
     const valueExecution = {
         returnValue: (value: unknown) => {
@@ -121,6 +124,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
         blueprintId: options.trace?.blueprintId,
         eventName: options.eventName,
         blueprintLocals,
+        nodeOutputValues: () => readGraphNodeOutputs(executionFrame, blueprintLocals),
         eventPayload: options.eventPayload,
     });
 
@@ -175,6 +179,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                 hostAdapter,
                 trace,
                 blueprintLocals,
+                executionFrame,
                 eventName: options.eventName,
                 eventPayload: options.eventPayload,
                 eventControl: options.eventControl,
@@ -215,14 +220,16 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             let result: BehaviorNodeExecuteResult | void;
             try {
                 const outcome = definition.execute(context);
-                // Only a node that handed back a promise can have waited; a mark is taken for those
-                // alone, so a run of synchronous nodes posts nothing.
-                const mark = isThenable(outcome) ? readEventLoopTurn() : null;
-                result = await abortablePromise(Promise.resolve(outcome), options.signal, node.id);
-                throwIfBlueprintExecutionCancelled(options.signal, node.id);
-                if (mark !== null && eventLoopTurnedSince(mark)) {
-                    stepsWithoutWaiting = 0;
+                if (isThenable(outcome)) {
+                    const mark = readEventLoopTurn();
+                    result = await abortablePromise(Promise.resolve(outcome), options.signal, node.id);
+                    if (eventLoopTurnedSince(mark)) {
+                        stepsWithoutWaiting = 0;
+                    }
+                } else {
+                    result = outcome;
                 }
+                throwIfBlueprintExecutionCancelled(options.signal, node.id);
             } catch (err) {
                 if (isBlueprintGraphExecutionCancelledError(err)) {
                     throw err;
@@ -244,12 +251,13 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                 }
                 throw err instanceof BlueprintGraphExecutionError ? err : new BlueprintGraphExecutionError(message, nodeId);
             } finally {
+                unpublishBlueprintNodeOutputValues(blueprintLocals, node.id, executionFrame);
                 if (trace) {
                     trace.emit({ type: "node.exit", executionId: trace.executionId, nodeId: node.id });
                 }
             }
             if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
-                writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
+                writeGraphNodeOutputs(executionFrame, blueprintLocals, node, result.outputValues ?? {});
             }
             throwIfBlueprintExecutionCancelled(options.signal, node.id);
             const nextPorts = resolveNextPorts(result);

@@ -44,11 +44,22 @@ export function FontChangeDetail({ entry, change, member, sides }: ChangePresent
     const after = useFontSide(requested.after, source.path);
     const [size, setSize] = useState(DEFAULT_FONT_SAMPLE_SIZE);
 
+    if (!requested.before && !requested.after) {
+        return <GenericChangeDetail entry={entry} change={change} />;
+    }
+
     const settled = isSettled(before) && isSettled(after);
     if (settled && !before.family && !after.family) {
         return (
             <div className="flex flex-col gap-2">
-                <p className="text-2xs text-fg-muted">{t(failureKey(before, after))}</p>
+                {requested.before && requested.after && stateKey(before) !== stateKey(after)
+                    ? (
+                        <>
+                            <p className="text-2xs text-fg-muted">{t("documentDiff.presenter.before")} · {t(stateKey(before))}</p>
+                            <p className="text-2xs text-fg-muted">{t("documentDiff.presenter.after")} · {t(stateKey(after))}</p>
+                        </>
+                    )
+                    : <p className="text-2xs text-fg-muted">{t(failureKey(before, after))}</p>}
                 <GenericChangeDetail entry={entry} change={change} />
             </div>
         );

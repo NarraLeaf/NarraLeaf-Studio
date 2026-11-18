@@ -1,8 +1,7 @@
-import type { BlendResolution, PsdBakeTarget, PsdLayerNode } from "@shared/types/psdImport";
+import type { BlendResolution, PsdBakeTarget, PsdFingerprintSlot, PsdLayerNode, PsdLayerReference } from "@shared/types/psdImport";
 
 /** A leaf of the PSD tree — the only thing that can become a Studio layer. */
-export type PsdLeaf = {
-    path: string[];
+export type PsdLeaf = PsdLayerReference & {
     name: string;
     blendMode: string;
     hidden: boolean;
@@ -26,6 +25,85 @@ export function joinPath(path: string[]): string {
     return path.join("/");
 }
 
+/** A collision-free key for a layer within one PSD, retaining ordinary name paths as written. */
+export function psdLayerKey(ref: PsdLayerReference): string {
+    const path = ref.path.map(part => part.replace(/~/g, "~0").replace(/\//g, "~1")).join("/");
+    return ref.occurrence === undefined ? path : `${path}~2${ref.occurrence}`;
+}
+
+/** Copy the identity without adding undefined fields to a stored fingerprint. */
+export function psdLayerReference(ref: PsdLayerReference): PsdLayerReference {
+    return {
+        path: ref.path,
+        ...(ref.occurrence !== undefined ? { occurrence: ref.occurrence } : {}),
+        ...(ref.sourceId !== undefined ? { sourceId: ref.sourceId } : {}),
+    };
+}
+
+/** Match the imported leaves to distinct saved destinations, preferring unique PSD layer ids. */
+export function matchPsdFingerprintSlots(
+    slots: readonly PsdFingerprintSlot[],
+    refs: readonly PsdLayerReference[],
+): Map<string, PsdFingerprintSlot> {
+    const pathKey = (ref: PsdLayerReference) => JSON.stringify(ref.path);
+    const destination = (slot: PsdFingerprintSlot) => JSON.stringify([slot.layerId, slot.tagId ?? null]);
+    const byPath = new Map<string, PsdFingerprintSlot[]>();
+    const refsByPath = new Map<string, number>();
+    const slotIds = new Map<number, number>();
+    const refIds = new Map<number, number>();
+    for (const slot of slots) {
+        const path = pathKey(slot);
+        byPath.set(path, [...(byPath.get(path) ?? []), slot]);
+        if (slot.sourceId !== undefined) slotIds.set(slot.sourceId, (slotIds.get(slot.sourceId) ?? 0) + 1);
+    }
+    for (const ref of refs) {
+        const path = pathKey(ref);
+        refsByPath.set(path, (refsByPath.get(path) ?? 0) + 1);
+        if (ref.sourceId !== undefined) refIds.set(ref.sourceId, (refIds.get(ref.sourceId) ?? 0) + 1);
+    }
+
+    const matches = new Map<string, PsdFingerprintSlot>();
+    const claimed = new Set<string>();
+    const idMatchedPaths = new Set<string>();
+    const claim = (ref: PsdLayerReference, slot: PsdFingerprintSlot): boolean => {
+        const key = psdLayerKey(ref);
+        const target = destination(slot);
+        if (matches.has(key) || claimed.has(target)) return false;
+        matches.set(key, slot);
+        claimed.add(target);
+        return true;
+    };
+    const available = (slot: PsdFingerprintSlot) => !claimed.has(destination(slot));
+    const compatible = (ref: PsdLayerReference, slot: PsdFingerprintSlot, pathSlots: PsdFingerprintSlot[]) => {
+        if (ref.sourceId === undefined || slot.sourceId === undefined || ref.sourceId === slot.sourceId) return true;
+        // A formerly unique path remains the reconnect key when a file's layer ids change.
+        return ref.occurrence === undefined && slot.occurrence === undefined
+            && pathSlots.length === 1 && refsByPath.get(pathKey(ref)) === 1;
+    };
+
+    for (const ref of refs) {
+        if (ref.sourceId === undefined || refIds.get(ref.sourceId) !== 1 || slotIds.get(ref.sourceId) !== 1) continue;
+        const slot = byPath.get(pathKey(ref))?.find(entry => entry.sourceId === ref.sourceId);
+        if (slot && claim(ref, slot)) idMatchedPaths.add(pathKey(ref));
+    }
+    for (const ref of refs) {
+        if (matches.has(psdLayerKey(ref)) || ref.occurrence === undefined) continue;
+        const pathSlots = byPath.get(pathKey(ref)) ?? [];
+        const slot = pathSlots.find(entry => entry.occurrence === ref.occurrence && available(entry)
+            && compatible(ref, entry, pathSlots));
+        if (slot) claim(ref, slot);
+    }
+    for (const ref of refs) {
+        if (matches.has(psdLayerKey(ref))) continue;
+        const pathSlots = byPath.get(pathKey(ref)) ?? [];
+        const slot = pathSlots.find(entry => available(entry) && compatible(ref, entry, pathSlots)
+            && (entry.occurrence === undefined || entry.occurrence === (ref.occurrence ?? 0)
+                || (ref.occurrence !== undefined && idMatchedPaths.has(pathKey(ref)))));
+        if (slot) claim(ref, slot);
+    }
+    return matches;
+}
+
 /** Every drawable layer, in stacking order (bottom first, the way both PSD and Studio store it). */
 export function flattenLeaves(layers: PsdLayerNode[], group: string | null = null): PsdLeaf[] {
     const out: PsdLeaf[] = [];
@@ -36,7 +114,7 @@ export function flattenLeaves(layers: PsdLayerNode[], group: string | null = nul
             continue;
         }
         out.push({
-            path: node.path,
+            ...psdLayerReference(node),
             name: node.name,
             blendMode: node.blendMode,
             hidden: node.hidden,
@@ -94,7 +172,7 @@ export type ImportPlan = {
     dropped: { leaf: PsdLeaf; reason: PsdDropReason }[];
     /** The layers to build, in stack order. */
     slots: PlannedSlot[];
-    /** Leaves flattened onto another, keyed by the joined path of the layer they land on. */
+    /** Leaves flattened onto another, keyed by the identity of the layer they land on. */
     attachments: Record<string, PsdAttachment[]>;
 };
 
@@ -122,12 +200,12 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
             continue;
         }
         const unsupported = isUnsupportedBlend(leaf.blendMode);
-        if (unsupported && blendResolutions[joinPath(leaf.path)] === "skip") {
+        if (unsupported && blendResolutions[psdLayerKey(leaf)] === "skip") {
             dropped.push({ leaf, reason: "blend-skipped" });
             continue;
         }
         kept.push(leaf);
-        keptPaths.add(joinPath(leaf.path));
+        keptPaths.add(psdLayerKey(leaf));
     }
 
     // What each clipped layer clips to: the nearest layer below that is not itself clipped, whether
@@ -137,31 +215,31 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
     let beneath: PsdLeaf | null = null;
     for (const leaf of leaves) {
         if (leaf.clipping) {
-            clipBase.set(joinPath(leaf.path), beneath);
+            clipBase.set(psdLayerKey(leaf), beneath);
         } else {
             beneath = leaf;
         }
     }
 
-    const attachments: Record<string, PsdAttachment[]> = {};
+    const attachments: Record<string, PsdAttachment[]> = Object.create(null);
     const bases: PsdLeaf[] = [];
     // Where a leaf's pixels end up. A leaf that is flattened onto another inherits that layer's host,
     // so a clip whose base was itself merged down still lands on real art instead of nowhere.
     const host = new Map<string, PsdLeaf>();
     const attach = (target: PsdLeaf, leaf: PsdLeaf, clip: boolean): void => {
-        const key = joinPath(target.path);
+        const key = psdLayerKey(target);
         attachments[key] = [...(attachments[key] ?? []), { leaf, clip }];
         // A leaf merged onto a whole group has several hosts; the first is the one anything clipped
         // to it follows, so the choice stays stable rather than depending on iteration order.
-        if (!host.has(joinPath(leaf.path))) {
-            host.set(joinPath(leaf.path), target);
+        if (!host.has(psdLayerKey(leaf))) {
+            host.set(psdLayerKey(leaf), target);
         }
     };
 
     for (const leaf of kept) {
         if (leaf.clipping) {
-            const base = clipBase.get(joinPath(leaf.path)) ?? null;
-            const target = base && keptPaths.has(joinPath(base.path)) ? host.get(joinPath(base.path)) : null;
+            const base = clipBase.get(psdLayerKey(leaf)) ?? null;
+            const target = base && keptPaths.has(psdLayerKey(base)) ? host.get(psdLayerKey(base)) : null;
             if (target) {
                 attach(target, leaf, true);
             } else {
@@ -169,7 +247,7 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
             }
             continue;
         }
-        if (isUnsupportedBlend(leaf.blendMode) && blendResolutions[joinPath(leaf.path)] === "merge") {
+        if (isUnsupportedBlend(leaf.blendMode) && blendResolutions[psdLayerKey(leaf)] === "merge") {
             const below = bases[bases.length - 1];
             if (below) {
                 // When the layer below belongs to a group, the merge lands on *every* member of it.
@@ -187,7 +265,7 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
             // vanishing, which is the least surprising outcome for the bottom of the stack.
         }
         bases.push(leaf);
-        host.set(joinPath(leaf.path), leaf);
+        host.set(psdLayerKey(leaf), leaf);
     }
 
     const byGroup = new Map<string, PsdLeaf[]>();
@@ -219,11 +297,11 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
         slots.push({ kind: "constant", name: leaf.name, leaf });
     }
 
-    const droppedPaths = new Set(dropped.map(entry => joinPath(entry.leaf.path)));
+    const droppedPaths = new Set(dropped.map(entry => psdLayerKey(entry.leaf)));
     return {
         axes,
         constants: bases.filter(leaf => !leaf.group || !axisNames.has(leaf.group)),
-        baking: leaves.filter(leaf => !droppedPaths.has(joinPath(leaf.path))),
+        baking: leaves.filter(leaf => !droppedPaths.has(psdLayerKey(leaf))),
         dropped,
         slots,
         attachments,
@@ -296,10 +374,10 @@ export function estimateImportCost(plan: ImportPlan, canvas: { width: number; he
  */
 export function toBakeTargets(plan: ImportPlan): PsdBakeTarget[] {
     const attachmentsFor = (leaf: PsdLeaf): PsdBakeTarget => {
-        const attached = plan.attachments[joinPath(leaf.path)] ?? [];
+        const attached = plan.attachments[psdLayerKey(leaf)] ?? [];
         return attached.length === 0
-            ? { path: leaf.path }
-            : { path: leaf.path, mergeFrom: attached.map(entry => ({ path: entry.leaf.path, clip: entry.clip })) };
+            ? psdLayerReference(leaf)
+            : { ...psdLayerReference(leaf), mergeFrom: attached.map(entry => ({ ...psdLayerReference(entry.leaf), clip: entry.clip })) };
     };
     return plan.slots.flatMap(slot => (
         slot.kind === "constant"

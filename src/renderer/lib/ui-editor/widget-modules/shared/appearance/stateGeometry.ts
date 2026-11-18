@@ -184,31 +184,35 @@ export function splitStateAwareLayoutPatches(
         // A part the host still moves the old way is migrated by the first drag that lands on it:
         // leaving both in place would let the host's offset win and the drag look like it did nothing.
         const legacy = legacyMotionFor(scoped.host, elementId, scoped.variantId);
+        const transferLegacyTransition = legacy && !hasOffsetTransition(next);
         if (legacy) {
-            stateMotionPatches[scoped.host.element.id] = getStateMotions(scoped.host.element.props).filter(
+            const hostId = scoped.host.element.id;
+            stateMotionPatches[hostId] = (stateMotionPatches[hostId] ?? getStateMotions(scoped.host.element.props)).filter(
                 motion => !(motion.target === elementId && motion.state === scoped.variantId),
             );
-            if (!hasOffsetTransition(next)) {
-                next = setOffsetTransitionOnAllVariants(next, {
-                    type: "tween",
-                    durationMs: legacy.durationMs,
-                    delayMs: 0,
-                    easing: legacy.easing,
-                });
-            }
         }
 
         for (const axis of ["x", "y"] as const) {
             const target = patch[axis];
-            if (target === undefined) {
+            const offset = target === undefined
+                ? legacy?.[axis === "x" ? "offsetX" : "offsetY"]
+                : target - element.layout[axis];
+            if (offset === undefined) {
                 continue;
             }
-            const offset = target - element.layout[axis];
             next = {
                 ...next,
                 variants: next.variants.map(variant =>
                     variant.id === scoped.variantId ? withGroupValue(variant, OFFSET_KEY[axis], offset) : variant),
             };
+        }
+        if (legacy && transferLegacyTransition) {
+            next = setOffsetTransitionOnAllVariants(next, {
+                type: "tween",
+                durationMs: legacy.durationMs,
+                delayMs: 0,
+                easing: legacy.easing,
+            });
         }
 
         const rest: Partial<UILayout> = { ...patch };

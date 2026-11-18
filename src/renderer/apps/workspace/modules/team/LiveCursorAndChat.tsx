@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, X } from "lucide-react";
 
-import { useTranslation } from "@/lib/i18n";
+import { translate, useTranslation } from "@/lib/i18n";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { EMPTY_LIVE_PRESENCE, type LivePeerCursor, type LivePresenceSnapshot } from "@/lib/live/livePresence";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -40,14 +40,31 @@ function useLiveView(service: LiveSessionService | null): LiveSessionView | null
     return view;
 }
 
-function useLivePresence(service: LiveSessionService | null): LivePresenceSnapshot {
+function useLivePresence(service: LiveSessionService | null, active: boolean, open: boolean): {
+    presence: LivePresenceSnapshot;
+    unread: number;
+} {
     const [presence, setPresence] = useState<LivePresenceSnapshot>(() => service?.getPresence() ?? EMPTY_LIVE_PRESENCE);
+    const [unread, setUnread] = useState(0);
+    const previousLines = useRef<ReadonlySet<string>>(new Set());
     useEffect(() => {
-        if (!service) return;
-        setPresence(service.getPresence());
-        return service.onPresenceChanged(setPresence);
-    }, [service]);
-    return presence;
+        if (!service || !active) {
+            previousLines.current = new Set();
+            setPresence(EMPTY_LIVE_PRESENCE);
+            setUnread(0);
+            return;
+        }
+        const read = (snapshot: LivePresenceSnapshot) => {
+            const arrived = snapshot.chat.filter(line => !line.mine && !previousLines.current.has(line.id)).length;
+            previousLines.current = new Set(snapshot.chat.map(line => line.id));
+            setPresence(snapshot);
+            if (open) setUnread(0);
+            else if (arrived > 0) setUnread(count => count + arrived);
+        };
+        read(service.getPresence());
+        return service.onPresenceChanged(read);
+    }, [service, active, open]);
+    return { presence, unread };
 }
 
 /** The row a DOM node is inside, if it is inside a story row. */
@@ -67,16 +84,17 @@ export function LiveCursorBroadcaster() {
     const document = teamEditingDocument(tab);
     const subject = tab === null ? null : editorSubjectOf(tab);
     const sceneId = subject?.kind === "storyScene" ? subject.sceneId : null;
-    const [row, setRow] = useState<string | null>(null);
+    const [selection, setSelection] = useState<{ tab: string | undefined; row: string } | null>(null);
+    const row = selection !== null && selection.tab === tab?.id ? selection.row : null;
     const active = view?.phase === "active";
 
-    useEffect(() => setRow(null), [tab?.id]);
+    useEffect(() => setSelection(null), [tab?.id]);
 
     useEffect(() => {
         if (!active) return;
         const seen = (event: Event) => {
             const blockId = rowOf(event.target);
-            if (blockId !== null) setRow(blockId);
+            if (blockId !== null) setSelection({ tab: tab?.id, row: blockId });
         };
         window.addEventListener("focusin", seen, true);
         window.addEventListener("pointerdown", seen, true);
@@ -84,7 +102,7 @@ export function LiveCursorBroadcaster() {
             window.removeEventListener("focusin", seen, true);
             window.removeEventListener("pointerdown", seen, true);
         };
-    }, [active]);
+    }, [active, tab?.id]);
 
     useEffect(() => {
         if (!service || !active) return;
@@ -103,11 +121,12 @@ export function goToCursor(context: WorkspaceContext, cursor: Pick<LivePeerCurso
         if (slash <= 0) return;
         const sceneId = cursor.element.slice(0, slash) as StorySceneId;
         const blockId = cursor.element.slice(slash + 1) as StoryBlockId;
-        let title: string = sceneId;
+        let title = translate("storyComments.unknownScene");
         try {
-            title = context.services.get<StoryService>(Services.Story).getLoadedStoryDocument(storyId)?.scenes[sceneId]?.name ?? sceneId;
+            const name = context.services.get<StoryService>(Services.Story).getLoadedStoryDocument(storyId)?.scenes[sceneId]?.name;
+            if (name?.trim()) title = name;
         } catch {
-            // No story service: the id is a title that still says where.
+            // The story service can be unavailable while the workspace is starting.
         }
         context.services.get<UIService>(Services.UI).editor.open(
             createStorySceneEditorTab({ storyId, sceneId, activeBlockId: blockId, revealToken: token }, title),
@@ -132,23 +151,17 @@ export function LiveSessionChat() {
     const { context } = useWorkspace();
     const service = useLiveService();
     const view = useLiveView(service);
-    const presence = useLivePresence(service);
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState("");
-    const [readUpTo, setReadUpTo] = useState(0);
     const [following, setFollowing] = useState<string | null>(null);
     const list = useRef<HTMLDivElement>(null);
     const token = useRef(0);
     const lastFollowed = useRef<string | null>(null);
 
     const active = view?.phase === "active";
+    const { presence, unread } = useLivePresence(service, active, open);
     const self = view?.self ?? null;
     const others = (view?.session?.members ?? []).filter(member => member.instance !== self);
-    const unread = presence.chat.filter(line => !line.mine).length - readUpTo;
-
-    useEffect(() => {
-        if (open) setReadUpTo(presence.chat.filter(line => !line.mine).length);
-    }, [open, presence.chat]);
 
     useEffect(() => {
         if (open && list.current) list.current.scrollTop = list.current.scrollHeight;
@@ -158,7 +171,6 @@ export function LiveSessionChat() {
     useEffect(() => {
         if (!active) {
             setFollowing(null);
-            setReadUpTo(0);
         } else if (following !== null && !others.some(member => member.instance === following)) {
             setFollowing(null);
         }

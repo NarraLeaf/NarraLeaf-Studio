@@ -36,6 +36,8 @@ export class RuntimeSaveStore {
      * means "known absent" so repeat misses also skip the disk.
      */
     private readonly records = new Map<string, SaveFileRecord | null>();
+    /** Concurrent first accesses to one slot share the same disk read. */
+    private readonly loadingRecords = new Map<string, Promise<SaveFileRecord | null>>();
     /** Latest not-yet-persisted operation per id; flushing writes only this one. */
     private readonly pendingOps = new Map<string, PendingSaveOp>();
     /** One drain loop per id with a queued operation. */
@@ -179,20 +181,40 @@ export class RuntimeSaveStore {
         if (this.records.has(normalizedId)) {
             return this.records.get(normalizedId) ?? null;
         }
-        let record: SaveFileRecord | null = null;
+        const pending = this.loadingRecords.get(normalizedId);
+        if (pending) {
+            return pending;
+        }
+        const loading = this.readRecordFromDisk(normalizedId).then(record => {
+            if (!this.records.has(normalizedId)) {
+                this.records.set(normalizedId, record);
+            }
+            return this.records.get(normalizedId) ?? null;
+        });
+        this.loadingRecords.set(normalizedId, loading);
         try {
-            const raw = await fs.readFile(this.saveFilePath(normalizedId), "utf-8");
+            return await loading;
+        } finally {
+            this.loadingRecords.delete(normalizedId);
+        }
+    }
+
+    private async readRecordFromDisk(normalizedId: string): Promise<SaveFileRecord | null> {
+        let raw: string;
+        try {
+            raw = await fs.readFile(this.saveFilePath(normalizedId), "utf-8");
+        } catch (error) {
+            if (isNodeErrorCode(error, "ENOENT")) {
+                return null;
+            }
+            throw error;
+        }
+        try {
             const parsed = parseRuntimeSaveRecord(JSON.parse(raw));
-            record = parsed ? { version: 1, ...parsed } : null;
+            return parsed ? { version: 1, ...parsed } : null;
         } catch {
-            record = null;
+            return null;
         }
-        // A write may have populated the entry while the disk read was in
-        // flight; the newer in-memory state wins over what was on disk.
-        if (!this.records.has(normalizedId)) {
-            this.records.set(normalizedId, record);
-        }
-        return this.records.get(normalizedId) ?? null;
     }
 
     private schedule(id: string, op: PendingSaveOp): Promise<void> {
@@ -218,6 +240,7 @@ export class RuntimeSaveStore {
                     } else {
                         await unlinkIgnoringMissing(this.saveFilePath(id));
                     }
+                    failure = null;
                 } catch (error) {
                     failure = error;
                 }
@@ -226,6 +249,8 @@ export class RuntimeSaveStore {
             // schedule() racing this loop can never attach to a settled flusher.
             this.flushers.delete(id);
             if (failure) {
+                // A failed final operation did not establish the cached state on disk.
+                this.records.delete(id);
                 throw failure;
             }
         })();
@@ -268,7 +293,8 @@ export class RuntimePersistenceStore {
     }
 
     public async getValue(key: string): Promise<unknown> {
-        return (await this.loadStore())[key];
+        const store = await this.loadStore();
+        return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : undefined;
     }
 
     public setValue(key: string, value: unknown): Promise<void> {
@@ -277,7 +303,12 @@ export class RuntimePersistenceStore {
             if (value === undefined) {
                 delete store[key];
             } else {
-                store[key] = normalizeRuntimeJsonValue(value);
+                Object.defineProperty(store, key, {
+                    value: normalizeRuntimeJsonValue(value),
+                    enumerable: true,
+                    configurable: true,
+                    writable: true,
+                });
             }
             await this.scheduleFlush();
         })());
@@ -318,8 +349,9 @@ export class RuntimePersistenceStore {
         if (!this.loading) {
             this.loading = this.readStoreFromDisk().then(data => {
                 this.store ??= data;
-                this.loading = null;
                 return this.store;
+            }).finally(() => {
+                this.loading = null;
             });
         }
         return this.loading;
@@ -339,6 +371,7 @@ export class RuntimePersistenceStore {
                 this.dirty = false;
                 try {
                     await atomicWriteJson(this.storePath(), this.store ?? {});
+                    failure = null;
                 } catch (error) {
                     failure = error;
                 }
@@ -390,6 +423,7 @@ export class RuntimePersistenceStore {
  * tidy up would be a worse outcome than the litter.
  */
 export const ABANDONED_TEMP_FILE_AGE_MS = 5 * 60_000;
+const STORAGE_TEMP_FILE_NAME = /^(?:persistence|[a-f0-9]{64})\.json\.\d+\.\d+(?:\.[a-f0-9]{16})?\.tmp$/;
 
 export async function sweepAbandonedTempFiles(
     directory: string,
@@ -402,7 +436,7 @@ export async function sweepAbandonedTempFiles(
         return [];
     }
     const removed: string[] = [];
-    await Promise.all(entries.filter(name => name.endsWith(".tmp")).map(async name => {
+    await Promise.all(entries.filter(name => STORAGE_TEMP_FILE_NAME.test(name)).map(async name => {
         const full = path.join(directory, name);
         try {
             const stats = await fs.stat(full);
@@ -431,7 +465,7 @@ export async function atomicWriteJson(
     rename: (from: string, to: string) => Promise<void> = fs.rename,
 ): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomBytes(8).toString("hex")}.tmp`;
     const contents = JSON.stringify(value);
     await fs.writeFile(tempPath, contents, "utf-8");
     try {

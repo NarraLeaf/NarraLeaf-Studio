@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+import { useFollowedAsset } from "./useFollowedAsset";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 
 interface JsonPreviewPayload {
@@ -41,7 +42,7 @@ export function JsonPreviewEditor(props: EditorComponentProps<JsonPreviewPayload
 function JsonPreviewBody({ payload }: EditorComponentProps<JsonPreviewPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const asset = payload?.asset;
+    const asset = useFollowedAsset(payload?.asset);
     const [value, setValue] = useState<unknown>(undefined);
     const [loading, setLoading] = useState(true);
     const [failure, setFailure] = useState<AssetReadFailure | null>(null);

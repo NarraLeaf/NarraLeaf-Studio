@@ -175,12 +175,18 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         itemSelector: "[data-log-level-option]",
     });
     useFloatingLayer({
-        open: safeAreaMenuOpen,
+        open: safeAreaMenuOpen && !readOnly,
         onClose: () => setSafeAreaMenuOpen(false),
         panelRef: safeAreaPanelRef,
         ownerRefs: [safeAreaMenuRef],
         itemSelector: '[role="menuitemradio"]',
     });
+
+    useEffect(() => {
+        if (readOnly) {
+            setSafeAreaMenuOpen(false);
+        }
+    }, [readOnly]);
 
     useEffect(() => {
         if (!logLevelMenuOpen) {
@@ -214,10 +220,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
 
     const chooseSafeArea = useCallback(
         (id: string | null) => {
+            if (readOnly) {
+                return;
+            }
             setSafeAreaId(id);
             setSafeAreaMenuOpen(false);
         },
-        [setSafeAreaId],
+        [readOnly, setSafeAreaId],
     );
 
     const renderSafeAreaOption = useCallback(
@@ -338,7 +347,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         >
                             <Frame className="h-3.5 w-3.5" aria-hidden />
                         </ToolbarButton>
-                        {safeAreaMenuOpen ? (
+                        {safeAreaMenuOpen && !readOnly ? (
                             <div
                                 ref={safeAreaPanelRef}
                                 role="menu"

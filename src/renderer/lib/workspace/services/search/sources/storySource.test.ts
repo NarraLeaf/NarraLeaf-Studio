@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { extractStoryEntries } from "./storySource";
+import { describe, expect, it, vi } from "vitest";
+import { extractStoryEntries, storySource } from "./storySource";
+import { SearchIndexEngine } from "../SearchService";
+import { Services, type WorkspaceContext } from "../../services";
 import { indexEntries, querySearchIndex } from "../searchIndexModel";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
@@ -167,4 +169,44 @@ describe("extractStoryEntries: the speaker facet", () => {
 
         expect(querySearchIndex(entries, "morning speaker:nobody")).toEqual([]);
     });
+});
+
+it("refreshes the speaker facet when a character is renamed", async () => {
+    vi.useFakeTimers();
+    let name = "Inko";
+    let characterChanged: (() => void) | undefined;
+    const story = storyDoc();
+    const context = {
+        services: { get(id: Services) {
+            if (id === Services.Story) return {
+                loadLibrary: async () => {},
+                listStories: () => [{ id: story.id }],
+                loadStory: async () => story,
+                onDocumentChanged: () => () => {},
+                onLibraryChanged: () => () => {},
+            };
+            if (id === Services.Character) return {
+                getCharacter: () => ({ profile: { getProfile: () => ({ name }) } }),
+                subscribe: (listener: () => void) => {
+                    characterChanged = listener;
+                    return () => { characterChanged = undefined; };
+                },
+            };
+            throw new Error(`Unexpected service ${id}`);
+        } },
+    } as unknown as WorkspaceContext;
+    const engine = new SearchIndexEngine(context, [storySource]);
+    try {
+        await engine.ensureReady();
+        expect(engine.search("morning speaker:inko").find(group => group.group === "storyText")?.total).toBe(1);
+        name = "Mika";
+        characterChanged?.();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(engine.search("morning", { filters: { speaker: name.toLowerCase() } }).find(group => group.group === "storyText")?.total).toBe(1);
+        expect(engine.search("morning speaker:inko")).toEqual([]);
+    } finally {
+        engine.dispose();
+        vi.useRealTimers();
+    }
+    expect(characterChanged).toBeUndefined();
 });

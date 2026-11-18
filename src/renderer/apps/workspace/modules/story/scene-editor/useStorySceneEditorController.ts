@@ -49,6 +49,7 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
+import { liveSessionOwnsUndo } from "@/lib/workspace/services/live/liveSessionView";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
@@ -104,7 +105,7 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlocks, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks, listSerializedBlocks } from "./storyForeignPaste";
 import { giveCopiedRowsTheirBlueprints } from "./storyRowBlueprints";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
@@ -1418,19 +1419,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Inside a session, undo is sending the inverse of this window's own last operation - the
         // stack above holds nothing to restore, and restoring a scene over a shared document would
         // wipe out whatever the others wrote since. The session says why when there is no inverse.
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
+        if (liveSessionService && liveSessionOwnsUndo(liveSessionService.getView().phase)) {
             liveSessionService.undo();
             return;
         }
         sceneHistory.undo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [liveSessionService, sceneHistory]);
     const redoEdit = useCallback(() => {
-        if (storyId && liveSessionService?.ownsStory(storyId)) {
+        if (liveSessionService && liveSessionOwnsUndo(liveSessionService.getView().phase)) {
             liveSessionService.redo();
             return;
         }
         sceneHistory.redo();
-    }, [liveSessionService, sceneHistory, storyId]);
+    }, [liveSessionService, sceneHistory]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
@@ -3642,8 +3643,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
-        const clones = orderedRoots.map(rootId =>
-            cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap));
+        const clones = cloneSerializedBlocks(
+            orderedRoots.map(rootId => serializeBlockSubtree(scene, rootId)),
+            () => uuidService.generate(),
+            textIdMap,
+        );
         // The duplicate's blueprints are copies: the rows it was made from are still here and still
         // own theirs, and a duplicate sharing them would change the original when its graph is edited.
         if (blueprintService) {

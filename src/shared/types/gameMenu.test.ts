@@ -108,6 +108,19 @@ describe("normalizeGameMenuSpec", () => {
         expect(item?.kind === "action" && item.label.text.length).toBe(GAME_MENU_MAX_LABEL_LENGTH);
     });
 
+    it("keeps supplementary characters intact at the label limit", () => {
+        const label = `${"A".repeat(GAME_MENU_MAX_LABEL_LENGTH - 1)}😀Z`;
+        const expected = `${"A".repeat(GAME_MENU_MAX_LABEL_LENGTH - 1)}😀`;
+        const spec = normalizeGameMenuSpec({
+            menus: [{ label, items: [{ kind: "action", label: "Next", action: { type: "next" } }] }],
+        });
+        const model = normalizeGameMenuModel({
+            menus: [{ label, items: [{ kind: "command", id: "next", label: "Next" }] }],
+        });
+        expect(spec.menus[0]?.label.text).toBe(expected);
+        expect(model.menus[0]?.label).toBe(expected);
+    });
+
     it("reads a dynamic list only when the source is one the game knows", () => {
         const spec = normalizeGameMenuSpec({
             menus: [{

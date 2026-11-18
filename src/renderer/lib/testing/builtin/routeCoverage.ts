@@ -115,6 +115,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             let unreachableOptions = 0;
             let unreachableConditions = 0;
             let unreachableEndings = 0;
+            let unsettledStories = 0;
 
             for (const [index, story] of analysed.entries()) {
                 if (ctx.signal.aborted) {
@@ -149,9 +150,8 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                     externallyWrittenKeys,
                 });
                 if (!coverage.settled) {
-                    // The walk hit its own guard rail, so it does not know which scenes had settled.
-                    // Every set it returned is the structural one and every difference below is
-                    // empty; saying so beats a silent pass.
+                    // Keep findings from the other stories, but do not treat this one as checked.
+                    unsettledStories += 1;
                     console.warn("[route-coverage] walk did not settle", story.id);
                     continue;
                 }
@@ -234,6 +234,9 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                 endings: unreachableEndings,
             };
             const total = unreachableScenes + unreachableOptions + unreachableConditions + unreachableEndings;
+            if (unsettledStories > 0) {
+                return skip("unsettled");
+            }
             return total > 0
                 ? { status: "failed", summary: { key: "test.builtin.routeCoverage.summary.failed", params } }
                 : { status: "passed", summary: { key: "test.builtin.routeCoverage.summary.passed", params } };
@@ -241,7 +244,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
     };
 }
 
-function skip(reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint", params?: Record<string, string>): TestVerdict {
+function skip(reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint" | "unsettled", params?: Record<string, string>): TestVerdict {
     return {
         status: "skipped",
         summary: { key: `test.builtin.routeCoverage.skipped.${reason}`, ...(params ? { params } : {}) },

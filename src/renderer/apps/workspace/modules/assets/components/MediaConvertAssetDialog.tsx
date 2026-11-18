@@ -84,7 +84,7 @@ export function MediaConvertAssetDialog({
     }), []);
 
     const convert = useCallback(async () => {
-        if (!context || !record.target || phase !== "idle" || frozenRef.current) {
+        if (!context || !record.target || phase === "converting" || phase === "replacing" || frozenRef.current) {
             return;
         }
         setPhase("converting");
@@ -115,12 +115,22 @@ export function MediaConvertAssetDialog({
             setPhase("failed");
             return;
         }
+        if (runRef.current.stopped || frozenRef.current) {
+            await cleanUp();
+            setPhase("stopped");
+            return;
+        }
 
         const outcome = await runMediaConversion(
             { sourcePath, targetPath, target: record.target, durationUs: record.durationUs },
             bridge,
             {
-                onStarted: jobId => { runRef.current.jobId = jobId; },
+                onStarted: jobId => {
+                    runRef.current.jobId = jobId;
+                    if (runRef.current.stopped) {
+                        void bridge.cancel(jobId).catch(() => undefined);
+                    }
+                },
                 onProgress: setFraction,
                 wait: () => new Promise(resolve => setTimeout(resolve, MEDIA_CONVERT_POLL_MS)),
             },
@@ -133,9 +143,7 @@ export function MediaConvertAssetDialog({
             return;
         }
 
-        if (frozenRef.current) {
-            // Converted bytes with nowhere to go. Better to throw them away than to write into a
-            // project that has been closed for writing under us.
+        if (runRef.current.stopped || frozenRef.current) {
             await cleanUp();
             setPhase("stopped");
             return;
@@ -169,9 +177,9 @@ export function MediaConvertAssetDialog({
         runRef.current.stopped = true;
         const jobId = runRef.current.jobId;
         if (jobId) {
-            void getInterface().mediaConvert.cancel(jobId);
+            void bridge.cancel(jobId).catch(() => undefined);
         }
-    }, []);
+    }, [bridge]);
 
     const busy = phase === "converting" || phase === "replacing";
     const extension = record.target ? mediaConvertTargetExtension(record.target) : "";

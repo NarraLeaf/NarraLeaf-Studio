@@ -671,6 +671,7 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                                                         }}
                                                         className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
                                                         aria-label={t("characters.panel.addCharacter")}
+                                                        {...freeze.writes(false, t("characters.panel.addCharacter"))}
                                                     >
                                                         <UserPlus className="w-3 h-3" />
                                                     </button>

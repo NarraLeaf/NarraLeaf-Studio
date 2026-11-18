@@ -93,6 +93,8 @@ export type CsvTable = {
     cell: (cells: string[], column: string) => string;
     /** Data rows (header excluded), blank rows dropped. */
     rows: string[][];
+    /** Spreadsheet row numbers for `rows`, including blank rows in the input. */
+    rowNumbers: number[];
     hasColumn: (column: string) => boolean;
 };
 
@@ -102,11 +104,13 @@ export type CsvTable = {
  */
 export function readCsvTable(text: string): CsvTable | null {
     const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-    const table = tokenizeCsv(clean).filter(cells => cells.some(cell => cell.length > 0));
+    const table = tokenizeCsv(clean)
+        .map((cells, index) => ({ cells, row: index + 1 }))
+        .filter(({ cells }) => cells.some(cell => cell.length > 0));
     if (table.length === 0) {
         return null;
     }
-    const header = table[0].map(name => name.trim().toLowerCase());
+    const header = table[0].cells.map(name => name.trim().toLowerCase());
     const columnIndex = new Map<string, number>();
     header.forEach((name, index) => {
         if (!columnIndex.has(name)) {
@@ -118,7 +122,8 @@ export function readCsvTable(text: string): CsvTable | null {
             const index = columnIndex.get(column);
             return index === undefined ? "" : cells[index] ?? "";
         },
-        rows: table.slice(1),
+        rows: table.slice(1).map(({ cells }) => cells),
+        rowNumbers: table.slice(1).map(({ row }) => row),
         hasColumn: column => columnIndex.has(column),
     };
 }

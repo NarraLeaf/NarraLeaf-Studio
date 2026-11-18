@@ -34,14 +34,24 @@ function ascii(data: Buffer, offset: number, length: number): string {
 }
 
 /**
- * ISO base media (`ftyp`) covers both `.mp4` and `.m4a`, and the difference is the major brand
- * rather than anything structural. Audio brands are listed because they are the closed set; a brand
- * we do not know is treated as video, which is what an unbranded `.mp4` from any exporter is.
+ * ISO base media (`ftyp`) also carries AVIF images. Recognise their brands before the audio brands;
+ * an unrecognised brand is treated as video, as with an ordinary `.mp4` from an exporter.
  */
 const ISO_AUDIO_BRANDS = new Set(["M4A ", "M4B ", "F4A ", "F4B "]);
 
 function sniffIsoBaseMedia(data: Buffer): string {
-    return ISO_AUDIO_BRANDS.has(ascii(data, 8, 4)) ? "audio/mp4" : "video/mp4";
+    const major = ascii(data, 8, 4);
+    if (major === "avif" || major === "avis") {
+        return "image/avif";
+    }
+    if ((major === "mif1" || major === "msf1") && data.length >= 16) {
+        const end = Math.min(data.readUInt32BE(0), data.length, MEDIA_SNIFF_PREFIX_BYTES);
+        for (let offset = 16; offset + 4 <= end; offset += 4) {
+            const brand = ascii(data, offset, 4);
+            if (brand === "avif" || brand === "avis") return "image/avif";
+        }
+    }
+    return ISO_AUDIO_BRANDS.has(major) ? "audio/mp4" : "video/mp4";
 }
 
 /**
@@ -118,8 +128,10 @@ export function sniffMediaType(data: Buffer): string | null {
     if (head.startsWith("fLaC")) {
         return "audio/flac";
     }
-    if (head.startsWith("ID3") || startsWith(data, [0xff, 0xfb]) || startsWith(data, [0xff, 0xf3])
-        || startsWith(data, [0xff, 0xf2])) {
+    // MPEG Layer III, including the optional CRC and MPEG 2.5 variants. ADTS
+    // AAC has reserved MPEG layer bits (00), so it reaches the next branch.
+    if (head.startsWith("ID3") || (data.length >= 2 && data[0] === 0xff && (data[1] & 0xe0) === 0xe0
+        && (data[1] & 0x18) !== 0x08 && (data[1] & 0x06) === 0x02)) {
         return "audio/mpeg";
     }
     if (startsWith(data, [0xff, 0xf1]) || startsWith(data, [0xff, 0xf9])) {
@@ -164,6 +176,7 @@ const EXTENSION_FOR_MEDIA_TYPE: Readonly<Record<string, string>> = {
     "image/jpeg": "jpg",
     "image/gif": "gif",
     "image/webp": "webp",
+    "image/avif": "avif",
     "image/bmp": "bmp",
     "image/x-icon": "ico",
     "image/svg+xml": "svg",

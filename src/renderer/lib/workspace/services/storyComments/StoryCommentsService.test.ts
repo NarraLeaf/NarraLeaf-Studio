@@ -85,6 +85,30 @@ beforeEach(() => {
 });
 
 describe("story comments", () => {
+    it("changes the revision when a reload replaces threads", async () => {
+        const document = (id: string) => ({
+            schemaVersion: STORY_COMMENTS_SCHEMA_VERSION,
+            threads: {
+                [id]: {
+                    id, storyId: "story", sceneId: "scene", blockId: "block-1", todo: false,
+                    resolved: false, createdAt: 1,
+                    comments: [{ id: "comment", body: id, author: { name: "Ada" }, createdAt: 1 }],
+                },
+            },
+        });
+        const { service, files } = await createHarness(JSON.stringify(document("first")));
+        const revision = service.getRevision();
+        const changed = vi.fn();
+        service.onChanged(changed);
+
+        files.set(documentPath, JSON.stringify(document("second")));
+        await service.load();
+
+        expect(service.listThreads().map(thread => thread.id)).toEqual(["second"]);
+        expect(service.getRevision()).toBeGreaterThan(revision);
+        expect(changed).toHaveBeenCalledOnce();
+    });
+
     it("writes nothing until there is a thread, then round-trips it", async () => {
         const { service, files } = await createHarness();
         expect(files.has(documentPath)).toBe(false);

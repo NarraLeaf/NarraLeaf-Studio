@@ -50,7 +50,7 @@ function normalizeVisibleLevels(value: unknown): Set<ConsoleLogLevel> {
         return new Set(DEFAULT_VISIBLE_LEVELS);
     }
     const levels = value.filter(isConsoleLogLevel);
-    return new Set<ConsoleLogLevel>(levels.length ? levels : [...LOG_LEVELS]);
+    return new Set<ConsoleLogLevel>(levels.length || value.length === 0 ? levels : LOG_LEVELS);
 }
 
 /** Snapshot every registered channel's buffered entries, keyed by channel id. */

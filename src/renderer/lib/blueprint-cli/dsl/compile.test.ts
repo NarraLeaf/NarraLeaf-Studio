@@ -349,6 +349,34 @@ event E
 });
 
 describe("script layers in a .bp file", () => {
+    it("keeps existing script layer ids when the same file is applied without id fields", () => {
+        const blueprint: Blueprint = {
+            id: "bp-script",
+            name: "Quit",
+            owner: { kind: "globalMain" },
+            graphs: {
+                eventIds: ["first", "second"],
+                events: {
+                    first: { id: "first", script: { scriptRef: "scripts/quit.ts" } },
+                    second: { id: "second", script: { scriptRef: "scripts/quit.ts" } },
+                },
+                functions: {},
+            },
+        };
+        const document: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: { [blueprint.id]: blueprint },
+            ownerRecords: { globalMain: { blueprintId: blueprint.id } },
+        };
+        const result = compile(`blueprint Quit owner=globalMain
+    script scripts/quit.ts
+    script scripts/quit.ts
+`, document);
+        expect(result.errors).toEqual([]);
+        expect(result.diagnostics.map(item => item.code)).not.toContain("compile.graph_dropped");
+        expect(result.blueprint.graphs.eventIds).toEqual(["first", "second"]);
+    });
+
     it("round-trips a script layer instead of flattening it to an empty graph", () => {
         const blueprint: Blueprint = {
             id: "bp-script",

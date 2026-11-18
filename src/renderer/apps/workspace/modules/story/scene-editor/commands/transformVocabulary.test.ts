@@ -111,6 +111,21 @@ describe("the prop vocabulary", () => {
         expect(fromPropsWord({ zoom: 1.4, opacity: 0 })).toBe("zoom=1.4 opacity=0");
     });
 
+    it("round-trips a horizontal scale at either mirror value in from=", () => {
+        for (const scaleX of [-1, 1]) {
+            const source = fromPropsWord({ scaleX });
+            expect(source).toBe(`scaleX=${scaleX}`);
+            expect(parseFromProps(source)).toEqual({ props: { scaleX }, badKeys: [] });
+        }
+    });
+
+    it("reports from= entries with missing numeric values", () => {
+        expect(parseFromProps("zoom opacity= blur=")).toEqual({
+            props: {},
+            badKeys: ["zoom", "opacity=", "blur="],
+        });
+    });
+
     it("names a reset channel for every channel the neutral bag states", () => {
         // `/reset hero mask` has to be able to clear what `/reset hero` clears, or the named form is a
         // strict subset of the whole one for reasons nobody could explain. `fontColor` is the one
@@ -176,7 +191,7 @@ describe("the pos= align pair", () => {
                 d: { id: "d", kind: "action", payload: { action: "displayable", transform: { to: { position: { xalign: 9 } } } } },
             },
         } as unknown as StoryScene;
-        expect(storedFarPositions(scene).sort()).toEqual(["-1.5,0.1235", "3,0.5"]);
+        expect(storedFarPositions(scene).sort()).toEqual(["-1.5,0.123456", "3,0.5"]);
         expect(storedFarPositions(null)).toEqual([]);
     });
 });

@@ -317,6 +317,44 @@ describe("RectangleChromeRenderer fill layer", () => {
         expect(container.querySelector("[data-ui-image-fill]")).not.toBeNull();
     });
 
+    it("applies a tiled image fill's opacity without dimming its content", () => {
+        const { container } = render(chrome(rectangleLike({
+            fillType: "image",
+            imageFill: { mode: "tile", assetId: null },
+            backgroundImage: "https://example.test/a.png",
+            fillOpacity: 0.35,
+        })));
+        const tile = container.querySelector<HTMLElement>('[data-ui-image-fill-mode="tile"]') ?? chromeRoot(container);
+        expect(tile.style.backgroundRepeat).toBe("repeat");
+        expect(tile.style.opacity).toBe("0.35");
+        expect(chromeRoot(container).style.opacity).toBe("1");
+        expect(container.querySelector<HTMLElement>("[data-child]")!.style.opacity).toBe("");
+    });
+
+    it("hides a tiled image fill when its visibility is off", () => {
+        const { container } = render(chrome(rectangleLike({
+            fillType: "image",
+            imageFill: { mode: "tile", assetId: null },
+            backgroundImage: "https://example.test/a.png",
+            fillVisible: false,
+        })));
+        const tile = container.querySelector<HTMLElement>('[data-ui-image-fill-mode="tile"]') ?? chromeRoot(container);
+        expect(tile.style.opacity).toBe("0");
+    });
+
+    it("keeps a tiled layer mounted while its visibility animates", () => {
+        const props = rectangleLike({
+            fillType: "image",
+            imageFill: { mode: "tile", assetId: null },
+            backgroundImage: "https://example.test/a.png",
+        });
+        const { container, rerender } = render(chrome(props, { fillOpacity: TWEEN }));
+        const tile = container.querySelector('[data-ui-image-fill-mode="tile"]');
+        expect(tile).not.toBeNull();
+        rerender(chrome({ ...props, fillVisible: false }, { fillOpacity: TWEEN }));
+        expect(container.querySelector('[data-ui-image-fill-mode="tile"]')).toBe(tile);
+    });
+
     it("crossfades colour to gradient, holding the outgoing layer for an opaque incoming fill", () => {
         const { container, rerender } = render(chrome(rectangleLike(), { fillOpacity: TWEEN }));
         expect(layers(container)).toHaveLength(0);

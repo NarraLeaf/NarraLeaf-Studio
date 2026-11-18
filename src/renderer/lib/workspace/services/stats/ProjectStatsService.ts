@@ -190,6 +190,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     private lastInteractionAt: number | null = null;
     /** Set when stored word totals were counted under a superseded rule. See {@link load}. */
     private rebaseWordCount = false;
+    private wordRecountGeneration = 0;
     private lastBuildStatus: GameBuildStatus = "idle";
     private lastWrittenSerialized: string | null = null;
     private disposed = false;
@@ -236,14 +237,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
         this.subscriptions = [];
         this.stopActivityTracking();
 
-        for (const timer of [this.editTimer, this.wordTimer, this.persistTimer]) {
-            if (timer) {
-                clearTimeout(timer);
-            }
-        }
-        this.editTimer = null;
-        this.wordTimer = null;
-        this.persistTimer = null;
+        this.cancelPendingWork();
 
         // A workspace close is the most likely moment for the session's last minutes to be lost, so
         // flush now instead of leaving them sitting in the debounce window.
@@ -265,14 +259,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     public async clear(): Promise<void> {
         // An in-flight recount or edit burst would land on the fresh record and resurrect a data
         // point the author just asked to be rid of.
-        for (const timer of [this.editTimer, this.wordTimer, this.persistTimer]) {
-            if (timer) {
-                clearTimeout(timer);
-            }
-        }
-        this.editTimer = null;
-        this.wordTimer = null;
-        this.persistTimer = null;
+        this.cancelPendingWork();
 
         this.stats = createEmptyProjectStats();
         this.stats.firstSeenAt = Date.now();
@@ -345,7 +332,9 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
             if (!incoming) {
                 return;
             }
+            this.cancelPendingWork();
             this.stats = incoming;
+            this.rebaseWordCount = (incoming.wordBasis ?? 1) !== WORD_COUNT_BASIS;
             this.events.emit("changed", this.stats);
         });
         if (token) {
@@ -381,6 +370,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     }
 
     private scheduleWordRecount(ctx: WorkspaceContext, delayMs: number): void {
+        const generation = ++this.wordRecountGeneration;
         if (this.wordTimer) {
             clearTimeout(this.wordTimer);
         }
@@ -389,7 +379,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
             void (async () => {
                 try {
                     const words = await computeTotalWordCount(ctx);
-                    if (this.disposed) {
+                    if (this.disposed || generation !== this.wordRecountGeneration) {
                         return;
                     }
                     const day = this.today();
@@ -405,6 +395,16 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
                 }
             })();
         }, delayMs);
+    }
+
+    private cancelPendingWork(): void {
+        this.wordRecountGeneration += 1;
+        for (const timer of [this.editTimer, this.wordTimer, this.persistTimer]) {
+            if (timer) clearTimeout(timer);
+        }
+        this.editTimer = null;
+        this.wordTimer = null;
+        this.persistTimer = null;
     }
 
     private handleBuildState(state: GameBuildStateSnapshot): void {

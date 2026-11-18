@@ -255,6 +255,18 @@ describe("Layer blueprint nodes", () => {
             .resolves.toBeDefined();
     });
 
+    it("Hide Layer continues when the requested layer was still queued", async () => {
+        const host = createLayerHost();
+        const shown = mountSurfaceLayer(host.stack, { surfaceId: "confirm", group: "confirm" });
+        const queued = mountSurfaceLayer(host.stack, { surfaceId: "confirm", group: "confirm" });
+        host.stack.hide(shown);
+
+        await expect(runGraph(stringInputGraph(BLUEPRINT_NODE_TYPE_LAYER_HIDE, "layer", queued), host))
+            .resolves.toBeDefined();
+        expect(host.stack.getSnapshot().exitPending).toBe(true);
+        host.stack.notifyExitComplete();
+    });
+
     it("Wait For Layer publishes what the layer closed with, downstream", async () => {
         const host = createLayerHost();
         const key = mountSurfaceLayer(host.stack, { surfaceId: "confirm" });
@@ -510,6 +522,26 @@ async function awaitMountedLayer(stack: LayerStackController): Promise<string> {
 }
 
 describe("Show Confirm", () => {
+    it("queues the next question until the answered question has finished leaving", async () => {
+        const host = createLayerHost();
+        const first = runGraph(confirmGraph({ buttons: ["Yes"] }), host);
+        const firstKey = await awaitMountedLayer(host.stack);
+        host.stack.closeWithResult(firstKey, 0);
+        await first;
+
+        const second = runGraph(confirmGraph({ buttons: ["Continue"] }), host);
+        for (let i = 0; i < 100 && host.stack.getSnapshot().queued.length === 0; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        expect(host.stack.getState()).toEqual([]);
+        expect(host.stack.getSnapshot().queued).toHaveLength(1);
+
+        host.stack.notifyExitComplete();
+        const secondKey = await awaitMountedLayer(host.stack);
+        host.stack.closeWithResult(secondKey, 0);
+        expect(await second).toMatchObject({ took: "button_1_pressed", index: 0, label: "Continue" });
+    });
+
     it("puts the question up modally, in its own group, with the buttons as page props", async () => {
         const host = createLayerHost();
         const running = runGraph(confirmGraph({ buttons: ["Delete", "Cancel"] }), host);

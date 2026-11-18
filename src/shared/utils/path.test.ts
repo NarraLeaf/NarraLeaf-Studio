@@ -21,6 +21,30 @@ describe("path polyfill", () => {
         expect(posix.normalize("/..")).toBe("/");
     });
 
+    it("finds the parent when a directory path ends in separators", () => {
+        expect(posix.dirname("/Projects/Game/")).toBe("/Projects");
+        expect(win32.dirname("C:\\Projects\\Game\\")).toBe("C:\\Projects");
+        expect(win32.dirname("C:/Projects/Game//")).toBe("C:/Projects");
+        expect(posix.dirname("/")).toBe("/");
+        expect(win32.dirname("C:\\")).toBe("C:\\");
+        expect(win32.dirname("\\\\server\\share\\")).toBe("\\\\server\\share\\");
+    });
+
+    it("resolves relative segments in their given order", () => {
+        expect(posix.resolve("/project", "chapters", "scene.json")).toBe("/project/chapters/scene.json");
+        expect(posix.resolve("/project", "chapters", "../scene.json")).toBe("/project/scene.json");
+        expect(win32.resolve("D:/project", "chapters", "scene.json")).toBe("D:/project/chapters/scene.json");
+    });
+
+    it("formats parsed paths without repeating the root", () => {
+        for (const path of ["/project/scene.json", "project/scene.json", "/"]) {
+            expect(posix.format(posix.parse(path))).toBe(path);
+        }
+        for (const path of ["D:/project/scene.json", "D:\\project\\scene.json", "D:\\"]) {
+            expect(win32.format(win32.parse(path))).toBe(path);
+        }
+    });
+
     /**
      * The whole reason this file exists. Windows reads `/` and `\` as the same character, and the
      * paths this polyfill is handed are routinely mixed: a project resolves to

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAssetSetAxis, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { ReferenceService } from "./ReferenceService";
 import { Services, type WorkspaceContext } from "../services";
 
@@ -29,6 +30,10 @@ beforeEach(() => {
 type MountOptions = {
     stories?: Array<{ id: string; name: string }>;
     storyLoadFails?: string;
+    animations?: Array<{ id: string; name: string }>;
+    animationLoadFails?: string;
+    waitForLibrary?: Promise<void>;
+    librarySubscriptions?: { active: number };
     /** Break the incremental rescan (`onDocumentChanged`), not the initial build. */
     storyRescanFails?: boolean;
     blueprintFails?: boolean;
@@ -37,7 +42,12 @@ type MountOptions = {
     knownNodeTypes?: readonly string[];
     charactersFail?: boolean;
     /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
-    hooks?: { setsChanged?: () => void; storyLoads?: string[]; configChanged?: () => void };
+    hooks?: {
+        setsChanged?: () => void; storyLoads?: string[]; configChanged?: () => void;
+        storyLibraryChanged?: () => void; animationsChanged?: () => void;
+    };
+    sets?: AssetSet[];
+    assets?: AssetSetCandidate[];
     /** `.nlproj` `app.letterbox`, read through the project service; a holder so a test can change it. */
     letterbox?: { value: unknown };
     projectConfigFails?: boolean;
@@ -65,7 +75,7 @@ function mount(options: MountOptions = {}): ReferenceService {
                 switch (id) {
                     case Services.Story:
                         return {
-                            loadLibrary: async () => undefined,
+                            loadLibrary: async () => { await options.waitForLibrary; },
                             listStories: () => stories,
                             loadStory: async (storyId: string) => {
                                 storyLoads?.push(storyId);
@@ -80,11 +90,23 @@ function mount(options: MountOptions = {}): ReferenceService {
                                 }
                                 return { id: storyId, scenes: {} };
                             },
-                            listAnimationAssets: () => [],
-                            loadAnimationAsset: async () => ({ id: "a", name: "a", sequences: [] }),
+                            listAnimationAssets: () => options.animations ?? [],
+                            loadAnimationAsset: async (id: string) => {
+                                if (id === options.animationLoadFails) throw new Error("animation will not parse");
+                                return { id, name: id, sequences: [] };
+                            },
                             onDocumentChanged: noop,
-                            onLibraryChanged: noop,
-                            onAnimationsChanged: noop,
+                            onLibraryChanged: (handler: () => void) => {
+                                if (options.hooks) options.hooks.storyLibraryChanged = handler;
+                                if (options.librarySubscriptions) options.librarySubscriptions.active += 1;
+                                return () => {
+                                    if (options.librarySubscriptions) options.librarySubscriptions.active -= 1;
+                                };
+                            },
+                            onAnimationsChanged: (handler: () => void) => {
+                                if (options.hooks) options.hooks.animationsChanged = handler;
+                                return () => {};
+                            },
                         };
                     case Services.Voice:
                         return {
@@ -115,7 +137,7 @@ function mount(options: MountOptions = {}): ReferenceService {
                         };
                     case Services.BlueprintNodeCatalog:
                         return {
-                            get: (type: string) => (options.knownNodeTypes?.includes(type) ? { type } : undefined),
+                            get: (type: string) => (options.knownNodeTypes?.includes(type) ? { type, pins: [] } : undefined),
                             resolveCatalogEntry: (type: string) => ({ displayName: type, pins: [] }),
                         };
                     case Services.UIDocument:
@@ -124,7 +146,7 @@ function mount(options: MountOptions = {}): ReferenceService {
                         return { onGraphsChanged: noop };
                     case Services.AssetSets:
                         return {
-                            listSets: () => [],
+                            listSets: () => options.sets ?? [],
                             onSetsChanged: (handler: () => void) => {
                                 if (options.hooks) {
                                     options.hooks.setsChanged = handler;
@@ -135,7 +157,9 @@ function mount(options: MountOptions = {}): ReferenceService {
                     case Services.Assets:
                         return {
                             getAssets: () => ({
-                                image: Object.fromEntries((options.libraryAssetIds ?? []).map(id => [id, { id }])),
+                                image: Object.fromEntries(options.assets
+                                    ? options.assets.map(asset => [asset.id, asset])
+                                    : (options.libraryAssetIds ?? []).map(id => [id, { id }])),
                             }),
                             getEvents: () => ({ on: () => () => { } }),
                         };
@@ -220,6 +244,44 @@ describe("ReferenceService and what an asset set resolves to", () => {
         await service.flushPendingRebuilds();
 
         expect(hooks.storyLoads).toEqual(["s1", "s1"]);
+    });
+
+    it("rebuilds blueprint references when a set is removed", async () => {
+        const hooks: { setsChanged?: () => void } = {};
+        const sets: AssetSet[] = [{
+            id: "set-1", name: "Picture", type: "image", filter: [], axis: makeAssetSetAxis("locale", ["en"]),
+        }];
+        const service = mount({
+            hooks, sets, assets: [{ id: "img-1", type: "image", tags: ["locale:en"] }],
+            blueprintNodes: { n1: { id: "n1", type: "blueprint.image.assetLiteral", params: { asset: "set-1" } } },
+            knownNodeTypes: ["blueprint.image.assetLiteral"],
+        });
+        await service.ensureReady();
+        expect(service.getReferences("img-1")).toHaveLength(1);
+
+        sets.length = 0;
+        hooks.setsChanged?.();
+        await service.flushPendingRebuilds();
+
+        expect(service.getReferences("img-1")).toHaveLength(0);
+        expect(service.getReferences("set-1")).toHaveLength(1);
+    });
+});
+
+describe("ReferenceService lifecycle", () => {
+    it("releases subscriptions installed by an initial build that was running during disposal", async () => {
+        let release: () => void = () => {};
+        const waitForLibrary = new Promise<void>(resolve => { release = resolve; });
+        const librarySubscriptions = { active: 0 };
+        const service = mount({ waitForLibrary, librarySubscriptions });
+        const building = service.ensureReady();
+        const closing = service.dispose(service.getContext());
+        release();
+        await building;
+        await closing;
+
+        expect(librarySubscriptions.active).toBe(0);
+        expect(service.isReady()).toBe(false);
     });
 });
 
@@ -323,6 +385,38 @@ describe("the incremental story rescan", () => {
         rescan(service, "deleted-story");
 
         expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+    });
+
+    it("clears an unreadable story's gap when that story is removed", async () => {
+        const stories = [{ id: "s1", name: "Main Story" }];
+        const hooks: { storyLibraryChanged?: () => void } = {};
+        const service = mount({ stories, storyLoadFails: "s1", hooks });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        await service.ensureReady();
+        expect(service.getIndexResult().complete).toBe(false);
+
+        stories.length = 0;
+        hooks.storyLibraryChanged?.();
+        await service.flushPendingRebuilds();
+
+        expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+        warn.mockRestore();
+    });
+
+    it("clears an unreadable motion's gap when that motion is removed", async () => {
+        const animations = [{ id: "a1", name: "Motion" }];
+        const hooks: { animationsChanged?: () => void } = {};
+        const service = mount({ animations, animationLoadFails: "a1", hooks });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        await service.ensureReady();
+        expect(service.getIndexResult().complete).toBe(false);
+
+        animations.length = 0;
+        hooks.animationsChanged?.();
+        await service.flushPendingRebuilds();
+
+        expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+        warn.mockRestore();
     });
 });
 

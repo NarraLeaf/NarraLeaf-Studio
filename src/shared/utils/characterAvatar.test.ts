@@ -7,6 +7,7 @@ import {
     characterAvatarKeys,
     characterAvatarSelection,
     parseCharacterAvatarAssetId,
+    resolveDefaultCharacterAvatarReference,
     resolveCharacterAvatarAssetId,
     resolveOffStageCharacterAvatarAssetId,
 } from "./characterAvatar";
@@ -143,6 +144,17 @@ describe("resolveCharacterAvatarAssetId", () => {
 
     it("answers null rather than substituting the sprite", () => {
         expect(resolveCharacterAvatarAssetId({ id: "bob", appearance: preset }, "p1")).toBeNull();
+    });
+
+    it("keeps the asset-set carrier when resolving a default look", () => {
+        const set = "set-avatar";
+        const variants = { [set]: { en: "avatar-en", ja: "avatar-ja" } };
+        const withSet = {
+            id: "alice",
+            appearance: { ...preset, avatars: { p1: { overrideAssetId: set, assetVariants: variants } } } as CharacterAppearanceSummary,
+            defaultAvatarAssetId: undefined,
+        };
+        expect(resolveDefaultCharacterAvatarReference(withSet)).toEqual({ assetId: set, assetVariants: variants });
     });
 });
 

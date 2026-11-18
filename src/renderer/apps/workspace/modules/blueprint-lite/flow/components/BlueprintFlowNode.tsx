@@ -2714,9 +2714,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
 
     const isEventHead = catalog.role === "eventHead" || catalog.role === "fnHead";
     const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
-    // Memo is the one node whose output may feed several consumers, so it does not read like the node
-    // next to it even though it is shaped like one. `binding` is the token for a value that came from
-    // somewhere else, which is exactly what reading a Memo is.
+    // A Memo can feed several consumers. `binding` marks its value as one captured from elsewhere.
     const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     // A node whose type the editor does not have: the pins on this card are a placeholder pair, not

@@ -240,7 +240,7 @@ export const TRANSFORM_PROP_PARAMS = {
     // A grade off the camera look library. It is filter sugar whose value is a NAME rather than a
     // number, which is what keeps the library reachable now that `/camera` is gone.
     look: { hint: "cameraLook", type: { kind: "enum", options: LOOK_OPTIONS } },
-    strength: { aliases: ["intensity"], hint: "cameraLookStrength", type: { kind: "number", min: 0, max: 2 } },
+    strength: { aliases: ["intensity"], hint: "cameraLookStrength", type: { kind: "number", min: 0, max: 2 }, about: "Requires a look other than none." },
     // The raw escape hatch. Mutually exclusive with the sugar and with `look=`: all three write the
     // one CSS `filter` channel, and two writers of one channel means whichever is read last wins
     // silently - the same fault `/font` refuses a size and a colour for.
@@ -398,8 +398,8 @@ export function clampToAlignReach(value: number): number {
 
 /** A pair as its line prints it (`3,0.5`), or null for a half-stated one, which prints no pair. */
 export function alignPairKey(position: StoryAlignPositionValue): string | null {
-    const xalign = numberWord(position.xalign);
-    const yalign = numberWord(position.yalign);
+    const xalign = positionNumberWord(position.xalign);
+    const yalign = positionNumberWord(position.yalign);
     return xalign === undefined || yalign === undefined ? null : `${xalign},${yalign}`;
 }
 
@@ -722,7 +722,7 @@ export function parseFromProps(
         const split = entry.indexOf("=");
         const key = (split === -1 ? entry : entry.slice(0, split)).trim().toLowerCase();
         const raw = split === -1 ? "" : entry.slice(split + 1).trim();
-        const amount = Number(raw);
+        const amount = raw === "" ? NaN : Number(raw);
         const sugar = FILTER_SUGAR_KEYS.find(name => name === key);
         if (sugar && Number.isFinite(amount)) {
             props.filter = { ...(props.filter ?? {}), [FILTER_SUGAR[sugar].fn]: amount };
@@ -860,6 +860,24 @@ function numberWord(value: number | undefined): string | undefined {
     return value === undefined ? undefined : String(Number(value.toFixed(4)));
 }
 
+/** A position's exact number in the plain decimal syntax its parser accepts. */
+function positionNumberWord(value: number | undefined): string | undefined {
+    if (value === undefined || !Number.isFinite(value)) {
+        return undefined;
+    }
+    const [coefficient, exponent] = String(value).split("e");
+    if (exponent === undefined) {
+        return coefficient;
+    }
+    const sign = coefficient.startsWith("-") ? "-" : "";
+    const [whole, fraction = ""] = (sign ? coefficient.slice(1) : coefficient).split(".");
+    const digits = whole + fraction;
+    const point = whole.length + Number(exponent);
+    if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+    if (point >= digits.length) return `${sign}${digits}${"0".repeat(point - digits.length)}`;
+    return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
 /** The placement word a position is, or `null` - only a bare pair on the vertical middle has one. */
 function placementWord(position: StoryAlignPositionValue): string | null {
     if (position.xoffset !== undefined || position.yoffset !== undefined || position.yalign !== 0.5) {
@@ -896,14 +914,14 @@ export function positionPropArgs(position: StoryAlignPositionValue | undefined):
     if (word) {
         return [{ key: "pos", value: word, enum: true }];
     }
-    const xalign = numberWord(position.xalign);
-    const yalign = numberWord(position.yalign);
+    const xalign = positionNumberWord(position.xalign);
+    const yalign = positionNumberWord(position.yalign);
     if (xalign === undefined || yalign === undefined) {
         return [];
     }
     const args: TransformPropArg[] = [{ key: "pos", value: `${xalign},${yalign}`, enum: true }];
     for (const key of OFFSET_KEYS) {
-        const value = numberWord(position[key]);
+        const value = positionNumberWord(position[key]);
         if (value !== undefined) {
             args.push({ key, value });
         }
@@ -1002,6 +1020,7 @@ function percentWord(value: string | null | undefined): string | undefined {
 /** A `from=` bag as the quoted list that would produce it, or nothing when it states none. */
 export function fromPropsWord(props: StoryTransformProps | undefined): string | undefined {
     const args = transformPropArgs(props, () => undefined)
+        .map(arg => arg.key === "flip" ? { key: "scaleX", value: arg.value === "on" ? "-1" : "1" } : arg)
         .filter(arg => ["pos", ...OFFSET_KEYS, "zoom", "scale", "scaleX", "scaleY", "rot", "opacity", ...FILTER_SUGAR_KEYS].includes(arg.key as FilterSugarKey));
     return args.length === 0 ? undefined : args.map(arg => `${arg.key}=${arg.value}`).join(" ");
 }

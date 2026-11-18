@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSource } from "@shared/documents/documentSource";
-import { freezeProjectWrites, getProjectWriteFreeze, thawForeignProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, getProjectWriteFreeze, holdProjectWritesForReload, isProjectWriteReloadHeld, thawForeignProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { clearProjectDocumentSource, getProjectDocumentSource } from "@/lib/app/documentSource";
 import { clearMergeConflictReads, mergeConflictReadPath } from "@/lib/app/mergeConflictReads";
 import { BaseFileSystemService } from "./FileSystem";
-import type { WorkspaceReloadResult } from "./WorkspaceReloadService";
+import type { WorkspaceReloadCause, WorkspaceReloadResult, WorkspaceReloadTransition } from "./WorkspaceReloadService";
 import { WorkspaceFreezeService } from "./WorkspaceFreezeService";
 import { Services, type WorkspaceContext } from "../services";
 
@@ -40,7 +40,7 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 const flushAll = vi.fn(async () => undefined);
-const reload = vi.fn(async (): Promise<WorkspaceReloadResult> => ({
+const reload = vi.fn(async (_cause?: WorkspaceReloadCause, _source?: DocumentSource): Promise<WorkspaceReloadResult> => ({
     cause: "thaw",
     origin: { kind: "working-tree" },
     reloaded: [],
@@ -76,10 +76,26 @@ function createRevisionSource(revision: string, documents: Record<string, string
 }
 
 function createContext(): WorkspaceContext {
+    const reloadAdapter = {
+        whenIdle: async () => undefined,
+        reload: (cause: WorkspaceReloadCause, source?: DocumentSource, transition?: WorkspaceReloadTransition) => {
+            const run = () => {
+                const release = holdProjectWritesForReload(PROJECT);
+                try {
+                    transition?.start();
+                    return (source ? reload(cause, source) : reload(cause)).finally(release);
+                } catch (error) {
+                    release();
+                    throw error;
+                }
+            };
+            return transition?.prepare ? transition.prepare().then(run) : run();
+        },
+    };
     return {
         project: { getConfig: () => ({ projectPath: PROJECT }) },
         services: {
-            get: (id: string) => (id === Services.WorkspaceReload ? { reload } : { flushAll }),
+            get: (id: string) => (id === Services.WorkspaceReload ? reloadAdapter : { flushAll }),
         },
     } as unknown as WorkspaceContext;
 }
@@ -229,6 +245,8 @@ describe("WorkspaceFreezeService", () => {
         expect(privilegedFs.requestWrite).not.toHaveBeenCalled();
 
         service.thaw();
+        await reload.mock.results.at(-1)?.value;
+        await Promise.resolve();
 
         await BaseFileSystemService.write(`${PROJECT}/project.json`, "{}", "utf-8");
         expect(privilegedFs.requestWrite).toHaveBeenCalledTimes(1);
@@ -514,19 +532,23 @@ describe("WorkspaceFreezeService", () => {
      * stop answering reads BEFORE the latch comes off, or the pass that is supposed to replace
      * historical memory reads the history straight back in and then unfreezes on top of it.
      */
-    it("stops the revision answering reads before it lifts the latch", async () => {
+    it("holds writes while it switches the revision source back to the working tree", async () => {
         const service = await createService();
         await service.showRevision(createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" }).source);
-        const seen: { source: boolean; frozen: boolean }[] = [];
+        const seen: { source: boolean; frozen: boolean; held: boolean }[] = [];
         reload.mockImplementationOnce(async () => {
-            seen.push({ source: getProjectDocumentSource() !== null, frozen: getProjectWriteFreeze() !== null });
+            seen.push({
+                source: getProjectDocumentSource() !== null,
+                frozen: getProjectWriteFreeze() !== null,
+                held: isProjectWriteReloadHeld(),
+            });
             return { cause: "thaw", origin: { kind: "working-tree" }, reloaded: [], failures: [] };
         });
 
         service.thaw();
         await Promise.resolve();
 
-        expect(seen).toEqual([{ source: false, frozen: true }]);
+        expect(seen).toEqual([{ source: false, frozen: false, held: true }]);
     });
 
     /**

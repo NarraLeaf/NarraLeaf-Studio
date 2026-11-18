@@ -32,7 +32,6 @@ import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStag
 import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { carryRendererFailure } from "./RuntimeCrashBoundary";
 import { readStoryPosition } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 import { RuntimeSessionTakenScreen } from "./RuntimeSessionTakenScreen";
@@ -49,7 +48,7 @@ import {
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
 import { publishRuntimeBootProgress, runtimeShellBootReporter } from "./bootProgress";
-import { resolveRuntimeBootColors } from "./bootAppearance";
+import { resolveRuntimeBootDisplayColors } from "./bootColors";
 import { RuntimeBootBackdrop, RuntimeBootScreen } from "./RuntimeBootScreen";
 
 function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISurface | null {
@@ -73,10 +72,10 @@ function normalizeError(error: unknown): string {
 
 function useRuntimePack(): {
     pack: GameRuntimePackV1 | null;
-    error: string | null;
+    error: Error | null;
 } {
     const [pack, setPack] = useState<GameRuntimePackV1 | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         let disposed = false;
@@ -85,7 +84,7 @@ function useRuntimePack(): {
             // The preload never ran, so there is no way through to the pack, the saves or
             // anything else. Localized like the screen that will show it: this is one of the two
             // failures a player is most likely to meet, and it reads as a black window otherwise.
-            setError(translate("game.crash.bridgeUnavailable"));
+            setError(new Error(translate("game.crash.bridgeUnavailable")));
             return;
         }
         // The first phase of the boot, and the only one nothing else can time: the loading state
@@ -129,7 +128,7 @@ function useRuntimePack(): {
             .catch(err => {
                 runtimeShellBootReporter.end("bundle");
                 if (!disposed) {
-                    setError(normalizeError(err));
+                    setError(err instanceof Error ? err : new Error(String(err)));
                 }
             });
         return () => {
@@ -141,17 +140,6 @@ function useRuntimePack(): {
 }
 
 /**
- * A game that could not read its own pack.
- *
- * The same screen a render failure gets, because they are the same event to a player: the game
- * does not come up. It used to be a full-width stack trace on a red panel, which told the player
- * nothing they could use and did not even say the game was not coming back.
- */
-function RuntimeErrorScreen(props: { message: string }): ReactNode {
-    return <RuntimeCrashScreen details={props.message} />;
-}
-
-/**
  * The wait, before this page knows anything about the game it is starting.
  *
  * It paints nothing over the window, which the shell has already coloured for the screen this game
@@ -159,7 +147,7 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
  * missing: a game that shows no sign of starting is one a player cannot tell from a hung one.
  */
 function RuntimeLoadingScreen(): ReactNode {
-    const colors = resolveRuntimeBootColors(null);
+    const colors = resolveRuntimeBootDisplayColors(null);
     return <RuntimeBootScreen background={colors.background} accent={colors.accent} />;
 }
 
@@ -645,8 +633,9 @@ function GameRuntimeSession() {
      */
     const [stageFailure, setStageFailure] = useState<Error | null>(null);
     const stageCrashed = useCallback<NonNullable<GameAppHost["stageCrashed"]>>((failure, componentStack) => {
+        const story = readStoryPosition();
         setStageFailure(current => current ?? carryRendererFailure(failure, {
-            story: readStoryPosition(),
+            story,
             componentStack,
         }));
     }, []);
@@ -925,6 +914,14 @@ function GameRuntimeSession() {
         return read ? (request: StageCaptureRequest) => read.call(bridge, request) : undefined;
     }, [bridge]);
 
+    const onBootProgress = useCallback<NonNullable<GameAppHost["onBootProgress"]>>(progress => {
+        // A failed startup keeps its restart count until the game has drawn its first frame.
+        if (progress.phase === "firstFrame") {
+            clearAutomaticRestarts();
+        }
+        publishRuntimeBootProgress(progress);
+    }, []);
+
     /*
      * The menu bar, when this shell has one.
      *
@@ -972,10 +969,7 @@ function GameRuntimeSession() {
             // where the two meet.
             installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
-            // Straight into the store the loading state reads. Nothing between the two: the game
-            // app is where the story compile and the scene warm-up are, and they are the longest
-            // part of what the player is waiting through.
-            onBootProgress: publishRuntimeBootProgress,
+            onBootProgress,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
                 : { kind: "surface" },
@@ -1030,6 +1024,7 @@ function GameRuntimeSession() {
         listPuppetBackendModules,
         log,
         stageCrashed,
+        onBootProgress,
         onDebugEvent,
         pack,
         reportAssetResolution,
@@ -1058,15 +1053,6 @@ function GameRuntimeSession() {
         bridge,
         saveStore,
     ]);
-
-    // The game is up: whatever automatic restarts it took to get here are spent, and the next
-    // failure is a new incident rather than the same one continuing. Without this, a game that
-    // crashed on Monday would refuse to restart itself on Tuesday.
-    useEffect(() => {
-        if (runtimeReady && host) {
-            clearAutomaticRestarts();
-        }
-    }, [runtimeReady, host]);
 
     const getScale = useCallback(() => renderScale, [renderScale]);
 
@@ -1109,7 +1095,7 @@ function GameRuntimeSession() {
      * its numbers from a store of its own for exactly that reason, so nothing here re-renders while
      * the assets come in.
      */
-    const bootColors = useMemo(() => resolveRuntimeBootColors(pack), [pack]);
+    const bootColors = useMemo(() => resolveRuntimeBootDisplayColors(pack), [pack]);
 
     // Under the loading state rather than instead of it: this is what the game app draws when it has
     // no page yet, and a second indicator over the one already on screen would be two answers to the
@@ -1124,7 +1110,7 @@ function GameRuntimeSession() {
     }
 
     if (error) {
-        return <RuntimeErrorScreen message={error} />;
+        throw error;
     }
 
     return (

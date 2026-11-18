@@ -1,3 +1,5 @@
+import { storedNumber } from "@shared/utils/storedNumber";
+
 /**
  * What a build is allowed to discard from the author's media on the way out.
  *
@@ -345,7 +347,7 @@ export function assetTrackEnabled(
 /* --- Reading what is on disk --------------------------------------------- */
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
+    const parsed = storedNumber(value);
     if (!Number.isFinite(parsed)) {
         return fallback;
     }
@@ -354,7 +356,7 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
 
 /** A cap that is allowed to be off, which is 0 rather than a number in the range. */
 function clampCap(value: unknown, min: number, max: number, fallback: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
+    const parsed = storedNumber(value);
     if (!Number.isFinite(parsed)) {
         return fallback;
     }

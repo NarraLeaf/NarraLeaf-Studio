@@ -1,12 +1,13 @@
 import { getInterface } from "@/lib/app/bridge";
 import { announceClient, teamCall } from "@/lib/team/teamCall";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, VcsErrorCode } from "@shared/types/vcs";
+import { KERNEL_VERSION } from "@shared/authority/kernel";
 import { teamProjectDocTopic, type TeamConnection } from "@shared/types/team";
 import { storeWrite } from "../autosave/writeReport";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "../core/ServiceAssetsService";
-import { VersionControlService } from "../core/VersionControlService";
+import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { UIService } from "../core/UIService";
 import { translate } from "@/lib/i18n";
 import { StoryService } from "../story/StoryService";
@@ -19,9 +20,12 @@ import type { DocumentDiff } from "@shared/documents/diff";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { ASSET_PAYLOAD_ROOT, liveDocumentPath } from "@shared/live/sharedDocuments";
 import { STORY_LIBRARY_PATH } from "@shared/authority/storyFiles";
+import { FsRejectErrorCode } from "@shared/types/os";
+import { ProjectNameConvention } from "../../project/nameConvention";
 import { TeamDocSync, type TeamDocNotice, type TeamDocState, type TeamDocView } from "./teamDocSync";
 import { TeamDocWiring } from "./teamDocWiring";
 import { createTeamFilePorts } from "./teamFilePorts";
+import { writeTeamDocStore } from "./teamDocStateStore";
 
 /** One document's difference between a saved version and now. */
 export type TeamVersionComparison =
@@ -391,9 +395,14 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
         this.connectionToken = getInterface().team.onConnectionChanged(({ connection: changed }) => {
             if (changed.remoteOrigin !== remoteOrigin) return;
             const was = connection.state === "ready";
+            const wasSession = connection.session;
             connection = changed;
             const now = connection.state === "ready";
-            if (was !== now) {
+            if (was && now && wasSession !== connection.session) {
+                // Reconnected between two reports: the old session went, a new one came.
+                for (const listener of connectionListeners) listener(false);
+                for (const listener of connectionListeners) listener(true);
+            } else if (was !== now) {
                 for (const listener of connectionListeners) listener(now);
             }
         });
@@ -409,11 +418,31 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
 
         this.sync = new TeamDocSync({
             instance,
+            kernel: KERNEL_VERSION,
+            link: () => (connection.state === "ready" ? connection.session ?? null : null),
+            local: {
+                settle: () => story.flushPendingChanges(),
+                keep: async () => {
+                    try {
+                        const made = await version.commit({ message: translate("workspace.shell.team.docs.localKeptCommit") });
+                        return { revision: made.revision };
+                    } catch (error) {
+                        if (error instanceof VcsCallError && error.code === VcsErrorCode.NothingToCommit) return { revision: null };
+                        throw error;
+                    }
+                },
+            },
             call: async (method, params) => {
                 const answered = await teamCall(remoteOrigin, method, { project, ...params });
                 return answered.ok
                     ? answered
-                    : { ok: false, problem: { detail: "detail" in answered.problem ? answered.problem.detail : answered.problem.kind } };
+                    : {
+                        ok: false,
+                        problem: {
+                            detail: "detail" in answered.problem ? answered.problem.detail : answered.problem.kind,
+                            code: answered.problem.kind === "refused" ? answered.problem.code : answered.problem.kind,
+                        },
+                    };
             },
             listen: onEvent => {
                 const topic = teamProjectDocTopic(project);
@@ -463,16 +492,21 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
             state: {
                 load: async () => {
                     const read = await stores.readStore<TeamDocStore>(STORE);
-                    if (!read.ok || !read.data || read.data.version !== 1 || read.data.project !== project) {
+                    if (!read.ok) {
+                        if (read.error.code === FsRejectErrorCode.NOT_FOUND) return null;
+                        throw new Error("Could not read the Team state");
+                    }
+                    if (!read.data || read.data.version !== 1 || read.data.project !== project) {
                         return null;
                     }
                     return read.data.state;
                 },
                 save: async state => {
-                    await stores.writeStore(
-                        STORE,
+                    await writeTeamDocStore(
+                        ctx.services.get<FileSystemService>(Services.FileSystem),
+                        ctx.project.resolve(ProjectNameConvention.StudioServices),
+                        ctx.project.resolve(ProjectNameConvention.StudioServices, `${STORE}.json`),
                         { version: 1, project, state },
-                        storeWrite("workspace.shell.save.stores.teamDocs", "notRetried"),
                     );
                 },
             },
@@ -543,6 +577,18 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
                 return;
             case "diverged":
                 notifications.warning(translate("workspace.shell.team.docs.diverged"), notice.detail);
+                return;
+            case "kernel-mismatch":
+                notifications.warning(
+                    translate("workspace.shell.team.docs.kernelMismatch", { ours: String(notice.ours), theirs: notice.theirs === undefined ? "?" : String(notice.theirs) }),
+                    notice.detail,
+                );
+                return;
+            case "local-kept":
+                notifications.info(translate("workspace.shell.team.docs.localKept"), notice.revision);
+                return;
+            case "local-keep-failed":
+                notifications.warning(translate("workspace.shell.team.docs.localKeepFailed"), notice.detail);
                 return;
             case "version-saved":
                 return;

@@ -145,6 +145,20 @@ describe("bakeCharacterAvatars", () => {
         expect(deleted).toEqual([]);
     });
 
+    it("removes an unrecorded bake when an override takes its place", async () => {
+        const { io, files, deleted } = createIO();
+        const path = "resources/characters/avatars/alice/p-angry.png";
+        files.set(path, new Uint8Array([7]));
+        const portrait = { x: 0.1, y: 0.1, w: 0.3, h: 0.3 };
+        const report = await bakeCharacterAvatars(io, render, {
+            characterId: "alice",
+            appearance: appearanceOf(PRESET, { "p-angry": { overrideAssetId: "hand-drawn", portrait } }),
+        });
+
+        expect(deleted).toContain(path);
+        expect(report.avatars["p-angry"]).toEqual({ overrideAssetId: "hand-drawn", portrait });
+    });
+
     it("reports a differential with no art instead of baking an empty square", async () => {
         const { io, files } = createIO({ assetHash: () => null });
         const report = await bakeCharacterAvatars(io, render, {

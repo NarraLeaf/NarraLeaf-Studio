@@ -32,7 +32,7 @@ import type {
     VcsServerProjectsProblem,
     VcsServerSession,
 } from "@shared/types/vcs";
-import { createProjectFromWizard } from "../projectActions";
+import { createProjectFromWizard, launchProject } from "../projectActions";
 import { localCopyOf } from "./localCopy";
 import { JoinByPasscode } from "./ServerLiveSessions";
 import { ServerPeople } from "./ServerPeople";
@@ -136,6 +136,7 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
     const [creating, setCreating] = useState(false);
     /** A project made here that the server did not take, and what it was refused with. */
     const [unsent, setUnsent] = useState<UnsentProject | null>(null);
+    const [operationError, setOperationError] = useState<string | null>(null);
     /** Which project is open, by id. The body shows the list or one project, never both. */
     const [opened, setOpened] = useState<string | null>(null);
     /**
@@ -274,16 +275,25 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
 
     /** Fetch a copy of a project through the wizard, then take account of what happened. */
     const getProject = useCallback(async (remote: string) => {
-        await createProjectFromWizard({ remoteUrl: remote });
+        setOperationError(null);
+        try {
+            const error = await createProjectFromWizard({ remoteUrl: remote });
+            if (error !== null) setOperationError(error || t("launcher.projects.errorCreate"));
+        } catch (error) {
+            setOperationError(error instanceof Error ? error.message : String(error));
+        }
         // A wizard that created something has already opened the workspace and retired this
         // window; one that was cancelled leaves this list on screen, and re-reading is what
         // keeps a project that has since been fetched from still offering to fetch it.
         await readLocal();
-    }, [readLocal]);
+    }, [readLocal, t]);
 
     const openProject = useCallback((projectPath: string) => {
-        void getInterface().workspace.launch({ projectPath }, true);
-    }, []);
+        setOperationError(null);
+        void launchProject({ projectPath }).then(error => {
+            if (error !== null) setOperationError(error || t("launcher.projects.errorOpenFolder"));
+        });
+    }, [t]);
 
     /**
      * Make a project for this server: write it on this disk, then send it there.
@@ -411,6 +421,7 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col pt-4 px-6 pb-6" data-servers-tab="list">
+            {operationError && !unsent && <p className="mb-2 text-xs text-danger" role="alert">{operationError}</p>}
             {adding && (
                 <AddServerModal
                     onAdded={serverAdded}
@@ -593,8 +604,9 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                 <UnsentProjectDialog
                     project={unsent}
                     server={serverDisplayName(session)}
+                    error={operationError}
                     onOpen={() => openProject(unsent.path)}
-                    onClose={() => setUnsent(null)}
+                    onClose={() => { setUnsent(null); setOperationError(null); }}
                 />
             )}
         </div>
@@ -886,11 +898,13 @@ interface UnsentProject {
 function UnsentProjectDialog({
     project,
     server,
+    error,
     onOpen,
     onClose,
 }: {
     project: UnsentProject;
     server: string;
+    error: string | null;
     onOpen: () => void;
     onClose: () => void;
 }) {
@@ -931,6 +945,7 @@ function UnsentProjectDialog({
                 {project.detail !== "" && (
                     <p className="break-words text-xs text-fg-muted">{project.detail}</p>
                 )}
+                {error && <p className="text-xs text-danger" role="alert">{error}</p>}
                 <p className="break-all text-2xs text-fg-subtle">{project.path}</p>
             </div>
         </Modal>

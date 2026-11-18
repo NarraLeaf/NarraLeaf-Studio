@@ -66,6 +66,20 @@ describe("what a live room says about the people in it", () => {
         ]);
     });
 
+    it("keeps equal sender-local chat ids from different windows distinct", () => {
+        const { presence } = room("me");
+        const first = room("installation-a.shared-project");
+        const second = room("installation-b.shared-project");
+        first.presence.say("hello");
+        second.presence.say("hello");
+        presence.receive(first.sent[0]!, "installation-a.shared-project", "ada");
+        presence.receive(second.sent[0]!, "installation-b.shared-project", "bob");
+        presence.receive(first.sent[0]!, "installation-a.shared-project", "ada");
+
+        expect(presence.get().chat.map(line => line.account)).toEqual(["ada", "bob"]);
+        expect(new Set(presence.get().chat.map(line => line.id)).size).toBe(2);
+    });
+
     it("forgets windows that left", () => {
         const { presence } = room("me");
         presence.receive({ kind: "cursor", document: "story:s1" }, "w1", "bob");
@@ -80,7 +94,10 @@ describe("which payloads are presence", () => {
         expect(isLivePresenceMessage({ kind: "cursor", document: null })).toBe(true);
         expect(isLivePresenceMessage({ kind: "cursor", document: "story:s", element: "c/b" })).toBe(true);
         expect(isLivePresenceMessage({ kind: "cursor", document: "" })).toBe(false);
+        expect(isLivePresenceMessage({ kind: "cursor", document: "a".repeat(513) })).toBe(false);
+        expect(isLivePresenceMessage({ kind: "chat", id: "1", text: "x".repeat(2000) })).toBe(true);
         expect(isLivePresenceMessage({ kind: "chat", id: "1", text: "x".repeat(2001) })).toBe(false);
+        expect(isLivePresenceMessage({ kind: "moving" })).toBe(true);
         expect(isLivePresenceMessage({ kind: "intent" })).toBe(false);
         expect(isLivePresenceMessage(null)).toBe(false);
     });

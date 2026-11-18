@@ -192,6 +192,7 @@ export const storySource: SearchSource<StoryId> = {
         const unsubs = [
             storyService.onDocumentChanged(({ storyId }) => signal.invalidate(storyId)),
             storyService.onLibraryChanged(() => signal.invalidateAll()),
+            ctx.services.get<CharacterService>(Services.Character).subscribe(() => signal.invalidateAll()),
         ];
         return () => unsubs.forEach(unsub => unsub());
     },

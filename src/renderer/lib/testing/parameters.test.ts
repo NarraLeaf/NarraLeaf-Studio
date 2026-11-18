@@ -173,4 +173,31 @@ describe("nameUniquely", () => {
             ["Bad End", "Main / Bad End", "Main / Pier / Bad End"],
         ])).toEqual(["Main / Roof / Bad End", "Main / Pier / Bad End", "Main / Pier / Bad End (2)"]);
     });
+
+    it("reserves existing spellings before numbering duplicates in document order", () => {
+        expect(nameUniquely([
+            ["End"], ["End"], ["End (2)"], ["End (3)"], ["End"],
+        ])).toEqual(["End", "End (4)", "End (2)", "End (3)", "End (5)"]);
+
+        expect(nameUniquely([["End (2)"], ["End"], ["End"]]))
+            .toEqual(["End (2)", "End", "End (3)"]);
+    });
+
+    it("reserves spellings for collisions among separately numbered groups", () => {
+        expect(nameUniquely([
+            ["End"], ["End"], ["End (2)"], ["End (2)"], ["End (2) (2)"],
+        ])).toEqual(["End", "End (3)", "End (2)", "End (2) (3)", "End (2) (2)"]);
+    });
+
+    it("uses the command line's trimming and Unicode lowercasing without normalising names", () => {
+        expect(nameUniquely([
+            ["終幕"], ["終幕"], ["終幕 (2)"], ["終幕 (２)"],
+            ["Été"], ["ÉTÉ"], ["été (2)"], ["é"], ["e\u0301"],
+            [" End "], ["eND"], ["end (2)"],
+        ])).toEqual([
+            "終幕", "終幕 (3)", "終幕 (2)", "終幕 (２)",
+            "Été", "ÉTÉ (3)", "été (2)", "é", "e\u0301",
+            " End ", "eND (3)", "end (2)",
+        ]);
+    });
 });

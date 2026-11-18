@@ -196,6 +196,7 @@ describe("which graph the canvas opens on", () => {
             type: "blueprint.event.head.click",
             x: 40,
             y: 60,
+            params: {},
         });
         expect(graph?.edges).toEqual([]);
     });

@@ -13,20 +13,8 @@
  * outright otherwise. Not an empty section, and not a line explaining its absence - a section that
  * cannot have content is not content.
  *
- * A project-level section can still list rows a STORY declares (`/save`, `/global`): a project whose
- * rows were never migrated into the registry, which in practice means one that was frozen when the
- * migration ran. Those are listed but not edited here, because their source of truth is a line in a
- * scene - clicking one goes to that line, exactly as a scene row does. Nothing labels them; an
- * editable row and a non-editable row already look different, and a badge saying so would only name
- * what is visible.
- *
- * ⚠ Those legacy rows can only be merged in while their story is focused, because they live in the
- * story document and nothing else here reads one. So on a frozen, unmigrated project the saved and
- * global sections list MORE rows with a story open than without. The asymmetry is not a bug and not
- * worth a fix: post-migration there are no such rows, and the alternative - loading every story in
- * the project to fill a side panel - costs far more than the case is worth.
- *
- * Comments in English per convention.
+ * Project-level sections also include any matching declaration rows in the focused story. Those
+ * story-owned rows open their declaration; registry-owned rows are edited in place.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
@@ -100,17 +88,13 @@ const INPUT_CLASS = cn(
 const FIELD_SLOT_CLASS = "min-w-0 flex-1";
 
 function formatDefault(value: StoryLiteralValue | undefined, valueType: StoryVariableValueType): string {
-    if (value === undefined || value === null) return "";
+    if (value === undefined) return "";
     if (valueType === "json") return typeof value === "string" ? value : JSON.stringify(value);
+    if (value === null) return "";
     return String(value);
 }
 
 function parseDefault(text: string, valueType: StoryVariableValueType): StoryLiteralValue {
-    if (valueType === "boolean") return text === "true";
-    if (valueType === "number") {
-        const n = Number(text);
-        return Number.isFinite(n) ? n : 0;
-    }
     if (valueType === "json") {
         try {
             return JSON.parse(text) as StoryLiteralValue;
@@ -171,6 +155,13 @@ function VariableRowEditor(props: {
     // as the translation table does: the row is what the author came to READ.
     const held = heldBy !== null;
     const heldTip = held ? t("storyVars.live.entryClaimed", { name: heldBy }) : undefined;
+    // Keep incomplete input locally until it expresses a valid change; the registry remains authoritative.
+    const [nameDraft, setNameDraft] = useState<string | null>(null);
+    const [numberDraft, setNumberDraft] = useState<{ text: string; base: StoryLiteralValue | undefined } | null>(null);
+    const displayedName = nameDraft !== null && nameDraft.trim() === props.row.name ? nameDraft : props.row.name;
+    const displayedDefault = props.row.valueType === "number" && numberDraft && numberDraft.base === props.row.defaultValue
+        ? numberDraft.text
+        : formatDefault(props.row.defaultValue, props.row.valueType);
     return (
         <div
             className="flex items-center gap-1.5"
@@ -191,8 +182,17 @@ function VariableRowEditor(props: {
             <div className={FIELD_SLOT_CLASS}>
                 <input
                     className={INPUT_CLASS}
-                    value={props.row.name}
-                    onChange={event => props.onRename(event.target.value)}
+                    value={displayedName}
+                    onChange={event => {
+                        const name = event.target.value;
+                        if (name !== name.trim() && name.trim() === props.row.name) {
+                            setNameDraft(name);
+                        } else {
+                            setNameDraft(null);
+                            props.onRename(name);
+                        }
+                    }}
+                    onBlur={() => setNameDraft(null)}
                     readOnly={freeze.frozen || held}
                     data-tip={freeze.frozen ? freeze.reason : heldTip}
                     aria-label={t("storyVars.row.nameAria")}
@@ -228,9 +228,23 @@ function VariableRowEditor(props: {
                 ) : (
                     <input
                         className={INPUT_CLASS}
-                        value={formatDefault(props.row.defaultValue, props.row.valueType)}
+                        value={displayedDefault}
                         placeholder={t("storyVars.row.defaultPlaceholder")}
-                        onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
+                        onChange={event => {
+                            const text = event.target.value;
+                            if (props.row.valueType === "number") {
+                                const number = text.trim() ? Number(text) : NaN;
+                                if (!Number.isFinite(number) || number === props.row.defaultValue) {
+                                    setNumberDraft({ text, base: props.row.defaultValue });
+                                    return;
+                                }
+                                setNumberDraft(null);
+                                props.onDefault(number);
+                                return;
+                            }
+                            props.onDefault(parseDefault(text, props.row.valueType));
+                        }}
+                        onBlur={() => setNumberDraft(null)}
                         readOnly={freeze.frozen || held}
                         data-tip={freeze.frozen ? freeze.reason : heldTip}
                         aria-label={t("storyVars.row.defaultAria")}
@@ -395,6 +409,8 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
     const [revealed, setRevealed] = useState<{ variableId: string; token: number; scrolled: boolean } | null>(null);
     const revealToken = useRef(0);
     const rootRef = useRef<HTMLDivElement | null>(null);
+    /** The rows whose reads and writes are open. */
+    const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     usePanelRevealRequests(storyVariableReveal, detail => {
         revealToken.current += 1;
         setRevealed({ variableId: detail.variableId, token: revealToken.current, scrolled: false });
@@ -403,8 +419,6 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
         }
     });
 
-    /** The rows whose reads and writes are open. */
-    const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     const toggleExpanded = useCallback((variableId: string) => {
         setExpanded(current => {
             const next = new Set(current);
@@ -436,9 +450,8 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
     /**
      * Hold the entry this panel has open, so nobody in the room writes over it.
      *
-     * Held while a box on the row has focus rather than while somebody is typing: the boxes write
-     * the document on every keystroke, so a remote edit arriving mid-word lands under the cursor.
-     * Silent outside a session.
+     * Held while a box has focus, including while it contains unfinished input, so a remote edit
+     * cannot replace the text being composed. Silent outside a session.
      */
     useVariableClaimHold({ service: liveService, variableId: focusedVariableId });
 
@@ -462,11 +475,13 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
 
     useEffect(() => {
         if (!blueprintService || !registryService) return;
-        const read = () =>
+        const read = () => {
             setRegistryRows({
                 saved: blueprintService.listSavedVariables(),
                 persistent: blueprintService.listPersistentVariables(),
             });
+            setFocusedVariableId(current => current && !registryService.getEntry(current) ? null : current);
+        };
         read();
         // The registry's own event, not the blueprint history one this panel used to watch. Every
         // registry mutation emits it, including the ones history coalesces or refuses to record - and
@@ -490,6 +505,11 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 .entries,
         [registryRows.persistent, document],
     );
+    const sceneRows: VariableRow[] = useMemo(() => {
+        if (!document || !sceneId) return [];
+        const scene = document.scenes[sceneId];
+        return scene ? Object.values(sceneVariableDefs(scene)) : [];
+    }, [document, sceneId]);
 
     // Scrolled once its row is drawn: the registry is read in an effect, so a request that arrives
     // with the panel mounting can be a render ahead of the rows it names.
@@ -504,7 +524,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
         }
         row.scrollIntoView({ block: "center" });
         setRevealed({ ...revealed, scrolled: true });
-    }, [revealed, savedRows, persistentRows]);
+    }, [revealed, savedRows, persistentRows, sceneRows]);
 
     const revealedToken = revealed?.token ?? null;
     useEffect(() => {
@@ -516,12 +536,6 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
         }, REVEAL_MARK_MS);
         return () => window.clearTimeout(timer);
     }, [revealedToken]);
-
-    const sceneRows: VariableRow[] = useMemo(() => {
-        if (!document || !sceneId) return [];
-        const scene = document.scenes[sceneId];
-        return scene ? Object.values(sceneVariableDefs(scene)) : [];
-    }, [document, sceneId]);
 
     /**
      * Open the declaration row that declares this variable.

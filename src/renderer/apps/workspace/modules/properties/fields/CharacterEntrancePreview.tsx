@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { StoryTransformProps } from "@shared/types/story";
 import { storyTransformPropsToNlr } from "@shared/story/transformProps";
@@ -48,7 +48,9 @@ export function CharacterEntrancePreview(props: {
 }) {
     const { t } = useTranslation();
     const boxRef = useRef<HTMLDivElement | null>(null);
+    const cancelZoomDragRef = useRef<(() => void) | null>(null);
     const [draft, setDraft] = useState<StoryTransformProps | null>(null);
+    const characterId = props.character.profile.getId();
     const shown = draft ?? props.value;
     const stageWidth = Math.max(1, props.stageSize.width);
     const stageHeight = Math.max(1, props.stageSize.height);
@@ -58,6 +60,11 @@ export function CharacterEntrancePreview(props: {
     // picture to composite (the backend draws her at play time), and falls back to the sample figure:
     // the placement is still hers, and it is the placement this box is for.
     const sprite = useCompositedSprite(props.character, {}, SPRITE_COMPOSITE_PX);
+
+    useEffect(() => {
+        setDraft(null);
+        return () => cancelZoomDragRef.current?.();
+    }, [characterId]);
 
     const nlr = useMemo(() => storyTransformPropsToNlr(shown), [shown]);
     const zoom = typeof nlr.zoom === "number" ? nlr.zoom : 1;
@@ -129,25 +136,42 @@ export function CharacterEntrancePreview(props: {
         }
         event.preventDefault();
         event.stopPropagation();
+        cancelZoomDragRef.current?.();
         const startX = event.clientX;
         const startZoom = zoom;
         let latest: StoryTransformProps | null = null;
+        const view = event.currentTarget.ownerDocument.defaultView ?? window;
+        const pointerId = event.pointerId;
         const onMove = (moveEvent: PointerEvent) => {
+            if (moveEvent.pointerId !== pointerId) return;
             latest = withProps({
                 zoom: Number(Math.max(0.05, startZoom + (moveEvent.clientX - startX) / ZOOM_DRAG_PX).toFixed(4)),
             });
             setDraft(latest);
         };
-        const onUp = () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
+        const cleanup = () => {
+            view.removeEventListener("pointermove", onMove);
+            view.removeEventListener("pointerup", onUp);
+            view.removeEventListener("pointercancel", onCancel);
+            cancelZoomDragRef.current = null;
+        };
+        const onUp = (upEvent: PointerEvent) => {
+            if (upEvent.pointerId !== pointerId) return;
+            cleanup();
             setDraft(null);
             if (latest) {
                 props.onCommit(latest);
             }
         };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
+        const onCancel = (cancelEvent: PointerEvent) => {
+            if (cancelEvent.pointerId !== pointerId) return;
+            cleanup();
+            setDraft(null);
+        };
+        cancelZoomDragRef.current = cleanup;
+        view.addEventListener("pointermove", onMove);
+        view.addEventListener("pointerup", onUp);
+        view.addEventListener("pointercancel", onCancel);
     }, [props, withProps, zoom]);
 
     return (
@@ -163,11 +187,12 @@ export function CharacterEntrancePreview(props: {
                 }
             }}
             onPointerUp={() => {
-                if (draft) {
+                if (draft && !cancelZoomDragRef.current) {
                     props.onCommit(draft);
                 }
-                setDraft(null);
+                if (!cancelZoomDragRef.current) setDraft(null);
             }}
+            onPointerCancel={() => setDraft(null)}
         >
             {/* The floor. A character's baseline is read against it, so it is the one piece of
                 furniture this box needs - a dialogue bar would only cover the answer. */}

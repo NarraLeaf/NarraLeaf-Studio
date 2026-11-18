@@ -51,8 +51,9 @@ function withTimeout(promise: Promise<void>, timeoutMs: number, label: string): 
  * its own (already bounded) timer, and the asset library because it has no timer at all: it writes
  * as it changes, and what it can still owe is a write the disk refused.
  */
-function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
+function collectTargets(ctx: WorkspaceContext): { targets: FlushTarget[]; editorSettleFailed: boolean } {
     const targets: FlushTarget[] = [];
+    let editorSettleFailed = false;
 
     try {
         const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
@@ -61,7 +62,7 @@ function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
         // asked only the savers would write every document except the one the author is typing
         // into. Settling is synchronous, so by the time the savers are collected below the story's
         // saver already owes the disk the line that was in the field.
-        saveStatus.settlePendingEdits();
+        editorSettleFailed = saveStatus.settlePendingEdits() === false;
         for (const { labelKey, saver } of saveStatus.listSavers()) {
             targets.push({ labelKey, flush: () => saver.flush() });
         }
@@ -91,7 +92,7 @@ function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
         // Same.
     }
 
-    return targets;
+    return { targets, editorSettleFailed };
 }
 
 /**
@@ -121,13 +122,13 @@ export async function flushPendingSaves(
     options: { timeoutMs?: number } = {},
 ): Promise<FlushPendingSavesResult> {
     const timeoutMs = options.timeoutMs ?? FLUSH_STORE_TIMEOUT_MS;
-    const targets = collectTargets(ctx);
+    const { targets, editorSettleFailed } = collectTargets(ctx);
 
     const results = await Promise.allSettled(
         targets.map(target => withTimeout(target.flush(), timeoutMs, translate(target.labelKey))),
     );
 
-    const failures: string[] = [];
+    const failures: string[] = editorSettleFailed ? [translate("workspace.shell.save.stores.openEditors")] : [];
     for (const [index, result] of results.entries()) {
         if (result.status === "rejected") {
             const label = translate(targets[index].labelKey);

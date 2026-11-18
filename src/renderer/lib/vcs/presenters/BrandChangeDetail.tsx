@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import { useBrandColorLabel } from "@/apps/workspace/modules/properties/framework/fields/brandPalette";
 import { SettingsChangeDetail } from "./SettingsChangeDetail";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
 import { useSideBytes, type ComparisonSide, type SideBytesStatus } from "./comparisonSide";
@@ -81,10 +82,12 @@ export function BrandChangeDetail({ entry, change, sides }: ChangePresenterProps
 }
 
 function Row({ row }: { row: SwatchRow }) {
-    const { t } = useTranslation();
+    const colorLabel = useBrandColorLabel();
+    const side = row.after ?? row.before;
+    const name = colorLabel({ id: row.id, value: side?.value ?? "", name: side?.name ?? undefined });
     return (
         <>
-            <span className="truncate font-mono text-2xs text-fg-muted" data-tip={row.id}>{row.id}</span>
+            <span className="truncate text-2xs text-fg-muted" data-tip={name}>{name}</span>
             <Cell side={row.before} absent="documentDiff.presenter.brand.added" />
             <Cell
                 side={row.after}

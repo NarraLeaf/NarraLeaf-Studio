@@ -13,7 +13,7 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
     BookOpenText,
@@ -29,7 +29,8 @@ import {
 import type { EditorComponentProps } from "../types";
 import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { isFreezeBlocking, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { useWorkspace } from "../../context";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -66,7 +67,7 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { characterTranslationUnitId, isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
-import type { StoryLibraryEntry } from "@shared/types/story";
+import type { StoryDocument, StoryLibraryEntry } from "@shared/types/story";
 import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
 import {
@@ -77,7 +78,7 @@ import {
 } from "./localizationLiveSession";
 import { useTranslationExchange } from "./translationExchange";
 import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "./OrphanUnits";
-import { orphanTranslationUnitIds } from "@/lib/lint/rules/text/textSegments";
+import { indexStoryTextLines, liveTextIds, orphanTranslationUnitIds } from "@/lib/lint/rules/text/textSegments";
 import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
@@ -97,6 +98,7 @@ const GROUP_ROW_HEIGHT_PX = 26;
 const TRANSLATE_ROW_HEIGHT_PX = 96;
 const REVIEW_ROW_HEIGHT_PX = 126;
 const ADD_KEY_ROW_HEIGHT_PX = 44;
+const ORPHAN_INDEX_READ_ATTEMPTS = 3;
 
 /** Group keys for the synthetic groups a source may carry. */
 const CHARACTERS_GROUP_KEY = "__characters__";
@@ -170,6 +172,14 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
         [context, isInitialized],
     );
+    // A guest's deletion travels as an unconditional intent; the host must decide against its own
+    // story state. Until that intent carries the condition, deletion is available on the host.
+    const [liveGuest, setLiveGuest] = useState(() => liveService?.getView().role === "guest");
+    useEffect(() => {
+        const read = () => setLiveGuest(liveService?.getView().role === "guest");
+        read();
+        return liveService?.onChanged(read);
+    }, [liveService]);
     const projectService = useMemo(
         () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
         [context, isInitialized],
@@ -184,6 +194,20 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
      */
     const exchange = useTranslationExchange();
     const importFreeze = useFreezeGuard(translationDocumentFreezeScope(locale));
+    const importFreezeRef = useRef(importFreeze);
+    useLayoutEffect(() => {
+        importFreezeRef.current = importFreeze;
+    }, [importFreeze]);
+    const orphanScopeRef = useRef<object | null>(null);
+    useLayoutEffect(() => {
+        const scope = {};
+        orphanScopeRef.current = scope;
+        return () => {
+            if (orphanScopeRef.current === scope) {
+                orphanScopeRef.current = null;
+            }
+        };
+    }, [context, localizationService, storyService, locale]);
 
     /**
      * Whether this table's language is still in the project's list.
@@ -936,22 +960,101 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
      * restored or enabled later is untranslated again.
      */
     const handleRemoveOrphans = useCallback(async (unitIds: string[]) => {
-        if (!localizationService || !uiService || unitIds.length === 0 || importFreeze.frozen) {
+        if (!localizationService || !storyService || !uiService || !locDocument || unitIds.length === 0 || importFreeze.frozen || liveGuest) {
             return;
         }
+        const scope = orphanScopeRef.current;
+        if (!scope) {
+            return;
+        }
+        const selected = new Map(unitIds
+            .filter(unitId => Object.hasOwn(locDocument.units, unitId))
+            .map(unitId => [unitId, locDocument.units[unitId]]));
         const confirmed = await uiService.showConfirm(
             tn("workspace.localization.table.orphans.deleteConfirm", unitIds.length),
             t("workspace.localization.table.orphans.deleteDetail"),
         );
-        if (!confirmed) {
+        if (!confirmed || orphanScopeRef.current !== scope) {
             return;
         }
+        const blocked = () => {
+            if (liveService?.getView().role === "guest") {
+                uiService.showNotification(t("workspace.localization.table.orphans.hostOnly"), "warning");
+                return true;
+            }
+            const reason = getProjectWriteFreeze()?.reason ?? null;
+            const guard = importFreezeRef.current;
+            if (!guard.frozen && !isFreezeBlocking(reason, translationDocumentFreezeScope(locale))) {
+                return false;
+            }
+            uiService.showNotification(guard.frozen
+                ? guard.reason
+                : t(reason?.kind === "live-session" ? "workspace.shell.freeze.unavailableLive" : "workspace.shell.freeze.unavailable"), "warning");
+            return true;
+        };
+        if (blocked()) {
+            return;
+        }
+        let invalidated = false;
+        const offLibrary = storyService.onLibraryChanged(() => { invalidated = true; });
+        const offDocument = storyService.onDocumentChanged(() => { invalidated = true; });
         try {
-            localizationService.applyUnitEdits(locale, { set: {}, remove: unitIds });
+            for (let attempt = 0; attempt < ORPHAN_INDEX_READ_ATTEMPTS; attempt += 1) {
+                if (orphanScopeRef.current !== scope || blocked()) {
+                    return;
+                }
+                invalidated = false;
+                const stories: { name: string; document: StoryDocument }[] = [];
+                try {
+                    for (const entry of storyService.listStories()) {
+                        const document = await storyService.loadStory(entry.id);
+                        if (!document) {
+                            throw new Error(t("workspace.localization.table.orphans.unknown"));
+                        }
+                        stories.push({ name: entry.name, document });
+                    }
+                } catch (error) {
+                    if (orphanScopeRef.current !== scope) {
+                        return;
+                    }
+                    if (invalidated) {
+                        continue;
+                    }
+                    throw error;
+                }
+                if (orphanScopeRef.current !== scope || blocked()) {
+                    return;
+                }
+                if (invalidated) {
+                    continue;
+                }
+                const current = localizationService.getDocumentIfLoaded(locale);
+                if (!current) {
+                    return;
+                }
+                const live = liveTextIds(indexStoryTextLines(stories));
+                const remaining = new Set(orphanTranslationUnitIds(current.units, live));
+                // Unit objects are replaced on edit; unchanged entries keep their identity even if
+                // another entry in the same language changed while the dialog was open.
+                const remove = unitIds.filter(unitId => remaining.has(unitId)
+                    && selected.has(unitId)
+                    && selected.get(unitId) === current.units[unitId]);
+                if (remove.length > 0) {
+                    localizationService.applyUnitEdits(locale, { set: {}, remove });
+                }
+                if (remove.length !== unitIds.length) {
+                    uiService.showNotification(t("workspace.localization.table.orphans.changed"), "warning");
+                }
+                return;
+            }
+            uiService.showNotification(t("workspace.localization.table.orphans.changed"), "warning");
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
+        } finally {
+            offLibrary();
+            offDocument();
         }
-    }, [localizationService, uiService, importFreeze.frozen, locale, t, tn]);
+    }, [localizationService, storyService, uiService, locDocument, importFreeze.frozen, liveGuest, liveService, locale, t, tn]);
 
     const orphanRows = useMemo<OrphanUnitRow[]>(() => {
         if (!orphanUnitIds || lineIndex.kind !== "ready") {
@@ -1130,8 +1233,8 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     ) : (
                         <OrphanUnitList
                             rows={orphanRows}
-                            frozen={importFreeze.frozen}
-                            frozenReason={importFreeze.reason}
+                            frozen={importFreeze.frozen || liveGuest}
+                            frozenReason={importFreeze.frozen ? importFreeze.reason : liveGuest ? t("workspace.localization.table.orphans.hostOnly") : undefined}
                             onRemove={unitIds => void handleRemoveOrphans(unitIds)}
                             strings={{
                                 summary: tn("workspace.localization.table.orphans.summary", orphanRows.length),

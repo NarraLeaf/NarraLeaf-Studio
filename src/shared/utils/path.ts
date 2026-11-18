@@ -112,7 +112,7 @@ class PathPolyfill {
                 resolvedPath = this.join(path, resolvedPath);
                 resolvedAbsolute = true;
             } else {
-                resolvedPath = this.join(resolvedPath, path);
+                resolvedPath = this.join(path, resolvedPath);
             }
         }
 
@@ -166,7 +166,16 @@ class PathPolyfill {
             throw new PathError('Path must be a string. Received ' + path);
         }
 
-        const parsed = this.parse(path);
+        const root = this.rootOf(path);
+        let end = path.length;
+        while (end > root.length && this.isSeparator(path[end - 1])) {
+            end--;
+        }
+        const trimmed = path.slice(0, end);
+        if (this.isWindows && /^[\\/]{2}[^\\/]+[\\/]+[^\\/]+$/.test(trimmed)) {
+            return trimmed + this.preferredSeparator(path);
+        }
+        const parsed = this.parse(trimmed);
         return parsed.dir || '.';
     }
 
@@ -287,34 +296,11 @@ class PathPolyfill {
             throw new PathError('Path object must be an object');
         }
 
-        let path = '';
-        // The inverse of `parse`, so it writes back the style `parse` read.
+        // The directory already includes the root, so use one or the other.
         const sep = this.preferredSeparator(pathObject.dir ?? '', pathObject.root ?? '');
-
-        // Root
-        if (pathObject.root) {
-            path += pathObject.root;
-        }
-
-        // Dir
-        if (pathObject.dir) {
-            path += pathObject.dir;
-            if (!pathObject.root && !this.endsWithSeparator(path)) {
-                path += sep;
-            }
-        }
-
-        // Base (name + ext)
-        if (pathObject.base) {
-            path += pathObject.base;
-        } else if (pathObject.name) {
-            path += pathObject.name;
-            if (pathObject.ext) {
-                path += pathObject.ext;
-            }
-        }
-
-        return path;
+        const dir = pathObject.dir || pathObject.root || '';
+        const base = pathObject.base || `${pathObject.name || ''}${pathObject.ext || ''}`;
+        return dir ? dir + (this.endsWithSeparator(dir) ? '' : sep) + base : base;
     }
 
     /**

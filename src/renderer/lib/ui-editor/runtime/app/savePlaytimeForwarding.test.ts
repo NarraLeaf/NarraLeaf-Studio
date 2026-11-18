@@ -70,6 +70,14 @@ function writeMemberOf(source: string): string {
 }
 
 describe("save playtime forwarding", () => {
+    it("marks the new playthrough before the load yields after deserializing", async () => {
+        const source = await fs.readFile(APP_FILE, "utf-8");
+        const apply = source.indexOf("apply: savedGame => {");
+        const restore = source.indexOf("restore: async snapshot => {", apply);
+        const applyBody = source.slice(apply, restore);
+        expect(applyBody).toMatch(/game\.newGame\(\)\.deserialize\(save\);\s*gameEntriesRef\.current \+= 1;/);
+    });
+
     it("hands the stopwatch reading to the store when a save is written", async () => {
         const source = await fs.readFile(APP_FILE, "utf-8");
         // The reading, taken at the moment of the write rather than from a value captured earlier:
@@ -94,8 +102,9 @@ describe("save playtime forwarding", () => {
         expect(callStart, "GameApp does not call usePlaytime").toBeGreaterThan(-1);
         const wiring = source.slice(callStart, source.indexOf("});", callStart));
         expect(wiring, "GameApp does not wire usePlaytime at all").toContain("persistenceGetAsync");
+        expect(source).toContain("const playtimeStore = usePlaytimeSource(core, bundle, runtimeCoreOptions);");
         expect(
-            wiring.includes("scopeBridge.persistenceSet("),
+            wiring.includes("playtimeStore?.persistenceSet("),
             "the playtime total must be written through the scope bridge",
         ).toBe(true);
         expect(

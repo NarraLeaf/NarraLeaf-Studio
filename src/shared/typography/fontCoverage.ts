@@ -260,7 +260,7 @@ function openWoff(bytes: Uint8Array, decompress: FontDecompressors): OpenResult 
 }
 
 /**
- * The 63 table tags WOFF2 can name by a five-bit index instead of spelling out. Order is the spec's
+ * The 63 table tags WOFF2 can name by a six-bit index instead of spelling out. Order is the spec's
  * and is not alphabetical; index 63 is the escape that means "a four-character tag follows".
  */
 const WOFF2_KNOWN_TAGS: readonly string[] = [
@@ -286,13 +286,13 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
     if (bytes.length < 48) {
         return { ok: false, reason: "malformed" };
     }
-    if (!decompress.brotli) {
-        return { ok: false, reason: "needs-decompressor" };
-    }
     // Wrapping a collection in WOFF2 does not make it loadable; refused before the stream is even
     // decompressed, for the reason a bare `ttcf` is.
     if (ascii(bytes, 4, 4) === "ttcf") {
         return { ok: false, reason: "unrenderable" };
+    }
+    if (!decompress.brotli) {
+        return { ok: false, reason: "needs-decompressor" };
     }
     const numTables = u16(bytes, 12);
     const totalCompressedSize = u32(bytes, 20);
@@ -376,7 +376,7 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
  */
 function readCmapRanges(cmap: Uint8Array): CodePointRange[] {
     if (cmap.length < 4) {
-        return [];
+        throw new Error("Truncated cmap header");
     }
     const numTables = u16(cmap, 2);
     const ranges: CodePointRange[] = [];
@@ -384,14 +384,17 @@ function readCmapRanges(cmap: Uint8Array): CodePointRange[] {
     for (let i = 0; i < numTables; i += 1) {
         const record = 4 + i * 8;
         if (record + 8 > cmap.length) {
-            break;
+            throw new Error("Truncated cmap records");
         }
         const platform = u16(cmap, record);
         const encoding = u16(cmap, record + 2);
         const offset = u32(cmap, record + 4);
         const unicode = platform === 0 || (platform === 3 && (encoding === 1 || encoding === 10));
-        if (!unicode || offset + 4 > cmap.length || seen.has(offset)) {
+        if (!unicode || seen.has(offset)) {
             continue;
+        }
+        if (offset + 4 > cmap.length) {
+            throw new Error("Truncated cmap subtable header");
         }
         seen.add(offset);
         readCmapSubtable(cmap, offset, ranges);
@@ -400,25 +403,35 @@ function readCmapRanges(cmap: Uint8Array): CodePointRange[] {
 }
 
 function readCmapSubtable(cmap: Uint8Array, offset: number, out: CodePointRange[]): void {
-    switch (u16(cmap, offset)) {
+    const format = u16(cmap, offset);
+    if (format !== 0 && format !== 4 && format !== 6 && format !== 12 && format !== 13) {
+        // Formats 2 (legacy CJK encodings) and 14 (variation sequences) do not map Unicode code
+        // points to glyphs on their own.
+        return;
+    }
+    const longHeader = format === 12 || format === 13;
+    const headerLength = longHeader ? 8 : 4;
+    if (offset + headerLength > cmap.length) {
+        throw new Error("Truncated cmap subtable header");
+    }
+    const length = longHeader ? u32(cmap, offset + 4) : u16(cmap, offset + 2);
+    if (length < headerLength || offset + length > cmap.length) {
+        throw new Error("Truncated cmap subtable");
+    }
+    const subtable = cmap.subarray(offset, offset + length);
+    switch (format) {
         case 0:
-            readCmapFormat0(cmap, offset, out);
+            readCmapFormat0(subtable, 0, out);
             return;
         case 4:
-            readCmapFormat4(cmap, offset, out);
+            readCmapFormat4(subtable, 0, out);
             return;
         case 6:
-            readCmapFormat6(cmap, offset, out);
+            readCmapFormat6(subtable, 0, out);
             return;
-        // 13 is "many code points to one glyph" - a last-resort font. Its group layout is byte for
-        // byte format 12's, and coverage is the same question for both.
         case 12:
         case 13:
-            readCmapFormat12(cmap, offset, out);
-            return;
-        default:
-            // Formats 2 (high-byte mapping for legacy CJK encodings) and 14 (variation sequences)
-            // are deliberately not read: neither maps Unicode code points to glyphs on its own.
+            readCmapFormat12(subtable, 0, out, format === 13);
             return;
     }
 }
@@ -427,7 +440,7 @@ function readCmapSubtable(cmap: Uint8Array, offset: number, out: CodePointRange[
 function readCmapFormat0(cmap: Uint8Array, offset: number, out: CodePointRange[]): void {
     const glyphs = offset + 6;
     if (glyphs + 256 > cmap.length) {
-        return;
+        throw new Error("Truncated cmap format 0");
     }
     collectRuns(0, 255, code => cmap[glyphs + code] !== 0, out);
 }
@@ -441,6 +454,9 @@ function readCmapFormat0(cmap: Uint8Array, offset: number, out: CodePointRange[]
  * claim glyphs the font does not have.
  */
 function readCmapFormat4(cmap: Uint8Array, offset: number, out: CodePointRange[]): void {
+    if (offset + 16 > cmap.length) {
+        throw new Error("Truncated cmap format 4");
+    }
     const segCountX2 = u16(cmap, offset + 6);
     const segCount = segCountX2 >> 1;
     const endCodes = offset + 14;
@@ -448,7 +464,7 @@ function readCmapFormat4(cmap: Uint8Array, offset: number, out: CodePointRange[]
     const idDeltas = startCodes + segCountX2;
     const idRangeOffsets = idDeltas + segCountX2;
     if (idRangeOffsets + segCountX2 > cmap.length) {
-        return;
+        throw new Error("Truncated cmap format 4 segments");
     }
 
     for (let seg = 0; seg < segCount; seg += 1) {
@@ -471,20 +487,24 @@ function readCmapFormat4(cmap: Uint8Array, offset: number, out: CodePointRange[]
         collectRuns(start, end, code => {
             const at = rangeOffsetAt + rangeOffset + (code - start) * 2;
             if (at + 2 > cmap.length) {
-                return false;
+                throw new Error("Truncated cmap format 4 glyphs");
             }
-            return u16(cmap, at) !== 0;
+            const glyph = u16(cmap, at);
+            return glyph !== 0 && ((glyph + delta) & 0xffff) !== 0;
         }, out);
     }
 }
 
 /** Format 6: a dense run of glyph ids starting at one code point. */
 function readCmapFormat6(cmap: Uint8Array, offset: number, out: CodePointRange[]): void {
+    if (offset + 10 > cmap.length) {
+        throw new Error("Truncated cmap format 6");
+    }
     const first = u16(cmap, offset + 6);
     const count = u16(cmap, offset + 8);
     const glyphs = offset + 10;
     if (glyphs + count * 2 > cmap.length) {
-        return;
+        throw new Error("Truncated cmap format 6 glyphs");
     }
     collectRuns(first, first + count - 1, code => u16(cmap, glyphs + (code - first) * 2) !== 0, out);
 }
@@ -492,25 +512,31 @@ function readCmapFormat6(cmap: Uint8Array, offset: number, out: CodePointRange[]
 /**
  * Format 12: groups of contiguous code points, the only subtable that reaches past the BMP.
  *
- * Groups are taken whole rather than walked code point by code point - a full-repertoire CJK font
- * has groups tens of thousands of code points wide and they are contiguous by construction.
+ * Covered runs are taken directly from the groups rather than walked code point by code point: a
+ * full-repertoire CJK font has groups tens of thousands of code points wide.
  */
-function readCmapFormat12(cmap: Uint8Array, offset: number, out: CodePointRange[]): void {
+function readCmapFormat12(cmap: Uint8Array, offset: number, out: CodePointRange[], manyToOne: boolean): void {
+    if (offset + 16 > cmap.length) {
+        throw new Error("Truncated cmap format 12/13");
+    }
     const numGroups = u32(cmap, offset + 12);
     const groups = offset + 16;
     for (let i = 0; i < numGroups; i += 1) {
         const record = groups + i * 12;
         if (record + 12 > cmap.length) {
-            return;
+            throw new Error("Truncated cmap format 12/13 groups");
         }
         const start = u32(cmap, record);
         const end = u32(cmap, record + 4);
         const startGlyph = u32(cmap, record + 8);
-        // A group whose glyphs begin at `.notdef` maps the whole run to nothing.
-        if (startGlyph === 0 || start > end || end > 0x10ffff) {
+        if (start > end || end > 0x10ffff) {
             continue;
         }
-        out.push([start, end]);
+        // Format 12 increments the glyph id; format 13 maps the entire group to one glyph.
+        const firstCovered = startGlyph === 0 ? (manyToOne ? end + 1 : start + 1) : start;
+        if (firstCovered <= end) {
+            out.push([firstCovered, end]);
+        }
     }
 }
 

@@ -23,7 +23,7 @@ export const PROJECT_TEMPLATE_PART_IDS = ["story", "characters", "files"] as con
 
 /**
  * - `story`: every scene but each story's entry scene, which stays under its id - the title's Start
- *   names it - emptied, renamed (`emptyScene`) and without a background of its own; with it, the
+ *   names it - emptied, renamed (`emptyScene`) and without its own background or music; with it, the
  *   variables nothing else reads.
  * - `characters`: every character.
  * - `files`: every asset nothing left in the project names - the interface, the palette, and
@@ -247,7 +247,7 @@ export async function leaveOutTemplateParts(
             }
             if (entry) {
                 emptiedScenes.add(entryId);
-                const { defaultBackgroundAssetId: _background, ...kept } = entry;
+                const { defaultBackgroundAssetId: _background, bgm: _bgm, ...kept } = entry;
                 doc.scenes = {
                     [entryId]: {
                         ...kept,
@@ -368,6 +368,22 @@ export async function leaveOutTemplateParts(
             }
         }
         // A group the trim emptied goes with its members; one the template shipped empty stays.
+        // Retained groups also retain their ancestors, so a child never loses its place in the tree.
+        const parents = new Map<string, string>();
+        for (const path of paths) {
+            if (!ASSET_GROUPS.test(path)) continue;
+            const groups = await readJson(path);
+            if (!groups) continue;
+            for (const [id, value] of Object.entries(groups.value)) {
+                const parent = value && typeof value === "object" ? asText((value as Json).parentGroupId) : "";
+                if (parent) parents.set(id, parent);
+                if (!groupsBefore.has(id)) groupsAfter.add(id);
+            }
+        }
+        for (const id of groupsAfter) {
+            const parent = parents.get(id);
+            if (parent) groupsAfter.add(parent);
+        }
         const keepGroup = (id: string) => !groupsBefore.has(id) || groupsAfter.has(id);
         for (const path of paths) {
             if (ASSET_ORDER.test(path)) {

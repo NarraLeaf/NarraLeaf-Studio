@@ -29,6 +29,8 @@ import { extractIconPixels } from "./iconPreview";
 export interface IconBakeIO {
     readProjectIconFile(relativePath: string): Promise<Uint8Array | null>;
     projectIconFileExists(relativePath: string): Promise<boolean>;
+    /** Choose where a newly rendered output is written. */
+    projectIconBakePath?(relativePath: string): string;
     writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean>;
     deleteProjectIconFile(relativePath: string): Promise<void>;
 }
@@ -52,50 +54,52 @@ export async function bakeProjectIcons(io: IconBakeIO, set: ProjectIconSet): Pro
     // One decode per distinct source, not per output: web alone asks for two.
     const decoded = new Map<string, DecodedIcon | null>();
 
-    for (const output of PROJECT_ICON_OUTPUTS) {
-        const spec = set.specs[output.target];
-        const source = resolveIconSource(set, output.target);
-        const relativePath = ProjectNameConvention.ProjectIconDerivedFile(output.fileName).join("/");
+    try {
+        for (const output of PROJECT_ICON_OUTPUTS) {
+            const spec = set.specs[output.target];
+            const source = resolveIconSource(set, output.target);
+            const defaultPath = ProjectNameConvention.ProjectIconDerivedFile(output.fileName).join("/");
+            const relativePath = io.projectIconBakePath?.(defaultPath) ?? defaultPath;
 
-        if (!source) {
-            if (baked[output.id]) {
-                await io.deleteProjectIconFile(baked[output.id]!.path);
-                delete baked[output.id];
+            if (!source) {
+                if (baked[output.id]) {
+                    await io.deleteProjectIconFile(baked[output.id]!.path);
+                    delete baked[output.id];
+                }
+                continue;
             }
-            continue;
-        }
 
-        const bytes = await io.readProjectIconFile(source.path);
-        if (!bytes) {
-            unreadable.push(output.id);
-            continue;
-        }
+            const bytes = await io.readProjectIconFile(source.path);
+            if (!bytes) {
+                unreadable.push(output.id);
+                continue;
+            }
 
-        const fingerprint = projectIconFingerprint({ sourceHash: fnv1a64BytesHex(bytes), spec, output });
-        const current = baked[output.id];
-        if (current?.fingerprint === fingerprint && current.path === relativePath
-            && await io.projectIconFileExists(relativePath)) {
-            continue;
-        }
+            const fingerprint = projectIconFingerprint({ sourceHash: fnv1a64BytesHex(bytes), spec, output });
+            const current = baked[output.id];
+            if (current?.fingerprint === fingerprint && await io.projectIconFileExists(current.path)) {
+                continue;
+            }
 
-        if (!decoded.has(source.path)) {
-            decoded.set(source.path, await decodeIcon(bytes, source.mediaType, source.path).catch(() => null));
-        }
-        const image = decoded.get(source.path);
-        if (!image) {
-            unreadable.push(output.id);
-            continue;
-        }
+            if (!decoded.has(source.path)) {
+                decoded.set(source.path, await decodeIcon(bytes, source.mediaType, source.path).catch(() => null));
+            }
+            const image = decoded.get(source.path);
+            if (!image) {
+                unreadable.push(output.id);
+                continue;
+            }
 
-        const png = await renderIconOutput(image, spec, output);
-        if (await io.writeProjectIconBake(relativePath, png)) {
-            written.push(output.id);
+            const png = await renderIconOutput(image, spec, output);
+            if (await io.writeProjectIconBake(relativePath, png)) {
+                written.push(output.id);
+            }
+            baked[output.id] = { path: relativePath, fingerprint };
         }
-        baked[output.id] = { path: relativePath, fingerprint };
-    }
-
-    for (const image of decoded.values()) {
-        image?.release();
+    } finally {
+        for (const image of decoded.values()) {
+            image?.release();
+        }
     }
 
     return { set: { ...set, baked }, written, unreadable };

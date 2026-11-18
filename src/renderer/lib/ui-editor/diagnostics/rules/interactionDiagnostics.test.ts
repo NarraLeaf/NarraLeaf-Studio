@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { countBlueprintBroadcastListeners, dispatchBlueprintBroadcastEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { collectInteractionDiagnostics } from "./interactionDiagnostics";
 
 const SURFACE_ID = "surface-1";
@@ -142,6 +145,14 @@ describe("collectInteractionDiagnostics", () => {
             .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
     });
 
+    it("uses the rendered absolute size for a flipped hit area", () => {
+        const element = unreachable("btn", "nl.button");
+        element.layout = { ...element.layout, visible: true, width: -10, height: 10 };
+
+        expect(idsFor(element, blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick")))
+            .toEqual(["ix:small-hit:btn"]);
+    });
+
     /**
      * The half of the slot list these rules must NOT read. A graph that runs on mount says nothing
      * about whether the player can reach the element, so scenery that initialises itself is not an
@@ -166,6 +177,98 @@ describe("collectInteractionDiagnostics", () => {
      */
     it("claims nothing when no blueprint document is supplied", () => {
         expect(idsFor(unreachable("btn", "nl.button"), undefined)).toEqual([]);
+    });
+
+    it.each([
+        "blueprint.event.head.onAnyBroadcast",
+        "blueprint.event.head.onBroadcast",
+        "blueprint.event.head.fullscreenChanged",
+        "blueprint.event.head.windowFocusChanged",
+        "blueprint.event.head.savedVariableChanged",
+        "blueprint.event.head.persistentVariableChanged",
+    ])("does not treat an ambient %s listener as a reachable control", head => {
+        expect(idsFor(unreachable("btn", "nl.button"), blueprintDocumentWiring("btn", head))).toEqual([]);
+    });
+
+    it.each([
+        "blueprint.event.head.keyDown",
+        "blueprint.event.head.keyUp",
+        "blueprint.event.head.gamepadButtonDown",
+        "blueprint.event.head.gamepadButtonUp",
+    ])("does not use hit area or opacity for a %s listener", head => {
+        const element = unreachable("btn", "nl.button");
+        element.layout = { ...element.layout, visible: true, opacity: 0 };
+
+        expect(idsFor(element, blueprintDocumentWiring("btn", head))).toEqual([]);
+    });
+
+    it("still reports a hidden keyboard listener because it is not mounted", () => {
+        expect(idsFor(unreachable("btn", "nl.button"), blueprintDocumentWiring("btn", "blueprint.event.head.keyDown")))
+            .toEqual(["ix:hidden-events:btn"]);
+    });
+
+    it("keeps pointer findings when a widget also listens to an ambient event", () => {
+        const bp = blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick");
+        bp.blueprints["bp-1"].graphs.events.broadcast = {
+            id: "broadcast", name: "Broadcast",
+            graph: { nodes: { head: { id: "head", type: "blueprint.event.head.onBroadcast" } }, edges: [] },
+        };
+
+        expect(idsFor(unreachable("btn", "nl.button"), bp))
+            .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
+    });
+
+    it("does not treat a broadcast payload wire as an executable handler", () => {
+        const bp = blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick");
+        bp.blueprints["bp-1"].graphs.events.broadcast = {
+            id: "broadcast", name: "Broadcast",
+            graph: {
+                nodes: { head: { id: "head", type: "blueprint.event.head.onBroadcast" } },
+                edges: [{ from: { nodeId: "head", port: "data" }, to: { nodeId: "other", port: "value" } }],
+            },
+        };
+
+        expect(idsFor(unreachable("btn", "nl.button"), bp))
+            .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
+    });
+
+    it("recognises a hidden widget that a broadcast can reveal through its own blueprint", async () => {
+        const element = unreachable("btn", "nl.button");
+        const document = documentWith(element);
+        const bp = blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick");
+        bp.blueprints["bp-1"].graphs.events.broadcast = {
+            id: "broadcast", name: "Reveal",
+            graph: {
+                nodes: {
+                    head: { id: "head", type: "blueprint.event.head.onBroadcast", params: { event: "reveal" } },
+                    show: { id: "show", type: "blueprint.button.setVisible", params: { visible: true } },
+                },
+                edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "show", port: "in" } }],
+            },
+        };
+
+        expect(countBlueprintBroadcastListeners({ document, blueprintDocument: bp, surfaceId: SURFACE_ID, eventName: "reveal" })).toBe(1);
+        const setVisible = vi.fn().mockResolvedValue(undefined);
+        const hostAdapter = {
+            host: "app",
+            blueprintRuntime: { hostApi: { widget: { getCommonProperties: () => ({ visible: false }), setVisible } } },
+        } as unknown as UIHostAdapter;
+        await dispatchBlueprintBroadcastEvent({
+            document, blueprintDocument: bp, persistentVariables: {}, surfaceId: SURFACE_ID,
+            eventName: "reveal", data: null, hostAdapter, debug: new DebugBridge(),
+            getSurfaceState: () => undefined, setSurfaceState: () => undefined,
+        });
+        expect(setVisible).toHaveBeenCalledWith("btn", true);
+        expect(idsFor(element, bp)).toEqual(["ix:small-hit:btn"]);
+    });
+
+    it("keeps a hidden widget's own script layer as a possible source of visibility changes", () => {
+        const bp = blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick");
+        bp.blueprints["bp-1"].graphs.events.script = {
+            id: "script", name: "Script", script: { scriptRef: "scripts/button.ts" },
+        };
+
+        expect(idsFor(unreachable("btn", "nl.button"), bp)).toEqual(["ix:small-hit:btn"]);
     });
 
     /**

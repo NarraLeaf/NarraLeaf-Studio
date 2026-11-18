@@ -21,6 +21,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { Button, ContextMenu, PanelHeader, Slider, type ContextMenuDef } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
+import { authoredNameOrNull } from "@shared/utils/generatedId";
 import {
     type StageTimelineCell,
     type StageTimelineColumn,
@@ -121,7 +122,7 @@ export function StageTimelineView(props: {
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-xs text-fg">
             <PanelHeader size="sm" className="gap-3 border-b border-edge px-3">
-                <span className="min-w-0 truncate text-fg-muted">{scene.name}</span>
+                <span className="min-w-0 truncate text-fg-muted">{authoredNameOrNull(scene.name) ?? t("story.compile.unnamed")}</span>
                 <span className="flex-1" />
                 {cursorTiming ? (
                     <span className="shrink-0 text-fg-subtle">
@@ -273,7 +274,7 @@ function laneName(lane: StageTimelineLane, t: Translate): string {
         case "music":
             return t("story.timeline.lane.music");
         default:
-            return lane.name;
+            return lane.name || t(lane.kind === "character" ? "story.compile.unnamedCharacter" : "story.compile.unnamed");
     }
 }
 
@@ -456,11 +457,12 @@ function lanePieces(lane: StageTimelineLane): { start: number; end: number; labe
         }
         const previous = pieces[pieces.length - 1];
         const touching = previous !== undefined && previous.end === index - 1;
-        if (touching && previous.label === cell.label) {
+        const soundStarts = lane.kind === "sound" && cell.changed;
+        if (touching && previous.label === cell.label && !soundStarts) {
             previous.end = index;
             return;
         }
-        pieces.push({ start: index, end: index, label: cell.label, opens: !touching });
+        pieces.push({ start: index, end: index, label: cell.label, opens: !touching || soundStarts });
     });
     return pieces;
 }
@@ -607,7 +609,9 @@ function Ruler({ model, columns, showAllRows }: {
             lastEnd = columns[index].x + RULER_NUMBER_PX;
         });
         // A menu's branch button sits on the ruler; a label under it would show only its last digit.
-        const buttons = model.choices.map(choice => choiceButtonLeft(columns[choice.column]));
+        const buttons = model.choices
+            .filter(choice => choice.optionBlockIds.length >= 2)
+            .map(choice => choiceButtonLeft(columns[choice.column]));
         return result.filter(label => !buttons.some(x => label.x + 3 < x + 24 && label.x + 3 + RULER_LABEL_GAP_PX * 0.75 > x));
     }, [columns, model.choices, model.lineNumbers, model.lines, showAllRows]);
 

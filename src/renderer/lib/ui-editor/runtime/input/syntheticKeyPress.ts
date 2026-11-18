@@ -16,10 +16,16 @@
  */
 
 const synthetic = new WeakSet<Event>();
+let clickingTarget: EventTarget | null = null;
 
 /** Whether this event is one {@link pressLikeEnter} raised rather than the player's own key. */
 export function isSyntheticKeyPress(event: Event): boolean {
     return synthetic.has(event);
+}
+
+/** Whether this click is the control activation made by {@link pressLikeEnter}. */
+export function isSyntheticControlClick(event: Event): boolean {
+    return event.type === "click" && event.target !== null && event.target === clickingTarget;
 }
 
 /**
@@ -38,8 +44,14 @@ export function pressLikeEnter(target: HTMLElement): void {
         cancelable: true,
     });
     synthetic.add(event);
-    target.dispatchEvent(event);
-    if (!event.defaultPrevented) {
-        target.click();
+    const previousTarget = clickingTarget;
+    clickingTarget = target;
+    try {
+        target.dispatchEvent(event);
+        if (!event.defaultPrevented) {
+            target.click();
+        }
+    } finally {
+        clickingTarget = previousTarget;
     }
 }

@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { unpatchedFsPromises } from "./unpatchedFs";
 import { GAME_PROGRESS_SCHEMA_VERSION } from "../types/gameProgress";
 import {
     readGameProgressFile,
@@ -53,6 +54,40 @@ describe("resolveGameProgressDirectory", () => {
 });
 
 describe("the progress file", () => {
+    it("preserves special storage keys in exported and imported records", async () => {
+        const saved = Object.fromEntries([
+            ["__proto__", { route: "north" }],
+            ["constructor", 0],
+            [" padded key ", false],
+            ["  ", "ignored"],
+        ]);
+        const persistent = Object.fromEntries([
+            ["__proto__", 7],
+            ["prototype", { chapter: 2 }],
+            ["toString", null],
+        ]);
+        expect(await writeGameProgressFile(env, KEY, {
+            storyId: "story-1",
+            savedVariables: saved,
+            persistentVariables: persistent,
+            anchor: null,
+            visitedSceneIds: [],
+        })).toEqual({ outcome: "written", error: null });
+
+        const raw = JSON.parse(await fs.readFile(resolveGameProgressFilePath(env, KEY), "utf-8"));
+        expect(Object.keys(raw.savedVariables)).toEqual(["__proto__", "constructor", " padded key "]);
+        expect(raw.savedVariables.__proto__).toEqual({ route: "north" });
+        expect(Object.keys(raw.persistentVariables)).toEqual(["__proto__", "prototype", "toString"]);
+        expect(raw.persistentVariables.__proto__).toBe(7);
+
+        const read = await readGameProgressFile(env, KEY);
+        expect(read.outcome).toBe("found");
+        expect(Object.keys(read.document!.savedVariables)).toEqual(["__proto__", "constructor", " padded key "]);
+        expect(Object.keys(read.document!.persistentVariables)).toEqual(["__proto__", "prototype", "toString"]);
+        expect(read.document!.savedVariables.__proto__).toEqual({ route: "north" });
+        expect(read.document!.persistentVariables.__proto__).toBe(7);
+    });
+
     it("round-trips a playthrough, saved and persistent values included", async () => {
         const written = await writeGameProgressFile(env, KEY, {
             storyId: "story-1",
@@ -106,6 +141,33 @@ describe("the progress file", () => {
             visitedSceneIds: [],
         });
         expect((await readGameProgressFile(env, KEY)).document?.savedVariables).toEqual({ gold: 41 });
+    });
+
+    it("keeps the previous progress when replacing it fails", async () => {
+        const request = (gold: number) => ({
+            storyId: "story-1", savedVariables: { gold }, persistentVariables: {}, anchor: null, visitedSceneIds: [],
+        });
+        expect((await writeGameProgressFile(env, KEY, request(40))).outcome).toBe("written");
+        const filePath = resolveGameProgressFilePath(env, KEY);
+        const originalOpen = unpatchedFsPromises.open.bind(unpatchedFsPromises);
+        const failure = Object.assign(new Error("disk full"), { code: "ENOSPC" });
+        const probe = vi.spyOn(unpatchedFsPromises, "open").mockImplementation(async (...args: Parameters<typeof unpatchedFsPromises.open>) => {
+            const handle = await originalOpen(...args);
+            if (String(args[0]).endsWith(".nltmp")) {
+                const originalWrite = handle.writeFile.bind(handle);
+                vi.spyOn(handle, "writeFile").mockImplementation(async data => {
+                    await originalWrite(Buffer.from(data as Buffer).subarray(0, 10));
+                    throw failure;
+                });
+            }
+            return handle;
+        });
+        try {
+            expect((await writeGameProgressFile(env, KEY, request(41))).outcome).toBe("failed");
+        } finally {
+            probe.mockRestore();
+        }
+        expect(JSON.parse(await fs.readFile(filePath, "utf-8")).savedVariables).toEqual({ gold: 40 });
     });
 
     it("reads a file that is not there as missing, not as a failure", async () => {

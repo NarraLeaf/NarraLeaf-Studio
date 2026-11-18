@@ -118,7 +118,7 @@ describe("localized params in a parsed line", () => {
 describe("drop rules", () => {
     // The table is derived, so these are invariants over every real def in every real locale rather
     // than a handful of examples: whatever a translator writes next, none of it may shadow English.
-    const locales = ["en", "zh"] as const;
+    const locales = ["en", "zh", "ja"] as const;
 
     it("never lets a translated spelling shadow a canonical name or alias", () => {
         for (const locale of locales) {
@@ -169,7 +169,7 @@ describe("localizedParamKey", () => {
     it("offers the spelling it will accept back — every param, every locale", () => {
         // What the menu shows in its reading column is what it inserts, and what it inserts has to
         // resolve to the very slot it came from.
-        for (const locale of ["en", "zh"] as const) {
+        for (const locale of ["en", "zh", "ja"] as const) {
             i18nStore.setLocale(locale);
             for (const def of listCommandDefs()) {
                 for (const param of def.params) {

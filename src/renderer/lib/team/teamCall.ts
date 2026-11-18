@@ -179,6 +179,19 @@ function readList<T>(value: unknown, key: string, one: (item: unknown) => T | nu
     return items.map(one).filter((item): item is T => item !== null);
 }
 
+/** Read every item of a page, so a partial answer is not taken as complete. */
+function readCompleteList<T>(value: unknown, key: string, one: (item: unknown) => T | null): T[] | null {
+    const items = record(value)?.[key];
+    if (!Array.isArray(items)) return null;
+    const result: T[] = [];
+    for (const item of items) {
+        const read = one(item);
+        if (read === null) return null;
+        result.push(read);
+    }
+    return result;
+}
+
 /* -------------------------------------------------------------------- projects */
 
 /** One project row a server lists, or null because what arrived was not one. */
@@ -403,9 +416,12 @@ export async function listThreads(
 ): Promise<TeamOutcome<ThreadPage>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.threadsList, { project, ...within });
     if (!answered.ok) return answered;
-    const threads = readList(answered.value, "threads", readThread);
-    if (threads === null) return unreadable();
-    const cursor = record(answered.value) === null ? undefined : text(record(answered.value) as Record<string, unknown>, "cursor");
+    const from = record(answered.value);
+    const threads = readCompleteList(answered.value, "threads", readThread);
+    if (from === null || threads === null) return unreadable();
+    const rawCursor = from["cursor"];
+    if (rawCursor !== undefined && rawCursor !== null && typeof rawCursor !== "string") return unreadable();
+    const cursor = text(from, "cursor");
     return { ok: true, value: { threads, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
@@ -439,9 +455,12 @@ export async function getThread(
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const read = from === null ? null : readThread(from["thread"]);
-    const comments = readList(answered.value, "comments", readComment);
-    if (read === null || comments === null) return unreadable();
-    const cursor = from === null ? undefined : text(from, "cursor");
+    const comments = readCompleteList(answered.value, "comments", item =>
+        typeof record(item)?.["body"] === "string" ? readComment(item) : null);
+    if (from === null || read === null || comments === null) return unreadable();
+    const rawCursor = from["cursor"];
+    if (rawCursor !== undefined && rawCursor !== null && typeof rawCursor !== "string") return unreadable();
+    const cursor = text(from, "cursor");
     return { ok: true, value: { thread: read, comments, ...(cursor === undefined ? {} : { cursor }) } };
 }
 

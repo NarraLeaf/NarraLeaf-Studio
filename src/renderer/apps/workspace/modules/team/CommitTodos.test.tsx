@@ -14,6 +14,9 @@ const server = vi.hoisted(() => ({
     todos: [] as TeamTodo[],
     calls: [] as { method: string; params: Record<string, unknown> }[],
     refuse: new Set<string>(),
+    project: "p1",
+    list: null as null | ((project: string) => Promise<{ ok: true; value: { todos: TeamTodo[] } }>),
+    update: null as null | (() => Promise<{ ok: true; value: Record<string, never> }>),
 }));
 
 vi.mock("@/lib/team", () => ({
@@ -21,8 +24,9 @@ vi.mock("@/lib/team", () => ({
     useTeamCapability: () => true,
     teamCall: async (_origin: string, method: string, params: Record<string, unknown>) => {
         server.calls.push({ method, params });
-        if (method === "todos.list") return { ok: true, value: { todos: server.todos } };
+        if (method === "todos.list") return server.list ? server.list(params.project as string) : { ok: true, value: { todos: server.todos } };
         if (server.refuse.has(params.todo as string)) return { ok: false, error: { code: "refused" } };
+        if (server.update) return server.update();
         return { ok: true, value: {} };
     },
 }));
@@ -30,7 +34,7 @@ vi.mock("@/lib/team", () => ({
 vi.mock("./TeamProjectContext", () => ({
     useTeamProjectSurface: () => ({
         remoteOrigin: "https://team.example:41402",
-        state: { kind: "verified", project: { id: "p1", name: "harbour", description: "" } },
+        state: { kind: "verified", project: { id: server.project, name: "harbour", description: "" } },
     }),
 }));
 
@@ -48,6 +52,9 @@ afterEach(() => {
     cleanup();
     server.calls = [];
     server.refuse.clear();
+    server.project = "p1";
+    server.list = null;
+    server.update = null;
 });
 
 describe("the to-dos a commit can finish", () => {
@@ -91,5 +98,53 @@ describe("the to-dos a commit can finish", () => {
         const view = render(<Harness />);
         await waitFor(() => expect(server.calls.length).toBeGreaterThan(0));
         expect(view.container.querySelector("[data-commit-todos]")).toBeNull();
+    });
+
+    it("ignores a late list from the previous project", async () => {
+        let finishOld!: (value: { ok: true; value: { todos: TeamTodo[] } }) => void;
+        server.list = project => project === "p1"
+            ? new Promise(resolve => { finishOld = resolve; })
+            : Promise.resolve({ ok: true, value: { todos: [todo("new", { assignee: "ada", project: "p2" })] } });
+        const view = render(<Harness />);
+        await waitFor(() => expect(server.calls).toHaveLength(1));
+
+        server.project = "p2";
+        view.rerender(<Harness />);
+        await waitFor(() => expect(controller.todos.map(item => item.id)).toEqual(["new"]));
+        await act(async () => { finishOld({ ok: true, value: { todos: [todo("old", { assignee: "ada" })] } }); });
+        expect(controller.todos.map(item => item.id)).toEqual(["new"]);
+    });
+
+    it("clears the previous project's selected to-dos while the next list is loading", async () => {
+        server.todos = [todo("old", { assignee: "ada" })];
+        const view = render(<Harness />);
+        await waitFor(() => expect(view.container.querySelector("input")).not.toBeNull());
+        fireEvent.click(view.container.querySelector("input")!);
+        expect(controller.picked.has("old")).toBe(true);
+
+        server.list = () => new Promise(() => undefined);
+        server.project = "p2";
+        view.rerender(<Harness />);
+        expect(controller.todos).toEqual([]);
+        expect(controller.picked.size).toBe(0);
+    });
+
+    it("keeps the new project's selection when an earlier commit finishes late", async () => {
+        server.todos = [todo("old", { assignee: "ada" })];
+        let finishUpdate!: (value: { ok: true; value: Record<string, never> }) => void;
+        server.update = () => new Promise(resolve => { finishUpdate = resolve; });
+        const view = render(<Harness />);
+        await waitFor(() => expect(view.container.querySelector("input")).not.toBeNull());
+        fireEvent.click(view.container.querySelector("input")!);
+        let finishing!: Promise<number>;
+        act(() => { finishing = controller.finish("old-revision"); });
+
+        server.project = "p2";
+        server.todos = [todo("new", { assignee: "ada", project: "p2" })];
+        view.rerender(<Harness />);
+        await waitFor(() => expect(controller.todos.map(item => item.id)).toEqual(["new"]));
+        fireEvent.click(view.container.querySelector("input")!);
+        await act(async () => { finishUpdate({ ok: true, value: {} }); await finishing; });
+        expect([...controller.picked]).toEqual(["new"]);
     });
 });

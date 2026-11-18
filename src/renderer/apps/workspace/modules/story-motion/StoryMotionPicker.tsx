@@ -63,19 +63,27 @@ export function StoryMotionPicker(props: {
             return;
         }
         let disposed = false;
-        void storyService.loadAnimationAsset(animationId)
-            .then(asset => {
-                if (!disposed) {
-                    setSelectedAsset(asset);
-                }
-            })
-            .catch(() => {
-                if (!disposed) {
-                    setSelectedAsset(null);
-                }
-            });
+        let generation = 0;
+        setSelectedAsset(null);
+        const load = () => {
+            const current = ++generation;
+            void storyService.loadAnimationAsset(animationId)
+                .then(asset => {
+                    if (!disposed && current === generation) {
+                        setSelectedAsset(asset);
+                    }
+                })
+                .catch(() => {
+                    if (!disposed && current === generation) {
+                        setSelectedAsset(null);
+                    }
+                });
+        };
+        load();
+        const unsubscribe = storyService.onAnimationsChanged(load);
         return () => {
             disposed = true;
+            unsubscribe();
         };
     }, [animationId, storyService]);
 

@@ -164,7 +164,7 @@ export function computeWritingStreak(timeline: readonly ActivityPoint[]): number
  */
 export function formatGreeting(translator: Translator, now: number): string {
     const hour = new Date(now).getHours();
-    if (hour < 5) {
+    if (hour < 5 || hour >= 23) {
         return translator.t("dashboard.greeting.lateNight");
     }
     if (hour < 11) {

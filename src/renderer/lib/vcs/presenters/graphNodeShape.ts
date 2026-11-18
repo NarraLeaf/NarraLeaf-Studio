@@ -5,6 +5,7 @@ import {
     type GraphNodeFacts,
     type GraphNodeSize,
 } from "./graphDiffPlan";
+import { elideGeneratedIdentifiers } from "../identifierDisplay";
 
 /**
  * What one blueprint node looks like, worked out as arithmetic rather than measured off a card.
@@ -171,25 +172,26 @@ function place(pins: readonly GraphNodePin[]): readonly GraphNodePinRow[] {
 /**
  * Every node of a pair of graphs, keyed so a card can be looked up as it is drawn.
  *
- * **Both versions are laid out from one list.** A node nobody touched has to be the same shape in
- * both columns or the pane would report a change nobody made - the same reason
- * `sharedGraphViewport` takes both sides at once. Keyed by id AND type, so the one case where the
- * two sides genuinely disagree - a node id reused for another kind of node - draws two cards
- * rather than one wrong one.
+ * A caller lays out each version from its own nodes and parameters. For an unchanged node, wires
+ * from both versions supplement unknown pins so a removed wire does not change the card's shape.
+ * Keyed by id and type so an id reused for another kind of node draws the appropriate card.
  */
 export function graphNodeShapes(
     nodes: readonly GraphNodeFacts[],
     edges: readonly GraphEdgeFacts[],
-    describe: (type: string) => GraphNodeDescription,
+    describe: (type: string, node: GraphNodeFacts) => GraphNodeDescription,
+    counterpart?: { readonly sharedEdges: readonly GraphEdgeFacts[]; readonly unchangedNodes: ReadonlySet<string> },
 ): Map<string, GraphNodeShape> {
     const wired = wiredPorts(edges);
+    const sharedWired = counterpart ? wiredPorts(counterpart.sharedEdges) : wired;
     const shapes = new Map<string, GraphNodeShape>();
     for (const node of nodes) {
         const key = graphNodeShapeKey(node);
         if (shapes.has(key)) {
             continue;
         }
-        shapes.set(key, layoutGraphNode(withWiredPins(describe(node.type), wired.get(node.id))));
+        const ports = counterpart?.unchangedNodes.has(node.id) ? sharedWired : wired;
+        shapes.set(key, layoutGraphNode(withWiredPins(describe(node.type, node), ports.get(node.id))));
     }
     return shapes;
 }
@@ -258,7 +260,7 @@ function withWiredPins(
     for (const [kind, ids] of [["output", wired.outputs], ["input", wired.inputs]] as const) {
         for (const id of ids) {
             if (!description.pins.some(pin => pin.kind === kind && pin.id === id)) {
-                extra.push({ id, kind, exec: false, label: id });
+                extra.push({ id, kind, exec: false, label: elideGeneratedIdentifiers(id) });
             }
         }
     }

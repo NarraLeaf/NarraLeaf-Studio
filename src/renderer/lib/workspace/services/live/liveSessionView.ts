@@ -36,6 +36,11 @@ export type LiveSessionRole = "host" | "guest";
  */
 export type LiveSessionPhase = "idle" | "asking" | "entering" | "catching-up" | "active" | "leaving";
 
+/** Whether local history must stand down while a session is entering, active or leaving. */
+export function liveSessionOwnsUndo(phase: LiveSessionPhase): boolean {
+    return phase !== "idle" && phase !== "asking";
+}
+
 /** Why a session is over. */
 export type LiveSessionEndCause =
     /** This author left it. */

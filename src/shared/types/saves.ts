@@ -14,6 +14,7 @@
  */
 
 import type { BlueprintImageAsset } from "./blueprint/valueTypes";
+import { storedNumber } from "@shared/utils/storedNumber";
 
 export type AutoSaveConfiguration = {
     /** Write an autosave on a timer while a game is running. */
@@ -105,7 +106,7 @@ export function parseAutoSaveSlotIndex(id: string): number | null {
 }
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
+    const parsed = storedNumber(value);
     if (!Number.isFinite(parsed)) {
         return fallback;
     }

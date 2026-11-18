@@ -274,16 +274,17 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
 
     const remove = useCallback(async (id: string) => {
         setBusy(true);
+        setListError(null);
         try {
             await saves.remove(id);
+            recordResult(id, null);
+            setSelectedId(current => (current === id ? null : current));
+            await refresh();
         } catch (error) {
             setListError(error instanceof Error ? error.message : String(error));
         } finally {
             setBusy(false);
         }
-        recordResult(id, null);
-        setSelectedId(current => (current === id ? null : current));
-        await refresh();
     }, [recordResult, refresh, saves]);
 
     // `.nl-editor-surface` rather than `bg-surface-sunken`, matching the sibling panels. This window
@@ -338,12 +339,11 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
             <div className="min-h-0 flex-1 overflow-auto font-mono leading-snug">
                 <section className="border-b border-edge p-2">
                     <SectionHeading title={t("devMode.saves.slots")} />
-                    {listError ? (
-                        <p className="break-all text-2xs text-danger">{listError}</p>
-                    ) : slots === null ? (
+                    {listError ? <p className="break-all text-2xs text-danger">{listError}</p> : null}
+                    {slots === null ? (
                         <p className="text-2xs text-fg-subtle">{t("common.loading")}</p>
                     ) : slots.length === 0 ? (
-                        <p className="text-2xs text-fg-subtle">{t("devMode.saves.noSaves")}</p>
+                        listError ? null : <p className="text-2xs text-fg-subtle">{t("devMode.saves.noSaves")}</p>
                     ) : (
                         <ul className="space-y-1">
                             {slots.map(entry => {

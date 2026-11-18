@@ -111,8 +111,8 @@ function validateTransitionForTarget(
     // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them.
     // A clip leaving has its own two words - it fades or it cuts - and anything else on a `/hide` of
     // one is reported against those. A clip coming in, and an overlay either way, have no word list to
-    // report against. A clip named out of the library is the same clip, so it reads the same way; a
-    // picture is a Displayable whichever slot found it.
+    // report against. Overlays fade through `d=` and do not take a transform word. A clip named out
+    // of the library is the same clip, and a picture is a Displayable whichever slot found it.
     const kind = target.type === "asset" ? target.assetType : target.objectKind;
     if (kind === "video") {
         if (direction === "hide" && !CLIP_CONCEAL_WORDS.includes(word as (typeof CLIP_CONCEAL_WORDS)[number])) {
@@ -120,7 +120,10 @@ function validateTransitionForTarget(
         }
         return [];
     }
-    if (kind !== "vfx" && transformEffectFor(context, word) === undefined) {
+    if (kind === "vfx") {
+        return [{ code: "unsupportedParam", span, key, kind }];
+    }
+    if (transformEffectFor(context, word) === undefined) {
         return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
     }
     return [];
@@ -306,7 +309,9 @@ function buildShowHide<P extends StoryCommandParamsShape>(
     // the compiler and the script view still read it - and the reference is what follows a rename of
     // the row that created the object.
     if (block.payload.action === "image" || block.payload.action === "text") {
-        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
+        const transform = direction === "show" && args.pos
+            ? withPlacementTransform(block.payload.transform, positionFromArgs(args), args.d)
+            : withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
         return {
             ...block,
             payload: { ...block.payload, objectName: target.name, target: displayableTargetRef(target), ...(transform ? { transform } : {}) },
@@ -328,7 +333,9 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         };
     }
     if (block.payload.action === "displayable") {
-        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
+        const transform = direction === "show" && args.pos
+            ? withPlacementTransform(block.payload.transform, positionFromArgs(args), args.d)
+            : withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
         // The one arm whose reference was already the whole identity of the row, and the one that
         // showed the gap most plainly: it resolved a target that knows its declaring row and then
         // wrote a bare `{ kind, name }`, leaving the id field blank on the payload built to hold it.
@@ -374,13 +381,16 @@ export const show = defineStoryCommand({
         // A placement word, or an align pair with pixel offsets beside it - the same slots, and the
         // same channel, as `/transform pos=`.
         ...PLACEMENT_PARAMS,
+        pos: { ...PLACEMENT_PARAMS.pos, about: "Characters, images, texts and layers. Ambience overlays have no placement." },
+        xoffset: { ...PLACEMENT_PARAMS.xoffset, about: "For displayable subjects; used with pos=." },
+        yoffset: { ...PLACEMENT_PARAMS.yoffset, about: "For displayable subjects; used with pos=." },
         // `in=`, not `t=`. What this slot writes is a TRANSFORM preset - a bag of props the entrance
         // interpolates - and it always was: the engine ignores a character's `StoryTransitionRef` on
         // the way in, and a stage object has none at all. Calling it "transition" made it look like
         // the `t=` on `/bg` and `/char`, which really do name an engine transition, so the one word
         // covered two different things and the row could not say which. The direction is in the name
         // because the direction is what the verb already decided.
-        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
+        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") }, about: "For displayable subjects. Ambience overlays fade using d=." },
         d: secondsParam(),
         // The opacity the subject comes on at. On a character, a picture, a text or a layer it is the
         // `opacity` of the entrance's own bag - the value the reveal ends at, beside `pos=` and `in=`
@@ -405,7 +415,7 @@ export const show = defineStoryCommand({
     validate: (args, ctx) => [
         ...validateTransitionForTarget("show", args, ctx),
         ...validateFormTarget(args, ctx),
-        ...validateOverlayOnlyParams(args, ctx),
+        ...validateShowSubjectParams(args, ctx),
         ...validateNameTarget(args, ctx),
         ...positionIssues(args, ctx),
     ],
@@ -452,25 +462,31 @@ function withEntranceOpacity(block: StoryBlock, opacity: number | undefined): St
 }
 
 /**
- * `rate=` on a `/show` whose subject is not an ambience overlay.
+ * Validate parameters whose meaning depends on the `/show` subject.
  *
- * It writes a field that lives on the `vfx` payload and nowhere else, so on any other subject it
- * would be typed, accepted, stored and read by nothing - the silent failure this layer exists to
- * refuse. The message names the KEY rather than the subject, because the subject is not the mistake.
- *
- * `opacity=` used to be refused here too, while the catalogue listed it for every subject. It is now
- * the entrance's opacity on everything else - see {@link withEntranceOpacity}.
+ * `rate=` belongs to an overlay. Overlays have no placement transform; their duration, opacity and
+ * rate are payload fields.
  */
-function validateOverlayOnlyParams(
-    args: { readonly target?: StoryCommandValue; readonly rate?: StoryCommandValue },
+function validateShowSubjectParams(
+    args: { readonly target?: StoryCommandValue; readonly rate?: StoryCommandValue; readonly pos?: StoryCommandValue; readonly xoffset?: StoryCommandValue; readonly yoffset?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {
     const target = asTarget(args.target);
-    if (target && target.type === "stageObject" && target.objectKind === "vfx") {
-        return [];
+    const issues: StoryCommandResolutionIssue[] = [];
+    if (target?.type === "stageObject" && target.objectKind === "vfx") {
+        for (const key of ["pos", "xoffset", "yoffset"] as const) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "unsupportedParam", span, key, kind: target.objectKind });
+            }
+        }
+        return issues;
     }
     const span = args.rate === undefined ? undefined : ctx.spanOf("rate");
-    return span ? [{ code: "unsupportedParam", span, key: "rate", kind: showHideSubjectWord(target) }] : [];
+    if (span) {
+        issues.push({ code: "unsupportedParam", span, key: "rate", kind: showHideSubjectWord(target) });
+    }
+    return issues;
 }
 
 /** What an `unsupportedParam` on `/show` calls the subject - the word the author sees in the report. */
@@ -499,7 +515,7 @@ export const hide = defineStoryCommand({
     params: {
         target: targetParam(HIDE_ACCEPTS, { core: true }),
         // The conceal half of `/show in=` - see there for why this is not `t=`.
-        out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: transitionOptions("conceal") } },
+        out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: transitionOptions("conceal") }, about: "For displayables and video clips. Ambience overlays fade using d=." },
         d: secondsParam(),
     },
     build: (args, ctx) => buildShowHide("hide", args, ctx),

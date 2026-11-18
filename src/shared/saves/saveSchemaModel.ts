@@ -183,7 +183,9 @@ export function readSaveMetadataFields(
     const stored = isRecord(metadata) ? metadata : {};
     const out: Record<string, LiteralValue> = {};
     for (const field of fields) {
-        const value = stored[field.storageKey];
+        const value = Object.prototype.hasOwnProperty.call(stored, field.storageKey)
+            ? stored[field.storageKey]
+            : undefined;
         out[field.id] = value === undefined ? saveSchemaFieldFallback(field) : (value as LiteralValue);
     }
     return out;

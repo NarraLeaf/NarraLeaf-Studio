@@ -150,6 +150,26 @@ describe("planComponentRemoval", () => {
         expect(plan(document, blueprints).refusals).toEqual([]);
     });
 
+    it("refuses to remove a definition whose blueprint still contains an authored field", () => {
+        const document = makeDocument();
+        const blueprints = makeBlueprints();
+        blueprints.blueprints["bp-1"].members!.fields.label = { id: "label", name: "Label", kind: "constant" };
+
+        expect(plan(document, blueprints).refusals).toContainEqual(expect.stringContaining("1 field(s)"));
+    });
+
+    it("refuses to remove a definition whose blueprint still contains an empty graph layer", () => {
+        const document = makeDocument();
+        const blueprints = makeBlueprints();
+        blueprints.blueprints["bp-1"].graphs = {
+            eventIds: ["layer"],
+            events: { layer: { id: "layer", graph: { nodes: {}, edges: [] } } },
+            functions: {},
+        };
+
+        expect(plan(document, blueprints).refusals).toContainEqual(expect.stringContaining("empty graph layer(s)"));
+    });
+
     it("refuses while another blueprint points into it, and names the node", () => {
         const blueprints = makeBlueprints();
         blueprints.blueprints["bp-3"] = blueprint("bp-3", blueprints.blueprints["bp-3"].owner, {

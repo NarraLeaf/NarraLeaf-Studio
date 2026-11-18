@@ -111,6 +111,8 @@ describe("how the numbers read", () => {
         expect(formatClock(3200)).toBe("0:03.2");
         expect(formatClock(83400)).toBe("1:23.4");
         expect(formatClock(600000)).toBe("10:00.0");
+        expect(formatClock(59949)).toBe("0:59.9");
+        expect(formatClock(59950)).toBe("1:00.0");
     });
 
     it("writes a sample rate the way a file's properties do", () => {

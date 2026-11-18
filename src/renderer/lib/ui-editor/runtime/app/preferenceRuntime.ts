@@ -212,10 +212,14 @@ export async function attachPlayerPreferences(
         if (key === "autoForwardDelay") {
             applyEngineConfig(preference, configureEngine, log);
         }
-        try {
-            void write(PLAYER_PREFERENCES_PERSISTENCE_KEY, collectPlayerPreferences(preference));
-        } catch (error) {
+        const reportWriteError = (error: unknown) => {
             log?.("warning", `Player preferences could not be saved: ${String(error)}`);
+        };
+        try {
+            void Promise.resolve(write(PLAYER_PREFERENCES_PERSISTENCE_KEY, collectPlayerPreferences(preference)))
+                .catch(reportWriteError);
+        } catch (error) {
+            reportWriteError(error);
         }
         // Nothing is notified from here. The host already fans preference changes out to whoever
         // has to re-read one (`subscribeGamePreferenceChanges` -> the blueprint event and the

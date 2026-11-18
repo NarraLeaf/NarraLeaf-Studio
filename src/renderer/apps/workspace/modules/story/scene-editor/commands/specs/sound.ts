@@ -1,8 +1,8 @@
 import { AudioLines, CirclePlay, CircleStop, FastForward, Gauge, Music, Pause, Volume1, Volume2, VolumeX } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
-import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
-import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, SECONDS_TYPE, targetParam } from "../spec";
+import { BGM_OBJECT_NAME, type StoryCommandResolutionIssue, type StoryCommandValue } from "../../storyCommandValues";
+import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, SECONDS_TYPE, targetParam, type StoryCommandValidateContext } from "../spec";
 import { actionableTargetRef, audioTargetRef, deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
@@ -80,6 +80,18 @@ function mediaControlBlock(
         return block;
     }
     return audioControlBlock(commandId, args, ctx.generateId, write);
+}
+
+/** Fade on these transport commands is a sound property. */
+function validateAudioFade(
+    args: { readonly target?: StoryCommandValue; readonly fade?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const target = asTarget(args.target);
+    const span = args.fade === undefined ? undefined : ctx.spanOf("fade");
+    return span && target?.type === "stageObject" && target.objectKind !== "audio"
+        ? [{ code: "unsupportedParam", span, key: "fade", kind: target.objectKind }]
+        : [];
 }
 
 export const bgm = defineStoryCommand({
@@ -235,9 +247,10 @@ export const stop = defineStoryCommand({
         // `video` widens both the legal lines and the sidebar: the verb now files under 视频 as well
         // as 声音 (§4.2), which is the whole reason four video capabilities cost one new token.
         target: targetParam(["audio", "video"], { fallbackKind: "audio" }),
-        fade: { hint: "fade", type: SECONDS_TYPE },
+        fade: { hint: "fade", type: SECONDS_TYPE, about: "Audio targets only." },
     },
     build: (args, ctx) => mediaControlBlock("stopSound", { video: "stop" }, args, ctx),
+    validate: validateAudioFade,
 });
 
 export const pause = defineStoryCommand({
@@ -251,10 +264,11 @@ export const pause = defineStoryCommand({
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
         // `Sound.pause` has always taken a fade and the compiler has always passed it; the spec was
         // the only thing that did not, which made ducking music out reachable only from the
-        // inspector. A video or overlay target ignores it, exactly as it ignores `/stop`'s.
-        fade: { hint: "fade", type: SECONDS_TYPE },
+        // inspector. It applies to audio targets.
+        fade: { hint: "fade", type: SECONDS_TYPE, about: "Audio targets only." },
     },
     build: (args, ctx) => mediaControlBlock("pauseSound", { video: "pause", vfx: "pause" }, args, ctx),
+    validate: validateAudioFade,
 });
 
 export const resume = defineStoryCommand({
@@ -266,9 +280,10 @@ export const resume = defineStoryCommand({
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
         /** The other half of `/pause`'s fade - a duck out and back in are one gesture, two lines. */
-        fade: { hint: "fade", type: SECONDS_TYPE },
+        fade: { hint: "fade", type: SECONDS_TYPE, about: "Audio targets only." },
     },
     build: (args, ctx) => mediaControlBlock("resumeSound", { video: "resume", vfx: "resume" }, args, ctx),
+    validate: validateAudioFade,
 });
 
 /**

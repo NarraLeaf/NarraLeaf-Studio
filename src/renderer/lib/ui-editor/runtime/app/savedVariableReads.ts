@@ -45,11 +45,15 @@ export function readSavedVariableForScreen(input: {
 }): SavedVariableRead {
     const id = String(input.variableId ?? "").trim();
     const notInPlaythrough = (): SavedVariableRead => ({
-        value: id ? input.declaredDefaults[id] ?? null : null,
+        value: id && Object.prototype.hasOwnProperty.call(input.declaredDefaults, id)
+            ? input.declaredDefaults[id] ?? null
+            : null,
         found: false,
     });
     const compiled = input.compiled;
-    const definition = id ? compiled?.savedVariables?.[id] : undefined;
+    const definition = id && compiled?.savedVariables && Object.prototype.hasOwnProperty.call(compiled.savedVariables, id)
+        ? compiled.savedVariables[id]
+        : undefined;
     if (!input.storable || !compiled?.savedNamespaceName || !definition) {
         return notInPlaythrough();
     }
@@ -76,11 +80,10 @@ export function readSavedVariableForScreen(input: {
 export function copyDeclaredSavedDefaults(
     defaults: Readonly<Record<string, StoryLiteralValue | null>>,
 ): Record<string, StoryLiteralValue | null> {
-    const copy: Record<string, StoryLiteralValue | null> = {};
-    for (const [id, value] of Object.entries(defaults)) {
-        copy[id] = value !== null && typeof value === "object"
+    return Object.fromEntries(Object.entries(defaults).map(([id, value]) => [
+        id,
+        value !== null && typeof value === "object"
             ? JSON.parse(JSON.stringify(value)) as StoryLiteralValue
-            : value;
-    }
-    return copy;
+            : value,
+    ]));
 }

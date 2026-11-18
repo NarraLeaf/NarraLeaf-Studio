@@ -79,7 +79,7 @@ export class Logger {
             try {
                 sink(entry);
             } catch {
-                // See addSink.
+                sinks.delete(sink);
             }
         }
     }

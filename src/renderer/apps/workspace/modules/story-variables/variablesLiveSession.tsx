@@ -49,10 +49,9 @@ export type VariableClaimPort = {
  * Hold the entry this panel has open, keep saying so, and give it back when the row loses focus.
  *
  * ⚠ **Asserted for as long as a box on the row has focus, not for as long as its author is typing.**
- * The panel's name and default boxes are controlled inputs that write on every keystroke, so with a
- * session installed the box's value IS the document: an edit to the same entry arriving mid-word
- * lands under the cursor and takes whatever was being composed. A claim that lapsed on a pause would
- * let exactly that happen.
+ * The panel's name and default boxes may hold unfinished input while valid edits travel through the
+ * session. An edit to the same entry arriving mid-word could replace that text, so the claim remains
+ * held through pauses in typing.
  *
  * Silent outside a session, so the panel calls it without asking whether there is one.
  */

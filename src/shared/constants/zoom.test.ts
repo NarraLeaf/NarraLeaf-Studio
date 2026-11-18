@@ -13,6 +13,10 @@ import {
 describe("normalizeZoomPercent", () => {
     it("falls back to the default for values that are not finite numbers", () => {
         expect(normalizeZoomPercent(undefined)).toBe(ZOOM_PERCENT_DEFAULT);
+        expect(normalizeZoomPercent(null)).toBe(ZOOM_PERCENT_DEFAULT);
+        expect(normalizeZoomPercent(false)).toBe(ZOOM_PERCENT_DEFAULT);
+        expect(normalizeZoomPercent("")).toBe(ZOOM_PERCENT_DEFAULT);
+        expect(normalizeZoomPercent("   ")).toBe(ZOOM_PERCENT_DEFAULT);
         expect(normalizeZoomPercent("nope")).toBe(ZOOM_PERCENT_DEFAULT);
         expect(normalizeZoomPercent(NaN)).toBe(ZOOM_PERCENT_DEFAULT);
     });
@@ -21,6 +25,7 @@ describe("normalizeZoomPercent", () => {
         expect(normalizeZoomPercent(10)).toBe(ZOOM_PERCENT_MIN);
         expect(normalizeZoomPercent(500)).toBe(ZOOM_PERCENT_MAX);
         expect(normalizeZoomPercent(123.6)).toBe(124);
+        expect(normalizeZoomPercent("125")).toBe(125);
     });
 });
 

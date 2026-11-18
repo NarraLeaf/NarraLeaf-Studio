@@ -217,12 +217,14 @@ export function SettingsExplorer<T>({
      */
     const commitChains = useRef(new Map<string, Promise<void>>());
     const commitCounts = useRef(new Map<string, number>());
+    const inputRevisions = useRef(new Map<string, number>());
 
     const handleCommit = useCallback(
         (entry: SettingEntry<T>, value: SettingValue) => {
             const id = entry.descriptor.id;
             const token = (commitCounts.current.get(id) ?? 0) + 1;
             commitCounts.current.set(id, token);
+            const inputRevision = inputRevisions.current.get(id) ?? 0;
             const isLatest = () => commitCounts.current.get(id) === token;
             setErrors(prev => {
                 const next = { ...prev };
@@ -236,11 +238,13 @@ export function SettingsExplorer<T>({
                     if (!isLatest()) {
                         return;
                     }
-                    setPendingInputs(prev => {
-                        const next = { ...prev };
-                        delete next[id];
-                        return next;
-                    });
+                    if ((inputRevisions.current.get(id) ?? 0) === inputRevision) {
+                        setPendingInputs(prev => {
+                            const next = { ...prev };
+                            delete next[id];
+                            return next;
+                        });
+                    }
                     setPendingBooleans(prev => {
                         const next = { ...prev };
                         delete next[id];
@@ -248,7 +252,7 @@ export function SettingsExplorer<T>({
                     });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
-                    setErrors(prev => ({ ...prev, [id]: message }));
+                    if (isLatest()) setErrors(prev => ({ ...prev, [id]: message }));
                 } finally {
                     if (isLatest()) {
                         handleSavingState(id, false);
@@ -320,6 +324,7 @@ export function SettingsExplorer<T>({
     );
 
     const handleInputChange = useCallback((id: string, nextValue: string) => {
+        inputRevisions.current.set(id, (inputRevisions.current.get(id) ?? 0) + 1);
         setPendingInputs(prev => ({ ...prev, [id]: nextValue }));
     }, []);
 
@@ -362,14 +367,41 @@ export function SettingsExplorer<T>({
     const handleResetRow = useCallback(
         async (entry: SettingEntry<T>) => {
             const id = entry.descriptor.id;
+            const token = (commitCounts.current.get(id) ?? 0) + 1;
+            commitCounts.current.set(id, token);
+            const isLatest = () => commitCounts.current.get(id) === token;
+            inputRevisions.current.set(id, (inputRevisions.current.get(id) ?? 0) + 1);
             setPendingInputs(prev => {
                 const next = { ...prev };
                 delete next[id];
                 return next;
             });
-            await onReset?.(entry.source, entry.descriptor);
+            setPendingBooleans(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            setErrors(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            handleSavingState(id, true);
+            const run = (commitChains.current.get(id) ?? Promise.resolve()).then(async () => {
+                try {
+                    await onReset?.(entry.source, entry.descriptor);
+                } catch (error) {
+                    if (isLatest()) {
+                        setErrors(prev => ({ ...prev, [id]: error instanceof Error ? error.message : String(error) }));
+                    }
+                } finally {
+                    if (isLatest()) handleSavingState(id, false);
+                }
+            });
+            commitChains.current.set(id, run);
+            await run;
         },
-        [onReset],
+        [handleSavingState, onReset],
     );
 
     const renderControl = (entry: SettingEntry<T>) => {
@@ -596,7 +628,6 @@ export function SettingsExplorer<T>({
                         onKeyDown={(event) => {
                             if (event.key === "Enter") {
                                 (event.currentTarget as HTMLInputElement).blur();
-                                handleInputCommit(entry);
                             }
                         }}
                         // A row whose value is decided elsewhere is closed rather than merely

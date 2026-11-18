@@ -59,7 +59,20 @@ vi.mock("@/lib/ui-editor/runtime/surface/GameSurfaceRenderer", () => ({
 vi.mock("@/lib/ui-editor/runtime/builtin", () => ({ BuiltinElementRenderers: [] }));
 
 vi.mock("@/lib/ui-editor/behavior-graph/nodeEditorCatalog", () => ({
-    getBlueprintNodeEditorCatalogEntry: (type: string) => ({ displayName: `title:${type}` }),
+    getBlueprintNodeEditorCatalogEntry: (type: string) => ({
+        displayName: `title:${type}`,
+        supportsDynamicInputPins: type === "blueprint.fn.head",
+        pins: [],
+    }),
+    resolveBlueprintNodeEditorCatalogEntryForNode: (type: string, params: Record<string, unknown>) => ({
+        displayName: `title:${type}`,
+        pins: (params.__fnParamPinIds as string[] ?? []).map(id => ({
+            id,
+            kind: "output",
+            semantic: "data",
+            label: (params.__fnParamPinLabels as Record<string, string>)[id],
+        })),
+    }),
 }));
 vi.mock("@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n", () => ({
     resolveBlueprintNodeTitle: (name: string) => name,
@@ -68,13 +81,14 @@ vi.mock("@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n", () => ({
 
 /** Both sides, by side. Set per test; `useSideDocument` is what the presenters read. */
 const sideDocuments = vi.hoisted(() => new Map<string, unknown>());
+const sideErrors = vi.hoisted(() => new Map<string, string>());
 vi.mock("./sideDocument", () => ({
     useSideDocument: (side: { at: string } | null) => {
         if (!side) return { status: "absent", document: null, error: null };
         const key = side.at === "revision" ? "before" : "after";
         const held = sideDocuments.get(key);
         return held === undefined
-            ? { status: "unreadable", document: null, error: "not an interface document" }
+            ? { status: "unreadable", document: null, error: sideErrors.get(key) ?? "not an interface document" }
             : { status: "ready", document: held, error: null };
     },
 }));
@@ -98,6 +112,7 @@ beforeAll(() => {
 afterEach(() => {
     cleanup();
     sideDocuments.clear();
+    sideErrors.clear();
     drawnElements.only = null;
 });
 
@@ -162,7 +177,7 @@ function graphNode(id: string, x: number, y: number): BlueprintGraphNode {
     return { id, type: `type.${id}`, params: {}, meta: { editorLayout: { x, y } } };
 }
 
-function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu"): UIGraphDocument {
+function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu", graphName = "On click"): UIGraphDocument {
     const one: Blueprint = {
         id: "bp-1",
         name: blueprintName,
@@ -172,7 +187,7 @@ function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu"): UIG
             events: {
                 "ev-1": {
                     id: "ev-1",
-                    name: "On click",
+                    name: graphName,
                     graph: { nodes: Object.fromEntries(nodes.map(node => [node.id, node])), edges: [] },
                 },
             },
@@ -322,6 +337,104 @@ describe("marks on the blueprint canvas", () => {
         expect(tones.filter(tone => tone === "added")).toHaveLength(1);
         expect(container.textContent).toContain("documentDiff.canvas.legend.moved");
     });
+
+    it("lets a graph-wide mark select the graph's change", () => {
+        const base = uigraphs([graphNode("n-a", 0, 0)]);
+        const head = uigraphs([graphNode("n-a", 0, 0)], "Main menu", "On open");
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+        const mark = container.querySelector<HTMLElement>('[data-change-mask="changed"]');
+
+        expect(mark).not.toBeNull();
+        fireEvent.click(mark!);
+        expect(container.textContent).toContain("documentDiff.canvas.oneChange");
+        expect(container.textContent).toContain("documentDiff.uiGraphs.graphRenamed");
+    });
+
+    it("draws each version's authored dynamic pin name, including an unwired pin", () => {
+        const fn = (label: string): BlueprintGraphNode => ({
+            id: "fn",
+            type: "blueprint.fn.head",
+            meta: { editorLayout: { x: 0, y: 0 } },
+            params: { __fnParamPinIds: ["param_1_value"], __fnParamPinLabels: { param_1_value: label } },
+        });
+        const base = uigraphs([fn("old name")]);
+        const head = uigraphs([fn("new name")]);
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+        const columns = [...container.querySelectorAll<HTMLElement>("[data-graph-canvas]")];
+
+        expect(columns).toHaveLength(2);
+        expect(columns[0].textContent).toContain("old name");
+        expect(columns[0].textContent).not.toContain("new name");
+        expect(columns[1].textContent).toContain("new name");
+        expect(columns[1].textContent).not.toContain("old name");
+    });
+
+    it("keeps an unchanged node's shape when an unknown wire is removed", () => {
+        const base = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 400, 0)]);
+        const head = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 400, 0)]);
+        base.blueprintDocument.blueprints["bp-1"].graphs.events["ev-1"].graph!.edges = [
+            { from: { nodeId: "n-a", port: "old" }, to: { nodeId: "n-b", port: "in" } },
+            { from: { nodeId: "n-a", port: "shared" }, to: { nodeId: "n-b", port: "in" } },
+        ];
+        head.blueprintDocument.blueprints["bp-1"].graphs.events["ev-1"].graph!.edges = [
+            { from: { nodeId: "n-a", port: "shared" }, to: { nodeId: "n-b", port: "in" } },
+            { from: { nodeId: "n-a", port: "new" }, to: { nodeId: "n-b", port: "in" } },
+        ];
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+        const columns = [...container.querySelectorAll<HTMLElement>("[data-graph-canvas]")];
+        const cards = columns.map(column => column.querySelector<HTMLElement>(":scope > div")!);
+
+        expect(cards[0].style.width).toBe(cards[1].style.width);
+        expect(cards[0].style.height).toBe(cards[1].style.height);
+        expect(cards[0].textContent).toBe(cards[1].textContent);
+    });
+
+    it("lists a script-layer change without drawing an empty blueprint graph", () => {
+        const script = (ref: string): UIGraphDocument => {
+            const document = uigraphs([]);
+            document.blueprintDocument.blueprints["bp-1"].graphs.events["ev-1"] = {
+                id: "ev-1", name: "Script", script: { scriptRef: ref },
+            };
+            return document;
+        };
+        const base = script("scripts/old.js");
+        const head = script("scripts/new.js");
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+
+        expect(container.querySelectorAll("[data-graph-canvas]")).toHaveLength(0);
+        expect(container.textContent).toContain("documentDiff.uiGraphs.scriptChanged");
+        expect(container.textContent).toContain("documentDiff.canvas.offCanvas");
+        expect(container.textContent).not.toContain("documentDiff.canvas.emptyGraph");
+        expect(container.textContent).not.toContain("documentDiff.rows.loading");
+    });
+
+    it("keeps the graph side when a layer changes from a graph to a script", () => {
+        const base = uigraphs([graphNode("n-a", 0, 0)]);
+        const head = uigraphs([]);
+        head.blueprintDocument.blueprints["bp-1"].graphs.events["ev-1"] = {
+            id: "ev-1", name: "On click", script: { scriptRef: "scripts/main.js" },
+        };
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+
+        expect(container.querySelectorAll("[data-graph-canvas]")).toHaveLength(1);
+        expect(container.textContent).toContain("title:type.n-a");
+        expect(container.textContent).not.toContain("documentDiff.canvas.emptyGraph");
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -457,6 +570,19 @@ describe("going from a row to the node it names", () => {
         expect(inert.length).toBeGreaterThan(0);
         expect(inert.some(row => (row.textContent ?? "").includes("documentDiff.uiGraphs.blueprint"))).toBe(true);
     });
+
+    it("does not offer navigation to a node on a version that could not be read", () => {
+        const base = uigraphs([graphNode("n-a", 0, 0)]);
+        const head = uigraphs([graphNode("n-a", 0, 0), graphNode("n-added", 400, 0)]);
+        sideDocuments.set("before", base);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+        const row = [...container.querySelectorAll<HTMLElement>("[data-change-row]")]
+            .find(element => element.textContent?.includes("documentDiff.uiGraphs.nodeAdded"));
+
+        expect(container.textContent).toContain("documentDiff.canvas.unplaced");
+        expect(row?.tagName).toBe("DIV");
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -553,6 +679,8 @@ describe("dragging and magnifying the blueprint canvas", () => {
 
         const fit = () => container.querySelector<HTMLButtonElement>("[data-graph-fit]")!;
         expect(fit().disabled).toBe(true);
+        expect(fit().getAttribute("data-tip")).toBe("documentDiff.canvas.fitView");
+        expect(fit().hasAttribute("title")).toBe(false);
 
         fireEvent.wheel(before!, { deltaY: -100, ctrlKey: true });
         expect(fit().disabled).toBe(false);
@@ -603,4 +731,21 @@ describe("when a version cannot be read", () => {
         expect(container.querySelectorAll("[data-testid^=surface]")).toHaveLength(1);
         expect(container.textContent).not.toContain("documentDiff.canvas.unreadable");
     });
+
+    it.each(["ui-document", "ui-graphs"] as const)(
+        "elides generated identifiers from a %s read error",
+        kind => {
+            const id = "12345678-1234-4234-8234-123456789abc";
+            sideErrors.set("after", `Cannot read editor/story/stories/${id}/document.json`);
+            const entry = kind === "ui-document"
+                ? uiEntry(UI_BASE(), UI_HEAD())
+                : graphEntry(uigraphs([graphNode("n-a", 0, 0)]), uigraphs([graphNode("n-a", 40, 0)]));
+
+            const { container } = render(<ChangeDetailHost entry={entry} sides={SIDES} />);
+
+            expect(container.textContent).toContain("documentDiff.canvas.unreadable");
+            expect(container.textContent).toContain("editor/story/stories/…/document.json");
+            expect(container.textContent).not.toContain(id);
+        },
+    );
 });

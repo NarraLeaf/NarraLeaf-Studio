@@ -148,6 +148,7 @@ export const test = {
                 noEntryPoint: "開始位置を示すストーリーがない",
                 undecidableEntry: "「{blueprint}」の「ゲームを始める」から開始位置を読み取れない",
                 storiesUnread: "読み込めないストーリーがある",
+                unsettled: "すべてのストーリーのルート解析が完了しなかった",
             },
             finding: {
                 sceneUnreachable: "「{scene}」へ至る条件を満たせる経路がない",

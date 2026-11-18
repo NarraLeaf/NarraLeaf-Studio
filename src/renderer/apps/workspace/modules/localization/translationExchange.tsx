@@ -9,7 +9,7 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../../context";
 import { i18nStore, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -50,6 +50,12 @@ import { TranslationExportForm } from "./TranslationExportForm";
 import { basename } from "@shared/utils/path";
 import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
 import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
+import { getAgentEditorLocks } from "@/lib/workspace/services/agent/agentEditorLockStore";
+import { agentLockBlocking } from "../agent/useAgentEditorLocks";
+import { isFreezeBlocking } from "../../components/ui/freezeGuard";
+import { useReadOnlyInspection } from "../../components/ui/readOnlyInspection";
+import { translationDocumentFreezeScope } from "./localizationLiveSession";
 import {
     describeExchangeProblem,
     describeImportFailure,
@@ -95,43 +101,39 @@ export async function collectTranslatableUnits(sources: TranslatableUnitSources)
         collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.sourceText });
     }
     for (const entry of storyService.listStories()) {
-        try {
-            const document = await storyService.loadStory(entry.id);
-            for (const row of extractSceneTranslationRows(document)) {
-                // The story is the context a scene name needs: the name itself is the source
-                // column, so repeating it there would tell the translator nothing.
-                collected.push({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    context: document.name || row.sourceText,
-                });
-            }
-            for (const row of extractEndingTranslationRows(document)) {
-                // The scene the ending is reached in, the way a line is placed by its scene.
-                collected.push({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    context: row.sceneName || document.name || row.sourceText,
-                });
-            }
-            for (const row of extractRenameTranslationRows(document, characters)) {
-                // The scene the row renames its character in, as an ending is placed.
-                collected.push({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    context: row.sceneName || document.name || row.sourceText,
-                });
-            }
-            for (const row of localizationService.extractRows(document)) {
-                collected.push({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
-                    context: row.sceneName,
-                });
-            }
-        } catch {
-            // A broken story must not take the panel down.
+        const document = await storyService.loadStory(entry.id);
+        for (const row of extractSceneTranslationRows(document)) {
+            // The story is the context a scene name needs: the name itself is the source
+            // column, so repeating it there would tell the translator nothing.
+            collected.push({
+                unitId: row.unitId,
+                sourceText: row.sourceText,
+                context: document.name || row.sourceText,
+            });
+        }
+        for (const row of extractEndingTranslationRows(document)) {
+            // The scene the ending is reached in, the way a line is placed by its scene.
+            collected.push({
+                unitId: row.unitId,
+                sourceText: row.sourceText,
+                context: row.sceneName || document.name || row.sourceText,
+            });
+        }
+        for (const row of extractRenameTranslationRows(document, characters)) {
+            // The scene the row renames its character in, as an ending is placed.
+            collected.push({
+                unitId: row.unitId,
+                sourceText: row.sourceText,
+                context: row.sceneName || document.name || row.sourceText,
+            });
+        }
+        for (const row of localizationService.extractRows(document)) {
+            collected.push({
+                unitId: row.unitId,
+                sourceText: row.sourceText,
+                ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
+                context: row.sceneName,
+            });
         }
     }
     const uiDocument = uiDocumentService?.getDocument();
@@ -151,7 +153,7 @@ export async function collectTranslatableUnits(sources: TranslatableUnitSources)
     }
     let keysDocument = localizationService.getKeysIfLoaded();
     if (!keysDocument) {
-        keysDocument = await localizationService.loadKeys().catch(() => undefined);
+        keysDocument = await localizationService.loadKeys();
     }
     // A key's row says where the key is used - the pages and components showing its words or
     // reading it in a blueprint - since its name alone tells a translator nothing about them.
@@ -211,6 +213,11 @@ export function useTranslationExchange(): TranslationExchange {
     const { t, tn } = useTranslation();
     const sources = useTranslatableUnitSources();
     const { localizationService, uiService } = sources;
+    const inspecting = useReadOnlyInspection();
+    const inspectingRef = useRef(inspecting);
+    useLayoutEffect(() => {
+        inspectingRef.current = inspecting;
+    }, [inspecting]);
 
     // Last format chosen for an export: a team that translates in Poedit does so
     // every time, and re-picking it per language is the kind of friction that
@@ -347,6 +354,21 @@ export function useTranslationExchange(): TranslationExchange {
         if (!localizationService || !context || !uiService || frozen) {
             return;
         }
+        const blocked = () => {
+            const scope = translationDocumentFreezeScope(code);
+            const reason = getProjectWriteFreeze()?.reason ?? null;
+            const agentLock = agentLockBlocking(getAgentEditorLocks(), scope);
+            const message = inspectingRef.current
+                ? t("documentDiff.inspector.readOnly")
+                : isFreezeBlocking(reason, scope)
+                    ? t(reason?.kind === "live-session" ? "workspace.shell.freeze.unavailableLive" : "workspace.shell.freeze.unavailable")
+                    : agentLock ? t(`workspace.agent.editorLock.reason.${agentLock}`) : null;
+            if (message) {
+                uiService.showNotification(message, "warning");
+                return true;
+            }
+            return false;
+        };
         try {
             // The title is passed because the generic picker's default says "Select Icon File",
             // which is what a translator would otherwise be asked for.
@@ -358,11 +380,17 @@ export function useTranslationExchange(): TranslationExchange {
             if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
                 return;
             }
+            if (blocked()) {
+                return;
+            }
             const filePath = selection.data.data[0];
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
             // Every refusal below names the file by its name and says why in the author's terms. The
             // read's own message is English and quotes the whole path, and the parsers answer in codes.
             const content = await filesystem.read(filePath, "utf-8");
+            if (blocked()) {
+                return;
+            }
             if (!content.ok) {
                 console.warn("[localization] could not read the translation file", content.error);
                 throw new Error(describeImportFailure(filePath, importReadFailureReason(content.error.code, t), t));
@@ -392,10 +420,16 @@ export function useTranslationExchange(): TranslationExchange {
                 if (!proceed) {
                     return;
                 }
+                if (blocked()) {
+                    return;
+                }
             }
 
             await localizationService.loadDocument(code);
             const rows = await collectTranslatableUnits(sources);
+            if (blocked()) {
+                return;
+            }
             const currentSourceByUnit = new Map(rows.map(row => [row.unitId, row.sourceText]));
             const summary = localizationService.applyImportedRows(code, parsed.rows, currentSourceByUnit);
             uiService.showNotification(t("workspace.localization.panel.importCounts", {
