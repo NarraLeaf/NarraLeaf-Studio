@@ -154,7 +154,12 @@ jobs:
           # (The runner's keychain paths have no spaces, so word splitting is safe here.)
           # shellcheck disable=SC2046
           security list-keychains -d user -s "${keychain}" $(security list-keychains -d user | tr -d '"')
-          security find-certificate -c "${IDENTITY}" -p "${keychain}" > "${pem}"
+          # A .p12 exported from Keychain Access's "Keys" list holds the private key alone; it has to
+          # be exported from "My Certificates", where the certificate carries its key.
+          if ! security find-certificate -c "${IDENTITY}" -p "${keychain}" > "${pem}"; then
+            echo "::error::MAC_SIGNING_P12 has no certificate named \"${IDENTITY}\". Export it again from Keychain Access > My Certificates (certificate and private key together)."
+            exit 1
+          fi
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "${pem}"
           rm -f "${pem}"
           if ! security find-identity -v -p codesigning "${keychain}" | grep -q "\"${IDENTITY}\""; then
