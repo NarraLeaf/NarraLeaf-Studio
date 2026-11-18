@@ -416,6 +416,14 @@ export const settings = {
             label: "この端末の名前",
             description: "共同作業者にアカウント名と並べて表示される。空欄のときはホスト名を使う",
         },
+        teamProjectsPlacement: {
+            label: "チームプロジェクトの表示場所",
+            description: "Team サーバー上のプロジェクトをランチャーのどこに表示するか",
+            options: {
+                projects: "プロジェクト一覧に表示",
+                team: "Team ページに表示",
+            },
+        },
         settingsTransfer: {
             label: "設定を端末間で移す",
         },
@@ -469,11 +477,17 @@ export const settings = {
         usedBy: "使用中のプロジェクト：{projects}",
         unused: "このサインインを使うプロジェクトはない",
         signOutBlocked: "このサーバーを使うプロジェクトを先に閉じる：{projects}",
+        signOutConfirm: "サインアウトする",
+        signOutWarning: "サインアウトすると、{projects} はこのサーバーと同期できなくなる。再度サインインが必要",
+        signOutWarningUnused: "サインアウトすると、このサーバーを使うには再度サインインが必要",
+        signOutFailed: "サインアウトできなかった。もう一度試すこと",
         signIn: "サインイン",
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
         reached: "{address} のサーバーは {name}",
+        changeAddress: "アドレスを変更",
+        replaces: "このコンピューターはこのサーバーに {name} としてサインイン済み。続けるとそのアカウントを置き換える",
         tokenLabel: "アクセストークン",
         tokenPlaceholder: "アクセストークンを貼り付ける",
         hint: "アクセストークンはサーバー管理者が発行する",
@@ -504,6 +518,7 @@ export const settings = {
         signInUnavailable: "この端末ではパスワードでサインインできない",
         noAccount: "{name} はアカウントを発行しないため追加できない。管理者にアカウントを求めること",
         joined: {
+            title: "サーバーを追加した",
             signedInAs: "{name} としてサインインしている",
             projects: {
                 other: "プロジェクト {count} 件",

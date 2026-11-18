@@ -85,6 +85,20 @@ export const launcher = {
             errorDetach: "转为个人项目失败",
             errorDelete: "删除项目失败",
             errorOpen: "请先关闭正在使用此项目的窗口",
+            // 首页列表里，当前账号所在服务器上本机尚无副本的项目：排在本机项目之后，
+            // 点击时先确认克隆
+            uncloned: "{server} 上尚未克隆的项目",
+            notCloned: "未克隆",
+            details: "查看详情",
+            detailsTitle: "项目详情",
+            newOn: "在 {server} 上新建团队项目",
+            clone: {
+                action: "克隆",
+                hint: "克隆 {name}",
+                title: "克隆团队项目",
+                message: "{name} 尚未克隆到本机。是否从 {server} 克隆该项目？下一步可选择副本的存放位置",
+                confirm: "克隆",
+            },
         },
     },
     // 「服务器」标签页。它列的是已登录服务器上有什么；这台机器上已有的由「项目」标签页回答，
@@ -101,11 +115,13 @@ export const launcher = {
         choose: "选择一台服务器",
         newProject: "新建项目",
         loading: "正在读取项目列表",
-        noProjects: "这台服务器上没有项目",
+        noProjects: "该服务器上暂无项目",
         // 同一台服务器的两个视图，名字写在切换它们的标签条上。
         // 成员那一栏用的还是 people.title，两处是同一个词。
         tabs: {
             projects: "项目",
+            todos: "我的待办",
+            active: "活跃项目",
         },
         // 只有一个动作，而且它在项目自己的页面上，不在行里。用「获取」而不是「克隆」，
         // 因为它背后的向导还会问副本放在哪里。
@@ -114,6 +130,24 @@ export const launcher = {
         // 写在本机已有的那个项目行上，是说明文字旁边的一个词，不是另起的标记。
         // 这正是这个标签页要回答的问题，所以留在能一眼扫过去的地方。
         here: "已在本机",
+        // 项目列表移到首页后，Team 页面保留的两个视图
+        todos: {
+            loading: "正在读取待办",
+            problem: "暂时无法读取待办",
+            empty: "暂无待办",
+            noProject: "未关联项目",
+            cloneHint: "克隆 {name}",
+            due: "{date} 截止",
+            status: {
+                open: "待处理",
+                doing: "进行中",
+            },
+        },
+        active: {
+            empty: "近 7 天暂无活跃项目",
+            online: "{names} 正在使用",
+            notHere: "未克隆",
+        },
         // 服务器读过该仓库，里面没有内容。只有服务器给出的数字确实为零时才写；
         // 还没读过的服务器什么都不说，这里也就什么都不写。
         nothingSent: "尚未发送内容",
@@ -121,16 +155,16 @@ export const launcher = {
         lastVersion: "上一个版本 {date}",
         lastVersionBy: "上一个版本 {date}，由 {name} 记录",
         problem: {
-            noToken: "本机无法向这台服务器提问，请用令牌重新添加它",
-            refused: "这台服务器拒绝了此处登录的账号",
-            unreachable: "这台服务器没有响应",
+            noToken: "本机无法访问该服务器，请使用令牌重新添加",
+            refused: "该服务器拒绝本机登录的账号",
+            unreachable: "该服务器无响应",
             // 只有发布时才会遇到，而这个页面在「为某台服务器新建项目」时就会发布。
             // 名字就是项目自己的 app id，审阅页已经写过，这里不重复。
-            nameTaken: "这台服务器上已经有另一个项目叫这个名字",
+            nameTaken: "该服务器上已有同名项目",
             // 这里不重复名字：这个页面按项目自己的 app id 发布，审阅页已经写过，
             // 而这行旁边就是列表，能看到它已经以什么名字在服务器上。
-            alreadyPublished: "这个项目已经以另一个名字在这台服务器上了",
-            unknown: "无法读取这台服务器",
+            alreadyPublished: "本项目已以其他名称存在于该服务器",
+            unknown: "无法读取该服务器",
         },
         // 在本机建好、但服务器没有接收的项目。项目本身是完整的，缺的只是与服务器的连接，
         // 这个对话框负责把它打开，让版本轨道再试一次。
@@ -143,7 +177,7 @@ export const launcher = {
         // 从一行项目打开进去的地方。只有当服务器能说出列表之外的东西时才会出现。
         detail: {
             back: "全部项目",
-            loading: "正在读取这个项目",
+            loading: "正在读取该项目",
             // 主操作旁边的溢出菜单。里面那件事是破坏性的，也没人是为了做它才打开项目的，
             // 所以要多点一下才够得着。
             more: "更多操作",
@@ -163,7 +197,7 @@ export const launcher = {
             // **只说项目文件这一件事。** 版本是另外问的，可以单独缺席；
             // 在上面已经写着场景数的项目下面说这句话，就是自相矛盾——
             // 那种情况在下面有自己的一行。
-            unread: "服务器还没有读取这个项目",
+            unread: "服务器尚未读取该项目",
             // 写在 unread 之前并取代它：没人往里面发送过内容的项目，本来就没有项目文件可读，
             // 两句话说的是同一件事。
             empty: "该项目尚未收到任何内容",
@@ -171,39 +205,39 @@ export const launcher = {
             noVersions: "没有记录任何版本",
             // 服务器答了这个项目的其他内容，却没有给版本。不是「没有版本」：
             // 这里不知道的是那份名单，不是它的长度。
-            versionsUnavailable: "这个项目的版本目前不可用",
+            versionsUnavailable: "该项目的版本暂不可用",
             olderVersions: "更早的版本不在此显示",
         },
         discussion: {
             title: "讨论",
-            empty: "该项目还没有备注。",
+            empty: "该项目暂无备注",
             placeholder: "写一条备注",
             add: "添加",
             resolve: "标记为已解决",
             reopen: "重新打开",
             resolved: "已解决",
-            failed: "备注未发送。",
-            unavailable: "无法读取该项目的讨论。",
+            failed: "备注未发送",
+            unavailable: "无法读取该项目的讨论",
         },
         forget: {
-            action: "从这台服务器移除",
-            title: "从这台服务器移除",
-            message: "{name} 将不再出现在 {server} 的项目列表中。仓库及其中的所有版本仍保留在服务器上。",
+            action: "从该服务器移除",
+            title: "从该服务器移除",
+            message: "{name} 将不再出现在 {server} 的项目列表中，仓库及其中的所有版本仍保留在服务器上",
             confirm: "移除",
             cancel: "取消",
-            failed: "项目未能移除。",
+            failed: "项目未能移除",
         },
         // 这台服务器上还有谁。账号地址随列表一起读取，但只在读者打开某个成员时才显示。
         people: {
             title: "成员",
             loading: "正在读取成员列表",
-            none: "这台服务器上没有账号",
+            none: "该服务器上暂无账号",
             // 是词，不是彩色徽标：它们只在适用的那天有意义，其余时候什么都不说，
             // 所以就以文字的形式排在名字旁边。
             operator: "管理员",
             disabled: "已停用",
             serviceAccount: "服务账号",
-            noAddress: "这个账号没有邮箱地址",
+            noAddress: "该账号未设置邮箱地址",
         },
     },
     // 中文只有一种复数形式，只需给出 other。

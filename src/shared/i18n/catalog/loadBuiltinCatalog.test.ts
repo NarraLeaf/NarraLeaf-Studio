@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 // does for the small windows (project/build/rendererLocales.js).
 vi.mock("./builtinCatalogs", () => import("./builtinCatalogs.lean"));
 
-describe("loading a built-in catalog on demand", () => {
+// Each case imports the i18n index and then a whole language catalog, and the first import is where
+// vitest transforms them: three seconds on an idle machine, past the five-second default on a loaded
+// one, where it fails as a timeout that reads like a catalog that never arrived.
+describe("loading a built-in catalog on demand", { timeout: 30_000 }, () => {
     it("answers in English until the language arrives, then in it, and tells the registry", async () => {
         const { createTranslator, loadBuiltinCatalog, isBuiltinCatalogLoaded, subscribeLocaleRegistry } = await import("../index");
         expect(isBuiltinCatalogLoaded("zh")).toBe(false);

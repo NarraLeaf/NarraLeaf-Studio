@@ -578,6 +578,22 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "team.machineLabel": string;
     /**
+     * Which Team account the launcher's face shows, and when the author picked it there.
+     *
+     * Null until somebody picks one, which reads as the server signed in to last. A pick
+     * stands until a later sign-in, so an account just added is the one shown without a
+     * second step; see `activeSignIn` in `TeamAccountMenu.tsx`. Only which face to draw:
+     * nothing is sent as this account because of it, since every project already carries
+     * its own answer about which sign-in it uses.
+     */
+    "team.activeAccount": { remoteOrigin: string; chosenAt: number } | null;
+    /**
+     * Where the launcher lists the projects on a Team server: in the Projects tab beside the
+     * ones on this disk, or in the Team tab on their own. See
+     * lib/settings/teamProjectsPlacement.
+     */
+    "team.projectsPlacement": "projects" | "team";
+    /**
      * Follow mode: each write an agent makes opens the tab it landed in, brings it to the front and
      * outlines the change. Studio-wide rather than per project, and on by default - see
      * `@shared/agent/follow`. Not in main's `agent-mcp.json`: it grants nothing.
@@ -666,6 +682,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.
     "team.machineLabel": "",
+    "team.activeAccount": null,
+    "team.projectsPlacement": "projects",
     [AGENT_FOLLOW_KEY]: AGENT_FOLLOW_DEFAULT,
 };
 

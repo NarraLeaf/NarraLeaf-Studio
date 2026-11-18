@@ -27,6 +27,9 @@ const ORIGIN = "lore://team.example.lan:41337";
 const state = vi.hoisted(() => ({
     servers: [] as unknown[],
     connectionListeners: [] as ((payload: { connection: unknown }) => void)[],
+    /** Global state, written and broadcast the way the main process does. */
+    global: {} as Record<string, unknown>,
+    globalListeners: [] as ((change: { key: string; value: unknown }) => void)[],
 }));
 
 function ready(): TeamConnection {
@@ -41,7 +44,21 @@ function ready(): TeamConnection {
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
-        app: { launchSettings: vi.fn() },
+        app: {
+            launchSettings: vi.fn(),
+            state: {
+                getGlobalState: (key: string) => Promise.resolve({ success: true, data: { value: state.global[key] } }),
+                setGlobalState: (key: string, value: unknown) => {
+                    state.global[key] = value;
+                    for (const listener of [...state.globalListeners]) listener({ key, value });
+                    return Promise.resolve({ success: true, data: undefined });
+                },
+                onGlobalStateChanged: (listener: (change: { key: string; value: unknown }) => void) => {
+                    state.globalListeners.push(listener);
+                    return { cancel: () => { state.globalListeners = state.globalListeners.filter(entry => entry !== listener); } };
+                },
+            },
+        },
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: state.servers } }),
         },
@@ -67,10 +84,37 @@ function signedIn(): unknown {
     };
 }
 
+const OTHER = "lore://other.example.lan:41337";
+
+/** A second server, signed in to after the first. */
+function signedInElsewhere(): unknown {
+    return {
+        remoteOrigin: OTHER,
+        signedInAt: 2,
+        account: { userId: "2", username: "moth", displayName: "Moth" },
+    };
+}
+
+async function openCard(): Promise<HTMLElement> {
+    const face = await waitFor(() => {
+        const node = document.querySelector<HTMLElement>("[data-team-account]");
+        expect(node).not.toBeNull();
+        return node as HTMLElement;
+    });
+    fireEvent.click(face);
+    return document.querySelector("[data-team-account-card]") as HTMLElement;
+}
+
+function pressed(card: HTMLElement): string | null {
+    return card.querySelector("[data-team-account-choice][aria-pressed='true']")?.getAttribute("data-team-account-choice") ?? null;
+}
+
 afterEach(() => {
     cleanup();
     state.servers = [];
     state.connectionListeners = [];
+    state.global = {};
+    state.globalListeners = [];
 });
 
 describe("the Team account in the launcher", () => {
@@ -115,5 +159,42 @@ describe("the Team account in the launcher", () => {
         });
 
         await waitFor(() => expect(document.querySelector("[data-team-account]")).not.toBeNull());
+    });
+
+    it("lists no accounts to switch between while only one is held", async () => {
+        state.servers = [signedIn()];
+        render(<Sidebar active="projects" onChange={vi.fn()} onAddAccount={vi.fn()} />);
+
+        const card = await openCard();
+        expect(card.querySelector("[data-team-accounts]")).toBeNull();
+        expect(card.querySelector("[data-team-account-act='add-account']")).not.toBeNull();
+    });
+
+    it("switches between held accounts, the latest sign-in shown until another is picked", async () => {
+        state.servers = [signedIn(), signedInElsewhere()];
+        render(<Sidebar active="projects" onChange={vi.fn()} />);
+
+        let card = await openCard();
+        await waitFor(() => expect(card.querySelectorAll("[data-team-account-choice]").length).toBe(2));
+        expect(pressed(card)).toBe(OTHER);
+
+        fireEvent.click(card.querySelector(`[data-team-account-choice='${ORIGIN}']`) as HTMLElement);
+        // Picking closes the card, and the pick is kept where every window reads it.
+        expect(document.querySelector("[data-team-account-card]")).toBeNull();
+        expect(state.global["team.activeAccount"]).toMatchObject({ remoteOrigin: ORIGIN });
+
+        card = await openCard();
+        await waitFor(() => expect(pressed(card)).toBe(ORIGIN));
+    });
+
+    it("sends “add account” to wherever the launcher adds a server", async () => {
+        state.servers = [signedIn()];
+        const onAddAccount = vi.fn();
+        render(<Sidebar active="projects" onChange={vi.fn()} onAddAccount={onAddAccount} />);
+
+        const card = await openCard();
+        fireEvent.click(card.querySelector("[data-team-account-act='add-account']") as HTMLElement);
+        expect(onAddAccount).toHaveBeenCalledTimes(1);
+        expect(document.querySelector("[data-team-account-card]")).toBeNull();
     });
 });

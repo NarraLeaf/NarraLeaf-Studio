@@ -106,6 +106,7 @@ import {
     rememberServerToken,
 } from "./serverTokens";
 import { completeBrowserSignIn, refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
+import { portAnswers } from "./portAnswers";
 // Pure policy over the global state, with nothing of Lore's in it: which project may act as which
 // account. See that module's header for the rule.
 import {
@@ -635,6 +636,12 @@ export class VcsManager extends Manager {
         this.renewalTimer = setInterval(renew, RENEW_INTERVAL_MS);
         this.renewalTimer.unref?.();
     }
+
+    /**
+     * Whether a server's data port accepts a connection; see {@link tellRefusalApart}. A field so a
+     * test can answer it without opening a socket.
+     */
+    protected dataPortAnswers: (remoteOrigin: string) => Promise<boolean> = portAnswers;
 
     /** The first renewal pass, a little after start so it never competes with the launch. */
     private renewal: NodeJS.Timeout | undefined;
@@ -2892,11 +2899,11 @@ export class VcsManager extends Manager {
         signedIn: VcsServerSession,
     ): Promise<VcsServerReach> {
         try {
-            const state = await backend.readSyncState({
+            const state = await this.tellRefusalApart(await backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: signedIn.account.userId,
-            });
+            }), signedIn.remoteOrigin);
             if (!state.remoteAvailable) return "dataPortSilent";
             return state.remoteAuthorized ? "ready" : "notPermitted";
         } catch (error) {
@@ -2921,12 +2928,27 @@ export class VcsManager extends Manager {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
-            return this.withServerSession(signedIn, () => backend.readSyncState({
+            const state = await this.withServerSession(signedIn, () => backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: this.onlineIdentity(signedIn),
             }), session.remoteOrigin);
+            return session.remoteOrigin ? this.tellRefusalApart(state, session.remoteOrigin) : state;
         });
+    }
+
+    /**
+     * A status that says the server is unavailable, checked against whether its port answers.
+     *
+     * The backend reports an account the server turned away the same way as a server that is not
+     * there (see `portAnswers.ts`), and the two ask different things of the author. Where the port
+     * accepts a connection, the server is there and the answer was about the account, so the state
+     * is reported as reachable and unauthorized.
+     */
+    private async tellRefusalApart(state: VcsSyncState, remoteOrigin: string): Promise<VcsSyncState> {
+        if (state.remoteAvailable) return state;
+        if (!(await this.dataPortAnswers(remoteOrigin))) return state;
+        return { ...state, remoteAvailable: true, remoteAuthorized: false };
     }
 
     /**

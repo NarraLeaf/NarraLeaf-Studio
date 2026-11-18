@@ -18,6 +18,7 @@ import { WindowAppType } from "@shared/types/window";
 
 import type { TeamClientOptions } from "./TeamClient";
 import { TeamManager, type TeamClientLike } from "./TeamManager";
+import type { PowerEvents, WakeSources } from "./wakeWatch";
 
 /**
  * One window, in the amount of it the manager touches.
@@ -73,6 +74,7 @@ class FakeClient implements TeamClientLike {
     readonly unsubscribed: string[] = [];
     connected = 0;
     disposed = 0;
+    reconnected: string[] = [];
     /** Whether a subscribe is answered or refused, which the manager acts on. */
     accept = true;
 
@@ -108,6 +110,10 @@ class FakeClient implements TeamClientLike {
         this.disposed += 1;
     }
 
+    reconnectNow(reason?: string): void {
+        this.reconnected.push(reason ?? "");
+    }
+
     /** Pretend the server pushed something. */
     push(topic: string, payload: unknown): void {
         this.options.onEvent({ topic, seq: 1, payload });
@@ -135,7 +141,9 @@ interface Harness {
     closed: EventEmitter;
 }
 
-function harness(options: { token?: string | null; servers?: VcsServerSession[] } = {}): Harness {
+function harness(
+    options: { token?: string | null; servers?: VcsServerSession[]; wake?: (() => WakeSources) | null } = {},
+): Harness {
     const windows: FakeWindow[] = [];
     const clients: FakeClient[] = [];
     const closed = new EventEmitter();
@@ -165,6 +173,7 @@ function harness(options: { token?: string | null; servers?: VcsServerSession[] 
                 clients.push(client);
                 return client;
             },
+            wake: options.wake === undefined ? null : options.wake,
         },
     );
     return { manager, windows, clients, closed };
@@ -327,5 +336,39 @@ describe("letting a server go", () => {
         // A second open makes a new client rather than handing back the closed one.
         team.manager.open(SERVER.remoteOrigin);
         expect(team.clients).toHaveLength(2);
+    });
+});
+
+describe("after a wake or a new network", () => {
+    function power(): PowerEvents & { emit: (event: "resume" | "unlock-screen") => void; count: () => number } {
+        const emitter = new EventEmitter();
+        return {
+            on: (event, listener) => emitter.on(event, listener),
+            removeListener: (event, listener) => emitter.removeListener(event, listener),
+            emit: (event) => emitter.emit(event),
+            count: () => emitter.listenerCount("resume") + emitter.listenerCount("unlock-screen"),
+        };
+    }
+
+    it("starts listening only once there is a session, and every session starts over on a wake", () => {
+        const monitor = power();
+        const team = harness({
+            servers: [SERVER, { ...SERVER, remoteOrigin: "lore://other.lan:41337", authUrl: "https://other.lan:41402" }],
+            wake: () => ({ power: monitor, isOnline: () => true, networkSignature: () => "en0", everyMs: 60_000 }),
+        });
+        expect(monitor.count()).toBe(0);
+
+        team.manager.open(SERVER.remoteOrigin);
+        team.manager.open("lore://other.lan:41337");
+        expect(monitor.count()).toBe(2);
+
+        monitor.emit("resume");
+        expect(team.clients.map((client) => client.reconnected)).toEqual([
+            ["the machine woke up"],
+            ["the machine woke up"],
+        ]);
+
+        team.manager.dispose();
+        expect(monitor.count()).toBe(0);
     });
 });

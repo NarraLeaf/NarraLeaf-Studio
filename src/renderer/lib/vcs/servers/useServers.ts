@@ -54,5 +54,15 @@ export function useServers(): ServersState {
         void reload();
     }, [reload]);
 
+    // Servers are added and removed in Settings, which is a window of its own, so a
+    // screen that read the list on mount would keep showing the session it had then. A
+    // server re-added with a new token would still read as needing one. Coming back to
+    // this window is the moment the list may have changed, and the read is local.
+    useEffect(() => {
+        const again = () => void reload();
+        window.addEventListener("focus", again);
+        return () => window.removeEventListener("focus", again);
+    }, [reload]);
+
     return { servers, loading, reload };
 }

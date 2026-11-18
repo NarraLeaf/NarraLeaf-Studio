@@ -49,6 +49,7 @@ import { fetchAvatar, isAvatarPath } from "./avatarRequest";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
 import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
+import { electronWakeSources, watchWake, type WakeReason, type WakeSources } from "./wakeWatch";
 
 /**
  * What this needs of a client, which is what a test stands in for.
@@ -59,7 +60,7 @@ import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
  */
 export type TeamClientLike = Pick<
     TeamClient,
-    "call" | "connect" | "connection" | "dispose" | "subscribe" | "unsubscribe"
+    "call" | "connect" | "connection" | "dispose" | "reconnectNow" | "subscribe" | "unsubscribe"
 >;
 
 /** The two things a test supplies and nothing in the product does. */
@@ -67,6 +68,8 @@ export interface TeamStandIns {
     /** The sealed token for one server. A test has no keyring and no business having one. */
     tokenFor?: (remoteOrigin: string) => string | null;
     newClient?: (options: TeamClientOptions) => TeamClientLike;
+    /** Where wakes and network changes are heard from. Null for none at all. */
+    wake?: (() => WakeSources) | null;
 }
 
 /**
@@ -131,12 +134,17 @@ export class TeamManager {
      */
     private readonly avatars = new Map<string, Promise<string | null>>();
 
+    /** Where wakes are heard from, or null. Started with the first session, see {@link watchForWake}. */
+    private readonly wakeSources: (() => WakeSources) | null;
+    private stopWatching: (() => void) | null = null;
+
     constructor(app: BaseApp, servers: () => VcsServerSession[], stands: TeamStandIns = {}) {
         this.app = app;
         this.servers = servers;
         this.tokenFor = stands.tokenFor
             ?? ((remoteOrigin) => recallServerToken(app.getGlobalState(), remoteOrigin));
         this.newClient = stands.newClient ?? ((options) => new TeamClient(options));
+        this.wakeSources = stands.wake === undefined ? electronWakeSources : stands.wake;
         this.files = new TeamTransfers({
             authUrlFor: (remoteOrigin) =>
                 this.servers().find((each) => each.remoteOrigin === remoteOrigin)?.authUrl ?? null,
@@ -349,6 +357,8 @@ export class TeamManager {
 
     /** Close everything, because Studio is quitting. */
     dispose(): void {
+        this.stopWatching?.();
+        this.stopWatching = null;
         for (const client of this.clients.values()) client.dispose();
         this.clients.clear();
         this.wanted.clear();
@@ -394,7 +404,40 @@ export class TeamManager {
             onStatus: (connection) => this.announce(connection),
         });
         this.clients.set(remoteOrigin, client);
+        this.watchForWake();
         return client;
+    }
+
+    /**
+     * Start listening for the machine waking or changing network, once there is a session for it
+     * to matter to.
+     *
+     * Not in the constructor: that runs before Electron is ready, and the power monitor cannot be
+     * used until it is. A client is only ever made for a window that asked, so by then it is.
+     */
+    private watchForWake(): void {
+        if (this.stopWatching !== null || this.wakeSources === null) return;
+        try {
+            this.stopWatching = watchWake(this.wakeSources(), (reason) => this.reconnectAll(reason));
+        } catch (error) {
+            this.app.logger.debug(`[Team] Could not listen for wake or network changes: ${String(error)}`);
+        }
+    }
+
+    /** Every session starts over now, because the machine woke up or its network changed. */
+    reconnectAll(reason: WakeReason): void {
+        if (this.clients.size === 0) return;
+        this.app.logger.info(`[Team] Reconnecting ${this.clients.size} session(s): ${reason}`);
+        const said = reason === "resume" || reason === "unlock" || reason === "slept"
+            ? "the machine woke up"
+            : "the network changed";
+        for (const client of this.clients.values()) {
+            try {
+                client.reconnectNow(said);
+            } catch (error) {
+                this.app.logger.debug(`[Team] Could not reconnect a session: ${String(error)}`);
+            }
+        }
     }
 
     private whyNot(remoteOrigin: string): Extract<TeamCallOutcome, { ok: false }>["problem"] {

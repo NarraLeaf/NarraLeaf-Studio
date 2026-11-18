@@ -659,9 +659,9 @@ export const workspace = {
      */
     team: {
         docs: {
-            refused: "服务器没有接受这次修改",
-            areaRefused: "你不能修改项目的这一部分",
-            areaRefusedDetail: "项目所有者允许你修改：{areas}",
+            refused: "服务器未接受该修改",
+            areaRefused: "无权修改项目的该部分",
+            areaRefusedDetail: "项目所有者允许修改的范围：{areas}",
             areaNames: {
                 story: "故事",
                 characters: "角色",
@@ -670,37 +670,37 @@ export const workspace = {
                 localization: "本地化",
                 config: "游戏配置",
             },
-            restored: "{{by}} 恢复了之前的一个版本，所有人现在看到的都是它。",
+            restored: "{by} 已为所有成员恢复一个历史版本",
             diverged: "此窗口与服务器不一致，将从最近保存的版本重新开始",
             history: "历史版本",
-            historyHint: "所有人的修改都会实时保存在服务器上。项目安静下来时会自动存一个版本；也可以手动保存，标记一个以后能回来的点。",
+            historyHint: "所有成员的修改实时保存在服务器上，项目一段时间无修改后自动保存版本，也可手动保存版本作为恢复节点",
             saveVersion: "保存版本",
-            versionLabel: "给这个版本起个名字（可选）",
+            versionLabel: "版本名称（可选）",
             restore: "恢复",
-            restoreConfirm: "要为所有人恢复这个版本吗？它会成为一个新版本，之后可以用同样的方式撤回。",
-            noVersions: "还没有版本",
+            restoreConfirm: "为所有成员恢复该版本？恢复后会生成一个新版本，可用同样方式撤销",
+            noVersions: "暂无版本",
             online: "实时协作中",
-            offline: "离线中——你的修改先保存在本机，连上服务器后会自动发送",
+            offline: "离线，修改暂存在本机，连接服务器后自动发送",
             syncing: "正在同步",
-            readOnly: "你在这个项目里是只读角色",
-            conflictsTitle: "离线时的修改有一部分没能应用",
-            conflictsHint: "你离线期间，别人改了这些行。故事里现在是对方的版本；你写的内容在下面，如果应该以你的为准，可以复制回去。",
-            dismiss: "知道了",
-            savedBy: "由 {{name}} 保存",
+            readOnly: "当前账号在本项目中为只读角色",
+            conflictsTitle: "部分离线修改未能应用",
+            conflictsHint: "离线期间其他成员修改了这些行，故事中现为对方的版本；如需以本机内容为准，可从下方复制回去",
+            dismiss: "关闭",
+            savedBy: "由 {name} 保存",
             automatic: "自动",
             preview: "查看",
-            previewing: "正在查看已保存的版本——这里的改动不会保存",
+            previewing: "正在查看已保存的版本，此处的改动不会保存",
             backToPresent: "回到当前",
             compare: "与当前对比",
-            comparing: "这个版本之后的改动",
-            noDifferences: "这个版本之后没有改动",
-            documentAdded: "这个版本之后新建",
-            documentRemoved: "这个版本之后被删除",
+            comparing: "该版本之后的改动",
+            noDifferences: "该版本之后无改动",
+            documentAdded: "该版本之后新建",
+            documentRemoved: "该版本之后删除",
             loadMore: "加载更多",
-            override: "用我的覆盖",
+            override: "应用",
             close: "关闭",
-            conflictFile: "{path}：团队也改了这个文件，现在打开的是服务器上的版本",
-            detachedHint: "这是一个团队项目的个人副本。重新连接会把之后的修改发回团队项目；团队同时改过的地方会列出来让你选择。",
+            conflictFile: "{path}：团队同时修改过该文件，当前打开的是服务器版本",
+            detachedHint: "本项目为团队项目的个人副本，重新连接后会将本地修改发回团队项目，团队同时修改过的内容会列出以供选择",
             reconnect: "重新连接到团队项目",
         },
         // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
@@ -730,15 +730,15 @@ export const workspace = {
         hereAlone: "只有本机",
         hereMany: "{count} 台设备",
         commitTodos: {
-            title: "随这个版本完成",
+            title: "随该版本完成",
             hint: "勾选的待办会在提交后标为完成，并记下是哪个版本完成的",
-            failed: "版本已提交，但有 {count} 条待办没能标为完成",
+            failed: "版本已提交，但有 {count} 条待办未能标为完成",
         },
         editingNotice: {
-            here: "{name} 也在编辑这里（{since}）。同时修改的内容会在合并时一起处理。",
+            here: "{name} 也在编辑此处（{since}），同时修改的内容将在合并时一并处理",
             justNow: "刚刚打开",
-            minutes: "已经 {minutes} 分钟",
-            dismiss: "知道了",
+            minutes: "已打开 {minutes} 分钟",
+            dismiss: "关闭",
         },
         requests: {
             askReview: "请求评审",
@@ -759,13 +759,13 @@ export const workspace = {
             voiceTitle: "配音「{story}」({locale})",
             assetPlaceholder: "需要什么，例如「Ada 哭泣差分」",
             sendAsset: "发出",
-            sent: "已发出，可以在网页的看板上跟进",
-            failed: "没有发出去，请检查连接或权限",
+            sent: "已发送，可在网页看板中跟进",
+            failed: "发送失败，请检查连接或权限",
         },
         roleNotice: {
-            reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
-            viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
-            dismiss: "知道了",
+            reviewer: "当前账号在本项目中为审阅者：可阅读、批注和领取待办，不能提交或发送修改",
+            viewer: "当前账号在本项目中为只读成员：可阅读，不能批注、提交或发送修改",
+            dismiss: "关闭",
         },
         latency: {
             value: "{ms} ms",
@@ -773,6 +773,7 @@ export const workspace = {
         },
         account: {
             history: "历史版本",
+            add: "添加账号",
             manage: "管理 Team",
             online: "在线 {count}",
             onlineEmpty: "暂无在线成员",
@@ -782,13 +783,13 @@ export const workspace = {
             label: "通知",
             empty: "没有通知",
             markAllRead: "全部标为已读",
-            mention: "{who} 在批注中提到了你",
-            reply: "{who} 回复了你参与的批注",
-            assigned: "{who} 指派了一个待办给你",
+            mention: "{who} 在批注中提及你",
+            reply: "{who} 回复你参与的批注",
+            assigned: "{who} 向你指派待办",
             "review-requested": "{who} 请你评审",
-            "review-answered": "{who} 回复了你的评审请求",
-            "access-requested": "{who} 申请了权限",
-            "access-decided": "{who} 处理了你的权限申请",
+            "review-answered": "{who} 已回复你的评审请求",
+            "access-requested": "{who} 申请权限",
+            "access-decided": "{who} 已处理你的权限申请",
         },
         projectUnavailableHere: "团队项目中不可用",
         // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
@@ -1079,7 +1080,7 @@ export const workspace = {
             // 对作者正在打字的那份文件是假的。
             frozenTitleSession: "该文件不会被保存",
             frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
-            frozenDetailTeam: "这部分内容不经团队服务器同步，改了也不会到达其他人；离线时只保存故事。",
+            frozenDetailTeam: "该部分内容不经团队服务器同步，修改不会发送给其他成员；离线时仅保存故事",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -1280,7 +1281,7 @@ export const workspace = {
             enableHint: "在本项目的目录中保存版本历史",
             enabling: "正在设置版本控制…",
             // 仓库已经存在、里面还没有版本——与上面的 `notVersioned`（压根没启用）是两回事。
-            noHistory: "还没有版本",
+            noHistory: "暂无版本",
             history: "历史",
             loadingHistory: "正在读取版本历史…",
             // 列表末尾，只在这次读取是「读满了上限」而不是「读到项目开头」时出现。说的是作者能得到
@@ -1301,8 +1302,8 @@ export const workspace = {
             commit: "提交版本",
             // 是个问句而不是命令，并且明说可选——因为它确实可选：不写消息也是一个合法的版本，
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
-            commitPlaceholder: "这次改了什么？（可选）",
-            openThreadsInChanges: "还有 {count} 条未解决的批注在这次修改的故事里。",
+            commitPlaceholder: "本次修改说明（可选）",
+            openThreadsInChanges: "本次修改的故事中有 {count} 条未解决的批注",
             openThreadsShow: "查看",
             commitMessage: "版本说明",
             authorLabel: "提交版本记录的作者",
@@ -1405,14 +1406,14 @@ export const workspace = {
                     reading: "正在读取该服务器上的项目",
                     // 服务器上已经有这个项目——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
                     // 此时没有什么可决定的，所以名称是陈述，不是提问。
-                    already: "该服务器上已经有此项目，名为 {name}。",
+                    already: "该服务器上已有此项目，名为 {name}",
                     nameLabel: "在服务器上的名称",
                     namePlaceholder: "my-game",
-                    nameHint: "可用字母、数字、点、连字符与下划线。",
+                    nameHint: "可用字母、数字、点、连字符与下划线",
                     // 两条都是服务器的拒绝，只是提前说：一条只会回一个状态码，
                     // 另一条要等对话框关闭、发布已经做了一半才出现。
-                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
-                    nameTaken: "该服务器上已有同名项目。",
+                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线",
+                    nameTaken: "该服务器上已有同名项目",
                     // 服务器从未见过这个项目时按钮做的事：登记、连接，并把本机的全部版本发上去。
                     createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
@@ -1440,7 +1441,7 @@ export const workspace = {
                 unreachable: "无法连接该服务器",
                 // 服务器答应了但不接受我们。**只有这个状态**才显示凭据字段——
                 // 在没有人被拒绝之前就问令牌，是在问一个多数作者永远不需要回答的问题。
-                unauthorized: "该服务器拒绝了访问",
+                unauthorized: "该服务器拒绝访问",
                 // 同样这七个状态，短到能挨着服务器名字放。上面那几句说的是状态的含义，
                 // 悬停时仍然显示它们；这几个是一眼读到的写法：320px 的一列要在同一行里
                 // 放下名字、状态和菜单。用的是正下方两个按钮的同一套词。
@@ -1463,24 +1464,24 @@ export const workspace = {
                 syncedNothing: "已是最新",
                 publish: {
                     publishing: "正在将此项目上传到服务器…",
-                    noToken: "本机无法向该服务器注册此项目，请使用令牌重新添加。",
-                    refused: "该服务器拒绝了当前登录的账号，项目未被注册。",
-                    unreachable: "该服务器没有响应，项目未被注册。",
-                    wrongRepository: "该服务器注册的是另一个项目，因此没有上传任何内容。",
+                    noToken: "本机无法向该服务器注册此项目，请使用令牌重新添加该服务器",
+                    refused: "该服务器拒绝当前登录的账号，项目未注册",
+                    unreachable: "该服务器无响应，项目未注册",
+                    wrongRepository: "该服务器注册的是另一个项目，未上传任何内容",
                     // 这个名字已经被别的项目占了。直接说补救办法，因为补救办法只有换一个名字。
-                    nameTaken: "这台服务器上已经有另一个项目叫这个名字，请换一个。",
+                    nameTaken: "该服务器上已有同名项目，请更换名称",
                     // 同一个仓库，以它当初发布时的名字在那台服务器上；而这台服务器的运维规定
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
-                    alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
-                    unknown: "该服务器未注册此项目。",
-                    declined: "该项目未使用此服务器的登录，项目未被注册。",
+                    alreadyPublished: "本项目在该服务器上已命名为 {name}，该服务器不允许同一项目使用多个名称",
+                    unknown: "该服务器未注册此项目",
+                    declined: "该项目未使用此服务器的登录，项目未注册",
                     // 不是拒绝：这个项目以前就在那台服务器上（复制过来的项目目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
-                    connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",
+                    connectedAs: "本项目在该服务器上已命名为 {name}，已按该名称连接，使用「发送」可将本机版本上传到服务器版本之上",
                 },
                 signIn: {
                     // 项目指向的服务器在本机没有账号时出现。
-                    required: "连接项目到该服务器需要先在本机添加账号。",
+                    required: "连接该服务器前，请先在本机添加账号",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
                 },

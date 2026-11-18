@@ -40,6 +40,17 @@ const bridge = vi.hoisted(() => ({
     launchWorkspace: vi.fn(() => Promise.resolve()),
     launchProjectWizard: vi.fn<(props: unknown) => Promise<unknown>>(() => Promise.resolve({ success: true, data: null })),
     publishProject: vi.fn(),
+    listTodos: vi.fn(),
+    listClients: vi.fn(),
+    /** What `team.open` answers: the old fixtures had an idle session that advertised nothing. */
+    teamState: "idle",
+    capabilities: [] as string[],
+    /** Global settings by key; the tab's own tests were written for the list on this tab. */
+    settings: { "team.projectsPlacement": "team" } as Record<string, unknown>,
+}));
+
+vi.mock("@/lib/settings/useGlobalSetting", () => ({
+    useGlobalSetting: (key: string, resolve: (stored: unknown) => unknown) => resolve(bridge.settings[key]),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -61,9 +72,9 @@ vi.mock("@/lib/app/bridge", () => ({
         // what the wire carries - the collection under its own key, or a coded problem - so a
         // test drives one method and asserts on one fake.
         team: {
-            open: () => Promise.resolve({
+            open: (remoteOrigin: string) => Promise.resolve({
                 success: true,
-                data: { remoteOrigin: "", state: "idle", capabilities: [], since: 0 },
+                data: { remoteOrigin, state: bridge.teamState, capabilities: bridge.capabilities, since: 0 },
             }),
             connections: () => Promise.resolve({ success: true, data: { connections: [] } }),
             call: async (remoteOrigin: string, method: string, params?: { project?: string }) => {
@@ -96,6 +107,12 @@ vi.mock("@/lib/app/bridge", () => ({
                 if (method === "projects.get") {
                     const out = await bridge.getServerProject(remoteOrigin, params?.project);
                     return answer(out, out?.data?.detail);
+                }
+                if (method === "todos.list") {
+                    return { success: true, data: { ok: true, value: { todos: await bridge.listTodos(remoteOrigin) } } };
+                }
+                if (method === "clients.list") {
+                    return { success: true, data: { ok: true, value: { clients: await bridge.listClients(remoteOrigin) } } };
                 }
                 if (method === "projects.history") {
                     const out = await bridge.listServerProjectHistory(remoteOrigin, params?.project);
@@ -162,6 +179,11 @@ afterEach(() => {
     bridge.launchWorkspace.mockClear();
     bridge.launchProjectWizard.mockClear();
     bridge.publishProject.mockReset();
+    bridge.listTodos.mockReset();
+    bridge.listClients.mockReset();
+    bridge.teamState = "idle";
+    bridge.capabilities = [];
+    bridge.settings = { "team.projectsPlacement": "team" };
 });
 
 /** One server, already chosen because a list of one is not a choice. */
@@ -293,7 +315,7 @@ describe("a project row", () => {
 
 describe("open, or get", () => {
     it("offers to open a project this machine already holds, by repository id", async () => {
-        open([project()], [{ path: "D:/games/Renamed Folder", name: "Renamed Folder", repositoryId: REPOSITORY }]);
+        open([project()], [{ path: "D:/games/Renamed Folder", name: "Renamed Folder", repositoryId: REPOSITORY, remoteOrigin: ORIGIN }]);
 
         await openPage();
         fireEvent.click(await find("[data-project-action='open']"));
@@ -332,7 +354,7 @@ describe("open, or get", () => {
      * between them now is the word.
      */
     it("draws the two words as one control", async () => {
-        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }]);
+        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY, remoteOrigin: ORIGIN }]);
         await openPage();
         const opening = (await find("[data-project-action='open']")).className;
 
@@ -376,11 +398,24 @@ describe("open, or get", () => {
         // Somebody made it here and has not sent it yet. The folder is a project.
         open(
             [project({ history: { revisions: 0 } })],
-            [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }],
+            [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY, remoteOrigin: ORIGIN }],
         );
 
         await openPage();
         expect(await find("[data-project-action='open']")).not.toBeNull();
+    });
+
+    it("does not count a copy that was made personal", () => {
+        // Same repository id, server address dropped: that folder no longer syncs with
+        // anyone, so the server's project still offers a copy of its own.
+        const personal: VcsLocalRepository = {
+            path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY,
+        };
+        const elsewhere: VcsLocalRepository = {
+            path: "D:/games/elsewhere", name: "elsewhere", repositoryId: REPOSITORY, remoteOrigin: OTHER,
+        };
+
+        expect(localCopyOf(project(), [personal, elsewhere])).toBeNull();
     });
 
     it("prefers the local copy pointed at the server being read", () => {
@@ -396,7 +431,7 @@ describe("open, or get", () => {
 
     it("matches an id however either side spelled its hex", () => {
         const local: VcsLocalRepository = {
-            path: "D:/games/here", name: "here", repositoryId: REPOSITORY.toUpperCase(),
+            path: "D:/games/here", name: "here", repositoryId: REPOSITORY.toUpperCase(), remoteOrigin: ORIGIN,
         };
 
         expect(localCopyOf(project(), [local])).toBe(local);
@@ -464,6 +499,24 @@ describe("reaching a server", () => {
 
         await waitFor(() => expect(document.body.textContent)
             .toContain("launcher.servers.problem.unreachable"));
+    });
+
+    it("asks again once the server is added again in another window", async () => {
+        bridge.servers = [session()];
+        bridge.listServerProjects.mockResolvedValue({
+            success: true, data: { ok: false, problem: { kind: "no-token" } },
+        });
+        render(<ServersTab />);
+        await waitFor(() => expect(document.body.textContent)
+            .toContain("launcher.servers.problem.noToken"));
+
+        // Settings signs in again at the same address: same server, new session.
+        bridge.servers = [{ ...session(), signedInAt: 1 }];
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [project()] } });
+        fireEvent.focus(window);
+
+        await waitFor(() => expect(screen.getByText("Moonlit")).toBeTruthy());
+        expect(document.body.textContent).not.toContain("launcher.servers.problem.noToken");
     });
 });
 
@@ -556,7 +609,7 @@ describe("what a server offers", () => {
         bridge.getServerProject.mockResolvedValue({
             success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
         });
-        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }],
+        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY, remoteOrigin: ORIGIN }],
             ["projects", "project-detail"]);
 
         const row = await find(`[data-server-project='${REPOSITORY}']`);
@@ -890,5 +943,89 @@ describe("getting rid of a project on the server", () => {
         const row = await find(`[data-server-project='${REPOSITORY}']`);
         expect(row.textContent).not.toContain("launcher.servers.forget");
         expect(row.querySelector("[data-project-action='more']")).toBeNull();
+    });
+});
+
+/**
+ * With `team.projectsPlacement = "projects"` the home list carries the projects, and this tab
+ * keeps what is about people: this account's own to-dos, the projects in use now, and the roster.
+ */
+describe("with the projects on the home list", () => {
+    function people(capabilities: string[] = ["todos", "clients"]) {
+        bridge.settings = { "team.projectsPlacement": "projects" };
+        bridge.teamState = "ready";
+        bridge.capabilities = capabilities;
+    }
+
+    it("has no project list of its own, and lands on the to-dos", async () => {
+        people();
+        bridge.listTodos.mockResolvedValue([]);
+        bridge.listClients.mockResolvedValue([]);
+        bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
+        open([project()], [], ["session"]);
+
+        const strip = await find("[data-servers-views] [role='tablist']");
+        await waitFor(() => expect([...strip.querySelectorAll("[data-servers-action]")]
+            .map(tab => tab.getAttribute("data-servers-action"))).toEqual(["todos", "active", "people"]));
+        expect(document.querySelector("[data-server-project]")).toBeNull();
+        await find("[data-server-todos='empty']");
+    });
+
+    it("lists only this account's open to-dos, the one in progress first", async () => {
+        people();
+        bridge.listTodos.mockResolvedValue([
+            { id: "t-1", title: "Write chapter 2", status: "open", owner: "bo", assignee: "ada", project: REPOSITORY, createdAt: 0, updatedAt: 1 },
+            { id: "t-2", title: "Fix the ending", status: "doing", owner: "ada", project: REPOSITORY, createdAt: 0, updatedAt: 2 },
+            { id: "t-3", title: "Done already", status: "done", owner: "ada", assignee: "ada", createdAt: 0, updatedAt: 3 },
+            { id: "t-4", title: "Somebody else's", status: "open", owner: "ada", assignee: "bo", createdAt: 0, updatedAt: 4 },
+        ]);
+        open([project()]);
+
+        await find("[data-server-todos='list']");
+        expect([...document.querySelectorAll("[data-server-todo]")].map(row => row.getAttribute("data-server-todo")))
+            .toEqual(["t-2", "t-1"]);
+    });
+
+    it("opens the copy here when a to-do's project is on this machine", async () => {
+        people();
+        bridge.listTodos.mockResolvedValue([
+            { id: "t-1", title: "Write chapter 2", status: "open", owner: "ada", project: REPOSITORY, createdAt: 0, updatedAt: 1 },
+        ]);
+        open([project()], [{ repositoryId: REPOSITORY, path: "/work/moonlit", name: "Moonlit", remoteOrigin: ORIGIN } as VcsLocalRepository]);
+
+        fireEvent.click(await find("[data-server-todo='t-1']"));
+        await waitFor(() => expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "/work/moonlit" }, true));
+    });
+
+    it("asks before cloning a project that is not here yet", async () => {
+        people();
+        bridge.listTodos.mockResolvedValue([
+            { id: "t-1", title: "Write chapter 2", status: "open", owner: "ada", project: REPOSITORY, createdAt: 0, updatedAt: 1 },
+        ]);
+        open([project({ history: { revisions: 3, lastAt: Date.now() } })]);
+
+        fireEvent.click(await find("[data-server-todo='t-1']"));
+        await screen.findByText("launcher.projects.team.clone.title");
+        expect(bridge.launchProjectWizard).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByText("launcher.projects.team.clone.confirm"));
+        await waitFor(() => expect(bridge.launchProjectWizard).toHaveBeenCalled());
+    });
+
+    it("lists the projects somebody has open first, then recent versions, and drops the stale", async () => {
+        people(["clients"]);
+        const now = Date.now();
+        bridge.listClients.mockResolvedValue([
+            { id: "c-1", account: "bo", project: "b".repeat(32), connectedAt: now },
+        ]);
+        open([
+            project({ id: "a".repeat(32), name: "Recent", history: { revisions: 1, lastAt: now - 1000 } }),
+            project({ id: "b".repeat(32), name: "Open now", history: { revisions: 1, lastAt: now - 30 * 86_400_000 } }),
+            project({ id: "c".repeat(32), name: "Stale", history: { revisions: 1, lastAt: now - 30 * 86_400_000 } }),
+        ]);
+
+        // Without `todos` there is no to-do view, so this is where the tab lands.
+        await waitFor(() => expect([...document.querySelectorAll("[data-server-active-project]")]
+            .map(row => row.getAttribute("data-server-active-project"))).toEqual(["b".repeat(32), "a".repeat(32)]));
+        expect(document.querySelector("[data-servers-action='todos']")).toBeNull();
     });
 });

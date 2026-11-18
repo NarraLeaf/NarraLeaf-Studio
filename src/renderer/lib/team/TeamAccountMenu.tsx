@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import { cn } from "@/lib/utils/cn";
-import { useServers } from "@/lib/vcs/servers";
+import { serverDisplayName, useServers } from "@/lib/vcs/servers";
+import type { GlobalStateType } from "@shared/types/state/globalState";
 import type { TeamAccountProfile } from "@shared/types/team";
 import type { VcsServerSession } from "@shared/types/vcs";
 
@@ -181,11 +185,83 @@ export function TeamAccountMenuRow({ act, icon, onClick, children }: {
     );
 }
 
-/** The server this installation signed in to most recently, for a window on no Team project. */
-export function latestSignIn(servers: readonly VcsServerSession[]): string | null {
+/** One signed-in account per row, the one the face shows ticked. Picking a row shows that one. */
+export function TeamAccountMenuAccounts({ servers, active, onChoose }: {
+    servers: readonly VcsServerSession[];
+    active: string | null;
+    onChoose: (remoteOrigin: string) => void;
+}) {
+    return (
+        <div data-team-accounts className="mt-3 flex flex-col gap-0.5 border-t border-edge pt-2">
+            {servers.map((server) => {
+                const username = server.account.username;
+                const chosen = server.remoteOrigin === active;
+                return (
+                    <button
+                        key={server.remoteOrigin}
+                        type="button"
+                        data-team-account-choice={server.remoteOrigin}
+                        aria-pressed={chosen}
+                        onClick={() => onChoose(server.remoteOrigin)}
+                        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left transition-colors cursor-default hover:bg-fill"
+                    >
+                        <TeamAvatar remoteOrigin={server.remoteOrigin} name={username} className="h-5 w-5" />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm text-fg">{server.account.displayName ?? username}</span>
+                            <span className="truncate text-2xs text-fg-subtle">{serverDisplayName(server)}</span>
+                        </span>
+                        <Check className={cn("h-4 w-4 shrink-0 text-primary", !chosen && "invisible")} />
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+type ActiveAccount = GlobalStateType["team.activeAccount"];
+
+function readActiveAccount(stored: unknown): ActiveAccount {
+    if (typeof stored !== "object" || stored === null) return null;
+    const { remoteOrigin, chosenAt } = stored as { remoteOrigin?: unknown; chosenAt?: unknown };
+    return typeof remoteOrigin === "string" && typeof chosenAt === "number" ? { remoteOrigin, chosenAt } : null;
+}
+
+/**
+ * Which account a window on no Team project shows: the one last picked in the account menu, unless
+ * a server has been signed in to since, in which case that one - an account just added is the one
+ * the author expects to see. Falls back to the latest sign-in when the pick names a server that is
+ * no longer held.
+ */
+export function activeSignIn(servers: readonly VcsServerSession[], chosen: ActiveAccount): string | null {
+    const latest = latestSignInSession(servers);
+    if (chosen !== null) {
+        const held = servers.find((server) => server.remoteOrigin === chosen.remoteOrigin);
+        if (held !== undefined && (latest === null || latest.signedInAt <= chosen.chosenAt)) return held.remoteOrigin;
+    }
+    return latest?.remoteOrigin ?? null;
+}
+
+/** The account a window on no Team project shows, and the way to show another. */
+export function useActiveSignIn(servers: readonly VcsServerSession[]): {
+    active: string | null;
+    choose: (remoteOrigin: string) => void;
+} {
+    const chosen = useGlobalSetting("team.activeAccount", readActiveAccount);
+    const choose = useCallback((remoteOrigin: string) => {
+        void getInterface().app.state.setGlobalState("team.activeAccount", { remoteOrigin, chosenAt: Date.now() });
+    }, []);
+    return { active: activeSignIn(servers, chosen), choose };
+}
+
+function latestSignInSession(servers: readonly VcsServerSession[]): VcsServerSession | null {
     let latest: VcsServerSession | null = null;
     for (const server of servers) {
         if (latest === null || server.signedInAt > latest.signedInAt) latest = server;
     }
-    return latest?.remoteOrigin ?? null;
+    return latest;
+}
+
+/** The server this installation signed in to most recently, for a window on no Team project. */
+export function latestSignIn(servers: readonly VcsServerSession[]): string | null {
+    return latestSignInSession(servers)?.remoteOrigin ?? null;
 }

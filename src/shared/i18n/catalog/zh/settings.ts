@@ -381,6 +381,14 @@ export const settings = {
             label: "本机名称",
             description: "会与账号一同显示给协作者。为空时使用主机名",
         },
+        teamProjectsPlacement: {
+            label: "团队项目显示位置",
+            description: "Team 服务器上的项目在启动器中的显示位置",
+            options: {
+                projects: "显示在项目列表",
+                team: "显示在 Team 页面",
+            },
+        },
         agentAccess: {
             label: "MCP 端点",
         },
@@ -451,11 +459,17 @@ export const settings = {
         unused: "尚无项目使用此登录",
         // 有使用该服务器的项目打开时不允许退出登录：服务器设置只在项目之外修改。
         signOutBlocked: "请先关闭使用此服务器的项目：{projects}",
+        signOutConfirm: "确认退出",
+        signOutWarning: "退出后，{projects} 将无法与该服务器同步，需重新登录",
+        signOutWarningUnused: "退出后需重新登录才能访问该服务器",
+        signOutFailed: "退出登录失败，请重试",
         signIn: "登录",
         signingIn: "正在登录…",
         addressLabel: "服务器地址",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
         reached: "{address} 上的服务器是 {name}",
+        changeAddress: "更改地址",
+        replaces: "本机已在该服务器以 {name} 的身份登录，继续登录将替换该账号",
         tokenLabel: "访问令牌",
         tokenPlaceholder: "粘贴访问令牌",
         hint: "访问令牌由服务器管理员签发",
@@ -474,7 +488,7 @@ export const settings = {
             mismatch: "该地址不是本次登录的回调地址",
             gone: "本次登录已结束，请重新登录",
         },
-        browserLead: "将在浏览器中打开 {name} 的登录页。登录并允许后，会自动回到这里。",
+        browserLead: "将在浏览器中打开 {name} 的登录页，登录并授权后会自动返回此处",
         browserSignIn: "在浏览器中登录",
         browserWaiting: "请在浏览器中完成登录…",
         browserProblems: {
@@ -488,6 +502,7 @@ export const settings = {
         signInUnavailable: "本机无法使用密码登录",
         noAccount: "{name} 不签发账号，无法添加。请向其管理员索取账号",
         joined: {
+            title: "已添加服务器",
             signedInAs: "已以 {name} 的身份登录",
             projects: {
                 other: "{count} 个项目",

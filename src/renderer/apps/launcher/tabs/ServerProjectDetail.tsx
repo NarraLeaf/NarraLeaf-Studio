@@ -73,7 +73,11 @@ export interface ServerProjectDetailProps {
      * should not have to go back to the list to fetch it.
      */
     action: React.ReactNode;
-    onBack: () => void;
+    /**
+     * The way back to the list it was opened from, or nothing where it was not opened from
+     * one: drawn in a dialog over the home list, the dialog's own close is the way out.
+     */
+    onBack?: () => void;
     /**
      * Take this project off the server's list, or nothing where there is no such route.
      *
@@ -229,16 +233,18 @@ export function ServerProjectDetailView({
                 came from, not a screen of its own, and the way back out of it has to be
                 where it was left however far down the versions somebody has read. */}
             <div className="shrink-0">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onBack}
-                    data-project-action="back"
-                    className="-ml-2 mb-2"
-                >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    {t("launcher.servers.detail.back")}
-                </Button>
+                {onBack !== undefined && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onBack}
+                        data-project-action="back"
+                        className="-ml-2 mb-2"
+                    >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                        {t("launcher.servers.detail.back")}
+                    </Button>
+                )}
 
                 <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
