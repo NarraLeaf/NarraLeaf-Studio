@@ -30,8 +30,14 @@ name: Release
 # an older tag, or a copy that failed for some other reason, run "Mirror to GitCode" by hand once
 # whatever stopped it is fixed.
 #
-# Nothing here is code-signed, so every installer is unsigned and the OS will
-# quarantine it on first launch — the same caveat as the nightly builds.
+# Signing: the Windows installer is unsigned. The macOS app is signed with the project's own
+# self-signed certificate ("NarraLeaf Studio Self-Signed", repository secrets MAC_SIGNING_P12 and
+# MAC_SIGNING_P12_PASSWORD) - not for Gatekeeper, which still asks on first open because the
+# certificate is not Apple's, but because Squirrel.Mac only lets an installed Studio replace itself
+# with a bundle signed by the same certificate. That certificate must therefore sign every release
+# from now on: losing it, or replacing it, strands every installed Mac copy on its version until
+# someone downloads the next one by hand. A tag build without the secrets fails rather than
+# publishing an unsigned Mac app that could never update again; a dispatched dry run only warns.
 #
 # workflow_dispatch is offered for a dry run: dispatched from a branch there is
 # no tag, so the `release` job is skipped and only the installers are produced
@@ -107,10 +113,63 @@ jobs:
         env:
           npm_config_arch: ${{ matrix.electron_arch }}
 
+      # The certificate goes into a keychain of its own that exists for this job
+      # only, unlocked and usable by codesign without a prompt. electron-builder is
+      # not handed the .p12 (CSC_LINK) because it would import it into a keychain
+      # it then cannot trust: a self-signed leaf is only a *valid* code-signing
+      # identity once its certificate is trusted for code signing, and
+      # `security find-identity -v` - the list electron-builder and codesign pick
+      # from - leaves it out until then. The admin trust domain is the one a
+      # runner can write without a dialog (passwordless sudo); `-k` must name the
+      # keychain or macOS accepts the call and records nothing.
+      - name: Import the macOS signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MAC_SIGNING_P12: ${{ secrets.MAC_SIGNING_P12 }}
+          MAC_SIGNING_P12_PASSWORD: ${{ secrets.MAC_SIGNING_P12_PASSWORD }}
+          IDENTITY: NarraLeaf Studio Self-Signed
+        run: |
+          set -euo pipefail
+          if [ -z "${MAC_SIGNING_P12}" ]; then
+            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+              echo "::error::MAC_SIGNING_P12 is not set. A release must be signed with the project certificate, or installed Macs can never update to it."
+              exit 1
+            fi
+            echo "::warning::MAC_SIGNING_P12 is not set; this dry run packages an unsigned Mac app that cannot update itself."
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP}/nls-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          p12="${RUNNER_TEMP}/nls-signing.p12"
+          pem="${RUNNER_TEMP}/nls-signing.pem"
+          printf '%s' "${MAC_SIGNING_P12}" | base64 --decode > "${p12}"
+          security create-keychain -p "${keychain_password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${keychain_password}" "${keychain}"
+          security import "${p12}" -k "${keychain}" -P "${MAC_SIGNING_P12_PASSWORD}" -f pkcs12 -T /usr/bin/codesign
+          rm -f "${p12}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychain_password}" "${keychain}" > /dev/null
+          # Put it first in the search list, keeping the runner's own keychains after it.
+          # (The runner's keychain paths have no spaces, so word splitting is safe here.)
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "${keychain}" $(security list-keychains -d user | tr -d '"')
+          security find-certificate -c "${IDENTITY}" -p "${keychain}" > "${pem}"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "${pem}"
+          rm -f "${pem}"
+          if ! security find-identity -v -p codesigning "${keychain}" | grep -q "\"${IDENTITY}\""; then
+            security find-identity -p codesigning "${keychain}"
+            echo "::error::The certificate was imported but is not a valid code-signing identity."
+            exit 1
+          fi
+          echo "NLS_MAC_IDENTITY=${IDENTITY}" >> "${GITHUB_ENV}"
+
       # --publish never: the separate `release` job attaches the installers, so
       # electron-builder must not try to reach a release itself.
       # CSC_IDENTITY_AUTO_DISCOVERY=false stops it hunting for a signing identity
-      # the runner does not have.
+      # of its own; the Mac identity, when the step above imported one, is named
+      # explicitly instead (electron-builder.yml leaves `mac.identity` null so a
+      # local pack stays unsigned).
       #
       # NLS_REQUIRE_FFMPEG turns prepare-ffmpeg.js's skips into failures. Every
       # one of them is the right answer on a developer's machine and the wrong
@@ -119,10 +178,32 @@ jobs:
       # line in a green log. It matters most on macOS, where the binary is
       # compiled from source on the runner rather than downloaded.
       - name: Package
-        run: yarn pack-electron ${{ matrix.args }} --publish never
+        shell: bash
+        run: |
+          sign=()
+          if [ -n "${NLS_MAC_IDENTITY:-}" ]; then
+            sign=("-c.mac.identity=${NLS_MAC_IDENTITY}")
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          yarn pack-electron ${{ matrix.args }} --publish never "${sign[@]}"
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           NLS_REQUIRE_FFMPEG: "1"
+
+      # What makes the next update installable: Squirrel.Mac compares the new
+      # bundle against this designated requirement, so it has to name the
+      # certificate, not a cdhash (an ad-hoc signature, which nothing else can
+      # ever match). Checked on the .app the zip was made from.
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS' && env.NLS_MAC_IDENTITY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find build -maxdepth 2 -name '*.app' -type d | head -n 1)"
+          codesign --verify --deep --strict --verbose=2 "${app}"
+          requirement="$(codesign -d -r- "${app}" 2>&1)"
+          echo "${requirement}"
+          grep -Eq 'certificate (root|leaf)' <<< "${requirement}"
 
       # The other half of the gate above. Staging into resources/ and getting
       # into the installer are two different steps, and the second one —

@@ -218,22 +218,39 @@ extraResources:
   - from: ./dist/THIRD-PARTY-NOTICES.txt
     to: THIRD-PARTY-NOTICES.txt
 mac:
-  target: dmg
+  # The zip is what the updater downloads on macOS: electron-updater's mac
+  # channel (`latest-mac.yml`) lists it, and Squirrel.Mac swaps the .app inside
+  # it in once Studio quits. The dmg stays the download-page installer.
+  target:
+    - dmg
+    - zip
   icon: resources/studio-icon/narra.icns
-  # Studio is never code-signed, on any host. Left unset, `identity` makes
+  # Unsigned by default, on every host. Left unset, `identity` makes
   # electron-builder search the login keychain and sign with whatever Apple
   # certificate it finds there — on a maintainer's own Mac that is their
   # personal "Apple Development" identity, which is neither a distribution
-  # certificate nor a choice anyone made for this build. It also fails: the
-  # embedded preview runner is a second Electron.app under Resources, and
-  # codesign rejects its framework ("unsealed contents present in the root
-  # directory of an embedded framework") because it was never laid out to be
-  # re-signed as a nested bundle.
+  # certificate nor a choice anyone made for this build.
   #
-  # CSC_IDENTITY_AUTO_DISCOVERY=false in .github/workflows/release.yml said this
-  # for CI only, where no identity exists anyway. Here it holds for everyone,
-  # including a plain `yarn pack-electron --mac` on a machine that does have
-  # certificates.
+  # The release build is the one exception, and it opts in on the command line:
+  # .github/workflows/release.yml imports the project's self-signed certificate
+  # ("NarraLeaf Studio Self-Signed", a repository secret) and passes
+  # `-c.mac.identity=` with its name. That signature is what lets an installed
+  # Studio update itself - Squirrel.Mac only accepts a new bundle that satisfies
+  # the running one's designated requirement, which for this certificate is
+  # `identifier "com.narraleaf.studio" and certificate root = H"…"`. The same
+  # certificate therefore has to sign every release from now on; a new one (or
+  # a later switch to an Apple Developer ID) breaks self-update once, for
+  # everyone, exactly like the move from ad hoc to signed did. It is not an
+  # Apple certificate, so Gatekeeper still asks on first open - the signature
+  # buys updates, not trust.
+  #
+  # A plain `yarn pack-electron --mac` stays unsigned and reports itself as such
+  # in Settings (src/main/app/application/managers/updateMacSupport.ts).
+  #
+  # Hardened runtime is off: it exists for notarization, which a self-signed
+  # build cannot have, and with it on Electron, the preview runner and the
+  # native modules would each need entitlements to keep working.
+  hardenedRuntime: false
   #
   # `notarize: false` is the other half of the pair. Notarization is configured
   # entirely through environment variables, so a maintainer with APPLE_ID
@@ -245,7 +262,8 @@ mac:
   #
   # The ad-hoc signature an arm64 binary needs in order to launch at all is a
   # different thing and stays: electronFuses.resetAdHocDarwinSignature above
-  # re-applies it after the fuses are flipped, with no identity involved.
+  # re-applies it after the fuses are flipped, and a signing identity, when
+  # given, replaces it afterwards.
   identity: null
   notarize: false
   # macOS means Apple Silicon here. Studio is not shipped for Intel Macs at all
