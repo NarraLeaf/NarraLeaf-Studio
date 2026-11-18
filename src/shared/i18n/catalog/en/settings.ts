@@ -422,6 +422,14 @@ export const settings = {
             label: "This machine's name",
             description: "Shown to collaborators beside your account. Leave empty to use the host name.",
         },
+        teamProjectsPlacement: {
+            label: "Team projects",
+            description: "Where the launcher lists the projects on your Team server",
+            options: {
+                projects: "In the project list",
+                team: "On the Team page",
+            },
+        },
         settingsTransfer: {
             label: "Move settings between machines",
         },
@@ -491,16 +499,22 @@ export const settings = {
         unused: "No project uses this sign-in.",
         // Not while a project that uses this server is open: server settings change between projects.
         signOutBlocked: "Close the projects that use this server first: {projects}",
+        signOutConfirm: "Sign out",
+        signOutWarning: "{projects} will stop syncing with this server until you sign in again.",
+        signOutWarningUnused: "You will have to sign in again to use this server.",
+        signOutFailed: "Could not sign out. Try again.",
         signIn: "Sign in",
         signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
-        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        addressPlaceholder: "nlteam://studio.example.lan:54080",
         // What the address turned out to be, on the step that asks who you are there. It
         // names the server rather than narrating the request that found it: the reader is
         // deciding whether this is the one they meant, not reading a log of the attempt.
         reached: "The server at {address} is {name}.",
+        changeAddress: "Change address",
+        replaces: "This computer is already signed in here as {name}. Signing in replaces that account.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
@@ -554,6 +568,7 @@ export const settings = {
         // The closing step. Facts about what was joined and nothing else: no
         // congratulation, and no count for a server that would not give one.
         joined: {
+            title: "Server added",
             signedInAs: "Signed in as {name}",
             projects: {
                 one: "{count} project",

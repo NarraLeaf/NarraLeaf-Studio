@@ -28,7 +28,7 @@ export type ServerPasswordResult =
     | { ok: false; reason: VcsPasswordSignInReason };
 
 export interface ServerPasswordRequest {
-    /** The endpoint the discovery document named, e.g. `https://team.example.lan:41402`. */
+    /** The endpoint the discovery document named, e.g. `https://team.example.lan:54080`. */
     authUrl: string;
     username: string;
     password: string;

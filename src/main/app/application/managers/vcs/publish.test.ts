@@ -109,7 +109,7 @@ const REPOSITORY = "019fda5ba4fe799096aaab7585aa4722";
 
 /** A server this installation is signed in to, as the global state holds one. */
 const SESSION = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     remoteOrigin: ORIGIN,
     account: { userId: "u1", displayName: "Ada", username: "ada", email: "", identity: "ada" },
     signedInAt: 0,

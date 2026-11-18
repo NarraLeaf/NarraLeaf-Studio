@@ -13,10 +13,10 @@
  *   src/main/app/application/managers/vcs/merge.integration.test.ts
  *
  * # A NarraLeaf Team server needs a token as well, minted by its sign-in endpoint.
- * LORE_TEST_TOKEN=$(curl -sk -X POST "https://127.0.0.1:41402/api/studio/v1/sign-in" \
+ * LORE_TEST_TOKEN=$(curl -sk -X POST "https://127.0.0.1:54080/api/studio/v1/sign-in" \
  *   -H "Content-Type: application/json" -d '{"username":"alice","password":"..."}' \
  *   | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).token")
- * LORE_TEST_AUTH="https://127.0.0.1:41402" LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
+ * LORE_TEST_AUTH="https://127.0.0.1:54080" LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   npx vitest run src/main/app/application/managers/vcs/
  * ```
  *

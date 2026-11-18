@@ -7,12 +7,15 @@ import {
     Button,
     EmptyState,
     IconButton,
-    Modal,
     TabStrip,
-    dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import { listProjects } from "@/lib/team";
+import { listProjects, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
+import {
+    TEAM_PROJECTS_PLACEMENT_KEY,
+    resolveTeamProjectsPlacement,
+} from "@/lib/settings/teamProjectsPlacement";
 import { cn } from "@/lib/utils/cn";
 import {
     ServerRow,
@@ -25,20 +28,30 @@ import {
 } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
-import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
+import { serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
-    VcsServerProjectsProblem,
     VcsServerSession,
 } from "@shared/types/vcs";
 import { createProjectFromWizard } from "../projectActions";
 import { localCopyOf } from "./localCopy";
 import { ServerPeople } from "./ServerPeople";
 import { ServerProjectDetailView } from "./ServerProjectDetail";
-import { revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
+import { ServerActiveProjects, ServerTodos } from "./ServerOverview";
 import { ServerProblemState } from "./ServerProblemState";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
+import {
+    CloneProjectDialog,
+    ProjectAction,
+    isEmptyOnServer,
+    lastVersionLine,
+    openProjectPath,
+    useLocalRepositories,
+    useNewTeamProject,
+} from "./teamProjectShared";
+
+export { isEmptyOnServer };
 
 /**
  * What exists on the servers this installation is signed in to.
@@ -81,8 +94,12 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
  * deployment that offers less has fewer sections rather than more errors.
  */
 
-/** The two views of one server. Projects is where a reader lands and where a project opens. */
-type ServersView = "projects" | "people";
+/**
+ * The views of one server. Projects is where a reader lands and where a project opens - unless
+ * the home list carries the projects (`team.projectsPlacement`), in which case this tab is about
+ * the server's people: this account's to-dos, the projects in use now, and the roster.
+ */
+type ServersView = "projects" | "people" | "todos" | "active";
 
 /**
  * Take a project off a server's list.
@@ -105,37 +122,25 @@ export interface ServersTabProps {
      */
     deepLink?: { link: TeamDeepLink; at: number } | null;
     onForget?: ForgetServerProject;
+    /** When the add-server dialog was last asked for from outside this tab, or null. */
+    addRequest?: number | null;
 }
 
-/**
- * A project the server has read and found nothing inside.
- *
- * **Zero is a fact and absent is not**, which is the whole of the test. A server that has
- * not read a repository leaves the count out - the ordinary state for a project registered
- * a moment ago - and reading that as "empty" would refuse to fetch a project that is
- * perfectly full. Only a count that is there and is zero says nobody has sent anything.
- *
- * What it decides is whether there is anything to fetch. A clone of a repository with no
- * revisions succeeds, writes a `.lore` directory and nothing else, and leaves the folder
- * the author picked holding something that is not a project and cannot be cloned into
- * again - so the answer is to say what is there rather than to offer the copy.
- */
-export function isEmptyOnServer(project: VcsServerProject): boolean {
-    return project.history?.revisions === 0;
-}
-
-export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
+export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps = {}) {
     const { t } = useTranslation();
     const { servers, loading, reload } = useServers();
     const [chosen, setChosen] = useState<string | null>(null);
     const [projects, setProjects] = useState<VcsServerProject[] | null>(null);
     const [problem, setProblem] = useState<TranslationKey | null>(null);
     const [reading, setReading] = useState(false);
-    const [repositories, setRepositories] = useState<VcsLocalRepository[]>([]);
-    /** Whether the wizard for a new project on this server is up. */
-    const [creating, setCreating] = useState(false);
-    /** A project made here that the server did not take, and what it was refused with. */
-    const [unsent, setUnsent] = useState<UnsentProject | null>(null);
+    const { repositories, readLocal } = useLocalRepositories();
+    /** Making a project for this server, and the dialog for one it would not take. */
+    const { creating, newProject: makeProject, dialog: unsentDialog } = useNewTeamProject();
+    /** Where the launcher lists team projects; "projects" leaves this tab the people views. */
+    const placement = useGlobalSetting(TEAM_PROJECTS_PLACEMENT_KEY, resolveTeamProjectsPlacement);
+    const peopleMode = placement === "projects";
+    /** A project picked from the to-dos or the active list that has no copy here yet. */
+    const [cloning, setCloning] = useState<VcsServerProject | null>(null);
     /** Which project is open, by id. The body shows the list or one project, never both. */
     const [opened, setOpened] = useState<string | null>(null);
     /**
@@ -157,22 +162,18 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
     // in flight, and the one that started first must not be the one that lands last.
     const latest = useRef(0);
 
-    /** What this machine already holds, by repository id. Two file reads per project. */
-    const readLocal = useCallback(async () => {
-        const result = await getInterface().vcs.listLocalRepositories().catch(() => null);
-        setRepositories(result?.success ? result.data.repositories : []);
-    }, []);
-
-    useEffect(() => {
-        void readLocal();
-    }, [readLocal]);
-
     useEffect(() => {
         // One server is not a choice, so it is not presented as one - the same reading the
         // wizard's picker takes. With several, none is opened until one is asked for: which
         // server to reach is the author's decision, not a default.
         setChosen(current => current ?? (servers.length === 1 ? servers[0]?.remoteOrigin ?? null : null));
     }, [servers]);
+
+    // When the chosen server's session was signed in. Adding a server again at the same
+    // address replaces its session without changing which server is chosen, and the read
+    // below has to run again for it: what it answered before was the old session's answer,
+    // such as a token this installation no longer has.
+    const signedInAt = servers.find(entry => entry.remoteOrigin === chosen)?.signedInAt;
 
     useEffect(() => {
         if (chosen === null) return;
@@ -184,7 +185,7 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
         // A project open on the server being left does not stay open on the one arriving,
         // and a reader who was in the roster arrives in the list.
         setOpened(null);
-        setView("projects");
+        setView(peopleMode ? "todos" : "projects");
 
         void (async () => {
             const bridge = getInterface();
@@ -206,7 +207,9 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
             }
             setProjects(result.value.projects);
         })();
-    }, [chosen, reload]);
+    // `peopleMode` is read for the view to land on and is not a reason to read again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chosen, signedInAt, reload]);
 
     const session = useMemo(
         () => servers.find(entry => entry.remoteOrigin === chosen) ?? null,
@@ -225,9 +228,22 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
     const canDetail = serverCan(session, "session");
     const canHistory = serverCan(session, "project-history");
     const canMembers = serverCan(session, "session");
-    // A server with no roster has one view, and one tab is not a choice. The strip is then
-    // not drawn at all, so the view cannot be anything but the projects.
-    const current: ServersView = canMembers ? view : "projects";
+    const connection = useTeamConnection(session?.remoteOrigin ?? null);
+    const canTodos = useTeamCapability(connection, "todos");
+    const canClients = useTeamCapability(connection, "clients");
+    /** The views this server has, in the order their tabs are drawn. */
+    const views: ServersView[] = peopleMode
+        ? [...(canTodos ? ["todos" as const] : []), "active", ...(canMembers ? ["people" as const] : [])]
+        : ["projects", ...(canMembers ? ["people" as const] : [])];
+    // A view the server does not have (or one from the other placement) lands on the first it
+    // does. With one view there is no strip, so it cannot be anything else.
+    const current: ServersView = views.includes(view) ? view : views[0] ?? "projects";
+
+    // Switching placement while this tab is up moves it to that placement's first view.
+    useEffect(() => {
+        setView(peopleMode ? "todos" : "projects");
+        setOpened(null);
+    }, [peopleMode]);
 
     /** The project on screen, if the list still has the one that was opened. */
     const openedProject = useMemo(
@@ -264,6 +280,10 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [deepLink?.at, loading]);
 
+    useEffect(() => {
+        if (addRequest != null) setAdding(true);
+    }, [addRequest]);
+
     /** A server was added, so this tab has one more to show and may need to choose it. */
     const serverAdded = useCallback((session: VcsServerSession) => {
         void reload();
@@ -281,75 +301,26 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
         await readLocal();
     }, [readLocal]);
 
-    const openProject = useCallback((projectPath: string) => {
-        void getInterface().workspace.launch({ projectPath }, true);
-    }, []);
+    const openProject = openProjectPath;
 
-    /**
-     * Make a project for this server: write it on this disk, then send it there.
-     *
-     * **In that order, and the order is the fix.** This used to ask the server for a
-     * project first and then run the clone flow over what came back - which is a repository
-     * with no revisions in it, so the copy that landed was a `.lore` directory and nothing
-     * else, reported to the author as "this is not a NarraLeaf project" over a folder they
-     * could not clone into a second time. It also left the project it had registered on the
-     * server, empty, for somebody to clear up by hand.
-     *
-     * So the project is made here, by the wizard that makes every other project, and the
-     * server is what happens to it afterwards. Nothing is registered until there is
-     * something to register, and a wizard closed without finishing leaves the server exactly
-     * as it was.
-     *
-     * **A project that was written and not sent is still the author's project**, so a
-     * refusal here does not throw it away and does not pretend it did not happen: it is
-     * named, it is on disk, and it opens from the dialog that says so. Connecting it to a
-     * server is then the version rail's "Change server", which is the same act with the
-     * project in front of them.
-     */
-    const newProject = useCallback(async () => {
-        if (session === null) return;
-        setCreating(true);
-        setUnsent(null);
-        try {
-            const made = await getInterface().app.launchProjectWizard({
-                publishTo: { remoteOrigin: session.remoteOrigin, server: serverDisplayName(session) },
-            }).catch(() => null);
-            // Cancelled, or a wizard that never opened. Neither is an error to report: the
-            // author is looking at the list they started from.
-            if (!made?.success || !made.data?.created) return;
-
-            const { projectPath, projectName, appId } = made.data;
-            const name = (projectName ?? "").trim();
-            // **The app id, not the name.** A repository is addressed as
-            // `lore://host:port/<name>`, which has no room for a space, and a server refuses
-            // one that carries anything but letters, digits and separators - so a project
-            // called "My Game" would be refused and one called in Chinese would be refused
-            // twice over. The app id is lowercase letters, digits and hyphens, with dots only
-            // between the parts of a reverse-domain id, by construction - all of which a
-            // repository name may carry. It is required, and it is already what this project
-            // is called wherever a machine has to say it. The review page names it, so it is
-            // not a substitution made behind the author.
-            const repository = (appId ?? "").trim();
-            const sent = repository === "" ? null : await getInterface().vcs
-                .publishProject(projectPath, session.remoteOrigin, repository)
-                .catch(() => null);
-            if (sent !== null && sent.success && sent.data.ok) {
-                openProject(projectPath);
-                return;
-            }
-            setUnsent({
-                name,
-                path: projectPath,
-                // The server's coded refusal where there is one, and the backend's own
-                // sentence where the call threw - connecting and sending refuse that way,
-                // and what they say names the remedy.
-                problem: sent !== null && sent.success && !sent.data.ok ? sent.data.problem.kind : null,
-                detail: sent === null || sent.success ? "" : sent.error ?? "",
-            });
-        } finally {
-            setCreating(false);
+    /** A project picked from the to-dos or the active list: open the copy here, or ask to clone. */
+    const pickProject = useCallback((project: VcsServerProject) => {
+        const local = localCopyOf(project, repositories);
+        if (local !== null) {
+            openProject(local.path);
+            return;
         }
-    }, [session, openProject]);
+        // Nothing has been sent, so there is nothing to clone: its page says so.
+        if (isEmptyOnServer(project)) {
+            setOpened(project.id);
+            return;
+        }
+        setCloning(project);
+    }, [repositories, openProject]);
+
+    const newProject = useCallback(async () => {
+        if (session !== null) await makeProject(session);
+    }, [session, makeProject]);
 
     /**
      * Take one project off this server's list, and put the list back without it.
@@ -447,7 +418,7 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                     // that stands for that choice. With several the strip carries them and
                     // this must not be a second copy of one of them.
                     marked={servers.length === 1}
-                    action={current === "projects" && openedProject === null ? (
+                    action={current !== "people" && openedProject === null ? (
                         <Button
                             size="sm"
                             variant="primary"
@@ -471,34 +442,23 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                 className="mb-3 flex shrink-0 items-center gap-2 border-b border-edge"
                 data-servers-views
             >
-                {session !== null && canMembers ? (
+                {session !== null && views.length > 1 ? (
                     <TabStrip
                         size="sm"
                         className="min-w-0 flex-1 border-b-0"
                         activeId={current}
                         onChange={id => setView(id as ServersView)}
-                        tabs={[
-                            {
-                                id: "projects",
-                                // The attribute rides on the label rather than on the tab,
-                                // which is the shared component's own element: a script that
-                                // clicks it clicks the tab, because that is where the click
-                                // lands anyway.
-                                label: (
-                                    <span data-servers-action="projects">
-                                        {t("launcher.servers.tabs.projects")}
-                                    </span>
-                                ),
-                            },
-                            {
-                                id: "people",
-                                label: (
-                                    <span data-servers-action="people">
-                                        {t("launcher.servers.people.title")}
-                                    </span>
-                                ),
-                            },
-                        ]}
+                        // The attribute rides on the label rather than on the tab, which is
+                        // the shared component's own element: a script that clicks it clicks
+                        // the tab, because that is where the click lands anyway.
+                        tabs={views.map(id => ({
+                            id,
+                            label: (
+                                <span data-servers-action={id}>
+                                    {t(VIEW_LABELS[id])}
+                                </span>
+                            ),
+                        }))}
                     />
                 ) : (
                     <div className="min-h-7 flex-1" />
@@ -537,10 +497,28 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                                 <ServerPeople remoteOrigin={session.remoteOrigin} />
                             </div>
                         )}
+                        {peopleMode && current === "todos" && openedProject === null && (
+                            <ServerTodos
+                                session={session}
+                                projects={projects}
+                                repositories={repositories}
+                                onPick={pickProject}
+                            />
+                        )}
+                        {peopleMode && current === "active" && openedProject === null && (
+                            <ServerActiveProjects
+                                session={session}
+                                projects={projects}
+                                reading={reading}
+                                repositories={repositories}
+                                canSeeClients={canClients}
+                                onPick={pickProject}
+                            />
+                        )}
                         {openedProject !== null && (
                             <div className={cn(
                                 "flex min-h-0 flex-1 flex-col",
-                                current !== "projects" && "hidden",
+                                current === "people" && "hidden",
                             )}>
                                 <ServerProjectDetailView
                                     remoteOrigin={session.remoteOrigin}
@@ -564,29 +542,34 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
                                 />
                             </div>
                         )}
-                        <div className={cn(
-                            "flex min-h-0 flex-1 flex-col",
-                            (current !== "projects" || openedProject !== null) && "hidden",
-                        )}>
-                            <ProjectList
-                                projects={projects}
-                                problem={problem}
-                                reading={reading}
-                                repositories={repositories}
-                                account={session.account}
-                                onSelect={setOpened}
-                            />
-                        </div>
+                        {/* The catalogue lives on the home list under the default placement. */}
+                        {!peopleMode && (
+                            <div className={cn(
+                                "flex min-h-0 flex-1 flex-col",
+                                (current !== "projects" || openedProject !== null) && "hidden",
+                            )}>
+                                <ProjectList
+                                    projects={projects}
+                                    problem={problem}
+                                    reading={reading}
+                                    repositories={repositories}
+                                    account={session.account}
+                                    onSelect={setOpened}
+                                />
+                            </div>
+                        )}
                     </>
                 )}
             </div>
 
-            {unsent !== null && session !== null && (
-                <UnsentProjectDialog
-                    project={unsent}
+            {unsentDialog}
+
+            {cloning !== null && session !== null && (
+                <CloneProjectDialog
+                    project={cloning}
                     server={serverDisplayName(session)}
-                    onOpen={() => openProject(unsent.path)}
-                    onClose={() => setUnsent(null)}
+                    onClone={remote => void getProject(remote)}
+                    onClose={() => setCloning(null)}
                 />
             )}
         </div>
@@ -603,6 +586,13 @@ export function ServersTab({ onForget, deepLink }: ServersTabProps = {}) {
  * So the order the row reads in is kept - the name, then the address, then whose account this
  * is - and the identity comes from the same two functions, but the element is text.
  */
+const VIEW_LABELS: Record<ServersView, TranslationKey> = {
+    projects: "launcher.servers.tabs.projects",
+    people: "launcher.servers.people.title",
+    todos: "launcher.servers.tabs.todos",
+    active: "launcher.servers.tabs.active",
+};
+
 function ServerHeading({
     session,
     marked,
@@ -765,166 +755,5 @@ function ProjectRow({
             </span>
             <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-subtle" />
         </button>
-    );
-}
-
-/**
- * Open the copy that is here, or fetch one.
- *
- * **One control, two words.** Either this machine already has the project, in which case
- * there is a folder to open, or it does not, in which case there is a copy to fetch; it is
- * the same act at the same level either way, and it was drawn at two different weights -
- * filled for Open, ghost for Get - which made the answer to "is this already here" a
- * difference in how loud a button is. It is now one button with one appearance, and the
- * only thing that changes is what it says.
- *
- * It is the primary control of the page it sits on, and the only one: the heading above
- * gives up its own while a project is open.
- */
-function ProjectAction({
-    project,
-    local,
-    onOpen,
-    onGet,
-}: {
-    project: VcsServerProject;
-    local: VcsLocalRepository | null;
-    onOpen: (projectPath: string) => void;
-    onGet: (remote: string) => void;
-}) {
-    const { t } = useTranslation();
-
-    // Nothing has been sent to this project, so there is nothing to fetch. Drawn as no
-    // control rather than as a refused one: the page below says what is there, and a
-    // button that reports "this is not a NarraLeaf project" over a folder it has just
-    // filled is the failure this replaced. A copy already on this machine still opens.
-    if (local === null && isEmptyOnServer(project)) {
-        return null;
-    }
-
-    return (
-        <Button
-            size="sm"
-            variant="primary"
-            className="shrink-0"
-            onClick={() => (local !== null ? onOpen(local.path) : onGet(project.remote))}
-            data-project-action={local !== null ? "open" : "get"}
-            data-tip={local?.path}
-        >
-            {t(local !== null ? "launcher.servers.open" : "launcher.servers.get")}
-        </Button>
-    );
-}
-
-/**
- * When the last version was recorded and by whom, or nothing at all.
- *
- * **A server that has not read the repository sends `history: {}`** - an object with no
- * facts in it - and one older than the claim sends nothing; both mean the same thing, and
- * neither means a project with no versions. So the line is written from what is there:
- * absent means silence, never "0 versions", never "never", and never a date in 1970. The
- * time is what the line is about, so a server that named an author and no time still gets
- * silence rather than half a sentence.
- */
-function lastVersionLine(
-    project: VcsServerProject,
-    account: VcsServerSession["account"],
-    t: ReturnType<typeof useTranslation>["t"],
-    formatDate: ReturnType<typeof useTranslation>["formatDate"],
-): string | null {
-    const at = project.history?.lastAt;
-    if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return null;
-    const date = formatDate(at, { year: "numeric", month: "short", day: "numeric" });
-    // The rule the project's own page draws its author by: a version a sync merged before the
-    // author's name was put on such merges records an account id, which is this installation's own
-    // name when it is this account and nobody's otherwise.
-    const by = revisionAuthorLabel(project.history?.lastBy, account);
-    return by
-        ? t("launcher.servers.lastVersionBy", { date, name: by })
-        : t("launcher.servers.lastVersion", { date });
-}
-
-/**
- * A project that was written on this disk and that its server would not take.
- *
- * Held rather than dropped, because the two halves of the act came apart and only one of
- * them failed: the project exists, it is complete, and it is under version control. What
- * is missing is the connection to the server, which is a thing the workspace can do with
- * the project in front of the author.
- */
-interface UnsentProject {
-    /** What the project is called, as it was named in the wizard. */
-    name: string;
-    /** Where it was written. */
-    path: string;
-    /** The server's coded refusal, when the server gave one. */
-    problem: VcsServerProjectsProblem["kind"] | null;
-    /** The backend's own sentence, when connecting or sending threw one. */
-    detail: string;
-}
-
-/**
- * Say that a project was made and not sent, and offer the one thing left to do about it.
- *
- * **It opens the project.** Everything about the failure that the author can act on is in
- * the workspace: the version rail is where a project is pointed at a server, and it is the
- * same three steps this just tried, with the state visible. A dialog that only apologised
- * would leave a finished project on disk that nothing in Studio had a way back to.
- *
- * The reason is drawn where there is one to draw. A server that refused says so in the
- * reader's language through the shared table; a call that threw carries the backend's own
- * sentence, which names the remedy and is passed on the way the version rail passes it.
- */
-function UnsentProjectDialog({
-    project,
-    server,
-    onOpen,
-    onClose,
-}: {
-    project: UnsentProject;
-    server: string;
-    onOpen: () => void;
-    onClose: () => void;
-}) {
-    const { t } = useTranslation();
-    const reason = project.problem === null ? "" : t(SERVER_PROBLEM_KEYS[project.problem]);
-
-    return (
-        <Modal
-            isOpen
-            onClose={onClose}
-            title={t("launcher.servers.unsent.title")}
-            size="sm"
-            footer={(
-                <div className="flex items-center justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className={dialogFooterButtonClass({ variant: "secondary" })}
-                    >
-                        {t("launcher.servers.unsent.close")}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onOpen}
-                        data-servers-action="open-unsent"
-                        className={dialogFooterButtonClass({ variant: "primary" })}
-                    >
-                        {t("launcher.servers.unsent.open")}
-                    </button>
-                </div>
-            )}
-        >
-            <div className="space-y-2">
-                <p className="text-sm text-fg">
-                    {t("launcher.servers.unsent.message", { name: project.name, server })}
-                </p>
-                {reason !== "" && <p className="text-xs text-fg-muted">{reason}</p>}
-                {project.detail !== "" && (
-                    <p className="break-words text-xs text-fg-muted">{project.detail}</p>
-                )}
-                <p className="break-all text-2xs text-fg-subtle">{project.path}</p>
-            </div>
-        </Modal>
     );
 }

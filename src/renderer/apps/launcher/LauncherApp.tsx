@@ -34,8 +34,19 @@ export function LauncherApp() {
         return () => token.cancel();
     }, []);
 
+    // "Add account" in the sidebar's account menu: the Servers tab, with its add dialog open.
+    // A time rather than a flag, so asking twice opens it twice. Dropped on the next change of
+    // tab, or coming back to Servers later would open the dialog again.
+    const [addRequest, setAddRequest] = useState<number | null>(null);
+
     const selectTab = useCallback((key: LauncherTabKey) => {
         setActive(key);
+        setAddRequest(null);
+    }, []);
+
+    const addAccount = useCallback(() => {
+        setActive("servers");
+        setAddRequest(Date.now());
     }, []);
 
     const content = useMemo(() => {
@@ -43,7 +54,7 @@ export function LauncherApp() {
             case "projects":
                 return <ProjectsTab />;
             case "servers":
-                return <ServersTab onForget={forgetServerProject} deepLink={deepLink} />;
+                return <ServersTab onForget={forgetServerProject} deepLink={deepLink} addRequest={addRequest} />;
             case "plugins":
                 return <PluginsTab />;
             case "learning":
@@ -51,7 +62,7 @@ export function LauncherApp() {
             default:
                 return null;
         }
-    }, [active, deepLink]);
+    }, [active, deepLink, addRequest]);
 
     // Nothing until the window has said which it is. One frame of blank beats one frame of the
     // home screen being replaced, which is the flash first-run setup exists to not have.
@@ -67,7 +78,7 @@ export function LauncherApp() {
         <NavigationLayout
             title=""
             iconSrc=""
-            navigation={<Sidebar active={active} onChange={selectTab} />}
+            navigation={<Sidebar active={active} onChange={selectTab} onAddAccount={addAccount} />}
         >
             {content}
         </NavigationLayout>

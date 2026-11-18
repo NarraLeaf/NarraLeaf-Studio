@@ -84,7 +84,7 @@ const DESTINATION = process.platform === "win32" ? "D:\\games\\driftwood" : "/ga
 const WITH_SIGN_IN = { useSignIn: true };
 
 const SESSION = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     remoteOrigin: ORIGIN,
     account: { userId: "u1", displayName: "Ada", username: "ada", email: "", identity: "ada" },
     signedInAt: 0,

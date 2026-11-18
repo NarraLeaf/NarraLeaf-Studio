@@ -40,7 +40,7 @@ import {
 const DOCUMENT: VcsServerDiscovery = {
     protocol: 2,
     name: "team.example.lan",
-    auth: { required: true, url: "https://team.example.lan:41402" },
+    auth: { required: true, url: "https://team.example.lan:54080" },
     data: { url: "lore://team.example.lan:41337" },
     authority: { sha256: "3D:38:9F:E6" },
     version: "0.1.0",
@@ -168,8 +168,8 @@ describe("reading an address", () => {
     it("fills in the port a server listens on when the address leaves it out", () => {
         expect(parseServerAddress("nlteam://team.example.lan")).toMatchObject({
             host: "team.example.lan",
-            port: 41402,
-            address: "nlteam://team.example.lan:41402",
+            port: 54080,
+            address: "nlteam://team.example.lan:54080",
         });
         expect(parseServerAddress("nlteam://team.example.lan:8443")?.port).toBe(8443);
     });
@@ -177,14 +177,14 @@ describe("reading an address", () => {
     it("stores one server as one address, however it was typed", () => {
         // A non-special scheme keeps its case through the URL parser, so two authors typing
         // the same server would otherwise add two.
-        expect(parseServerAddress("NLTeam://Team.Example.LAN:41402")?.address)
-            .toBe("nlteam://team.example.lan:41402");
+        expect(parseServerAddress("NLTeam://Team.Example.LAN:54080")?.address)
+            .toBe("nlteam://team.example.lan:54080");
     });
 
     it("refuses everything that is not one of these addresses", () => {
         for (const address of [
             "team.example.lan",
-            "https://team.example.lan:41402",
+            "https://team.example.lan:54080",
             "lore://team.example.lan:41337",
             // Host and port and nothing else: the rest of this is a browser's address bar,
             // and connecting anyway would reach somewhere nobody named.
@@ -203,16 +203,16 @@ describe("reading an address", () => {
         // A session records the sign-in endpoint and never the address that was typed, so
         // asking that server anything again means putting the address back together. The
         // result has to be one `parseServerAddress` accepts, or nothing can be asked.
-        const address = serverAddressForAuthUrl("https://Team.Example.LAN:41402");
-        expect(address).toBe("nlteam://team.example.lan:41402");
+        const address = serverAddressForAuthUrl("https://Team.Example.LAN:54080");
+        expect(address).toBe("nlteam://team.example.lan:54080");
         expect(parseServerAddress(address!)).not.toBeNull();
     });
 
     it("fills in the port for a sign-in address that leaves it out, and refuses what is not one", () => {
         expect(serverAddressForAuthUrl("https://team.example.lan"))
-            .toBe("nlteam://team.example.lan:41402");
+            .toBe("nlteam://team.example.lan:54080");
         expect(serverAddressForAuthUrl("")).toBeNull();
-        expect(serverAddressForAuthUrl("team.example.lan:41402")).toBeNull();
+        expect(serverAddressForAuthUrl("team.example.lan:54080")).toBeNull();
     });
 });
 
@@ -459,7 +459,7 @@ describe("probing an address", () => {
     });
 
     it("refuses an address that is not one without opening anything", async () => {
-        const probe = await probeVcsServer("team.example.lan:41402", { userDataDir });
+        const probe = await probeVcsServer("team.example.lan:54080", { userDataDir });
         expect(probe.kind).toBe("not-a-server");
         if (probe.kind !== "not-a-server") return;
         expect(probe.detail).toContain("nlteam://");

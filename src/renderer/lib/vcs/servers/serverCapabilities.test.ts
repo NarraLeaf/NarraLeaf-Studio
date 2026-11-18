@@ -14,7 +14,7 @@ import { serverCan } from "./serverCapabilities";
 
 function session(capabilities?: string[]): VcsServerSession {
     return {
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         remoteOrigin: "lore://team.example.lan:41337",
         account: {
             userId: "u-1",

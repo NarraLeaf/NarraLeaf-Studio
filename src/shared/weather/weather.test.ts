@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { weatherFrameCountOf, weatherLoopSeconds, weatherLoopSecondsOf } from "./model";
 import {
     onWeatherParamGrid,
@@ -15,6 +15,12 @@ import {
 import { buildWeatherField, createWeatherRenderer, scaleWeatherParams } from "./field";
 import { petalSprite, PETAL_SPRITE_SIZE } from "./petalSprite";
 import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
+
+// Every seam case renders whole frames, up to two and a half seconds each on an idle machine. A loaded
+// one - a full-suite run, or another build beside it - doubles that past vitest's five-second default,
+// and the case fails as a timeout that reads exactly like a broken seam. Splitting cases per seed
+// (below) kept each one short; this keeps a slow machine from being reported as a wrong frame.
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * Small enough to render dozens of frames per test, large enough for the geometry to be real.

@@ -4,8 +4,8 @@ import { deepLinkInArgv, parseTeamDeepLink } from "./teamDeepLink";
 
 describe("a narraleaf:// link", () => {
     it("reads a connect link to an https server", () => {
-        expect(parseTeamDeepLink("narraleaf://team/connect?server=https://team.example:41402/anything"))
-            .toEqual({ kind: "connect", server: "https://team.example:41402" });
+        expect(parseTeamDeepLink("narraleaf://team/connect?server=https://team.example:54080/anything"))
+            .toEqual({ kind: "connect", server: "https://team.example:54080" });
     });
 
     it("reads an open link with its anchor", () => {

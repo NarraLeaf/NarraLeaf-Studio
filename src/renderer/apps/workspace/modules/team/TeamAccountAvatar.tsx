@@ -5,7 +5,7 @@ import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { useTranslation } from "@/lib/i18n";
 import { getProfile, listClients, useTeamCapability, useTeamConnection, useTeamTopics } from "@/lib/team";
 import { TeamAvatar } from "@/lib/team/TeamAvatar";
-import { latestSignIn, TeamAccountMenu, TeamAccountMenuActs, TeamAccountMenuRow } from "@/lib/team/TeamAccountMenu";
+import { TeamAccountMenu, TeamAccountMenuActs, TeamAccountMenuRow, useActiveSignIn } from "@/lib/team/TeamAccountMenu";
 import { useServers } from "@/lib/vcs/servers";
 import { teamProjectClientsTopic, type TeamAccountProfile } from "@shared/types/team";
 
@@ -40,7 +40,10 @@ export function TeamAccountAvatar() {
     const team = useTeamProjectSurface();
     const documents = useTeamDocuments();
     const { servers } = useServers();
-    const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin ?? latestSignIn(servers);
+    // Outside a team project, the account the launcher's menu shows - so a switch made there
+    // reads the same here.
+    const fallback = useActiveSignIn(servers).active;
+    const remoteOrigin = documents.target?.remoteOrigin ?? team.remoteOrigin ?? fallback;
     const inTeamProject = documents.view !== null && documents.target !== null;
     const visible = useGlobalSetting(TEAM_AVATAR_VISIBLE_KEY, resolveOnByDefault);
 

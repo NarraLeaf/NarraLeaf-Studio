@@ -337,14 +337,18 @@ describe("signJar + verifyJarSignature", () => {
  * accepts or throws for exactly the reasons a real verifier would. Skipped
  * when no Java runtime is on the host; nothing in the pipeline requires one.
  */
-describe("OpenJDK JarVerifier oracle (JRE-gated)", () => {
+// A JVM start is seconds before keytool reads a byte: twelve on an idle machine for the first
+// case here, which a full-suite run turns into a five-second-default timeout that reads like a
+// signature OpenJDK rejected. The allowance is for the JVM, not for the signature - and the hook
+// gets it too, because finding keytool starts a JVM of its own and hooks have their own default.
+describe("OpenJDK JarVerifier oracle (JRE-gated)", { timeout: 60_000 }, () => {
     let keytool: string | null = null;
     let workDir: string;
 
     beforeEach(async () => {
         workDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-jarsign-"));
         keytool = await resolveKeytool();
-    });
+    }, 60_000);
 
     afterEach(async () => {
         await fs.rm(workDir, { recursive: true, force: true });

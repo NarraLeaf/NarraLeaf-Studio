@@ -29,7 +29,7 @@ const PROJECT_B = WIN ? "D:\\games\\lantern" : "/games/lantern";
 
 function account(userId: string, displayName = "Ada"): VcsServerSession {
     return {
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         remoteOrigin: ORIGIN,
         account: { userId, displayName, username: displayName.toLowerCase(), email: "", identity: displayName, expiresAt: 0 },
         signedInAt: 0,

@@ -10,7 +10,7 @@ import {
     Modal,
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
-import { deviceSignIn as deviceSignInOverBridge, serverDisplayName, serverHost, type DeviceSignIn } from "@/lib/vcs/servers";
+import { deviceSignIn as deviceSignInOverBridge, serverDisplayName, serverHost, useServers, type DeviceSignIn } from "@/lib/vcs/servers";
 import { cn } from "@/lib/utils/cn";
 import type {
     VcsBrowserCallbackOutcome,
@@ -199,6 +199,11 @@ async function askToTrust(address: string, authority: VcsServerAuthority): Promi
     return answer?.success === true && answer.data.trusted;
 }
 
+/** Whether two addresses name the same host and port, whatever their scheme or path. */
+function sameHost(a: string, b: string): boolean {
+    return serverHost(a).toLowerCase() === serverHost(b).toLowerCase();
+}
+
 /** The ways of signing in, in the order a server's offer puts them. */
 type Method = "browser" | "device" | "password" | "token";
 
@@ -280,6 +285,9 @@ export function AddServerModal({
     initialAddress,
 }: AddServerModalProps) {
     const { t, tn } = useTranslation();
+    // What this installation is already signed in to, so a sign-in that would replace one is
+    // said before it is made rather than discovered afterwards: one server, one account.
+    const { servers } = useServers();
     const [stage, setStage] = useState<Stage>({ kind: "address" });
     const [address, setAddress] = useState(initialAddress ?? "");
     const [token, setToken] = useState("");
@@ -323,6 +331,10 @@ export function AddServerModal({
     useEffect(() => () => {
         if (deviceWaiting.current) deviceSignIn.cancel();
     }, [deviceSignIn]);
+
+    const replacing = stage.kind === "identity"
+        ? servers.find(server => sameHost(server.remoteOrigin, stage.discovery.data.url))
+        : undefined;
 
     const offersPassword = stage.kind === "identity"
         && stage.discovery.capabilities.includes(PASSWORD_SIGN_IN_CAPABILITY);
@@ -562,6 +574,21 @@ export function AddServerModal({
         else if (outcome === "none") setError("settings.servers.browserCallback.gone");
     }, [callback, completeBrowserSignIn]);
 
+    /**
+     * Back to the address, holding what was typed there. An address that reached the wrong
+     * server is corrected here rather than by leaving and starting over.
+     */
+    const changeAddress = useCallback(() => {
+        if (busy) return;
+        endBrowserWait();
+        setError(null);
+        setToken("");
+        setPassword("");
+        setChosen(null);
+        setOthersOpen(false);
+        setStage({ kind: "address" });
+    }, [busy, endBrowserWait]);
+
     const submitOnEnter = (run: () => Promise<void>) => (event: KeyboardEvent) => {
         if (event.key === "Enter") {
             event.preventDefault();
@@ -646,12 +673,30 @@ export function AddServerModal({
         if (stage.kind === "identity") {
             return (
                 <div data-servers-seam="wizard-step-2" className="flex flex-col gap-3">
-                    <p className="text-xs text-fg-muted">
-                        {t("settings.servers.reached", {
-                            name: stage.discovery.name,
-                            address: stage.address,
-                        })}
-                    </p>
+                    <div className="flex items-baseline gap-2">
+                        <p className="min-w-0 flex-1 break-words text-xs text-fg-muted">
+                            {t("settings.servers.reached", {
+                                name: stage.discovery.name,
+                                address: stage.address,
+                            })}
+                        </p>
+                        <button
+                            type="button"
+                            data-servers-seam="change-address"
+                            disabled={busy}
+                            onClick={changeAddress}
+                            className="shrink-0 text-xs text-primary hover:underline disabled:pointer-events-none disabled:opacity-50 cursor-default"
+                        >
+                            {t("settings.servers.changeAddress")}
+                        </button>
+                    </div>
+                    {replacing !== undefined && (
+                        <p data-servers-seam="replaces" className="break-words text-xs text-warning">
+                            {t("settings.servers.replaces", {
+                                name: replacing.account.displayName || replacing.account.username,
+                            })}
+                        </p>
+                    )}
                     {method === "browser" ? (
                         <div data-servers-seam="identity-browser" className="flex flex-col gap-2">
                             <p className="text-xs text-fg-muted">
@@ -942,7 +987,13 @@ export function AddServerModal({
     }
 
     return (
-        <Modal isOpen onClose={onClose} title={t("settings.servers.openAdd")} size="sm" footer={footer()}>
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={t(stage.kind === "joined" ? "settings.servers.joined.title" : "settings.servers.openAdd")}
+            size="sm"
+            footer={footer()}
+        >
             {body()}
         </Modal>
     );

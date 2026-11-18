@@ -96,18 +96,18 @@ describe("a sign-in address", () => {
     it("accepts only the two schemes the backend has an implementation for", () => {
         // Measured against a running server: anything else is refused by name, and the
         // one people type is the one that is refused - so this is checked before a socket.
-        expect(isVcsSignInAddress("https://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("ucs-auth://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("HTTPS://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("http://studio.example.lan:41402")).toBe(false);
-        expect(isVcsSignInAddress("grpc://studio.example.lan:41402")).toBe(false);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("ucs-auth://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("HTTPS://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("http://studio.example.lan:54080")).toBe(false);
+        expect(isVcsSignInAddress("grpc://studio.example.lan:54080")).toBe(false);
         expect(isVcsSignInAddress("lore://studio.example.lan:41337")).toBe(false);
     });
 
     it("is an origin, not an address with something after it", () => {
-        expect(isVcsSignInAddress("https://studio.example.lan:41402/")).toBe(true);
-        expect(isVcsSignInAddress("https://studio.example.lan:41402/auth")).toBe(false);
-        expect(isVcsSignInAddress("studio.example.lan:41402")).toBe(false);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080/")).toBe(true);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080/auth")).toBe(false);
+        expect(isVcsSignInAddress("studio.example.lan:54080")).toBe(false);
         expect(isVcsSignInAddress("")).toBe(false);
     });
 });
@@ -123,8 +123,8 @@ describe("a sign-in address", () => {
 describe("reading the addresses out of a token", () => {
     const AUDIENCE = [
         "loreserver",
-        "https://team.example.lan:41402",
-        "https://team.example.lan:41402/",
+        "https://team.example.lan:54080",
+        "https://team.example.lan:54080/",
         "team.example.lan",
         "team.example.lan:41337",
         "lore://team.example.lan:41337",
@@ -133,7 +133,7 @@ describe("reading the addresses out of a token", () => {
 
     it("takes the sign-in address from the audience, so nobody has to be told it", () => {
         const read = readSignInToken(tokenWith({ ...ACCOUNT, aud: AUDIENCE }));
-        expect(read.authUrl).toBe("https://team.example.lan:41402");
+        expect(read.authUrl).toBe("https://team.example.lan:54080");
         // Once, though the audience names it twice. The trailing slash is one of the
         // spellings the audience carries on purpose and is not a second address.
         expect(read.remotes).toEqual(["lore://team.example.lan:41337"]);
@@ -188,16 +188,16 @@ describe("reading the addresses out of a token", () => {
  * presented anywhere at all.
  */
 describe("choosing where a token is presented", () => {
-    const NAMED = { authUrl: "https://team.example.lan:41402", authUrls: ["https://team.example.lan:41402"] };
+    const NAMED = { authUrl: "https://team.example.lan:54080", authUrls: ["https://team.example.lan:54080"] };
 
     it("presents a token where it says, when nothing else is given", () => {
-        expect(signInAddressFor(NAMED, "")).toBe("https://team.example.lan:41402");
+        expect(signInAddressFor(NAMED, "")).toBe("https://team.example.lan:54080");
     });
 
     it("refuses an address the token does not name, before anything is sent", () => {
-        expect(() => signInAddressFor(NAMED, "https://collector.example.net:41402")).toThrow(VcsSignInError);
+        expect(() => signInAddressFor(NAMED, "https://collector.example.net:54080")).toThrow(VcsSignInError);
         try {
-            signInAddressFor(NAMED, "https://collector.example.net:41402");
+            signInAddressFor(NAMED, "https://collector.example.net:54080");
         } catch (error) {
             // Said as a token that is not for this server, which is what it is: the panel's
             // sentence for that already exists and names the remedy.
@@ -212,7 +212,7 @@ describe("choosing where a token is presented", () => {
     it("accepts the token's own endpoint however it is spelled, and uses the token's spelling", () => {
         // The spellings a discovery answer and an audience are known to disagree on while
         // naming one endpoint: case, a trailing slash.
-        expect(signInAddressFor(NAMED, "HTTPS://Team.Example.LAN:41402/")).toBe("https://team.example.lan:41402");
+        expect(signInAddressFor(NAMED, "HTTPS://Team.Example.LAN:54080/")).toBe("https://team.example.lan:54080");
     });
 
     it("drops a default port the same way on both sides", () => {
@@ -222,15 +222,15 @@ describe("choosing where a token is presented", () => {
 
     it("accepts any of several endpoints a token names", () => {
         const named = {
-            authUrl: "https://one.example.lan:41402",
-            authUrls: ["https://one.example.lan:41402", "https://two.example.lan:41402"],
+            authUrl: "https://one.example.lan:54080",
+            authUrls: ["https://one.example.lan:54080", "https://two.example.lan:54080"],
         };
-        expect(signInAddressFor(named, "https://two.example.lan:41402")).toBe("https://two.example.lan:41402");
+        expect(signInAddressFor(named, "https://two.example.lan:54080")).toBe("https://two.example.lan:54080");
     });
 
     it("takes a typed address for a token that names none, which is the case it exists for", () => {
         const none = { authUrl: "", authUrls: [] };
-        expect(signInAddressFor(none, "https://lan.example:41402")).toBe("https://lan.example:41402");
+        expect(signInAddressFor(none, "https://lan.example:54080")).toBe("https://lan.example:54080");
     });
 
     it("asks for an address where neither side has one", () => {
@@ -244,12 +244,12 @@ describe("choosing where a token is presented", () => {
     });
 
     it("is what a sign-in goes through, so a mismatch is refused before the backend is reached", async () => {
-        const token = tokenWith({ ...ACCOUNT, aud: ["https://team.example.lan:41402", "lore://team.example.lan:41337"] });
+        const token = tokenWith({ ...ACCOUNT, aud: ["https://team.example.lan:54080", "lore://team.example.lan:41337"] });
         // No backend is loaded in this file; reaching it would fail differently. The refusal is
         // the token problem, which is only raised before anything is dialled.
         const attempt = signInToServer({ repositoryPath: "", offline: false, cache: false }, {
             remoteUrl: "lore://team.example.lan:41337",
-            authUrl: "https://collector.example.net:41402",
+            authUrl: "https://collector.example.net:54080",
             token,
             userDataDir: "",
         });

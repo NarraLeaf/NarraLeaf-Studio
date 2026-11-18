@@ -37,6 +37,11 @@ import {
     CHARACTER_LIST_GROUPING_OPTIONS,
 } from "@/lib/settings/characterListOptions";
 import {
+    TEAM_PROJECTS_PLACEMENT_DEFAULT,
+    TEAM_PROJECTS_PLACEMENT_KEY,
+    TEAM_PROJECTS_PLACEMENT_OPTIONS,
+} from "@/lib/settings/teamProjectsPlacement";
+import {
     SPELLCHECK_FOLLOW_PROJECT,
     SPELLCHECK_LANGUAGE_DEFAULT,
     SPELLCHECK_LANGUAGE_KEY,
@@ -1087,6 +1092,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Shown to collaborators beside your account. Leave empty to use the host name.",
         descriptionKey: "settings.items.teamMachineLabel.description",
         defaultValue: "",
+    },
+    {
+        // Where the launcher lists the projects on the Team server the account menu shows: in
+        // the Projects tab beside the ones on this disk, or in the Team tab on their own. Read
+        // live by both tabs, so a change moves the list without reopening the window. See
+        // lib/settings/teamProjectsPlacement.
+        key: TEAM_PROJECTS_PLACEMENT_KEY,
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Team projects",
+        labelKey: "settings.items.teamProjectsPlacement.label",
+        description: "Where the launcher lists the projects on your Team server.",
+        descriptionKey: "settings.items.teamProjectsPlacement.description",
+        defaultValue: TEAM_PROJECTS_PLACEMENT_DEFAULT,
+        options: [...TEAM_PROJECTS_PLACEMENT_OPTIONS],
+        optionLabelKeys: {
+            projects: "settings.items.teamProjectsPlacement.options.projects",
+            team: "settings.items.teamProjectsPlacement.options.team",
+        },
     },
     {
         // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access

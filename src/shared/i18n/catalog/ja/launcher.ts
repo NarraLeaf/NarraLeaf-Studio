@@ -81,6 +81,18 @@ export const launcher = {
             errorDetach: "プロジェクトを変換できなかった",
             errorDelete: "プロジェクトを削除できなかった",
             errorOpen: "このプロジェクトを開いているウィンドウを先に閉じる",
+            uncloned: "{server} 上の未クローンのプロジェクト",
+            notCloned: "未クローン",
+            details: "詳細を表示",
+            detailsTitle: "プロジェクトの詳細",
+            newOn: "{server} に新しいチームプロジェクトを作成",
+            clone: {
+                action: "クローン",
+                hint: "{name} をクローン",
+                title: "チームプロジェクトをクローン",
+                message: "{name} はまだこの端末にない。{server} からクローンするか？次の手順で保存先を選択できる",
+                confirm: "クローン",
+            },
         },
     },
     // 「サーバー」タブ。サインイン済みのサーバーに何があるかを並べる。この機械にすでにある
@@ -102,6 +114,8 @@ export const launcher = {
         // メンバー側は people.title のまま。どちらも同じ言葉。
         tabs: {
             projects: "プロジェクト",
+            todos: "自分の ToDo",
+            active: "アクティブなプロジェクト",
         },
         // 操作はひとつだけで、行ではなくプロジェクト自身のページにある。
         // 「クローン」ではなく「取得」。その先のウィザードが写す先を訊くから。
@@ -110,6 +124,23 @@ export const launcher = {
         // この機械にすでにあるプロジェクトの行に出る。別の印ではなく、説明の横に並ぶ言葉。
         // このタブが答えるべき問いそのものなので、一覧を眺めて分かる場所に残す。
         here: "この端末にある",
+        todos: {
+            loading: "ToDo を読み込み中",
+            problem: "ToDo を読み込めない",
+            empty: "ToDo はない",
+            noProject: "プロジェクトなし",
+            cloneHint: "{name} をクローン",
+            due: "期限 {date}",
+            status: {
+                open: "未着手",
+                doing: "進行中",
+            },
+        },
+        active: {
+            empty: "直近 7 日間にアクティブなプロジェクトはない",
+            online: "{names} が作業中",
+            notHere: "未クローン",
+        },
         // サーバーがリポジトリを読み、中身が何もなかった場合。サーバーが挙げた数値が
         // 実際にゼロのときだけ書く。まだ読んでいないサーバーは何も言わない。
         nothingSent: "未送信",

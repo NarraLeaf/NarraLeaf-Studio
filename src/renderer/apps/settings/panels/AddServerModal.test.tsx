@@ -27,6 +27,8 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const bridge = vi.hoisted(() => ({
+    /** What this installation is already signed in to. */
+    servers: [] as VcsServerSession[],
     probeServer: vi.fn(),
     addServer: vi.fn(),
     listServerProjects: vi.fn(),
@@ -36,6 +38,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
+            listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             probeServer: bridge.probeServer,
             addServer: bridge.addServer,
         },
@@ -58,8 +61,8 @@ vi.mock("@/lib/app/bridge", () => ({
     }),
 }));
 
-const ADDRESS = "nlteam://team.example.lan:41402";
-const AUTH = "https://team.example.lan:41402";
+const ADDRESS = "nlteam://team.example.lan:54080";
+const AUTH = "https://team.example.lan:54080";
 const ORIGIN = "lore://team.example.lan:41337";
 /** What a server that serves the route answers with, measured. */
 const WITH_PASSWORD = ["projects", "project-detail", "members", "password-sign-in", "project-history"];
@@ -101,6 +104,7 @@ const onAdded = vi.fn();
 
 afterEach(() => {
     cleanup();
+    bridge.servers = [];
     bridge.probeServer.mockReset();
     bridge.addServer.mockReset();
     bridge.listServerProjects.mockReset();
@@ -618,5 +622,52 @@ describe("signing in through the browser", () => {
         submit();
         await waitFor(() => expect(seam("problem")?.textContent).toBe("settings.servers.browserProblems.denied"));
         expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
+describe("going back, and signing in where an account already is", () => {
+    it("goes back to the address with what was typed still in it", async () => {
+        await reachIdentity(WITHOUT_PASSWORD);
+        type("field-token", "half-a-token");
+
+        fireEvent.click(seam("change-address")!);
+
+        expect(seam("wizard-step-1")).not.toBeNull();
+        expect((seam("field-address") as HTMLInputElement).value).toBe(ADDRESS);
+        // Nothing was stored on the way back, and the credential did not wait for a return.
+        expect(bridge.addServer).not.toHaveBeenCalled();
+        submit();
+        await find("wizard-step-2");
+        expect((seam("field-token") as HTMLInputElement).value).toBe("");
+    });
+
+    it("says whose account a sign-in to the same server replaces", async () => {
+        bridge.servers = [session()];
+        await reachIdentity(WITHOUT_PASSWORD);
+
+        const line = await find("replaces");
+        expect(line.textContent).toBe("settings.servers.replaces(Ada Blackwood)");
+    });
+
+    it("says nothing about replacing where no account is held there", async () => {
+        bridge.servers = [{ ...session(), remoteOrigin: "lore://elsewhere.example.lan:41337" }];
+        await reachIdentity(WITHOUT_PASSWORD);
+
+        await waitFor(() => expect(seam("identity-token")).not.toBeNull());
+        expect(seam("replaces")).toBeNull();
+    });
+
+    it("titles the closing step for what happened", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session(), servers: [session()] } });
+        bridge.listServerProjects.mockResolvedValue({ success: false });
+        await reachIdentity(WITHOUT_PASSWORD);
+        expect(document.body.textContent).toContain("settings.servers.openAdd");
+
+        type("field-token", "a-token");
+        submit();
+        await find("wizard-joined");
+
+        expect(document.body.textContent).toContain("settings.servers.joined.title");
+        expect(document.body.textContent).not.toContain("settings.servers.openAdd");
     });
 });

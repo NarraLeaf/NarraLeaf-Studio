@@ -26,6 +26,8 @@ const lore = vi.hoisted(() => {
         /** How many more online calls answer that the backend holds no session. */
         missing: { count: 0 },
         remote: { value: "lore://team.example.lan:41337/harbour" as string | null },
+        /** What the next status read answers. */
+        syncState: { value: { remoteAvailable: true, remoteAuthorized: true } as Record<string, unknown> },
         /** The merge the next sync reports having committed by itself, if any. */
         merged: { value: undefined as string | undefined, refuse: false },
         /** Every request to put a name on such a merge, with the globals it came with. */
@@ -39,7 +41,7 @@ const lore = vi.hoisted(() => {
             readRemote: async () => lore.remote.value,
             getStatus: async () => ({ clean: true }),
             readServerSessions: async () => [
-                { authUrl: "https://team.example.lan:41402", resource: "", userId: "u-ada", expiresAt: 0 },
+                { authUrl: "https://team.example.lan:54080", resource: "", userId: "u-ada", expiresAt: 0 },
             ],
             pushToRemote: async (globals: { identity: string }) => {
                 lore.online.push({ verb: "push", identity: globals.identity });
@@ -65,7 +67,7 @@ const lore = vi.hoisted(() => {
             },
             readSyncState: async (globals: { identity: string }) => {
                 lore.online.push({ verb: "state", identity: globals.identity });
-                return { remoteAvailable: true, remoteAuthorized: true };
+                return { ...lore.syncState.value };
             },
             signInToServer: async (...args: unknown[]) => {
                 lore.signIns.push(args);
@@ -106,7 +108,7 @@ const PROJECT_B = WIN ? "D:\\games\\lantern" : "/games/lantern";
 const PROJECT_C = WIN ? "D:\\games\\tidewater" : "/games/tidewater";
 
 const ADA: VcsServerSession = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     remoteOrigin: ORIGIN,
     account: {
         userId: "u-ada",
@@ -164,6 +166,7 @@ beforeEach(() => {
     lore.merged.value = undefined;
     lore.merged.refuse = false;
     lore.attributed.length = 0;
+    lore.syncState.value = { remoteAvailable: true, remoteAuthorized: true };
     trusted = true;
     asker.mockReset().mockResolvedValue(true);
     manager = new VcsManager(upgradedApp(), undefined, undefined, asker);
@@ -365,7 +368,7 @@ describe("asking about a server the project is not on yet", () => {
     const ELSEWHERE = "lore://elsewhere.example.lan:41337";
     const BEA: VcsServerSession = {
         ...ADA,
-        authUrl: "https://elsewhere.example.lan:41402",
+        authUrl: "https://elsewhere.example.lan:54080",
         remoteOrigin: ELSEWHERE,
         account: { ...ADA.account, userId: "u-bea", displayName: "Bea" },
     };
@@ -459,5 +462,45 @@ describe("signing in from inside a project", () => {
     it("from Settings or the launcher answers for no project", async () => {
         await manager.addServer({ authUrl: "", remoteUrl: "", token: "t" });
         expect(uses()).toEqual([]);
+    });
+});
+
+/**
+ * A status read says "unavailable" both when nothing answers and when the server answered and
+ * turned the account away. The data port tells the two apart: open means the server is there.
+ */
+describe("a server that turned the account away", () => {
+    function portAnswers(answer: boolean): string[] {
+        const asked: string[] = [];
+        (manager as unknown as { dataPortAnswers: (origin: string) => Promise<boolean> }).dataPortAnswers =
+            async (origin: string) => {
+                asked.push(origin);
+                return answer;
+            };
+        return asked;
+    }
+
+    it("reads as refused rather than silent while its data port answers", async () => {
+        lore.syncState.value = { remoteAvailable: false, remoteAuthorized: false };
+        const asked = portAnswers(true);
+
+        const state = await manager.getSyncState(PROJECT_A);
+
+        expect(asked).toEqual([ORIGIN]);
+        expect(state).toMatchObject({ remoteAvailable: true, remoteAuthorized: false });
+    });
+
+    it("stays unreachable while nothing answers there", async () => {
+        lore.syncState.value = { remoteAvailable: false, remoteAuthorized: false };
+        portAnswers(false);
+
+        expect(await manager.getSyncState(PROJECT_A)).toMatchObject({ remoteAvailable: false });
+    });
+
+    it("asks nothing of the port when the read already reached the server", async () => {
+        const asked = portAnswers(true);
+
+        expect(await manager.getSyncState(PROJECT_A)).toMatchObject({ remoteAvailable: true, remoteAuthorized: true });
+        expect(asked).toEqual([]);
     });
 });

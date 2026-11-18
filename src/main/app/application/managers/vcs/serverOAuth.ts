@@ -38,7 +38,7 @@ export type ServerRefreshResult =
     | { ok: false; reason: "refused" | "unreachable" | "unknown" };
 
 export interface ServerOAuthRequest {
-    /** The endpoint the discovery document named, e.g. `https://team.example.lan:41402`. */
+    /** The endpoint the discovery document named, e.g. `https://team.example.lan:54080`. */
     authUrl: string;
     /** What the approval page calls this machine. */
     deviceName: string;
