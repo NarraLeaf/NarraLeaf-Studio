@@ -6,6 +6,8 @@
 
 # NarraLeaf-Studio
 
+Current release line: `2.0.0-TeamBeta3`.
+
 [![NarraLeaf Studio video](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/studio-video.jpg)](https://www.youtube.com/watch?v=pLx5T0AdRHA)
 
 <p align="center"><a href="https://www.youtube.com/watch?v=pLx5T0AdRHA">Watch on YouTube (2:48)</a></p>
@@ -13,8 +15,6 @@
 ![NarraLeaf Studio preview](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/studio-preview-wide.png)
 
 ![NarraLeaf Studio screenshots](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/screenshots-grid.png)
-
-> This project is currently in the early stages of development.
 
 The development of visual novel engines has often been hampered by clunky interactive experiences and limited team collaboration capabilities; NarraLeaf Studio offers a more intuitive solution.
 
@@ -27,15 +27,17 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 
 ## Features
 
-- **Story editor.** A scene is a list of rows. Typing writes dialogue, a slash at the start of a row writes one of fifty-one commands, and every value is checked as the row is typed. The flow view draws the paths the story can take. Chinese spellings of every command parse.
+- **Story editor.** A scene is a list of rows. Typing writes dialogue, a slash at the start of a row opens the command catalogue, and every value is checked as the row is typed. The flow view draws the paths the story can take. Chinese spellings of the commands parse, and plugins can contribute their own.
+- **Review and placement.** The stage timeline shows the stage after every row and follows menu branches. Characters and images can be moved and resized from the story preview. Local scene snapshots and line history sit outside version control, while row comments travel with the script.
+- **Script documents.** Import Word, Fountain, CSV, TSV or XLSX scenes through the paste wizard, and export a readable PDF or Word script.
 - **Screens and blueprints.** The game's own screens are built by placing widgets on a surface, and over six hundred blueprint nodes decide what they do. Widgets can be saved as reusable components, and their properties bound to values that change while the game runs.
 - **Version control.** History is kept inside the project folder, and differences are reported as content rather than as files: which scenes, rows, characters and assets changed. Built on [Lore](https://github.com/EpicGames/lore), with Studio's own difference view and conflict interface.
-- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container, holding the projects a team works on together, with their versions and discussion. In a live session one author hosts a project and the others join it from the launcher; stories, characters, translations, voice lines, assets, screens and blueprints are edited together, and each line or node shows who is working on it. Whatever a session does not carry stays read-only until it ends.
+- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container. It holds a team project's current documents, versions, comments, reviews, to-dos and production records, gives each project owners, editors, reviewers and viewers, and serves its own web console. Studio sends edits through the server's document kernel, keeps work made offline, and reports conflicts instead of silently replacing it.
 - **Asset sets.** One library entry standing for several files that differ by language or by build variant. A story row names the set, and the game uses the file that matches.
 - **Build variants.** One project, several editions. A cut point row ends a variant's story there, and everything written after it, including the assets only those rows used, is left out of that variant's package.
 - **Patches.** Later changes to the story, the pages, the translations, the voice lines and the assets, delivered to an installed game without reinstalling it.
 - **Builds.** Windows, macOS, Linux, Web, Android and iOS, in eight formats, with each platform's icons generated from one image. Studio also builds [without an interface](#building-from-the-command-line).
-- **Plugins.** Story commands, blueprint nodes, widgets, tests and panels, appearing in the same places as the built-in equivalents. What a plugin needs is approved when it is installed.
+- **Plugins.** Story commands, blueprint nodes, widgets, inline text effects, tests and panels, appearing in the same places as the built-in equivalents. What a plugin needs is approved when it is installed.
 
 ## Studio
 
@@ -103,7 +105,16 @@ NarraLeaf Studio is open source, with one exception: an optional asset-protectio
 
 ### Setup
 
-### Development
+Studio is developed with Node.js 22 and Yarn 4. Enable Corepack, then install the workspace dependencies:
+
+```bash
+corepack enable
+yarn install
+```
+
+`@narraleaf/encryption` is published to GitHub Packages. The install needs a `read:packages` credential for the `@narraleaf` scope in `~/.yarnrc.yml`; the repository's `.yarnrc.yml` holds only the registry address.
+
+### Running
 
 ```bash
 yarn dev
