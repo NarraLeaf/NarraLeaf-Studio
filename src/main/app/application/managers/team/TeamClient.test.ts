@@ -82,7 +82,7 @@ function drive(): Driven {
     const events: Driven["events"] = [];
     const client = new TeamClient({
         remoteOrigin: "lore://team.example.lan:41337",
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         token: "a-token",
         userDataDir: "/tmp/userdata",
         identity: { installation: "installation-1", label: "Nomen", agent: "Studio 0.0.0-test" },
@@ -118,9 +118,9 @@ function current(driven: Driven): FakeSocket {
 
 describe("reading an address", () => {
     it("takes the https origin a session is stored with", () => {
-        expect(endpointOf("https://team.example.lan:41402")).toEqual({
+        expect(endpointOf("https://team.example.lan:54080")).toEqual({
             host: "team.example.lan",
-            port: 41402,
+            port: 54080,
         });
     });
 

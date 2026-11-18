@@ -27,7 +27,7 @@ vi.mock("./serverApi", async importOriginal => ({
 }));
 
 const INPUT = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     username: "ada",
     password: "harbourlight",
     userDataDir: "D:/userData",

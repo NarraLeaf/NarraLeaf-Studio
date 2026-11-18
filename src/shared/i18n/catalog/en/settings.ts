@@ -508,7 +508,7 @@ export const settings = {
         // The one thing an author is handed. Every other address is behind it, including
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
-        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        addressPlaceholder: "nlteam://studio.example.lan:54080",
         // What the address turned out to be, on the step that asks who you are there. It
         // names the server rather than narrating the request that found it: the reader is
         // deciding whether this is the one they meant, not reading a log of the attempt.

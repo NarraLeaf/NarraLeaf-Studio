@@ -61,8 +61,8 @@ vi.mock("@/lib/app/bridge", () => ({
     }),
 }));
 
-const ADDRESS = "nlteam://team.example.lan:41402";
-const AUTH = "https://team.example.lan:41402";
+const ADDRESS = "nlteam://team.example.lan:54080";
+const AUTH = "https://team.example.lan:54080";
 const ORIGIN = "lore://team.example.lan:41337";
 /** What a server that serves the route answers with, measured. */
 const WITH_PASSWORD = ["projects", "project-detail", "members", "password-sign-in", "project-history"];

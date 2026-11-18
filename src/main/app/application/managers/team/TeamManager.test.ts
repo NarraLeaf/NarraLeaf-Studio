@@ -121,7 +121,7 @@ class FakeClient implements TeamClientLike {
 }
 
 const SERVER: VcsServerSession = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     remoteOrigin: "lore://team.example.lan:41337",
     account: {
         userId: "u1",
@@ -353,7 +353,7 @@ describe("after a wake or a new network", () => {
     it("starts listening only once there is a session, and every session starts over on a wake", () => {
         const monitor = power();
         const team = harness({
-            servers: [SERVER, { ...SERVER, remoteOrigin: "lore://other.lan:41337", authUrl: "https://other.lan:41402" }],
+            servers: [SERVER, { ...SERVER, remoteOrigin: "lore://other.lan:41337", authUrl: "https://other.lan:54080" }],
             wake: () => ({ power: monitor, isOnline: () => true, networkSignature: () => "en0", everyMs: 60_000 }),
         });
         expect(monitor.count()).toBe(0);

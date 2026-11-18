@@ -740,7 +740,7 @@ describe("VersionControlService revision announcements", () => {
 describe("VersionControlService sign-in announcements", () => {
     const ACCOUNT = {
         remoteOrigin: "lore://team.example.lan:41337",
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         account: { userId: "u-ada", displayName: "Ada", username: "ada", email: "", identity: "Ada", expiresAt: 0 },
         signedInAt: 0,
     };

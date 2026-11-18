@@ -1,7 +1,7 @@
 /**
  * `narraleaf://` links a Team server's web console hands out.
  *
- *     narraleaf://team/connect?server=https://team.example:41402
+ *     narraleaf://team/connect?server=https://team.example:54080
  *         add this server — the Add Server dialog, its address filled in, nothing else
  *     narraleaf://team/open?server=…&project=<id>[&doc=…&element=…]
  *         open a project of a server this installation is already signed in to

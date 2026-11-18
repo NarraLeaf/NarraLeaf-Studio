@@ -138,7 +138,7 @@ const REPOSITORY = "019fda5ba4fe799096aaab7585aa4722";
 
 function session(origin = ORIGIN, name?: string, capabilities?: string[]): VcsServerSession {
     return {
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         remoteOrigin: origin,
         account: {
             userId: "u-1",

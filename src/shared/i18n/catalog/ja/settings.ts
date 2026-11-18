@@ -484,7 +484,7 @@ export const settings = {
         signIn: "サインイン",
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
-        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        addressPlaceholder: "nlteam://studio.example.lan:54080",
         reached: "{address} のサーバーは {name}",
         changeAddress: "アドレスを変更",
         replaces: "このコンピューターはこのサーバーに {name} としてサインイン済み。続けるとそのアカウントを置き換える",

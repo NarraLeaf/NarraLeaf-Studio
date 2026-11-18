@@ -51,7 +51,7 @@ const ORIGIN = "lore://team.example.lan:41337";
 
 function session(): VcsServerSession {
     return {
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         remoteOrigin: ORIGIN,
         account: {
             userId: "u-1",

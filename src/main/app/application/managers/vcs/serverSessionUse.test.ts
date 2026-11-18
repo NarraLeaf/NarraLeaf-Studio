@@ -41,7 +41,7 @@ const lore = vi.hoisted(() => {
             readRemote: async () => lore.remote.value,
             getStatus: async () => ({ clean: true }),
             readServerSessions: async () => [
-                { authUrl: "https://team.example.lan:41402", resource: "", userId: "u-ada", expiresAt: 0 },
+                { authUrl: "https://team.example.lan:54080", resource: "", userId: "u-ada", expiresAt: 0 },
             ],
             pushToRemote: async (globals: { identity: string }) => {
                 lore.online.push({ verb: "push", identity: globals.identity });
@@ -108,7 +108,7 @@ const PROJECT_B = WIN ? "D:\\games\\lantern" : "/games/lantern";
 const PROJECT_C = WIN ? "D:\\games\\tidewater" : "/games/tidewater";
 
 const ADA: VcsServerSession = {
-    authUrl: "https://team.example.lan:41402",
+    authUrl: "https://team.example.lan:54080",
     remoteOrigin: ORIGIN,
     account: {
         userId: "u-ada",
@@ -368,7 +368,7 @@ describe("asking about a server the project is not on yet", () => {
     const ELSEWHERE = "lore://elsewhere.example.lan:41337";
     const BEA: VcsServerSession = {
         ...ADA,
-        authUrl: "https://elsewhere.example.lan:41402",
+        authUrl: "https://elsewhere.example.lan:54080",
         remoteOrigin: ELSEWHERE,
         account: { ...ADA.account, userId: "u-bea", displayName: "Bea" },
     };

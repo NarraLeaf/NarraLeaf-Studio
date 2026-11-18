@@ -45,7 +45,7 @@ const THEIRS = WIN ? "D:\\games\\theirs" : "/games/theirs";
 
 function account(remoteOrigin: string, userId: string): VcsServerSession {
     return {
-        authUrl: `https://${userId}.example.lan:41402`,
+        authUrl: `https://${userId}.example.lan:54080`,
         remoteOrigin,
         account: {
             userId,

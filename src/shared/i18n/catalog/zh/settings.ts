@@ -466,7 +466,7 @@ export const settings = {
         signIn: "登录",
         signingIn: "正在登录…",
         addressLabel: "服务器地址",
-        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        addressPlaceholder: "nlteam://studio.example.lan:54080",
         reached: "{address} 上的服务器是 {name}",
         changeAddress: "更改地址",
         replaces: "本机已在该服务器以 {name} 的身份登录，继续登录将替换该账号",

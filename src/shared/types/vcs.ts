@@ -703,7 +703,7 @@ export interface VcsServerAccount {
  */
 export interface VcsSignInToken {
     account: VcsServerAccount;
-    /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
+    /** Where to present it, from `aud`: `https://team.example.lan:54080`. */
     authUrl: string;
     /**
      * Every sign-in address `aud` names, {@link authUrl} first.
@@ -801,7 +801,7 @@ export interface VcsServerDiscovery {
     auth: {
         /** False for a server that asks nobody who they are; then no token is wanted. */
         required: boolean;
-        /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
+        /** Where a token is presented, e.g. `https://team.example.lan:54080`. */
         url: string;
     };
     /** The remote the repositories live on. Stored, never shown. */
@@ -893,7 +893,7 @@ export type VcsServerProbe =
  * does, so a project that merely names the same server does not act as this account.
  */
 export interface VcsServerSession {
-    /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
+    /** Where the sign-in happened, e.g. `https://studio.example.lan:54080`. */
     authUrl: string;
     /** The server this session is good for, as an origin: `lore://host:41337`. */
     remoteOrigin: string;

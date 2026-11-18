@@ -56,7 +56,7 @@ const DEFAULT_HEARTBEAT_MS = 30_000;
 export interface TeamClientOptions {
     /** The server's data origin, which is how Studio names a server everywhere else. */
     remoteOrigin: string;
-    /** Where the session is opened, e.g. `https://team.example.lan:41402`. */
+    /** Where the session is opened, e.g. `https://team.example.lan:54080`. */
     authUrl: string;
     token: string;
     userDataDir: string;
@@ -586,7 +586,7 @@ function projectOf(params: unknown): string | null {
  * **One resolver, shared with the REST side.** A stored `https://host:port` describes the
  * same machine whether a call goes over the socket or over the version-control routes, and
  * two resolvers that disagreed on the port a bare address falls back to - this one once
- * answered 443, the other 41402 - would dial two different servers from one saved address.
+ * answered 443, the other 54080 - would dial two different servers from one saved address.
  * So the address parsing lives in {@link resolveServerEndpoint}, which also strips the
  * brackets an IPv6 literal carries (an address `tls.connect` cannot use), and this hands
  * back the two fields a socket needs.

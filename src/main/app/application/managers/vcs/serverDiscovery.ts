@@ -47,7 +47,7 @@ import {
 const SERVER_SCHEME = "nlteam:";
 
 /** Where the endpoint listens when the address does not say. */
-const DEFAULT_PORT = 41402;
+const DEFAULT_PORT = 54080;
 
 /** The path the document is served at, and the only path this speaks to. */
 const DISCOVERY_PATH = "/.well-known/nlteam";
