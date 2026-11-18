@@ -24,7 +24,7 @@ export { opClaimKeys } from "@shared/live/ops";
  * Which behaviour of the appliers this is. A Studio and a Team server compare it on connecting, and
  * a mismatch is refused: two machines applying the same operation differently is silent divergence.
  */
-export const KERNEL_VERSION = 3;
+export const KERNEL_VERSION = 4;
 
 export {
     STORY_LIBRARY_PATH,
@@ -46,6 +46,8 @@ export {
     isTeamFilePath,
     isWholeFilePath,
     parseProjectFile,
+    PROJECT_AREAS,
+    projectAreaOf,
     projectDocumentPath,
     projectOpClaimKeys,
     serializeProjectFile,
@@ -54,6 +56,7 @@ export {
 export type {
     HeldFile,
     KernelProjectView,
+    ProjectArea,
     ProjectDocument,
     ProjectOp,
     ProjectOpApplied,

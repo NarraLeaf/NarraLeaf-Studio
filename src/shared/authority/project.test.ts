@@ -13,6 +13,7 @@ import {
     isTeamFilePath,
     isWholeFilePath,
     parseProjectFile,
+    projectAreaOf,
     projectDocumentPath,
     projectOpClaimKeys,
     serializeProjectFile,
@@ -110,6 +111,21 @@ describe("a team project's documents", () => {
         applyProjectOp(view, { doc: "story", storyId: other }, { op: "delete-story" }, { now: NOW });
         expect(view.get(otherPath)).toBeUndefined();
         expect((view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex).stories.map(entry => entry.id)).toEqual([STORY]);
+    });
+
+    it("starts the story library with a project's first story", () => {
+        // A project nobody has written a story in has no library file: the editor writes it lazily.
+        const view = memory({});
+        const first = "00000000-0000-4000-8000-000000000010";
+        const firstPath = projectDocumentPath({ doc: "story", storyId: first });
+        const made = applyProjectOp(view, { doc: "story", storyId: first }, {
+            op: "create-story",
+            entry: createStoryLibraryEntry({ id: first, name: "Main", documentPath: firstPath, now: NOW }),
+            document: { ...story(), id: first, name: "Main" },
+        }, { now: NOW });
+        expect(made).toEqual({ changed: true, touched: [firstPath, STORY_LIBRARY_FILE] });
+        expect((view.get(STORY_LIBRARY_FILE) as StoryLibraryIndex).stories.map(entry => entry.id)).toEqual([first]);
+        expect(view.get(firstPath)).toMatchObject({ id: first, name: "Main" });
     });
 
     it("rewrites the rows a deleted character spoke, in every story", () => {
@@ -275,5 +291,32 @@ describe("a team project's documents", () => {
             expect(fileBytesOf(doc, op)).toEqual({ path: "icon.png", transferId: "t1", digest: DIGEST, size: 9 });
             expect(projectOpClaimKeys(doc, op)).toEqual(["file:icon.png"]);
         });
+    });
+});
+
+describe("the area an edit falls in", () => {
+    it("names each part of a project the team grants separately", () => {
+        expect(projectAreaOf(`editor/story/stories/${STORY}/storydoc.json`)).toBe("story");
+        expect(projectAreaOf(STORY_LIBRARY_FILE)).toBe("story");
+        expect(projectAreaOf("editor/story/animations/index.json")).toBe("story");
+        expect(projectAreaOf("editor/variables.json")).toBe("story");
+        expect(projectAreaOf("editor/services/character.json")).toBe("characters");
+        expect(projectAreaOf("assets/assets.metadata.image.json")).toBe("assets");
+        expect(projectAreaOf("assets/content/ab/abcdef")).toBe("assets");
+        expect(projectAreaOf("editor/audio-tracks.json")).toBe("assets");
+        expect(projectAreaOf("editor/ui/uidoc.json")).toBe("ui");
+        expect(projectAreaOf("editor/localization/en.json")).toBe("localization");
+        expect(projectAreaOf("editor/voice/ja.json")).toBe("localization");
+        expect(projectAreaOf("editor/dictionary.json")).toBe("localization");
+    });
+
+    it("counts the project file, brand, variants and anything new as the game's configuration", () => {
+        expect(projectAreaOf("project.json")).toBe("config");
+        expect(projectAreaOf("editor/brand.json")).toBe("config");
+        expect(projectAreaOf("editor/app-tags.json")).toBe("config");
+        expect(projectAreaOf("editor/dlc.json")).toBe("config");
+        expect(projectAreaOf("editor/save-schema.json")).toBe("config");
+        expect(projectAreaOf("resources/icons/source/app.png")).toBe("config");
+        expect(projectAreaOf("editor/something-a-later-studio-adds.json")).toBe("config");
     });
 });

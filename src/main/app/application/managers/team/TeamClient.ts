@@ -167,6 +167,7 @@ export class TeamClient {
             ...(this.hello === null ? {} : { account: this.hello.account }),
             ...(this.hello === null ? {} : { serverName: this.hello.server.name }),
             ...(this.hello === null ? {} : { serverVersion: this.hello.server.version }),
+            ...(this.hello === null || this.state !== "ready" ? {} : { session: this.hello.session }),
             ...(this.detail === undefined ? {} : { detail: this.detail }),
             since: this.since,
         };
