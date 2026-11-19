@@ -570,6 +570,16 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
         const notifications = ctx.services.get<UIService>(Services.UI).notifications;
         switch (notice.kind) {
             case "refused":
+                if (notice.reason === "area") {
+                    const allowed = (this.sync?.getView().areas ?? [])
+                        .map(area => translate(`workspace.shell.team.docs.areaNames.${area}`))
+                        .join(", ");
+                    notifications.warning(
+                        translate("workspace.shell.team.docs.areaRefused"),
+                        translate("workspace.shell.team.docs.areaRefusedDetail", { areas: allowed || "-" }),
+                    );
+                    return;
+                }
                 notifications.warning(translate("workspace.shell.team.docs.refused"), notice.detail ?? notice.reason);
                 return;
             case "restored":

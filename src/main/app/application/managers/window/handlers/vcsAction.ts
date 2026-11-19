@@ -1,4 +1,7 @@
+import path from "path";
+
 import { IPCMessageType } from "@shared/types/ipc";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import type {
     RevisionId,
@@ -18,9 +21,12 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
+    VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsServerSession,
+    VcsSessionUser,
     VcsSignInOutcome,
     VcsSignInProblem,
     VcsStatus,
@@ -30,7 +36,8 @@ import type {
     VcsWorkingFileRead,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
-import { readLocalRepository } from "../../vcs/localRepositories";
+import { readLocalRepository, readRemoteOrigin } from "../../vcs/localRepositories";
+import { requireIdleRecentProject } from "../recentProjectGuard";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import {
     requireWindowProject,
@@ -660,7 +667,12 @@ export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServer
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
-        return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
+        return this.tryUse(async () => ({
+            servers: window.app.getVcsManager().listServers().map((session) => {
+                const openIn = openProjectsUsing(window, session.remoteOrigin);
+                return openIn.length > 0 ? { ...session, openIn } : session;
+            }),
+        }));
     }
 }
 
@@ -679,10 +691,10 @@ export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSig
 
     public async handle(
         window: AppWindow,
-        { authUrl, username, password }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
+        { authUrl, username, password, code }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
     ): Promise<RequestStatus<VcsPasswordSignInOutcome>> {
         return this.tryUse(async () =>
-            window.app.getVcsManager().signInWithPassword(authUrl, username, password));
+            window.app.getVcsManager().signInWithPassword(authUrl, username, password, code));
     }
 }
 
@@ -699,6 +711,55 @@ export class VcsSignInWithBrowserHandler extends IPCHandler<IPCEventType.vcsSign
         { authUrl }: IPCEvents[IPCEventType.vcsSignInWithBrowser]["data"],
     ): Promise<RequestStatus<VcsBrowserSignInOutcome>> {
         return this.tryUse(async () => window.app.getVcsManager().signInWithBrowser(authUrl));
+    }
+}
+
+/** Hand the waiting browser sign-in a callback address pasted by the person. */
+export class VcsCompleteBrowserSignInHandler extends IPCHandler<IPCEventType.vcsCompleteBrowserSignIn> {
+    readonly name = IPCEventType.vcsCompleteBrowserSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { callbackUrl }: IPCEvents[IPCEventType.vcsCompleteBrowserSignIn]["data"],
+    ): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>> {
+        return this.tryUse(async () => ({ outcome: window.app.getVcsManager().completeBrowserSignIn(callbackUrl) }));
+    }
+}
+
+/** Begin a device sign-in: answers the code to show, and opens the page to type it on. */
+export class VcsStartDeviceSignInHandler extends IPCHandler<IPCEventType.vcsStartDeviceSignIn> {
+    readonly name = IPCEventType.vcsStartDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl }: IPCEvents[IPCEventType.vcsStartDeviceSignIn]["data"],
+    ): Promise<RequestStatus<VcsDeviceSignInStart>> {
+        return this.tryUse(async () => window.app.getVcsManager().startDeviceSignIn(authUrl));
+    }
+}
+
+/** Wait for the device sign-in under way to be approved, refused or run out. */
+export class VcsFinishDeviceSignInHandler extends IPCHandler<IPCEventType.vcsFinishDeviceSignIn> {
+    readonly name = IPCEventType.vcsFinishDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<VcsBrowserSignInOutcome>> {
+        return this.tryUse(async () => window.app.getVcsManager().finishDeviceSignIn());
+    }
+}
+
+/** Stop waiting for the device sign-in under way. */
+export class VcsCancelDeviceSignInHandler extends IPCHandler<IPCEventType.vcsCancelDeviceSignIn> {
+    readonly name = IPCEventType.vcsCancelDeviceSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<Record<string, never>>> {
+        return this.tryUse(async () => {
+            window.app.getVcsManager().cancelDeviceSignIn();
+            return {};
+        });
     }
 }
 
@@ -724,6 +785,27 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
         return this.tryUse(async () => ({
             repositories: window.app.globalState.recentlyOpened.list().map(readLocalRepository),
         }));
+    }
+}
+
+/**
+ * Turn a remembered team project into a personal one, from the launcher.
+ *
+ * What the launcher offers in place of opening a team project whose server this machine is no
+ * longer signed in to. Held to a launcher row that no window has open (`requireIdleRecentProject`).
+ */
+export class VcsDetachRecentProjectHandler extends IPCHandler<IPCEventType.vcsDetachRecentProject> {
+    readonly name = IPCEventType.vcsDetachRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { path: projectPath }: IPCEvents[IPCEventType.vcsDetachRecentProject]["data"],
+    ): Promise<RequestStatus<void>> {
+        return this.tryUse(async () => {
+            const known = requireIdleRecentProject(window, projectPath);
+            await window.app.getVcsManager().detachProject(known);
+        });
     }
 }
 
@@ -844,6 +926,15 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
         { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
     ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
         return this.tryUse(async () => {
+            // Not while a project that works with this server is open. Signing out underneath a
+            // team project left it open and still reading as one, with nothing behind it; the
+            // server's settings change between projects, not inside one.
+            if (openProjectsUsing(window, remoteOrigin).length > 0) {
+                throw Object.assign(
+                    new Error("A project that uses this server is open. Close it first."),
+                    { code: TEAM_SERVER_IN_USE },
+                );
+            }
             // The session goes first, and here rather than inside the manager: a client
             // holding a token that has just been deleted would go on reconnecting with
             // it until something else closed it. Ending it before the record goes means
@@ -1109,4 +1200,31 @@ export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge>
         return this.tryUse(() => window.app.getVcsManager()
             .abortMerge(requireWindowProject(window, projectPath)));
     }
+}
+
+/**
+ * The refusal `vcs.forgetServer` answers with while a project using that server is open. A code
+ * rather than a sentence, so the settings panel says it in the author's language.
+ */
+export const TEAM_SERVER_IN_USE = "team-server-in-use";
+
+/**
+ * The projects open in a workspace window right now whose server is this one.
+ *
+ * Read off each project's own config rather than the sign-in record: a project that answered no
+ * to the sign-in question is still a team project pointed at that server, and signing out from
+ * under it is the same surprise.
+ */
+function openProjectsUsing(window: AppWindow, remoteOrigin: string): VcsSessionUser[] {
+    const names = new Map(window.app.globalState.recentlyOpened.list()
+        .map(project => [normalizeProjectPath(project.path), project.name] as const));
+    const users: VcsSessionUser[] = [];
+    for (const projectPath of window.app.openWorkspaceProjectPaths()) {
+        if (readRemoteOrigin(projectPath) !== remoteOrigin) continue;
+        users.push({
+            path: projectPath,
+            name: names.get(normalizeProjectPath(projectPath)) ?? path.basename(projectPath),
+        });
+    }
+    return users;
 }

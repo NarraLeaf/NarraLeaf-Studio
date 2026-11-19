@@ -11,11 +11,6 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
  * source rather than an address - and both are drawn as values with no labels around them, one line
  * each. Nothing here is performed on purpose; they are true because a window is open.
  *
- * **The live session is not here.** It used to be: one row in this dialog, with the only deliberate
- * act in the panel drawn smaller than the address above it. A session is a mode the whole window is
- * in and it outlasts every tab, so it belongs to the title bar and to a surface of its own - see
- * `LiveSessionPresence`. What is left here is what this dialog is actually about: the server.
- *
  * **Silent where there is nothing to report.** A project nobody else has open and with nothing
  * attached draws nothing at all. A strip that says "1 machine, 0 attached" every working day is a
  * strip nobody reads.

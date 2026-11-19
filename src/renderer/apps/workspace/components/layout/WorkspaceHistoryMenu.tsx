@@ -7,8 +7,6 @@ import { useFreezeGuard } from "../ui/freezeGuard";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import type { HistoryLabel } from "@/lib/workspace/services/history/historyModel";
 import { isSearchPanelFocus, resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
-import { liveSessionOwnsUndo } from "@/lib/workspace/services/live/liveSessionView";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
@@ -40,33 +38,6 @@ export function WorkspaceHistoryMenu() {
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
-    const live = useMemo(
-        () => (context ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context],
-    );
-    /**
-     * The session's own stack, when there is one.
-     *
-     * ⚠ **Both halves of the row have to move together.** The keystroke was routed to the session
-     * long ago; this row was not, so inside a session it went on reading the local stack for its
-     * label and its greying while its handler was refused by the freeze guard - a menu item that
-     * names a step, looks available, and does nothing when pressed. That is worse than a greyed one.
-     */
-    const [session, setSession] = useState<{ canUndo: boolean; canRedo: boolean } | null>(null);
-
-    useEffect(() => {
-        if (!live) {
-            setSession(null);
-            return;
-        }
-        const read = () => {
-            const view = live.getView();
-            setSession(liveSessionOwnsUndo(view.phase) ? { canUndo: view.canUndo, canRedo: view.canRedo } : null);
-        };
-        read();
-        return live.onChanged(read);
-    }, [live]);
-
     const [focus, setFocus] = useState<FocusContext | null>(null);
     // Bumped when a stack moves or the active editor changes, keeping the menu's target current.
     const [revision, setRevision] = useState(0);
@@ -100,14 +71,10 @@ export function WorkspaceHistoryMenu() {
         const groupId = "narraleaf-studio:workspace-history";
         const scopeId = resolveWorkspaceUndoScope(history, focus);
         const name = (label: HistoryLabel | null) => (label ? t(label.key, label.params) : null);
-        // Inside a session there is no named step to offer: what undo takes back is this window's
-        // own last operation, and the room's log is not a stack of labelled snapshots.
-        const undoStep = session ? null : name(history.peekUndo(scopeId));
-        const redoStep = session ? null : name(history.peekRedo(scopeId));
+        const undoStep = name(history.peekUndo(scopeId));
+        const redoStep = name(history.peekRedo(scopeId));
         // The Search panel's replaces have keys of their own; print the ones that would fire there.
         const inSearch = isSearchPanelFocus(focus);
-        const undoLocal = freeze.run(() => history.undo(scopeId));
-        const redoLocal = freeze.run(() => history.redo(scopeId));
 
         registerActionGroup({
             id: groupId,
@@ -138,11 +105,10 @@ export function WorkspaceHistoryMenu() {
                     // second door onto the same behaviour, and the chord is documented in the
                     // keybinding catalog (`workspace.undo`).
                     menuRole: "undo",
-                    onClick: () => {
-                        if (live && liveSessionOwnsUndo(live.getView().phase)) live.undo();
-                        else undoLocal();
-                    },
-                    disabled: session ? !session.canUndo : !history.canUndo(scopeId),
+                    onClick: freeze.run(() => {
+                        history.undo(scopeId);
+                    }),
+                    disabled: !history.canUndo(scopeId),
                     order: 0,
                 },
                 {
@@ -153,11 +119,10 @@ export function WorkspaceHistoryMenu() {
                     icon: <Redo2 className="w-4 h-4" />,
                     shortcutId: inSearch ? "search.redo" : "workspace.redo",
                     menuRole: "redo",
-                    onClick: () => {
-                        if (live && liveSessionOwnsUndo(live.getView().phase)) live.redo();
-                        else redoLocal();
-                    },
-                    disabled: session ? !session.canRedo : !history.canRedo(scopeId),
+                    onClick: freeze.run(() => {
+                        history.redo(scopeId);
+                    }),
+                    disabled: !history.canRedo(scopeId),
                     order: 1,
                 },
             ],
@@ -166,7 +131,7 @@ export function WorkspaceHistoryMenu() {
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [focus, freeze, history, live, registerActionGroup, revision, session, t, unregisterActionGroup]);
+    }, [focus, freeze, history, registerActionGroup, revision, t, unregisterActionGroup]);
 
     return null;
 }

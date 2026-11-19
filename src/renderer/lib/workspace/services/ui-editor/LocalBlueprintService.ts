@@ -1455,10 +1455,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * node refs first would leave every `Get`/`Set` node empty while the variable stayed exactly
      * where it was.
      *
-     * ⚠ **In a session the sweep is not done here.** It is derived from the effect - every machine
-     * works out the same nodes from the same statement - so doing it alongside would be a second
-     * write for work the effect already implies, and on a host a second message and a second press
-     * of undo. See `LiveSessionService.applyVariableOp`.
+     * ⚠ **In a Team project the sweep is not done here.** It is derived from the effect - every
+     * machine works out the same nodes from the same statement - so doing it alongside would be a
+     * second write for work the effect already implies, and a second press of undo.
      */
     public deletePersistentVariable(historyBlueprintId: string, variableId: string): boolean {
         const registry = this.getVariableRegistryService();

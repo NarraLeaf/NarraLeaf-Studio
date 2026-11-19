@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { storyDocumentSpec } from "@shared/documents/specs";
-import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../ui-editor/uiFreezeScope";
 import { agentLockBlocking } from "./useAgentEditorLocks";
 
 /** Which controls an agent's editor lock reaches: those whose scope names a document of the locked editor. */

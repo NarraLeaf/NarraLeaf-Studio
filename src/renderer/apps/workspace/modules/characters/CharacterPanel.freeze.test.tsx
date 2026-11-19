@@ -24,12 +24,6 @@ vi.mock("../../components/ui/freezeGuard", () => ({
     useFreezeGuard: () => ({ frozen: true, reason: "frozen", writes: () => ({ disabled: true, "data-tip": "frozen" }) }),
     freezeContextMenuRows: (rows: unknown) => rows,
 }));
-vi.mock("./characterLiveSession", () => ({
-    CharacterClaimsProvider: ({ children }: { children: React.ReactNode }) => children,
-    CharacterClaimMark: () => null,
-    useCharacterClaim: () => null,
-    characterDocumentFreezeScope: () => "character.json",
-}));
 vi.mock("./state/useCharacterFocus", () => ({
     useCharacterFocus: () => ({ focusedCharacterId: null, handleCharacterClick: vi.fn(), handleCharacterOpen: vi.fn(), setFocusToPanel: vi.fn() }),
 }));

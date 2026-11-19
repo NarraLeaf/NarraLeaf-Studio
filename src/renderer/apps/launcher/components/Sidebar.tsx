@@ -1,4 +1,5 @@
-import { BookOpen, FolderOpen, Puzzle, Server, Settings } from "lucide-react";
+import { BookOpen, FolderOpen, Puzzle, Server, Settings, Settings2, UserPlus } from "lucide-react";
+import { useEffect } from "react";
 import { Item } from "./Item";
 import { getInterface } from "@/lib/app/bridge";
 import { useUpdateState } from "@/lib/app/useUpdateState";
@@ -7,6 +8,14 @@ import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
 import { UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { PRODUCT_MARK_SRC } from "@/lib/appearance/productMark";
+import {
+    TeamAccountMenu,
+    TeamAccountMenuAccounts,
+    TeamAccountMenuActs,
+    TeamAccountMenuRow,
+    useActiveSignIn,
+} from "@/lib/team/TeamAccountMenu";
+import { useServers } from "@/lib/vcs/servers";
 
 /**
  * The tabs, in the order they are read.
@@ -20,6 +29,8 @@ export type LauncherTabKey = "projects" | "servers" | "plugins" | "learning";
 interface SidebarProps {
     active: LauncherTabKey;
     onChange: (key: LauncherTabKey) => void;
+    /** Open the add-server dialog, from the account menu's "add account". */
+    onAddAccount?: () => void;
 }
 
 function IconProjects() {
@@ -42,9 +53,24 @@ function IconLearning() {
  * Launcher sidebar with navigation tabs
  * Private component for launcher app only
  */
-export function Sidebar({ active, onChange }: SidebarProps) {
+export function Sidebar({ active, onChange, onAddAccount }: SidebarProps) {
     const { t } = useTranslation();
     const update = useUpdateState();
+    const { servers, reload: reloadServers } = useServers();
+    const account = useActiveSignIn(servers);
+
+    // The servers list is read once, and the face beside Settings has to come and go with a sign-in
+    // made elsewhere: in the Settings window (seen when this one is focused again) or on the Servers
+    // tab here, which opens or drops a Team session as it signs in or out.
+    useEffect(() => {
+        const refresh = () => void reloadServers();
+        window.addEventListener("focus", refresh);
+        const token = getInterface().team.onConnectionChanged(refresh);
+        return () => {
+            window.removeEventListener("focus", refresh);
+            token.cancel();
+        };
+    }, [reloadServers]);
 
     const openSettings = () => {
         getInterface().app.launchSettings({});
@@ -132,7 +158,55 @@ export function Sidebar({ active, onChange }: SidebarProps) {
             </nav>
 
             {/* Footer */}
-            <div className="mt-auto">
+            <div className="mt-auto flex items-center gap-1">
+                {/* The same face and card as the workspace title bar, for the account picked in
+                    this card, or the server signed in to last; absent until this machine is
+                    signed in to one. The card opens upward and no wider than the sidebar, which
+                    clips whatever leaves it. With more than one account it lists them, and
+                    picking one is what the face shows from then on; adding one opens the same
+                    dialog as the Team page. */}
+                <TeamAccountMenu
+                    remoteOrigin={account.active}
+                    cardClassName="bottom-full left-0 mb-2 w-[216px]"
+                    sections={({ close }) => (
+                        <>
+                            {servers.length > 1 && (
+                                <TeamAccountMenuAccounts
+                                    servers={servers}
+                                    active={account.active}
+                                    onChoose={(remoteOrigin) => {
+                                        account.choose(remoteOrigin);
+                                        close();
+                                    }}
+                                />
+                            )}
+                            <TeamAccountMenuActs>
+                                {onAddAccount && (
+                                    <TeamAccountMenuRow
+                                        act="add-account"
+                                        icon={<UserPlus className="h-4 w-4" />}
+                                        onClick={() => {
+                                            close();
+                                            onAddAccount();
+                                        }}
+                                    >
+                                        {t("workspace.shell.team.account.add")}
+                                    </TeamAccountMenuRow>
+                                )}
+                                <TeamAccountMenuRow
+                                    act="manage"
+                                    icon={<Settings2 className="h-4 w-4" />}
+                                    onClick={() => {
+                                        close();
+                                        onChange("servers");
+                                    }}
+                                >
+                                    {t("workspace.shell.team.account.manage")}
+                                </TeamAccountMenuRow>
+                            </TeamAccountMenuActs>
+                        </>
+                    )}
+                />
                 <button
                     className="flex items-center justify-start p-2 text-fg-muted hover:text-fg hover:bg-fill rounded-md transition-colors w-fit cursor-default"
                     onClick={openSettings}

@@ -35,7 +35,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
-import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
+import type { DevModeAgentAction, DevModeAgentResult, DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -110,9 +110,14 @@ import type {
     TeamConnection,
     TeamEventMessage,
     TeamSubscribeOutcome,
+    TeamAttachment,
+    TeamBuild,
+    TeamUploadBuildRequest,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsDeviceSignInStart, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -411,17 +416,6 @@ export interface RendererPreloadedInterface {
          * window holds may be written - see `workspace.sessionTakenOver`.
          */
         onSessionTakenOver(handler: (holder: ProjectSessionHolder) => void): AppEventToken;
-        /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
-        liveIntentTaken(): Promise<RequestStatus<void>>;
-        /**
-         * A room the launcher wants this window to join, for a project it already had open.
-         *
-         * The prop's other half: one project is one window, so the launcher's request reaches a
-         * window that exists and has already read its props. See `workspace.joinLive`.
-         */
-        onJoinLive(
-            handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void,
-        ): AppEventToken;
         /** Reveal this window's project folder in the OS file manager. */
         openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;
@@ -636,6 +630,8 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Move a remembered project's folder to the trash and drop it from the history. */
+        trashRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /**
@@ -840,6 +836,10 @@ export interface RendererPreloadedInterface {
         openStoryRowInWorkspace(payload: DevModeStoryRowOpenPayload): Promise<RequestStatus<void>>;
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
+        /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+        sendPlaytestFeedback(payload: DevModePlaytestFeedbackRequest): Promise<RequestStatus<void>>;
+        /** Workspace side of {@link sendPlaytestFeedback}. */
+        onPlaytestFeedback(handler: (payload: WorkspacePlaytestFeedback) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         /**
          * Produce the clip a weather seed describes, and grant this window a URL for it.
@@ -1228,6 +1228,7 @@ export interface RendererPreloadedInterface {
             authUrl: string,
             username: string,
             password: string,
+            code?: string,
         ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
         /**
          * Sign in through the system browser, on a server that announces `oauth`.
@@ -1236,6 +1237,17 @@ export interface RendererPreloadedInterface {
          * five minutes). Hand the token to {@link addServer} exactly as a password sign-in's.
          */
         signInWithBrowser(authUrl: string): Promise<RequestStatus<VcsBrowserSignInOutcome>>;
+        /**
+         * Hand the waiting {@link signInWithBrowser} the address the browser was sent back
+         * to, when that redirect did not reach Studio by itself.
+         */
+        completeBrowserSignIn(callbackUrl: string): Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>>;
+        /** Begin a device sign-in: the code to show, and the page it is typed on (opened too). */
+        startDeviceSignIn(authUrl: string): Promise<RequestStatus<VcsDeviceSignInStart>>;
+        /** Wait for the device sign-in {@link startDeviceSignIn} began. Answers as {@link signInWithBrowser} does. */
+        finishDeviceSignIn(): Promise<RequestStatus<VcsBrowserSignInOutcome>>;
+        /** Stop waiting for that device sign-in. */
+        cancelDeviceSignIn(): Promise<RequestStatus<Record<string, never>>>;
         /**
          * Put this project on a server: register it, connect it, send it.
          *
@@ -1260,6 +1272,12 @@ export interface RendererPreloadedInterface {
          * on the first project the author already has open.
          */
         listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
+        /**
+         * Take a remembered project's server address off, from the launcher. Local.
+         *
+         * Refused while a workspace window has the project open.
+         */
+        detachRecentProject(path: string): Promise<RequestStatus<void>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
@@ -1332,6 +1350,25 @@ export interface RendererPreloadedInterface {
          * happen in the main process - see `@shared/types/teamTransfer`.
          */
         transfer(request: TeamTransferRequest): Promise<RequestStatus<TeamTransferOutcome>>;
+        /**
+         * An account's avatar, as a `data:` URL, or null where it has none or it could not be read.
+         * `path` is the `avatarUrl` the server put in a profile; the token stays in the main process.
+         */
+        avatar(remoteOrigin: string, path: string): Promise<RequestStatus<{ dataUrl: string | null }>>;
+        /**
+         * Back Studio's settings up to a server, or read them back. Settings and the launcher only;
+         * the renderer composes and checks the document, the main process only carries it.
+         */
+        studioConfig(request: TeamStudioConfigRequest): Promise<RequestStatus<TeamStudioConfigOutcome>>;
+        /**
+         * Put one artifact of this project's last build on its server. Names a path; the main
+         * process holds it to the artifacts the last build recorded and does the reading.
+         */
+        uploadBuild(request: TeamUploadBuildRequest): Promise<RequestStatus<{ build: TeamBuild }>>;
+        /** How far an upload this window started has got. */
+        onUploadProgress(handler: (payload: { artifact: string; sent: number; total: number }) => void): AppEventToken;
+        /** Put one picture (a `data:` URL) beside this project's comments on its server. */
+        uploadAttachment(remoteOrigin: string, projectId: string, dataUrl: string): Promise<RequestStatus<{ attachment: TeamAttachment; url: string }>>;
     };
 
     gameBuild: {

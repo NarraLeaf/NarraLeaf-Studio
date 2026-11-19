@@ -23,7 +23,8 @@ import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { AssetClaimMark, AssetTransferSweep, assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
+import { AssetTransferSweep } from "../assetTransfers";
 
 /** One row of the tree, already flattened. Only the section it belongs to varies. */
 type TreeListRow = ListViewRow<ResolvedAssetSet>;
@@ -832,7 +833,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     /** The set value this row answers, when it is drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, mediaSupport, handleConvertMedia, assetClaims, assetTransfers, assetSetReveal } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, mediaSupport, handleConvertMedia, assetTransfers, assetSetReveal } = useAssetsPanelContext();
     const { t } = useTranslation();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
@@ -840,11 +841,8 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     const revealed = assetSetReveal?.assetId === asset.id;
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
-    // Who else has this record open in a live session, or null. Read from one subscription for the
-    // whole panel; outside a session it is always null and costs a lookup.
-    const claimedBy = assetClaims[asset.id] ?? null;
-    // How far this file has got, while it is still coming in over a session. Undefined at every
-    // other moment, which is every moment outside one.
+    // How far this file has got, while it is still coming in from the team server. Undefined at
+    // every other moment.
     const arriving = assetTransfers[asset.id];
     // Inside a set, the row does not leave: which set a file belongs to is written in its tags, so a
     // drop somewhere else would move a row the set goes on drawing exactly where it was.
@@ -881,7 +879,6 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
             {arriving !== undefined && <AssetTransferSweep share={arriving} />}
             <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
-            {claimedBy && <AssetClaimMark account={claimedBy} />}
             {support && (
                 <AssetSupportBadge
                     record={support}

@@ -161,6 +161,10 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.statusBar.hiddenItems": string[];
     /** The search pill in the title bar. With it hidden the command palette grows its own input. */
     "ui.titleBarSearch.visible": boolean;
+    /** Whether the signed-in Team account is drawn in the workspace title bar while connected. */
+    "ui.teamAvatar.visible": boolean;
+    /** Whether the round trip to the Team server is shown in the status bar's Team cell. */
+    "ui.teamLatency.visible": boolean;
     /**
      * Watermark background. `ui.backgroundImage` is a *file name* inside the userData/backgrounds
      * cache, never a path - the main process resolves it by basename so a renderer cannot steer
@@ -574,20 +578,21 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "team.machineLabel": string;
     /**
-     * The live session a window was hosting when it went away, by repository id.
+     * Which Team account the launcher's face shows, and when the author picked it there.
      *
-     * **The one thing about a session that has to survive a window, and only for a minute.** A room
-     * lives in a server's memory and belongs to the window that opened it, so the moment that window
-     * goes - a reload, a crash, a laptop closing - the server ends it, and everybody in it is told.
-     * Nothing left anywhere else says the collaboration was meant to carry on, so a reload used to
-     * be indistinguishable from a goodbye.
-     *
-     * Written when a window becomes a host and cleared when its author leaves on purpose, so what is
-     * here means "this stopped without anybody asking". `at` is what keeps it from meaning anything
-     * else: a record older than a couple of minutes is a session that ended some time ago, and a
-     * workspace opening on it must not start a room around an author who came back tomorrow.
+     * Null until somebody picks one, which reads as the server signed in to last. A pick
+     * stands until a later sign-in, so an account just added is the one shown without a
+     * second step; see `activeSignIn` in `TeamAccountMenu.tsx`. Only which face to draw:
+     * nothing is sent as this account because of it, since every project already carries
+     * its own answer about which sign-in it uses.
      */
-    "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
+    "team.activeAccount": { remoteOrigin: string; chosenAt: number } | null;
+    /**
+     * Where the launcher lists the projects on a Team server: in the Projects tab beside the
+     * ones on this disk, or in the Team tab on their own. See
+     * lib/settings/teamProjectsPlacement.
+     */
+    "team.projectsPlacement": "projects" | "team";
     /**
      * Follow mode: each write an agent makes opens the tab it landed in, brings it to the front and
      * outlines the change. Studio-wide rather than per project, and on by default - see
@@ -629,6 +634,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,
+    "ui.teamAvatar.visible": true,
+    "ui.teamLatency.visible": true,
     // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
     // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through
     // readBackgroundSettings - which necessarily carries the fallbacks. Repeating them here would
@@ -675,7 +682,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.
     "team.machineLabel": "",
-    "team.hostedLiveSessions": {},
+    "team.activeAccount": null,
+    "team.projectsPlacement": "projects",
     [AGENT_FOLLOW_KEY]: AGENT_FOLLOW_DEFAULT,
 };
 

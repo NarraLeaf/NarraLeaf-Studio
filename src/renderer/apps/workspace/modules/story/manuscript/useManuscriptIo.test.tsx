@@ -33,7 +33,6 @@ const services = {
         if (id === Services.FileSystem) return { read: async () => ({ ok: true, data: "A line of narration." }) };
         if (id === Services.PanelState) return { getPanelState: () => undefined, setPanelState: vi.fn() };
         if (id === Services.UI) return { showError, showNotification };
-        if (id === Services.Live) return { ownsStory: () => false };
         return null;
     },
 };

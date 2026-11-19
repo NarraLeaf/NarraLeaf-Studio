@@ -24,8 +24,11 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 import {
+    TEAM_ACCESS_REQUEST_MESSAGE_LIMIT,
     TEAM_ANCHOR_FIELD_LIMIT,
+    TEAM_PERMISSION_TEMPLATES,
     TEAM_ANSWER_BYTES_LIMIT,
+    TEAM_CHAT_BODY_LIMIT,
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
@@ -47,6 +50,10 @@ import {
     teamProjectTodosTopic,
     teamProjectReviewsTopic,
     teamProjectMilestonesTopic,
+    teamProjectApprovalsTopic,
+    teamProjectLocksTopic,
+    teamProjectBuildsTopic,
+    teamProjectChatTopic,
     teamProjectDocTopic,
     teamAccountTodosTopic,
     teamAccountNotificationsTopic,
@@ -65,6 +72,7 @@ interface Contract {
     methods: string[];
     topics: Record<string, string>;
     limits: Record<string, number>;
+    permissionTemplates: { id: string; role: string; areas?: string[] }[];
 }
 
 const contract = JSON.parse(
@@ -80,6 +88,7 @@ const contract = JSON.parse(
 const CAPABILITIES: TeamCapability[] = [
     "session",
     "comments",
+    "chat",
     "clients",
     "live",
     "overlay",
@@ -95,6 +104,24 @@ const CAPABILITIES: TeamCapability[] = [
     "project-history",
     "blobs",
     "documents",
+    "approvals",
+    "locks",
+    "builds",
+    "attachments",
+    "shares",
+    "digests",
+    "push",
+    "watches",
+    "reactions",
+    "glossary",
+    "voice",
+    "templates",
+    "two-factor",
+    "api-tokens",
+    "archive",
+    "storage",
+    "account-policy",
+    "studio-config",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
@@ -135,9 +162,13 @@ describe("the protocol contract", () => {
             "adminUsers",
             "live",
             "project",
+            "projectApprovals",
+            "projectBuilds",
+            "projectChat",
             "projectClients",
             "projectDoc",
             "projectLive",
+            "projectLocks",
             "projectMembers",
             "projectMilestones",
             "projectOverlay",
@@ -167,7 +198,11 @@ describe("the protocol contract", () => {
         expect(teamProjectTodosTopic("abc")).toBe(contract.topics["projectTodos"]?.replace("{project}", "abc"));
         expect(teamProjectReviewsTopic("abc")).toBe(contract.topics["projectReviews"]?.replace("{project}", "abc"));
         expect(teamProjectMilestonesTopic("abc")).toBe(contract.topics["projectMilestones"]?.replace("{project}", "abc"));
+        expect(teamProjectApprovalsTopic("abc")).toBe(contract.topics["projectApprovals"]?.replace("{project}", "abc"));
+        expect(teamProjectLocksTopic("abc")).toBe(contract.topics["projectLocks"]?.replace("{project}", "abc"));
+        expect(teamProjectBuildsTopic("abc")).toBe(contract.topics["projectBuilds"]?.replace("{project}", "abc"));
         expect(teamProjectDocTopic("abc")).toBe(contract.topics["projectDoc"]?.replace("{project}", "abc"));
+        expect(teamProjectChatTopic("abc")).toBe(contract.topics["projectChat"]?.replace("{project}", "abc"));
         expect(teamAccountTodosTopic("u1")).toBe(contract.topics["accountTodos"]?.replace("{account}", "u1"));
         expect(teamAccountNotificationsTopic("u1")).toBe(contract.topics["accountNotifications"]?.replace("{account}", "u1"));
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
@@ -186,8 +221,10 @@ describe("the protocol contract", () => {
         // Studio went on applying at whatever number it had - which is how the reader on
         // the session's socket came to refuse answers the server was entitled to send.
         expect(Object.keys(contract.limits).slice().sort()).toEqual([
+            "accessRequestMessage",
             "anchorField",
             "answerBytes",
+            "chatBody",
             "commentBody",
             "docIntent",
             "instanceField",
@@ -198,6 +235,7 @@ describe("the protocol contract", () => {
         ]);
 
         expect(TEAM_ANCHOR_FIELD_LIMIT).toBe(contract.limits["anchorField"]);
+        expect(TEAM_ACCESS_REQUEST_MESSAGE_LIMIT).toBe(contract.limits["accessRequestMessage"]);
         expect(TEAM_COMMENT_BODY_LIMIT).toBe(contract.limits["commentBody"]);
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
@@ -205,9 +243,18 @@ describe("the protocol contract", () => {
         expect(TEAM_DOC_INTENT_LIMIT).toBe(contract.limits["docIntent"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
         expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
+        expect(TEAM_CHAT_BODY_LIMIT).toBe(contract.limits["chatBody"]);
 
         // `pageBytes` is where a server ends a page, and nothing on this side composes
         // one: it is named above so that it cannot arrive unnoticed, and pinned to no
         // constant because there is nothing here for it to bound.
+    });
+});
+
+describe("permission templates", () => {
+    it("offers the contract's templates, in its order, with its grants", () => {
+        expect(TEAM_PERMISSION_TEMPLATES.map((template) => ({ ...template, ...("areas" in template ? { areas: [...template.areas] } : {}) }))).toEqual(
+            contract.permissionTemplates,
+        );
     });
 });

@@ -5,18 +5,22 @@ import { useUpdateState } from "@/lib/app/useUpdateState";
 import { updateCanCancel, updateDownloadActionKey, updateRetryTime, updateStatusKey } from "@/lib/app/updatePresentation";
 import { Button } from "@/lib/components/elements";
 import { UpdateStepProgress } from "@/lib/components/elements/UpdateStepProgress";
-import { UPDATE_RELEASES_URL } from "@shared/constants/update";
+import { UPDATE_RELEASES_URL, type UpdateState } from "@shared/constants/update";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
  * Why this build cannot install its own updates, in the terms the reader is in.
  *
  * A sentence rather than a disabled Download button: a control that cannot work is a question the
- * user has no way to answer. macOS is named specifically because the reason is specific and
- * temporary (Studio is not code-signed yet), and a generic "unsupported" would read as "never".
+ * user has no way to answer. On macOS the main process says which of two fixable reasons applies
+ * (`blockedReason`, see updateMacSupport.ts): a copy signed ad hoc needs the new version installed
+ * by hand once, a copy in the wrong place needs moving into Applications.
  */
-function unsupportedKey(): TranslationKey {
-    if (navigator.platform.toLowerCase().includes("mac")) {
+function unsupportedKey(state: UpdateState): TranslationKey {
+    if (state.blockedReason === "location") {
+        return "update.unsupported.macosLocation";
+    }
+    if (state.blockedReason === "unsigned" || navigator.platform.toLowerCase().includes("mac")) {
         return "update.unsupported.macos";
     }
     return "update.unsupported.platform";
@@ -90,7 +94,7 @@ export function SoftwareUpdatePanel() {
                         <span className="text-xs text-fg-subtle">{t("update.retryAt", { time: updateRetryTime(state) ?? "" })}</span>
                     )}
                     {state.status === "manual" && (
-                        <span className="text-xs text-fg-subtle">{t(unsupportedKey())}</span>
+                        <span className="text-xs text-fg-subtle">{t(unsupportedKey(state))}</span>
                     )}
                     {state.status === "ready" && (
                         <span className="text-xs text-fg-subtle">{t("update.readyHint")}</span>

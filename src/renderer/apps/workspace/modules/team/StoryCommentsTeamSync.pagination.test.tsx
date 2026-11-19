@@ -12,7 +12,16 @@ const fixture = vi.hoisted(() => ({
     wrongThread: false,
     localPending: false,
     writes: [] as string[],
-    applied: vi.fn(),
+    // What the service holds once a server thread is applied, so a later push sees it here and
+    // does not take it for a thread deleted locally.
+    stored: [] as unknown[],
+    applied: vi.fn((remote: { teamThreadId: string; storyId: string; sceneId: string; blockId: string; resolved: boolean; createdAt: number; comments: Array<{ teamCommentId: string; author: unknown; body: string; createdAt: number }> }) => {
+        fixture.stored = [{
+            id: `local-${remote.teamThreadId}`, teamThreadId: remote.teamThreadId, storyId: remote.storyId,
+            sceneId: remote.sceneId, blockId: remote.blockId, todo: false, resolved: remote.resolved, createdAt: remote.createdAt,
+            comments: remote.comments.map(comment => ({ id: comment.teamCommentId, teamCommentId: comment.teamCommentId, body: comment.body, author: comment.author, createdAt: comment.createdAt })),
+        }];
+    }),
 }));
 
 vi.mock("@/lib/team", async importOriginal => ({
@@ -55,10 +64,10 @@ vi.mock("@/lib/app/bridge", () => ({
 vi.mock("../story-comments/storyCommentsState", () => ({
     useStoryCommentsService: () => ({
         onChanged: () => () => undefined,
-        listThreads: () => fixture.localPending ? [{
+        listThreads: () => [...(fixture.localPending ? [{
             id: "local", storyId: "story", sceneId: "scene", blockId: "row", todo: false,
             resolved: false, createdAt: 1, comments: [{ id: "local-comment", body: "local", author: { name: "Ada" }, createdAt: 1 }],
-        }] : [],
+        }] : []), ...fixture.stored],
         applyRemoteThread: fixture.applied,
     }),
 }));
@@ -74,6 +83,7 @@ beforeEach(() => {
     fixture.wrongThread = false;
     fixture.localPending = false;
     fixture.writes.length = 0;
+    fixture.stored = [];
     fixture.applied.mockClear();
 });
 afterEach(cleanup);

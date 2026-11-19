@@ -145,13 +145,8 @@ export const workspace = {
                 },
                 deleteDetail: "删除后无法撤销；这些行再次启用或恢复后需重新翻译",
                 changed: "故事或译文已更改，请检查孤立译文列表后再删除",
-                hostOnly: "协作期间，孤立译文由主机删除",
                 unknown: "有故事无法读取，暂不列出孤立的译文",
             },
-        },
-        live: {
-            entryClaimed: "{name} 正在翻译该行",
-            keyClaimed: "{name} 正在编辑该字符串",
         },
     },
     voice: {
@@ -561,7 +556,7 @@ export const workspace = {
                 writes_disabled: "未允许修改",
                 paused: "已暂停",
                 frozen: "项目已冻结",
-                live_session: "实时会话进行中",
+                live_session: "团队项目",
                 stale_revision: "内容已变更",
                 check_failed: "检查未通过",
                 not_found: "未找到",
@@ -665,26 +660,36 @@ export const workspace = {
      */
     team: {
         docs: {
-            refused: "服务器没有接受这次修改",
-            restored: "{{by}} 恢复了之前的一个版本，所有人现在看到的都是它。",
+            refused: "服务器未接受该修改",
+            areaRefused: "无权修改项目的该部分",
+            areaRefusedDetail: "项目所有者允许修改的范围：{areas}",
+            areaNames: {
+                story: "故事",
+                characters: "角色",
+                assets: "素材",
+                ui: "界面",
+                localization: "本地化",
+                config: "游戏配置",
+            },
+            restored: "{by} 已为所有成员恢复一个历史版本",
             diverged: "此窗口与服务器不一致，将从最近保存的版本重新开始",
-            kernelMismatch: "此 Studio 与 Team 服务器的编辑内核版本不同（Studio {{ours}}，服务器 {{theirs}}）。修改会保留在本机，直到两边更新一致。",
+            kernelMismatch: "此 Studio 与 Team 服务器的编辑内核版本不同（Studio {ours}，服务器 {theirs}），修改将保留在本机，直至两端更新一致",
             localKeptCommit: "采用团队版本前保留的本地内容",
-            localKept: "在采用团队版本之前，你的本地内容已保存到本项目的本地历史中。",
-            localKeepFailed: "未能先保存你的本地内容，因此没有采用团队版本，当前离线工作。",
+            localKept: "采用团队版本前，本地内容已保存至本项目的本地历史",
+            localKeepFailed: "本地内容未能先行保存，因此未采用团队版本，当前处于离线状态",
             history: "历史版本",
-            historyHint: "所有人的修改都会实时保存在服务器上。项目安静下来时会自动存一个版本；也可以手动保存，标记一个以后能回来的点。",
+            historyHint: "所有成员的修改实时保存在服务器上，项目一段时间无修改后自动保存版本，也可手动保存版本作为恢复节点",
             saveVersion: "保存版本",
-            versionLabel: "给这个版本起个名字（可选）",
+            versionLabel: "版本名称（可选）",
             restore: "恢复",
-            restoreConfirm: "要为所有人恢复这个版本吗？它会成为一个新版本，之后可以用同样的方式撤回。",
-            noVersions: "还没有版本",
+            restoreConfirm: "为所有成员恢复该版本？恢复后会生成一个新版本，可用同样方式撤销",
+            noVersions: "暂无版本",
             online: "实时协作中",
-            offline: "离线中——你的修改先保存在本机，连上服务器后会自动发送",
+            offline: "离线，修改暂存在本机，连接服务器后自动发送",
             syncing: "正在同步",
-            readOnly: "你在这个项目里是只读角色",
-            conflictsTitle: "离线时的修改有一部分没能应用",
-            conflictsHint: "选择要应用的离线改动",
+            readOnly: "当前账号在本项目中为只读角色",
+            conflictsTitle: "部分离线修改未能应用",
+            conflictsHint: "选择要应用的离线修改",
             conflictItem: "项目内容",
             conflictChanged: "修改",
             conflictRemoved: "删除",
@@ -699,25 +704,22 @@ export const workspace = {
             conflictRowsChanged: "修改行",
             conflictRowsRemoved: "删除行",
             conflictRowsMoved: "移动行",
-            dismiss: "知道了",
+            dismiss: "关闭",
             savedBy: "由 {name} 保存",
             automatic: "自动",
             preview: "查看",
-            previewing: "正在查看已保存的版本——这里的改动不会保存",
+            previewing: "正在查看已保存的版本，此处的改动不会保存",
             backToPresent: "回到当前",
             compare: "与当前对比",
-            comparing: "这个版本之后的改动",
-            noDifferences: "这个版本之后没有改动",
-            documentAdded: "这个版本之后新建",
-            documentRemoved: "这个版本之后被删除",
+            comparing: "该版本之后的改动",
+            noDifferences: "该版本之后无改动",
+            documentAdded: "该版本之后新建",
+            documentRemoved: "该版本之后删除",
             loadMore: "加载更多",
-            override: "用我的覆盖",
+            override: "应用",
             close: "关闭",
-            detach: "转为个人项目",
-            detachConfirm: "不再跟随团队服务器，把它保留为个人项目吗？",
-            detachDetail: "此窗口里的内容（包括离线时的修改）会成为这个项目最新的本地版本。服务器上的团队项目不受影响，其他人可以继续在上面工作。之后可以重新连接，届时会把你的修改发回去。",
-            conflictFile: "{path}：团队也改了这个文件，现在打开的是服务器上的版本",
-            detachedHint: "这是一个团队项目的个人副本。重新连接会把之后的修改发回团队项目；团队同时改过的地方会列出来让你选择。",
+            conflictFile: "{path}：团队同时修改过该文件，当前打开的是服务器版本",
+            detachedHint: "本项目为团队项目的个人副本，重新连接后会将本地修改发回团队项目，团队同时修改过的内容会列出以供选择",
             reconnect: "重新连接到团队项目",
         },
         // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
@@ -730,7 +732,8 @@ export const workspace = {
         noAccountHere: "本机在该服务器上没有账号",
         signInUnused: "该项目未使用此服务器的登录",
         useSignIn: "使用 {name} 的登录…",
-        signOutHint: "仅该项目退出登录，使用此登录的其他项目不受影响",
+        // 团队项目打开时，服务器相关的设置一律不可修改，只能关闭项目之后在启动器或设置中改。
+        serverLocked: "如需更换服务器、退出登录或转为个人项目，请先关闭此项目",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
         // 向服务器问到的结果，只在有事可做时才画出来。一切正常的项目什么都不写：
@@ -745,116 +748,22 @@ export const workspace = {
         presence: "协作",
         hereAlone: "只有本机",
         hereMany: "{count} 台设备",
-        // 这个面板里唯一一个需要主动去做的动作，其余都是打开窗口的附带结果。
-        liveOpen: "开始实时会话",
-        liveUntitled: "实时会话",
-        liveMembers: "{count} 人",
-        liveLeave: "离开",
-        liveEnd: "结束",
-        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
-        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
-        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
-        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
-        liveBlockedRecovery: "恢复模式下无法使用实时会话",
-        liveBlockedSession: "该工作区已在一场实时会话中",
-        liveBlockedTakenOver: "该项目现已在另一个 NarraLeaf Studio 中打开",
-        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
-        liveHost: "主持",
-        liveGuest: "参与",
-        liveEntering: "正在进入",
-        // 站在一个还没作答的主持方面前。单独一个词而不是「正在进入」——本机什么都还没发生，
-        // 而且在别人看一眼通知之前也不会发生。
-        liveAsking: "等待放行",
-        liveLeaving: "正在离开",
-        // 已加入，正在把加入之前会话里发生的事全部应用完。
-        liveRebase: "移到最新版本",
-        liveRebaseHint: "把会话里的修改记成一个版本，在这个版本上重开会话，成员会自动跟过来",
-        liveCatchingUp: "正在跟上会话进度",
-        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
-        liveNoStory: "先添加一个故事才能开始实时会话",
-        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
-        liveNoInstance: "该服务器还没有回应本机",
-        liveNoRepository: "此项目没有版本历史",
-        liveNoRevision: "先记录一个版本才能开始实时会话",
-        liveCloneRequired: "该会话属于 {project}，打开该项目才能加入",
-        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
-        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
-        // 与分叉那条一样写成第二行，而不是把第一行拉长。
-        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
-        liveRoomGone: "该会话已经关闭",
-        liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
-        // 口令错和口令没人用是同一句，因为服务器答的就是同一句：分开答等于把猜测变成一张
-        // 「哪些房间存在」的地图。
-        liveNoSuchCode: "没有实时会话用这个口令",
-        liveJoinRefused: "主持方没有放行",
-        // 这不是拒绝。申请还挂在服务器上，只是这个窗口不再等了。
-        liveJoinUnanswered: "无人应答",
-        liveJoinUnansweredNext: "等对方回来后，从启动器的 Team 页面再申请一次",
-        liveRoomStoryUnknown: "该会话未指明所编辑的故事，请主持方更新 Studio",
-        liveStoryNotHere: "该会话所改的故事不在此项目中",
-        liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
-        liveRefused: "服务器拒绝了这场会话",
-        liveRefusedNext: "等服务器恢复响应后再试一次",
-        liveFailed: "无法开始实时会话",
-        liveFailedNext: "再试一次",
-        liveNoInstanceNext: "检查与该服务器的连接，然后再试一次",
-        liveNoRepositoryNext: "先为此项目启用版本控制，然后再试一次",
-        liveMergeConflictsNext: "先完成合并，然后再试一次",
-        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
-        // 两半都要说，因为后半句正是作者马上会在屏幕上看到的：加入时房间那份文档覆盖了这棵树，
-        // 现在又被写了回来。不说的话，编辑器自己变了一次就成了第三件没人解释的事。
-        liveEndedHostLeft: "主持方已离开，会话结束，本机已恢复到你自己的进度",
-        // 每个人每间房只说一次；本窗口进来时已经在房里的人不说 —— 那是房间本身，不是房里发生的事。
-        liveJoined: "{name} 加入了会话",
-        // 主机看的，两个答案就在通知上 —— 让作者去找面板而对方在等，正是这条要避免的打断。
-        liveAsked: "{name} 请求加入会话",
-        // 标题栏那个控件上，圆点旁边。给数不给名字：名字就在一按之内，
-        // 而三个人里只念一个名字等于用排头那位去描述整条队。
-        liveWaitingToJoin: "{count} 人等待加入",
-        // 对话框里那两个答案上面的小标题——标题栏那个点指向的就是这里。写个数字等于把点已经说过的话再说一遍。
-        liveWaitingLabel: "等待放行",
-        liveAdmit: "同意",
-        liveTurnAway: "暂不",
-        // 三个控件各说两半：房间能不能被找到，以及要不要人来决定谁进来。
-        liveRuleOpen: "服务器上的任何人",
-        liveRuleOpenDetail: "所有人都看得到，不用申请直接加入",
-        liveRuleRequest: "任何人，但要你同意",
-        liveRuleRequestDetail: "所有人都看得到，每个申请由你回答",
-        liveRuleCode: "仅凭口令",
-        liveRuleCodeDetail: "不出现在列表里。拿到这四位数的人不用申请直接加入",
-        // 写在口令旁边。不写的话作者只能靠试出来。
-        liveCodeFixed: "一场会话一个口令。要换口令，结束这场再开一场。",
-        liveCodeLabel: "口令",
-        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
-        // 已经不是其他人正在看的那一份。
-        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
-        liveEndedDivergedNext: "重新加入前先从服务器获取",
-        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的项目都画这个控件，
-        // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
-        // 所以它改为置灰并说明自己在等哪一个答复。
-        livePresence: "实时会话",
         commitTodos: {
-            title: "随这个版本完成",
+            title: "随该版本完成",
             hint: "勾选的待办会在提交后标为完成，并记下是哪个版本完成的",
-            failed: "版本已提交，但有 {count} 条待办没能标为完成",
+            failed: "版本已提交，但有 {count} 条待办未能标为完成",
         },
         editingNotice: {
-            here: "{name} 也在编辑这里（{since}）。",
+            here: "{name} 也在编辑此处（{since}）",
             justNow: "刚刚打开",
-            minutes: "已经 {minutes} 分钟",
-            dismiss: "知道了",
+            minutes: "已打开 {minutes} 分钟",
+            dismiss: "关闭",
         },
-        liveChat: {
-            title: "会话聊天",
-            open: "打开会话聊天",
-            close: "收起",
-            placeholder: "说点什么…",
-            send: "发送",
-            empty: "还没有人说话",
-            nobodyElse: "会话里只有你",
-            follow: "跟随 {name}：TA 去哪里你就去哪里",
-            stopFollowing: "停止跟随 {name}",
-            followingShort: "跟随中",
+        assetLock: {
+            theirs: "{name} 锁定了这个资源，到 {until}。在那之前，其他人对它的修改都会被服务器拒绝。",
+            mine: "你锁定了这个资源，到 {until}。在那之前其他人无法修改它。",
+            release: "解锁",
+            dismiss: "知道了",
         },
         requests: {
             askReview: "请求评审",
@@ -875,61 +784,71 @@ export const workspace = {
             voiceTitle: "配音「{story}」({locale})",
             assetPlaceholder: "需要什么，例如「Ada 哭泣差分」",
             sendAsset: "发出",
-            sent: "已发出，可以在网页的看板上跟进",
-            failed: "没有发出去，请检查连接或权限",
+            sent: "已发送，可在网页看板中跟进",
+            failed: "发送失败，请检查连接或权限",
+            useTemplate: "套用项目模板",
+            noTemplates: "服务器上还没有模板。可以在网页控制台「进度 → 模板」里把一个项目存成模板",
+            templateHolds: "{members} 位成员 · {milestones} 个里程碑 · {todos} 个待办",
+            applyTemplate: "套用",
+            templateApplied: "已套用：加入 {members} 位成员、{milestones} 个里程碑、{todos} 个待办",
+        },
+        buildUpload: {
+            upload: "上传到 Team",
+            retry: "重试",
+            tip: "把这个构建放到团队服务器上，团队成员可以下载试玩",
+            sending: "正在上传 {percent}%",
+            done: "已上传",
+            failed: "上传失败：{reason}",
+        },
+        playtest: {
+            title: "试玩反馈",
+            atRow: "反馈会挂在当时正在播放的那一行台词旁边",
+            noRow: "当时没有在播放剧情，反馈会挂在项目上",
+            placeholder: "这里出了什么问题？（⌘/Ctrl+Enter 发送）",
+            unavailable: "这个项目不在支持图片和批注的团队服务器上，无法发送反馈",
+            cancel: "取消",
+            send: "发送",
+            sending: "正在发送…",
+            failed: "反馈没能发送",
+        },
+        assetRequest: {
+            title: "“{name}”是在回应某个素材请求吗？",
+            detail: "选一个请求，这份素材会链接过去，请求随之完成",
+            none: "不是",
         },
         roleNotice: {
-            reviewer: "你在这个项目里是审阅者：可以阅读、批注和接待办，不能提交或发送修改。",
-            viewer: "你在这个项目里是只读成员：可以阅读，不能批注、提交或发送修改。",
-            dismiss: "知道了",
+            reviewer: "当前账号在本项目中为审阅者：可阅读、批注和领取待办，不能提交或发送修改",
+            viewer: "当前账号在本项目中为只读成员：可阅读，不能批注、提交或发送修改",
+            dismiss: "关闭",
+        },
+        latency: {
+            value: "{ms} ms",
+            title: "到服务器的往返延迟：最近 5 次的中位数 {median} ms，最近一次 {last} ms",
+        },
+        account: {
+            history: "历史版本",
+            add: "添加账号",
+            manage: "管理 Team",
+            online: "在线 {count}",
+            onlineEmpty: "暂无在线成员",
+            offline: "未连接到 Team 服务器",
         },
         notifications: {
             label: "通知",
             empty: "没有通知",
             markAllRead: "全部标为已读",
-            mention: "{who} 在批注中提到了你",
-            reply: "{who} 回复了你参与的批注",
-            assigned: "{who} 指派了一个待办给你",
+            mention: "{who} 在批注中提及你",
+            reply: "{who} 回复你参与的批注",
+            assigned: "{who} 向你指派待办",
             "review-requested": "{who} 请你评审",
-            "review-answered": "{who} 回复了你的评审请求",
+            "review-answered": "{who} 已回复你的评审请求",
+            "access-requested": "{who} 申请权限",
+            "access-decided": "{who} 已处理你的权限申请",
+            watch: "{who} 更新了你关注的内容",
         },
-        liveConnecting: "正在连接该服务器",
-        liveUnsupported: "该服务器不提供实时会话",
-        liveNobody: "此项目没有进行中的实时会话",
-        liveRoomOpen: "{name} 开着一场实时会话",
-        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结项目。
-        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
-        // 报告有别人的房间时，同时说清楚从哪里进。所有入口都在启动器，因为加入往往要先取得项目。
-        liveJoinFromLauncher: "从启动器的 Team 页面加入",
-        // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
-        liveStory: "故事",
-        liveHostedBy: "主持方 {name}",
-        // 房间里有谁，按账号。主持方要标出来：那扇窗口离开的含义不同，它会替所有人结束房间。
-        liveMembersLabel: "会话成员",
-        liveThisMachine: "本机",
-        // 进入会话时未提交的内容去了哪里。一个说不出名字的检查点等于回不去，
-        // 所以这里直接陈述，而不是留给作者去版本面板里找。
-        liveCheckpoint: "检查点",
-        liveCheckpointAt: "进入会话前未提交的内容已记录在 {version}",
-        liveCheckpointNone: "进入会话时没有未提交的内容",
-        // 参与方自己的往返。只在不为零时画出来：主持方答复之前文档不会在参与方手下变化，
-        // 不写出来的话，这与编辑器停止工作在屏幕上是同一件事。
-        livePendingOne: "1 项修改正在等待主持方",
-        livePendingMany: "{count} 项修改正在等待主持方",
-        // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间只保存该会话的故事，此项目中其余内容是当前的，且为只读",
-        liveUnavailableHere: "实时会话期间不可用",
-        // 别人正在写的行，集中在一处读，不必逐行去找标记。
-        liveClaimsLabel: "正在被编辑的行",
-        liveClaimOne: "{name} 正在写 1 行",
-        liveClaimMany: "{name} 正在写 {count} 行",
+        projectUnavailableHere: "团队项目中不可用",
         // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
-        liveFrozenTitle: "实时会话进行中",
-        liveLeaveSession: "离开实时会话",
-        liveEndSession: "结束实时会话",
-        // 主持方离开一间还有别人的房间会怎样。没有继任者：主持方手里是唯一算数的那份，
-        // 因此其他人各自回到自己的进度上。
-        liveEndSessionForEveryone: "结束会话（所有人退出）",
+        projectFrozenTitle: "团队项目：修改由团队服务器同步",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
@@ -1216,7 +1135,7 @@ export const workspace = {
             // 对作者正在打字的那份文件是假的。
             frozenTitleSession: "该文件不会被保存",
             frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
-            frozenDetailTeam: "这部分内容不经团队服务器同步，改了也不会到达其他人；离线时只保存故事。",
+            frozenDetailTeam: "该部分内容不经团队服务器同步，修改不会发送给其他成员；离线时仅保存故事",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -1417,7 +1336,7 @@ export const workspace = {
             enableHint: "在本项目的目录中保存版本历史",
             enabling: "正在设置版本控制…",
             // 仓库已经存在、里面还没有版本——与上面的 `notVersioned`（压根没启用）是两回事。
-            noHistory: "还没有版本",
+            noHistory: "暂无版本",
             history: "历史",
             loadingHistory: "正在读取版本历史…",
             // 列表末尾，只在这次读取是「读满了上限」而不是「读到项目开头」时出现。说的是作者能得到
@@ -1438,8 +1357,8 @@ export const workspace = {
             commit: "提交版本",
             // 是个问句而不是命令，并且明说可选——因为它确实可选：不写消息也是一个合法的版本，
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
-            commitPlaceholder: "这次改了什么？（可选）",
-            openThreadsInChanges: "还有 {count} 条未解决的批注在这次修改的故事里。",
+            commitPlaceholder: "本次修改说明（可选）",
+            openThreadsInChanges: "本次修改的故事中有 {count} 条未解决的批注",
             openThreadsShow: "查看",
             commitMessage: "版本说明",
             authorLabel: "提交版本记录的作者",
@@ -1542,14 +1461,14 @@ export const workspace = {
                     reading: "正在读取该服务器上的项目",
                     // 服务器上已经有这个项目——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
                     // 此时没有什么可决定的，所以名称是陈述，不是提问。
-                    already: "该服务器上已经有此项目，名为 {name}。",
+                    already: "该服务器上已有此项目，名为 {name}",
                     nameLabel: "在服务器上的名称",
                     namePlaceholder: "my-game",
-                    nameHint: "可用字母、数字、点、连字符与下划线。",
+                    nameHint: "可用字母、数字、点、连字符与下划线",
                     // 两条都是服务器的拒绝，只是提前说：一条只会回一个状态码，
                     // 另一条要等对话框关闭、发布已经做了一半才出现。
-                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
-                    nameTaken: "该服务器上已有同名项目。",
+                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线",
+                    nameTaken: "该服务器上已有同名项目",
                     // 服务器从未见过这个项目时按钮做的事：登记、连接，并把本机的全部版本发上去。
                     createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
@@ -1577,7 +1496,7 @@ export const workspace = {
                 unreachable: "无法连接该服务器",
                 // 服务器答应了但不接受我们。**只有这个状态**才显示凭据字段——
                 // 在没有人被拒绝之前就问令牌，是在问一个多数作者永远不需要回答的问题。
-                unauthorized: "该服务器拒绝了访问",
+                unauthorized: "该服务器拒绝访问",
                 // 同样这七个状态，短到能挨着服务器名字放。上面那几句说的是状态的含义，
                 // 悬停时仍然显示它们；这几个是一眼读到的写法：320px 的一列要在同一行里
                 // 放下名字、状态和菜单。用的是正下方两个按钮的同一套词。
@@ -1600,24 +1519,24 @@ export const workspace = {
                 syncedNothing: "已是最新",
                 publish: {
                     publishing: "正在将此项目上传到服务器…",
-                    noToken: "本机无法向该服务器注册此项目，请使用令牌重新添加。",
-                    refused: "该服务器拒绝了当前登录的账号，项目未被注册。",
-                    unreachable: "该服务器没有响应，项目未被注册。",
-                    wrongRepository: "该服务器注册的是另一个项目，因此没有上传任何内容。",
+                    noToken: "本机无法向该服务器注册此项目，请使用令牌重新添加该服务器",
+                    refused: "该服务器拒绝当前登录的账号，项目未注册",
+                    unreachable: "该服务器无响应，项目未注册",
+                    wrongRepository: "该服务器注册的是另一个项目，未上传任何内容",
                     // 这个名字已经被别的项目占了。直接说补救办法，因为补救办法只有换一个名字。
-                    nameTaken: "这台服务器上已经有另一个项目叫这个名字，请换一个。",
+                    nameTaken: "该服务器上已有同名项目，请更换名称",
                     // 同一个仓库，以它当初发布时的名字在那台服务器上；而这台服务器的运维规定
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
-                    alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
-                    unknown: "该服务器未注册此项目。",
-                    declined: "该项目未使用此服务器的登录，项目未被注册。",
+                    alreadyPublished: "本项目在该服务器上已命名为 {name}，该服务器不允许同一项目使用多个名称",
+                    unknown: "该服务器未注册此项目",
+                    declined: "该项目未使用此服务器的登录，项目未注册",
                     // 不是拒绝：这个项目以前就在那台服务器上（复制过来的项目目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
-                    connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",
+                    connectedAs: "本项目在该服务器上已命名为 {name}，已按该名称连接，使用「发送」可将本机版本上传到服务器版本之上",
                 },
                 signIn: {
                     // 项目指向的服务器在本机没有账号时出现。
-                    required: "连接项目到该服务器需要先在本机添加账号。",
+                    required: "连接该服务器前，请先在本机添加账号",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
                 },
@@ -1976,6 +1895,17 @@ export const workspace = {
                 detail: "在当前窗口打开会关闭「{current}」，未保存的更改会自动保存",
                 thisWindow: "在当前窗口打开",
                 newWindow: "在新窗口打开",
+            },
+            // 启动器会在入口拦下的最近项目。工作区里没有可给的选择，只在行上写明原因，
+            // 处理要回到启动器去做
+            unavailable: {
+                folderMissing: "项目文件夹已被删除或移动",
+                notAProject: "此文件夹已不是 NarraLeaf 项目",
+                signedOut: "已断开与 {server} 的连接",
+                refused: "无法打开此项目",
+                detailFolderMissing: "项目文件夹已被删除或移动，可在启动器重新定位或从列表移除",
+                detailNotAProject: "此文件夹已不是 NarraLeaf 项目，可在启动器重新定位或从列表移除",
+                detailSignedOut: "本机已断开与此项目 Team 服务器的连接，可在启动器转为个人项目或删除",
             },
         },
         closeConfirm: {

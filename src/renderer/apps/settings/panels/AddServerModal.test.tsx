@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsServerDiscovery, VcsServerSession } from "@shared/types/vcs";
-import { AddServerModal, type BrowserSignIn, type PasswordSignIn } from "./AddServerModal";
+import { AddServerModal, type BrowserSignIn, type PasswordSignIn, type PasswordSignInRequest } from "./AddServerModal";
 
 /**
  * Adding a server, from an address to a sentence about what was joined.
@@ -27,6 +27,8 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const bridge = vi.hoisted(() => ({
+    /** What this installation is already signed in to. */
+    servers: [] as VcsServerSession[],
     probeServer: vi.fn(),
     addServer: vi.fn(),
     listServerProjects: vi.fn(),
@@ -36,6 +38,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
+            listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             probeServer: bridge.probeServer,
             addServer: bridge.addServer,
         },
@@ -58,8 +61,8 @@ vi.mock("@/lib/app/bridge", () => ({
     }),
 }));
 
-const ADDRESS = "nlteam://team.example.lan:41402";
-const AUTH = "https://team.example.lan:41402";
+const ADDRESS = "nlteam://team.example.lan:54080";
+const AUTH = "https://team.example.lan:54080";
 const ORIGIN = "lore://team.example.lan:41337";
 /** What a server that serves the route answers with, measured. */
 const WITH_PASSWORD = ["projects", "project-detail", "members", "password-sign-in", "project-history"];
@@ -101,6 +104,7 @@ const onAdded = vi.fn();
 
 afterEach(() => {
     cleanup();
+    bridge.servers = [];
     bridge.probeServer.mockReset();
     bridge.addServer.mockReset();
     bridge.listServerProjects.mockReset();
@@ -120,6 +124,18 @@ function find(name: string): Promise<HTMLElement> {
         if (node === null) throw new Error(`nothing matched ${name}`);
         return node;
     });
+}
+
+/** Unfold the footer's other ways of signing in, where they are folded. */
+function openOthers(): void {
+    const toggle = seam("other-methods-toggle");
+    if (toggle !== null && toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+}
+
+/** Pick another way of signing in from the footer's folded list. */
+function choose(name: string): void {
+    openOthers();
+    fireEvent.click(seam(name)!);
 }
 
 function type(name: string, value: string): void {
@@ -166,6 +182,7 @@ describe("which identity a server asks for", () => {
         expect(seam("field-token")).not.toBeNull();
         expect(seam("identity-password")).toBeNull();
         // No way to switch either: there is nothing on the other side of it.
+        expect(seam("other-methods")).toBeNull();
         expect(seam("use-password")).toBeNull();
         expect(seam("use-token")).toBeNull();
     });
@@ -178,17 +195,18 @@ describe("which identity a server asks for", () => {
         expect(seam("field-password")).not.toBeNull();
         // Both are on offer, and the token is the one behind a press.
         expect(seam("identity-token")).toBeNull();
+        openOthers();
         expect(seam("use-token")).not.toBeNull();
     });
 
     it("switches to the token and back", async () => {
         await reachIdentity(WITH_PASSWORD, mints);
 
-        fireEvent.click(seam("use-token")!);
+        choose("use-token");
         expect(seam("identity-token")).not.toBeNull();
         expect(seam("identity-password")).toBeNull();
 
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect(seam("identity-password")).not.toBeNull();
         expect(seam("identity-token")).toBeNull();
     });
@@ -201,11 +219,11 @@ describe("which identity a server asks for", () => {
         submit();
         await find("problem");
 
-        fireEvent.click(seam("use-token")!);
+        choose("use-token");
         // The sentence was about the half that has just been left.
         expect(seam("problem")).toBeNull();
 
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect((seam("field-password") as HTMLInputElement).value).toBe("");
         expect((seam("field-username") as HTMLInputElement).value).toBe("ada");
     });
@@ -268,6 +286,73 @@ describe("a password the server will not accept", () => {
         const problem = await find("problem");
         expect(problem.textContent).toBe("settings.servers.signInUnavailable");
         expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
+describe("an account that signs in with a code as well", () => {
+    it("asks for the code in place of the password, and sends both on the second try", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session("Blackwood Studio"), servers: [] } });
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        const calls: PasswordSignInRequest[] = [];
+        const wantsCode: PasswordSignIn = request => {
+            calls.push(request);
+            return Promise.resolve(request.code === "123456"
+                ? { ok: true, token: "minted-token" }
+                : { ok: false, reason: request.code === undefined ? "second-factor" : "bad-code" });
+        };
+        await reachIdentity(WITH_PASSWORD, wantsCode);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        await find("field-code");
+        // Asked, not refused: no red sentence, and the password field is gone.
+        expect(seam("problem")).toBeNull();
+        expect(seam("field-password")).toBeNull();
+
+        type("field-code", "000000");
+        submit();
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInBadCode");
+        expect((seam("field-code") as HTMLInputElement).value).toBe("");
+
+        type("field-code", "123456");
+        submit();
+        await waitFor(() => expect(bridge.addServer).toHaveBeenCalled());
+        expect(calls.map(call => [call.password, call.code])).toEqual([
+            ["hunter2", undefined],
+            ["hunter2", "000000"],
+            ["hunter2", "123456"],
+        ]);
+    });
+
+    it("sends an account with no code set up to the web console", async () => {
+        const enroll: PasswordSignIn = () => Promise.resolve({ ok: false, reason: "enroll-two-factor" });
+        await reachIdentity(WITH_PASSWORD, enroll);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInNeedsEnrollment");
+        expect(seam("field-code")).toBeNull();
+        expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+
+    it("forgets the code step when the username changes", async () => {
+        const secondFactor: PasswordSignIn = () => Promise.resolve({ ok: false, reason: "second-factor" });
+        await reachIdentity(WITH_PASSWORD, secondFactor);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+        await find("field-code");
+
+        type("field-username", "grace");
+        expect(seam("field-code")).toBeNull();
+        expect((seam("field-password") as HTMLInputElement).value).toBe("");
     });
 });
 
@@ -504,16 +589,19 @@ describe("signing in through the browser", () => {
         await reachIdentity(WITH_OAUTH);
 
         expect(seam("identity-browser")).not.toBeNull();
+        openOthers();
         expect(seam("use-password")).not.toBeNull();
         expect(seam("use-token")).not.toBeNull();
-        fireEvent.click(seam("use-password")!);
+        choose("use-password");
         expect(seam("identity-password")).not.toBeNull();
+        openOthers();
         expect(seam("use-browser")).not.toBeNull();
     });
 
     it("never offers the browser to a server that did not say it can", async () => {
         await reachIdentity(WITH_PASSWORD);
         expect(seam("identity-browser")).toBeNull();
+        openOthers();
         expect(seam("use-browser")).toBeNull();
     });
 
@@ -534,5 +622,52 @@ describe("signing in through the browser", () => {
         submit();
         await waitFor(() => expect(seam("problem")?.textContent).toBe("settings.servers.browserProblems.denied"));
         expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
+describe("going back, and signing in where an account already is", () => {
+    it("goes back to the address with what was typed still in it", async () => {
+        await reachIdentity(WITHOUT_PASSWORD);
+        type("field-token", "half-a-token");
+
+        fireEvent.click(seam("change-address")!);
+
+        expect(seam("wizard-step-1")).not.toBeNull();
+        expect((seam("field-address") as HTMLInputElement).value).toBe(ADDRESS);
+        // Nothing was stored on the way back, and the credential did not wait for a return.
+        expect(bridge.addServer).not.toHaveBeenCalled();
+        submit();
+        await find("wizard-step-2");
+        expect((seam("field-token") as HTMLInputElement).value).toBe("");
+    });
+
+    it("says whose account a sign-in to the same server replaces", async () => {
+        bridge.servers = [session()];
+        await reachIdentity(WITHOUT_PASSWORD);
+
+        const line = await find("replaces");
+        expect(line.textContent).toBe("settings.servers.replaces(Ada Blackwood)");
+    });
+
+    it("says nothing about replacing where no account is held there", async () => {
+        bridge.servers = [{ ...session(), remoteOrigin: "lore://elsewhere.example.lan:41337" }];
+        await reachIdentity(WITHOUT_PASSWORD);
+
+        await waitFor(() => expect(seam("identity-token")).not.toBeNull());
+        expect(seam("replaces")).toBeNull();
+    });
+
+    it("titles the closing step for what happened", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session(), servers: [session()] } });
+        bridge.listServerProjects.mockResolvedValue({ success: false });
+        await reachIdentity(WITHOUT_PASSWORD);
+        expect(document.body.textContent).toContain("settings.servers.openAdd");
+
+        type("field-token", "a-token");
+        submit();
+        await find("wizard-joined");
+
+        expect(document.body.textContent).toContain("settings.servers.joined.title");
+        expect(document.body.textContent).not.toContain("settings.servers.openAdd");
     });
 });

@@ -149,13 +149,8 @@ export const workspace = {
                 },
                 deleteDetail: "元に戻せない。行を有効に戻すか復元した場合は翻訳し直す",
                 changed: "ストーリーか翻訳が変わった。対応する行のない翻訳を確認してから削除する",
-                hostOnly: "共同作業中は、ホストが対応する行のない翻訳を削除できる",
                 unknown: "読み込めないストーリーがあるため、対応する行のない翻訳は表示しない",
             },
-        },
-        live: {
-            entryClaimed: "{name} がこの行を翻訳している",
-            keyClaimed: "{name} がこの文字列を編集している",
         },
     },
     voice: {
@@ -570,7 +565,7 @@ export const workspace = {
                 writes_disabled: "変更は許可されていない",
                 paused: "一時停止中",
                 frozen: "プロジェクトは凍結中",
-                live_session: "ライブセッション中",
+                live_session: "チームプロジェクト",
                 stale_revision: "読み取り後に変更あり",
                 check_failed: "チェック不合格",
                 not_found: "見つからない",
@@ -675,9 +670,19 @@ export const workspace = {
     team: {
         docs: {
             refused: "サーバーがこの編集を受け付けませんでした",
-            restored: "{{by}} が以前のバージョンを復元しました。全員に反映されています。",
+            areaRefused: "プロジェクトのこの部分は変更できません",
+            areaRefusedDetail: "プロジェクトのオーナーが編集を許可している範囲：{areas}",
+            areaNames: {
+                story: "ストーリー",
+                characters: "キャラクター",
+                assets: "アセット",
+                ui: "UI",
+                localization: "ローカライズ",
+                config: "ゲーム設定",
+            },
+            restored: "{by} が以前のバージョンを全員に復元しました",
             diverged: "このウィンドウはサーバーと食い違ったため、最後に保存されたバージョンからやり直します",
-            kernelMismatch: "この Studio と Team サーバーの編集カーネルが異なります（Studio {{ours}}、サーバー {{theirs}}）。両方を更新するまで編集はこの端末に残ります。",
+            kernelMismatch: "この Studio と Team サーバーの編集カーネルが異なります（Studio {ours}、サーバー {theirs}）。両方を更新するまで編集はこの端末に残ります。",
             localKeptCommit: "チームのバージョンを取り込む前の手元の作業",
             localKept: "チームのバージョンを取り込む前に、手元の作業をこのプロジェクトのローカル履歴に保存しました。",
             localKeepFailed: "手元の作業を先に保存できなかったため、チームのバージョンは取り込んでいません。オフラインで作業中です。",
@@ -689,9 +694,9 @@ export const workspace = {
             restoreConfirm: "このバージョンを全員に対して復元しますか？新しいバージョンになるので、同じ方法で元に戻せます。",
             noVersions: "まだバージョンがありません",
             online: "リアルタイム共同編集中",
-            offline: "オフライン — 編集はこの端末に保存され、サーバーに戻ったときに送信されます",
+            offline: "オフライン：編集はこの端末に保存され、再接続後に送信されます",
             syncing: "同期中",
-            readOnly: "このプロジェクトでのあなたの役割は閲覧のみです",
+            readOnly: "このプロジェクトでは閲覧のみの役割です",
             conflictsTitle: "オフライン中の編集の一部を適用できませんでした",
             conflictsHint: "適用するオフラインの変更を選択する",
             conflictItem: "プロジェクト項目",
@@ -712,7 +717,7 @@ export const workspace = {
             savedBy: "{name} が保存",
             automatic: "自動",
             preview: "表示",
-            previewing: "保存済みのバージョンを表示中 — ここでの変更は保存されません",
+            previewing: "保存済みのバージョンを表示中。ここでの変更は保存されません",
             backToPresent: "現在に戻る",
             compare: "現在と比較",
             comparing: "このバージョン以降の変更",
@@ -720,11 +725,8 @@ export const workspace = {
             documentAdded: "このバージョン以降に作成",
             documentRemoved: "このバージョン以降に削除",
             loadMore: "さらに読み込む",
-            override: "自分の内容で上書き",
+            override: "適用",
             close: "閉じる",
-            detach: "個人プロジェクトにする",
-            detachConfirm: "チームサーバーへの追従をやめ、個人プロジェクトとして残しますか？",
-            detachDetail: "このウィンドウの内容（オフライン中の編集を含む）がこのプロジェクトの最新のローカルバージョンになります。サーバー上のチームプロジェクトは変更されず、他の人は作業を続けられます。あとで再接続すると、変更が送られます。",
             conflictFile: "{path}：チームもこのファイルを変更しました。いまはサーバー上の版が開いています",
             detachedHint: "これはチームプロジェクトの個人用コピーです。再接続すると、その後の変更がチームプロジェクトに送られます。チームも変更した箇所は一覧で選べます。",
             reconnect: "チームプロジェクトに再接続",
@@ -739,7 +741,7 @@ export const workspace = {
         noAccountHere: "この端末はこのサーバーのアカウントを持っていない",
         signInUnused: "このプロジェクトはこのサーバーのサインインを使っていない",
         useSignIn: "{name} のサインインを使う…",
-        signOutHint: "サインアウトするのはこのプロジェクトだけで、このサインインを使うほかのプロジェクトには影響しない",
+        serverLocked: "サーバーの変更、サインアウト、個人プロジェクトへの変換は、このプロジェクトを閉じてから行う",
         // 設定を開く。サーバーの追加とサインアウトはそこで行う。
         manage: "サーバーを管理…",
         // サーバーに尋ねた結果。対処できることがあるときだけ表示する。問題のない
@@ -754,100 +756,6 @@ export const workspace = {
         presence: "コラボレーション",
         hereAlone: "この端末のみ",
         hereMany: "{count} 台",
-        // このパネルで唯一、意図して行う操作。ほかはウィンドウを開いた結果として起きる。
-        liveOpen: "ライブセッションを開始",
-        liveUntitled: "ライブセッション",
-        liveMembers: "{count} 人",
-        liveLeave: "退出",
-        liveEnd: "終了",
-        // 開始・参加できない理由。ワークスペースが持つ凍結は同時に一つなので、
-        // それぞれ先に抜ける必要のある状態を示す。
-        liveBlockedRevision: "バージョンの表示を終了するとライブセッションを開始・参加できる",
-        liveBlockedManual: "ワークスペースの凍結を解除するとライブセッションを開始・参加できる",
-        liveBlockedMerge: "マージを完了するとライブセッションを開始・参加できる",
-        liveBlockedRecovery: "リカバリモードではライブセッションを利用できない",
-        liveBlockedSession: "このワークスペースはすでにライブセッションに参加している",
-        liveBlockedTakenOver: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
-        // ルームの中でこのウィンドウがどちら側か。参加していないときに人数を出す位置に置く。
-        liveHost: "ホスト",
-        liveGuest: "ゲスト",
-        liveEntering: "参加中",
-        // まだ答えていないホストの前で待っている状態。「参加中」とは別の語にする。この端末では
-        // まだ何も起きておらず、誰かが通知を見るまで何も起きないから。
-        liveAsking: "許可を待っている",
-        liveLeaving: "退出中",
-        // 参加は済み、到着前にルームで起きたことを適用しているところ。
-        liveRebase: "最新バージョンへ移動",
-        liveRebaseHint: "セッションの変更をバージョンとして記録し、そのバージョンでセッションを開き直します。参加者は自動で移動します",
-        liveCatchingUp: "セッションに追いついているところ",
-        // 開始・参加の前に満たしておく必要のあること。一つずつ名指しする。
-        liveNoStory: "ストーリーを追加するとライブセッションを開始できる",
-        liveNoServer: "プロジェクトをサーバーに接続するとライブセッションを開始・参加できる",
-        liveNoInstance: "そのサーバーはこの端末にまだ応答していない",
-        liveNoRepository: "このプロジェクトにバージョン履歴がない",
-        liveNoRevision: "バージョンを記録するとライブセッションを開始できる",
-        liveCloneRequired: "そのセッションは {project} のもの。参加するにはそのプロジェクトを開く",
-        // 開始のときにしか起きない。参加はルームのバージョンをそのまま取り込むため、
-        // 「届かない内容」というものが無くなった。
-        liveVersionMismatch: "このプロジェクトとサーバーの双方に、相手が持たないバージョンがある",
-        // 分岐のときと同じく、一行目を長くせず二行目として示す。
-        liveVersionMismatchNext: "サーバーからバージョンを取得して差分を処理し、もう一度試す",
-        liveRoomGone: "そのセッションはもう開いていない",
-        liveRoomGoneNext: "自分で開始するか、ホストが開き直すのを待つ",
-        // 合言葉が違うときと、その合言葉を誰も使っていないときは同じ一文。サーバーの答えが
-        // 同じだから——区別すれば、当てずっぽうが「どのルームがあるか」の地図になる。
-        liveNoSuchCode: "その合言葉のライブセッションはない",
-        liveJoinRefused: "ホストは入れてくれなかった",
-        // 拒否ではない。要求はサーバーに残っていて、この端末が待つのをやめただけ。
-        liveJoinUnanswered: "応答がなかった",
-        liveJoinUnansweredNext: "相手が戻ったら、ランチャーの Team 画面からもう一度求める",
-        liveRoomStoryUnknown: "そのセッションはどのストーリーのものか示していない。ホストに Studio の更新を頼む",
-        liveStoryNotHere: "そのセッションのストーリーはこのプロジェクトにない",
-        liveStoryNotHereNext: "ホストにそのストーリーをサーバーへ送ってもらい、もう一度試す",
-        liveRefused: "そのサーバーはセッションを拒否した",
-        liveRefusedNext: "サーバーが応答するようになってからもう一度試す",
-        liveFailed: "ライブセッションを開始できなかった",
-        liveFailedNext: "もう一度試す",
-        liveNoInstanceNext: "そのサーバーとの接続を確認して、もう一度試す",
-        liveNoRepositoryNext: "このプロジェクトでバージョン管理を有効にして、もう一度試す",
-        liveMergeConflictsNext: "マージを終えてから、もう一度試す",
-        // 作者が選んだのではない終わり方が二つ。自分で退出したときは何も言わない。
-        // 後半も言う。参加したときにルームの文書がこのツリーに上書きされ、いまそれが書き戻された
-        // ところで、それは作者がこれから画面で目にすることそのものだから。
-        liveEndedHostLeft: "ホストが退出してセッションは終了し、この端末は自分の作業に戻した",
-        // 一人につきルームごとに一度だけ。この端末が入ったときに既にいた人については言わない。
-        // それはルームそのものであって、ルームで起きたことではない。
-        liveJoined: "{name} がセッションに参加した",
-        // ホスト向け。二つの答えは通知そのものに載せる。相手を待たせたまま画面を探させるのは、
-        // これが避けようとしている中断そのものだから。
-        liveAsked: "{name} がセッションへの参加を求めている",
-        // タイトルバーのコントロール、点の隣。名前ではなく人数を出す。名前は一押しで見えるし、
-        // 三人のうち一人の名前を出すのは、先頭の人で列全体を語ることになる。
-        liveWaitingToJoin: "{count} 人が参加を待っている",
-        // ダイアログの中の同じ二つの答えの見出し。タイトルバーの印が指しているのはここ。
-        // 数を書けば、印がすでに言ったことをもう一度言うことになる。
-        liveWaitingLabel: "許可を待っている",
-        liveAdmit: "入れる",
-        liveTurnAway: "今はしない",
-        // 三つのコントロールはそれぞれ両方を言う。見つけられるかどうかと、誰が入るかを人が決めるかどうか。
-        liveRuleOpen: "サーバー上の誰でも",
-        liveRuleOpenDetail: "全員に一覧され、断りなく参加できる",
-        liveRuleRequest: "誰でも、ただし承認が要る",
-        liveRuleRequestDetail: "全員に一覧され、求めてきた人ごとに答える",
-        liveRuleCode: "合言葉のみ",
-        liveRuleCodeDetail: "一覧に出ない。四桁を知っている人は断りなく参加できる",
-        // 数字の隣に書く。書かなければ作者は試して知るしかない。
-        liveCodeFixed: "合言葉はセッションに一つ。変えるには、これを終えて新しく始める。",
-        liveCodeLabel: "合言葉",
-        // 別れの挨拶ではなく、この端末の内容に起きたこととして書く。セッションが無く
-        // なっただけでなく、この端末にあるものは他の人が見ているものではない。
-        liveEndedDiverged: "この端末の内容がセッションと一致しなくなり、セッションから退出した",
-        liveEndedDivergedNext: "参加し直す前にサーバーから取得する",
-        // タイトルバーのコラボレーション用コントロールと、その先のダイアログ。Team サーバーを
-        // 指しているプロジェクトでは、いまルームを開けないものも含めて常に描く。条件が
-        // そろってから現れるコントロールでは何が足りないかを調べられないため、
-        // 操作不可にしたうえで、どの答えを待っているかを示す。
-        livePresence: "ライブセッション",
         commitTodos: {
             title: "このバージョンで完了",
             hint: "チェックした ToDo はコミット後に完了になり、完了したバージョンが記録されます",
@@ -859,17 +767,11 @@ export const workspace = {
             minutes: "{minutes} 分前から",
             dismiss: "OK",
         },
-        liveChat: {
-            title: "セッションチャット",
-            open: "セッションチャットを開く",
-            close: "閉じる",
-            placeholder: "メッセージを入力…",
-            send: "送信",
-            empty: "まだ発言はありません",
-            nobodyElse: "参加者はあなただけです",
-            follow: "{name} をフォロー：相手の移動先に一緒に移動します",
-            stopFollowing: "{name} のフォローをやめる",
-            followingShort: "フォロー中",
+        assetLock: {
+            theirs: "{name} がこのアセットを {until} までロックしています。それまで他の人の変更はサーバーに拒否されます。",
+            mine: "このアセットを {until} までロックしています。それまで他の人は変更できません。",
+            release: "ロック解除",
+            dismiss: "OK",
         },
         requests: {
             askReview: "レビューを依頼",
@@ -892,11 +794,52 @@ export const workspace = {
             sendAsset: "送信",
             sent: "送信しました。Web コンソールのボードで確認できます",
             failed: "送信できませんでした。接続か権限を確認してください",
+            useTemplate: "プロジェクトテンプレートを適用",
+            noTemplates: "このサーバーにはまだテンプレートがありません。Web コンソールの「進捗 → テンプレート」でプロジェクトをテンプレートとして保存できます。",
+            templateHolds: "メンバー {members} 人 · マイルストーン {milestones} 件 · ToDo {todos} 件",
+            applyTemplate: "適用",
+            templateApplied: "適用しました：メンバー {members} 人、マイルストーン {milestones} 件、ToDo {todos} 件を追加",
+        },
+        buildUpload: {
+            upload: "Teamにアップロード",
+            retry: "再試行",
+            tip: "このビルドをチームサーバーに置き、メンバーがダウンロードしてプレイできるようにします",
+            sending: "アップロード中 {percent}%",
+            done: "アップロード済み",
+            failed: "アップロードに失敗しました：{reason}",
+        },
+        playtest: {
+            title: "テストプレイのフィードバック",
+            atRow: "再生中だったセリフの横に残ります。",
+            noRow: "何も再生されていなかったため、プロジェクトに残ります。",
+            placeholder: "ここで何が問題でしたか？（⌘/Ctrl+Enter で送信）",
+            unavailable: "このプロジェクトは画像とコメントを扱えるチームサーバー上にないため、送信できません。",
+            cancel: "キャンセル",
+            send: "送信",
+            sending: "送信中…",
+            failed: "フィードバックを送信できませんでした。",
+        },
+        assetRequest: {
+            title: "「{name}」は素材リクエストへの回答ですか？",
+            detail: "リクエストを選ぶと素材がリンクされ、リクエストは完了になります。",
+            none: "いいえ",
         },
         roleNotice: {
             reviewer: "このプロジェクトではレビュアー：閲覧・コメント・ToDo はできるが、コミットや送信はできない",
             viewer: "このプロジェクトでは閲覧者：閲覧のみで、コメント・コミット・送信はできない",
             dismiss: "了解",
+        },
+        latency: {
+            value: "{ms} ms",
+            title: "サーバーまでの往復遅延：直近 5 回の中央値 {median} ms、直近 {last} ms",
+        },
+        account: {
+            history: "バージョン履歴",
+            add: "アカウントを追加",
+            manage: "Team を管理",
+            online: "オンライン {count}",
+            onlineEmpty: "オンラインのメンバーはいません",
+            offline: "Team サーバーに未接続",
         },
         notifications: {
             label: "通知",
@@ -907,48 +850,14 @@ export const workspace = {
             assigned: "{who} があなたに ToDo を割り当てた",
             "review-requested": "{who} からレビューを依頼されました",
             "review-answered": "{who} がレビュー依頼に回答しました",
+            "access-requested": "{who} が権限を申請しました",
+            "access-decided": "{who} があなたの権限申請に回答しました",
+            watch: "{who} があなたのウォッチ中の内容を更新しました",
         },
-        liveConnecting: "そのサーバーに接続中",
-        liveUnsupported: "そのサーバーはライブセッションに対応していない",
-        liveNobody: "このプロジェクトに進行中のライブセッションはない",
-        liveRoomOpen: "{name} がライブセッションを開いている",
-        // 取り消せない二つの操作が何をするか、押す前に示す。どちらも数秒かかり、
-        // 取り消せず、プロジェクトを凍結する。
-        liveStartWhat: "開始すると、チェックポイントを記録してサーバーに送り、セッションが運ぶドキュメント以外のこのプロジェクト全体を凍結する",
-        // 他人のルームを知らせるところでは、入り口の場所も言う。参加はたいてい先にプロジェクトを
-        // 手に入れることから始まるので、入り口はすべてランチャーにある。
-        liveJoinFromLauncher: "ランチャーの Team 画面から参加する",
-        // セッションが対象とする文書。参加前は選択、参加後は値。
-        liveStory: "ストーリー",
-        liveHostedBy: "ホスト {name}",
-        // ルームにいる相手をアカウントで示す。ホストは区別する。そのウィンドウの退出は
-        // 意味が違い、全員にとってルームが終わる。
-        liveMembersLabel: "セッションの参加者",
-        liveThisMachine: "この端末",
-        // 参加時に未コミットだった内容の記録先。名前の分からないチェックポイントは
-        // 戻れないチェックポイントなので、バージョンパネルで探させず、ここで示す。
-        liveCheckpoint: "チェックポイント",
-        liveCheckpointAt: "参加前の未コミットの内容は {version} に記録されている",
-        liveCheckpointNone: "参加時に未コミットの内容はなかった",
-        // ゲスト自身の往復。ゼロでないときだけ描く。ホストが答えるまで文書はゲストの手元で
-        // 動かないため、これがないとエディタが止まった状態と区別できない。
-        livePendingOne: "1 件の変更がホストの応答を待っている",
-        livePendingMany: "{count} 件の変更がホストの応答を待っている",
-        // セッションが何を取り上げるかを一度にまとめて示す。コントロールごとに気付かせない。
-        liveFrozenWhat: "セッション中はストーリー・キャスト・翻訳と音声・アセットライブラリ全体（ファイルそのものを含む）、そしてプロジェクト自身の表（辞書・オーディオトラック・アセットセット・変数・翻訳キー・ビルドバリアント・DLC・パレット）が保存される。このプロジェクトの他の内容は最新の状態のまま読み取り専用になる",
-        liveUnavailableHere: "ライブセッション中は使用できない",
-        // 他の人が書いている行を一箇所にまとめる。行ごとに印を探さずに読める。
-        liveClaimsLabel: "編集中の行",
-        liveClaimOne: "{name} が 1 行を書いている",
-        liveClaimMany: "{name} が {count} 行を書いている",
+        projectUnavailableHere: "チームプロジェクトでは使用できない",
         // バージョンレールの凍結ストリップにある、セッションからの出口。抜けるモードの名前で、
         // かつこのウィンドウにとっての意味で呼ぶ。
-        liveFrozenTitle: "ライブセッション中",
-        liveLeaveSession: "ライブセッションを退出",
-        liveEndSession: "ライブセッションを終了",
-        // ホストが他の人のいるルームを出るとどうなるか。後継はいない。数えられる唯一の写しは
-        // ホストが持っているので、ほかの全員は自分の作業に戻る。
-        liveEndSessionForEveryone: "全員のセッションを終了",
+        projectFrozenTitle: "チームプロジェクト：変更はチームサーバー経由で同期される",
         // プロジェクトに付いているが、プロジェクトの中にはないデータ。そのうち
         // 現在のものではないバージョンに対して書かれた件数。
         attached: "付随データ {count} 件",
@@ -2029,6 +1938,17 @@ export const workspace = {
                 detail: "このウィンドウで開くと「{current}」は閉じる。未保存の変更は自動で保存される",
                 thisWindow: "このウィンドウで開く",
                 newWindow: "新規ウィンドウで開く",
+            },
+            // ランチャーが入口で止める最近のプロジェクト。ワークスペースには選択肢がないので、
+            // 行に理由を示し、対処はランチャーで行う
+            unavailable: {
+                folderMissing: "プロジェクトフォルダーは削除または移動された",
+                notAProject: "このフォルダーは NarraLeaf プロジェクトではなくなった",
+                signedOut: "{server} との接続を解除済み",
+                refused: "このプロジェクトを開けない",
+                detailFolderMissing: "プロジェクトフォルダーは削除または移動された。ランチャーで場所を指定し直すか、一覧から削除できる",
+                detailNotAProject: "このフォルダーは NarraLeaf プロジェクトではなくなった。ランチャーで場所を指定し直すか、一覧から削除できる",
+                detailSignedOut: "このマシンはプロジェクトの Team サーバーとの接続を解除済み。ランチャーで個人プロジェクトに変換するか削除できる",
             },
         },
         // `workspace.confirmBeforeClose` が有効なとき、ワークスペースを閉じる前に出るアプリ内の確認。

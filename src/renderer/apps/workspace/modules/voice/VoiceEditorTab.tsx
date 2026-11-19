@@ -68,9 +68,8 @@ import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "../localization/OrphanUnits";
-import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
 import { indexStoryTextLines, liveTextIds, orphanVoiceUnitIds } from "@/lib/lint/rules/text/textSegments";
-import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -131,16 +130,6 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
         [context, isInitialized],
     );
-    const liveService = useMemo(
-        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context, isInitialized],
-    );
-    const [liveGuest, setLiveGuest] = useState(() => liveService?.getView().role === "guest");
-    useEffect(() => {
-        const read = () => setLiveGuest(liveService?.getView().role === "guest");
-        read();
-        return liveService?.onChanged(read);
-    }, [liveService]);
     const orphanScopeRef = useRef<object | null>(null);
     useLayoutEffect(() => {
         const scope = {};
@@ -891,7 +880,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
      * later is unvoiced again.
      */
     const handleRemoveOrphans = useCallback(async (unitIds: string[]) => {
-        if (!voiceService || !storyService || !uiService || !voiceDoc || unitIds.length === 0 || takesFreeze.frozen || liveGuest) {
+        if (!voiceService || !storyService || !uiService || !voiceDoc || unitIds.length === 0 || takesFreeze.frozen) {
             return;
         }
         const scope = orphanScopeRef.current;
@@ -905,10 +894,6 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         );
         if (!confirmed || orphanScopeRef.current !== scope) return;
         const blocked = () => {
-            if (liveService?.getView().role === "guest") {
-                uiService.showNotification(t("workspace.shell.freeze.unavailableLive"), "warning");
-                return true;
-            }
             const reason = getProjectWriteFreeze()?.reason ?? null;
             const guard = takesFreezeRef.current;
             if (!guard.frozen && !isFreezeBlocking(reason, voiceDocumentFreezeScope(locale))) return false;
@@ -955,7 +940,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             offLibrary();
             offDocument();
         }
-    }, [voiceService, storyService, uiService, voiceDoc, takesFreeze.frozen, liveGuest, liveService, locale, t, tn]);
+    }, [voiceService, storyService, uiService, voiceDoc, takesFreeze.frozen, locale, t, tn]);
 
     const orphanRows = useMemo<OrphanUnitRow[]>(() => {
         if (!orphanUnitIds || lineIndex.kind !== "ready") {
@@ -1196,8 +1181,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                     ) : (
                         <OrphanUnitList
                             rows={orphanRows}
-                            frozen={takesFreeze.frozen || liveGuest}
-                            frozenReason={takesFreeze.frozen ? takesFreeze.reason : liveGuest ? t("workspace.shell.freeze.unavailableLive") : undefined}
+                            frozen={takesFreeze.frozen}
+                            frozenReason={takesFreeze.frozen ? takesFreeze.reason : undefined}
                             onRemove={unitIds => void handleRemoveOrphans(unitIds)}
                             strings={{
                                 summary: tn("workspace.voice.table.orphans.summary", orphanRows.length),

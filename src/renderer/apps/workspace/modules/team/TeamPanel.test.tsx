@@ -12,9 +12,9 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
  *
  * Both used to be in the version rail, standing above the two controls that rail exists for. The
  * whole point of moving them is that the daily pair got their column back, so what is pinned here
- * is that everything which left actually arrived: connecting, changing, checking, disconnecting,
- * signing in and out, and the name versions are recorded under. A missing one is not a cosmetic
- * loss - it is an act with nowhere left to be performed.
+ * is that everything which left actually arrived: connecting, checking, signing in, and the name
+ * versions are recorded under. Changing server, disconnecting and signing out are not here on
+ * purpose: a team project's server settings change from outside it (the launcher and Settings).
  *
  * The other half of the rule is in `VersionRailServerPicker.test.tsx`, which pins that none of
  * them crept back into the rail.
@@ -86,9 +86,7 @@ function team(overrides: Partial<TeamProjectSurface> = {}): TeamProjectSurface {
         },
         remoteOrigin: ONE,
         clients: [],
-        live: [],
         overlay: null,
-        canLive: false,
         canOverlay: false,
         canSeeClients: false,
         refresh: vi.fn(),
@@ -140,15 +138,18 @@ function seam(name: string): HTMLElement | null {
 }
 
 describe("what the Team panel holds", () => {
-    it("offers every act the rail gave up, for a project already on a server", () => {
+    it("changes nothing about the server from inside a project that is on one", () => {
         panel();
 
+        // Which server a team project works with, and whether it works with one at all, is
+        // changed from outside it - the launcher converts it, Settings signs out - so the panel
+        // checks and points at Settings, and says where the rest went.
         expect(actions()).toEqual([
-            "workspace.shell.versionControl.server.change",
             "workspace.shell.versionControl.server.check",
             "workspace.shell.team.manage",
-            "workspace.shell.versionControl.server.disconnect",
         ]);
+        expect(seam("sign-out")).toBeNull();
+        expect(seam("server-locked")?.textContent).toBe("workspace.shell.team.serverLocked");
     });
 
     it("offers connecting, and nothing about a server, for a project on none", () => {
@@ -160,6 +161,7 @@ describe("what the Team panel holds", () => {
             "workspace.shell.versionControl.server.connect",
             "workspace.shell.team.manage",
         ]);
+        expect(seam("server-locked")).toBeNull();
     });
 
     it("names the server, with the address under it rather than instead of it", () => {
@@ -196,20 +198,11 @@ describe("what the Team panel holds", () => {
         expect(surface.checkRemote).toHaveBeenCalledTimes(1);
     });
 
-    it("disconnects, and closes once the address is gone", async () => {
-        const { surface, onClose } = panel();
-
-        fireEvent.click(action("workspace.shell.versionControl.server.disconnect"));
-
-        expect(surface.setRemote).toHaveBeenCalledWith(null);
-        await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
-    });
-
-    it("opens the server dialog from the change row, over the top of itself", () => {
-        panel();
+    it("opens the server dialog from the connect row, over the top of itself", () => {
+        panel({ remote: null, serverSession: null });
 
         expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
-        fireEvent.click(action("workspace.shell.versionControl.server.change"));
+        fireEvent.click(action("workspace.shell.versionControl.server.connect"));
 
         // Both are still mounted: this one is what the author comes back to when the picker
         // closes, and it is where the server they just chose is read.
@@ -235,15 +228,12 @@ describe("what the Team panel holds", () => {
  * are never both on screen: a name field beside a signed-in account is a field nothing reads.
  */
 describe("the account the Team panel names", () => {
-    it("states the account a session signs versions with, and offers leaving it", () => {
-        const { surface } = panel();
+    it("states the account a session signs versions with", () => {
+        panel();
 
         expect(seam("account")?.textContent)
             .toContain("workspace.shell.versionControl.server.signIn.signedInAs");
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
-
-        fireEvent.click(seam("sign-out")!);
-        expect(surface.signOutOfServer).toHaveBeenCalledTimes(1);
     });
 
     it("states the name in settings where no session governs it, answered or not", () => {
@@ -285,11 +275,6 @@ describe("the account the Team panel names", () => {
         // Signing in separately is still offered: saying no is how an author gets to use another
         // account for this project.
         expect(action("workspace.shell.versionControl.server.picker.add")).toBeTruthy();
-    });
-
-    it("says signing out here is this project's alone", () => {
-        panel();
-        expect(seam("sign-out")?.getAttribute("data-tip")).toBe("workspace.shell.team.signOutHint");
     });
 
     it("says it too where a connect was refused for want of one, which has no other way out", () => {
@@ -341,7 +326,7 @@ describe("what the server answered", () => {
     });
 
     it("draws nothing about collaboration until the project is confirmed", () => {
-        panel({}, team({ state: { kind: "connecting" }, canLive: true, canSeeClients: true }));
+        panel({}, team({ state: { kind: "connecting" }, canSeeClients: true }));
         expect(seam("collaboration")).toBeNull();
     });
 
@@ -357,24 +342,9 @@ describe("what the server answered", () => {
 
         cleanup();
         // Alone with nothing attached, the section has nothing to report and is not drawn. It used
-        // to say "only this machine" every working day, under a heading, beside a room row.
+        // to say "only this machine" every working day, under a heading.
         panel({}, team({ canSeeClients: true, clients: [{ id: "a", account: "ada", label: "Nomen", agent: "", since: 1 }] }));
         expect(seam("collaboration")).toBeNull();
-    });
-
-    /*
-     * ⚠ **The live session is not in this dialog and must not come back to it.**
-     *
-     * It was one row here, with the only deliberate act in the panel drawn smaller than the address
-     * above it, behind two clicks, in a dialog that is shut for the whole of a working day. A
-     * session is a mode the window is in and it outlives every tab, so it belongs to the title bar
-     * and to a surface of its own - `LiveSessionPresence` and `LiveSessionDialog`, whose own file
-     * holds everything that used to be pinned here.
-     */
-    it("says nothing about live sessions", () => {
-        panel({}, team({ canLive: true, head: "rev-9" }));
-        expect(seam("live")).toBeNull();
-        expect(seam("live-open")).toBeNull();
     });
 
     it("counts what is attached, and how much of it is about an older version", () => {

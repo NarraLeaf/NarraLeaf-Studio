@@ -26,7 +26,7 @@ import { ClipboardState } from './useClipboard';
 import { getInterface } from '@/lib/app/bridge';
 import { useTranslation } from '@/lib/i18n';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
-import { assetLibraryFreezeScope } from '../assetLiveSession';
+import { assetLibraryFreezeScope } from '../assetFreezeScopes';
 import {
     assetSelectionKey,
     resolveAssetActionTargets,

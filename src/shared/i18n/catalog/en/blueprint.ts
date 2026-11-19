@@ -1788,11 +1788,6 @@ export const blueprint = {
         getVideoVolume: "The video's volume, from 0 to 1: the one set on the widget, or by Set Video Volume. The player's volume settings are not included.",
         isVideoMuted: "True while the video is muted.",
     },
-    // A live session leaves the blueprint document writable. What the canvas gains is a mark
-    // saying who else is inside a node.
-    live: {
-        nodeClaimed: "{name} is editing this node",
-    },
     // Every blueprint in the project on one page, grouped by the page, Game UI, component or story it
     // belongs to. Reached from the interface panel and the command palette.
     overview: {

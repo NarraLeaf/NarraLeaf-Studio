@@ -92,12 +92,6 @@ import {
 import { buildBlueprintGraphContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import {
-    BlueprintGraphAddressProvider,
-    UINodeClaimsProvider,
-    useUINodeClaimHold,
-} from "../blueprintLiveSession";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
-import {
     normalizeBlueprintMinimapPreference,
     type BlueprintMinimapPreference,
 } from "../flow/blueprintMinimapPreference";
@@ -226,7 +220,7 @@ import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
 } from "@/lib/ui-editor/blueprint-nodes/frameTargetSurfaceOptions";
-import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiFreezeScope";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view) {
@@ -605,11 +599,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
     // what is left in this file is the keyboard, the empty state and one on-open normalisation.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const undoOverride = useLiveUndoOverride();
-    const live = useMemo(
-        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context, isInitialized],
-    );
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
@@ -822,25 +811,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
-    /**
-     * Which graph the canvas is drawing, for the cards to resolve their own claims against.
-     *
-     * Node ids are not unique across the document - the seeded entry nodes use fixed ids, and
-     * `global.appBoot` is in every project - so a card asking "is anybody in me" has to name the
-     * blueprint and the graph as well as itself.
-     */
-    const graphAddress = useMemo(
-        () => (editor.graphView ? { blueprintId: payload.blueprintId, graphId: editor.graphView.graphId } : null),
-        [editor.graphView, payload.blueprintId],
-    );
-    // One node, the first of a selection: a rubber-band over forty cards is a gesture about their
-    // arrangement rather than about anything written in them. Silent outside a session.
-    useUINodeClaimHold({
-        service: live,
-        blueprintId: graphAddress?.blueprintId ?? null,
-        graphId: graphAddress?.graphId ?? null,
-        nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
-    });
     const assetNameGaps = useAssetNameGaps(context);
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision + nodeCatalogRevision, {
         assetNameGaps,
@@ -1140,9 +1110,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     if (isTypingInField()) {
                         return;
                     }
-                    if (undoOverride?.undo()) {
-                        return;
-                    }
                     localBp.undoBlueprint(payload.blueprintId);
                 }),
             },
@@ -1151,9 +1118,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 key: "mod+shift+z",
                 handler: freeze.run(() => {
                     if (isTypingInField()) {
-                        return;
-                    }
-                    if (undoOverride?.redo()) {
                         return;
                     }
                     localBp.redoBlueprint(payload.blueprintId);
@@ -1188,7 +1152,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             localBp,
             pasteGraphNodes,
             payload.blueprintId,
-            undoOverride,
         ],
     );
 
@@ -2612,8 +2575,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         );
 
     return (
-        <UINodeClaimsProvider>
-        <BlueprintGraphAddressProvider value={graphAddress}>
         <div
             className="h-full min-h-0"
             onMouseDownCapture={focusBlueprintEditor}
@@ -2667,7 +2628,5 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 addDisabledReason={freeze.frozen ? freeze.reason : undefined}
             />
         </div>
-        </BlueprintGraphAddressProvider>
-        </UINodeClaimsProvider>
     );
 }

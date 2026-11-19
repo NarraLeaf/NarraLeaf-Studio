@@ -72,13 +72,6 @@ async function createHarness() {
         { code: "en", displayName: "English" }, { code: "ja", displayName: "Japanese" },
     ] };
     const projectListeners = new Set<() => void>();
-    const liveListeners = new Set<() => void>();
-    const live = {
-        role: null as "host" | "guest" | null,
-        getView() { return { role: this.role }; },
-        onChanged(listener: () => void) { liveListeners.add(listener); return () => liveListeners.delete(listener); },
-        setRole(role: "host" | "guest" | null) { this.role = role; liveListeners.forEach(listener => listener()); },
-    };
     const project = {
         getVoiceConfiguration: () => voiceConfig,
         getLocalizationConfiguration: () => localizationConfig,
@@ -113,7 +106,6 @@ async function createHarness() {
         [Services.History]: history, [Services.Story]: story, [Services.Localization]: localization,
         [Services.Voice]: voice, [Services.UI]: ui, [Services.Assets]: assetService,
         [Services.Character]: { listCharacter: () => [], listGroups: () => [], getCharacter: () => undefined, subscribe: () => () => {} },
-        [Services.Live]: live,
         [Services.SaveStatus]: { register: () => {}, reportUnreadableDocument: vi.fn() },
     };
     const context = {
@@ -139,7 +131,7 @@ async function createHarness() {
         story.insertBlock(entry.id, scene, block, { parentId: null });
     };
     const setVoiceConfig = (next: typeof voiceConfig) => { voiceConfig = next; projectListeners.forEach(listener => listener()); };
-    return { context, story, localization, voice, ui, assets, assetService, live, setVoiceConfig, storyId: entry.id, sceneId: scene, addLine };
+    return { context, story, localization, voice, ui, assets, assetService, setVoiceConfig, storyId: entry.id, sceneId: scene, addLine };
 }
 
 afterEach(async () => {
@@ -329,16 +321,6 @@ describe("voice editor and panel", () => {
         await waitFor(() => expect(screen.getAllByText("日本語")).toHaveLength(2));
     });
 
-    it("does not offer orphan deletion to a live guest", async () => {
-        harness = await createHarness();
-        const h = harness;
-        h.voice.updateUnit("ja", "other", "Other", { assetId: "clip-a" });
-        act(() => h.live.setRole("guest"));
-        render(<VoiceEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="voice" />);
-        const remove = await screen.findByRole("button", { name: translate("workspace.voice.table.orphans.removeAll") });
-        expect((remove as HTMLButtonElement).disabled).toBe(true);
-    });
-
     it("keeps an orphan changed while removal is being confirmed", async () => {
         harness = await createHarness();
         const h = harness;
@@ -352,21 +334,6 @@ describe("voice editor and panel", () => {
         await act(async () => { confirmation.resolve(true); await confirmation.promise; });
         await waitFor(() => expect(h.voice.getDocumentIfLoaded("ja")?.units.other).toBeUndefined());
         expect(h.voice.getDocumentIfLoaded("ja")?.units.one?.note).toBe("New direction");
-    });
-
-    it("stops a confirmed removal if the workspace becomes a live guest", async () => {
-        harness = await createHarness();
-        const h = harness;
-        h.voice.updateUnit("ja", "one", "Hello", { assetId: "clip-a" });
-        const confirmation = deferred<boolean>();
-        vi.spyOn(h.ui, "showConfirm").mockReturnValue(confirmation.promise);
-        const notification = vi.spyOn(h.ui, "showNotification");
-        render(<VoiceEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="voice" />);
-        fireEvent.click(await screen.findByRole("button", { name: translate("workspace.voice.table.orphans.removeAll") }));
-        act(() => h.live.setRole("guest"));
-        await act(async () => { confirmation.resolve(true); await confirmation.promise; });
-        await waitFor(() => expect(notification).toHaveBeenCalledWith(translate("workspace.shell.freeze.unavailableLive"), "warning"));
-        expect(h.voice.getDocumentIfLoaded("ja")?.units.one).toBeDefined();
     });
 
     it("rechecks the story after it changes during the confirmed orphan read", async () => {

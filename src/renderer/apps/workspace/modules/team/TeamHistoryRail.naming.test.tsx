@@ -26,6 +26,7 @@ const project = vi.hoisted(() => ({
 vi.mock("@/lib/team/useTeam", () => ({
     useTeamTopics: () => ({ value: project.page, refresh: vi.fn() }),
     useTeamConnection: () => project.session,
+    useTeamCapability: () => false,
 }));
 vi.mock("@/lib/team/teamCall", () => ({ listProjectHistory: project.list }));
 vi.mock("../../context", () => ({
@@ -119,9 +120,9 @@ describe("team history names", () => {
         expect(list.textContent).not.toContain("delete-story");
         expect(list.textContent).not.toContain(assetPath);
         expect(list.textContent).not.toContain(blockId.slice(0, 8));
-        fireEvent.click(within(list as HTMLElement).getAllByRole("button", { name: "Use mine" })[1]!);
+        fireEvent.click(within(list as HTMLElement).getAllByRole("button", { name: "Apply" })[1]!);
         await waitFor(() => expect(project.override).toHaveBeenCalledWith(1));
-        const firstButton = within(list as HTMLElement).getAllByRole("button", { name: "Use mine" })[0]!;
+        const firstButton = within(list as HTMLElement).getAllByRole("button", { name: "Apply" })[0]!;
         expect(document.getElementById(firstButton.getAttribute("aria-describedby")!)?.textContent).toContain("New line");
     });
 

@@ -16,7 +16,7 @@ import {
 } from "@/apps/workspace/components/ui/EditorSidebar";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { assetLibraryFreezeScope } from "../assetLiveSession";
+import { assetLibraryFreezeScope } from "../assetFreezeScopes";
 import { SearchBox } from "../components/SearchBox";
 import { FilterSystem, type ActiveFilter, type FilterConfig } from "../components/FilterSystem";
 import type { ResolvedAssetSet } from "../state/useAssetSets";

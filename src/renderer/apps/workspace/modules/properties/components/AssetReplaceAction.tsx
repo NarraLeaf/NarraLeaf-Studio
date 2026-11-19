@@ -5,7 +5,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSource } from "@/lib/workspace/services/assets/types";
 import { runReplaceAssetContentFlow } from "@/lib/workspace/assets/replaceAssetContentFlow";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../../assets/assetLiveSession";
+import { assetLibraryFreezeScope } from "../../assets/assetFreezeScopes";
 import { useWorkspace } from "../../../context";
 
 /**

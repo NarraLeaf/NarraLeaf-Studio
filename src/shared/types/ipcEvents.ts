@@ -18,6 +18,7 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import type { DevModeAgentAction, DevModeAgentResult } from "./devMode";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
+import type { DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type {
@@ -125,6 +126,8 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
+    VcsBrowserCallbackOutcome,
     VcsPublishOutcome,
     VcsProjectServerSession,
     VcsServerSession,
@@ -140,10 +143,15 @@ import type {
     VcsWorkingTreeDiffResult,
 } from "./vcs";
 import type {
+    TeamAttachment,
+    TeamBuild,
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamSubscribeOutcome,
+    TeamUploadBuildRequest,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
@@ -203,6 +211,7 @@ export enum IPCEventType {
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
     appRevealRecentProject = "app.revealRecentProject",
+    appTrashRecentProject = "app.trashRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
@@ -292,8 +301,6 @@ export enum IPCEventType {
     projectTrustList = "projectTrust.list",
     projectTrustForget = "projectTrust.forget",
     projectTrustPrompt = "projectTrust.prompt",
-    workspaceLiveIntentTaken = "workspace.liveIntentTaken",
-    workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
@@ -323,6 +330,8 @@ export enum IPCEventType {
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     workspaceStoryRowHighlight = "workspace.storyRow.highlight",
     workspaceStoryRowOpen = "workspace.storyRow.open",
+    /** A picture of a playtest moment, from Dev Mode, for the author to send to the team as a note. */
+    workspacePlaytestFeedback = "workspace.playtestFeedback",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -339,6 +348,8 @@ export enum IPCEventType {
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
     devModeOpenStoryRowInWorkspace = "devMode.storyRow.openInWorkspace",
+    /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+    devModePlaytestFeedback = "devMode.playtestFeedback",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -509,8 +520,13 @@ export enum IPCEventType {
     vcsForgetServer = "vcs.forgetServer",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsSignInWithBrowser = "vcs.signInWithBrowser",
+    vcsCompleteBrowserSignIn = "vcs.completeBrowserSignIn",
+    vcsStartDeviceSignIn = "vcs.startDeviceSignIn",
+    vcsFinishDeviceSignIn = "vcs.finishDeviceSignIn",
+    vcsCancelDeviceSignIn = "vcs.cancelDeviceSignIn",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
+    vcsDetachRecentProject = "vcs.detachRecentProject",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -560,6 +576,31 @@ export enum IPCEventType {
      * here rather than adding a seventh.
      */
     teamTransfer = "team.transfer",
+    /**
+     * One account's avatar image, read by the main process and handed back as a `data:` URL.
+     *
+     * A server serves avatars only to a signed-in caller, and a renderer never touches the network
+     * or the token, so the main process reads the image with the session's token and carries the
+     * bytes across. The path is the `avatarUrl` the server put in a profile, and it is checked
+     * against the one shape avatars are served under before anything is fetched.
+     */
+    teamAvatar = "team.avatar",
+    /**
+     * Put one artifact of the project's last build on its Team server, as a playable build.
+     *
+     * Names an artifact; never carries a byte. The path has to be one the project's own last build
+     * recorded - a window cannot have any other file read off its disk and sent.
+     */
+    teamUploadBuild = "team.uploadBuild",
+    /** How far an upload has got. Sent to the window that started it. */
+    teamUploadProgress = "team.uploadProgress",
+    /** Put one picture beside the project's comments on its Team server. Carries the picture as a `data:` URL. */
+    teamUploadAttachment = "team.uploadAttachment",
+    /**
+     * Back the author's Studio settings up to a Team server, or read them back. The renderer composes
+     * and reads the document; the main process only carries it, with the account's token.
+     */
+    teamStudioConfig = "team.studioConfig",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1043,6 +1084,22 @@ export type IPCEvents = {
      * history, so this is a "reveal one of these", never a "reveal anything".
      */
     [IPCEventType.appRevealRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
+    /**
+     * Move one remembered project's folder to the system trash and drop it from the history.
+     *
+     * The launcher's answer for a team project this machine is no longer signed in to: the copy
+     * on the server is the shared one, so the local folder can go. The trash rather than a delete,
+     * so a wrong click is recoverable from the file manager. Refused for a path that is not in the
+     * history, and for a project a workspace window has open.
+     */
+    [IPCEventType.appTrashRecentProject]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
@@ -1765,7 +1822,7 @@ export type IPCVcsEvents = {
     [IPCEventType.vcsSignInWithPassword]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; username: string; password: string },
+        data: { authUrl: string; username: string; password: string; code?: string },
         response: VcsPasswordSignInOutcome;
     };
     /**
@@ -1779,6 +1836,42 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { authUrl: string };
         response: VcsBrowserSignInOutcome;
+    };
+    /**
+     * Hand the waiting browser sign-in the address the browser was sent back to, pasted by
+     * the person when the redirect did not reach Studio by itself. The waiting
+     * `vcs.signInWithBrowser` call is what answers the token.
+     */
+    [IPCEventType.vcsCompleteBrowserSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: { callbackUrl: string };
+        response: { outcome: VcsBrowserCallbackOutcome };
+    };
+    /**
+     * Begin a device sign-in (RFC 8628) on a server that announces `oauth`: answers the code
+     * to show and opens the page to type it on. The approval is collected by
+     * `vcs.finishDeviceSignIn`.
+     */
+    [IPCEventType.vcsStartDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: { authUrl: string };
+        response: VcsDeviceSignInStart;
+    };
+    /** Wait for the device sign-in under way to be approved, refused or run out. */
+    [IPCEventType.vcsFinishDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: Record<string, never>;
+        response: VcsBrowserSignInOutcome;
+    };
+    /** Stop waiting for the device sign-in under way. */
+    [IPCEventType.vcsCancelDeviceSignIn]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: Record<string, never>;
+        response: Record<string, never>;
     };
     /**
      * Put the project that is open on to a server: register it, connect it, send it.
@@ -1857,6 +1950,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: {},
         response: { repositories: VcsLocalRepository[] };
+    };
+    /**
+     * Turn a remembered team project into a personal one: take its server address off, from the
+     * launcher, while no window has it open.
+     *
+     * Local. Nothing is sent and no version is touched; the project keeps its whole history and
+     * simply stops naming a server. Refused for a path that is not in the history and for a
+     * project a workspace window has open.
+     */
+    [IPCEventType.vcsDetachRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { path: string },
+        response: void;
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
@@ -1952,6 +2059,36 @@ export type IPCTeamEvents = {
         consumer: IPCType.Host,
         data: TeamTransferRequest,
         response: TeamTransferOutcome;
+    };
+    [IPCEventType.teamAvatar]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; path: string },
+        response: { dataUrl: string | null };
+    };
+    [IPCEventType.teamUploadBuild]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamUploadBuildRequest,
+        response: { build: TeamBuild };
+    };
+    [IPCEventType.teamUploadProgress]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { artifact: string; sent: number; total: number },
+        response: never;
+    };
+    [IPCEventType.teamUploadAttachment]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; dataUrl: string },
+        response: { attachment: TeamAttachment; url: string };
+    };
+    [IPCEventType.teamStudioConfig]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamStudioConfigRequest,
+        response: TeamStudioConfigOutcome;
     };
 };
 
@@ -2745,20 +2882,6 @@ export type IPCWorkspaceEvents = {
         };
     };
     /**
-     * Forget the live session this window was told to join, having now acted on it.
-     *
-     * Window props are read once by each load of the renderer and survive a reload, so an intent
-     * left in place would be taken up again by every later load of this window - dragging an
-     * author back into a room they had deliberately left. Cleared rather than remembered in the
-     * renderer, because the renderer is the thing a reload throws away.
-     */
-    [IPCEventType.workspaceLiveIntentTaken]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: Record<string, never>;
-        response: void;
-    };
-    /**
      * Show this window's project folder in the OS file manager.
      *
      * Only ever the window's own project - the path is not a parameter - because "open a folder for
@@ -2813,7 +2936,12 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
         data: {};
-        response: RequestStatus<{ flushed: boolean }>;
+        /**
+         * `teamManaged` says the project's documents are held by a Team server, whose saved versions
+         * are its history: such a project records no checkpoints of its own, on close included.
+         * Absent from a window with no workspace, which has nothing to check point anyway.
+         */
+        response: RequestStatus<{ flushed: boolean; teamManaged?: boolean }>;
     };
     /**
      * Carry out one agent tool call, or one of main's internal calls (`__state`, `__test`,
@@ -3053,6 +3181,12 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: DevModeStoryRowOpenRequest;
+        response: never;
+    };
+    [IPCEventType.workspacePlaytestFeedback]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: WorkspacePlaytestFeedback;
         response: never;
     };
 };
@@ -3458,6 +3592,12 @@ export type IPCDevModeEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: DevModeStoryRowOpenPayload;
+        response: void;
+    };
+    [IPCEventType.devModePlaytestFeedback]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: DevModePlaytestFeedbackRequest;
         response: void;
     };
     [IPCEventType.devModeSaveWrite]: {
@@ -4645,21 +4785,6 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { view: WorkspaceViewRequest },
-        response: never;
-    };
-    /**
-     * Main telling the already-open workspace which live session to join.
-     *
-     * The other half of the `joinLive` window prop, and needed for the same reason Settings needs
-     * `settingsHighlight`: one project is one window, so a launcher asking to join a room in a
-     * project this machine already has open reaches a window that exists - and a prop is read once,
-     * at load. Without this the intent would be dropped in silence, which is the commonest case of
-     * all now that the workspace has no join control of its own.
-     */
-    [IPCEventType.workspaceJoinLive]: {
-        type: IPCMessageType.message,
-        consumer: IPCType.Client,
-        data: { joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]> },
         response: never;
     };
     /**

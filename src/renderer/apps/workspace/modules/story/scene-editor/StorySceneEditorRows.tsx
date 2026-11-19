@@ -108,7 +108,6 @@ import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserTyp
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
-import { StoryRowClaimMark, useStoryRowClaim, useStoryRowCursor } from "./storyRowClaims";
 import { diagnoseRow } from "./storyRowDiagnostics";
 import { RowProblemMark } from "./RowProblemMark";
 import { StoryRowCommentMark } from "./StoryRowCommentMark";
@@ -387,17 +386,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const freeze = useFreezeGuard(useStoryDocumentScope());
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
-    /**
-     * Who else is writing this row right now, or null. Null for every row outside a live session,
-     * which is the whole document most of the time.
-     *
-     * A context read rather than a component of its own on every row: the answer has to be known
-     * before anything can be mounted for it, and mounting a component that says "not me" on every
-     * row of the screenful costs a subscription apiece.
-     */
-    const claimedBy = useStoryRowClaim(blockId);
-    const cursorBy = useStoryRowCursor(blockId);
-
     return (
         <div
             data-story-row-block-id={block.id}
@@ -744,19 +732,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                 </div>
                 </>
             </div>
-            {/* Last, so it draws over the background strip on a `/bg` row, and absolute, so a claim
-                taken and dropped while somebody types never re-wraps the words on this line. */}
-            {claimedBy !== null ? (
-                <StoryRowClaimMark
-                    account={claimedBy}
-                    onArtwork={controlsOverArtwork}
-                    // The corner belongs to the row's own actions while the pointer is on it, so the
-                    // name stands down and leaves the monogram.
-                    quiet={showRowActions}
-                />
-            ) : cursorBy !== null ? (
-                <StoryRowClaimMark account={cursorBy} onArtwork={controlsOverArtwork} quiet={showRowActions} cursor />
-            ) : null}
         </div>
     );
 });
@@ -863,10 +838,6 @@ function TextEditBox(props: {
     // transitions gated, a freeze can land while a row is already open, and the field would keep taking
     // keystrokes the browser applies on its own. Scoped: the text of a row is the story document.
     const freeze = useFreezeGuard(useStoryDocumentScope());
-    // The same argument for a claim, and here it is not a corner: somebody else in the room can take
-    // this row a moment after it opened, and the field would go on taking keystrokes for an edit the
-    // host is now certain to refuse.
-    const claimedByOther = useStoryRowClaim(props.block.id) !== null;
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -1071,7 +1042,7 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
-                readOnly={!isRowTextEditable(freeze.frozen, claimedByOther)}
+                readOnly={!isRowTextEditable(freeze.frozen)}
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.

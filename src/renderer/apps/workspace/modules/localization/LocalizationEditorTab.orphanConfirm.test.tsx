@@ -7,13 +7,11 @@ import { FsRejectErrorCode } from "@shared/types/os";
 import type { StoryNodeActionBlock } from "@shared/types/story";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { LiveHost } from "@/lib/live/liveHost";
-import type { LiveLocalizationOp } from "@shared/live/ops";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { DialogContainer } from "../../components/ui/DialogContainer";
-import { translationDocumentFreezeScope } from "./localizationLiveSession";
+import { translationDocumentFreezeScope } from "./localizationFreezeScopes";
 import { LocalizationEditorTab } from "./LocalizationEditorTab";
 
 const mocks = vi.hoisted(() => ({ context: null as unknown }));
@@ -40,18 +38,6 @@ async function createHarness() {
     const localization = new LocalizationService();
     const history = new HistoryService();
     const ui = new UIService();
-    const liveView: { session: null; claims: Record<string, string>; self: null; role: "host" | "guest" | null } = {
-        session: null, claims: {}, self: null, role: null,
-    };
-    const liveListeners = new Set<() => void>();
-    const live = {
-        getView: () => liveView,
-        onChanged: (listener: () => void) => { liveListeners.add(listener); return () => liveListeners.delete(listener); },
-        setRole: (role: "host" | "guest" | null) => {
-            liveView.role = role;
-            liveListeners.forEach(listener => listener());
-        },
-    };
     const project = {
         getLocalizationConfiguration: () => ({ sourceLocale: "en", locales: [
             { code: "en", displayName: "English" }, { code: "ja", displayName: "Japanese" },
@@ -69,7 +55,6 @@ async function createHarness() {
         [Services.UI]: ui,
         [Services.UIDocument]: null,
         [Services.Character]: { listCharacter: () => [], subscribe: () => () => {} },
-        [Services.Live]: live,
         [Services.WorkspaceFreeze]: {
             getReason: () => getProjectWriteFreeze()?.reason ?? null,
             onChanged: (listener: (reason: unknown) => void) => observeProjectWriteFreeze(freeze => listener(freeze?.reason ?? null)),
@@ -99,7 +84,7 @@ async function createHarness() {
     story.insertBlock(entry.id, scene, block, { parentId: null });
     localization.updateUnit("ja", "orphan", "Hello", { target: "訳文" });
     await localization.flushPendingChanges();
-    return { files, fs, story, localization, ui, context, live, storyId: entry.id, sceneId: scene };
+    return { files, fs, story, localization, ui, context, storyId: entry.id, sceneId: scene };
 }
 
 afterEach(async () => {
@@ -111,18 +96,6 @@ afterEach(async () => {
     }
     harness = undefined;
 });
-
-function makeHost(h: Harness): LiveHost {
-    return new LiveHost({
-        self: "host", stories: [h.storyId], locales: { translations: ["ja"], voice: [] },
-        hasVariable: () => false, readScene: () => null, hasSceneRuntimeName: () => false,
-        readChapter: () => null, readCharacter: () => null, hasAsset: () => false,
-        readAssetFolders: () => null, hasAppTag: () => false, hasDlc: () => false,
-        hasBrandColor: () => false, hasUIElement: () => false, hasBlueprint: () => false,
-        digestOf: () => null, nextSeq: () => 1,
-        applyOp: op => h.localization.applyLiveOp(op as LiveLocalizationOp),
-    });
-}
 
 describe("orphan translation deletion", () => {
     it("keeps a translation when its story line is restored while the confirmation is open", async () => {
@@ -239,15 +212,7 @@ describe("orphan translation deletion", () => {
 
     it("allows deletion when a partial freeze carries this translation document", async () => {
         harness = await createHarness();
-        const { localization, live } = harness;
-        const authority = makeHost(harness);
-        localization.setOperationSink({ handle: op => {
-            if (op.op === "set-translations") {
-                authority.applyLocal(op, { doc: "localization", locale: "ja" });
-            }
-            return true;
-        } });
-        live.setRole("host");
+        const { localization } = harness;
         render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
         fireEvent.click(await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") }));
         const dialog = await screen.findByRole("dialog");
@@ -256,106 +221,6 @@ describe("orphan translation deletion", () => {
         } }));
         await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: translate("common.ok") })); });
         await waitFor(() => expect(localization.getDocumentIfLoaded("ja")?.units.orphan).toBeUndefined());
-        localization.setOperationSink(null);
-    });
-
-    it("leaves orphan deletion to the host while this window is a guest", async () => {
-        harness = await createHarness();
-        const { localization, live } = harness;
-        live.setRole("guest");
-        const sink = vi.fn(() => true);
-        localization.setOperationSink({ handle: sink });
-        render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
-        const remove = await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") });
-        expect(remove.matches(":disabled")).toBe(true);
-        expect(remove.getAttribute("data-tip")).toBe(translate("workspace.localization.table.orphans.hostOnly"));
-        fireEvent.click(remove);
-        expect(sink).not.toHaveBeenCalled();
-        expect(screen.queryByRole("dialog")).toBeNull();
-        localization.setOperationSink(null);
-    });
-
-    it("keeps the host's restored translation when a guest has not received that story change", async () => {
-        const guest = await createHarness();
-        const host = await createHarness();
-        harness = guest;
-        mocks.context = guest.context;
-        const authority = makeHost(host);
-        const received = vi.spyOn(authority, "receive");
-        guest.live.setRole("guest");
-        guest.localization.setOperationSink({ handle: op => {
-            if (op.op === "set-translations") {
-                authority.receive({ kind: "intent", clientId: "intent", document: { doc: "localization", locale: "ja" }, op }, "guest");
-            }
-            return true;
-        } });
-        try {
-            render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
-            const remove = await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") });
-            act(() => host.story.setBlockDisabled(host.storyId, host.sceneId, "block", false));
-            expect(remove.matches(":disabled")).toBe(true);
-            fireEvent.click(remove);
-            expect(received).not.toHaveBeenCalled();
-            expect(host.localization.getDocumentIfLoaded("ja")?.units.orphan?.target).toBe("訳文");
-        } finally {
-            guest.localization.setOperationSink(null);
-            await host.localization.teardown(host.context);
-            host.story.dispose(host.context);
-        }
-    });
-
-    it("re-enables deletion after leaving a guest session", async () => {
-        harness = await createHarness();
-        const { live, localization } = harness;
-        live.setRole("guest");
-        render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
-        const remove = await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") });
-        expect(remove.matches(":disabled")).toBe(true);
-        act(() => live.setRole(null));
-        expect(remove.matches(":disabled")).toBe(false);
-        fireEvent.click(remove);
-        const dialog = await screen.findByRole("dialog");
-        await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: translate("common.ok") })); });
-        await waitFor(() => expect(localization.getDocumentIfLoaded("ja")?.units.orphan).toBeUndefined());
-    });
-
-    it("cancels a pending confirmation when this window joins as a guest", async () => {
-        harness = await createHarness();
-        const { localization, live, ui } = harness;
-        const notify = vi.spyOn(ui, "showNotification");
-        const sink = vi.fn(() => true);
-        render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
-        fireEvent.click(await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") }));
-        const dialog = await screen.findByRole("dialog");
-        localization.setOperationSink({ handle: sink });
-        act(() => live.setRole("guest"));
-        await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: translate("common.ok") })); });
-        expect(sink).not.toHaveBeenCalled();
-        expect(localization.getDocumentIfLoaded("ja")?.units.orphan?.target).toBe("訳文");
-        expect(notify).toHaveBeenCalledWith(translate("workspace.localization.table.orphans.hostOnly"), "warning");
-        localization.setOperationSink(null);
-    });
-
-    it("cancels deletion if this window becomes a guest during the story read", async () => {
-        harness = await createHarness();
-        const { story, localization, live } = harness;
-        const sink = vi.fn(() => true);
-        render(<><LocalizationEditorTab payload={{ locale: "ja", orphans: { token: 1 } }} active tabId="translation" /><DialogContainer /></>);
-        fireEvent.click(await screen.findByRole("button", { name: translate("workspace.localization.table.orphans.delete") }));
-        const dialog = await screen.findByRole("dialog");
-        const original = story.loadStory.bind(story);
-        let finish!: () => void;
-        const waiting = new Promise<void>(resolve => { finish = resolve; });
-        const read = vi.spyOn(story, "loadStory").mockImplementationOnce(async id => { await waiting; return original(id); });
-        fireEvent.click(within(dialog).getByRole("button", { name: translate("common.ok") }));
-        await waitFor(() => expect(read).toHaveBeenCalled());
-        localization.setOperationSink({ handle: sink });
-        act(() => live.setRole("guest"));
-        await act(async () => { finish(); });
-        expect(sink).not.toHaveBeenCalled();
-        expect(localization.getDocumentIfLoaded("ja")?.units.orphan?.target).toBe("訳文");
-        localization.setOperationSink(null);
-        read.mockRestore();
     });
 
     it("refuses the deletion when the project freezes during the story read", async () => {

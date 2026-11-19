@@ -41,7 +41,7 @@ function makeWindow(initial: Record<string, unknown>) {
     return { window: { app } as unknown as AppWindow, store, written };
 }
 
-const SESSIONS = [{ remoteOrigin: "lore://team.example.lan:41337", authUrl: "https://team.example.lan:41402" }];
+const SESSIONS = [{ remoteOrigin: "lore://team.example.lan:41337", authUrl: "https://team.example.lan:54080" }];
 
 describe("keys only the main process writes", () => {
     it.each([

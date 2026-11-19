@@ -13,7 +13,7 @@ import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
-import { translationDocumentFreezeScope } from "./localizationLiveSession";
+import { translationDocumentFreezeScope } from "./localizationFreezeScopes";
 
 /**
  * The localization locale menu row that keeps working under ANY freeze: the export.

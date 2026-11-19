@@ -51,13 +51,7 @@ import {
     type ProjectAppTag,
 } from "@shared/types/appTag";
 import { useWorkspace } from "../../../context";
-import {
-    APP_TAG_CLAIMS,
-    appTagsDocumentFreezeScope,
-    ConfigClaimMark,
-    useConfigClaim,
-    useConfigClaimHold,
-} from "../configLiveSession";
+import { appTagsDocumentFreezeScope } from "../configFreezeScopes";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -204,9 +198,8 @@ type BuildAxis = { key: string; values: string[] };
 export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    // Scoped, so a live session leaves this list live: every gesture on it is an operation the
-    // session carries. The scope is the file `AppTagService` writes, and it is the same predicate
-    // the write boundary asks - see `configLiveSession`.
+    // Scoped to the file `AppTagService` writes, which is the same predicate the write boundary
+    // asks - see `configFreezeScopes`.
     const freeze = useFreezeGuard(appTagsDocumentFreezeScope());
 
     const tagService = useMemo(() => {
@@ -441,25 +434,6 @@ function TagItem({
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard(appTagsDocumentFreezeScope());
     const frozen = freeze.writes(!service);
-    /**
-     * The field somebody is inside, which is what a claim is held for.
-     *
-     * One piece of state for the row rather than one per box: the caret is in at most one of
-     * them, and a claim says that somebody is inside this variant rather than which field.
-     *
-     * ⚠ The release row claims the project's own record, which is what its plugin values, axis
-     * positions, scene declarations and ending page are - see `LiveAppTagOp`. Its id is the one
-     * `appTagClaimKey` reserves for exactly that, so the two cannot collide.
-     */
-    const [focused, setFocused] = useState(false);
-    useConfigClaimHold(APP_TAG_CLAIMS, focused ? tag.id : null);
-    const heldBy = useConfigClaim(APP_TAG_CLAIMS, tag.id);
-    // Read-only rather than disabled, with the character panel and the translation table: a row
-    // somebody else is inside is still one this author is here to read.
-    const claimed = {
-        readOnly: heldBy !== null,
-        "data-tip": heldBy === null ? undefined : t("project.live.entryClaimed", { name: heldBy }),
-    };
 
     const identity = useMemo(() => resolveAppTagIdentity(tag, base), [base, tag]);
     const ending = useMemo(
@@ -481,7 +455,6 @@ function TagItem({
             title={
                 <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-fg">{tag.name}</span>
-                    {heldBy === null ? null : <ConfigClaimMark account={heldBy} />}
                 </span>
             }
         >
@@ -506,8 +479,6 @@ function TagItem({
                             label={t("project.appTags.nameTitle")}
                             handle={`${tag.id}:name`}
                             onCommit={name => service?.renameTag(tag.id, name)}
-                            onFocusChange={setFocused}
-                            {...claimed}
                         />
                     </Field>
                 )}
@@ -521,10 +492,8 @@ function TagItem({
                         inherited={base[key]}
                         stated={tag.overrides[key]}
                         inheritedOnly={tag.builtin === true}
-                        onFocusChange={setFocused}
-                        {...claimed}
                         value={identity[key].value}
-                        disabled={frozen.disabled || claimed.readOnly}
+                        disabled={frozen.disabled}
                         service={service}
                     />
                 ))}
@@ -542,7 +511,7 @@ function TagItem({
                                 tag={tag}
                                 axis={axis}
                                 service={service}
-                                disabled={frozen.disabled || claimed.readOnly}
+                                disabled={frozen.disabled}
                             />
                         ))}
                     </div>
@@ -562,7 +531,7 @@ function TagItem({
                                 mechanism={mechanism}
                                 scenes={scenes}
                                 service={service}
-                                disabled={frozen.disabled || claimed.readOnly}
+                                disabled={frozen.disabled}
                             />
                         ))}
                     </div>
@@ -576,7 +545,7 @@ function TagItem({
                     surfaceId={ending.value}
                     overridden={ending.overridden}
                     surfaces={surfaces}
-                    disabled={frozen.disabled || claimed.readOnly}
+                    disabled={frozen.disabled}
                     service={service}
                 />
 
@@ -590,7 +559,7 @@ function TagItem({
                                 size="sm"
                                 variant="ghost"
                                 onClick={onDelete}
-                                {...freeze.writes(!service || claimed.readOnly, claimed["data-tip"])}
+                                {...freeze.writes(!service)}
                                 className="px-1.5 hover:text-danger"
                                 data-app-tag-delete={tag.id}
                             >
@@ -770,9 +739,6 @@ function OverrideField({
     value,
     disabled,
     service,
-    readOnly,
-    onFocusChange,
-    "data-tip": tip,
 }: {
     tagId: string;
     overrideKey: AppTagOverrideKey;
@@ -784,10 +750,6 @@ function OverrideField({
     value: string;
     disabled: boolean;
     service: AppTagService | null;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
-    "data-tip"?: string;
 }) {
     const { t } = useTranslation();
 
@@ -811,7 +773,7 @@ function OverrideField({
                 <Button
                     size="sm"
                     variant="ghost"
-                    disabled={disabled || readOnly}
+                    disabled={disabled}
                     onClick={() => service?.clearOverride(tagId, overrideKey)}
                     className="px-1.5"
                     data-app-tag-restore={`${tagId}:${overrideKey}`}
@@ -828,9 +790,6 @@ function OverrideField({
                 handle={`${tagId}:${overrideKey}`}
                 allowEmpty
                 onCommit={next => service?.setOverride(tagId, overrideKey, next)}
-                readOnly={readOnly}
-                onFocusChange={onFocusChange}
-                data-tip={tip}
             />
         </Field>
     );
@@ -980,9 +939,6 @@ function CommittedInput({
     handle,
     allowEmpty = false,
     onCommit,
-    readOnly,
-    onFocusChange,
-    "data-tip": tip,
 }: {
     value: string;
     placeholder?: string;
@@ -992,10 +948,6 @@ function CommittedInput({
     handle: string;
     allowEmpty?: boolean;
     onCommit: (value: string) => void;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
-    "data-tip"?: string;
 }) {
     const [draft, setDraft] = useState(value);
     const abandoning = useRef(false);
@@ -1023,18 +975,14 @@ function CommittedInput({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            readOnly={readOnly}
-            data-tip={tip}
             aria-label={label}
             className="w-full min-w-0"
             data-app-tag-field={handle}
             onChange={event => setDraft(event.target.value)}
             onFocus={() => {
                 abandoning.current = false;
-                onFocusChange?.(true);
             }}
             onBlur={() => {
-                onFocusChange?.(false);
                 commit();
             }}
             onKeyDown={event => {

@@ -19,6 +19,8 @@ import type {
     VcsMergeState,
     VcsPasswordSignInOutcome,
     VcsBrowserSignInOutcome,
+    VcsDeviceSignInStart,
+    VcsBrowserCallbackOutcome,
     VcsProjectServerSession,
     VcsPublishOutcome,
     VcsRepositoryInfo,
@@ -41,7 +43,7 @@ import type {
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { DEFAULT_PUBLISH_LINEAGE_RULE } from "@shared/types/vcs";
-import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
+import { composeVcsIdentity, isVcsRemoteConfigured, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import {
     composeRestoreMessage,
     VCS_CHECKPOINT_MESSAGES,
@@ -81,6 +83,7 @@ import {
     rememberAcceptedAuthority,
     runAuthorityInstall,
 } from "./authorityTrust";
+import { configureLoreAuthStore } from "./loreAuthStore";
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
@@ -88,7 +91,7 @@ import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
 // Two plain file reads and nothing of Lore's, which is the whole reason it exists: the
 // repository id of a project that has not been opened has to be readable without taking
 // the exclusive lock on it.
-import { readRepositoryId } from "./localRepositories";
+import { readRemoteOrigin, readRepositoryId } from "./localRepositories";
 import { signInWithPassword } from "./serverPassword";
 import {
     createServerProjectOverSession,
@@ -103,7 +106,8 @@ import {
     rememberServerRefreshToken,
     rememberServerToken,
 } from "./serverTokens";
-import { refreshWithServer, signInWithBrowser, tokenExpiry } from "./serverOAuth";
+import { completeBrowserSignIn, refreshWithServer, signInWithBrowser, signInWithDevice, tokenExpiry, type ServerDeviceCode, type ServerOAuthResult } from "./serverOAuth";
+import { portAnswers } from "./portAnswers";
 // Pure policy over the global state, with nothing of Lore's in it: which project may act as which
 // account. See that module's header for the rule.
 import {
@@ -613,6 +617,10 @@ export class VcsManager extends Manager {
     }
 
     public async initialize(): Promise<void> {
+        // Before anything can reach the library: it reads where its token store is on every
+        // call, and on macOS the answer is a directory of Studio's own. See `loreAuthStore.ts`.
+        configureLoreAuthStore(this.app.getUserDataDir());
+
         // Nothing eager. Probing availability would load a 29MB native library on
         // every launch for a feature many projects never touch, and opening a
         // store takes Lore's exclusive repository lock. Both wait for first use.
@@ -629,6 +637,12 @@ export class VcsManager extends Manager {
         this.renewalTimer = setInterval(renew, RENEW_INTERVAL_MS);
         this.renewalTimer.unref?.();
     }
+
+    /**
+     * Whether a server's data port accepts a connection; see {@link tellRefusalApart}. A field so a
+     * test can answer it without opening a socket.
+     */
+    protected dataPortAnswers: (remoteOrigin: string) => Promise<boolean> = portAnswers;
 
     /** The first renewal pass, a little after start so it never competes with the launch. */
     private renewal: NodeJS.Timeout | undefined;
@@ -2073,6 +2087,42 @@ export class VcsManager extends Manager {
     }
 
     /**
+     * Turn a team project into a personal one, from outside it.
+     *
+     * The launcher's twin of the workspace's own "convert to personal project"
+     * (`TeamDocumentsService.detach`), and it leaves the project in the same state: what is on disk
+     * recorded as a version, the address gone, and the team-documents store marked `detached` with
+     * the address it came from - so opening it later offers to reconnect, and reconnecting sends
+     * what changed since against what the two sides last agreed, exactly as coming back online does.
+     * The store's `state` is the one the last session left; nothing here can read the server.
+     *
+     * This project's answer about the server's sign-in goes too, so a server added again later
+     * asks afresh. Nothing is sent and nothing on the server is touched.
+     *
+     * The caller has made sure no window has the project open - {@link setRemote} closes the
+     * session around the write, and a workspace holding one would go on reading the old address.
+     */
+    public async detachProject(projectPath: string): Promise<void> {
+        const root = projectRoot(projectPath);
+        const origin = readRemoteOrigin(root);
+        const remote = await this.getRemote(root).catch(() => null);
+        await this.commit(root, { message: "Made a personal copy of the team project" }).catch((error) => {
+            if (!isNothingToCommit(error)) throw error;
+        });
+        await this.setRemote(root, null);
+        if (origin) {
+            this.app.getGlobalState().set(SESSION_USES_KEY, withoutSessionUse(this.sessionUses(), origin, root));
+        }
+        await markTeamDocumentsDetached(root, remote && isVcsRemoteConfigured(remote) ? remote : null)
+            .catch((error: unknown) => {
+                // The address is already gone, which is the conversion; what this loses is only the
+                // offer to reconnect later.
+                this.app.logger.warn("[Vcs] Converted", root, "without recording where it came from:", error);
+            });
+        this.app.logger.info("[Vcs] Converted to a personal project", root);
+    }
+
+    /**
      * Which sign-in this project uses at its server, and which one it could.
      *
      * **Two stores have to agree**, and asking only one of them is how this goes wrong. Studio
@@ -2087,7 +2137,8 @@ export class VcsManager extends Manager {
      * as `available` - so the panel can offer it by name instead of saying nobody is signed in. It
      * never asks: see {@link useServerSession} for the one call here that does.
      *
-     * A purely local read: no socket, so a panel may ask on opening.
+     * A local read, so a panel may ask on opening - except where the backend has lost a sign-in
+     * Studio still holds, when the token is presented again (see {@link confirmStoredSession}).
      */
     public async getServerSession(projectPath: string): Promise<VcsProjectServerSession> {
         return this.serialize(projectPath, async () => {
@@ -2223,7 +2274,7 @@ export class VcsManager extends Manager {
         }
         await fs.access(target);
 
-        const outcome = await runAuthorityInstall(authorityInstallPlan(target, await readAuthorityHost(target)));
+        const outcome = await runAuthorityInstall(authorityInstallPlan(target));
         if (outcome.installed) {
             // The platform's store has it now, and this process cannot see it there: node
             // read that store once, when it first needed it, and answers from that reading
@@ -2233,7 +2284,9 @@ export class VcsManager extends Manager {
             await rememberAcceptedAuthority(this.app.getUserDataDir(), target);
         }
         this.app.logger.info(
-            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
+            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust",
+            "the authority presented by", (await readAuthorityHost(target)) ?? "an unrecorded server", "from", target,
+            outcome.installed ? "" : `- ${outcome.output}`,
         );
         return outcome;
     }
@@ -2510,11 +2563,13 @@ export class VcsManager extends Manager {
         authUrl: string,
         username: string,
         password: string,
+        code?: string,
     ): Promise<VcsPasswordSignInOutcome> {
         const outcome = await signInWithPassword({
             authUrl,
             username,
             password,
+            ...(code === undefined ? {} : { code }),
             userDataDir: this.app.getUserDataDir(),
         });
         this.app.logger.info(
@@ -2547,6 +2602,61 @@ export class VcsManager extends Manager {
         }
         this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: now });
         return { ok: true, token: outcome.token };
+    }
+
+    /** The device sign-in under way, if one is: the wait for its approval. */
+    private deviceSignIn: { result: Promise<ServerOAuthResult>; abort: AbortController } | null = null;
+
+    /**
+     * Begin a device sign-in: answers the code to show as soon as the server has given one, and
+     * keeps polling for the approval in the background until {@link finishDeviceSignIn} collects it.
+     * Starting another abandons the one before.
+     */
+    public async startDeviceSignIn(authUrl: string): Promise<VcsDeviceSignInStart> {
+        this.deviceSignIn?.abort.abort();
+        const abort = new AbortController();
+        let shown: (code: ServerDeviceCode) => void = () => undefined;
+        const code = new Promise<ServerDeviceCode>(resolve => (shown = resolve));
+        const result = signInWithDevice({
+            authUrl,
+            deviceName: `${os.hostname().replace(/\.local$/, "")}`,
+            userDataDir: this.app.getUserDataDir(),
+            openExternal: (url) => shell.openExternal(url),
+            signal: abort.signal,
+            onCode: (value) => shown(value),
+        });
+        this.deviceSignIn = { result, abort };
+        const first = await Promise.race([code, result]);
+        if ("userCode" in first) return { ok: true, ...first };
+        this.deviceSignIn = null;
+        return first.ok ? { ok: false, reason: "unknown" } : first;
+    }
+
+    /** Wait for the device sign-in {@link startDeviceSignIn} began, and answer as a browser sign-in does. */
+    public async finishDeviceSignIn(): Promise<VcsBrowserSignInOutcome> {
+        const pending = this.deviceSignIn;
+        if (pending === null) return { ok: false, reason: "unknown" };
+        const outcome = await pending.result;
+        if (this.deviceSignIn === pending) this.deviceSignIn = null;
+        this.app.logger.info("[Vcs] Device sign-in", outcome.ok ? "accepted" : outcome.reason);
+        if (!outcome.ok) return outcome;
+        this.pendingRefresh.set(outcome.token, { refreshToken: outcome.refreshToken, at: Date.now() });
+        return { ok: true, token: outcome.token };
+    }
+
+    /** Stop waiting for a device sign-in the person gave up on. */
+    public cancelDeviceSignIn(): void {
+        this.deviceSignIn?.abort.abort();
+    }
+
+    /**
+     * Hand the waiting browser sign-in the address its browser was sent back to, for when
+     * that redirect never reached Studio. See `completeBrowserSignIn` in `serverOAuth.ts`.
+     */
+    public completeBrowserSignIn(callbackUrl: string): VcsBrowserCallbackOutcome {
+        const outcome = completeBrowserSignIn(callbackUrl);
+        this.app.logger.info("[Vcs] Browser sign-in callback by hand", outcome);
+        return outcome;
     }
 
     /**
@@ -2808,6 +2918,13 @@ export class VcsManager extends Manager {
         );
         if (present) return stored;
 
+        // The backend has lost it, and Studio still holds the token it was signed in with: hand
+        // that over again before concluding anything. This is the state the backend's store is in
+        // after moving (see `loreAuthStore.ts`) or after another tool cleared it, and dropping
+        // the record there would sign the author out of a server that would still accept them.
+        // It reaches the server, which nothing else here does - but only on this path, once.
+        if (await this.presentStoredToken(stored).catch(() => false)) return stored;
+
         this.writeStoredServerSessions(
             this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
         );
@@ -2834,11 +2951,11 @@ export class VcsManager extends Manager {
         signedIn: VcsServerSession,
     ): Promise<VcsServerReach> {
         try {
-            const state = await backend.readSyncState({
+            const state = await this.tellRefusalApart(await backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: signedIn.account.userId,
-            });
+            }), signedIn.remoteOrigin);
             if (!state.remoteAvailable) return "dataPortSilent";
             return state.remoteAuthorized ? "ready" : "notPermitted";
         } catch (error) {
@@ -2863,12 +2980,27 @@ export class VcsManager extends Manager {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
-            return this.withServerSession(signedIn, () => backend.readSyncState({
+            const state = await this.withServerSession(signedIn, () => backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: this.onlineIdentity(signedIn),
             }), session.remoteOrigin);
+            return session.remoteOrigin ? this.tellRefusalApart(state, session.remoteOrigin) : state;
         });
+    }
+
+    /**
+     * A status that says the server is unavailable, checked against whether its port answers.
+     *
+     * The backend reports an account the server turned away the same way as a server that is not
+     * there (see `portAnswers.ts`), and the two ask different things of the author. Where the port
+     * accepts a connection, the server is there and the answer was about the account, so the state
+     * is reported as reachable and unauthorized.
+     */
+    private async tellRefusalApart(state: VcsSyncState, remoteOrigin: string): Promise<VcsSyncState> {
+        if (state.remoteAvailable) return state;
+        if (!(await this.dataPortAnswers(remoteOrigin))) return state;
+        return { ...state, remoteAvailable: true, remoteAuthorized: false };
     }
 
     /**
@@ -3576,4 +3708,31 @@ export class VcsManager extends Manager {
     public get openProjects(): string[] {
         return [...this.sessions.values()].map((s) => s.root);
     }
+}
+
+/**
+ * Mark a project's team-documents store as a personal copy of the team project at `remote`.
+ *
+ * The same shape `TeamDocumentsService.detach` writes, at the same place
+ * (`.nlstudio/services/team_docs.json`): the project and the agreed state the last session kept,
+ * plus where it came from. A store with nothing agreed in it cannot be replayed from, so it is
+ * reset rather than marked, which is what the workspace does in that case as well.
+ */
+async function markTeamDocumentsDetached(root: string, remote: string | null): Promise<void> {
+    const file = path.join(root, ".nlstudio", "services", "team_docs.json");
+    let stored: { version?: unknown; project?: unknown; state?: unknown } | null = null;
+    try {
+        stored = JSON.parse(await fs.readFile(file, "utf-8"));
+    } catch {
+        stored = null;
+    }
+    const project = typeof stored?.project === "string" ? stored.project : "";
+    const state = stored?.state;
+    const agreed = stored?.version === 1 && project !== "" && state !== null && typeof state === "object";
+    const next = agreed && remote !== null
+        ? { version: 1, project, state, detached: { remote } }
+        : { version: 1, project: "", state: { seq: -1 } };
+    if (stored === null && !agreed) return;
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(next), "utf-8");
 }

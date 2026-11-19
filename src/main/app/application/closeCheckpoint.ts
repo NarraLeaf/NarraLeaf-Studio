@@ -18,6 +18,11 @@ export interface CloseCheckpointFacts {
      * held it. The working tree is the other Studio's from that moment, and so is recording it.
      */
     heldElsewhere: boolean;
+    /**
+     * Whether the project's documents are held by a Team server, as the workspace said in its
+     * answer to the pending-save flush that runs before every checkpoint on close.
+     */
+    teamManaged: boolean;
 }
 
 /**
@@ -47,6 +52,13 @@ export function shouldCheckpointOnClose(facts: CloseCheckpointFacts): boolean {
     // under this window's close - and this window's own last edits were never written, because it
     // stopped writing when the project was taken over. Nothing of this session is left to record.
     if (facts.heldElsewhere) {
+        return false;
+    }
+    // A team project's history is its server's saved versions, and every edit has already gone
+    // there. The workspace records no checkpoints for it while it is open (`VersionControlService`'s
+    // scheduler stands down), so closing it does not record one either: the card would say a
+    // checkpoint is being recorded for a project that keeps none.
+    if (facts.teamManaged) {
         return false;
     }
     return typeof facts.projectPath === "string" && facts.projectPath.length > 0;

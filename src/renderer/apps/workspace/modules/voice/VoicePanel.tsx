@@ -15,7 +15,7 @@ import { ContextMenu, Progress, Switch, type ContextMenuDef } from "@/lib/compon
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, isFreezeBlocking, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
-import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
 
 /**
  * The voice locale menu rows that keep working under ANY freeze: the two exports.

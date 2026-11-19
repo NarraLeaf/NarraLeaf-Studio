@@ -13,7 +13,7 @@ import { compareVersions } from "./updateVersions";
  * There is no setting, because nobody can be expected to know which of the two their network
  * favours today. Both are asked for their newest version; when both have it, a few seconds of the
  * installer are downloaded from each at once and the faster one is used. When only one answers,
- * that one. Either way the bytes are checked against the sha512 in the `latest.yml` beside them,
+ * that one. Either way the bytes are checked against the sha512 in the feed beside them,
  * so the choice is about speed, never about trust in one host over the other.
  *
  * Both are read as a release *directory* - `.../releases/download/<tag>/` - rather than through
@@ -44,6 +44,15 @@ const OWNER_REPO = "NarraLeaf/NarraLeaf-Studio";
 const GITHUB = `https://github.com/${OWNER_REPO}`;
 const GITCODE = `https://gitcode.com/${OWNER_REPO}`;
 const GITCODE_LATEST_RELEASE_API = `https://api.gitcode.com/api/v5/repos/${OWNER_REPO}/releases/latest`;
+
+/**
+ * The feed electron-updater reads on this platform: `latest.yml` (the Windows installer) or
+ * `latest-mac.yml` (the macOS zip). Its provider derives the same name (`getDefaultChannelName`),
+ * so the version compared here is the version the updater then downloads.
+ */
+export function channelFile(platform: NodeJS.Platform = process.platform): string {
+    return platform === "darwin" ? "latest-mac.yml" : "latest.yml";
+}
 
 /** Long enough for a slow network to answer a few hundred bytes, short enough not to stall a check. */
 const ASK_TIMEOUT_MS = 15_000;
@@ -94,8 +103,8 @@ async function readText(fetcher: UpdateFetch, url: string, headers?: Record<stri
  * GitHub's newest release, through the `latest/download` redirect rather than the API: the API
  * allows sixty unauthenticated requests an hour per address, and a school or an office shares one.
  */
-async function askGitHub(fetcher: UpdateFetch): Promise<UpdateOffer | null> {
-    const text = await readText(fetcher, `${GITHUB}/releases/latest/download/latest.yml`);
+async function askGitHub(fetcher: UpdateFetch, feedFile = channelFile()): Promise<UpdateOffer | null> {
+    const text = await readText(fetcher, `${GITHUB}/releases/latest/download/${feedFile}`);
     const feed = text ? readFeed(text) : null;
     return feed && text ? offerFrom("github", GITHUB, `v${feed.version}`, text) : null;
 }
@@ -105,7 +114,7 @@ async function askGitHub(fetcher: UpdateFetch): Promise<UpdateOffer | null> {
  * (which answers without a token), and then the feed from the tag. A release whose feed is not
  * there yet is one still being copied, and counts as not having the version.
  */
-export async function askGitCode(fetcher: UpdateFetch): Promise<UpdateOffer | null> {
+export async function askGitCode(fetcher: UpdateFetch, feedFile = channelFile()): Promise<UpdateOffer | null> {
     const latest = await readText(fetcher, GITCODE_LATEST_RELEASE_API);
     let tag = "";
     try {
@@ -118,7 +127,7 @@ export async function askGitCode(fetcher: UpdateFetch): Promise<UpdateOffer | nu
         return null;
     }
     // GitCode answers 404 to a release file asked for with any query string, so none is added.
-    const text = await readText(fetcher, `${GITCODE}/releases/download/${tag}/latest.yml`);
+    const text = await readText(fetcher, `${GITCODE}/releases/download/${tag}/${feedFile}`);
     return text ? offerFrom("gitcode", GITCODE, tag, text) : null;
 }
 
@@ -173,6 +182,8 @@ export interface ChooseUpdateSourceOptions {
      * too, it is used without timing either: the next attempt should not be a repeat of the failure.
      */
     avoid?: { version: string; source: UpdateSourceId } | null;
+    /** The feed to read; this platform's (see {@link channelFile}) when absent. */
+    feedFile?: string;
 }
 
 /**
@@ -191,8 +202,8 @@ export async function chooseUpdateSource(options: ChooseUpdateSourceOptions): Pr
     });
     const preference = options.preference ?? "auto";
     const offers = (await Promise.all([
-        preference !== "gitcode" ? ask("github", () => askGitHub(options.fetch)) : null,
-        preference !== "github" ? ask("gitcode", () => askGitCode(options.fetch)) : null,
+        preference !== "gitcode" ? ask("github", () => askGitHub(options.fetch, options.feedFile)) : null,
+        preference !== "github" ? ask("gitcode", () => askGitCode(options.fetch, options.feedFile)) : null,
     ])).filter((offer): offer is UpdateOffer => offer !== null);
     if (offers.length === 0) {
         return null;

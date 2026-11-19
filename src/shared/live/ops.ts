@@ -1145,12 +1145,11 @@ export type LiveAssetSetOp =
  * it, which is a write to `editor/ui/uigraphs.json`. That is not something the operation states:
  * every machine works out the same nodes from the same registry and the same blueprints, which is the
  * criterion that decides every piece of derived work here. What it does mean is that the sweep has to
- * be fingerprinted - `LiveSessionService.applyVariableOp` reports the blueprints it rewrote, and they
- * reach the effect's digests beside the entry's own.
+ * be fingerprinted - the blueprints it rewrote reach the effect's digests beside the entry's own.
  *
- * ⚠ **A session that does not carry the blueprint document refuses the gesture instead**, at
+ * ⚠ **A shared library that does not carry the blueprint document refuses the gesture instead**, at
  * `VariableRegistryService` and exactly as `AssetsService` refuses an import: `editor/variables.json`
- * IS writable during a session, so a deletion reaching the write boundary would be allowed and would
+ * IS writable in a Team project, so a deletion reaching the write boundary would be allowed and would
  * land on one machine only. The act that cannot travel whole is stopped at the service that owns it.
  */
 export type LiveVariableOp =

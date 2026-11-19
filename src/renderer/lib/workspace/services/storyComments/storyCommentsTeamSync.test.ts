@@ -141,6 +141,28 @@ function fakeServer() {
             todos.set(id, status);
             return true;
         },
+        editComment: async (id, body) => {
+            calls.push(`edit:${id}`);
+            for (const [thread, list] of comments) {
+                const at = list.findIndex(comment => comment.id === id);
+                if (at < 0) continue;
+                if (list[at]!.author !== "ada") return false;
+                comments.set(thread, list.map(comment => (comment.id === id ? { ...comment, body, editedAt: 3 } : comment)));
+                return true;
+            }
+            return false;
+        },
+        deleteComment: async id => {
+            calls.push(`delete:${id}`);
+            for (const [thread, list] of comments) {
+                const at = list.findIndex(comment => comment.id === id);
+                if (at < 0) continue;
+                if (list[at]!.author !== "ada") return false;
+                comments.set(thread, list.map(comment => (comment.id === id ? { ...comment, body: "", deletedAt: 3 } : comment)));
+                return true;
+            }
+            return false;
+        },
         resolve: async (id, resolved) => {
             calls.push(`resolve:${id}:${resolved}`);
             const thread = threads.get(id);
@@ -753,7 +775,7 @@ describe("keeping story comments in step with Team", () => {
         expect(service.getThread(local.id)!.comments.map(comment => comment.body)).toEqual(["first", "second"]);
     });
 
-    it("accepts the server thread if a pending local thread was removed", async () => {
+    it("withdraws a pending local thread that was removed instead of waiting on it", async () => {
         const { service } = await createHarness();
         const server = fakeServer();
         const local = service.createThread({ ...row, body: "first" })!;
@@ -764,9 +786,11 @@ describe("keeping story comments in step with Team", () => {
         await sync.push();
         service.deleteThread(local.id);
 
-        await sync.pullThread("t1");
+        expect(await sync.pullThread("t1")).toBe(true);
 
-        expect(service.listThreads().map(thread => thread.comments.map(comment => comment.body))).toEqual([["first"]]);
+        // Deleting a thread here withdraws what of it was sent, so nothing comes back.
+        expect(service.listThreads()).toEqual([]);
+        expect(server.comments.get("t1")!.every(comment => comment.deletedAt !== undefined)).toBe(true);
     });
 
     it("finds the opening comment when the create answer omits it", async () => {
@@ -1123,5 +1147,44 @@ describe("keeping story comments in step with Team", () => {
         service.setResolved(thread.id, true);
         await sync.push();
         expect(server.todos.get(todoId)).toBe("done");
+    });
+
+    it("edits and withdraws on the server a comment already sent, and takes back what it refuses", async () => {
+        const { service } = await createHarness();
+        const server = fakeServer();
+        const thread = service.createThread({ ...row, body: "fix this" })!;
+        service.reply(thread.id, "and this");
+        const sync = new StoryCommentsTeamSync(service, server.transport);
+        await sync.push();
+        expect(server.comments.get("t1")!.map(comment => comment.body)).toEqual(["fix this", "and this"]);
+
+        const [opening, reply] = service.getThread(thread.id)!.comments;
+        service.editComment(thread.id, opening!.id, "fix this, please");
+        service.deleteComment(thread.id, reply!.id);
+        await sync.push();
+        expect(server.comments.get("t1")![0]!.body).toBe("fix this, please");
+        expect(server.comments.get("t1")![1]!.deletedAt).toBe(3);
+        await sync.push();
+        expect(server.calls.filter(call => call.startsWith("edit:") || call.startsWith("delete:"))).toHaveLength(2);
+
+        // Somebody else's comment: the server keeps its wording, and so does this window.
+        server.comments.set("t1", [...server.comments.get("t1")!, { id: "c99", thread: "t1", author: "bob", body: "bob's note", createdAt: 4 }]);
+        await sync.pullThread("t1");
+        const bobs = service.getThread(thread.id)!.comments.find(comment => comment.teamCommentId === "c99")!;
+        service.editComment(thread.id, bobs.id, "rewritten");
+        await sync.push();
+        expect(service.getThread(thread.id)!.comments.find(comment => comment.teamCommentId === "c99")!.body).toBe("bob's note");
+    });
+
+    it("sends an edit made here before taking the server's copy of the thread", async () => {
+        const { service } = await createHarness();
+        const server = fakeServer();
+        const thread = service.createThread({ ...row, body: "first" })!;
+        const sync = new StoryCommentsTeamSync(service, server.transport);
+        await sync.push();
+        service.editComment(thread.id, service.getThread(thread.id)!.comments[0]!.id, "second");
+        await sync.pullThread("t1");
+        expect(server.comments.get("t1")![0]!.body).toBe("second");
+        expect(service.getThread(thread.id)!.comments[0]!.body).toBe("second");
     });
 });

@@ -38,7 +38,7 @@ import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import type { TeamCallOutcome, TeamConnection, TeamSubscribeOutcome } from "@shared/types/team";
+import type { TeamCallOutcome, TeamConnection, TeamStudioConfigOutcome, TeamSubscribeOutcome } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 import { WindowAppType } from "@shared/types/window";
 
@@ -270,4 +270,133 @@ async function realpathOfExisting(target: string): Promise<string> {
 async function withinAssetContent(window: AppWindow, file: string): Promise<boolean> {
     const props = window.getProps() as { projectPath?: string } | undefined;
     return fileIsInAssetContent(props?.projectPath, file);
+}
+
+/**
+ * One account's avatar, as a `data:` URL.
+ *
+ * Asked of the same reach as a call: a workspace for the server its project uses the sign-in at,
+ * the launcher as the account. The path is the profile's `avatarUrl` and is held to the shape
+ * avatars are served under before anything is fetched - see `avatarRequest.ts`.
+ */
+export class TeamAvatarHandler extends IPCHandler<IPCEventType.teamAvatar> {
+    readonly name = IPCEventType.teamAvatar;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, path: avatarPath }: IPCEvents[IPCEventType.teamAvatar]["data"],
+    ): Promise<RequestStatus<{ dataUrl: string | null }>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, remoteOrigin, { op: "avatar" });
+            return { dataUrl: await window.app.getTeamManager().avatar(remoteOrigin, avatarPath) };
+        });
+    }
+}
+
+/**
+ * Back the author's Studio settings up to a server, or read them back.
+ *
+ * Asked of Settings and the launcher only - the preferences are the author's, not a project's, so a
+ * workspace is not given this whatever its project answered. The main process carries the document
+ * and never reads it: the renderer composed it and checks what comes back.
+ */
+export class TeamStudioConfigHandler extends IPCHandler<IPCEventType.teamStudioConfig> {
+    readonly name = IPCEventType.teamStudioConfig;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.teamStudioConfig]["data"],
+    ): Promise<RequestStatus<TeamStudioConfigOutcome>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, request.remoteOrigin, { op: "studioConfig" });
+            if (request.action === "upload" && typeof request.content !== "string") {
+                throw new Error("a settings backup carries its document as text");
+            }
+            return await window.app.getTeamManager().studioConfig(request);
+        });
+    }
+}
+
+/**
+ * Whether a path is one of the files the project's own last build recorded as an artifact.
+ *
+ * ⚠ **The only paths a window may have read off its disk and sent.** The record is written by the
+ * build pipeline, never by a window, so a path that matches one of its artifacts - resolved on both
+ * sides, and a regular file now - is a build of this project and nothing else. A folder (an unpacked
+ * app) is not sent: a server keeps one file per build.
+ */
+export async function isLastBuildArtifact(
+    artifacts: readonly string[] | undefined,
+    file: string,
+): Promise<boolean> {
+    if (artifacts === undefined || artifacts.length === 0) return false;
+    const wanted = path.resolve(file);
+    if (!artifacts.some((each) => path.resolve(each) === wanted)) return false;
+    try {
+        return (await fs.stat(wanted)).isFile();
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Put one artifact of the project's last build on its server, as a playable build.
+ *
+ * Reached like a transfer - a workspace for a project that uses the sign-in at that server - and the
+ * path is held to {@link isLastBuildArtifact} before a byte is read. How far it has got goes back to
+ * the window that asked, a few times a second.
+ */
+export class TeamUploadBuildHandler extends IPCHandler<IPCEventType.teamUploadBuild> {
+    readonly name = IPCEventType.teamUploadBuild;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.teamUploadBuild]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.teamUploadBuild]["response"]>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, data.remoteOrigin, { op: "upload" });
+            const projectPath = (window.getProps() as { projectPath?: string } | undefined)?.projectPath;
+            if (projectPath === undefined || projectPath === "") throw new Error("This window has no project.");
+            const run = await window.app.getGameBuildManager().readLastRun(projectPath);
+            if (!(await isLastBuildArtifact(run?.state.artifacts, data.artifact))) {
+                throw new Error("Only a file the project's last build produced can be uploaded.");
+            }
+            const outcome = await window.app.getTeamManager().uploadBuild(
+                data.remoteOrigin,
+                data.projectId,
+                data.artifact,
+                {
+                    name: data.name,
+                    ...(data.note === undefined ? {} : { note: data.note }),
+                    ...(data.platform === undefined ? {} : { platform: data.platform }),
+                    ...(data.revision === undefined ? {} : { revision: data.revision }),
+                    ...(data.latest === undefined ? {} : { latest: data.latest }),
+                },
+                (sent, total) => window.sendIpcEvent(IPCEventType.teamUploadProgress, { artifact: data.artifact, sent, total }),
+            );
+            if (!outcome.ok) throw new Error(outcome.message);
+            return { build: outcome.value };
+        });
+    }
+}
+
+/** Put one picture beside the project's comments. Reached like a transfer; the picture is checked by its type and size. */
+export class TeamUploadAttachmentHandler extends IPCHandler<IPCEventType.teamUploadAttachment> {
+    readonly name = IPCEventType.teamUploadAttachment;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.teamUploadAttachment]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.teamUploadAttachment]["response"]>> {
+        return this.tryUse(async () => {
+            requireTeamReach(window, data.remoteOrigin, { op: "upload" });
+            const outcome = await window.app.getTeamManager().uploadAttachment(data.remoteOrigin, data.projectId, data.dataUrl);
+            if (!outcome.ok) throw new Error(outcome.message);
+            return outcome.value;
+        });
+    }
 }

@@ -16,18 +16,21 @@
 import { getInterface } from "@/lib/app/bridge";
 import {
     TeamMethod,
+    type TeamAccountProfile,
     type TeamAnchor,
     type TeamClientInstance,
     type TeamComment,
-    type TeamLiveMember,
-    type TeamLiveMessage,
-    type TeamLiveJoinRule,
-    type TeamLiveSession,
     type TeamOverlayRecord,
     type TeamProblem,
+    type TeamProjectTemplate,
+    type TeamReaction,
+    type TeamReactionEmoji,
     type TeamThread,
     type TeamThreadKind,
     type TeamThreadStatus,
+    type TeamTemplateApplied,
+    type TeamWatch,
+    TEAM_REACTIONS,
 } from "@shared/types/team";
 import type {
     VcsServerMember,
@@ -44,9 +47,8 @@ export type TeamOutcome<T> = { ok: true; value: T } | { ok: false; problem: Team
 /**
  * What a call that changes something and answers nothing hands back.
  *
- * These methods - `clients.withdraw`, `live.leave`, `live.close`, `live.say`,
- * `overlay.drop`, and an `unsubscribe` acknowledgement - carry an empty object on the
- * wire rather than a value. Success is that object: there is nothing in it to read, and
+ * These methods - `clients.withdraw`, `overlay.drop`, and an `unsubscribe`
+ * acknowledgement - carry an empty object on the wire rather than a value. Success is that object: there is nothing in it to read, and
  * no caller reads it, but a call that answered is one that happened. Named on its own so
  * the wrappers below say what they are, rather than each declaring `null` and inviting a
  * `=== null` the wire would never satisfy.
@@ -378,6 +380,7 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Mem
         const username = text(from, "username");
         if (username === undefined) return null;
         const createdAt = count(from, "createdAt");
+        const avatarUrl = text(from, "avatarUrl");
         return {
             username,
             displayName: text(from, "displayName") ?? username,
@@ -388,11 +391,61 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Mem
             disabled: from["disabled"] === true,
             serviceAccount: from["serviceAccount"] === true,
             ...(createdAt === undefined ? {} : { createdAt }),
+            ...(avatarUrl === undefined ? {} : { avatarUrl }),
         } satisfies VcsServerMember;
     });
     const from = record(answered.value);
     if (members === null || from === null) return unreadable();
     return { ok: true, value: { members, total: count(from, "total") ?? members.length } };
+}
+
+/* ---------------------------------------------------------------- profiles */
+
+/** One profile, or null because what arrived was not one. */
+export function readProfile(value: unknown): TeamAccountProfile | null {
+    const from = record(value);
+    const inner = from === null ? null : (record(from["profile"]) ?? from);
+    if (inner === null) return null;
+    const username = text(inner, "username");
+    if (username === undefined) return null;
+    const bio = text(inner, "bio");
+    const avatarUrl = text(inner, "avatarUrl");
+    const timezone = text(inner, "timezone");
+    const online = inner["online"];
+    return {
+        username,
+        displayName: text(inner, "displayName") ?? username,
+        ...(bio === undefined ? {} : { bio }),
+        ...(avatarUrl === undefined ? {} : { avatarUrl }),
+        ...(timezone === undefined ? {} : { timezone }),
+        ...(typeof online === "boolean" ? { online } : {}),
+    };
+}
+
+/** An account's profile: the caller's own when `username` is absent. */
+export async function getProfile(
+    remoteOrigin: string,
+    username?: string,
+): Promise<TeamOutcome<TeamAccountProfile>> {
+    const answered = await teamCall(
+        remoteOrigin,
+        TeamMethod.accountProfileGet,
+        username === undefined ? {} : { username },
+    );
+    if (!answered.ok) return answered;
+    const profile = readProfile(answered.value);
+    return profile === null ? unreadable() : { ok: true, value: profile };
+}
+
+/**
+ * An avatar as something an `<img>` can draw, or null.
+ *
+ * Read by the main process with the session's token - the server serves avatars to signed-in
+ * callers only, and this window never touches the network.
+ */
+export async function readAvatar(remoteOrigin: string, avatarUrl: string): Promise<string | null> {
+    const answered = await getInterface().team.avatar(remoteOrigin, avatarUrl).catch(() => null);
+    return answered?.success ? answered.data.dataUrl : null;
 }
 
 /* ---------------------------------------------------------------- conversations */
@@ -611,234 +664,6 @@ export async function listClients(
     return clients === null ? unreadable() : { ok: true, value: clients };
 }
 
-/* -------------------------------------------------------------- live sessions */
-
-function readLiveMember(value: unknown): TeamLiveMember | null {
-    const from = record(value);
-    if (from === null) return null;
-    const instance = text(from, "instance");
-    const account = text(from, "account");
-    if (instance === undefined || account === undefined) return null;
-    return {
-        instance,
-        account,
-        label: text(from, "label") ?? account,
-        joinedAt: count(from, "joinedAt") ?? 0,
-    };
-}
-
-/** One room, or null. */
-export function readLiveSession(value: unknown): TeamLiveSession | null {
-    const from = record(value);
-    if (from === null) return null;
-    const id = text(from, "id");
-    const project = text(from, "project");
-    const openedBy = text(from, "openedBy");
-    const openedByInstance = text(from, "openedByInstance");
-    if (
-        id === undefined || project === undefined ||
-        openedBy === undefined || openedByInstance === undefined
-    ) {
-        return null;
-    }
-    const revision = text(from, "revision");
-    const story = text(from, "story");
-    const title = text(from, "title");
-    const members = Array.isArray(from["members"])
-        ? from["members"].map(readLiveMember).filter((one): one is TeamLiveMember => one !== null)
-        : [];
-    // ⚠ Read against the closed set rather than carried through. A room whose rule this build does
-    // not know is one it must treat as `open` - the behaviour every room had before there was a
-    // choice - and never as a word it will later compare against and never match.
-    const said = from["rule"];
-    const rule = said === "open" || said === "code" || said === "request" ? said : undefined;
-    return {
-        id,
-        project,
-        ...(revision === undefined ? {} : { revision }),
-        ...(story === undefined ? {} : { story }),
-        ...(title === undefined ? {} : { title }),
-        openedBy,
-        openedByInstance,
-        openedAt: count(from, "openedAt") ?? 0,
-        members,
-        ...(rule === undefined ? {} : { rule }),
-    };
-}
-
-/** One thing said in a room, as it arrives on that room's topic. */
-export function readLiveMessage(value: unknown): TeamLiveMessage | null {
-    const from = record(value);
-    if (from === null) return null;
-    const session = text(from, "session");
-    const sender = text(from, "from");
-    if (session === undefined || sender === undefined) return null;
-    return {
-        session,
-        from: sender,
-        account: text(from, "account") ?? "",
-        at: count(from, "at") ?? 0,
-        // Carried whole and unread, which is what it is on the server too.
-        payload: from["payload"],
-    };
-}
-
-/** The rooms open on one project. */
-export async function listLiveSessions(
-    remoteOrigin: string,
-    project: string,
-): Promise<TeamOutcome<TeamLiveSession[]>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveList, { project });
-    if (!answered.ok) return answered;
-    const sessions = readList(answered.value, "sessions", readLiveSession);
-    return sessions === null ? unreadable() : { ok: true, value: sessions };
-}
-
-/**
- * Open a room on this project, with this window already in it.
- *
- * The one act here somebody deliberately performs. Everything else about a Team server
- * happens because a window opened; this happens because a person decided to work on
- * something with somebody else.
- */
-export async function openLiveSession(
-    remoteOrigin: string,
-    input: {
-        project: string;
-        revision: string;
-        story: string;
-        title?: string;
-        rule?: TeamLiveJoinRule;
-    },
-): Promise<TeamOutcome<{ session: TeamLiveSession; code: string }>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveOpen, input);
-    if (!answered.ok) return answered;
-    const from = record(answered.value);
-    const session = from === null ? null : readLiveSession(from["session"]);
-    // ⚠ The four digits are answered HERE and in no other call, because they are not on the
-    // room record: that record is broadcast to everybody watching the project. A server too
-    // old to mint one says nothing, and an empty string is how that reads downstream.
-    const code = typeof from?.["code"] === "string" ? from["code"] : "";
-    return session === null ? unreadable() : { ok: true, value: { session, code } };
-}
-
-/** Join one somebody else opened. Joining one this window is already in is not an error. */
-export async function joinLiveSession(
-    remoteOrigin: string,
-    session: string,
-): Promise<TeamOutcome<TeamLiveSession>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveJoin, { session });
-    if (!answered.ok) return answered;
-    const from = record(answered.value);
-    const read = from === null ? null : readLiveSession(from["session"]);
-    return read === null ? unreadable() : { ok: true, value: read };
-}
-
-/**
- * Join the room a passcode names, without having had to find it.
- *
- * The code is the address and the entitlement at once: the server resolves it, checks it and
- * lets this window in, all in the one call. Refused where the digits name nothing, which is
- * also the answer for digits that name a room and are not its own.
- */
-export async function joinLiveSessionByCode(
-    remoteOrigin: string,
-    code: string,
-): Promise<TeamOutcome<TeamLiveSession>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveJoin, { code });
-    if (!answered.ok) return answered;
-    const from = record(answered.value);
-    const read = from === null ? null : readLiveSession(from["session"]);
-    return read === null ? unreadable() : { ok: true, value: read };
-}
-
-/**
- * Which room a passcode names, without joining it.
- *
- * **The one live call that works from a window with no project open**, which is the whole of
- * why it exists: somebody read four digits and may never have had this project, so before they
- * can announce anything they have to learn which project to go and get.
- */
-export async function findLiveSessionByCode(
-    remoteOrigin: string,
-    code: string,
-): Promise<TeamOutcome<TeamLiveSession>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveByCode, { code });
-    if (!answered.ok) return answered;
-    const from = record(answered.value);
-    const read = from === null ? null : readLiveSession(from["session"]);
-    return read === null ? unreadable() : { ok: true, value: read };
-}
-
-/** Change how a running room may be joined, which only the window that opened it may do. */
-export async function setLiveSessionRule(
-    remoteOrigin: string,
-    session: string,
-    rule: TeamLiveJoinRule,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveRule, { session, rule });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
-/** Ask to be let into a room that is joined by asking. */
-export async function requestLiveSessionJoin(
-    remoteOrigin: string,
-    session: string,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveRequestJoin, { session });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
-/** Say yes or no to somebody who asked, which only the room's opener may do. */
-export async function answerLiveSessionJoin(
-    remoteOrigin: string,
-    session: string,
-    instance: string,
-    admit: boolean,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveAnswerJoin, {
-        session,
-        instance,
-        admit,
-    });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
-/** Leave one. The last one out closes it. Never refused, including for a room that is gone. */
-export async function leaveLiveSession(
-    remoteOrigin: string,
-    session: string,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveLeave, { session });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
-/** Close one outright, which only the window that opened it may do. */
-export async function closeLiveSession(
-    remoteOrigin: string,
-    session: string,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveClose, { session });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
-/**
- * Say something to everybody in a room.
- *
- * `payload` is Studio's own and the server never reads it - this is the path a real-time
- * feature will send its operations down. **Nothing said this way is kept**: it reaches
- * whoever is subscribed at that instant and is forgotten, so anything that has to survive
- * goes through {@link putOverlay} or into the repository.
- */
-export async function sayInLiveSession(
-    remoteOrigin: string,
-    session: string,
-    payload: unknown,
-): Promise<TeamOutcome<TeamAck>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.liveSay, { session, payload });
-    return answered.ok ? { ok: true, value: {} } : answered;
-}
-
 /* -------------------------------------------------------------------- overlay */
 
 /** One record, or null. */
@@ -991,4 +816,130 @@ export async function dropOverlay(
 ): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayDrop, { id });
     return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/* ------------------------------------------------------------------ watches */
+
+function readWatch(value: unknown): TeamWatch | null {
+    const from = record(value);
+    if (from === null) return null;
+    const project = text(from, "project");
+    const createdAt = count(from, "createdAt");
+    if (project === undefined || createdAt === undefined) return null;
+    const scope = text(from, "scope");
+    return { project, createdAt, ...(scope === undefined || scope === "" ? {} : { scope }) };
+}
+
+/** What the caller follows, in one project or everywhere. */
+export async function listWatches(remoteOrigin: string, project?: string): Promise<TeamOutcome<TeamWatch[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.watchesList, project === undefined ? {} : { project });
+    if (!answered.ok) return answered;
+    const watches = readList(answered.value, "watches", readWatch);
+    return watches === null ? unreadable() : { ok: true, value: watches };
+}
+
+/**
+ * Follow a project (no scope) or one scene of it (`scene:{id}`), or stop. Answers what the
+ * caller follows in that project afterwards.
+ */
+export async function setWatch(
+    remoteOrigin: string,
+    input: { project: string; scope?: string; watching: boolean },
+): Promise<TeamOutcome<TeamWatch[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.watchesSet, input);
+    if (!answered.ok) return answered;
+    const watches = readList(answered.value, "watches", readWatch);
+    return watches === null ? unreadable() : { ok: true, value: watches };
+}
+
+/* ---------------------------------------------------------------- reactions */
+
+function readReaction(value: unknown): TeamReaction | null {
+    const from = record(value);
+    if (from === null) return null;
+    const target = text(from, "target");
+    const emoji = text(from, "emoji");
+    const by = from["by"];
+    if (target === undefined || emoji === undefined || !(TEAM_REACTIONS as readonly string[]).includes(emoji)) return null;
+    if (!Array.isArray(by) || by.some(name => typeof name !== "string")) return null;
+    return { target, emoji: emoji as TeamReactionEmoji, by: by as string[] };
+}
+
+/** The reactions on several comments (or chat messages) of one project, flat. */
+export async function listReactions(
+    remoteOrigin: string,
+    input: { project: string; kind: "comment" | "chat"; targets: string[] },
+): Promise<TeamOutcome<TeamReaction[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.reactionsList, input);
+    if (!answered.ok) return answered;
+    const reactions = readList(answered.value, "reactions", readReaction);
+    return reactions === null ? unreadable() : { ok: true, value: reactions };
+}
+
+/** Give one emoji, or take it back if the caller already gave it. Answers that emoji's reaction now. */
+export async function toggleReaction(
+    remoteOrigin: string,
+    input: { project: string; kind: "comment" | "chat"; target: string; emoji: TeamReactionEmoji },
+): Promise<TeamOutcome<TeamReaction>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.reactionsToggle, input);
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const reaction = from === null ? null : readReaction(from["reaction"]);
+    return reaction === null ? unreadable() : { ok: true, value: reaction };
+}
+
+/* ---------------------------------------------------------------- templates */
+
+function readTemplate(value: unknown): TeamProjectTemplate | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    const name = text(from, "name");
+    const createdAt = count(from, "createdAt");
+    const updatedAt = count(from, "updatedAt");
+    const body = record(from["body"]);
+    if (id === undefined || name === undefined || createdAt === undefined || updatedAt === undefined || body === null) return null;
+    const description = text(from, "description");
+    const createdBy = text(from, "createdBy");
+    return {
+        id,
+        name,
+        body: body as TeamProjectTemplate["body"],
+        createdAt,
+        updatedAt,
+        ...(description === undefined || description === "" ? {} : { description }),
+        ...(createdBy === undefined ? {} : { createdBy }),
+    };
+}
+
+/** The project templates on a server. */
+export async function listTemplates(remoteOrigin: string): Promise<TeamOutcome<TeamProjectTemplate[]>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.templatesList, {});
+    if (!answered.ok) return answered;
+    const templates = readList(answered.value, "templates", readTemplate);
+    return templates === null ? unreadable() : { ok: true, value: templates };
+}
+
+/** Put a template's members, milestones and to-dos into a project. The project's owners only. */
+export async function applyTemplate(
+    remoteOrigin: string,
+    input: { project: string; template: string },
+): Promise<TeamOutcome<TeamTemplateApplied>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.templatesApply, input);
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const members = from?.["members"];
+    const skipped = from?.["skipped"];
+    const milestones = from === null ? undefined : count(from, "milestones");
+    const todos = from === null ? undefined : count(from, "todos");
+    if (!Array.isArray(members) || !Array.isArray(skipped) || milestones === undefined || todos === undefined) return unreadable();
+    return {
+        ok: true,
+        value: {
+            members: members.filter((name): name is string => typeof name === "string"),
+            skipped: skipped.filter((name): name is string => typeof name === "string"),
+            milestones,
+            todos,
+        },
+    };
 }

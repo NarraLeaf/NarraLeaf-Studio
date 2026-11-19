@@ -703,7 +703,7 @@ export interface VcsServerAccount {
  */
 export interface VcsSignInToken {
     account: VcsServerAccount;
-    /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
+    /** Where to present it, from `aud`: `https://team.example.lan:54080`. */
     authUrl: string;
     /**
      * Every sign-in address `aud` names, {@link authUrl} first.
@@ -801,7 +801,7 @@ export interface VcsServerDiscovery {
     auth: {
         /** False for a server that asks nobody who they are; then no token is wanted. */
         required: boolean;
-        /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
+        /** Where a token is presented, e.g. `https://team.example.lan:54080`. */
         url: string;
     };
     /** The remote the repositories live on. Stored, never shown. */
@@ -893,7 +893,7 @@ export type VcsServerProbe =
  * does, so a project that merely names the same server does not act as this account.
  */
 export interface VcsServerSession {
-    /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
+    /** Where the sign-in happened, e.g. `https://studio.example.lan:54080`. */
     authUrl: string;
     /** The server this session is good for, as an origin: `lore://host:41337`. */
     remoteOrigin: string;
@@ -930,6 +930,14 @@ export interface VcsServerSession {
      * Absent everywhere else.
      */
     usedBy?: VcsSessionUser[];
+    /**
+     * The projects open in a workspace window right now whose server this is.
+     *
+     * Filled in by `vcs.listServers`, absent when there are none. A server is not signed out of
+     * while one of these is open (`vcs.forgetServer` refuses), so the list that offers to says
+     * which projects to close first.
+     */
+    openIn?: VcsSessionUser[];
 }
 
 /** A project that uses a sign-in, as a list of them names it. */
@@ -1294,6 +1302,11 @@ export interface VcsServerMember {
     serviceAccount: boolean;
     /** When it was made. Epoch ms; absent from a server that did not say. */
     createdAt?: number;
+    /**
+     * The server's path for this account's avatar, absent where it set none. Served only to a
+     * signed-in caller, so a renderer reads it through `team.avatar` and never directly.
+     */
+    avatarUrl?: string;
 }
 
 /**
@@ -1305,8 +1318,21 @@ export interface VcsServerMember {
  * what a server says about credentials: measured against a real one, an unknown account,
  * a wrong password, a disabled account and a machine account are one identical refusal,
  * so nothing here may claim to tell them apart.
+ *
+ * Three more come from an account that signs in with a code from an authenticator app as
+ * well: the password was right and a code is wanted (`second-factor`), a code was sent and
+ * was wrong (`bad-code`), or the server requires one and this account has not set one up
+ * yet (`enroll-two-factor`) - which only the web console can do, since setting up shows a
+ * secret Studio has nowhere to show.
  */
-export type VcsPasswordSignInReason = "refused" | "unavailable" | "unreachable" | "unknown";
+export type VcsPasswordSignInReason =
+    | "refused"
+    | "unavailable"
+    | "unreachable"
+    | "unknown"
+    | "second-factor"
+    | "bad-code"
+    | "enroll-two-factor";
 
 /**
  * What presenting a username and password came to.
@@ -1334,6 +1360,24 @@ export type VcsBrowserSignInReason = "denied" | "timeout" | "unreachable" | "ref
 export type VcsBrowserSignInOutcome =
     | { ok: true; token: string }
     | { ok: false; reason: VcsBrowserSignInReason };
+
+/**
+ * A device sign-in under way (RFC 8628): the code to type and the page to type it on. The wait
+ * for the approval is a second call, `finishDeviceSignIn`, so the screen can show this meanwhile.
+ */
+export type VcsDeviceSignInStart =
+    | { ok: true; userCode: string; verificationUri: string; verificationUriComplete: string; expiresAt: number }
+    | { ok: false; reason: VcsBrowserSignInReason };
+
+/**
+ * What handing over a callback address by hand came to, for a browser sign-in whose
+ * redirect never reached Studio on its own.
+ *
+ * - `accepted`: it was this sign-in's answer; the waiting sign-in goes on with it.
+ * - `mismatch`: there is a sign-in waiting, and this address is not its answer.
+ * - `none`: nothing is waiting - it finished, timed out, or never started.
+ */
+export type VcsBrowserCallbackOutcome = "accepted" | "mismatch" | "none";
 
 /**
  * What a server could read inside one project's own file.

@@ -26,7 +26,7 @@ import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-edi
 import { DraftInput } from "./ComponentParamsEditor";
 import type { CustomFieldProps } from "./framework/types";
 import type { SceneEditorContext } from "./schemas/sceneSchema";
-import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../ui-editor/uiFreezeScope";
 
 /** The row-shape option that declares none. */
 const ANY_ROW_SHAPE = "";

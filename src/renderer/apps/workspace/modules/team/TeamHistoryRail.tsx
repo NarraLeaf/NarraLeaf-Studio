@@ -19,6 +19,7 @@ import { liveDocumentPath } from "@shared/live/sharedDocuments";
 import { teamProjectDocTopic } from "@shared/types/team";
 import type { VcsServerRevision } from "@shared/types/vcs";
 import { useWorkspace } from "../../context";
+import { CommitTodoPicker, useCommitTodos } from "./CommitTodos";
 import { VERSION_RAIL_COLLAPSED_WIDTH, VERSION_RAIL_EXPANDED_WIDTH } from "../../components/layout/versionRailModel";
 import { teamVersionLabel } from "./teamVersionLabel";
 
@@ -71,7 +72,7 @@ export function readTeamHistoryCollapsed(): boolean {
     }
 }
 
-function keepCollapsed(collapsed: boolean): void {
+export function keepTeamHistoryCollapsed(collapsed: boolean): void {
     try {
         globalThis.localStorage?.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
     } catch {
@@ -80,11 +81,18 @@ function keepCollapsed(collapsed: boolean): void {
 }
 
 /**
- * How wide the team history is: the version rail's own two widths, so the dock layout accounts for
- * it the way it accounts for that rail (`DockEnv.versionRailWidth`).
+ * How wide the team history is, for the dock layout's account (`DockEnv.versionRailWidth`).
+ *
+ * **Folded is no column at all.** The narrow strip it used to fold to held a chevron and a status
+ * dot, and it pushed the activity bar over all day for that: the history now opens from the
+ * account menu in the title bar, and where the project stands is said by the status bar's Team cell
+ * and the reconnect bar. The one exception is a saved version on screen - project data is frozen
+ * then, and the strip stays as the way back to the present, the way the version rail keeps its
+ * strip while frozen.
  */
-export function teamHistoryWidth(collapsed: boolean): number {
-    return collapsed ? VERSION_RAIL_COLLAPSED_WIDTH : VERSION_RAIL_EXPANDED_WIDTH;
+export function teamHistoryWidth(collapsed: boolean, previewing: boolean): number {
+    if (!collapsed) return VERSION_RAIL_EXPANDED_WIDTH;
+    return previewing ? VERSION_RAIL_COLLAPSED_WIDTH : 0;
 }
 
 /**
@@ -94,7 +102,7 @@ export function teamHistoryWidth(collapsed: boolean): number {
  * to commit, push or pull - everyone's edits are already on the server - so this is the list of saved
  * versions, a way to save one by hand with a name, to look at one, to see what changed since, and to
  * put one back. Where the project stands (live, catching up, offline) and any offline edits the
- * server would not take are shown at the top. It folds to a narrow strip so it can stay out of the way.
+ * server would not take are shown at the top. Folded, it takes no room at all; it opens from the account menu in the title bar.
  */
 export function TeamHistoryRail({
     surface,
@@ -115,6 +123,10 @@ export function TeamHistoryRail({
     const [older, setOlder] = useState<VcsServerRevision[]>([]);
     const [more, setMore] = useState(false);
     const [comparison, setComparison] = useState<{ revision: VcsServerRevision; rows: TeamVersionComparison[] } | null>(null);
+    // A version saved by hand finishes the to-dos ticked for it, as a commit did before team
+    // projects were held by their server.
+    const commitTodos = useCommitTodos();
+    const [todoProblem, setTodoProblem] = useState(0);
     const historyGeneration = useRef(0);
 
     const read = useCallback(
@@ -160,7 +172,7 @@ export function TeamHistoryRail({
 
     const toggle = () => {
         const next = !collapsed;
-        keepCollapsed(next);
+        keepTeamHistoryCollapsed(next);
         onCollapsedChange(next);
     };
 
@@ -195,6 +207,10 @@ export function TeamHistoryRail({
         }
         setLabel("");
         history.refresh();
+        // Nothing changed since the last version means no new revision: the ticks wait for one.
+        if (saved.value.revision !== undefined) {
+            setTodoProblem(await commitTodos.finish(saved.value.revision));
+        }
     });
 
     const restore = (revision: VcsServerRevision, label: string) => run(async () => {
@@ -213,18 +229,6 @@ export function TeamHistoryRail({
         if (rows !== null) setComparison({ revision, rows });
     });
 
-    const detach = () => run(async () => {
-        const ui = context?.services.get<UIService>(Services.UI);
-        const confirmed = ui === undefined
-            ? false
-            : await ui.showDestructiveConfirm(
-                t("workspace.shell.team.docs.detachConfirm"),
-                t("workspace.shell.team.docs.detachDetail"),
-                t("workspace.shell.team.docs.detach"),
-            );
-        if (confirmed) await service.detach();
-    });
-
     const stateLine = view.state === "online"
         ? t("workspace.shell.team.docs.online")
         : view.state === "offline"
@@ -240,11 +244,15 @@ export function TeamHistoryRail({
     const summaryOrdinals = new Map<string, number>();
 
     if (collapsed) {
+        // Folded with nothing to come back from draws nothing; see `teamHistoryWidth`.
+        if (previewing === null) {
+            return null;
+        }
         return (
             <aside
                 data-workspace-team-history="collapsed"
                 className="shrink-0 flex flex-col items-center border-r border-edge bg-surface py-2 gap-2"
-                style={{ width: teamHistoryWidth(true) }}
+                style={{ width: teamHistoryWidth(true, true) }}
             >
                 <button type="button" className="text-xs text-fg-muted hover:text-fg" aria-label={t("workspace.shell.team.docs.history")} onClick={toggle}>
                     {"›"}
@@ -262,7 +270,7 @@ export function TeamHistoryRail({
         <aside
             data-workspace-team-history
             className="shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden"
-            style={{ width: teamHistoryWidth(false) }}
+            style={{ width: teamHistoryWidth(false, previewing !== null) }}
         >
             <header className="px-3 py-2 border-b border-edge flex items-start gap-2">
                 <div className="flex-1 min-w-0">
@@ -325,20 +333,21 @@ export function TeamHistoryRail({
                         onChange={event => { setLabel(event.target.value); setSaveFailed(false); }}
                         disabled={busy || !online}
                     />
+                    <CommitTodoPicker controller={commitTodos} disabled={busy || !online} />
                     <Button size="sm" variant="primary" disabled={busy || !online} onClick={() => void save()}>
                         {t("workspace.shell.team.docs.saveVersion")}
                     </Button>
+                    {todoProblem > 0 && (
+                        <p className="text-2xs text-warning">
+                            {t("workspace.shell.team.commitTodos.failed", { count: String(todoProblem) })}
+                        </p>
+                    )}
                     {saveFailed && <p role="alert" className="text-xs text-danger">{t("workspace.shell.statusBar.saveFailed")}</p>}
                 </section>
             )}
 
-            {previewing === null && view.state !== "syncing" && (
-                <section className="px-3 py-2 border-b border-edge">
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => void detach()}>
-                        {t("workspace.shell.team.docs.detach")}
-                    </Button>
-                </section>
-            )}
+            {/* No "convert to personal project" here: a team project's server is changed from
+                outside it, in the launcher, which leaves the project in the same detached state. */}
 
             <ol className="flex-1 overflow-auto">
                 {history.value?.revisions !== undefined && revisions.length === 0 && (

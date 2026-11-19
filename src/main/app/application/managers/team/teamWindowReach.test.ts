@@ -98,6 +98,7 @@ describe("what each may do", () => {
         expect(teamAllows(ACCOUNT, call(TeamMethod.threadsCreate))).toBe(true);
         expect(teamAllows(ACCOUNT, call(TeamMethod.projectsForget))).toBe(true);
         expect(teamAllows(ACCOUNT, { op: "transfer" })).toBe(false);
+        expect(teamAllows(ACCOUNT, { op: "upload" })).toBe(false);
     });
 
     it("lets Settings and the wizard list what a server holds, and nothing else", () => {
@@ -108,26 +109,46 @@ describe("what each may do", () => {
         expect(teamAllows(LISTING, { op: "subscribe" })).toBe(false);
         expect(teamAllows(LISTING, { op: "connections" })).toBe(false);
         expect(teamAllows(LISTING, { op: "transfer" })).toBe(false);
+        expect(teamAllows(LISTING, { op: "upload" })).toBe(false);
+    });
+
+    it("lets Settings and the launcher keep the author's Studio settings with the account, and no project", () => {
+        expect(teamAllows(LISTING, { op: "studioConfig" })).toBe(true);
+        expect(teamAllows(ACCOUNT, { op: "studioConfig" })).toBe(true);
+        expect(teamAllows(PROJECT, { op: "studioConfig" })).toBe(false);
+        expect(teamAllows(UNUSED, { op: "studioConfig" })).toBe(false);
+        expect(teamAllows(NONE, { op: "studioConfig" })).toBe(false);
     });
 
     it("lets a project that uses the sign-in do what its workspace does, but not list every server", () => {
         expect(teamAllows(PROJECT, { op: "open" })).toBe(true);
         expect(teamAllows(PROJECT, { op: "subscribe" })).toBe(true);
         expect(teamAllows(PROJECT, { op: "transfer" })).toBe(true);
+        expect(teamAllows(PROJECT, { op: "upload" })).toBe(true);
         expect(teamAllows(PROJECT, call(TeamMethod.liveOpen))).toBe(true);
         expect(teamAllows(PROJECT, { op: "connections" })).toBe(false);
     });
 
-    it("lets a project that does not use it do nothing, and a window that never speaks to servers the same", () => {
+    it("lets a project that does not use it read who the account is, and nothing else", () => {
+        expect(teamAllows(UNUSED, { op: "open" })).toBe(true);
+        expect(teamAllows(UNUSED, { op: "avatar" })).toBe(true);
+        expect(teamAllows(UNUSED, call(TeamMethod.accountProfileGet))).toBe(true);
+        expect(teamAllows(UNUSED, call(TeamMethod.accountProfileUpdate))).toBe(false);
+    });
+
+    it("lets a project that does not use it act on nothing, and a window that never speaks to servers do nothing", () => {
         for (const ask of [
-            { op: "open" },
             { op: "connections" },
             { op: "subscribe" },
             { op: "transfer" },
+            { op: "upload" },
             call(TeamMethod.projectsList),
             call(TeamMethod.clientsAnnounce),
         ] satisfies TeamAsk[]) {
             expect(teamAllows(UNUSED, ask)).toBe(false);
+            expect(teamAllows(NONE, ask)).toBe(false);
+        }
+        for (const ask of [{ op: "open" }, { op: "avatar" }, call(TeamMethod.accountProfileGet)] satisfies TeamAsk[]) {
             expect(teamAllows(NONE, ask)).toBe(false);
         }
     });

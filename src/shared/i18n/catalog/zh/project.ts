@@ -611,7 +611,4 @@ export const project = {
             },
         },
     },
-    live: {
-        entryClaimed: "{name} 正在编辑该条目",
-    },
 } satisfies LocaleNamespace<"project">;

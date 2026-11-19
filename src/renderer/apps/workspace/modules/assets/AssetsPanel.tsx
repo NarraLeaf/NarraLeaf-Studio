@@ -55,7 +55,8 @@ import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuar
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
-import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
+import { assetLibraryFreezeScope, assetSetFreezeScope } from "./assetFreezeScopes";
+import { useAssetTransfers } from "./assetTransfers";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 import { PROJECT_SCRIPTS_SECTION_ID, ProjectScriptsSection } from "./views/ProjectScriptsSection";
@@ -259,12 +260,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * The asset sets' own guard.
      *
      * A third guard rather than a widening of {@link libraryFreeze}, because the sets are a third
-     * document: they were frozen under any freeze at all while they had no verbs, and a session
-     * carries them now. See `assetSetFreezeScope` for why it names the library as well.
+     * document: they were frozen under any freeze at all while they had no verbs, and a team project
+     * leaves them writable now. See `assetSetFreezeScope` for why it names the library as well.
      */
     const setFreeze = useFreezeGuard(assetSetFreezeScope());
-    // One subscription for every row. Empty outside a live session.
-    const assetClaims = useAssetClaims();
     const assetTransfers = useAssetTransfers();
 
     /**
@@ -1361,7 +1360,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         mediaSupport,
         unreadableCategories,
         handleConvertMedia,
-        assetClaims,
         assetTransfers,
     };
 

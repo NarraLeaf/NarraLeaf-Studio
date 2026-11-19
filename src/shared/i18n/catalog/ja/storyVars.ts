@@ -19,10 +19,7 @@ export const storyVars = {
         defaultPlaceholder: "既定値",
         defaultAria: "既定値",
         delete: "変数を削除",
-        deleteInSession: "このリアルタイムセッションでは使えない。セッションから退出すると削除できる",
-    },
-    live: {
-        entryClaimed: "{name} がこの変数を編集している",
+        deleteUnavailable: "インターフェース文書を読み込めなかったため、この変数は現在削除できない",
     },
     scene: {
         title: "シーン変数",

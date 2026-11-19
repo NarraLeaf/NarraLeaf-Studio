@@ -56,7 +56,7 @@ const DEFAULT_HEARTBEAT_MS = 30_000;
 export interface TeamClientOptions {
     /** The server's data origin, which is how Studio names a server everywhere else. */
     remoteOrigin: string;
-    /** Where the session is opened, e.g. `https://team.example.lan:41402`. */
+    /** Where the session is opened, e.g. `https://team.example.lan:54080`. */
     authUrl: string;
     token: string;
     userDataDir: string;
@@ -132,6 +132,14 @@ export class TeamClient {
 
     private backoff = BACKOFF_FIRST_MS;
     private retry: NodeJS.Timeout | undefined;
+    /**
+     * Which socket is this client's own, counted up on every open.
+     *
+     * A socket replaced by a newer one may still close later, and what it says then is
+     * about a session this client has already let go of. Acted on, its close would mark a
+     * working session offline and schedule a reconnect over it.
+     */
+    private generation = 0;
     /** Set when reconnecting would be pointless: the server refused this token. */
     private stopped = false;
     private disposed = false;
@@ -186,6 +194,51 @@ export class TeamClient {
     connect(): void {
         if (this.disposed || this.socket !== null) return;
         this.stopped = false;
+        // Somebody is waiting for this server now, which is a better reason to try than a
+        // backoff timer. Left armed, that timer would later open a second socket over this
+        // one, and the first would stay connected as a session the server counts and
+        // nothing here can close.
+        if (this.retry !== undefined) {
+            clearTimeout(this.retry);
+            this.retry = undefined;
+        }
+        this.open();
+    }
+
+    /**
+     * Start over now, because the machine woke up or its network changed.
+     *
+     * ⚠ **Replaces a socket that still looks open.** Pings are sent but their answers are not
+     * counted, so a socket that died while the lid was shut reads as ready until the next write
+     * fails, which may be a minute away. A wake or a new network is reason enough to assume the
+     * old one is gone. Nothing happens to a client nobody has opened, to one the server refused
+     * (a new network does not make a declined token acceptable), or to one let go of.
+     */
+    reconnectNow(reason = "the network changed"): void {
+        if (this.disposed || this.stopped) return;
+        if (this.state === "idle" && this.socket === null && this.retry === undefined) return;
+        if (this.retry !== undefined) {
+            clearTimeout(this.retry);
+            this.retry = undefined;
+        }
+        this.backoff = BACKOFF_FIRST_MS;
+        const old = this.socket;
+        if (old !== null) {
+            // Disowned before it is closed, so its close is not taken for this client's own
+            // and does not schedule a retry over the socket opened below.
+            this.socket = null;
+            this.generation += 1;
+            for (const [id, call] of [...this.waiting]) {
+                clearTimeout(call.timer);
+                this.waiting.delete(id);
+                call.settle({ ok: false, problem: { kind: "offline", detail: reason } });
+            }
+            try {
+                old.close(reason);
+            } catch {
+                // Already gone, which is what this assumed anyway.
+            }
+        }
         this.open();
     }
 
@@ -197,6 +250,9 @@ export class TeamClient {
         }
         this.moveTo("connecting", undefined);
         const openSocket = this.options.openSocket ?? TeamSocket.open;
+        this.generation += 1;
+        const generation = this.generation;
+        const own = (): boolean => generation === this.generation;
         this.socket = openSocket({
             host: endpoint.host,
             port: endpoint.port,
@@ -210,8 +266,12 @@ export class TeamClient {
                     // says which protocol and which methods, and asking before it would
                     // be asking on a guess.
                 },
-                onMessage: (text) => this.receive(text),
-                onClose: (closed) => this.dropped(closed),
+                onMessage: (text) => {
+                    if (own()) this.receive(text);
+                },
+                onClose: (closed) => {
+                    if (own()) this.dropped(closed);
+                },
             },
         });
     }
@@ -248,7 +308,7 @@ export class TeamClient {
 
         this.retry = setTimeout(() => {
             this.retry = undefined;
-            if (!this.disposed && !this.stopped) this.open();
+            if (!this.disposed && !this.stopped && this.socket === null) this.open();
         }, this.backoff);
         this.retry.unref?.();
         this.backoff = Math.min(this.backoff * 2, BACKOFF_LIMIT_MS);
@@ -527,7 +587,7 @@ function projectOf(params: unknown): string | null {
  * **One resolver, shared with the REST side.** A stored `https://host:port` describes the
  * same machine whether a call goes over the socket or over the version-control routes, and
  * two resolvers that disagreed on the port a bare address falls back to - this one once
- * answered 443, the other 41402 - would dial two different servers from one saved address.
+ * answered 443, the other 54080 - would dial two different servers from one saved address.
  * So the address parsing lives in {@link resolveServerEndpoint}, which also strips the
  * brackets an IPv6 literal carries (an address `tls.connect` cannot use), and this hands
  * back the two fields a socket needs.

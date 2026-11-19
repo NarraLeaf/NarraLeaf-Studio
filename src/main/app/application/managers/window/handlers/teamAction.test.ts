@@ -45,7 +45,7 @@ const THEIRS = WIN ? "D:\\games\\theirs" : "/games/theirs";
 
 function account(remoteOrigin: string, userId: string): VcsServerSession {
     return {
-        authUrl: `https://${userId}.example.lan:41402`,
+        authUrl: `https://${userId}.example.lan:54080`,
         remoteOrigin,
         account: {
             userId,
@@ -86,6 +86,8 @@ class FakeClient implements TeamClientLike {
     }
 
     async unsubscribe(): Promise<void> {}
+
+    reconnectNow(): void {}
 
     dispose(): void {}
 
@@ -192,6 +194,25 @@ function expectRefusedAll(answers: Awaited<ReturnType<typeof askAll>>, code: str
     }
 }
 
+/**
+ * A workspace at a server its project does not use: it may open the session, which only reads who
+ * the account is (the title bar's face - see `TEAM_WHO_I_AM`), and every channel that acts on a
+ * project is refused.
+ */
+function expectReadsOnlyWhoIAm(answers: Awaited<ReturnType<typeof askAll>>, code: string): void {
+    const { open, ...acting } = answers;
+    expect(open, "open").toMatchObject({ success: true });
+    expectRefusedAll(acting as Awaited<ReturnType<typeof askAll>>, code);
+}
+
+/** No client asked the server anything or subscribed to anything. */
+function expectNothingSent(clients: readonly { calls: string[]; subscribed: string[] }[]): void {
+    for (const client of clients) {
+        expect(client.calls).toEqual([]);
+        expect(client.subscribed).toEqual([]);
+    }
+}
+
 describe("a workspace", () => {
     function transferStandIn(team: TeamManager) {
         // The bytes have a suite of their own; what is pinned here is whether a request got that far.
@@ -215,50 +236,50 @@ describe("a workspace", () => {
         expect(transfer).toHaveBeenCalledTimes(1);
     });
 
-    it("is refused for a project the author was never asked about, and nothing reaches the server", async () => {
+    it("acts on nothing for a project the author was never asked about, and nothing is sent", async () => {
         const { team, clients, window } = harness();
         const transfer = transferStandIn(team);
 
-        expectRefusedAll(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
-        expect(clients).toEqual([]);
+        expectReadsOnlyWhoIAm(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
+        expectNothingSent(clients);
         expect(transfer).not.toHaveBeenCalled();
     });
 
-    it("is refused for a project the author said does not use it", async () => {
+    it("acts on nothing for a project the author said does not use it", async () => {
         const { team, clients, window, answer } = harness();
         transferStandIn(team);
         answer(MINE, SERVER, null);
 
-        expectRefusedAll(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
-        expect(clients).toEqual([]);
+        expectReadsOnlyWhoIAm(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
+        expectNothingSent(clients);
     });
 
     /** The hole itself: another project's yes was the whole of what any window needed. */
-    it("is refused on the strength of another project's yes", async () => {
+    it("acts on nothing on the strength of another project's yes", async () => {
         const { team, clients, window, answer } = harness();
         transferStandIn(team);
         answer(THEIRS, SERVER, "u-ada");
 
-        expectRefusedAll(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
-        expect(clients).toEqual([]);
+        expectReadsOnlyWhoIAm(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
+        expectNothingSent(clients);
     });
 
-    it("is refused at a server its project said nothing about, though it uses the sign-in at another", async () => {
+    it("acts on nothing at a server its project said nothing about, though it uses the sign-in at another", async () => {
         const { team, clients, window, answer } = harness();
         transferStandIn(team);
         answer(MINE, SERVER, "u-ada");
 
-        expectRefusedAll(await askAll(window(WindowAppType.Workspace, MINE), ELSEWHERE), WINDOW_SIGN_IN_UNUSED_CODE);
-        expect(clients).toEqual([]);
+        expectReadsOnlyWhoIAm(await askAll(window(WindowAppType.Workspace, MINE), ELSEWHERE), WINDOW_SIGN_IN_UNUSED_CODE);
+        expectNothingSent(clients);
     });
 
-    it("is refused where the yes was given to an account that is no longer the one signed in", async () => {
+    it("acts on nothing where the yes was given to an account that is no longer the one signed in", async () => {
         const { team, clients, window, answer } = harness([account(SERVER, "u-ben")]);
         transferStandIn(team);
         answer(MINE, SERVER, "u-ada");
 
-        expectRefusedAll(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
-        expect(clients).toEqual([]);
+        expectReadsOnlyWhoIAm(await askAll(window(WindowAppType.Workspace, MINE)), WINDOW_SIGN_IN_UNUSED_CODE);
+        expectNothingSent(clients);
     });
 
     it("is not given the list of every server, even for a project that uses a sign-in", async () => {
@@ -441,6 +462,8 @@ describe("a window that never speaks to servers", () => {
         expect(launcher.delivered).toContain(announced);
         expect(workspace.delivered).toContain(announced);
         expect(devMode.delivered).not.toContain(announced);
-        expect(unused.delivered).not.toContain(announced);
+        // A workspace whose project does not use the sign-in may still open the session to read
+        // who the account is, so it is told where the session stands.
+        expect(unused.delivered).toContain(announced);
     });
 });

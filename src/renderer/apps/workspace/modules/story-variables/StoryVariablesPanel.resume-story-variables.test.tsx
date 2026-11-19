@@ -6,7 +6,6 @@ import type { LiveVariableOp } from "@shared/live/ops";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { StoryDocument, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { join } from "@shared/utils/path";
-import { IDLE_LIVE_SESSION } from "@/lib/workspace/services/live/liveSessionView";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { StoryVariablesPanel } from "./StoryVariablesPanel";
@@ -30,7 +29,6 @@ async function renderPanel(
     const files = new Map<string, string>();
     const ok = <T,>(data: T): FsRequestResult<T> => ({ ok: true, data });
     const variableRegistry = new VariableRegistryService();
-    const claimVariable = vi.fn();
     const blueprint = {
         listSavedVariables: () => variableRegistry.listEntriesInScope("saved"),
         listPersistentVariables: () => variableRegistry.listEntriesInScope("persistent"),
@@ -55,7 +53,6 @@ async function renderPanel(
         },
         [Services.VariableRegistry]: variableRegistry,
         [Services.LocalBlueprint]: blueprint,
-        [Services.Live]: { getView: () => IDLE_LIVE_SESSION, onChanged: () => () => undefined, claimVariable },
     };
     const context = {
         project: { getConfig: () => ({ projectPath: root }) },
@@ -66,7 +63,7 @@ async function renderPanel(
     await variableRegistry.flushPendingChanges();
     workspace.context = context;
     const view = render(<StoryVariablesPanel panelId={STORY_VARIABLES_PANEL_ID} payload={options?.payload} />);
-    return { variableRegistry, id: entry.id, view, claimVariable };
+    return { variableRegistry, id: entry.id, view };
 }
 
 afterEach(cleanup);
@@ -151,17 +148,6 @@ describe("editing a project variable in the panel", () => {
         fireEvent.blur(input);
         expect(input.value).toBe("0");
         expect(variableRegistry.getEntry(id)?.defaultValue).toBe(0);
-    });
-
-    it("releases the live claim when the focused variable is removed", async () => {
-        const { variableRegistry, id, claimVariable } = await renderPanel("number", 0);
-        fireEvent.focus(screen.getByLabelText(storyVars.row.nameAria));
-        expect(claimVariable).toHaveBeenCalledWith(id, true);
-
-        act(() => variableRegistry.applyLiveOp({ op: "delete-variable", variableId: id }));
-        expect(screen.queryByLabelText(storyVars.row.nameAria)).toBeNull();
-        expect(claimVariable).toHaveBeenCalledWith(id, false);
-        await variableRegistry.flushPendingChanges();
     });
 
     it("scrolls to a scene variable when its scene becomes focused after the reveal request", async () => {

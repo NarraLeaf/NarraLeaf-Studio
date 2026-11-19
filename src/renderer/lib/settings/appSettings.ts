@@ -1,5 +1,6 @@
 import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/settings/models";
 import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MENU_BAR_MODES } from "@/lib/settings/menuBarOptions";
+import { TEAM_AVATAR_VISIBLE_DEFAULT, TEAM_AVATAR_VISIBLE_KEY, TEAM_LATENCY_VISIBLE_DEFAULT, TEAM_LATENCY_VISIBLE_KEY } from "@/lib/settings/teamAvatarOptions";
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
@@ -35,6 +36,11 @@ import {
     CHARACTER_LIST_GROUPING_KEY,
     CHARACTER_LIST_GROUPING_OPTIONS,
 } from "@/lib/settings/characterListOptions";
+import {
+    TEAM_PROJECTS_PLACEMENT_DEFAULT,
+    TEAM_PROJECTS_PLACEMENT_KEY,
+    TEAM_PROJECTS_PLACEMENT_OPTIONS,
+} from "@/lib/settings/teamProjectsPlacement";
 import {
     SPELLCHECK_FOLLOW_PROJECT,
     SPELLCHECK_LANGUAGE_DEFAULT,
@@ -244,6 +250,19 @@ export const AppSettingCategories: SettingCategory[] = [
  * their rows stay in place, closed, with the reason - an address typed there is kept, and the author
  * can see it is not the one in use.
  */
+/**
+ * The two Team rows (avatar, latency) only mean something once this machine is signed in to a Team
+ * server: without an account there is nothing to show or to time.
+ */
+async function teamSignInAvailability(): Promise<{ enabled: boolean; reasonKey?: "settings.items.teamAvatarVisible.noServer" }> {
+    const { getInterface } = await import("@/lib/app/bridge");
+    const listed = await getInterface().vcs.listServers().catch(() => null);
+    const signedIn = listed?.success === true && listed.data.servers.length > 0;
+    return signedIn
+        ? { enabled: true }
+        : { enabled: false, reasonKey: "settings.items.teamAvatarVisible.noServer" };
+}
+
 async function customStoreSourceAvailability(): Promise<{ enabled: boolean; reasonKey?: "settings.items.storeSource.customOnly" }> {
     const { getInterface } = await import("@/lib/app/bridge");
     const result = await getInterface().app.state.getGlobalState(STORE_SOURCE_KEY);
@@ -1075,6 +1094,26 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Where the launcher lists the projects on the Team server the account menu shows: in
+        // the Projects tab beside the ones on this disk, or in the Team tab on their own. Read
+        // live by both tabs, so a change moves the list without reopening the window. See
+        // lib/settings/teamProjectsPlacement.
+        key: TEAM_PROJECTS_PLACEMENT_KEY,
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Team projects",
+        labelKey: "settings.items.teamProjectsPlacement.label",
+        description: "Where the launcher lists the projects on your Team server.",
+        descriptionKey: "settings.items.teamProjectsPlacement.description",
+        defaultValue: TEAM_PROJECTS_PLACEMENT_DEFAULT,
+        options: [...TEAM_PROJECTS_PLACEMENT_OPTIONS],
+        optionLabelKeys: {
+            projects: "settings.items.teamProjectsPlacement.options.projects",
+            team: "settings.items.teamProjectsPlacement.options.team",
+        },
+    },
+    {
         // Rendered by `SETTING_PANELS.agentAccess`. Nothing is stored under this key: agent access
         // lives in main (`<userData>/agent-mcp.json`, owner-only), because it holds the token and
         // decides whether an outside program may change a project - and every renderer can write
@@ -1282,6 +1321,35 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The search box in the middle of the title bar.",
         descriptionKey: "settings.items.titleBarSearchVisible.description",
         defaultValue: true,
+    },
+    {
+        // Read by the workspace title bar (`TeamAccountAvatar`). Only meaningful while a window has
+        // a session with a Team server, so the row stays disabled until this machine is signed in
+        // to one: without an account there is nothing for it to show or hide.
+        key: TEAM_AVATAR_VISIBLE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show Team avatar",
+        labelKey: "settings.items.teamAvatarVisible.label",
+        description: "Your Team account in the title bar, while a project is connected to a Team server.",
+        descriptionKey: "settings.items.teamAvatarVisible.description",
+        defaultValue: TEAM_AVATAR_VISIBLE_DEFAULT,
+        availability: teamSignInAvailability,
+    },
+    {
+        // Read by the status bar's Team cell (`TeamStatusEntry`), which pings the server only while
+        // this is on. Disabled until this machine is signed in to a Team server, like the avatar.
+        key: TEAM_LATENCY_VISIBLE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show Team server latency",
+        labelKey: "settings.items.teamLatencyVisible.label",
+        description: "The round trip to the Team server, beside its name in the status bar.",
+        descriptionKey: "settings.items.teamLatencyVisible.description",
+        defaultValue: TEAM_LATENCY_VISIBLE_DEFAULT,
+        availability: teamSignInAvailability,
     },
     {
         // Nothing is stored under this key - the background's own settings (image, opacity, fill,

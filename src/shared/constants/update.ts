@@ -101,10 +101,17 @@ export type UpdateStatus =
     /** The last check or download failed; `error` says how. */
     | "error"
     /**
-     * A newer release exists but this build cannot install it itself (macOS, see UpdateManager).
-     * The panel offers the download page instead of a button that would not work.
+     * A newer release exists but this build cannot install it itself (see UpdateManager, and
+     * `blockedReason`). The panel offers the download page instead of a button that would not work.
      */
     | "manual";
+
+/**
+ * Why a packaged macOS Studio cannot replace itself (`updateMacSupport.ts`): it is not signed with a
+ * certificate - every build before signing, and a local pack - or it runs from somewhere it cannot
+ * write, such as the disk image or a translocated copy outside Applications.
+ */
+export type UpdateBlockedReason = "unsigned" | "location";
 
 /**
  * The whole of what the renderer knows about updates. Pushed on every transition rather than
@@ -138,6 +145,8 @@ export interface UpdateState {
     retryAt?: number;
     /** Release notes URL for the version on offer. */
     releaseUrl?: string;
-    /** False where the platform cannot self-update (macOS today) - the panel links out instead. */
+    /** False where this build cannot self-update - the panel links out instead. */
     canInstall: boolean;
+    /** On macOS, when `canInstall` is false: why, so the panel can say what would fix it. */
+    blockedReason?: UpdateBlockedReason;
 }

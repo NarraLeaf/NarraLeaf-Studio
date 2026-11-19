@@ -35,8 +35,12 @@ import type { BaseApp } from "../../baseApp";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import type { VcsServerSession } from "@shared/types/vcs";
 import type {
+    TeamAttachment,
+    TeamBuild,
     TeamCallOutcome,
     TeamConnection,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
@@ -45,9 +49,20 @@ import { windowProjectPath } from "../../utils/windowProject";
 import { readSessionUses, sessionStanding, SESSION_USES_KEY } from "../vcs/serverSessionScope";
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
+import { fetchAvatar, isAvatarPath } from "./avatarRequest";
+import {
+    pictureOfDataUrl,
+    uploadAttachmentBytes,
+    uploadBuildFile,
+    type BuildUploadMeta,
+    type UploadOutcome,
+    type UploadTarget,
+} from "./uploadRequest";
+import { downloadStudioConfig, uploadStudioConfig } from "./studioConfigRequest";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
 import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
+import { electronWakeSources, watchWake, type WakeReason, type WakeSources } from "./wakeWatch";
 
 /**
  * What this needs of a client, which is what a test stands in for.
@@ -58,7 +73,7 @@ import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
  */
 export type TeamClientLike = Pick<
     TeamClient,
-    "call" | "connect" | "connection" | "dispose" | "subscribe" | "unsubscribe"
+    "call" | "connect" | "connection" | "dispose" | "reconnectNow" | "subscribe" | "unsubscribe"
 >;
 
 /** The two things a test supplies and nothing in the product does. */
@@ -66,6 +81,8 @@ export interface TeamStandIns {
     /** The sealed token for one server. A test has no keyring and no business having one. */
     tokenFor?: (remoteOrigin: string) => string | null;
     newClient?: (options: TeamClientOptions) => TeamClientLike;
+    /** Where wakes and network changes are heard from. Null for none at all. */
+    wake?: (() => WakeSources) | null;
 }
 
 /**
@@ -95,6 +112,9 @@ function keyOf(subscription: Subscription): string {
     return `${subscription.remoteOrigin}\n${subscription.topic}`;
 }
 
+/** How many avatars {@link TeamManager.avatar} keeps. */
+const AVATAR_CACHE_LIMIT = 128;
+
 export class TeamManager {
     private readonly clients = new Map<string, TeamClientLike>();
 
@@ -118,12 +138,26 @@ export class TeamManager {
      */
     private readonly files: TeamTransfers;
 
+    /**
+     * Avatars already read, as `data:` URLs, keyed by server and path.
+     *
+     * Kept for as long as Studio runs because an avatar's path is its content hash: a changed
+     * picture is a new path, so nothing here can go stale. Bounded so a server with a great many
+     * people cannot grow it without limit; the oldest entry goes first.
+     */
+    private readonly avatars = new Map<string, Promise<string | null>>();
+
+    /** Where wakes are heard from, or null. Started with the first session, see {@link watchForWake}. */
+    private readonly wakeSources: (() => WakeSources) | null;
+    private stopWatching: (() => void) | null = null;
+
     constructor(app: BaseApp, servers: () => VcsServerSession[], stands: TeamStandIns = {}) {
         this.app = app;
         this.servers = servers;
         this.tokenFor = stands.tokenFor
             ?? ((remoteOrigin) => recallServerToken(app.getGlobalState(), remoteOrigin));
         this.newClient = stands.newClient ?? ((options) => new TeamClient(options));
+        this.wakeSources = stands.wake === undefined ? electronWakeSources : stands.wake;
         this.files = new TeamTransfers({
             authUrlFor: (remoteOrigin) =>
                 this.servers().find((each) => each.remoteOrigin === remoteOrigin)?.authUrl ?? null,
@@ -217,6 +251,89 @@ export class TeamManager {
         return await client.call(method, params);
     }
 
+    /**
+     * One account's avatar, as a `data:` URL, or null.
+     *
+     * Read with the session's token because a server serves avatars only to a signed-in caller.
+     * A failed read is not remembered, so a server that was briefly away is asked again next time.
+     */
+    avatar(remoteOrigin: string, path: string): Promise<string | null> {
+        if (!isAvatarPath(path)) return Promise.resolve(null);
+        const server = this.servers().find((each) => each.remoteOrigin === remoteOrigin);
+        const token = server === undefined ? null : this.tokenFor(remoteOrigin);
+        if (server === undefined || token === null) return Promise.resolve(null);
+
+        const key = `${remoteOrigin}\n${path}`;
+        const held = this.avatars.get(key);
+        if (held !== undefined) return held;
+        const reading = fetchAvatar({ authUrl: server.authUrl, token, userDataDir: this.app.getUserDataDir(), path })
+            .catch(() => null)
+            .then((dataUrl) => {
+                if (dataUrl === null) this.avatars.delete(key);
+                return dataUrl;
+            });
+        this.avatars.set(key, reading);
+        while (this.avatars.size > AVATAR_CACHE_LIMIT) {
+            const oldest = this.avatars.keys().next().value;
+            if (oldest === undefined) break;
+            this.avatars.delete(oldest);
+        }
+        return reading;
+    }
+
+    /**
+     * Back the author's Studio settings up to a server, or read them back.
+     *
+     * The document is carried, not read: the renderer composed it and will check what comes back.
+     */
+    async studioConfig(request: TeamStudioConfigRequest): Promise<TeamStudioConfigOutcome> {
+        const upload = this.uploadTarget(request.remoteOrigin);
+        if (upload === null) return { ok: false, reason: "signed-out" };
+        const target = { ...upload, studioVersion: this.app.getAppInfo().version };
+        return request.action === "upload"
+            ? await uploadStudioConfig(target, request.content)
+            : await downloadStudioConfig(target);
+    }
+
+    /** Where to put bytes for one server, with the session's token, or null when not signed in there. */
+    private uploadTarget(remoteOrigin: string): UploadTarget | null {
+        const server = this.servers().find((each) => each.remoteOrigin === remoteOrigin);
+        const token = server === undefined ? null : this.tokenFor(remoteOrigin);
+        if (server === undefined || token === null) return null;
+        return { authUrl: server.authUrl, token, userDataDir: this.app.getUserDataDir() };
+    }
+
+    /**
+     * Stream one file to a project's builds on a server.
+     *
+     * ⚠ The path is not checked here: the handler has already held it to the artifacts the
+     * project's own last build recorded.
+     */
+    async uploadBuild(
+        remoteOrigin: string,
+        projectId: string,
+        filePath: string,
+        meta: BuildUploadMeta,
+        onProgress?: (sent: number, total: number) => void,
+    ): Promise<UploadOutcome<TeamBuild>> {
+        const target = this.uploadTarget(remoteOrigin);
+        if (target === null) return { ok: false, status: 401, message: "not signed in to that server" };
+        return await uploadBuildFile(target, projectId, filePath, meta, onProgress);
+    }
+
+    /** Put one picture, given as a `data:` URL, beside a project's comments on a server. */
+    async uploadAttachment(
+        remoteOrigin: string,
+        projectId: string,
+        dataUrl: string,
+    ): Promise<UploadOutcome<{ attachment: TeamAttachment; url: string }>> {
+        const target = this.uploadTarget(remoteOrigin);
+        if (target === null) return { ok: false, status: 401, message: "not signed in to that server" };
+        const bytes = pictureOfDataUrl(dataUrl);
+        if (bytes === null) return { ok: false, status: 0, message: "that is not a PNG, JPEG or WebP picture small enough to keep" };
+        return await uploadAttachmentBytes(target, projectId, bytes);
+    }
+
     /* ------------------------------------------------------------------ who may ask */
 
     /**
@@ -306,6 +423,8 @@ export class TeamManager {
 
     /** Close everything, because Studio is quitting. */
     dispose(): void {
+        this.stopWatching?.();
+        this.stopWatching = null;
         for (const client of this.clients.values()) client.dispose();
         this.clients.clear();
         this.wanted.clear();
@@ -351,7 +470,40 @@ export class TeamManager {
             onStatus: (connection) => this.announce(connection),
         });
         this.clients.set(remoteOrigin, client);
+        this.watchForWake();
         return client;
+    }
+
+    /**
+     * Start listening for the machine waking or changing network, once there is a session for it
+     * to matter to.
+     *
+     * Not in the constructor: that runs before Electron is ready, and the power monitor cannot be
+     * used until it is. A client is only ever made for a window that asked, so by then it is.
+     */
+    private watchForWake(): void {
+        if (this.stopWatching !== null || this.wakeSources === null) return;
+        try {
+            this.stopWatching = watchWake(this.wakeSources(), (reason) => this.reconnectAll(reason));
+        } catch (error) {
+            this.app.logger.debug(`[Team] Could not listen for wake or network changes: ${String(error)}`);
+        }
+    }
+
+    /** Every session starts over now, because the machine woke up or its network changed. */
+    reconnectAll(reason: WakeReason): void {
+        if (this.clients.size === 0) return;
+        this.app.logger.info(`[Team] Reconnecting ${this.clients.size} session(s): ${reason}`);
+        const said = reason === "resume" || reason === "unlock" || reason === "slept"
+            ? "the machine woke up"
+            : "the network changed";
+        for (const client of this.clients.values()) {
+            try {
+                client.reconnectNow(said);
+            } catch (error) {
+                this.app.logger.debug(`[Team] Could not reconnect a session: ${String(error)}`);
+            }
+        }
     }
 
     private whyNot(remoteOrigin: string): Extract<TeamCallOutcome, { ok: false }>["problem"] {

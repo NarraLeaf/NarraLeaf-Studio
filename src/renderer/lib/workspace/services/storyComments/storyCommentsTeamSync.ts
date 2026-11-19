@@ -23,8 +23,9 @@ import type { StoryCommentRemoteThread, StoryCommentsService } from "./StoryComm
  *  - **pull**: every story thread on the server is taken as the server has it.
  *  - **live**: the project's threads topic triggers a pull of the thread that moved.
  *
- * Edits to and deletions of comments already sent stay local for now; the server keeps what was
- * sent. The file says so on the comment (`editedAt`), and the next pull shows the server's wording.
+ * A comment already sent and then edited or deleted here is edited or withdrawn there. The server
+ * refuses that for somebody else's comment; the thread is then pulled again, so the row shows what
+ * the server kept rather than an edit nobody else will ever see.
  */
 
 /** The calls this needs, named so a test can drive it without a socket. */
@@ -44,6 +45,10 @@ export interface StoryCommentsTeamTransport {
     createTodo?(input: { title: string; anchor: TeamAnchor; clientId: string }): Promise<string | null>;
     /** Move a to-do's status. */
     setTodoStatus?(todo: string, status: "open" | "done"): Promise<boolean>;
+    /** Change the wording of a comment already sent. False when refused or not sent. */
+    editComment?(comment: string, body: string): Promise<boolean>;
+    /** Withdraw a comment already sent. False when refused or not sent. */
+    deleteComment?(comment: string): Promise<boolean>;
 }
 
 const STORY_PREFIX = "story:";
@@ -97,6 +102,10 @@ export function remoteStoryThread(thread: TeamThread, comments: readonly TeamCom
 export class StoryCommentsTeamSync {
     /** What each synced thread's resolved state was when last agreed with the server. */
     private readonly agreedResolved = new Map<string, boolean>();
+    /** The wording each sent comment had when last agreed with the server. */
+    private readonly agreedBody = new Map<string, string>();
+    /** The sent comments each synced thread had when last agreed, to tell a deletion here. */
+    private readonly agreedComments = new Map<string, Set<string>>();
     private pushing: Promise<void> | null = null;
     /** A pull begun before a push needs a fresh server read after that push completes. */
     private pushGeneration = 0;
@@ -219,14 +228,23 @@ export class StoryCommentsTeamSync {
                     && thread.storyId === remote.storyId
                     && thread.sceneId === remote.sceneId
                     && thread.blockId === remote.blockId);
-                if (deferWrites && (this.unacknowledged.has(teamThreadId) || uncertain)) return "deferred";
+                // An edit or deletion made here and not sent yet would be overwritten by the server's
+                // wording; it is sent first.
+                const unsent = this.hasUnsentChange(teamThreadId);
+                if (deferWrites && (this.unacknowledged.has(teamThreadId) || uncertain || unsent)) return "deferred";
                 if (uncertain) {
                     if (retried) return "incomplete";
                     retried = true;
                     await this.push();
                     continue;
                 }
-                this.agreedResolved.set(remote.teamThreadId, remote.resolved);
+                if (unsent && !retried) {
+                    // Sent once; what the server kept after that is what the row shows.
+                    retried = true;
+                    await this.push();
+                    continue;
+                }
+                this.agree(remote);
                 this.service.applyRemoteThread(remote);
                 return "complete";
             }
@@ -234,6 +252,94 @@ export class StoryCommentsTeamSync {
         } finally {
             if (this.pulls.get(teamThreadId) === request) this.pulls.delete(teamThreadId);
         }
+    }
+
+    /**
+     * Take one thread as the server has it, from inside a push: a read that waited for the push
+     * would wait for itself.
+     */
+    private async take(teamThreadId: string): Promise<void> {
+        let after: string | undefined;
+        let thread: TeamThread | undefined;
+        const comments: TeamComment[] = [];
+        const cursors = new Set<string>();
+        while (true) {
+            const page = await this.transport.getThread(teamThreadId, after);
+            if (page === null || this.stopped || page.thread.id !== teamThreadId
+                || page.comments.some(comment => comment.thread !== teamThreadId)) return;
+            thread = page.thread;
+            comments.push(...page.comments);
+            if (page.cursor === undefined) break;
+            if (cursors.has(page.cursor)) return;
+            cursors.add(page.cursor);
+            after = page.cursor;
+        }
+        if (thread === undefined) return;
+        const remote = remoteStoryThread(thread, comments);
+        if (remote === null) return;
+        this.agree(remote);
+        this.service.applyRemoteThread(remote);
+    }
+
+    /** Record a thread as the server has it, so what changes here afterwards can be told apart. */
+    private agree(remote: StoryCommentRemoteThread): void {
+        this.agreedResolved.set(remote.teamThreadId, remote.resolved);
+        this.agreedComments.set(remote.teamThreadId, new Set(remote.comments.map(comment => comment.teamCommentId)));
+        for (const comment of remote.comments) this.agreedBody.set(comment.teamCommentId, comment.body);
+    }
+
+    private hasUnsentChange(teamThreadId: string): boolean {
+        if (this.transport.editComment === undefined || this.transport.deleteComment === undefined) return false;
+        const agreed = this.agreedComments.get(teamThreadId);
+        if (agreed === undefined) return false;
+        const local = this.service.listThreads().find(thread => thread.teamThreadId === teamThreadId);
+        if (local === undefined) return agreed.size > 0;
+        const here = new Set<string>();
+        for (const comment of local.comments) {
+            if (comment.teamCommentId === undefined) continue;
+            here.add(comment.teamCommentId);
+            const body = this.agreedBody.get(comment.teamCommentId);
+            if (body !== undefined && body !== comment.body) return true;
+        }
+        return [...agreed].some(id => !here.has(id));
+    }
+
+    /**
+     * Send edits and deletions of comments already on the server. Answers whether the server
+     * refused any, so the caller pulls the thread back to what it kept.
+     */
+    private async pushChanges(
+        local: StoryCommentThread | undefined,
+        teamThreadId: string,
+        sent: Readonly<Record<string, string>> = {},
+    ): Promise<boolean> {
+        const { editComment, deleteComment } = this.transport;
+        if (editComment === undefined || deleteComment === undefined) return false;
+        const agreed = this.agreedComments.get(teamThreadId) ?? new Set<string>();
+        let refused = false;
+        // What this push has just sent is here too, though the snapshot predates it.
+        const here = new Set<string>(Object.values(sent));
+        for (const comment of local?.comments ?? []) {
+            if (comment.teamCommentId === undefined) continue;
+            here.add(comment.teamCommentId);
+            const body = this.agreedBody.get(comment.teamCommentId);
+            if (body === undefined || body === comment.body) continue;
+            if (await editComment.call(this.transport, comment.teamCommentId, comment.body)) {
+                this.agreedBody.set(comment.teamCommentId, comment.body);
+            } else {
+                refused = true;
+            }
+        }
+        for (const id of [...agreed]) {
+            if (here.has(id)) continue;
+            if (await deleteComment.call(this.transport, id)) {
+                agreed.delete(id);
+                this.agreedBody.delete(id);
+            } else {
+                refused = true;
+            }
+        }
+        return refused;
     }
 
     /** Send what is here and not there. Serialized: a push asked for during one runs once after it. */
@@ -291,7 +397,17 @@ export class StoryCommentsTeamSync {
             if (this.service.getThread(localId) === null) this.blockedCreations.delete(teamThreadId);
             else blockedLocal.add(localId);
         }
-        for (const thread of this.service.listThreads()) {
+        const threads = this.service.listThreads();
+        // Threads deleted here: withdraw what of them was sent.
+        const present = new Set(threads.flatMap(thread => (thread.teamThreadId === undefined ? [] : [thread.teamThreadId])));
+        for (const teamThreadId of [...this.agreedComments.keys()]) {
+            if (this.stopped) return;
+            if (present.has(teamThreadId)) continue;
+            const refused = await this.pushChanges(undefined, teamThreadId);
+            if (refused) await this.take(teamThreadId);
+            else this.agreedComments.delete(teamThreadId);
+        }
+        for (const thread of threads) {
             if (this.stopped) return;
             if (blockedLocal.has(thread.id) || (thread.teamThreadId !== undefined && this.blockedCreations.has(thread.teamThreadId))) continue;
             const first = thread.comments[0];
@@ -344,14 +460,28 @@ export class StoryCommentsTeamSync {
                 }
                 sent[comment.id] = reply.id;
             }
+            const agreed = this.agreedComments.get(teamThreadId) ?? new Set<string>();
+            this.agreedComments.set(teamThreadId, agreed);
+            for (const comment of thread.comments) {
+                const id = comment.teamCommentId ?? sent[comment.id];
+                if (id === undefined || this.agreedBody.has(id)) continue;
+                // Sent just now, or known from a file written before this window opened.
+                if (comment.teamCommentId === undefined) {
+                    agreed.add(id);
+                    this.agreedBody.set(id, comment.body);
+                }
+            }
             if (!incomplete) this.unacknowledged.delete(teamThreadId);
             if (thread.teamThreadId === undefined || Object.keys(sent).length > 0) {
                 this.service.markSynced(thread.id, teamThreadId, sent);
             }
+            if (thread.teamThreadId !== undefined && (await this.pushChanges(thread, teamThreadId, sent))) {
+                await this.take(teamThreadId);
+            }
             await this.pushTodo(thread, teamThreadId);
             if (this.stopped) return;
-            const agreed = this.agreedResolved.get(teamThreadId);
-            if (agreed !== undefined && agreed !== thread.resolved) {
+            const agreedResolved = this.agreedResolved.get(teamThreadId);
+            if (agreedResolved !== undefined && agreedResolved !== thread.resolved) {
                 if (await this.transport.resolve(teamThreadId, thread.resolved) && !this.stopped) {
                     this.agreedResolved.set(teamThreadId, thread.resolved);
                 }

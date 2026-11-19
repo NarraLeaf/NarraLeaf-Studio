@@ -8,7 +8,6 @@ import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/ou
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { isComponentEditorRootElement, isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
-import { useOutlineElementBadge } from "./outlineBadges";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -90,7 +89,6 @@ export function OutlineRow({
     readOnly,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
     const { t } = useTranslation();
-    const Badge = useOutlineElementBadge();
     const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
     // A component's frame is not moved anywhere, so its row has nothing to drag by.
     const isComponentFrame = isComponentEditorRootElement(element);
@@ -212,9 +210,6 @@ export function OutlineRow({
                     }}
                 >
                     <span className="min-w-0 truncate">{label}</span>
-                    {/* Whatever the workspace put here - in a live session, who else has this
-                        element open. Nothing at all in the runtime; see `outlineBadges`. */}
-                    {Badge ? <Badge elementId={element.id} /> : null}
                     {/* Gives way before the name does (`shrink-[100]`): on a row too short for both, the
                         type is the one cut down, since the name is what the row is for. */}
                     {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (

@@ -42,7 +42,6 @@ import {
     LocalBlueprintService,
     VARIABLE_PANEL_HISTORY_SCOPE_ID,
 } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
-import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type {
     StoryDocument,
@@ -64,14 +63,7 @@ import { jumpToSearchTarget } from "../search/searchJump";
 import { storyVariableReveal, type StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 import { usePanelRevealRequests } from "../search/panelRevealRequest";
 import { REVEAL_MARK_MS } from "@/apps/workspace/components/ui/useTableRowReveal";
-import {
-    useVariableClaim,
-    useVariableClaimHold,
-    useVariableRemovalAvailable,
-    VariableClaimMark,
-    VariableClaimsProvider,
-    variableRegistryFreezeScope,
-} from "./variablesLiveSession";
+import { variableRegistryFreezeScope } from "./variablesFreezeScope";
 
 const INPUT_CLASS = cn(
     CONTROL_SIZE_CLASS.sm,
@@ -132,13 +124,12 @@ function VariableRowEditor(props: {
     onRetype: (valueType: StoryVariableValueType) => void;
     onDefault: (value: StoryLiteralValue) => void;
     onDelete: () => void;
-    /** Focus moving in or out of this row, so a live session can hold the entry while it is open. */
-    onFocusChange: (open: boolean) => void;
+    /** Whether the registry can carry a removal - see `VariableRegistryService.canDeleteEntry`. */
+    removable: boolean;
 }) {
     const { t } = useTranslation();
-    // Scoped to the registry this panel writes, so a live session - which leaves that document
-    // writable - does not grey a row the author is meant to be editing. Everything else about a
-    // freeze is unchanged.
+    // Scoped to the registry this panel writes, so a freeze that leaves that document writable does
+    // not grey a row the author is meant to be editing.
     const freeze = useFreezeGuard(variableRegistryFreezeScope());
     const valueTypeOptions = useValueTypeOptions();
     const booleanOptions: SelectOption[] = useMemo(
@@ -148,13 +139,7 @@ function VariableRowEditor(props: {
         ],
         [t],
     );
-    // Who else has this entry open in a live session, or null. Read-only for as long as somebody has.
-    const heldBy = useVariableClaim(props.row.id);
-    const removable = useVariableRemovalAvailable();
-    // `readOnly` rather than `disabled` while somebody else holds it, exactly as the freeze does and
-    // as the translation table does: the row is what the author came to READ.
-    const held = heldBy !== null;
-    const heldTip = held ? t("storyVars.live.entryClaimed", { name: heldBy }) : undefined;
+    const { removable } = props;
     // Keep incomplete input locally until it expresses a valid change; the registry remains authoritative.
     const [nameDraft, setNameDraft] = useState<string | null>(null);
     const [numberDraft, setNumberDraft] = useState<{ text: string; base: StoryLiteralValue | undefined } | null>(null);
@@ -163,16 +148,7 @@ function VariableRowEditor(props: {
         ? numberDraft.text
         : formatDefault(props.row.defaultValue, props.row.valueType);
     return (
-        <div
-            className="flex items-center gap-1.5"
-            onFocus={() => props.onFocusChange(true)}
-            onBlur={event => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    props.onFocusChange(false);
-                }
-            }}
-        >
-            {heldBy ? <VariableClaimMark account={heldBy} /> : null}
+        <div className="flex items-center gap-1.5">
             {/* All three of these rewrite project data, and until this pass only the delete
                 button beside them knew about the freeze: on a frozen project the author could rename
                 a variable, retype it and edit its default, watch the row update, and lose all of it
@@ -193,8 +169,8 @@ function VariableRowEditor(props: {
                         }
                     }}
                     onBlur={() => setNameDraft(null)}
-                    readOnly={freeze.frozen || held}
-                    data-tip={freeze.frozen ? freeze.reason : heldTip}
+                    readOnly={freeze.frozen}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
                     aria-label={t("storyVars.row.nameAria")}
                 />
             </div>
@@ -204,7 +180,7 @@ function VariableRowEditor(props: {
                 onChange={value => props.onRetype(String(value) as StoryVariableValueType)}
                 size="sm"
                 portalMenu
-                disabled={freeze.frozen || held}
+                disabled={freeze.frozen}
                 className="w-24 shrink-0"
             />
             <div className={FIELD_SLOT_CLASS}>
@@ -213,7 +189,7 @@ function VariableRowEditor(props: {
                        snapshot panel uses for the same values. As a text box it showed the code
                        spelling, and every keystroke re-read the box as "is it exactly `true`", so
                        typing the word letter by letter could never set it. Read-only rather than
-                       disabled while frozen or held, for the reason the text boxes are. */
+                       disabled while frozen, for the reason the text boxes are. */
                     <Select
                         options={booleanOptions}
                         value={props.row.defaultValue === true ? "true" : props.row.defaultValue === false ? "false" : ""}
@@ -222,7 +198,7 @@ function VariableRowEditor(props: {
                         size="sm"
                         portalMenu
                         fullWidth
-                        readOnly={freeze.frozen || held}
+                        readOnly={freeze.frozen}
                         ariaLabel={t("storyVars.row.defaultAria")}
                     />
                 ) : (
@@ -245,8 +221,8 @@ function VariableRowEditor(props: {
                             props.onDefault(parseDefault(text, props.row.valueType));
                         }}
                         onBlur={() => setNumberDraft(null)}
-                        readOnly={freeze.frozen || held}
-                        data-tip={freeze.frozen ? freeze.reason : heldTip}
+                        readOnly={freeze.frozen}
+                        data-tip={freeze.frozen ? freeze.reason : undefined}
                         aria-label={t("storyVars.row.defaultAria")}
                     />
                 )}
@@ -259,13 +235,13 @@ function VariableRowEditor(props: {
                 )}
                 onClick={props.onDelete}
                 {...freeze.writes(
-                    // ⚠ Off in the sessions that cannot carry a removal, and NOT because of the
-                    // freeze: this document is writable throughout one. Removing a variable also
-                    // empties the blueprint nodes that named it, which an ordinary session derives
-                    // from the effect - and a window holding no blueprint document cannot, so there
-                    // the act is refused whole rather than half applied. See `variablesLiveSession`.
-                    !removable || held,
-                    held ? heldTip : removable ? t("storyVars.row.delete") : t("storyVars.row.deleteInSession"),
+                    // ⚠ Off where the registry cannot carry a removal, and NOT because of the freeze:
+                    // a team project leaves this document writable. Removing a variable also empties
+                    // the blueprint nodes that named it, and a window holding no blueprint document
+                    // cannot derive that sweep, so there the act is refused whole rather than half
+                    // applied. See `VariableRegistryService.canDeleteEntry`.
+                    !removable,
+                    removable ? t("storyVars.row.delete") : t("storyVars.row.deleteUnavailable"),
                 )}
             >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -356,18 +332,7 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
     );
 }
 
-export function StoryVariablesPanel(props: PanelComponentProps<StoryVariablesPanelPayload>) {
-    // The claims and the session state, read once for the whole panel: the session publishes on every
-    // operation anybody in the room applies, and a row that subscribed for itself would re-render on
-    // every remote keystroke.
-    return (
-        <VariableClaimsProvider>
-            <StoryVariablesPanelBody {...props} />
-        </VariableClaimsProvider>
-    );
-}
-
-function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
+export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
@@ -389,18 +354,14 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 : null,
         [context, isInitialized],
     );
-
-    const liveService = useMemo(
-        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context, isInitialized],
-    );
+    // Read per render rather than subscribed: it turns on whether the interface documents could be
+    // read, which settles when the workspace opens.
+    const removable = registryService?.canDeleteEntry() ?? true;
 
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [registryRows, setRegistryRows] = useState<{ saved: VariableRegistryEntry[]; persistent: VariableRegistryEntry[] }>(
         { saved: [], persistent: [] },
     );
-    /** The entry a box on this panel has focus in, or null. What a live session holds. */
-    const [focusedVariableId, setFocusedVariableId] = useState<string | null>(null);
 
     /**
      * The row a jump asked for - a search hit, a project check finding - and whether it has been
@@ -447,14 +408,6 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
         },
     ] : [];
 
-    /**
-     * Hold the entry this panel has open, so nobody in the room writes over it.
-     *
-     * Held while a box has focus, including while it contains unfinished input, so a remote edit
-     * cannot replace the text being composed. Silent outside a session.
-     */
-    useVariableClaimHold({ service: liveService, variableId: focusedVariableId });
-
     useEffect(() => {
         if (!storyService || !storyId) {
             setDocument(null);
@@ -480,7 +433,6 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 saved: blueprintService.listSavedVariables(),
                 persistent: blueprintService.listPersistentVariables(),
             });
-            setFocusedVariableId(current => current && !registryService.getEntry(current) ? null : current);
         };
         read();
         // The registry's own event, not the blueprint history one this panel used to watch. Every
@@ -627,7 +579,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                             onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
                             onDefault={value => edit.setDefault(entry.id, value)}
                             onDelete={() => edit.remove(entry.id)}
-                            onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
+                            removable={removable}
                         />
                     )}
                 </div>

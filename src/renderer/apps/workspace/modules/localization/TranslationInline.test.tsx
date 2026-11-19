@@ -20,7 +20,7 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async importOriginal => {
 afterEach(() => { cleanup(); frozen = false; });
 
 describe("inline translation while editing", () => {
-    it.each(["freeze", "claim"])("stops accepting input and tag placement when a %s arrives", cause => {
+    it("stops accepting input and tag placement when a freeze arrives", () => {
         const onTargetChange = vi.fn();
         const props = {
             unitId: "line",
@@ -38,55 +38,12 @@ describe("inline translation while editing", () => {
         const field = screen.getByRole("textbox", { name: "translation" });
         expect(field.getAttribute("contenteditable")).toBe("true");
 
-        frozen = cause === "freeze";
-        view.rerender(<InlineTargetEditor {...props} heldBy={cause === "claim" ? "another person" : null} />);
+        frozen = true;
+        view.rerender(<InlineTargetEditor {...props} />);
         expect(field.getAttribute("contenteditable")).toBe("false");
         expect(screen.getByRole("button", { name: "workspace.localization.table.applyStyle" }).matches(":disabled")).toBe(true);
         fireEvent.input(field);
         expect(onTargetChange).not.toHaveBeenCalled();
-    });
-
-    it("shows a newer translation received while another person holds the row", () => {
-        const onTargetChange = vi.fn();
-        const props = {
-            unitId: "line",
-            sourceRuns: [{ text: "source", marks: { bold: true } }],
-            target: "old",
-            editing: true,
-            caret: null,
-            placeholder: "placeholder",
-            ariaLabel: "translation",
-            onEdit: vi.fn(),
-            onStopEdit: vi.fn(),
-            onTargetChange,
-        };
-        const view = render(<InlineTargetEditor {...props} />);
-        view.rerender(<InlineTargetEditor {...props} heldBy="translator" target="new" />);
-        expect(screen.getByRole("textbox", { name: "translation" }).textContent).toBe("new");
-        view.rerender(<InlineTargetEditor {...props} target="new" />);
-        const field = screen.getByRole("textbox", { name: "translation" });
-        field.textContent += "!";
-        fireEvent.input(field);
-        expect(onTargetChange).toHaveBeenCalledWith("new!");
-    });
-
-    it("uses the new translation when the other person releases the row in the same update", () => {
-        const props = {
-            unitId: "line",
-            sourceRuns: [{ text: "source", marks: { bold: true } }],
-            target: "old",
-            editing: true,
-            caret: null,
-            placeholder: "placeholder",
-            ariaLabel: "translation",
-            onEdit: vi.fn(),
-            onStopEdit: vi.fn(),
-            onTargetChange: vi.fn(),
-        };
-        const view = render(<InlineTargetEditor {...props} />);
-        view.rerender(<InlineTargetEditor {...props} heldBy="translator" />);
-        view.rerender(<InlineTargetEditor {...props} target="new" />);
-        expect(screen.getByRole("textbox", { name: "translation" }).textContent).toBe("new");
     });
 
     it("keeps the working copy while an earlier value is echoed during typing", () => {

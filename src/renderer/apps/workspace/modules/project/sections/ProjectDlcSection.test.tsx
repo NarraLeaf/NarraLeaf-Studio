@@ -21,13 +21,6 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async importOriginal => {
     const actual = await importOriginal<typeof import("@/apps/workspace/components/ui/freezeGuard")>();
     return { ...actual, useFreezeGuard: () => actual.makeFreezeGuard(false, "frozen") };
 });
-vi.mock("../configLiveSession", () => ({
-    DLC_CLAIMS: {},
-    dlcDocumentFreezeScope: () => "dlc",
-    useConfigClaim: () => null,
-    useConfigClaimHold: () => undefined,
-    ConfigClaimMark: () => null,
-}));
 
 afterEach(cleanup);
 

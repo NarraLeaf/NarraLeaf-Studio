@@ -16,10 +16,6 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async importOriginal => {
     return { ...actual, useFreezeGuard: () => actual.makeFreezeGuard(false, "frozen") };
 });
 vi.mock("@/apps/workspace/modules/assets/components/AssetSelector", () => ({ AssetSelector: () => null }));
-vi.mock("../configLiveSession", () => ({
-    BRAND_COLOR_CLAIMS: {}, brandDocumentFreezeScope: () => "brand", useConfigClaim: () => null,
-    useConfigClaimHold: () => undefined, ConfigClaimMark: () => null,
-}));
 
 afterEach(cleanup);
 

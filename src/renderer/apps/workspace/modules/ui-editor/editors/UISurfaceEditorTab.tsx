@@ -122,7 +122,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import { CANVAS_SCALE_PROPERTY } from "@/styles/transparencyBackdrop";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
-import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
+import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const NO_REFERENCE_CANDIDATES: readonly GameUiReferenceCandidate[] = [];
@@ -377,7 +377,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // only - nothing here enforces anything, and the tip says which of the two causes applies.
     const distrusted = useProjectDistrusted();
     const distrustedTitle = useProjectDistrustedReason();
-    const undoOverride = useLiveUndoOverride();
     const readOnly = useMemo<UIEditorReadOnly>(
         () => ({ active: freeze.frozen, reason: freeze.reason }),
         [freeze.frozen, freeze.reason],
@@ -462,9 +461,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         uiService,
         requestRenamePrimary,
         readOnly,
-        // Inside a live session Ctrl+Z sends the inverse of this window's own last operation rather
-        // than restoring a Surface snapshot nobody else has agreed to. See `useLiveUndoOverride`.
-        undoOverride,
     });
 
     const hostAdapter = useMemo<UIHostAdapter>(() => {

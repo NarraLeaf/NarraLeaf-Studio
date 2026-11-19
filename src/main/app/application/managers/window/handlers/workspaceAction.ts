@@ -7,6 +7,7 @@ import { WindowAppType } from "@shared/types/window";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+import { requireOpenableFromWorkspace } from "../recentProjectGuard";
 
 /** Reduce a renderer-supplied name to a single safe filename (no separators, no leading dots). */
 function sanitizeLogFileName(name: string): string {
@@ -56,12 +57,14 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         // `openProject` builds the window's props itself - it has to, because it may find the
         // project already open and hand the request to that window instead - so a prop the caller
         // set and this did not forward is a prop that silently never arrives.
-        await window.getApp().openProject(window, props.projectPath, {
-            replaceOpener: closeCurrentWindow,
-            ...(props.joinLive ? { joinLive: props.joinLive } : {}),
+        return this.tryUse(async () => {
+            // A folder picked by hand from a workspace can be a team project this machine has
+            // signed out of, or nothing at all - the launcher's gate never saw it.
+            await requireOpenableFromWorkspace(window, props.projectPath);
+            await window.getApp().openProject(window, props.projectPath, {
+                replaceOpener: closeCurrentWindow,
+            });
         });
-
-        return this.success(void 0);
     }
 }
 
@@ -109,8 +112,12 @@ export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspac
         window: AppWindow,
         { projectPath, replaceCurrentWindow }: IPCEvents[IPCEventType.workspaceOpenRecent]["data"],
     ): Promise<RequestStatus<void>> {
-        await window.getApp().openProject(window, projectPath, { replaceOpener: replaceCurrentWindow });
-        return this.success(void 0);
+        return this.tryUse(async () => {
+            // The switcher and the in-app File menu list every remembered project, including the
+            // ones the launcher would stop at its gate (see `requireOpenableFromWorkspace`).
+            await requireOpenableFromWorkspace(window, projectPath);
+            await window.getApp().openProject(window, projectPath, { replaceOpener: replaceCurrentWindow });
+        });
     }
 }
 
@@ -202,29 +209,6 @@ export class WorkspaceSetRecoveryModeHandler extends IPCHandler<IPCEventType.wor
             recoveryReason: enabled ? reason : undefined,
         });
         workspace.reload();
-
-        return this.success(void 0);
-    }
-}
-
-/**
- * Forget the room this window was told to join, now that it has been acted on.
- *
- * Not a reload, unlike its neighbour above: this exists so that the *next* load reads no intent,
- * and the window doing the clearing is the one carrying it out. See the prop's own note.
- */
-export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.workspaceLiveIntentTaken> {
-    readonly name = IPCEventType.workspaceLiveIntentTaken;
-    readonly type = IPCMessageType.request;
-
-    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.Workspace) {
-            return this.failed("Only a workspace window carries a live session intent.");
-        }
-
-        const workspace = window as AppWindow<WindowAppType.Workspace>;
-        const { joinLive: _dropped, ...rest } = workspace.getProps();
-        workspace.setProps(rest);
 
         return this.success(void 0);
     }

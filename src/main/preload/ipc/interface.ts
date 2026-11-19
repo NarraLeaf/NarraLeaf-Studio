@@ -22,7 +22,7 @@ import type {
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload, DevModePlaytestFeedbackRequest, WorkspacePlaytestFeedback } from "@shared/types/devMode";
 import type { DevModeAgentAction, DevModeAgentResult } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
@@ -65,13 +65,18 @@ import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
 import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type {
+    TeamAttachment,
+    TeamBuild,
+    TeamUploadBuildRequest,
+    TeamStudioConfigOutcome,
+    TeamStudioConfigRequest,
     TeamCallOutcome,
     TeamConnection,
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsBrowserSignInOutcome, VcsDeviceSignInStart, VcsBrowserCallbackOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type {
     RendererAgentBridgeBootstrapInterface,
     RendererAgentBridgeInterface,
@@ -348,9 +353,6 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
-        liveIntentTaken: () => ipcClient.invoke(IPCEventType.workspaceLiveIntentTaken, {}),
-        onJoinLive: (handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void) =>
-            ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         acquireSessionLock: () =>
@@ -470,6 +472,8 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         revealRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
+        trashRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.appTrashRecentProject, { path }) as Promise<RequestStatus<void>>,
         /**
          * Hand the project's scripts folder to whatever the author edits with.
          *
@@ -614,6 +618,12 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
+        /** Take a picture of this Dev Mode window and hand it to the project's workspace as a playtest note. */
+        sendPlaytestFeedback: (payload: DevModePlaytestFeedbackRequest) =>
+            ipcClient.invoke(IPCEventType.devModePlaytestFeedback, payload) as Promise<RequestStatus<void>>,
+        /** A playtest note's picture arrived from Dev Mode. Workspace side. */
+        onPlaytestFeedback: (handler: (payload: WorkspacePlaytestFeedback) => void) =>
+            ipcClient.onMessage(IPCEventType.workspacePlaytestFeedback, handler),
         resolveWeatherClip: (spec: WeatherBakeSpec, attempt: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec, attempt }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
@@ -831,10 +841,18 @@ export const IPCInterface: RendererPreloadedInterface = {
          * Goes to the network, carrying no token because this is where one comes from.
          * The password reaches the main process and is kept by neither side.
          */
-        signInWithPassword: (authUrl: string, username: string, password: string) =>
-            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
+        signInWithPassword: (authUrl: string, username: string, password: string, code?: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, code === undefined ? { authUrl, username, password } : { authUrl, username, password, code }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
         signInWithBrowser: (authUrl: string) =>
             ipcClient.invoke(IPCEventType.vcsSignInWithBrowser, { authUrl }) as Promise<RequestStatus<VcsBrowserSignInOutcome>>,
+        completeBrowserSignIn: (callbackUrl: string) =>
+            ipcClient.invoke(IPCEventType.vcsCompleteBrowserSignIn, { callbackUrl }) as Promise<RequestStatus<{ outcome: VcsBrowserCallbackOutcome }>>,
+        startDeviceSignIn: (authUrl: string) =>
+            ipcClient.invoke(IPCEventType.vcsStartDeviceSignIn, { authUrl }) as Promise<RequestStatus<VcsDeviceSignInStart>>,
+        finishDeviceSignIn: () =>
+            ipcClient.invoke(IPCEventType.vcsFinishDeviceSignIn, {}) as Promise<RequestStatus<VcsBrowserSignInOutcome>>,
+        cancelDeviceSignIn: () =>
+            ipcClient.invoke(IPCEventType.vcsCancelDeviceSignIn, {}) as Promise<RequestStatus<Record<string, never>>>,
         /**
          * Put this project on to a server: register it, connect it, send it.
          *
@@ -847,6 +865,8 @@ export const IPCInterface: RendererPreloadedInterface = {
         /** Local, and no project: two plain file reads over the machine's own history. */
         listLocalRepositories: () =>
             ipcClient.invoke(IPCEventType.vcsListLocalRepositories, {}) as Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>,
+        detachRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.vcsDetachRecentProject, { path }) as Promise<RequestStatus<void>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
@@ -901,6 +921,27 @@ export const IPCInterface: RendererPreloadedInterface = {
          */
         transfer: (request: TeamTransferRequest) =>
             ipcClient.invoke(IPCEventType.teamTransfer, request) as Promise<RequestStatus<TeamTransferOutcome>>,
+        /**
+         * Back Studio's settings up to a server, or read them back. Settings and the launcher only;
+         * the document is composed and checked here, and only carried by the main process.
+         */
+        studioConfig: (request: TeamStudioConfigRequest) =>
+            ipcClient.invoke(IPCEventType.teamStudioConfig, request) as Promise<RequestStatus<TeamStudioConfigOutcome>>,
+        /** An account's avatar, as a `data:` URL, or null. `path` is the profile's `avatarUrl`. */
+        avatar: (remoteOrigin: string, path: string) =>
+            ipcClient.invoke(IPCEventType.teamAvatar, { remoteOrigin, path }) as Promise<RequestStatus<{ dataUrl: string | null }>>,
+        /**
+         * Put one artifact of this project's last build on its server. Names a path; the main
+         * process holds it to the artifacts the last build recorded and does the reading.
+         */
+        uploadBuild: (request: TeamUploadBuildRequest) =>
+            ipcClient.invoke(IPCEventType.teamUploadBuild, request) as Promise<RequestStatus<{ build: TeamBuild }>>,
+        /** How far an upload this window started has got. */
+        onUploadProgress: (handler: (payload: { artifact: string; sent: number; total: number }) => void) =>
+            ipcClient.onMessage(IPCEventType.teamUploadProgress, handler),
+        /** Put one picture (a `data:` URL) beside this project's comments on its server. */
+        uploadAttachment: (remoteOrigin: string, projectId: string, dataUrl: string) =>
+            ipcClient.invoke(IPCEventType.teamUploadAttachment, { remoteOrigin, projectId, dataUrl }) as Promise<RequestStatus<{ attachment: TeamAttachment; url: string }>>,
     },
 
     gameBuild: {

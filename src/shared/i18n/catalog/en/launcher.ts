@@ -66,6 +66,48 @@ export const launcher = {
             remove: "Remove from list",
             errorNotAProject: "That folder is not a NarraLeaf project.",
         },
+        // A project that points at a Team server. Once this machine is disconnected from that
+        // server the project no longer opens: the local copy can be deleted or turned into a
+        // personal project, because server settings are changed from outside a project.
+        team: {
+            label: "Team project",
+            on: "Team project on {server}",
+            signedOut: "Disconnected from {server}",
+            gate: {
+                title: "Can't open team project",
+                message: "This machine is disconnected from {server}, so this team project can't be opened.",
+                note: "Converting keeps all content and version history and stops syncing with the server. Deleting moves the project folder to the {trash}.",
+                detach: "Convert to personal project",
+                delete: "Delete",
+            },
+            detachConfirm: {
+                title: "Convert to personal project",
+                message: "{name} will stop syncing with {server}. Its content and version history stay on this machine.",
+                confirm: "Convert",
+            },
+            deleteConfirm: {
+                title: "Delete project",
+                message: "The project folder of {name} will be moved to the {trash}, where it can be restored.",
+                confirm: "Delete",
+            },
+            trashMac: "Bin",
+            trashOther: "Recycle Bin",
+            errorDetach: "Could not convert the project.",
+            errorDelete: "Could not delete the project.",
+            errorOpen: "Close the window that has this project open first.",
+            uncloned: "Not cloned yet on {server}",
+            notCloned: "Not cloned",
+            details: "Details",
+            detailsTitle: "Project details",
+            newOn: "New team project on {server}",
+            clone: {
+                action: "Clone",
+                hint: "Clone {name}",
+                title: "Clone team project",
+                message: "{name} isn't on this machine yet. Clone it from {server}? You'll choose where the copy goes next.",
+                confirm: "Clone",
+            },
+        },
     },
     // The Servers tab. It lists what exists on the servers this installation is signed in to;
     // what is already on this disk is the Projects tab's answer and is not repeated here.
@@ -87,6 +129,8 @@ export const launcher = {
         // The roster's own name is `people.title`, which is the same word in both places.
         tabs: {
             projects: "Projects",
+            todos: "My to-dos",
+            active: "Active projects",
         },
         // One act, and it is on the project's own page rather than on its row. "Get" rather
         // than "Clone" - the wizard behind it asks where the copy lands.
@@ -96,6 +140,23 @@ export const launcher = {
         // description rather than as a mark of its own. It is the question the tab exists to
         // answer, so it stays where the list can be scanned for it.
         here: "On this machine",
+        todos: {
+            loading: "Loading to-dos",
+            problem: "Couldn't load to-dos",
+            empty: "No to-dos",
+            noProject: "No project",
+            cloneHint: "Clone {name}",
+            due: "Due {date}",
+            status: {
+                open: "Open",
+                doing: "In progress",
+            },
+        },
+        active: {
+            empty: "No activity in the last 7 days",
+            online: "{names} working on it",
+            notHere: "Not cloned",
+        },
         // Said of a project the server has read and found nothing in. Only ever from a count
         // that is there and is zero - a server that has not read the repository says nothing
         // about it, and nothing is what this reads back.
@@ -165,33 +226,6 @@ export const launcher = {
             versionsUnavailable: "This project's versions are not available.",
             olderVersions: "Older versions are not shown.",
         },
-        // Taking a project off a server's list, for the one a failed publish left behind.
-        //
-        // **The message is the reason this is a dialog at all.** "Remove" beside a project
-        // name reads as deleting the project, and the route behind it does not do that - it
-        // drops the entry the server lists and leaves what the repository holds where it is.
-        // So the limit is written out rather than implied, in the sentence that names both
-        // the project and the list it is coming off.
-        // What people have said about one project, over the session this Studio holds
-        // with the server. Only reached on a deployment that serves conversations.
-        // Somebody else's live session, and every way into one. They are here rather than in
-        // the editor because joining usually begins with fetching the project, and that needs a
-        // window with no project open - which is this one.
-        live: {
-            title: "Live sessions",
-            untitled: "Untitled session",
-            hostedBy: "Hosted by {name}",
-            members: "{count} in the session",
-            join: "Join",
-            // A room that is joined by asking does not let anybody in when this is pressed: it
-            // puts a question in front of its host. "Join" would be promising something else.
-            ask: "Ask to join",
-            passcodePrompt: "Have a passcode?",
-            // One sentence for a passcode that is wrong and for one nobody is using, because the
-            // server answers both with one - see the join rules.
-            noSuchCode: "No live session has that passcode.",
-            unreachable: "That session is on a project this server did not list.",
-        },
         discussion: {
             title: "Discussion",
             empty: "No notes on this project.",
@@ -204,6 +238,10 @@ export const launcher = {
             // The list could not be read at all. Never the empty state, which says nobody
             // has written anything.
             unavailable: "This project's discussion is not available.",
+            watch: "Watch",
+            watching: "Watching",
+            watchHint: "Be told when this project changes",
+            react: "Add a reaction",
         },
         forget: {
             action: "Remove from this server",

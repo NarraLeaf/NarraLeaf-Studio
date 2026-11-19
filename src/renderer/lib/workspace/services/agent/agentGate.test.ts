@@ -3,7 +3,6 @@ import type { AgentSessionPolicy } from "@shared/agent/protocol";
 import { AGENT_TOOLS } from "@shared/agent/tools";
 import { gateAgentCall, type AgentGateInput } from "./agentGate";
 import { agentWriteBlocked } from "./agentCommitGate";
-import { Services } from "../services";
 
 /**
  * Which agent calls are refused before any handler runs, and in which order. The order is the order
@@ -13,8 +12,10 @@ import { Services } from "../services";
 const allowed: AgentSessionPolicy = { writesEnabled: true, allowedImportRoots: [] };
 
 function input(patch: Partial<AgentGateInput>): AgentGateInput {
-    return { write: true, policy: allowed, paused: false, freeze: null, liveSession: false, ...patch };
+    return { write: true, policy: allowed, paused: false, freeze: null, ...patch };
 }
+
+const TEAM_FREEZE = { projectPath: "/p", reason: { kind: "live-session", session: "team-documents", writable: [] } } as const satisfies AgentGateInput["freeze"];
 
 function code(result: ReturnType<typeof gateAgentCall>): string | null {
     return result === null ? null : result.ok ? "ok" : result.error.code;
@@ -27,7 +28,6 @@ describe("gateAgentCall", () => {
             policy: { writesEnabled: false, allowedImportRoots: [] },
             paused: true,
             freeze: { projectPath: "/p", reason: { kind: "manual" } },
-            liveSession: true,
         })))).toBeNull();
     });
 
@@ -40,7 +40,6 @@ describe("gateAgentCall", () => {
             ...driving,
             policy: { writesEnabled: false, allowedImportRoots: [], projectTrusted: false },
             freeze: { projectPath: "/p", reason: { kind: "manual" } },
-            liveSession: true,
         })))).toBeNull();
         // Looking at the game is a read like any other.
         expect(code(gateAgentCall(input({ write: false, paused: true })))).toBeNull();
@@ -65,14 +64,13 @@ describe("gateAgentCall", () => {
     });
 
     it("refuses writes while paused", () => {
-        expect(code(gateAgentCall(input({ paused: true, liveSession: true })))).toBe("paused");
+        expect(code(gateAgentCall(input({ paused: true, freeze: TEAM_FREEZE })))).toBe("paused");
     });
 
-    it("reports a live session as itself, including the partial freeze a session arms", () => {
-        expect(code(gateAgentCall(input({ liveSession: true })))).toBe("live_session");
-        expect(code(gateAgentCall(input({
-            freeze: { projectPath: "/p", reason: { kind: "live-session", session: "room", writable: [] } },
-        })))).toBe("live_session");
+    it("reports a Team project's partial freeze as the Team project, not as a freeze", () => {
+        const result = gateAgentCall(input({ freeze: TEAM_FREEZE }));
+        expect(code(result)).toBe("live_session");
+        expect(result && !result.ok ? result.error.message : "").toContain("Team project");
     });
 
     it("refuses writes to a frozen project and says why", () => {
@@ -93,18 +91,9 @@ describe("gateAgentCall", () => {
 });
 
 describe("agentWriteBlocked", () => {
-    function tool(state: { paused?: boolean; livePhase?: string; writesEnabled?: boolean }) {
+    function tool(state: { paused?: boolean; writesEnabled?: boolean }) {
         return {
-            ctx: {
-                services: {
-                    get(id: Services) {
-                        if (id === Services.Live && state.livePhase) {
-                            return { getView: () => ({ phase: state.livePhase }) };
-                        }
-                        throw new Error(`no ${id}`);
-                    },
-                },
-            },
+            ctx: {},
             request: { policy: { writesEnabled: state.writesEnabled ?? true, allowedImportRoots: [] } },
             follow: { getState: () => ({ paused: state.paused ?? false }) },
         } as never;
@@ -112,16 +101,15 @@ describe("agentWriteBlocked", () => {
 
     it("lets a write commit when nothing changed since the call began", () => {
         expect(agentWriteBlocked(tool({}))).toBeNull();
-        expect(agentWriteBlocked(tool({ livePhase: "idle" }))).toBeNull();
     });
 
-    it("refuses with what was and was not written when the author paused or a live session began meanwhile", () => {
+    it("refuses with what was and was not written when the author paused or switched writes off meanwhile", () => {
         const paused = agentWriteBlocked(tool({ paused: true }));
         expect(paused?.code).toBe("paused");
         expect(paused?.message).toMatch(/Nothing was written\.$/);
-        const live = agentWriteBlocked(tool({ livePhase: "active" }), "Stopped after importing 2 of 5 file(s).");
-        expect(live?.code).toBe("live_session");
-        expect(live?.message).toMatch(/Stopped after importing 2 of 5 file\(s\)\.$/);
+        const off = agentWriteBlocked(tool({ writesEnabled: false }), "Stopped after importing 2 of 5 file(s).");
+        expect(off?.code).toBe("writes_disabled");
+        expect(off?.message).toMatch(/Stopped after importing 2 of 5 file\(s\)\.$/);
     });
 });
 

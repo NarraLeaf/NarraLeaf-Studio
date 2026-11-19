@@ -839,3 +839,49 @@ export class DevModeOpenStoryRowInWorkspaceHandler extends IPCHandler<IPCEventTy
         return this.success();
     }
 }
+
+/**
+ * "Send feedback on this moment", from Dev Mode: a picture of this window, handed to the workspace.
+ *
+ * The playtest window does not speak to a Team server, and is not given a way to: the workspace of
+ * the same project is what holds the project's standing with its server, so the picture goes there
+ * and the workspace asks the author what to say and sends it. Rude like opening a row - it brings
+ * the workspace forward - because it only runs when the author pressed for it.
+ *
+ * A JPEG no wider than 1920 pixels, so a picture of a 4K window fits under the size a server keeps
+ * beside a comment with room to spare.
+ */
+export class DevModePlaytestFeedbackHandler extends IPCHandler<IPCEventType.devModePlaytestFeedback> {
+    readonly name = IPCEventType.devModePlaytestFeedback;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModePlaytestFeedback]["data"],
+    ): Promise<RequestStatus<void>> {
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
+        }
+        if (!workspaceWindow) {
+            return this.failed("No workspace for project");
+        }
+        return this.tryUse(async () => {
+            let picture = await window.win.webContents.capturePage();
+            const { width } = picture.getSize();
+            if (width > 1920) {
+                picture = picture.resize({ width: 1920, quality: "good" });
+            }
+            const dataUrl = `data:image/jpeg;base64,${picture.toJPEG(85).toString("base64")}`;
+            const row = data.row && typeof data.row.storyId === "string" && typeof data.row.sceneId === "string"
+                && typeof data.row.blockId === "string"
+                ? { storyId: data.row.storyId, sceneId: data.row.sceneId, blockId: data.row.blockId }
+                : null;
+            workspaceWindow!.sendIpcEvent(IPCEventType.workspacePlaytestFeedback, { dataUrl, row });
+            workspaceWindow!.getBrowserWindow().show();
+            workspaceWindow!.getBrowserWindow().focus();
+        });
+    }
+}

@@ -8,12 +8,7 @@ import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/F
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
-import {
-    CharacterClaimMark,
-    CharacterClaimsProvider,
-    characterDocumentFreezeScope,
-    useCharacterClaim,
-} from "./characterLiveSession";
+import { characterDocumentFreezeScope } from "./characterFreezeScope";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -71,16 +66,6 @@ interface CharacterPanelState {
 }
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
-    return (
-        // One subscription for the whole list. A row that read the session itself would re-render on
-        // every remote keystroke, and every window in the room publishes one.
-        <CharacterClaimsProvider>
-            <CharacterPanelBody panelId={panelId} />
-        </CharacterClaimsProvider>
-    );
-}
-
-function CharacterPanelBody({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     // Scoped to the cast's own document, which is what keeps this panel working inside a live
     // session: that freeze leaves the documents the session can carry writable and refuses the rest.
@@ -715,14 +700,7 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
 }
 
 
-/**
- * One character in the list.
- *
- * Its own component so that the claim it may be wearing is read by this row alone: the claims come
- * through a context, and a row that reads one only re-renders when the answer for *that* record
- * changes. Inlined in the list's callback, every row in the panel would repaint whenever anybody in
- * the room opened or closed any character.
- */
+/** One character in the list. */
 function CharacterRow({ item, isFocused, onSelect, onOpen, onMenu }: {
     item: CharacterItem;
     isFocused: boolean;
@@ -732,7 +710,6 @@ function CharacterRow({ item, isFocused, onSelect, onOpen, onMenu }: {
     onMenu: (event: React.MouseEvent, target: MenuTarget) => void;
 }) {
     const { t, formatList } = useTranslation();
-    const claimedBy = useCharacterClaim(item.id);
     // The face the speaker picker draws for the same character: the author's avatar when there is
     // one, else the head of the default look, framed the way the dialogue avatar bake frames it.
     const { url, frame, showingSprite } = useCharacterAvatar(item.source, { resolveVariant: true, preferThumbnail: true });
@@ -769,10 +746,6 @@ function CharacterRow({ item, isFocused, onSelect, onOpen, onMenu }: {
                     <div className="text-xs text-fg-subtle truncate">{formatList(item.nicknames, { style: "narrow" })}</div>
                 )}
             </div>
-            {/* Before the actions button rather than after it, so the monogram keeps its place while
-                the button fades in under the pointer. A mark that moved as the mouse arrived would
-                be the one thing on the row that could not be aimed at. */}
-            {claimedBy && <CharacterClaimMark account={claimedBy} />}
             <button
                 className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                 onClick={(event) => { event.stopPropagation(); onMenu(event, { type: "character", character: item.source }); }}

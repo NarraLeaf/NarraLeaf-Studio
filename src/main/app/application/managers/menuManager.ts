@@ -1,5 +1,5 @@
 import os from "os";
-import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
+import { Menu, MenuItemConstructorOptions, BrowserWindow, dialog, shell } from "electron";
 import { BaseApp } from "../baseApp";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { formatRecentProjectLabel } from "@shared/utils/recentProject";
@@ -18,6 +18,8 @@ import { APP_DISPLAY_NAME } from "@shared/constants/app";
 import { getMainLocale, getMainTranslator } from "../i18n";
 import type { AppWindow } from "./window/appWindow";
 import type { Translator } from "@shared/i18n";
+import { asProjectOpenRefusal, projectOpenRefusalDetailKey } from "@shared/utils/projectOpenRefusal";
+import { requireOpenableFromWorkspace } from "./window/recentProjectGuard";
 
 /**
  * Owns the macOS application menu.
@@ -563,7 +565,23 @@ export class MenuManager {
         // project is up, matching the title-bar switcher and the in-app File menu (one gesture must
         // not depend on which copy of the menu the author reached it through). openProject ignores
         // the flag for every other window type, so the launcher still opens alongside as before.
-        void target.getApp().openProject(target, projectPath, { replaceOpener: true }).catch((error) => {
+        void (async () => {
+            // The native copy of the menu reaches main without passing the workspace, so the
+            // refusal is said here, as a sheet on the window it was asked from.
+            await requireOpenableFromWorkspace(target, projectPath);
+            await target.getApp().openProject(target, projectPath, { replaceOpener: true });
+        })().catch((error) => {
+            const refusal = asProjectOpenRefusal((error as { code?: unknown } | null)?.code);
+            if (refusal !== null && !target.isClosed()) {
+                const { t } = getMainTranslator(this.app);
+                void dialog.showMessageBox(target.win, {
+                    type: "warning",
+                    message: t("workspace.shell.projectSwitcher.unavailable.refused"),
+                    detail: t(projectOpenRefusalDetailKey(refusal)),
+                    buttons: [t("common.ok")],
+                });
+                return;
+            }
             this.app.logger.error("Failed to open recent project from menu:", error);
         });
     }

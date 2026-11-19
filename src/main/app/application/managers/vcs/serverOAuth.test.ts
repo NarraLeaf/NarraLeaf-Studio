@@ -2,7 +2,7 @@ import http from "http";
 
 import { describe, expect, it } from "vitest";
 
-import { signInWithBrowser, tokenExpiry } from "./serverOAuth";
+import { readDeviceStart, signInWithBrowser, signInWithDevice, tokenExpiry } from "./serverOAuth";
 
 /**
  * The loopback half of the browser sign-in: what Studio opens, and what it accepts back.
@@ -89,5 +89,35 @@ describe("a token's expiry", () => {
         const payload = Buffer.from(JSON.stringify({ exp: 1_800_000_000 })).toString("base64url");
         expect(tokenExpiry(`h.${payload}.s`)).toBe(1_800_000_000_000);
         expect(tokenExpiry("not a token")).toBeNull();
+    });
+});
+
+describe("the device sign-in", () => {
+    it("reads the server's answer, defaulting the interval and the expiry", () => {
+        const body = JSON.stringify({ device_code: "dc", user_code: "ABCD-EFGH", verification_uri: "https://t/device" });
+        expect(readDeviceStart(body, 1000)).toEqual({
+            deviceCode: "dc",
+            userCode: "ABCD-EFGH",
+            verificationUri: "https://t/device",
+            verificationUriComplete: "https://t/device",
+            expiresAt: 1000 + 600_000,
+            interval: 5,
+        });
+        expect(readDeviceStart(JSON.stringify({ user_code: "x" }))).toBeNull();
+        expect(readDeviceStart("not json")).toBeNull();
+    });
+
+    it("says unreachable when the server cannot be asked for a code, and shows nothing", async () => {
+        let shown = false;
+        const result = await signInWithDevice({
+            authUrl: NOWHERE,
+            deviceName: "x",
+            userDataDir: "/tmp",
+            openExternal: async () => undefined,
+            onCode: () => { shown = true; },
+            sleep: async () => undefined,
+        });
+        expect(result).toEqual({ ok: false, reason: "unreachable" });
+        expect(shown).toBe(false);
     });
 });

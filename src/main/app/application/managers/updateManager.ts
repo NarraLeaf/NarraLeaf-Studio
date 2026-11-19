@@ -11,6 +11,7 @@ import {
     UPDATE_RELEASES_URL,
     UPDATE_SOURCE_KEY,
     readUpdateSourcePreference,
+    type UpdateBlockedReason,
     type UpdateState,
     type UpdateStatus,
 } from "@shared/constants/update";
@@ -30,6 +31,7 @@ import {
 import { classifyDifferentialFailure, DifferentialRetry, summarizeDifferentialFailure } from "./updateDifferentialRetry";
 import { askGitCode, chooseUpdateSource, type UpdateFetch, type UpdateOffer, type UpdateSourceId } from "./updateSource";
 import { releaseDirectoryFeed } from "./releaseDirectoryProvider";
+import { macSelfUpdateBlocker } from "./updateMacSupport";
 import { getMainTranslator } from "../i18n";
 import type { BaseApp } from "../baseApp";
 
@@ -87,14 +89,19 @@ const BUSY_STATUSES: ReadonlySet<UpdateStatus> = new Set(["checking", "downloadi
  *   folders, so the restart the author asks for takes as long as any other restart instead of the
  *   minutes a full install keeps Studio closed. A version found by a check is downloaded and
  *   prepared without asking unless the author turned that off (`UPDATE_AUTO_DOWNLOAD_KEY`).
+ * - **macOS, packaged, signed and writable** - the same check and download, from the release's
+ *   `latest-mac.yml` and `.zip`. There is no prepare step: electron-updater hands the zip to
+ *   Squirrel.Mac, which swaps the whole `.app` once Studio has quit and is as quick as any restart.
+ *   Whether this copy qualifies is asked once at launch (`updateMacSupport.ts`): every build from
+ *   before release signing is signed ad hoc and can never satisfy Squirrel's check, and a copy
+ *   running from the disk image or a translocated folder cannot be replaced. Those report
+ *   `manual`, with `blockedReason` saying which, and stay that way until a signed build has been
+ *   installed into Applications by hand once.
  * - **Everything else** - one request for the newest release and a version comparison, reported as
- *   `manual`.
- *   macOS cannot self-update at all until Studio is code-signed (Squirrel.Mac refuses an unsigned
- *   app, and the updater's mac channel wants a `zip` target we do not build); Linux is not
- *   published by `release.yml` at all; and an unpackaged development build has no
- *   `app-update.yml` to read. Saying so and linking to the download page is the honest answer -
- *   a disabled button on the one host a feature was written for is a mistake this codebase has
- *   made before.
+ *   `manual`. Linux is not published by `release.yml` at all, and an unpackaged development build
+ *   has no `app-update.yml` to read. Saying so and linking to the download page is the honest
+ *   answer - a disabled button on the one host a feature was written for is a mistake this
+ *   codebase has made before.
  *
  * Every step that has not finished can be cancelled, and any step that fails leaves the update in
  * the state the step before it reached: a prepare that does not finish still leaves an installer
@@ -146,6 +153,11 @@ export class UpdateManager {
      * itself - and `byRequest` carries which, for the quit guard.
      */
     private pendingRetry: { byRequest: boolean } | null = null;
+    /**
+     * On packaged macOS, why this copy cannot replace itself, or null when it can. Undefined until
+     * the launch probe has answered (and on every other host), which counts as "cannot".
+     */
+    private macBlocker: UpdateBlockedReason | null | undefined = undefined;
     private readonly differentialRetry = new DifferentialRetry({
         log: message => this.app.logger.info("[Update]", message),
         networkError: summary => new Error(getMainTranslator(this.app).t("update.errors.connection", { reason: summary })),
@@ -162,11 +174,44 @@ export class UpdateManager {
     /**
      * Whether this build can download and apply an update itself.
      *
-     * Packaged Windows only, for the reasons in the class header. Read once per call rather than
-     * cached so a development build reports the same answer the panel shows.
+     * Packaged Windows, and packaged macOS once the launch probe found it signed and writable; see
+     * the class header. Read once per call rather than cached so a development build reports the
+     * same answer the panel shows.
      */
     public canSelfUpdate(): boolean {
-        return this.app.isPackaged() && process.platform === "win32";
+        if (!this.app.isPackaged()) {
+            return false;
+        }
+        if (process.platform === "win32") {
+            return true;
+        }
+        return process.platform === "darwin" && this.macBlocker === null;
+    }
+
+    /**
+     * Ask whether this macOS copy can replace itself, and wire the updater if it can. Finishes long
+     * before the first automatic check; a check pressed before it has answered takes the
+     * check-only path, which is what it would have had to do anyway if the answer is no.
+     */
+    private async probeMac(): Promise<void> {
+        let blocker: UpdateBlockedReason | null;
+        try {
+            blocker = await macSelfUpdateBlocker(process.execPath);
+        } catch (error) {
+            this.app.logger.warn(`[Update] Could not tell whether this copy can update itself: ${describeError(error)}`);
+            blocker = "unsigned";
+        }
+        this.macBlocker = blocker;
+        if (blocker === null) {
+            this.app.logger.info("[Update] This copy is signed and writable; updates install themselves.");
+            this.wireAutoUpdater();
+        } else {
+            this.app.logger.info(`[Update] This copy cannot install its own updates (${blocker}); checks only.`);
+        }
+        // Only `canInstall` and `blockedReason` change, but every surface reads them.
+        if (!BUSY_STATUSES.has(this.state.status)) {
+            this.setState({ status: this.state.status });
+        }
     }
 
     public getState(): UpdateState {
@@ -203,6 +248,8 @@ export class UpdateManager {
 
         if (this.canSelfUpdate()) {
             this.wireAutoUpdater();
+        } else if (this.app.isPackaged() && process.platform === "darwin") {
+            void this.probeMac();
         }
 
         if (!this.app.getStartupExtras().launchUpdateCheck) {
@@ -210,7 +257,8 @@ export class UpdateManager {
             return;
         }
 
-        if (this.canSelfUpdate()) {
+        // Windows only: Squirrel.Mac leaves nothing behind in the bundle it replaced.
+        if (this.canSelfUpdate() && process.platform === "win32") {
             this.cleanUpTimer = setTimeout(() => {
                 this.cleanUpTimer = null;
                 void this.cleanUp();
@@ -651,8 +699,15 @@ export class UpdateManager {
      * with `--nl-prepare`, silently and below normal priority, and reports how far it has got in a
      * file this polls. The copy is only trusted once the installer has written the version into it,
      * which it does last; any other ending leaves the update ready for a full install instead.
+     *
+     * Windows only. On macOS "downloaded" already means Squirrel.Mac holds the new bundle, and
+     * applying it is a swap it makes after the quit, as fast as any restart.
      */
     private async prepare(version: string): Promise<void> {
+        if (process.platform !== "win32") {
+            this.becomeReady(version, true);
+            return;
+        }
         const installer = this.downloaded;
         if (!installer || installer.version !== version) {
             this.becomeReady(version, false);
@@ -775,13 +830,18 @@ export class UpdateManager {
      *
      * Quitting with an update ready, rather than pressing this, still applies it silently: the user
      * asked Studio to go away, so nothing appears and nothing starts afterwards. See `beforeQuit`.
+     *
+     * On macOS the same call asks Squirrel.Mac to swap the bundle and relaunch it; there is no
+     * installer and no window in between.
      */
     public installNow(): void {
         if (this.state.status !== "ready") {
             return;
         }
         this.app.logger.info(`[Update] Quitting to install${this.state.fastRestart ? " the prepared update" : ""}.`);
-        process.env[UPDATE_WAIT_PID_ENV] = String(process.pid);
+        if (process.platform === "win32") {
+            process.env[UPDATE_WAIT_PID_ENV] = String(process.pid);
+        }
         autoUpdater.quitAndInstall(false, true);
     }
 
@@ -799,7 +859,7 @@ export class UpdateManager {
         this.stopPreparing();
         const apply = this.state.status === "ready";
         autoUpdater.autoInstallOnAppQuit = apply;
-        if (apply) {
+        if (apply && process.platform === "win32") {
             process.env[UPDATE_WAIT_PID_ENV] = String(process.pid);
         }
     }
@@ -877,7 +937,13 @@ export class UpdateManager {
     }
 
     private setState(patch: Partial<UpdateState> & { status: UpdateStatus }): void {
-        this.state = { ...this.state, ...patch, canInstall: this.canSelfUpdate() };
+        const canInstall = this.canSelfUpdate();
+        this.state = {
+            ...this.state,
+            ...patch,
+            canInstall,
+            blockedReason: canInstall ? undefined : this.macBlocker ?? undefined,
+        };
         this.broadcast();
         // The tray's update row says what the state is, so it has to be rebuilt with it.
         this.app.trayManager?.rebuildMenu();

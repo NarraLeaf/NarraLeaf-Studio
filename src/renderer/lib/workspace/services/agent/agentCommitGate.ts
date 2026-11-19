@@ -4,28 +4,16 @@
  * The bridge asks {@link gateAgentCall} once, when a call arrives. A tool that awaits between then
  * and its write - baking and importing a PSD, a folder prompt the author has to answer, measuring
  * voice clips, reading every story for a check - can still be writing seconds or minutes later, by
- * which time the author may have paused agents, frozen the project, or started a Team live session.
- * Committing then would be a write the author had just said no to, and inside a live session it
- * would reach the room as the author's own edit. So such a tool asks again here, immediately before
- * each commit, and is refused with nothing written.
+ * which time the author may have paused agents or frozen the project. Committing then would be a
+ * write the author had just said no to. So such a tool asks again here, immediately before each
+ * commit, and is refused with nothing written.
  *
  * Comments in English per project convention.
  */
 
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
-import { Services, type WorkspaceContext } from "../services";
-import type { LiveSessionService } from "../live/LiveSessionService";
 import { AgentRefusal, refuse, type AgentToolContext } from "./agentCall";
 import { gateAgentCall } from "./agentGate";
-
-/** Whether a Team live session is running in this window, or being entered or left. */
-export function agentLiveSessionActive(ctx: WorkspaceContext): boolean {
-    try {
-        return ctx.services.get<LiveSessionService>(Services.Live).getView().phase !== "idle";
-    } catch {
-        return false;
-    }
-}
 
 /**
  * The refusal a write about to commit gets now, or null when it may go ahead. `nothingWritten` ends
@@ -40,7 +28,6 @@ export function agentWriteBlocked(
         policy: tool.request.policy,
         paused: tool.follow.getState().paused,
         freeze: getProjectWriteFreeze(),
-        liveSession: agentLiveSessionActive(tool.ctx),
     });
     if (!refused || refused.ok) {
         return null;

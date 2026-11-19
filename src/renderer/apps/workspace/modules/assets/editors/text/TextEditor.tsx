@@ -11,7 +11,7 @@ import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope } from "../../assetLiveSession";
+import { assetLibraryFreezeScope } from "../../assetFreezeScopes";
 import {
     useTextEditorActions,
     useTextEditorLanguages,

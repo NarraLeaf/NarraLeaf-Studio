@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isVcsSignInAddress, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import type { VcsServerAuthority } from "@shared/types/vcs";
-import { authorityInstallPlan, trustScopeHost } from "./authorityTrust";
+import { authorityInstallPlan, runAuthorityInstall, trustScopeHost } from "./authorityTrust";
 import {
     VcsSignInError,
     decodeServerAccount,
@@ -96,18 +96,18 @@ describe("a sign-in address", () => {
     it("accepts only the two schemes the backend has an implementation for", () => {
         // Measured against a running server: anything else is refused by name, and the
         // one people type is the one that is refused - so this is checked before a socket.
-        expect(isVcsSignInAddress("https://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("ucs-auth://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("HTTPS://studio.example.lan:41402")).toBe(true);
-        expect(isVcsSignInAddress("http://studio.example.lan:41402")).toBe(false);
-        expect(isVcsSignInAddress("grpc://studio.example.lan:41402")).toBe(false);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("ucs-auth://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("HTTPS://studio.example.lan:54080")).toBe(true);
+        expect(isVcsSignInAddress("http://studio.example.lan:54080")).toBe(false);
+        expect(isVcsSignInAddress("grpc://studio.example.lan:54080")).toBe(false);
         expect(isVcsSignInAddress("lore://studio.example.lan:41337")).toBe(false);
     });
 
     it("is an origin, not an address with something after it", () => {
-        expect(isVcsSignInAddress("https://studio.example.lan:41402/")).toBe(true);
-        expect(isVcsSignInAddress("https://studio.example.lan:41402/auth")).toBe(false);
-        expect(isVcsSignInAddress("studio.example.lan:41402")).toBe(false);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080/")).toBe(true);
+        expect(isVcsSignInAddress("https://studio.example.lan:54080/auth")).toBe(false);
+        expect(isVcsSignInAddress("studio.example.lan:54080")).toBe(false);
         expect(isVcsSignInAddress("")).toBe(false);
     });
 });
@@ -123,8 +123,8 @@ describe("a sign-in address", () => {
 describe("reading the addresses out of a token", () => {
     const AUDIENCE = [
         "loreserver",
-        "https://team.example.lan:41402",
-        "https://team.example.lan:41402/",
+        "https://team.example.lan:54080",
+        "https://team.example.lan:54080/",
         "team.example.lan",
         "team.example.lan:41337",
         "lore://team.example.lan:41337",
@@ -133,7 +133,7 @@ describe("reading the addresses out of a token", () => {
 
     it("takes the sign-in address from the audience, so nobody has to be told it", () => {
         const read = readSignInToken(tokenWith({ ...ACCOUNT, aud: AUDIENCE }));
-        expect(read.authUrl).toBe("https://team.example.lan:41402");
+        expect(read.authUrl).toBe("https://team.example.lan:54080");
         // Once, though the audience names it twice. The trailing slash is one of the
         // spellings the audience carries on purpose and is not a second address.
         expect(read.remotes).toEqual(["lore://team.example.lan:41337"]);
@@ -188,16 +188,16 @@ describe("reading the addresses out of a token", () => {
  * presented anywhere at all.
  */
 describe("choosing where a token is presented", () => {
-    const NAMED = { authUrl: "https://team.example.lan:41402", authUrls: ["https://team.example.lan:41402"] };
+    const NAMED = { authUrl: "https://team.example.lan:54080", authUrls: ["https://team.example.lan:54080"] };
 
     it("presents a token where it says, when nothing else is given", () => {
-        expect(signInAddressFor(NAMED, "")).toBe("https://team.example.lan:41402");
+        expect(signInAddressFor(NAMED, "")).toBe("https://team.example.lan:54080");
     });
 
     it("refuses an address the token does not name, before anything is sent", () => {
-        expect(() => signInAddressFor(NAMED, "https://collector.example.net:41402")).toThrow(VcsSignInError);
+        expect(() => signInAddressFor(NAMED, "https://collector.example.net:54080")).toThrow(VcsSignInError);
         try {
-            signInAddressFor(NAMED, "https://collector.example.net:41402");
+            signInAddressFor(NAMED, "https://collector.example.net:54080");
         } catch (error) {
             // Said as a token that is not for this server, which is what it is: the panel's
             // sentence for that already exists and names the remedy.
@@ -212,7 +212,7 @@ describe("choosing where a token is presented", () => {
     it("accepts the token's own endpoint however it is spelled, and uses the token's spelling", () => {
         // The spellings a discovery answer and an audience are known to disagree on while
         // naming one endpoint: case, a trailing slash.
-        expect(signInAddressFor(NAMED, "HTTPS://Team.Example.LAN:41402/")).toBe("https://team.example.lan:41402");
+        expect(signInAddressFor(NAMED, "HTTPS://Team.Example.LAN:54080/")).toBe("https://team.example.lan:54080");
     });
 
     it("drops a default port the same way on both sides", () => {
@@ -222,15 +222,15 @@ describe("choosing where a token is presented", () => {
 
     it("accepts any of several endpoints a token names", () => {
         const named = {
-            authUrl: "https://one.example.lan:41402",
-            authUrls: ["https://one.example.lan:41402", "https://two.example.lan:41402"],
+            authUrl: "https://one.example.lan:54080",
+            authUrls: ["https://one.example.lan:54080", "https://two.example.lan:54080"],
         };
-        expect(signInAddressFor(named, "https://two.example.lan:41402")).toBe("https://two.example.lan:41402");
+        expect(signInAddressFor(named, "https://two.example.lan:54080")).toBe("https://two.example.lan:54080");
     });
 
     it("takes a typed address for a token that names none, which is the case it exists for", () => {
         const none = { authUrl: "", authUrls: [] };
-        expect(signInAddressFor(none, "https://lan.example:41402")).toBe("https://lan.example:41402");
+        expect(signInAddressFor(none, "https://lan.example:54080")).toBe("https://lan.example:54080");
     });
 
     it("asks for an address where neither side has one", () => {
@@ -244,12 +244,12 @@ describe("choosing where a token is presented", () => {
     });
 
     it("is what a sign-in goes through, so a mismatch is refused before the backend is reached", async () => {
-        const token = tokenWith({ ...ACCOUNT, aud: ["https://team.example.lan:41402", "lore://team.example.lan:41337"] });
+        const token = tokenWith({ ...ACCOUNT, aud: ["https://team.example.lan:54080", "lore://team.example.lan:41337"] });
         // No backend is loaded in this file; reaching it would fail differently. The refusal is
         // the token problem, which is only raised before anything is dialled.
         const attempt = signInToServer({ repositoryPath: "", offline: false, cache: false }, {
             remoteUrl: "lore://team.example.lan:41337",
-            authUrl: "https://collector.example.net:41402",
+            authUrl: "https://collector.example.net:54080",
             token,
             userDataDir: "",
         });
@@ -331,15 +331,20 @@ describe("the install plan", () => {
         if (process.platform === "darwin") expect(plan.argv).not.toContain("-d");
     });
 
-    it("scopes the trust to the server's name where the platform can", () => {
-        const plan = authorityInstallPlan(certificate, "team.example.com");
-        if (process.platform === "darwin") {
-            expect(plan.argv).toEqual(expect.arrayContaining(["-p", "ssl", "-s", "team.example.com"]));
-            expect(plan.argv[plan.argv.length - 1]).toBe(certificate);
-            expect(plan.command).toContain("-p ssl -s team.example.com");
-        }
-        // Without a host the install is unscoped, as before.
-        expect(authorityInstallPlan(certificate).argv).not.toContain("-s");
+    it("on macOS, puts the certificate in the login keychain and checks that it took", () => {
+        if (process.platform !== "darwin") return;
+        const plan = authorityInstallPlan(certificate);
+        // Without the certificate in a keychain, macOS 26 writes a trust setting nothing can
+        // find and reports success.
+        expect(plan.prepare?.slice(0, 3)).toEqual(["security", "import", certificate]);
+        expect(plan.prepare?.[4]).toMatch(/Library\/Keychains\/login\.keychain-db$/);
+        expect(plan.argv).toEqual(expect.arrayContaining(["-k", plan.prepare?.[4]]));
+        expect(plan.argv[plan.argv.length - 1]).toBe(certificate);
+        expect(plan.verify?.slice(0, 2)).toEqual(["security", "verify-cert"]);
+        expect(plan.verify).toContain(certificate);
+        // A trust setting limited to a host name was never seen to work with the client library.
+        expect(plan.argv).not.toContain("-s");
+        expect(plan.command).toContain("security import");
     });
 
     it("only scopes to something a policy can name", () => {
@@ -350,6 +355,33 @@ describe("the install plan", () => {
         expect(trustScopeHost("a b")).toBeNull();
         expect(trustScopeHost("")).toBeNull();
         expect(trustScopeHost(null)).toBeNull();
+    });
+});
+
+/** An install counts only once the platform agrees it took. */
+describe("running the install plan", () => {
+    const exit = (code: number): string[] => [process.execPath, "-e", `process.exit(${code})`];
+
+    it("is installed when the command and its check both succeed, whatever the preparation said", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", prepare: exit(1), argv: exit(0), verify: exit(0),
+        });
+        expect(outcome.installed).toBe(true);
+    });
+
+    it("is not installed when the command succeeds and the check does not", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", argv: exit(0), verify: exit(1),
+        });
+        expect(outcome.installed).toBe(false);
+        expect(outcome.output).toMatch(/still not trusted/);
+    });
+
+    it("is not installed when the command fails, and the check is not run", async () => {
+        const outcome = await runAuthorityInstall({
+            canInstall: true, command: "", argv: exit(1), verify: exit(0),
+        });
+        expect(outcome.installed).toBe(false);
     });
 });
 

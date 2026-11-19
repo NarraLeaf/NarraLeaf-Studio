@@ -156,14 +156,6 @@ export type OpenProjectOptions = {
      * See `WindowProps[WindowAppType.Workspace].commandLineRun`.
      */
     commandLineRun?: WindowProps[WindowAppType.Workspace]["commandLineRun"];
-    /**
-     * A live session the window should join once it is up. See the prop of the same name.
-     *
-     * ⚠ **Carried into the props for a window this opens, and SENT to one it finds already open.**
-     * One project is one window, so the launcher's request lands on an existing workspace as often
-     * as not - and that window read its props at load, long before anybody asked.
-     */
-    joinLive?: WindowProps[WindowAppType.Workspace]["joinLive"];
 };
 
 /**
@@ -1368,8 +1360,11 @@ export class App extends BaseApp {
             );
             if (!result.success) {
                 this.logger.warn(`[Workspace] Pending saves could not be flushed: ${result.error}`);
-            } else if (!result.data.flushed) {
-                this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+            } else {
+                window.setTeamManaged(result.data.teamManaged === true);
+                if (!result.data.flushed) {
+                    this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+                }
             }
         } catch (error) {
             this.logger.warn(`[Workspace] No answer to the pending-save flush: ${String(error)}`);
@@ -1390,6 +1385,7 @@ export class App extends BaseApp {
             enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
             projectPath: typeof projectPath === "string" ? projectPath : null,
             workspaceLoaded: window.hasLoadedWorkspace(),
+            teamManaged: window.isTeamManaged(),
             heldElsewhere: typeof projectPath === "string"
                 && this.projectSessionLockManager.heldElsewhere(projectPath) !== null,
         });
@@ -2079,6 +2075,18 @@ export class App extends BaseApp {
         }
     }
 
+    /** Whether another NarraLeaf Studio holds this project's session lock right now. */
+    public projectHeldElsewhere(projectPath: string): boolean {
+        return this.projectSessionLockManager.heldElsewhere(projectPath) !== null;
+    }
+
+    /** The project of every workspace window still on screen, as each window was opened on it. */
+    public openWorkspaceProjectPaths(): string[] {
+        return this.liveWorkspaceWindows()
+            .map(window => window.getProps().projectPath)
+            .filter((projectPath): projectPath is string => typeof projectPath === "string" && projectPath.length > 0);
+    }
+
     /** The live workspace window for a project, if one already has it open. */
     public findWorkspaceForProject(projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
         const target = normalizeProjectPath(projectPath);
@@ -2169,13 +2177,6 @@ export class App extends BaseApp {
 
         const existing = this.findWorkspaceForProject(projectPath);
         if (existing) {
-            if (options.joinLive) {
-                // ⚠ Sent rather than passed, because props are read once at load and this window
-                // loaded long ago. Dropping it here would be the commonest case of all: the
-                // workspace has no join control of its own, so a launcher asking to join a room in
-                // a project already on screen would do nothing at all and say nothing about it.
-                existing.sendIpcEvent(IPCEventType.workspaceJoinLive, { joinLive: options.joinLive });
-            }
             // A minimized window ignores focus() on macOS, so bring it back up first.
             if (existing.win.isMinimized()) {
                 existing.win.restore();
@@ -2233,7 +2234,6 @@ export class App extends BaseApp {
             {
                 projectPath,
                 ...(options.commandLineRun ? { commandLineRun: options.commandLineRun } : {}),
-                ...(options.joinLive ? { joinLive: options.joinLive } : {}),
             },
             options.background
                 // Never sized, never placed, never shown. A window with no frame on screen has no

@@ -14,7 +14,7 @@ import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatche
 import { MarkedText, markedFragments } from "@/apps/workspace/components/ui/FindMarks";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export type VoiceTableRow = {

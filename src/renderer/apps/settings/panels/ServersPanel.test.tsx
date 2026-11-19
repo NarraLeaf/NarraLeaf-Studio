@@ -51,7 +51,7 @@ const ORIGIN = "lore://team.example.lan:41337";
 
 function session(): VcsServerSession {
     return {
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         remoteOrigin: ORIGIN,
         account: {
             userId: "u-1",
@@ -148,5 +148,62 @@ describe("the servers panel", () => {
             return node;
         });
         expect(line.textContent).toBe("settings.servers.unused");
+    });
+
+    it("will not sign out of a server while a project that uses it is open, and says which", async () => {
+        bridge.servers = [{
+            ...session(),
+            openIn: [{ path: "D:/games/harbour", name: "Harbour Lights" }],
+        }];
+        render(<ServersPanel />);
+
+        const button = await waitFor(() => {
+            const node = document.querySelector<HTMLButtonElement>("[data-servers-sign-out='locked']");
+            if (node === null) throw new Error("no locked button");
+            return node;
+        });
+        expect(button.disabled).toBe(true);
+        expect(document.querySelector(`[data-servers-used-by='${ORIGIN}']`)?.textContent)
+            .toBe("settings.servers.signOutBlocked(Harbour Lights)");
+    });
+
+    it("asks before signing out, and says which projects it takes the sign-in from", async () => {
+        bridge.servers = [{ ...session(), usedBy: [{ path: "D:/games/harbour", name: "Harbour Lights" }] }];
+        render(<ServersPanel />);
+
+        const first = await waitFor(() => {
+            const node = document.querySelector<HTMLButtonElement>("[data-servers-sign-out='open']");
+            if (node === null) throw new Error("no button");
+            return node;
+        });
+        fireEvent.click(first);
+        expect(bridge.forgetServer).not.toHaveBeenCalled();
+        expect(document.querySelector(`[data-servers-used-by='${ORIGIN}']`)?.textContent)
+            .toBe("settings.servers.signOutWarning(Harbour Lights)");
+
+        fireEvent.click(document.querySelector<HTMLButtonElement>(`[data-servers-sign-out-cancel='${ORIGIN}']`)!);
+        expect(document.querySelector("[data-servers-sign-out='confirm']")).toBeNull();
+        expect(bridge.forgetServer).not.toHaveBeenCalled();
+
+        fireEvent.click(document.querySelector<HTMLButtonElement>("[data-servers-sign-out='open']")!);
+        fireEvent.click(document.querySelector<HTMLButtonElement>("[data-servers-sign-out='confirm']")!);
+        await waitFor(() => expect(bridge.forgetServer).toHaveBeenCalledWith(ORIGIN));
+    });
+
+    it("says so on the row when signing out did not go through", async () => {
+        bridge.servers = [session()];
+        bridge.forgetServer.mockImplementationOnce(() => Promise.resolve({ success: false } as never));
+        render(<ServersPanel />);
+
+        const first = await waitFor(() => {
+            const node = document.querySelector<HTMLButtonElement>("[data-servers-sign-out='open']");
+            if (node === null) throw new Error("no button");
+            return node;
+        });
+        fireEvent.click(first);
+        fireEvent.click(document.querySelector<HTMLButtonElement>("[data-servers-sign-out='confirm']")!);
+
+        await waitFor(() => expect(document.querySelector(`[data-servers-used-by='${ORIGIN}']`)?.textContent)
+            .toBe("settings.servers.signOutFailed"));
     });
 });

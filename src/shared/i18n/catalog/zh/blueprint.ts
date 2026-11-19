@@ -1701,9 +1701,6 @@ export const blueprint = {
         getVideoVolume: "视频的音量（0 到 1），即控件上设置的或「设置视频音量」设置的值，不含玩家的音量设置",
         isVideoMuted: "视频处于静音时为真",
     },
-    live: {
-        nodeClaimed: "{name} 正在编辑该节点",
-    },
     overview: {
         title: "蓝图总览",
         count: {

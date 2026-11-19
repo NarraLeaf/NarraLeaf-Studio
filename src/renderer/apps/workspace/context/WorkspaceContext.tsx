@@ -15,6 +15,7 @@ import {
     workspaceAssetTypes,
 } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
+import type { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { translate } from "@/lib/i18n";
@@ -376,7 +377,8 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                 return { success: true, data: { flushed: true } };
             }
             const result = await flushPendingSaves(currentContext);
-            return { success: true, data: { flushed: result.flushed } };
+            const teamManaged = currentContext.services.get<VersionControlService>(Services.VersionControl).isTeamManaged();
+            return { success: true, data: { flushed: result.flushed, teamManaged } };
         });
 
         // An AI agent's call over Studio's MCP endpoint, routed here by main because this window has

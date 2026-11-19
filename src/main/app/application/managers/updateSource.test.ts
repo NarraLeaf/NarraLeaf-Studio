@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { chooseUpdateSource, readFeed, timeDownload, type UpdateFetch } from "./updateSource";
+import { askGitCode, channelFile, chooseUpdateSource, readFeed, timeDownload, type UpdateFetch } from "./updateSource";
 
-const GITHUB_FEED = "https://github.com/NarraLeaf/NarraLeaf-Studio/releases/latest/download/latest.yml";
+// The feed this host reads: the cases below run the same on a Mac and on Windows.
+const FEED_FILE = channelFile();
+const GITHUB_FEED = `https://github.com/NarraLeaf/NarraLeaf-Studio/releases/latest/download/${FEED_FILE}`;
 const GITCODE_API = "https://api.gitcode.com/api/v5/repos/NarraLeaf/NarraLeaf-Studio/releases/latest";
-const gitcodeFeed = (tag: string) => `https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/download/${tag}/latest.yml`;
+const gitcodeFeed = (tag: string) => `https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/download/${tag}/${FEED_FILE}`;
 
 function feed(version: string): string {
     return [
@@ -40,6 +42,24 @@ const bothAt = (github: string, gitcode: string) => fakeFetch({
 });
 
 const noLog = () => undefined;
+
+describe("channelFile", () => {
+    it("is the mac feed on macOS and latest.yml everywhere else", () => {
+        expect(channelFile("darwin")).toBe("latest-mac.yml");
+        expect(channelFile("win32")).toBe("latest.yml");
+        expect(channelFile("linux")).toBe("latest.yml");
+    });
+
+    it("is the file a release directory is read for", async () => {
+        const { fetcher, asked } = fakeFetch({
+            [GITCODE_API]: JSON.stringify({ tag_name: "v1.2.0" }),
+            ["https://gitcode.com/NarraLeaf/NarraLeaf-Studio/releases/download/v1.2.0/latest-mac.yml"]: feed("1.2.0"),
+        });
+        const offer = await askGitCode(fetcher, "latest-mac.yml");
+        expect(offer?.version).toBe("1.2.0");
+        expect(asked.at(-1)).toMatch(/latest-mac\.yml$/);
+    });
+});
 
 describe("readFeed", () => {
     it("reads the version and the installer from a latest.yml", () => {

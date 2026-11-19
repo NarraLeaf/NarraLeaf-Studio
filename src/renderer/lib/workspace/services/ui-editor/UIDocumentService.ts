@@ -2731,9 +2731,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      *
      * Each step is a command over whole records, not a snapshot of the library: whichever direction
      * runs reads the records as they stand at that moment and writes them back exactly, and nothing
-     * else in the library is touched. Tagged, so a live session drops these steps with the interface
-     * editors' stacks (`LiveSessionService`): taking back an addition after a session would remove
-     * whatever the room built inside it. (A page's stack is cleared whole when a session starts.)
+     * else in the library is touched. Tagged, so the steps can be dropped with the interface editors'
+     * stacks when the documents are replaced under them.
      */
     private pushLibraryStep(
         label: HistoryLabel,

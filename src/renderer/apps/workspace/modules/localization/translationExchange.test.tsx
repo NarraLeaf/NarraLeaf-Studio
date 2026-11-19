@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { freezeProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { Services } from "@/lib/workspace/services/services";
 import { collectTranslatableUnits, useTranslationExchange, type TranslatableUnitSources } from "./translationExchange";
-import { translationDocumentFreezeScope } from "./localizationLiveSession";
+import { translationDocumentFreezeScope } from "./localizationFreezeScopes";
 
 const mocks = vi.hoisted(() => ({
     context: null as unknown,

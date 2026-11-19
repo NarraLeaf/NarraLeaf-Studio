@@ -22,11 +22,15 @@
  *    server's projects once it has been added, and the wizard's server picker lists them so one can
  *    be cloned - before any project here exists, so before any project could have answered. Both are
  *    Studio's own windows with no project in them, and `projects.list` is all they are given: a
- *    listing is the one thing the "before a project has answered" moment needs.
+ *    listing is the one thing the "before a project has answered" moment needs. Settings may also
+ *    back Studio's own preferences up to the account and read them back (`studioConfig`): those are
+ *    the author's, not any project's.
  *  - **A workspace** acts for its project and for nothing else. It reaches a server only where the
- *    author said that project uses the sign-in held there. Anywhere else it may only let go of what
- *    it said while it did - see {@link TEAM_LETTING_GO} - because the moment an author says no is
- *    exactly the moment its screen tidies up after itself.
+ *    author said that project uses the sign-in held there. Anywhere else it may read who the account
+ *    is - its profile and its avatar, for the face in the title bar, see {@link TEAM_WHO_I_AM} - and
+ *    let go of what it said while it did - see {@link TEAM_LETTING_GO} - because the moment an author
+ *    says no is exactly the moment its screen tidies up after itself. Nothing it may do there acts
+ *    on a project: no listing, no presence, no rooms, no files.
  *  - **Everything else** - Dev Mode, which runs the project's own scripts, the prompts and the raw
  *    window - reaches nothing. None of them has a reason to, so none is given one.
  *
@@ -62,7 +66,12 @@ export type TeamAsk =
     | { op: "connections" }
     | { op: "call"; method: string }
     | { op: "subscribe" }
-    | { op: "transfer" };
+    | { op: "transfer" }
+    | { op: "avatar" }
+    /** Putting a build or a picture on the project's server - bytes, like a transfer. */
+    | { op: "upload" }
+    /** Backing Studio's own settings up to the account, or reading them back. */
+    | { op: "studioConfig" };
 
 /**
  * The calls that only take back something this window said, and are answered even where the project
@@ -80,6 +89,18 @@ export const TEAM_LETTING_GO: ReadonlySet<string> = new Set<string>([
     TeamMethod.clientsWithdraw,
     TeamMethod.liveLeave,
 ]);
+
+/**
+ * What a workspace may ask of a server its project does not use: who the account is.
+ *
+ * The title bar shows the signed-in account in every project, a local one included, and the
+ * account's face and name are all it reads. The author asked for that face everywhere (2026-11-15);
+ * what it costs is that code running in a project window can read the account's own display name,
+ * bio and avatar, and the public profile of any account it names - nothing a project holds, and
+ * nothing the account does. Opening the session is allowed with it because there is no reading
+ * without one; opening announces nothing on the server.
+ */
+export const TEAM_WHO_I_AM: ReadonlySet<string> = new Set<string>([TeamMethod.accountProfileGet]);
 
 /** The one call Settings and the wizard are given. */
 const LISTING_METHODS: ReadonlySet<string> = new Set<string>([TeamMethod.projectsList]);
@@ -128,15 +149,20 @@ export function teamAllows(reach: TeamReach, ask: TeamAsk): boolean {
     switch (reach.kind) {
         case "account":
             // Everything but bytes: a transfer reads or writes a file of a project, and the launcher
-            // has no project for a file to be in.
-            return ask.op !== "transfer";
+            // has no project for a file to be in. An upload is the same.
+            return ask.op !== "transfer" && ask.op !== "upload";
         case "listing":
-            return ask.op === "call" && LISTING_METHODS.has(ask.method);
+            // Settings also keeps Studio's own preferences with the account. They are the author's,
+            // not a project's, so no project's answer is needed - and a workspace is not given it.
+            return ask.op === "studioConfig" || (ask.op === "call" && LISTING_METHODS.has(ask.method));
         case "project":
             // Not the list of every server: that is the launcher's picture of the machine, and a
-            // project has one server it is about.
-            return ask.op !== "connections";
+            // project has one server it is about. Nor the author's own settings: not a project's.
+            return ask.op !== "connections" && ask.op !== "studioConfig";
         case "unused":
+            return ask.op === "open"
+                || ask.op === "avatar"
+                || (ask.op === "call" && TEAM_WHO_I_AM.has(ask.method));
         case "none":
             return false;
     }

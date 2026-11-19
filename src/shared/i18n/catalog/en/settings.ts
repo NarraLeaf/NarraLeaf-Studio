@@ -374,6 +374,15 @@ export const settings = {
             description: "Where the File, Help and panel menus live in the title bar.",
             unsupportedPlatform: "On macOS these menus are on the system menu bar.",
         },
+        teamAvatarVisible: {
+            label: "Show Team avatar",
+            description: "Your Team account in the title bar, while a project is connected to a Team server.",
+            noServer: "Available once you are signed in to a Team server.",
+        },
+        teamLatencyVisible: {
+            label: "Show Team server latency",
+            description: "The round trip to the Team server, beside its name in the status bar.",
+        },
         titleBarSearchVisible: {
             label: "Show title bar search box",
             description: "The search box in the middle of the title bar.",
@@ -412,6 +421,14 @@ export const settings = {
         teamMachineLabel: {
             label: "This machine's name",
             description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        },
+        teamProjectsPlacement: {
+            label: "Team projects",
+            description: "Where the launcher lists the projects on your Team server",
+            options: {
+                projects: "In the project list",
+                team: "On the Team page",
+            },
         },
         settingsTransfer: {
             label: "Move settings between machines",
@@ -480,16 +497,24 @@ export const settings = {
         // here signs out of that server.
         usedBy: "Used by {projects}",
         unused: "No project uses this sign-in.",
+        // Not while a project that uses this server is open: server settings change between projects.
+        signOutBlocked: "Close the projects that use this server first: {projects}",
+        signOutConfirm: "Sign out",
+        signOutWarning: "{projects} will stop syncing with this server until you sign in again.",
+        signOutWarningUnused: "You will have to sign in again to use this server.",
+        signOutFailed: "Could not sign out. Try again.",
         signIn: "Sign in",
         signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
-        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        addressPlaceholder: "nlteam://studio.example.lan:54080",
         // What the address turned out to be, on the step that asks who you are there. It
         // names the server rather than narrating the request that found it: the reader is
         // deciding whether this is the one they meant, not reading a log of the attempt.
         reached: "The server at {address} is {name}.",
+        changeAddress: "Change address",
+        replaces: "This computer is already signed in here as {name}. Signing in replaces that account.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
@@ -502,9 +527,23 @@ export const settings = {
         useToken: "Use an access token instead",
         usePassword: "Use a username and password instead",
         useBrowser: "Sign in with the browser instead",
+        useDevice: "Sign in with a device code instead",
+        otherMethods: "Other sign-in options",
+        browserCallback: {
+            done: "I've finished signing in",
+            label: "Callback address",
+            hint: "If the browser didn't come back here, copy the full address from its address bar and paste it here",
+            mismatch: "That address isn't the callback for this sign-in",
+            gone: "This sign-in has ended. Sign in again",
+        },
         browserLead: "{name}'s sign-in page opens in your browser. Sign in and allow Studio, and you come back here.",
         browserSignIn: "Sign in with browser",
         browserWaiting: "Finish signing in in your browser…",
+        deviceLead: "For when the browser cannot come back to Studio (a remote desktop, a browser on another device). You get a code to type into {name}'s page, then allow Studio.",
+        deviceSignIn: "Get a device code",
+        deviceWaiting: "Waiting for you to approve in the browser…",
+        deviceCode: "Type this code at {url}:",
+        deviceOpened: "Studio tried to open that page in your browser; you can also open it by hand on any device.",
         browserProblems: {
             denied: "The sign-in was denied in the browser.",
             timeout: "The browser sign-in took too long. Try again.",
@@ -518,6 +557,10 @@ export const settings = {
         // stranger which usernames exist.
         signInRefused: "The server did not accept that username and password.",
         signInUnavailable: "This installation cannot sign in with a password.",
+        codeLabel: "Code",
+        codeLead: "This account also signs in with the 6-digit code from its authenticator app.",
+        signInBadCode: "That code is not right. Enter the one your authenticator shows now.",
+        signInNeedsEnrollment: "This server requires two-step sign-in. Set it up under Security in the web console, then sign in here.",
         // The server answered but issues no accounts, and an account is what Studio stores.
         // Said rather than hidden: the absence of an entry afterwards is otherwise
         // indistinguishable from a failure.
@@ -525,6 +568,7 @@ export const settings = {
         // The closing step. Facts about what was joined and nothing else: no
         // congratulation, and no count for a server that would not give one.
         joined: {
+            title: "Server added",
             signedInAs: "Signed in as {name}",
             projects: {
                 one: "{count} project",
@@ -725,6 +769,21 @@ export const settings = {
         planSummary: "{change} to change, {same} already the same, {skipped} skipped.",
         skippedUnknown: "{key}: this version of Studio has no such setting",
         skippedInvalid: "{key}: {reason}",
+        team: {
+            hint: "Signed in to Team, you can keep these settings on the server and restore them on another computer by signing in to the same account.",
+            server: "Team server",
+            backup: "Back up to Team",
+            restore: "Restore from Team…",
+            backedUp: "Backed up to {server}.",
+            nothingKept: "{server} keeps no settings for this account yet.",
+            signedOut: "Not signed in to this server, or the sign-in has expired. Sign in again.",
+            forbidden: "An administrator has not turned on settings sync for this account.",
+            forbiddenUpload: "An administrator lets this account restore its settings but not upload new ones.",
+            tooLarge: "The settings are larger than the server keeps.",
+            unsupported: "This server's version cannot keep Studio settings yet.",
+            unreachable: "The server could not be reached.",
+            failed: "The server refused.",
+        },
     },
     // The Network panel's own chrome, outside the per-setting labels above.
     network: {

@@ -725,7 +725,6 @@ export const assets = {
      * 入り、作者はたいてい丸ごと打ち替える。
      */
     live: {
-        recordClaimed: "{name} がこのアセットを編集している",
         transferring: "このアセットは {percent}% 転送済み",
         refusedTitle: "セッションに取り込まれていない",
         refusedQuotaOne: "{name} はこのプロジェクトが同時に転送できる量を超えている。転送中のファイルが届いてから読み込む",

@@ -33,7 +33,7 @@ vi.mock("@/lib/team", () => ({
 
 vi.mock("./TeamProjectContext", () => ({
     useTeamProjectSurface: () => ({
-        remoteOrigin: "https://team.example:41402",
+        remoteOrigin: "https://team.example:54080",
         state: { kind: "verified", project: { id: server.project, name: "harbour", description: "" } },
     }),
 }));

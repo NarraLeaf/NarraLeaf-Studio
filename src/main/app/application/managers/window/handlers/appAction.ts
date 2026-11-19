@@ -7,7 +7,6 @@ import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, shell } from "electron";
-import type { Dirent } from "fs";
 import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
@@ -18,7 +17,6 @@ import {
     type DiagnosticsEnvironment,
 } from "../../../logging/diagnosticsBundle";
 import type { MissingRecentProject, RecentProjectIcon, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
-import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
@@ -28,6 +26,7 @@ import { ONBOARDING_STATE_KEY, onboardingMarkerMovesBack } from "@shared/constan
 import { getMainLocale } from "../../../i18n";
 import { collectLogArchiveFiles, encodeLogArchive } from "../../../logging/logArchive";
 import { windowProjectPath } from "../../../utils/windowProject";
+import { findRecentProjectMissingReason, requireIdleRecentProject } from "../recentProjectGuard";
 import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
 import { studioFetch } from "../../downloadProxy";
 
@@ -396,38 +395,6 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
 }
 
 /**
- * Whether a remembered project is still openable, or why it is not.
- *
- * Only *absence* answers "missing". A folder we were not allowed to read (macOS TCC, a network
- * mount without permission) or one on a volume that is offline is still perfectly good work, and
- * reporting it as gone would put the user in front of a dialog offering to forget a real project.
- * So ENOENT/ENOTDIR are the only failures that count; everything else reads as present and the
- * user finds out the usual way - by opening it.
- */
-async function findRecentProjectMissingReason(projectPath: string): Promise<RecentProjectMissingReason | null> {
-    let entries: Dirent[];
-    try {
-        const stats = await fs.stat(projectPath);
-        if (!stats.isDirectory()) {
-            // Something is there, but a project is a folder - a file at that path is not one.
-            return "not-a-project";
-        }
-        entries = await fs.readdir(projectPath, { withFileTypes: true });
-    } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        return code === "ENOENT" || code === "ENOTDIR" ? "folder-missing" : null;
-    }
-
-    const dirEntries = entries.map<DirEntry>(entry => ({
-        name: path.parse(entry.name).name,
-        ext: path.extname(entry.name) || null,
-        type: entry.isDirectory() ? "directory" : "file",
-    }));
-
-    return findProjectConfigFileName(dirEntries) ? null : "not-a-project";
-}
-
-/**
  * Report which remembered projects are no longer on disk.
  *
  * Read-only on purpose: nothing is dropped from the history here. Forgetting a project is the
@@ -526,6 +493,30 @@ export class AppRevealRecentProjectHandler extends IPCHandler<IPCEventType.appRe
             return this.failed(new Error(failure));
         }
         return this.success(void 0);
+    }
+}
+
+/**
+ * Move one remembered project's folder to the system trash, and drop it from the history.
+ *
+ * Held to a launcher row that no window has open (`requireIdleRecentProject`). The trash rather
+ * than a delete: the author can take it back out from the file manager, which is the difference
+ * between a wrong click and lost work.
+ */
+export class AppTrashRecentProjectHandler extends IPCHandler<IPCEventType.appTrashRecentProject> {
+    readonly name = IPCEventType.appTrashRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.appTrashRecentProject]["data"],
+    ): Promise<RequestStatus<void>> {
+        return this.tryUse(async () => {
+            const known = requireIdleRecentProject(window, data.path);
+            await shell.trashItem(path.resolve(known));
+            window.app.setGlobalStateAndBroadcast("app.recentProjects", window.app.globalState.recentlyOpened.without(known));
+            window.app.logger.info("[Projects] Moved to the trash", known);
+        });
     }
 }
 

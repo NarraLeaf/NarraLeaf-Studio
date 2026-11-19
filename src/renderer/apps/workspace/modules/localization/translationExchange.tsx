@@ -55,7 +55,7 @@ import { getAgentEditorLocks } from "@/lib/workspace/services/agent/agentEditorL
 import { agentLockBlocking } from "../agent/useAgentEditorLocks";
 import { isFreezeBlocking } from "../../components/ui/freezeGuard";
 import { useReadOnlyInspection } from "../../components/ui/readOnlyInspection";
-import { translationDocumentFreezeScope } from "./localizationLiveSession";
+import { translationDocumentFreezeScope } from "./localizationFreezeScopes";
 import {
     describeExchangeProblem,
     describeImportFailure,

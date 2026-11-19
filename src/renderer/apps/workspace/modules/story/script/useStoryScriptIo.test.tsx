@@ -31,7 +31,6 @@ const services = {
         if (id === Services.Uuid) return { generate: () => "00000000-0000-4000-8000-000000000001" };
         if (id === Services.FileSystem) return { read: async () => ({ ok: true, data: "script" }) };
         if (id === Services.UI) return { showError, showNotification };
-        if (id === Services.Live) return { ownsStory: () => false };
         return null;
     },
 };

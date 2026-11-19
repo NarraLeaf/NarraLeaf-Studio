@@ -1075,7 +1075,11 @@ export const help = {
                 + "- When both sides have new versions, Get first and Send afterwards.\n"
                 + "- Checking the current state contacts the server.\n"
                 + "- The server, and the account versions are recorded under, are set from NarraLeaf Team "
-                + "in the bottom-left corner of the window.",
+                + "in the bottom-left corner of the window.\n"
+                + "- While a team project is open, its server cannot be changed or signed out of. Once it is closed, "
+                + "convert it to a personal project from the launcher, or sign out of the server in Settings.\n"
+                + "- After signing out of a server, the team projects that use it cannot be opened; they can only be "
+                + "deleted or converted to personal projects.",
         },
         versionViewing: {
             title: "Viewing an old version",

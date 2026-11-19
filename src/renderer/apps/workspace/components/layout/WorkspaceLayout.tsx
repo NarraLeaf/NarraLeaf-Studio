@@ -16,7 +16,7 @@ import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMo
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { UpdateIndicator } from "./UpdateIndicator";
-import { LiveSessionPresence, StoryCommentsTeamSyncMount, TeamNotificationsBell, TeamEditingNotice, TeamProjectProvider, TeamRoleNotice, LiveCursorBroadcaster, LiveSessionChat } from "../../modules/team";
+import { StoryCommentsTeamSyncMount, TeamAccountAvatar, TeamNotificationsBell, TeamEditingNotice, TeamAssetLockNotice, TeamProjectProvider, TeamRoleNotice, TeamAssetRequestPrompt, TeamPlaytestFeedbackPrompt } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -30,7 +30,6 @@ import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
-import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { ManuscriptCommands } from "../../modules/story/manuscript/ManuscriptCommands";
@@ -54,12 +53,14 @@ import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { useDialogs } from "../../hooks/useUIService";
 import {
+    keepTeamHistoryCollapsed,
     readTeamHistoryCollapsed,
     teamHistoryWidth,
     TeamHistoryRail,
     TeamReconnectBar,
     useTeamDocuments,
 } from "../../modules/team/TeamHistoryRail";
+import { registerTeamHistoryBridge } from "../../modules/team/teamHistoryController";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -172,6 +173,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const dialogs = useDialogs();
     const teamDocuments = useTeamDocuments();
     const [teamHistoryCollapsed, setTeamHistoryCollapsed] = useState(readTeamHistoryCollapsed);
+    // The title bar's account menu opens the history; the fold is owned here, with its width.
+    const followingTeamProject = teamDocuments.view !== null;
+    useEffect(() => {
+        if (!followingTeamProject) {
+            return;
+        }
+        return registerTeamHistoryBridge({
+            open: () => {
+                keepTeamHistoryCollapsed(false);
+                setTeamHistoryCollapsed(false);
+            },
+        });
+    }, [followingTeamProject]);
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -476,7 +490,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel. A team project's
     // history takes the rail's place, at the rail's own two widths.
     const railWidth = teamDocuments.view !== null
-        ? teamHistoryWidth(teamHistoryCollapsed)
+        ? teamHistoryWidth(teamHistoryCollapsed, teamDocuments.previewing !== null)
         : versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
@@ -883,9 +897,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         <TeamProjectProvider surface={versionSurface}>
             <StoryCommentsTeamSyncMount />
             <TeamRoleNotice />
+            <TeamAssetRequestPrompt />
+            <TeamPlaytestFeedbackPrompt />
             <TeamEditingNotice />
-            <LiveCursorBroadcaster />
-            <LiveSessionChat />
+            <TeamAssetLockNotice />
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
@@ -940,12 +955,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                     controlBar={
                         <>
-                            {/* Who is in this project with you, left of the window's own controls -
-                                where an application puts the people you are in a document with. It is
-                                the only always-visible statement that a live session is running, and a
-                                session outlives every tab. */}
+                            {/* Team notifications, left of the window's own controls. */}
                             <TeamNotificationsBell />
-                            <LiveSessionPresence />
                             {/* The software update, directly left of the dock toggles, while there
                                 is one to show. */}
                             <UpdateIndicator />
@@ -957,6 +968,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 onToggleRightSidebar={toggleRightSidebar}
                                 onToggleBottomPanel={toggleBottomPanel}
                             />
+                            {/* The signed-in Team account, last in the row: after the settings
+                                button, a step apart from the square controls it is not one of. */}
+                            <TeamAccountAvatar />
                         </>
                     }
                 />
@@ -1116,7 +1130,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 )}
                 <EditorCommands />
                 <WorkspaceFreezeCommands />
-                <LiveSessionFreezeCommands />
                 <LintCommands />
                 <StoryScriptCommands />
                 <ManuscriptCommands />

@@ -19,13 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Input } from "@/lib/components/elements";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import {
-    APP_TAG_CLAIMS,
-    appTagsDocumentFreezeScope,
-    ConfigClaimMark,
-    useConfigClaim,
-    useConfigClaimHold,
-} from "@/apps/workspace/modules/project/configLiveSession";
+import { appTagsDocumentFreezeScope } from "@/apps/workspace/modules/project/configFreezeScopes";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import type { GameBuildPlatform } from "@shared/types/gameBuild";
@@ -35,7 +29,7 @@ import {
     pluginBuildConfigStorageKey,
     type PluginBuildConfigField,
 } from "@shared/types/plugins";
-import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import { appliesToPlatform } from "@shared/utils/pluginBuildConfig";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 
@@ -191,39 +185,21 @@ function ConfigSlot({
     const storageKey = pluginBuildConfigStorageKey(field.key, platform);
     const handle = `${field.pluginId}:${storageKey}`;
 
-    /**
-     * Which row of `editor/app-tags.json` this value lands on, for a claim.
-     *
-     * The same fold `AppTagService.setPluginConfigValue` makes, because a claim over the wrong row
-     * is a claim over nothing: a field the variant cannot state is written on the project's own
-     * record, and so is a variant-scoped field typed while the release variant is selected.
-     */
-    const claimRow = inheritable ? appTagId : APP_TAG_ID_RELEASE;
-    const [focused, setFocused] = useState(false);
-    useConfigClaimHold(APP_TAG_CLAIMS, focused ? claimRow : null);
-    const heldBy = useConfigClaim(APP_TAG_CLAIMS, claimRow);
-    // Read-only rather than disabled, with every other field this session leaves live: a row
-    // somebody else is inside is still one this author is here to read.
-    const claimedTip = heldBy === null
-        ? undefined
-        : t("project.live.entryClaimed", { name: heldBy });
-
     const restore = inheritable && resolved.overridden
         ? { label: t("project.appTags.restore"), onClick: () => service?.clearPluginConfigValue(appTagId, field, platform) }
         : null;
 
     return (
         <div className="grid min-w-0 gap-1">
-            {(label || restore || heldBy !== null) && (
+            {(label || restore) && (
                 <div className="flex min-w-0 items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-2xs text-fg-subtle">{label}</span>
-                    {heldBy === null ? null : <ConfigClaimMark account={heldBy} />}
                     {restore ? (
                         <Button
                             size="sm"
                             variant="ghost"
-                            disabled={frozen.disabled || heldBy !== null}
-                            data-tip={claimedTip ?? frozen["data-tip"]}
+                            disabled={frozen.disabled}
+                            data-tip={frozen["data-tip"]}
                             onClick={restore.onClick}
                             className="px-1.5"
                             data-build-plugin-restore={handle}
@@ -245,9 +221,7 @@ function ConfigSlot({
                        this control is editing may be filled in under the handle it already names. */
                     fillsHandle={!inheritable || resolved.overridden}
                     disabled={frozen.disabled}
-                    readOnly={heldBy !== null}
-                    onFocusChange={setFocused}
-                    title={claimedTip ?? frozen["data-tip"]}
+                    title={frozen["data-tip"]}
                     handle={handle}
                 />
             ) : (
@@ -255,9 +229,7 @@ function ConfigSlot({
                     value={stated}
                     placeholder={inheritable ? inherited : undefined}
                     disabled={frozen.disabled}
-                    readOnly={heldBy !== null}
-                    onFocusChange={setFocused}
-                    title={claimedTip ?? frozen["data-tip"]}
+                    title={frozen["data-tip"]}
                     label={label ? `${field.label} - ${label}` : field.label}
                     handle={handle}
                     onCommit={next => service?.setPluginConfigValue(appTagId, field, next, platform)}
@@ -283,8 +255,6 @@ function SecretValue({
     storedHandle,
     fillsHandle,
     disabled,
-    readOnly,
-    onFocusChange,
     title,
     handle,
 }: {
@@ -297,9 +267,6 @@ function SecretValue({
     /** Whether a new value fills in `storedHandle` rather than minting one. */
     fillsHandle: boolean;
     disabled: boolean;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
     title: string | undefined;
     handle: string;
 }) {
@@ -348,8 +315,6 @@ function SecretValue({
                     type="password"
                     placeholder={t("build.pluginConfig.secretEnter")}
                     disabled={disabled}
-                    readOnly={readOnly}
-                    onFocusChange={onFocusChange}
                     title={title}
                     label={field.label}
                     handle={handle}
@@ -402,8 +367,6 @@ function CommittedInput({
     type,
     placeholder,
     disabled,
-    readOnly,
-    onFocusChange,
     title,
     label,
     handle,
@@ -418,9 +381,6 @@ function CommittedInput({
     /** `<plugin id>:<storage key>` - what verification finds this field by. */
     handle: string;
     onCommit: (value: string) => void;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
 }) {
     const [draft, setDraft] = useState(value);
 
@@ -446,17 +406,12 @@ function CommittedInput({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            readOnly={readOnly}
             data-tip={title}
             aria-label={label}
             className="w-full min-w-0"
             data-build-plugin-field={handle}
             onChange={event => setDraft(event.target.value)}
-            onFocus={() => onFocusChange?.(true)}
-            onBlur={() => {
-                onFocusChange?.(false);
-                commit();
-            }}
+            onBlur={commit}
             onKeyDown={event => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();

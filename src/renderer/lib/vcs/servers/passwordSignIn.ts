@@ -25,9 +25,11 @@ export async function signInWithPassword(request: {
     authUrl: string;
     username: string;
     password: string;
+    /** The code from the authenticator app, on the second try for an account that asks for one. */
+    code?: string;
 }): Promise<VcsPasswordSignInOutcome> {
     const answer = await getInterface().vcs
-        .signInWithPassword(request.authUrl, request.username, request.password)
+        .signInWithPassword(request.authUrl, request.username, request.password, request.code)
         .catch(() => null);
     // A call that never completed is the same to a reader as one that could not be read:
     // there is nothing they would do differently, and both get the last sentence.

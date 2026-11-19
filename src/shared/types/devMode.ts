@@ -362,6 +362,24 @@ export type DevModeStoryRowHighlight = {
  * that one must never open a tab or steal focus (it fires on every action), while this one exists to
  * do exactly that, because the author asked. Same shape, opposite manners.
  */
+/**
+ * "Send feedback on this moment", from the Dev Mode window.
+ *
+ * The playtest window does not speak to a Team server - only a workspace does, for a project that
+ * uses the sign-in - so the main process takes a picture of the window that asked and hands it, with
+ * the row that was playing, to the workspace of the same project, which asks the author what to say.
+ */
+export type DevModePlaytestFeedbackRequest = {
+    projectPath: string;
+    row: DevModeStoryRowHighlight | null;
+};
+
+/** What the workspace is handed for a playtest note: a picture of the moment and where the story was. */
+export type WorkspacePlaytestFeedback = {
+    dataUrl: string;
+    row: DevModeStoryRowHighlight | null;
+};
+
 export type DevModeStoryRowOpenPayload = {
     projectPath: string;
     storyId: string;

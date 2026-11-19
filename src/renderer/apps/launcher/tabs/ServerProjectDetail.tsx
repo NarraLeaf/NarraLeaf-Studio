@@ -23,7 +23,6 @@ import type {
     VcsServerRevision,
 } from "@shared/types/vcs";
 import { ProjectDiscussion } from "./ProjectDiscussion";
-import { ProjectLiveSessions } from "./ServerLiveSessions";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -62,14 +61,6 @@ export interface ServerProjectDetailProps {
      * its id is drawn under its name (`revisionAuthorLabel`).
      */
     account?: VcsServerAccount | null;
-    /**
-     * Where this machine keeps this project, or null when it has never had it.
-     *
-     * Read by the live sessions below, which is the one thing here that acts on it: joining a
-     * room means opening the project, and a machine without it has to fetch one first. The list
-     * is what knows this, for the reason it knows it for the Open control beside the title.
-     */
-    localPath: string | null;
     /** Whether this server answers what it knows about one project. */
     canDetail: boolean;
     /** Whether this server answers a project's revisions. */
@@ -82,7 +73,11 @@ export interface ServerProjectDetailProps {
      * should not have to go back to the list to fetch it.
      */
     action: React.ReactNode;
-    onBack: () => void;
+    /**
+     * The way back to the list it was opened from, or nothing where it was not opened from
+     * one: drawn in a dialog over the home list, the dialog's own close is the way out.
+     */
+    onBack?: () => void;
     /**
      * Take this project off the server's list, or nothing where there is no such route.
      *
@@ -108,7 +103,6 @@ export function ServerProjectDetailView({
     project,
     server,
     account = null,
-    localPath,
     canDetail,
     canHistory,
     action,
@@ -239,16 +233,18 @@ export function ServerProjectDetailView({
                 came from, not a screen of its own, and the way back out of it has to be
                 where it was left however far down the versions somebody has read. */}
             <div className="shrink-0">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onBack}
-                    data-project-action="back"
-                    className="-ml-2 mb-2"
-                >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    {t("launcher.servers.detail.back")}
-                </Button>
+                {onBack !== undefined && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onBack}
+                        data-project-action="back"
+                        className="-ml-2 mb-2"
+                    >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                        {t("launcher.servers.detail.back")}
+                    </Button>
+                )}
 
                 <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -328,15 +324,6 @@ export function ServerProjectDetailView({
                     holds a session and offers conversations, which is what the component
                     itself checks: a deployment that does not is a page with no such
                     section rather than one with an empty one. */}
-                {/* Above the conversation, because it is happening now and a note is not.
-                    Drawn only where the server offers rooms and there is one open - see
-                    `ServerLiveSessions` for why joining is here rather than in the editor. */}
-                <ProjectLiveSessions
-                    remoteOrigin={remoteOrigin}
-                    project={known}
-                    localPath={localPath}
-                />
-
                 <ProjectDiscussion remoteOrigin={remoteOrigin} projectId={known.id} />
 
                 {versionsUnavailable && !fileUnread && !empty && (

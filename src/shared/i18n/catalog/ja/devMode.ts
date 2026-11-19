@@ -60,6 +60,8 @@ export const devMode = {
         closeMenu: "プレビューのデバッグ道具のメニューを閉じる",
         panelsAria: "インターフェースのパネル",
         locateRow: "この行を Studio で開く",
+        // A picture of the game sent to the workspace, which asks for a note and opens a Team thread.
+        playtestFeedback: "テストプレイのフィードバックを送る",
         skipToNextChoice: "次の選択肢まで飛ばす",
         skipToNextChoiceBusy: "飛ばしている…",
         // このウィンドウのゲームからデバッグボタンを外す。戻す手段はこのキーだけなので、

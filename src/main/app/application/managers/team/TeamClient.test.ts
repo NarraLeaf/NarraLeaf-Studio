@@ -82,7 +82,7 @@ function drive(): Driven {
     const events: Driven["events"] = [];
     const client = new TeamClient({
         remoteOrigin: "lore://team.example.lan:41337",
-        authUrl: "https://team.example.lan:41402",
+        authUrl: "https://team.example.lan:54080",
         token: "a-token",
         userDataDir: "/tmp/userdata",
         identity: { installation: "installation-1", label: "Nomen", agent: "Studio 0.0.0-test" },
@@ -118,9 +118,9 @@ function current(driven: Driven): FakeSocket {
 
 describe("reading an address", () => {
     it("takes the https origin a session is stored with", () => {
-        expect(endpointOf("https://team.example.lan:41402")).toEqual({
+        expect(endpointOf("https://team.example.lan:54080")).toEqual({
             host: "team.example.lan",
-            port: 41402,
+            port: 54080,
         });
     });
 
@@ -257,6 +257,110 @@ describe("subscriptions", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it("opens one socket when a call arrives while it is waiting out a backoff", async () => {
+        vi.useFakeTimers();
+        try {
+            const driven = drive();
+            driven.client.connect();
+            current(driven).greet();
+            // Two drops in a row put the backoff at two seconds.
+            current(driven).drop({ detail: "the connection closed" });
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(driven.sockets).toHaveLength(2);
+            current(driven).drop({ detail: "the connection closed" });
+
+            // A screen asks before the backoff is up: that is the attempt.
+            const asked = driven.client.call("projects.list");
+            expect(driven.sockets).toHaveLength(3);
+            current(driven).greet();
+            await tick();
+            const frame = current(driven).sent.at(-1) as { id: number };
+            current(driven).say({ t: "result", id: frame.id, value: { projects: [] } });
+            await expect(asked).resolves.toEqual({ ok: true, value: { projects: [] } });
+
+            // The timer armed for that backoff must not open another socket over it.
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(driven.sockets).toHaveLength(3);
+            expect(driven.client.connection().state).toBe("ready");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe("starting over after a wake or a new network", () => {
+    it("replaces a socket that still looks open, and its late close changes nothing", async () => {
+        vi.useFakeTimers();
+        try {
+            const driven = drive();
+            driven.client.connect();
+            current(driven).greet();
+            const old = current(driven);
+
+            driven.client.reconnectNow("the machine woke up");
+            expect(old.closed).toBe(true);
+            expect(driven.sockets).toHaveLength(2);
+            current(driven).greet();
+            expect(driven.client.connection().state).toBe("ready");
+
+            // Nothing the old socket said on its way out arms a retry over the new one.
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(driven.sockets).toHaveLength(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not wait out a backoff that had grown long", async () => {
+        vi.useFakeTimers();
+        try {
+            const driven = drive();
+            driven.client.connect();
+            for (let drop = 0; drop < 5; drop += 1) {
+                current(driven).drop({ detail: "the connection closed" });
+                await vi.advanceTimersByTimeAsync(60_000);
+            }
+            const before = driven.sockets.length;
+            current(driven).drop({ detail: "the connection closed" });
+
+            driven.client.reconnectNow();
+            expect(driven.sockets).toHaveLength(before + 1);
+
+            // And the backoff starts again from the first step.
+            current(driven).drop({ detail: "the connection closed" });
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(driven.sockets).toHaveLength(before + 2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("fails a call that was waiting on the old socket rather than leaving it to time out", async () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet();
+        const asked = driven.client.call("projects.list");
+        await tick();
+
+        driven.client.reconnectNow("the network changed");
+        await expect(asked).resolves.toEqual({
+            ok: false,
+            problem: { kind: "offline", detail: "the network changed" },
+        });
+    });
+
+    it("leaves alone a client nobody opened, and one whose token was refused", () => {
+        const idle = drive();
+        idle.client.reconnectNow();
+        expect(idle.sockets).toHaveLength(0);
+
+        const refused = drive();
+        refused.client.connect();
+        current(refused).drop({ status: 401, detail: "the token has expired" });
+        refused.client.reconnectNow();
+        expect(refused.sockets).toHaveLength(1);
     });
 });
 

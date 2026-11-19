@@ -15,7 +15,7 @@ import type { AgentPluginToolDescriptor } from "@shared/agent/pluginTools";
 const WRITES_ON: AgentSessionPolicy = { writesEnabled: true, allowedImportRoots: [] };
 const WRITES_OFF: AgentSessionPolicy = { writesEnabled: false, allowedImportRoots: [] };
 
-function createHarness(options: { livePhase?: string } = {}) {
+function createHarness() {
     const lines: { level: string; message: string }[] = [];
     let projectName = "Before";
     const project = {
@@ -43,8 +43,6 @@ function createHarness(options: { livePhase?: string } = {}) {
                         return follow;
                     case Services.GlobalSettings:
                         return { getSync: () => undefined, set: async () => undefined, onChange: () => () => undefined };
-                    case Services.Live:
-                        return { getView: () => ({ phase: options.livePhase ?? "idle" }) };
                     case Services.AudioTracks:
                         return { listTracks: () => [{ id: "music", name: "Music", parentId: null, volume: 1, loop: true, builtin: true }] };
                     case Services.Project:
@@ -152,10 +150,12 @@ describe("AgentBridgeService", () => {
         expect(harness.projectName()).toBe("Before");
     });
 
-    it("refuses writes while a live session runs", async () => {
-        const harness = createHarness({ livePhase: "active" });
+    it("refuses writes to a Team project, under the code agents already match", async () => {
+        const harness = createHarness();
         await harness.init();
+        freezeProjectWrites({ projectPath: "/project", reason: { kind: "live-session", session: "team-documents", writable: [] } });
         expect(codeOf(await harness.bridge.handle(call("project_settings_set", { name: "After" })))).toBe("live_session");
+        thawProjectWrites();
     });
 
     it("answers the state call with the pause and follow switches", async () => {
@@ -333,11 +333,9 @@ describe("AgentBridgeService", () => {
             expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {})))).toBe("frozen");
             // A reading one still runs: reads are never gated.
             expect(codeOf(await harness.bridge.handle(call("acme_notes__list", {})))).toBe("ok");
+            freezeProjectWrites({ projectPath: "/project", reason: { kind: "live-session", session: "team-documents", writable: [] } });
+            expect(codeOf(await harness.bridge.handle(call("acme_notes__add", {})))).toBe("live_session");
             thawProjectWrites();
-            const live = createHarness({ livePhase: "active" });
-            await live.init();
-            withPluginTools(live);
-            expect(codeOf(await live.bridge.handle(call("acme_notes__add", {})))).toBe("live_session");
             expect(ran).toEqual(["list:test-client"]);
         });
 

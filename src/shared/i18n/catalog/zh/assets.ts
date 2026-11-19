@@ -614,7 +614,6 @@ export const assets = {
         actionFailed: "该操作执行失败",
     },
     live: {
-        recordClaimed: "{name} 正在编辑该资产",
         transferring: "该资产已传输 {percent}%",
         refusedTitle: "未导入到会话",
         refusedQuotaOne: "{name} 超过该项目可同时传输的容量，待传输中的文件到达后再导入",

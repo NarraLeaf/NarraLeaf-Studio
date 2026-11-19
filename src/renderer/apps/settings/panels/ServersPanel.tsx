@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button } from "@/lib/components/elements";
@@ -31,6 +31,11 @@ export function ServersPanel() {
     const { servers, loading, reload } = useServers();
     const [adding, setAdding] = useState(false);
     const [busy, setBusy] = useState(false);
+    // Signing out is asked twice: the first press says what it ends, the second does it. It
+    // takes the sign-in away from every project that uses it, which is not undone by a press.
+    const [confirming, setConfirming] = useState<string | null>(null);
+    // The server whose sign-out did not go through, until the next attempt.
+    const [failed, setFailed] = useState<string | null>(null);
     // Reading it also claims it, which is how the explorer knows to stop drawing a ring
     // around the whole block: the mark belongs on the control the rail sent somebody to.
     const highlighted = useSettingsHighlight();
@@ -48,11 +53,24 @@ export function ServersPanel() {
         void reload();
     }, [reload]);
 
+    // Which projects are open is a fact about other windows, so it is read again whenever this one
+    // comes back to the front - the moment somebody who just closed a project returns to sign out.
+    useEffect(() => {
+        const onFocus = () => void reload();
+        window.addEventListener("focus", onFocus);
+        return () => window.removeEventListener("focus", onFocus);
+    }, [reload]);
+
     const forget = useCallback(async (session: VcsServerSession) => {
         setBusy(true);
+        setConfirming(null);
+        setFailed(null);
         const result = await getInterface().vcs.forgetServer(session.remoteOrigin).catch(() => null);
         setBusy(false);
-        if (result?.success) void reload();
+        // A refusal is usually a project using it that was opened since the list was read: the
+        // list is read again and the row says which one. Anything else is said on the row.
+        if (!result?.success) setFailed(session.remoteOrigin);
+        void reload();
     }, [reload]);
 
     return (
@@ -63,18 +81,50 @@ export function ServersPanel() {
 
             {servers.length > 0 && (
                 <div className="flex flex-col gap-1">
-                    {servers.map(session => (
+                    {servers.map(session => {
+                        // A server is not signed out of while a project that works with it is
+                        // open: its settings change between projects, never inside one.
+                        const openIn = session.openIn ?? [];
+                        const locked = openIn.length > 0;
+                        const usedBy = session.usedBy ?? [];
+                        const asking = confirming === session.remoteOrigin && !locked;
+                        const warning = asking || (failed === session.remoteOrigin && !locked);
+                        return (
                         <div key={session.remoteOrigin} className="flex flex-col">
                             <ServerRow
                                 session={session}
                                 data-servers-row={session.remoteOrigin}
-                                trailing={(
+                                trailing={asking ? (
+                                    <div className="flex shrink-0 items-center gap-1">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            data-servers-sign-out-cancel={session.remoteOrigin}
+                                            onClick={() => setConfirming(null)}
+                                        >
+                                            {t("settings.servers.cancel")}
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={busy}
+                                            data-servers-sign-out="confirm"
+                                            onClick={() => void forget(session)}
+                                        >
+                                            {t("settings.servers.signOutConfirm")}
+                                        </Button>
+                                    </div>
+                                ) : (
                                     <Button
                                         size="sm"
                                         variant="ghost"
                                         className="shrink-0"
-                                        disabled={busy}
-                                        onClick={() => void forget(session)}
+                                        disabled={busy || locked}
+                                        data-servers-sign-out={locked ? "locked" : "open"}
+                                        onClick={() => {
+                                            setFailed(null);
+                                            setConfirming(session.remoteOrigin);
+                                        }}
                                     >
                                         {t("settings.servers.signOut")}
                                     </Button>
@@ -84,18 +134,35 @@ export function ServersPanel() {
                                 this list is as long as the author made it. The full paths are on
                                 hover, the names are what the launcher calls them. */}
                             <p
-                                className="truncate px-3 pb-1 text-2xs text-fg-subtle"
+                                className={cn(
+                                    "px-3 pb-1 text-2xs",
+                                    // A warning is read in full; a list of projects is on hover.
+                                    warning ? "break-words text-danger" : "truncate text-fg-subtle",
+                                )}
                                 data-servers-used-by={session.remoteOrigin}
-                                data-tip={session.usedBy?.map(project => project.path).join("\n") || undefined}
+                                data-tip={usedBy.map(project => project.path).join("\n") || undefined}
                             >
-                                {session.usedBy && session.usedBy.length > 0
+                                {locked
+                                    ? t("settings.servers.signOutBlocked", {
+                                        projects: formatList(openIn.map(project => project.name)),
+                                    })
+                                    : asking
+                                    ? usedBy.length > 0
+                                        ? t("settings.servers.signOutWarning", {
+                                            projects: formatList(usedBy.map(project => project.name)),
+                                        })
+                                        : t("settings.servers.signOutWarningUnused")
+                                    : failed === session.remoteOrigin
+                                    ? t("settings.servers.signOutFailed")
+                                    : usedBy.length > 0
                                     ? t("settings.servers.usedBy", {
-                                        projects: formatList(session.usedBy.map(project => project.name)),
+                                        projects: formatList(usedBy.map(project => project.name)),
                                     })
                                     : t("settings.servers.unused")}
                             </p>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

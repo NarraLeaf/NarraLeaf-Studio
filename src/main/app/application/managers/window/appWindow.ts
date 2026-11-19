@@ -327,6 +327,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      * Anything asking "is there a workspace in this window right now" wants the last.
      */
     private workspaceIsUp = false;
+    private teamManaged = false;
 
     public reportLoadResult(ok: boolean): void {
         this.workspaceIsUp = ok;
@@ -350,6 +351,19 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      */
     public hasLoadedWorkspace(): boolean {
         return this.workspaceIsUp;
+    }
+
+    /**
+     * Whether this workspace's project is a team project whose history is its server's saved
+     * versions. Learnt from the workspace's answer to each pending-save flush, which every close
+     * path asks before it decides on a checkpoint (`shouldCheckpointOnClose`).
+     */
+    public isTeamManaged(): boolean {
+        return this.teamManaged;
+    }
+
+    public setTeamManaged(managed: boolean): void {
+        this.teamManaged = managed;
     }
 
     /**

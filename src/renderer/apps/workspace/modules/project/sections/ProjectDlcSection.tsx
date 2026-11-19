@@ -30,13 +30,7 @@ import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
 import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
 import { useWorkspace } from "../../../context";
-import {
-    ConfigClaimMark,
-    DLC_CLAIMS,
-    dlcDocumentFreezeScope,
-    useConfigClaim,
-    useConfigClaimHold,
-} from "../configLiveSession";
+import { dlcDocumentFreezeScope } from "../configFreezeScopes";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -50,9 +44,8 @@ const HEADER_WIDTH_CLAMP = "min-w-0 [&>button]:min-w-0 [&>button>span]:min-w-0";
 export function ProjectDlcSection({ uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    // Scoped, so a live session leaves this list live: every gesture on it is an operation the
-    // session carries. The scope is the file `DlcService` writes, and it is the same predicate the
-    // write boundary asks - see `configLiveSession`.
+    // Scoped to the file `DlcService` writes, which is the same predicate the write boundary asks -
+    // see `configFreezeScopes`.
     const freeze = useFreezeGuard(dlcDocumentFreezeScope());
 
     const services = useMemo(() => {
@@ -219,23 +212,6 @@ function DlcItem({
     const { t } = useTranslation();
     const freeze = useFreezeGuard(dlcDocumentFreezeScope());
     const frozen = freeze.writes(!service);
-    /**
-     * The field somebody is inside, which is what a claim is held for.
-     *
-     * One piece of state for the row rather than one per box: the caret is in at most one of
-     * them, and what a claim says is that somebody is inside this DLC rather than which of its
-     * fields they are in.
-     */
-    const [focused, setFocused] = useState(false);
-    useConfigClaimHold(DLC_CLAIMS, focused ? dlc.id : null);
-    const heldBy = useConfigClaim(DLC_CLAIMS, dlc.id);
-    // Read-only rather than disabled, with the character panel and the translation table: a row
-    // somebody else is inside is still one this author is here to read.
-    const readOnly = heldBy !== null;
-    const claimed = {
-        readOnly,
-        "data-tip": heldBy === null ? undefined : t("project.live.entryClaimed", { name: heldBy }),
-    };
 
     return (
         <AccordionItem
@@ -251,7 +227,6 @@ function DlcItem({
             title={
                 <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-fg">{dlc.name}</span>
-                    {heldBy === null ? null : <ConfigClaimMark account={heldBy} />}
                 </span>
             }
         >
@@ -275,8 +250,6 @@ function DlcItem({
                         label={t("project.dlc.nameTitle")}
                         handle={`${dlc.id}:name`}
                         onCommit={name => service?.rename(dlc.id, name)}
-                        onFocusChange={setFocused}
-                        {...claimed}
                     />
                 </Field>
 
@@ -288,8 +261,6 @@ function DlcItem({
                         inUse={inUse}
                         onIdChanged={onIdChanged}
                         disabled={frozen.disabled}
-                        onFocusChange={setFocused}
-                        {...claimed}
                     />
                     {/* Under the id rather than under the name: it is what the id produces, and an
                         author reading it is checking the id they just typed. */}
@@ -308,7 +279,7 @@ function DlcItem({
                         options={[...variantOptions]}
                         value={dlc.attachTo}
                         onChange={value => service?.setAttachTo(dlc.id, String(value))}
-                        disabled={frozen.disabled || readOnly}
+                        disabled={frozen.disabled}
                         ariaLabel={t("project.dlc.attachTitle")}
                     />
                 </Field>
@@ -319,7 +290,6 @@ function DlcItem({
                         variant="danger"
                         onClick={onDelete}
                         {...frozen}
-                        disabled={frozen.disabled || readOnly}
                     >
                         {t("project.dlc.delete")}
                     </Button>
@@ -346,9 +316,6 @@ function IdInput({
     inUse,
     onIdChanged,
     disabled,
-    readOnly,
-    onFocusChange,
-    "data-tip": tip,
 }: {
     dlc: ProjectDlc;
     service: DlcService | null;
@@ -356,10 +323,6 @@ function IdInput({
     inUse: (id: string) => boolean;
     onIdChanged: (from: string, to: string) => void;
     disabled: boolean;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
-    "data-tip"?: string;
 }) {
     const { t } = useTranslation();
     const [draft, setDraft] = useState(dlc.id);
@@ -402,18 +365,14 @@ function IdInput({
             size="sm"
             value={draft}
             disabled={disabled}
-            readOnly={readOnly}
-            data-tip={tip}
             aria-label={t("project.dlc.idTitle")}
             className="w-full min-w-0"
             data-dlc-field={`${dlc.id}:id`}
             onChange={event => setDraft(event.target.value)}
             onFocus={() => {
                 abandoning.current = false;
-                onFocusChange?.(true);
             }}
             onBlur={() => {
-                onFocusChange?.(false);
                 void commit();
             }}
             onKeyDown={event => {
@@ -457,9 +416,6 @@ function CommittedInput({
     label,
     handle,
     onCommit,
-    readOnly,
-    onFocusChange,
-    "data-tip": tip,
 }: {
     value: string;
     disabled: boolean;
@@ -467,10 +423,6 @@ function CommittedInput({
     /** `<dlcId>:name` - what verification finds this field by. */
     handle: string;
     onCommit: (value: string) => void;
-    /** True while somebody else is inside this row. See `configLiveSession`. */
-    readOnly?: boolean;
-    onFocusChange?: (focused: boolean) => void;
-    "data-tip"?: string;
 }) {
     const [draft, setDraft] = useState(value);
     const abandoning = useRef(false);
@@ -497,18 +449,14 @@ function CommittedInput({
             size="sm"
             value={draft}
             disabled={disabled}
-            readOnly={readOnly}
-            data-tip={tip}
             aria-label={label}
             className="w-full min-w-0"
             data-dlc-field={handle}
             onChange={event => setDraft(event.target.value)}
             onFocus={() => {
                 abandoning.current = false;
-                onFocusChange?.(true);
             }}
             onBlur={() => {
-                onFocusChange?.(false);
                 commit();
             }}
             onKeyDown={event => {
