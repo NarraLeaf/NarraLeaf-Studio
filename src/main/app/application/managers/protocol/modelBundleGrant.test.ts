@@ -83,7 +83,7 @@ describe("model bundle directory grants", () => {
         await fs.rm(root, { recursive: true, force: true });
     });
 
-    function grant(): string {
+    function grant(): Promise<string> {
         return storageManager.allocateDirectoryHash(root, 7);
     }
 
@@ -95,7 +95,7 @@ describe("model bundle directory grants", () => {
         const entry = detectModelBundleEntry(HIYORI_FILES).entry;
         expect(entry).toBe("Hiyori.model3.json");
 
-        const url = entryUrl(grant(), entry!);
+        const url = entryUrl(await grant(), entry!);
         expect((await handler.handle(makeRequest(url))).statusCode).toBe(200);
 
         for (const reference of HIYORI_SIBLING_REFERENCES) {
@@ -107,7 +107,7 @@ describe("model bundle directory grants", () => {
     });
 
     it("reports the real MIME type per file, not one type for the whole bundle", async () => {
-        const url = entryUrl(grant(), "Hiyori.model3.json");
+        const url = entryUrl(await grant(), "Hiyori.model3.json");
         const manifest = await handler.handle(makeRequest(url));
         expect(manifest.headers["Content-Type"]).toContain("json");
 
@@ -118,7 +118,7 @@ describe("model bundle directory grants", () => {
     it("stays readable across repeated fetches", async () => {
         // A one-shot grant would die on the first texture. Hiyori alone is 18 reads, and the engine
         // re-fetches whenever its cache evicts.
-        const hash = grant();
+        const hash = await grant();
         for (let attempt = 0; attempt < 3; attempt += 1) {
             const response = await handler.handle(makeRequest(entryUrl(hash, "Hiyori.model3.json")));
             expect(response.statusCode).toBe(200);
@@ -126,7 +126,7 @@ describe("model bundle directory grants", () => {
     });
 
     it("dies with the window that owns it, and not with any other", async () => {
-        const hash = grant();
+        const hash = await grant();
         storageManager.revokeWindowFileSystemAccess(makeWindow(99));
         expect((await handler.handle(makeRequest(entryUrl(hash, "Hiyori.moc3")))).statusCode).toBe(200);
 
@@ -135,7 +135,7 @@ describe("model bundle directory grants", () => {
     });
 
     it("refuses to serve anything outside the granted root", async () => {
-        const hash = grant();
+        const hash = await grant();
         await fs.writeFile(path.join(path.dirname(root), "outside.txt"), "secret");
 
         for (const escape of [

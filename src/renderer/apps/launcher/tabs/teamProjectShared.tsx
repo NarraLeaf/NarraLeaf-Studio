@@ -23,6 +23,7 @@ import type {
     VcsServerSession,
 } from "@shared/types/vcs";
 
+import { launchProject } from "../projectActions";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -42,9 +43,35 @@ export function isEmptyOnServer(project: VcsServerProject): boolean {
     return project.history?.revisions === 0;
 }
 
-/** Open a project on this disk in a workspace, retiring the launcher. */
-export function openProjectPath(projectPath: string): void {
-    void getInterface().workspace.launch({ projectPath }, true);
+/**
+ * Open a project on this disk in a workspace, retiring the launcher. Answers the host's
+ * failure when it could not be opened, or null.
+ */
+export function openProjectPath(projectPath: string): Promise<string | null> {
+    return launchProject({ projectPath });
+}
+
+/**
+ * Open projects on this disk, and hold the sentence for one the host could not open.
+ *
+ * A launch that fails leaves the launcher on screen, so the reason has to be drawn there; a
+ * fire-and-forget launch is what used to leave the author clicking a button that did nothing.
+ */
+export function useOpenProjectPath(): {
+    openProject: (projectPath: string) => void;
+    openError: string | null;
+    clearOpenError: () => void;
+} {
+    const { t } = useTranslation();
+    const [openError, setOpenError] = useState<string | null>(null);
+    const openProject = useCallback((projectPath: string) => {
+        setOpenError(null);
+        void openProjectPath(projectPath).then(error => {
+            if (error !== null) setOpenError(error || t("launcher.projects.errorOpenFolder"));
+        });
+    }, [t]);
+    const clearOpenError = useCallback(() => setOpenError(null), []);
+    return { openProject, openError, clearOpenError };
 }
 
 /** What this machine already holds, by repository id: the remembered projects, read once. */
@@ -134,13 +161,17 @@ export function useNewTeamProject(): {
     creating: boolean;
     newProject: (session: VcsServerSession) => Promise<void>;
     dialog: ReactNode;
+    /** A project that was sent and then could not be opened; the dialog carries its own. */
+    openError: string | null;
 } {
     const [creating, setCreating] = useState(false);
+    const { openProject, openError, clearOpenError } = useOpenProjectPath();
     const [unsent, setUnsent] = useState<{ project: UnsentProject; server: string } | null>(null);
 
     const newProject = useCallback(async (session: VcsServerSession) => {
         setCreating(true);
         setUnsent(null);
+        clearOpenError();
         const server = serverDisplayName(session);
         try {
             const made = await getInterface().app.launchProjectWizard({
@@ -165,7 +196,7 @@ export function useNewTeamProject(): {
                 .publishProject(projectPath, session.remoteOrigin, repository)
                 .catch(() => null);
             if (sent !== null && sent.success && sent.data.ok) {
-                openProjectPath(projectPath);
+                openProject(projectPath);
                 return;
             }
             setUnsent({
@@ -183,18 +214,19 @@ export function useNewTeamProject(): {
         } finally {
             setCreating(false);
         }
-    }, []);
+    }, [openProject, clearOpenError]);
 
     const dialog = unsent === null ? null : (
         <UnsentProjectDialog
             project={unsent.project}
             server={unsent.server}
-            onOpen={() => openProjectPath(unsent.project.path)}
-            onClose={() => setUnsent(null)}
+            error={openError}
+            onOpen={() => openProject(unsent.project.path)}
+            onClose={() => { setUnsent(null); clearOpenError(); }}
         />
     );
 
-    return { creating, newProject, dialog };
+    return { creating, newProject, dialog, openError: unsent === null ? openError : null };
 }
 
 /**
@@ -291,11 +323,13 @@ interface UnsentProject {
 function UnsentProjectDialog({
     project,
     server,
+    error,
     onOpen,
     onClose,
 }: {
     project: UnsentProject;
     server: string;
+    error: string | null;
     onOpen: () => void;
     onClose: () => void;
 }) {
@@ -336,6 +370,7 @@ function UnsentProjectDialog({
                 {project.detail !== "" && (
                     <p className="break-words text-xs text-fg-muted">{project.detail}</p>
                 )}
+                {error && <p className="text-xs text-danger" role="alert">{error}</p>}
                 <p className="break-all text-2xs text-fg-subtle">{project.path}</p>
             </div>
         </Modal>

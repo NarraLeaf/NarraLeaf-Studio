@@ -120,26 +120,27 @@ export function Accordion({
     // Keyboard navigation (scoped to this accordion only; never steal keys from other panels or editable fields)
     useEffect(() => {
         if (!isActive || !containerRef.current) return;
+        const view = containerRef.current.ownerDocument.defaultView;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             const root = containerRef.current;
             if (!root) return;
 
-            const raw = e.target;
-            const el =
-                raw instanceof Element ? raw : raw instanceof Node ? (raw.parentElement as Element | null) : null;
+            const raw = e.target as Node | null;
+            const el = raw?.nodeType === 1 ? raw as Element : raw?.parentElement ?? null;
             if (!el || !root.contains(el)) return;
 
             // Nested accordion: let the innermost accordion instance handle the event
             const nearestRoot = el.closest("[data-accordion-root]");
             if (nearestRoot !== root) return;
 
-            if (el.closest("input, textarea, select, [contenteditable='true']")) return;
+            if (!el.closest("[data-accordion-trigger]")) return;
 
-            const items = root.querySelectorAll("[data-accordion-item]");
-            if (!items || items.length === 0) return;
+            const items = Array.from(root.querySelectorAll("[data-accordion-item]"))
+                .filter(item => item.closest("[data-accordion-root]") === root);
+            if (items.length === 0) return;
 
-            const itemIds = Array.from(items).map(item => item.getAttribute("data-accordion-item")!);
+            const itemIds = items.map(item => item.getAttribute("data-accordion-item")!);
             const currentIndex = focusedItemId ? itemIds.indexOf(focusedItemId) : -1;
 
             switch (e.key) {
@@ -167,8 +168,8 @@ export function Accordion({
             }
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
+        view?.addEventListener("keydown", handleKeyDown);
+        return () => view?.removeEventListener("keydown", handleKeyDown);
     }, [isActive, focusedItemId, openItems, multiple]);
 
     return (
@@ -398,7 +399,11 @@ export function AccordionItem({
                     )}
                 >
                     <button
+                        data-accordion-trigger=""
                         onClick={handleClick}
+                        onFocus={() => {
+                            if (focusable) setFocusedItem(id);
+                        }}
                         onMouseEnter={handleMouseEnter}
                         disabled={disabled}
                         className={cn(

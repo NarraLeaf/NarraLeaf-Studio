@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useKeybindings } from "@/apps/workspace/hooks";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../ui/freezeGuard";
@@ -40,20 +40,16 @@ export function WorkspaceUndoKeybindings() {
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
-    const [focus, setFocus] = useState<FocusContext | null>(null);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        setFocus(uiService.focus.getFocus());
-        return uiService.focus.onFocusChange(setFocus);
-    }, [context]);
-
-    const scopeId = useMemo(
-        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
-        [focus, history],
+    // The active editor can change while the inspector keeps focus, so resolve at the keypress.
+    const scopeId = useCallback(
+        () => {
+            if (!context || !history) {
+                return projectHistoryScope();
+            }
+            const uiService = context.services.get<UIService>(Services.UI);
+            return resolveWorkspaceUndoScope(history, uiService.focus.getFocus());
+        },
+        [context, history],
     );
 
     const outsideEditorsAndSearch = useCallback(
@@ -92,7 +88,7 @@ export function WorkspaceUndoKeybindings() {
  * Shared with the
  * Search panel's keys, which differ from these only in the stack they name.
  */
-export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => void; redo: () => void } {
+export function useHistoryStepHandlers(scopeId: HistoryScopeId | (() => HistoryScopeId)): { undo: () => void; redo: () => void } {
     const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const history = useMemo(
@@ -100,14 +96,17 @@ export function useHistoryStepHandlers(scopeId: HistoryScopeId): { undo: () => v
         [context],
     );
     return useMemo(
-        () => ({
-            undo: freeze.run(() => {
-                history?.undo(scopeId);
-            }),
-            redo: freeze.run(() => {
-                history?.redo(scopeId);
-            }),
-        }),
+        () => {
+            const targetScope = () => typeof scopeId === "function" ? scopeId() : scopeId;
+            return {
+                undo: freeze.run(() => {
+                    history?.undo(targetScope());
+                }),
+                redo: freeze.run(() => {
+                    history?.redo(targetScope());
+                }),
+            };
+        },
         [freeze, history, scopeId],
     );
 }

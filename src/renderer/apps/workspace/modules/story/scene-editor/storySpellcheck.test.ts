@@ -123,6 +123,21 @@ describe("the DOM range a mark builds", () => {
         const range = createUnitRange(host, mark!.unitStart, mark!.unitEnd);
         expect(range.toString()).toBe("teh");
     });
+
+    it("covers a final word after a supplementary-plane character and a chip", () => {
+        const runs: StoryRichRun[] = [
+            { text: "𠮷" },
+            { pause: 200 },
+            { text: " teh" },
+        ];
+        const host = mount(runs);
+        const { text, unitAt } = buildSpellcheckText(runs);
+        const start = text.indexOf("teh");
+        const mark = markFromRange(unitAt, text, { start, end: start + 3, word: "teh" });
+
+        expect(mark).toEqual({ start: 4, end: 7, unitStart: 4, unitEnd: 7, word: "teh" });
+        expect(createUnitRange(host, mark!.unitStart, mark!.unitEnd).toString()).toBe("teh");
+    });
 });
 
 describe("pruneStaleMarks", () => {

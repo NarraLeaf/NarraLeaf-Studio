@@ -132,11 +132,9 @@ export function stripMediaMetadata(bytes: Uint8Array): StrippedMedia {
 /**
  * Whether a file is worth reading in full to strip, decided from its ends.
  *
- * Every tag these three formats carry lives either in a bounded prefix - the
- * RIFF chunk list before the samples, FLAC's metadata blocks, an ID3v2 header -
- * or in a bounded suffix, which is ID3v1's last 128 bytes and APE's trailer. So
- * a few kilobytes off each end answer "is there anything here at all", and the
- * answer is no for most of a project.
+ * FLAC metadata and ID3v2 start at the front; ID3v1 and APE end at the back.
+ * WAV chunks can also follow the samples, including chunks too large for the
+ * tail window. The RIFF and data lengths reveal whether such chunks may exist.
  *
  * That matters more than it looks. The alternative is reading every sound file
  * in the project on every build to find out, and a fully voiced game is
@@ -202,12 +200,11 @@ function wavChunks(bytes: Uint8Array): { strippable: boolean; unknownTail: boole
             strippable = true;
         }
         if (offset + advance > bytes.length) {
-            // The samples themselves, which is where the chunk list stops being
-            // readable from a prefix and stops mattering: everything a tagger
-            // writes before the audio has already been seen, and anything after
-            // it is the tail's business. Any other overrun means this is a
-            // truncated view and nothing can be ruled out.
-            return { strippable, unknownTail: id !== "data" };
+            // A data chunk reaching the RIFF's declared end has no following
+            // chunks. Otherwise their headers may fall outside both windows,
+            // so the complete file has to be read.
+            const riffEnd = view.getUint32(4, true) + 8;
+            return { strippable, unknownTail: id !== "data" || offset + advance !== riffEnd };
         }
         offset += advance;
     }

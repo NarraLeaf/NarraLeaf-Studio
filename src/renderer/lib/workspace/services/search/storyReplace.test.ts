@@ -7,6 +7,8 @@ import { Services, type WorkspaceContext } from "../services";
 import { applyStoryReplace, planForEdit, planStoryReplace } from "./storyReplace";
 import { indexEntries, type SearchIndexEntry } from "./searchIndexModel";
 import { compileMatcher, type TextMatchOptions } from "./textMatcher";
+import { SearchIndexEngine } from "./SearchService";
+import { storySource } from "./sources/storySource";
 
 vi.mock("@/lib/app/writeFreeze", () => ({
     getProjectWriteFreeze: () => frozen,
@@ -124,7 +126,13 @@ function makeContext(documents: StoryDocument[], entries?: SearchIndexEntry[]) {
         },
     };
 
-    const searchService = { listEntries: () => indexed };
+    let sourceRevision = 0;
+    let sourceCurrent = true;
+    const searchService = {
+        listEntries: () => indexed,
+        isSourceCurrent: () => sourceCurrent,
+        sourceRevision: () => sourceRevision,
+    };
 
     /** Every notification raised, as the author would read it. */
     const notices: Array<{ message: string; type: string; detail?: string }> = [];
@@ -149,7 +157,10 @@ function makeContext(documents: StoryDocument[], entries?: SearchIndexEntry[]) {
     } as unknown as WorkspaceContext;
 
     history.setContext(ctx);
-    return { ctx, history, batches, byId, documents, notices };
+    return {
+        ctx, history, batches, byId, documents, notices,
+        setSearchState(current: boolean, revision: number) { sourceCurrent = current; sourceRevision = revision; },
+    };
 }
 
 function textOf(document: StoryDocument, sceneId: string, blockId: string): string {
@@ -168,6 +179,15 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("planStoryReplace", () => {
+    it("waits for pending story index changes before planning", () => {
+        const document = storyDocument("s1", "Prologue", [scene("sc1", "Opening", [{ id: "b1", text: "hello" }])]);
+        const { ctx, setSearchState } = makeContext([document]);
+        setSearchState(false, 1);
+        const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+        expect(plan.applicable).toBe(false);
+        expect(plan.edits).toEqual([]);
+    });
+
     it("plans across several scenes of several stories, counting occurrences and not rows", () => {
         const prologue = storyDocument("s1", "Prologue", [
             scene("sc1", "Opening", [
@@ -360,6 +380,100 @@ describe("planStoryReplace", () => {
 });
 
 describe("applyStoryReplace", () => {
+    it("waits for a newly added matching row and replaces both rows after the index catches up", async () => {
+        vi.useFakeTimers();
+        const document = storyDocument("s1", "Prologue", [scene("sc1", "Opening", [{ id: "b1", text: "hello" }])]);
+        const harness = makeContext([document]);
+        const originalGet = harness.ctx.services.get.bind(harness.ctx.services);
+        const originalStory = originalGet(Services.Story);
+        let changed: ((event: { storyId: string }) => void) | undefined;
+        const story = {
+            getStoryDocument: originalStory.getStoryDocument.bind(originalStory),
+            updateBlocks: originalStory.updateBlocks.bind(originalStory),
+            loadLibrary: async () => {},
+            listStories: () => [{ id: "s1" }],
+            loadStory: async () => document,
+            onDocumentChanged: (listener: (event: { storyId: string }) => void) => {
+                changed = listener;
+                return () => { changed = undefined; };
+            },
+            onLibraryChanged: () => () => {},
+        };
+        let engine: SearchIndexEngine;
+        const ctx = {
+            ...harness.ctx,
+            services: { get(id: Services) {
+                if (id === Services.Search) return engine;
+                if (id === Services.Story) return story;
+                if (id === Services.Character) return { getCharacter: () => undefined, subscribe: () => () => {} };
+                return originalGet(id);
+            } },
+        } as unknown as WorkspaceContext;
+        engine = new SearchIndexEngine(ctx, [storySource]);
+        try {
+            await engine.ensureReady();
+            const old = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+            document.scenes.sc1.blocks.b2 = narrationBlock({ id: "b2", text: "hello too" });
+            document.scenes.sc1.rootBlockIds.push("b2");
+            changed?.({ storyId: "s1" });
+            expect(planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" }).applicable).toBe(false);
+            expect(applyStoryReplace(ctx, old, LABEL)).toBe(false);
+            await vi.advanceTimersByTimeAsync(300);
+            const fresh = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+            expect(fresh.occurrences).toBe(2);
+            expect(applyStoryReplace(ctx, fresh, LABEL)).toBe(true);
+            expect([textOf(document, "sc1", "b1"), textOf(document, "sc1", "b2")]).toEqual(["hi", "hi too"]);
+        } finally {
+            engine.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it("refuses a plan after the story index changes, even when its original line is intact", () => {
+        const document = storyDocument("s1", "Prologue", [scene("sc1", "Opening", [{ id: "b1", text: "hello" }])]);
+        const { ctx, history, batches, setSearchState } = makeContext([document]);
+        const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+        document.scenes.sc1.blocks.b2 = narrationBlock({ id: "b2", text: "hello too" });
+        document.scenes.sc1.rootBlockIds.push("b2");
+        setSearchState(false, 1);
+        expect(applyStoryReplace(ctx, plan, LABEL)).toBe(false);
+        setSearchState(true, 1);
+        expect(applyStoryReplace(ctx, plan, LABEL)).toBe(false);
+        expect(textOf(document, "sc1", "b1")).toBe("hello");
+        expect(batches).toEqual([]);
+        expect(history.describe()).toEqual([]);
+    });
+
+    it("refuses the entire plan when a planned line changes before applying", () => {
+        const document = storyDocument("s1", "Prologue", [
+            scene("sc1", "Opening", [{ id: "b1", text: "hello" }, { id: "b2", text: "hello" }]),
+        ]);
+        const { ctx, history, batches } = makeContext([document]);
+        const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+        const payload = document.scenes.sc1.blocks.b2.payload as { text: { value: string } };
+        payload.text.value = "hello, later edit";
+
+        expect(applyStoryReplace(ctx, plan, LABEL)).toBe(false);
+        expect([textOf(document, "sc1", "b1"), textOf(document, "sc1", "b2")])
+            .toEqual(["hello", "hello, later edit"]);
+        expect(batches).toEqual([]);
+        expect(history.describe()).toEqual([]);
+    });
+
+    it("refuses the entire plan when a planned line is deleted before applying", () => {
+        const document = storyDocument("s1", "Prologue", [
+            scene("sc1", "Opening", [{ id: "b1", text: "hello" }, { id: "b2", text: "hello" }]),
+        ]);
+        const { ctx, history, batches } = makeContext([document]);
+        const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
+        delete document.scenes.sc1.blocks.b2;
+
+        expect(applyStoryReplace(ctx, plan, LABEL)).toBe(false);
+        expect(textOf(document, "sc1", "b1")).toBe("hello");
+        expect(batches).toEqual([]);
+        expect(history.describe()).toEqual([]);
+    });
+
     it("writes one batch per story", () => {
         const one = storyDocument("s1", "Prologue", [
             scene("sc1", "Opening", [{ id: "b1", text: "hello" }]),
@@ -397,7 +511,7 @@ describe("applyStoryReplace", () => {
         const { ctx, history } = makeContext([document]);
         const plan = planStoryReplace(ctx, { matcher: matcher("hello"), replacement: "hi" });
 
-        expect(applyStoryReplace(ctx, planForEdit(plan.edits[1]), LABEL)).toBe(true);
+        expect(applyStoryReplace(ctx, planForEdit(plan.edits[1], plan.sourceRevision), LABEL)).toBe(true);
 
         expect(textOf(document, "sc1", "b1")).toBe("hello");
         expect(textOf(document, "sc1", "b2")).toBe("hi");

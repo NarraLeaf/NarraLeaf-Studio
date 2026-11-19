@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { walkStoryStageTimeline } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
-import { buildStageTimelineModel, stageTimelineColumns } from "./stageTimelineModel";
+import { buildStageTimelineModel, stageTimelineColumns, type StageTimelineNames } from "./stageTimelineModel";
 import { StageTimelineView } from "./StageTimelineView";
 
 /**
@@ -44,13 +44,20 @@ const document: StoryDocument = {
     },
 };
 
-function renderView(cursorColumn: number) {
-    const scene = document.scenes["scene-1"];
-    const walk = walkStoryStageTimeline({ document, sceneId: "scene-1" });
+const names: StageTimelineNames = {
+    asset: id => `Picture ${id}`,
+    character: () => "Alice",
+    appearance: () => "Normal",
+    voiceSeconds: () => undefined,
+};
+
+function renderView(cursorColumn: number, storyDocument = document, timelineNames = names, showAllRows = false) {
+    const scene = storyDocument.scenes["scene-1"];
+    const walk = walkStoryStageTimeline({ document: storyDocument, sceneId: "scene-1" });
     const model = buildStageTimelineModel({
         walk,
         scene,
-        names: { asset: id => `Picture ${id}`, character: () => "Alice", appearance: () => "Normal", voiceSeconds: () => undefined },
+        names: timelineNames,
     });
     const onStepTo = vi.fn();
     const onPick = vi.fn();
@@ -60,7 +67,7 @@ function renderView(cursorColumn: number) {
             model={model}
             columns={stageTimelineColumns(model.lines.map(line => (line === null ? null : 40)), 1)}
             cursorColumn={cursorColumn}
-            showAllRows={false}
+            showAllRows={showAllRows}
             onShowAllRowsChange={() => undefined}
             zoom={1}
             onZoomChange={() => undefined}
@@ -76,6 +83,37 @@ function renderView(cursorColumn: number) {
 afterEach(cleanup);
 
 describe("StageTimelineView", () => {
+    it("shows localised placeholders for missing image and character names", () => {
+        const imageId = "a3247f0e-5f4b-4567-88bb-cdef01234567";
+        const characterId = "b3247f0e-5f4b-4567-88bb-cdef01234567";
+        const original = document.scenes["scene-1"];
+        const scene = {
+            ...original,
+            rootBlockIds: ["image", "character"],
+            blocks: Object.fromEntries([
+                block("image", "action", { action: "image", operation: "show", objectName: imageId, assetId: "missing" }),
+                block("character", "action", { action: "character", operation: "enter", characterId }),
+            ].map(entry => [entry.id, entry])),
+        };
+        const storyDocument = { ...document, scenes: { ...document.scenes, "scene-1": scene } };
+        const { view } = renderView(0, storyDocument, { ...names, asset: () => null, character: () => null });
+
+        expect(screen.getByText("(unnamed)")).toBeTruthy();
+        expect(screen.getByText("Unnamed character")).toBeTruthy();
+        expect(view.container.textContent).not.toContain(imageId);
+        expect(view.container.textContent).not.toContain(characterId);
+    });
+
+    it("uses the unnamed placeholder when the scene name is a generated ID", () => {
+        const id = "a3247f0e-5f4b-4567-88bb-cdef01234567";
+        const scene = { ...document.scenes["scene-1"], name: id };
+        const storyDocument = { ...document, scenes: { ...document.scenes, "scene-1": scene } };
+        const { view } = renderView(0, storyDocument);
+
+        expect(screen.getByText("(unnamed)")).toBeTruthy();
+        expect(view.container.textContent).not.toContain(id);
+    });
+
     it("gives every row a column and labels each block", () => {
         const { model } = renderView(2);
         expect(model.blockIds).toEqual(["bg", "in", "a", "menu", "stay", "b"]);
@@ -101,10 +139,43 @@ describe("StageTimelineView", () => {
         expect(onStepTo).toHaveBeenLastCalledWith("b");
     });
 
+    it("draws consecutive one-shot starts as separate blocks", () => {
+        const scene = {
+            ...document.scenes["scene-1"],
+            rootBlockIds: ["first", "second"],
+            blocks: Object.fromEntries([
+                block("first", "action", { action: "audio", operation: "playSound", objectName: "bell", assetId: "bell-clip" }),
+                block("second", "action", { action: "audio", operation: "playSound", objectName: "bell" }),
+            ].map(entry => [entry.id, entry])),
+        };
+        const storyDocument = { ...document, scenes: { ...document.scenes, "scene-1": scene } };
+        const { view, model } = renderView(0, storyDocument);
+
+        expect(model.lanes[0].cells.map(cell => cell.present)).toEqual([true, true]);
+        expect(view.container.querySelectorAll("div.absolute.top-1.bottom-1.border")).toHaveLength(2);
+    });
+
     it("offers a menu's options from the ruler", () => {
         const { onPick } = renderView(0);
         fireEvent.click(screen.getByRole("button", { name: "Choose a branch" }));
         fireEvent.click(screen.getByText("Leave"));
         expect(onPick).toHaveBeenCalledWith("menu", "opt-2");
+    });
+
+    it("shows the row number for a menu with no branch button", () => {
+        const scene = {
+            ...document.scenes["scene-1"],
+            rootBlockIds: ["menu"],
+            blocks: Object.fromEntries([
+                block("menu", "nodeAction", { action: "choice" }, null, ["option"]),
+                block("option", "nodeAction", { action: "choiceOption", text: { textId: "option-text", value: "Only", role: "choiceText" } }, "menu", ["line"]),
+                say("line", "option"),
+            ].map(entry => [entry.id, entry])),
+        };
+        const storyDocument = { ...document, scenes: { ...document.scenes, "scene-1": scene } };
+        renderView(0, storyDocument, names, true);
+
+        expect(screen.queryByRole("button", { name: "Choose a branch" })).toBeNull();
+        expect(screen.getByText("1")).toBeTruthy();
     });
 });

@@ -115,8 +115,8 @@ describe("buildStoryCommandContext - stage objects", () => {
             scene: document.scenes["scene-1"],
         });
 
-        // `poster` and `ambience` are addressable - the engine materialises an object on first
-        // mention - but nothing declares them, so there is no row a reference could honestly bind to.
+        // Neither `poster` nor `ambience` has a declaration to bind to. Image candidates also
+        // exclude the undeclared `poster`, which the runtime cannot look up.
         expect(context.stageObjectSources).toEqual({
             image: { hero: "b2" },
             text: {},
@@ -125,7 +125,19 @@ describe("buildStoryCommandContext - stage objects", () => {
             audio: { music: "b4" },
             vfx: {},
         });
-        expect(context.stageObjects.image).toEqual(["poster", "hero"]);
+        expect(context.stageObjects.image).toEqual(["hero"]);
+    });
+
+    it("offers an image that a show row declares with its own asset", () => {
+        const document = documentWith({
+            b1: { action: "image", operation: "show", objectName: "poster", assetId: "img-1" },
+        });
+        const context = buildStoryCommandContext({
+            assets: undefined, characters: [], document, sceneId: "scene-1", scene: document.scenes["scene-1"],
+        });
+
+        expect(context.stageObjects.image).toEqual(["poster"]);
+        expect(context.stageObjectSources?.image).toEqual({ poster: "b1" });
     });
 
     it("indexes characters by id, and carries the stage key their entrance derives", () => {

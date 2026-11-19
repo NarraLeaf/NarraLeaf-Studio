@@ -9,6 +9,7 @@ function bestSnap1D(
     metrics: { position: number }[],
     lines: readonly SnapGuideLine[],
     threshold: number,
+    acceptsDelta: (delta: number) => boolean,
 ): { delta: number; line: SnapGuideLine | null } {
     let bestDelta = 0;
     let bestDist = Infinity;
@@ -20,7 +21,7 @@ function bestSnap1D(
         for (const m of metrics) {
             const delta = line.value - m.position;
             const dist = Math.abs(delta);
-            if (dist <= threshold && dist + 1e-9 < bestDist) {
+            if (dist <= threshold && acceptsDelta(delta) && dist + 1e-9 < bestDist) {
                 bestDist = dist;
                 bestDelta = delta;
                 bestLine = line;
@@ -115,10 +116,11 @@ function buildAspectPreservingCandidates(
     const [dirX, dirY] = direction;
 
     if (dirX === -1) {
-        const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold);
+        const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold,
+            delta => surf.width - delta >= MIN_DIM && (surf.width - delta) / aspectRatio >= MIN_DIM);
         const width = surf.width - snap.delta;
         const height = width / aspectRatio;
-        if (snap.line != null && width >= MIN_DIM && height >= MIN_DIM) {
+        if (snap.line != null) {
             candidates.push({
                 rect: rectFromAnchoredSize(surf, direction, width, height),
                 line: snap.line,
@@ -128,10 +130,11 @@ function buildAspectPreservingCandidates(
         }
     } else if (dirX === 1) {
         const right = surf.x + surf.width;
-        const snap = bestSnap1D([{ position: right }], verticalLines, threshold);
+        const snap = bestSnap1D([{ position: right }], verticalLines, threshold,
+            delta => surf.width + delta >= MIN_DIM && (surf.width + delta) / aspectRatio >= MIN_DIM);
         const width = surf.width + snap.delta;
         const height = width / aspectRatio;
-        if (snap.line != null && width >= MIN_DIM && height >= MIN_DIM) {
+        if (snap.line != null) {
             candidates.push({
                 rect: rectFromAnchoredSize(surf, direction, width, height),
                 line: snap.line,
@@ -142,10 +145,11 @@ function buildAspectPreservingCandidates(
     }
 
     if (dirY === -1) {
-        const snap = bestSnap1D([{ position: surf.y }], horizontalLines, threshold);
+        const snap = bestSnap1D([{ position: surf.y }], horizontalLines, threshold,
+            delta => surf.height - delta >= MIN_DIM && (surf.height - delta) * aspectRatio >= MIN_DIM);
         const height = surf.height - snap.delta;
         const width = height * aspectRatio;
-        if (snap.line != null && width >= MIN_DIM && height >= MIN_DIM) {
+        if (snap.line != null) {
             candidates.push({
                 rect: rectFromAnchoredSize(surf, direction, width, height),
                 line: snap.line,
@@ -155,10 +159,11 @@ function buildAspectPreservingCandidates(
         }
     } else if (dirY === 1) {
         const bottom = surf.y + surf.height;
-        const snap = bestSnap1D([{ position: bottom }], horizontalLines, threshold);
+        const snap = bestSnap1D([{ position: bottom }], horizontalLines, threshold,
+            delta => surf.height + delta >= MIN_DIM && (surf.height + delta) * aspectRatio >= MIN_DIM);
         const height = surf.height + snap.delta;
         const width = height * aspectRatio;
-        if (snap.line != null && width >= MIN_DIM && height >= MIN_DIM) {
+        if (snap.line != null) {
             candidates.push({
                 rect: rectFromAnchoredSize(surf, direction, width, height),
                 line: snap.line,
@@ -304,7 +309,7 @@ export function snapResizeLayoutInSurface(
     // Per dragged edge, a guide within reach wins (and is drawn); otherwise, with grid snapping on,
     // the edge goes to the nearest grid line - the same order the move snap uses.
     if (dirX === -1) {
-        const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold);
+        const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold, delta => surf.width - delta >= MIN_DIM);
         if (snap.line != null) {
             surf = { ...surf, x: surf.x + snap.delta, width: surf.width - snap.delta };
             activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
@@ -315,7 +320,7 @@ export function snapResizeLayoutInSurface(
         }
     } else if (dirX === 1) {
         const right = surf.x + surf.width;
-        const snap = bestSnap1D([{ position: right }], verticalLines, threshold);
+        const snap = bestSnap1D([{ position: right }], verticalLines, threshold, delta => surf.width + delta >= MIN_DIM);
         if (snap.line != null) {
             surf = { ...surf, width: surf.width + snap.delta };
             activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
@@ -325,11 +330,11 @@ export function snapResizeLayoutInSurface(
     }
 
     if (surf.width < MIN_DIM) {
-        surf = { ...surf, width: MIN_DIM };
+        surf = { ...surf, x: dirX === -1 ? surf.x + surf.width - MIN_DIM : surf.x, width: MIN_DIM };
     }
 
     if (dirY === -1) {
-        const snap = bestSnap1D([{ position: surf.y }], horizontalLines, threshold);
+        const snap = bestSnap1D([{ position: surf.y }], horizontalLines, threshold, delta => surf.height - delta >= MIN_DIM);
         if (snap.line != null) {
             surf = { ...surf, y: surf.y + snap.delta, height: surf.height - snap.delta };
             activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
@@ -340,7 +345,7 @@ export function snapResizeLayoutInSurface(
         }
     } else if (dirY === 1) {
         const bottom = surf.y + surf.height;
-        const snap = bestSnap1D([{ position: bottom }], horizontalLines, threshold);
+        const snap = bestSnap1D([{ position: bottom }], horizontalLines, threshold, delta => surf.height + delta >= MIN_DIM);
         if (snap.line != null) {
             surf = { ...surf, height: surf.height + snap.delta };
             activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
@@ -350,7 +355,7 @@ export function snapResizeLayoutInSurface(
     }
 
     if (surf.height < MIN_DIM) {
-        surf = { ...surf, height: MIN_DIM };
+        surf = { ...surf, y: dirY === -1 ? surf.y + surf.height - MIN_DIM : surf.y, height: MIN_DIM };
     }
 
     // Inlined parent-local mapping without the Math.max(0, ...) clamp used by tree/insert helpers:

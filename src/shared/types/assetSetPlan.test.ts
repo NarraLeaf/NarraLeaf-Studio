@@ -18,7 +18,7 @@ const LOCALES: AssetSetPlanValue[] = [
 ];
 
 const EDITIONS: AssetSetPlanValue[] = [
-    { value: "release", label: "main" },
+    { value: "main", label: "main" },
     { value: "demo", label: "Demo" },
 ];
 
@@ -143,7 +143,7 @@ describe("planAssetSet", () => {
             name: "Title",
             type: "image",
             filter: [assetSetIdentityTag("p")],
-            axis: { kind: "release", key: "release", residency: "build", values: ["release", "demo"], fallback: "release" },
+            axis: { kind: "release", key: "release", residency: "build", values: ["main", "demo"], fallback: "main" },
         };
         const plan = planAssetSet({
             setId: "c",

@@ -770,7 +770,11 @@ export function parseStoryExpression(source: string, scope: StoryExpressionScope
         };
     }
     const tokens = tokenize(source, issues);
-    const ast = new ExpressionParser(source, tokens, scope, issues).parse();
+    const invalidToken = issues.length > 0;
+    const parsed = new ExpressionParser(source, tokens, scope, issues).parse();
+    // Tokenization may skip an unrecognised character. Keep diagnostics, but do not let the
+    // resulting tree evaluate as a different expression from the one the author wrote.
+    const ast: StoryExpr = invalidToken ? { kind: "invalid", source } : parsed;
     // After the tree exists, not during: `AppTag == "Demo"` is only a comparison once both operands
     // and the operator have been read, and this is the one check here that is about a pair of nodes
     // rather than about a token. The span is the whole source - the name's own offsets are gone by

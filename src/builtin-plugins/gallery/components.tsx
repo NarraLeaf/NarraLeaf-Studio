@@ -10,10 +10,10 @@
  * is looking at.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ImageOff, Lock } from "lucide-react";
 import { AssetType, ui, type PluginApp } from "narraleaf-studio/plugin";
-import { createGalleryTranslator } from "./messages";
+import { useAudioAudition as useAudioAuditionController } from "./useAudioAudition";
 
 const urlCache = new Map<string, Promise<string>>();
 let disposeApp: PluginApp | null = null;
@@ -88,47 +88,8 @@ export function useAssetUrl(app: PluginApp, assetId: string | null | undefined):
  * the first - a track list where two clips overlap is unusable.
  */
 export function useAudioAudition(app: PluginApp) {
-    const [playingKey, setPlayingKey] = useState<string | null>(null);
-    const elementRef = useRef<HTMLAudioElement | null>(null);
-
-    const stop = useCallback(() => {
-        elementRef.current?.pause();
-        elementRef.current = null;
-        setPlayingKey(null);
-    }, []);
-
-    // Stop when the panel goes away, or the clip keeps playing over the editor.
-    useEffect(() => stop, [stop]);
-
-    const toggle = useCallback(async (key: string, assetId: string | null | undefined) => {
-        if (playingKey === key) {
-            stop();
-            return;
-        }
-        stop();
-        if (!assetId) {
-            return;
-        }
-        try {
-            const url = await assetUrl(app, assetId, AssetType.Audio);
-            const element = new Audio(url);
-            element.onended = () => setPlayingKey(current => (current === key ? null : current));
-            elementRef.current = element;
-            setPlayingKey(key);
-            await element.play();
-        } catch (error) {
-            stop();
-            // Say why rather than doing nothing: a silent button is
-            // indistinguishable from a broken one, and the likely causes
-            // (missing asset, a codec this shell cannot decode) are both worth
-            // knowing.
-            app.services.ui.notifications.error(createGalleryTranslator(app).t("playFailed", {
-                error: error instanceof Error ? error.message : String(error),
-            }));
-        }
-    }, [app, playingKey, stop]);
-
-    return { playingKey, toggle, stop };
+    const loadAudioUrl = useCallback((assetId: string) => assetUrl(app, assetId, AssetType.Audio), [app]);
+    return useAudioAuditionController(app, loadAudioUrl);
 }
 
 /** `1:54`, or an em dash when the length is unknown. */

@@ -57,7 +57,11 @@ function createHarness(onDisk: Record<string, Units>, locales?: string[]) {
                     case Services.Project:
                         return { getProjectConfig: () => ({ metadata: { resolution: { width: 1280, height: 720 } } }) };
                     case Services.LocalBlueprint:
-                        return { applyBlueprintMutation: () => undefined, getBlueprintDocument: () => ({ blueprints: {}, ownerRecords: {} }) };
+                        return {
+                            applyBlueprintMutation: () => undefined,
+                            getBlueprintDocument: () => ({ blueprints: {}, ownerRecords: {} }),
+                            getComponentWidgetMainBlueprintId: () => undefined,
+                        };
                     case Services.Localization:
                         return localization;
                     case Services.WorkspaceFreeze:
@@ -108,6 +112,65 @@ async function settle(): Promise<void> {
 }
 
 describe("copying a widget whose words are written directly", () => {
+    it("carries translations into a component extracted from a page", async () => {
+        const { service, localization, surfaceId, rootId } = createHarness({
+            en: { "ui:source.label": unit("Begin the adventure") },
+            ja: { "ui:source.label": unit("冒険を始める") },
+        });
+        const source = { ...button("source", { label: "开始冒险" }), parentId: rootId };
+        const document = service.getDocument();
+        document.elements.source = source;
+        document.elements[rootId].childrenIds.push(source.id);
+
+        const component = service.createComponentFromElements(surfaceId, [source.id], "Button")!;
+        await settle();
+
+        expect(localization.loaded.get("en")?.units[`ui:${component.rootElementId}.label`]?.target).toBe("Begin the adventure");
+        expect(localization.loaded.get("ja")?.units[`ui:${component.rootElementId}.label`]?.target).toBe("冒険を始める");
+    });
+
+    it("carries a definition's translations to the elements made when a placement is unlinked", async () => {
+        const { service, localization, rootId } = createHarness({ en: { "ui:component-label.label": unit("Begin") } });
+        service.getDocument().components = [{
+            id: "component", name: "Button", rootElementId: "component-label",
+            elements: { "component-label": button("component-label", { label: "开始" }) },
+        }];
+        const instance = service.createComponentInstance(rootId, "component");
+
+        service.unlinkComponentInstance(instance.id);
+        await settle();
+
+        expect(localization.loaded.get("en")?.units[`ui:${instance.id}.label`]?.target).toBe("Begin");
+    });
+
+    it("carries the placement's text parameter translation to each unlinked widget", async () => {
+        const { service, localization, rootId } = createHarness({});
+        const componentRoot = { ...button("component-root", {}), type: "nl.container", childrenIds: ["first", "second"] };
+        const bound = (id: string) => ({
+            ...button(id, { label: "Sample" }), parentId: componentRoot.id,
+            valueBindings: { label: { kind: "componentParam" as const, paramId: "caption" } },
+        });
+        service.getDocument().components = [{
+            id: "component", name: "Button", rootElementId: componentRoot.id,
+            params: [{ id: "caption", name: "Caption", type: "text", defaultValue: "Default" }],
+            elements: { [componentRoot.id]: componentRoot, first: bound("first"), second: bound("second") },
+        }];
+        const instance = service.createComponentInstance(rootId, "component");
+        service.setComponentInstanceParam(instance.id, "caption", "开始");
+        await localization.loadDocument("en");
+        localization.loaded.get("en")!.units[`ui:${instance.id}.param.caption`] = unit("Begin");
+
+        const ids = service.unlinkComponentInstance(instance.id);
+        await settle();
+
+        const buttons = ids.map(id => service.getDocument().elements[id]).filter(item => item.type === "nl.button");
+        expect(buttons).toHaveLength(2);
+        for (const copied of buttons) {
+            expect(copied.props?.label).toBe("开始");
+            expect(localization.loaded.get("en")?.units[`ui:${copied.id}.label`]?.target).toBe("Begin");
+        }
+    });
+
     it("gives the copy, within the project, the original's translations under its own unit", async () => {
         const { service, localization, surfaceId, rootId } = createHarness({
             en: { "ui:source.label": unit("Begin the adventure") },

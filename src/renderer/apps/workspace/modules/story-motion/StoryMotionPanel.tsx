@@ -5,7 +5,6 @@ import type {
     StoryAnimationIndexEntry,
     StoryDocument,
     StoryMotionTargetKind,
-    StoryTransformRef,
 } from "@shared/types/story";
 import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import {
@@ -25,6 +24,7 @@ import { useLibraryExchange } from "@/lib/workspace/hooks/useLibraryExchange";
 import { Services } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { StoryAnimationReadError, StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useKeybindings, whenFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -38,7 +38,7 @@ import { SearchBox } from "../assets/components/SearchBox";
 import { createStoryMotionEditorTab, resolveStoryMotionStageSize } from "./StoryMotionEditorTab";
 import { STORY_MOTION_TARGET_KINDS, StoryMotionCreatePopover } from "./StoryMotionCreatePopover";
 import { StoryMotionLibraryTile, type StoryMotionLibraryLoad } from "./StoryMotionLibraryTile";
-import { getStoryMotionDescriptor } from "./storyMotionAction";
+import { bindStoryMotionToRow, getStoryMotionDescriptor } from "./storyMotionAction";
 import { getStoryMotionPreset } from "./storyMotionPresets";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 import { createStoryMotionName, getStoryMotionDurationMs } from "./storyMotionTimeline";
@@ -420,16 +420,11 @@ export function StoryMotionPanel({ panelId, payload }: PanelComponentProps<Story
     }, [descriptor, rowAnimationId, single, t]);
 
     const useOnRow = useCallback(() => {
-        if (!storyService || !actionContext || !block || !descriptor || !single || useOnRowBlocked) {
+        if (!context || !storyService || !actionContext || !block || !descriptor || !single || useOnRowBlocked) {
             return;
         }
-        const transform: StoryTransformRef = {
-            ...(descriptor.transform ?? {}),
-            mode: "animation",
-            animationId: single.id,
-        };
-        storyService.updateBlock(actionContext.storyId, actionContext.sceneId, block.id, descriptor.setTransform(transform));
-    }, [actionContext, block, descriptor, single, storyService, useOnRowBlocked]);
+        bindStoryMotionToRow(storyService, context.services.get<HistoryService>(Services.History), actionContext, block, descriptor, single.id);
+    }, [actionContext, block, context, descriptor, single, storyService, useOnRowBlocked]);
 
     /* --- New motions ------------------------------------------------------------------------- */
 

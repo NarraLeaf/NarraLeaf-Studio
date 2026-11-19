@@ -56,6 +56,7 @@ export function ResizableHandle({
     useEffect(() => {
         if (!dragDocument) return;
 
+        let ended = false;
         const handleMouseMove = (e: MouseEvent) => {
             const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
             const delta = currentPos - startPosRef.current;
@@ -64,21 +65,29 @@ export function ResizableHandle({
             startPosRef.current = currentPos + result;
         };
 
-        const handleMouseUp = () => {
+        const endDrag = () => {
+            if (ended) return;
+            ended = true;
             setDragDocument(null);
             onDragEndRef.current?.();
+        };
+        const handleMouseUp = (e: MouseEvent) => {
+            if (e.button === 0) endDrag();
         };
 
         dragDocument.addEventListener("mousemove", handleMouseMove);
         dragDocument.addEventListener("mouseup", handleMouseUp);
+        dragDocument.defaultView?.addEventListener("blur", endDrag);
 
         return () => {
             dragDocument.removeEventListener("mousemove", handleMouseMove);
             dragDocument.removeEventListener("mouseup", handleMouseUp);
+            dragDocument.defaultView?.removeEventListener("blur", endDrag);
         };
     }, [dragDocument, direction, onResize]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
         e.preventDefault();
         startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
         onDragStart?.();

@@ -213,9 +213,11 @@ export function startWeatherBake(
     let cancelled = false;
     let child: BakeChildProcess | null = null;
     let escalation: NodeJS.Timeout | null = null;
+    let frames: WeatherFrameSequence | null = options.frameSource ?? null;
 
     const cancel = (): void => {
         cancelled = true;
+        frames?.close();
         if (child) {
             child.kill("SIGTERM");
             if (escalation === null) {
@@ -228,10 +230,17 @@ export function startWeatherBake(
     return { result: run(), cancel };
 
     async function run(): Promise<WeatherBakeResult> {
+        try {
+            await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        } catch (error) {
+            frames?.close();
+            return cancelled
+                ? { status: "cancelled" }
+                : { status: "error", detail: describe(error), stderr: "" };
+        }
         if (cancelled) {
             return { status: "cancelled" };
         }
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
         // A random temporary name in the target's own directory: landing it is then a rename within
         // one volume rather than a copy, and nothing about the name can be steered by a value that
         // came out of a document.
@@ -248,6 +257,7 @@ export function startWeatherBake(
         try {
             child = spawnProcess(binaryPath, weatherBakeArgs(spec, options.quality, tempPath));
         } catch (error) {
+            frames?.close();
             return { status: "error", detail: describe(error), stderr: "" };
         }
 
@@ -270,8 +280,14 @@ export function startWeatherBake(
             pipeBroken = true;
         });
 
+        let encoderClosed = false;
+        let wakeFrameRead: (() => void) | null = null;
         const closed = new Promise<{ code: number | null; signal: string | null }>(resolve => {
-            child?.on("close", (code, signal) => resolve({ code, signal }));
+            child?.on("close", (code, signal) => {
+                encoderClosed = true;
+                wakeFrameRead?.();
+                resolve({ code, signal });
+            });
         });
         // The same close, as a bare signal the feed loop can race a stalled write against.
         const settled = closed.then(() => undefined);
@@ -323,16 +339,23 @@ export function startWeatherBake(
             if (!stdin) {
                 return;
             }
-            const frames = options.frameSource ?? serialWeatherFrames(spec);
+            const source = frames ?? serialWeatherFrames(spec);
+            frames = source;
             try {
                 for (;;) {
-                    if (cancelled || pipeBroken) {
+                    if (cancelled || pipeBroken || encoderClosed) {
                         break;
                     }
                     // Each frame is this loop's to keep until the write completes - see
                     // `WeatherFrameSequence`, which is where the copy that used to be here now lives.
-                    const frame = await frames.next();
-                    if (!frame) {
+                    // Keep only the current read's wake-up: attaching a race to `closed` for every
+                    // frame would retain all of those frames until the encoder exits.
+                    const frame = await new Promise<Uint8Array | null>((resolve, reject) => {
+                        wakeFrameRead = () => resolve(null);
+                        void source.next().then(resolve, reject);
+                    });
+                    wakeFrameRead = null;
+                    if (cancelled || pipeBroken || encoderClosed || !frame) {
                         break;
                     }
                     if (!stdin.write(frame)) {
@@ -347,7 +370,9 @@ export function startWeatherBake(
                 // words so the failure names the drawing rather than the encoder that choked on it.
                 renderError = describe(error);
             } finally {
-                frames.close();
+                wakeFrameRead = null;
+                source.close();
+                frames = null;
                 stdin.end();
             }
         }

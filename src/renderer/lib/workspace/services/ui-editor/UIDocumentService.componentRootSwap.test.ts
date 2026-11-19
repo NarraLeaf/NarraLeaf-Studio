@@ -183,6 +183,38 @@ describe("Set as Root Element", () => {
         expect({ nav: h.nav(), free: h.box("free"), stacked: h.box("stacked") }).toEqual(after);
     });
 
+    it("keeps a placement inside another definition in place across the change and undo", () => {
+        const h = createHarness();
+        const document = h.uidoc.getDocument();
+        document.components!.push({
+            id: "outer",
+            name: "Outer",
+            rootElementId: "outer-root",
+            elements: {
+                "outer-root": element("outer-root", "nl.container", null, ["nested", "nested-stack"], { width: 900, height: 400 }),
+                nested: element("nested", "nl.container", "outer-root", [], { x: 10, y: 10, width: 600, height: 160 }, placed),
+                "nested-stack": { ...element("nested-stack", "nl.container", "outer-root", ["nested-stacked"]), props: { layoutKind: "stack" } },
+                "nested-stacked": element("nested-stacked", "nl.container", "nested-stack", [], { x: 5, y: 6, width: 300, height: 80 }, placed),
+            },
+        });
+        const nestedBox = () => h.uidoc.getDocument().components!.find(item => item.id === "outer")!.elements.nested.layout;
+        const stackedBox = () => h.uidoc.getDocument().components!.find(item => item.id === "outer")!.elements["nested-stacked"].layout;
+        const before = structuredClone(nestedBox());
+        const stackedBefore = structuredClone(stackedBox());
+
+        h.uidoc.promoteComponentElementToRoot(NAV, "button");
+        const after = structuredClone(nestedBox());
+        const stackedAfter = structuredClone(stackedBox());
+        expect(after).toMatchObject({ x: 210, y: 50, width: 240, height: 80 });
+        expect(stackedAfter).toMatchObject({ x: 5, y: 6, width: 120, height: 40 });
+        expect(h.uiHistory.undo(EDITOR)).toBe(true);
+        expect(nestedBox()).toEqual(before);
+        expect(stackedBox()).toEqual(stackedBefore);
+        expect(h.uiHistory.redo(EDITOR)).toBe(true);
+        expect(nestedBox()).toEqual(after);
+        expect(stackedBox()).toEqual(stackedAfter);
+    });
+
     it("refuses an element that shares the root, and changes nothing", () => {
         const h = createHarness();
         const document = (h.uidoc as any).document as UIDocument;

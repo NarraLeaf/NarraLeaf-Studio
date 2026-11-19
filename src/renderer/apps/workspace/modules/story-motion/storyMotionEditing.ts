@@ -182,6 +182,13 @@ export function pasteStoryMotionKeyframes(
     for (const item of clipboard.items) {
         const timeMs = clampStoryMotionTimeMs(atMs + item.offsetMs);
         next = upsertStoryMotionKeyframe(next, item.property, timeMs, cloneValue(item.value), item.easing);
+        if (item.easing === undefined) {
+            const track = next.tracks.find(candidate => candidate.property === item.property);
+            const keyframe = track ? findStoryMotionKeyframeAt(track, timeMs) : null;
+            if (keyframe?.easing !== undefined) {
+                next = setStoryMotionKeyframesEasing(next, new Set([keyframe.id]), undefined);
+            }
+        }
         landed.push({ property: item.property, timeMs });
     }
     return { timeline: next, ids: collectKeyframeIds(next, landed) };

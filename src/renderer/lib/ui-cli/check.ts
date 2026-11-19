@@ -78,6 +78,7 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
     const blueprints = options.blueprints;
     const structs = { ...(options.existing?.structs ?? {}), ...compiled.structs };
 
+    out.push(...checkDocumentIdentities(compiled, options.existing ?? null));
     for (const surface of compiled.surfaces) {
         for (const element of Object.values(surface.elements)) {
             out.push(...checkElement(element, surface.elements, { surfaceId: surface.surface.id }, blueprints, structs));
@@ -99,6 +100,100 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
         out.push(...checkEntryTarget(compiled, options.existing ?? null));
     }
     out.push(...checkSlotsTaken(compiled, options.existing ?? null));
+    return out;
+}
+
+/** Elements share one document-wide id space, including pages and definitions the file leaves untouched. */
+function checkDocumentIdentities(compiled: UiCompileResult, existing: UIDocument | null): BpDiagnostic[] {
+    const out: BpDiagnostic[] = [];
+    const writtenSurfaces = new Map<string, string>();
+    for (const { surface } of compiled.surfaces) {
+        const first = writtenSurfaces.get(surface.id);
+        if (first !== undefined) {
+            out.push({
+                severity: "error",
+                code: "ui.duplicate_surface",
+                message: `"${first}" and "${surface.name}" both replace surface ${surface.id}.`,
+                hint: "Give each surface its own id, or combine its edits in one block.",
+            });
+        } else {
+            writtenSurfaces.set(surface.id, surface.name);
+        }
+    }
+
+    const writtenComponents = new Map<string, string>();
+    for (const { component } of compiled.components) {
+        const first = writtenComponents.get(component.id);
+        if (first !== undefined) {
+            out.push({
+                severity: "error",
+                code: "ui.duplicate_component",
+                message: `"${first}" and "${component.name}" both replace component ${component.id}.`,
+                hint: "Give each component its own id, or combine its edits in one block.",
+            });
+        } else {
+            writtenComponents.set(component.id, component.name);
+        }
+    }
+
+    const replaceable = new Set<string>();
+    const protectedIds = new Map<string, string>();
+    for (const surface of existing?.surfaces ?? []) {
+        for (const element of collectTree(existing!.elements, surface.rootElementId)) {
+            if (writtenSurfaces.has(surface.id)) {
+                replaceable.add(element.id);
+            } else {
+                protectedIds.set(element.id, `surface "${surface.name}"`);
+            }
+        }
+    }
+    for (const component of existing?.components ?? []) {
+        for (const id of Object.keys(component.elements ?? {})) {
+            if (writtenComponents.has(component.id)) {
+                replaceable.add(id);
+            } else {
+                protectedIds.set(id, `component "${component.name}"`);
+            }
+        }
+    }
+    for (const id of Object.keys(existing?.elements ?? {})) {
+        if (!replaceable.has(id) && !protectedIds.has(id)) {
+            protectedIds.set(id, "an existing element outside the edited surfaces");
+        }
+    }
+
+    const writtenElements = new Map<string, string>();
+    for (const { surface, elements } of compiled.surfaces) {
+        for (const id of Object.keys(elements)) {
+            const other = writtenElements.get(id) ?? protectedIds.get(id);
+            if (other !== undefined) {
+                out.push({
+                    severity: "error",
+                    code: "ui.element_id_in_use",
+                    message: `Surface "${surface.name}" writes element ${id}, which is also used by ${other}.`,
+                    hint: "Give the element its own id, or edit both surfaces when moving it.",
+                });
+            } else {
+                writtenElements.set(id, `surface "${surface.name}"`);
+            }
+        }
+    }
+    for (const { component } of compiled.components) {
+        const elements = component.elements;
+        for (const id of Object.keys(elements ?? {})) {
+            const other = writtenElements.get(id) ?? protectedIds.get(id);
+            if (other !== undefined) {
+                out.push({
+                    severity: "error",
+                    code: "ui.element_id_in_use",
+                    message: `Component "${component.name}" writes element ${id}, which is also used by ${other}.`,
+                    hint: "Give the element its own id, or edit both owners when moving it.",
+                });
+            } else {
+                writtenElements.set(id, `component "${component.name}"`);
+            }
+        }
+    }
     return out;
 }
 

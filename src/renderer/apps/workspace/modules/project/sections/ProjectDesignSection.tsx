@@ -894,12 +894,17 @@ function NameField({
     onCommit: (name: string) => void;
 }) {
     const [draft, setDraft] = useState(name);
+    const abandoning = useRef(false);
 
     useEffect(() => {
         setDraft(name);
     }, [name]);
 
     const commit = useCallback(() => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const next = draft.trim();
         if (next && next !== name) {
             onCommit(next);
@@ -918,11 +923,17 @@ function NameField({
             aria-label={placeholder}
             className="min-w-0 flex-1"
             onChange={event => setDraft(event.target.value)}
-            onBlur={commit}
+            onFocus={() => {
+                abandoning.current = false;
+            }}
+            onBlur={() => {
+                commit();
+            }}
             onKeyDown={event => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();
                 } else if (event.key === "Escape") {
+                    abandoning.current = true;
                     setDraft(name);
                     event.currentTarget.blur();
                 }

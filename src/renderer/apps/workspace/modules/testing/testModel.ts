@@ -153,7 +153,8 @@ export function formatTestDuration(record: TestRunRecord, t: Translator["t"]): s
     if (totalSeconds < 60) {
         return t("test.report.durationSeconds", { seconds: totalSeconds.toFixed(1) });
     }
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.round(totalSeconds - minutes * 60);
+    const roundedSeconds = Math.round(totalSeconds);
+    const minutes = Math.floor(roundedSeconds / 60);
+    const seconds = roundedSeconds % 60;
     return t("test.report.durationMinutes", { minutes, seconds: String(seconds).padStart(2, "0") });
 }

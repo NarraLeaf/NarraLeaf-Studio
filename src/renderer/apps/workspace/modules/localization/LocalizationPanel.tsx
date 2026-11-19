@@ -124,7 +124,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
 
     const [config, setConfig] = useState<LocalizationConfiguration | null>(null);
-    const [rows, setRows] = useState<PanelRow[]>([]);
+    const [rows, setRows] = useState<PanelRow[] | null>(null);
     const [progressByLocale, setProgressByLocale] = useState<Record<string, LocalizationProgress>>({});
     const [refreshTick, setRefreshTick] = useState(0);
 
@@ -151,10 +151,19 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             return;
         }
         let disposed = false;
+        let run = 0;
         const recompute = async () => {
-            const collected = await collectTranslatableUnits({ storyService, localizationService, characterService, uiDocumentService });
-            if (!disposed) {
-                setRows(collected);
+            const current = ++run;
+            setRows(null);
+            try {
+                const collected = await collectTranslatableUnits({ storyService, localizationService, characterService, uiDocumentService });
+                if (!disposed && current === run) {
+                    setRows(collected);
+                }
+            } catch {
+                if (!disposed && current === run) {
+                    setRows(null);
+                }
             }
         };
         void recompute();
@@ -178,7 +187,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
 
     // Per-language progress; recomputed when rows, config, or any translation change.
     useEffect(() => {
-        if (!localizationService || !config) {
+        if (!localizationService || !config || !rows) {
             return;
         }
         let disposed = false;
@@ -485,7 +494,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                                 <Ellipsis className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
-                                        {!isSource ? (
+                                        {!isSource && rows !== null ? (
                                             <div className="flex flex-col gap-1">
                                                 <Progress
                                                     value={progress ? progress.completed : 0}

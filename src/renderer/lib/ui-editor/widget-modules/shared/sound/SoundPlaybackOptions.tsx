@@ -113,10 +113,9 @@ export function SoundTrackOption({
 /**
  * Volume as a box and a slider reading one value: the right-hand cell of a volume row.
  *
- * The write happens once per gesture (`useSliderDraft`): on release for the slider, on blur or Enter
- * for the box. The slider snaps while it moves, never on commit - `Slider` also commits on `keyup`,
- * and a Tab that only passes through it would otherwise round a typed 0.62 to 0.6. An emptied box
- * hands back `null`: the volume goes back to its default.
+ * The write happens once per gesture (`useSliderDraft`): on pointer release or a value-changing key
+ * release for the slider, and on blur or Enter for the box. The slider snaps while it moves; a value
+ * typed in the box keeps its precision. An emptied box hands back `null`, restoring the default.
  */
 export function SoundVolumeControl({
     volume,

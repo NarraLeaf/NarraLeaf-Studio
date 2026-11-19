@@ -36,8 +36,8 @@ export type UseBlueprintDebuggerResult = {
     viewIr: ReturnType<typeof resolveBlueprintGraphIr>;
     /** False for the inline value / condition graphs the synchronous executor can never suspend. */
     viewPausable: boolean;
-    /** Member variables of the viewed blueprint, for the condition editor. */
-    viewVariables: { id: string; name: string }[];
+    /** Member variables of the breakpoint being edited. */
+    editingVariables: { id: string; name: string }[];
     /** Toggle a breakpoint on a node of the graph currently in view. */
     toggleBreakpoint: (nodeId: string) => void;
     setBreakpointEnabled: (target: BlueprintBreakpointTarget, enabled: boolean) => void;
@@ -91,10 +91,18 @@ export function useBlueprintDebugger(input: {
         graphId: null,
     });
 
-    // Stopping somewhere always wins over what was being browsed: the author's attention is on the
-    // stop, and the graph they were reading is one click away in the picker.
-    const viewBlueprintId = snapshot.pausedBlueprintId ?? picked.blueprintId;
-    const viewGraphId = snapshot.pausedGraphId ?? picked.graphId;
+    // Follow each stop, then let the author browse other graphs while execution remains paused.
+    useEffect(() => {
+        if (snapshot.status === "paused") {
+            setPicked({
+                blueprintId: snapshot.pausedBlueprintId ?? null,
+                graphId: snapshot.pausedGraphId ?? null,
+            });
+        }
+    }, [session, snapshot.status, snapshot.pausedBlueprintId, snapshot.pausedGraphId, snapshot.pausedFrameId, snapshot.pausedNodeId]);
+
+    const viewBlueprintId = picked.blueprintId;
+    const viewGraphId = picked.graphId;
 
     const viewIr = useMemo(
         () => resolveBlueprintGraphIr(blueprintDocument, viewBlueprintId ?? undefined, viewGraphId ?? undefined),
@@ -103,19 +111,19 @@ export function useBlueprintDebugger(input: {
 
     const viewBlueprint = viewBlueprintId ? blueprintDocument?.blueprints[viewBlueprintId] : undefined;
     const viewPausable = !viewBlueprint || !isStorySyncValueOwner(viewBlueprint.owner);
-    const viewVariables = useMemo(
-        () =>
-            viewBlueprint
-                ? listEffectiveBlueprintVariables(viewBlueprint).map(variable => ({
-                      id: variable.id,
-                      name: variable.name || variable.id,
-                  }))
-                : [],
-        [viewBlueprint],
-    );
 
     const [contextMenu, setContextMenu] = useState<BlueprintDebuggerContextMenuState>(null);
     const [editingTarget, setEditingTarget] = useState<BlueprintBreakpointTarget | null>(null);
+    const editingBlueprint = editingTarget ? blueprintDocument?.blueprints[editingTarget.blueprintId] : undefined;
+    const editingVariables = useMemo(
+        () => editingBlueprint
+            ? listEffectiveBlueprintVariables(editingBlueprint).map(variable => ({
+                  id: variable.id,
+                  name: variable.name || variable.id,
+              }))
+            : [],
+        [editingBlueprint],
+    );
 
     const target = useCallback(
         (nodeId: string): BlueprintBreakpointTarget | null =>
@@ -133,7 +141,7 @@ export function useBlueprintDebugger(input: {
         setView: useCallback((blueprintId, graphId) => setPicked({ blueprintId, graphId }), []),
         viewIr,
         viewPausable,
-        viewVariables,
+        editingVariables,
         toggleBreakpoint: useCallback(
             nodeId => {
                 if (readOnly) {

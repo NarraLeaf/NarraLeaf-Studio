@@ -169,13 +169,9 @@ function normalizeValueRecord(raw: unknown): Record<string, unknown> {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
         return {};
     }
-    const values: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (key.trim()) {
-            values[key] = value;
-        }
-    }
-    return values;
+    return Object.fromEntries(
+        Object.entries(raw as Record<string, unknown>).filter(([key]) => key.trim()),
+    );
 }
 
 function normalizeAnchor(raw: unknown): GameProgressAnchor | null {

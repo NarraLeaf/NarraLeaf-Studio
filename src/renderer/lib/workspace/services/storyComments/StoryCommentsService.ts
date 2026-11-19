@@ -134,7 +134,6 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
     public async load(): Promise<void> {
         const result = await loadDocument(storyCommentsSpec, this.storage(), storyCommentsSpec.pathFor());
         this.unreadable = null;
-        this.revision = 0;
         if (result.status === "missing") {
             this.document = createEmptyStoryCommentsDocument();
         } else if (result.status === "corrupt") {
@@ -144,6 +143,7 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
         } else {
             this.document = result.document;
         }
+        this.revision += 1;
         this.reindex();
         this.events.emit("changed", undefined);
     }

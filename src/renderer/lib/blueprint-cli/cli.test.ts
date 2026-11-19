@@ -11,7 +11,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { parseArgs, runCli } from "./cli";
+import { blueprintListCommand } from "./core";
 
 function run(...argv: string[]): { code: number; out: string; err: string } {
     const out: string[] = [];
@@ -34,6 +37,31 @@ describe("parseArgs", () => {
 });
 
 describe("the command line", () => {
+    it("lists a blueprint with a script layer among authored graphs", () => {
+        const document: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                script: {
+                    id: "script",
+                    name: "Scripted button",
+                    owner: { kind: "widgetMain", surfaceId: "s", elementId: "button" },
+                    graphs: { eventIds: ["layer"], events: { layer: { id: "layer", script: { scriptRef: "scripts/button.ts" } } }, functions: {} },
+                },
+                empty: {
+                    id: "empty",
+                    name: "Empty button",
+                    owner: { kind: "widgetMain", surfaceId: "s", elementId: "other" },
+                    graphs: { events: {}, functions: {} },
+                },
+            },
+            ownerRecords: {},
+        };
+        const result = blueprintListCommand(document, { withGraphs: true });
+        expect(result.out.join("\n")).toContain("Scripted button");
+        expect(result.out.join("\n")).not.toContain("Empty button");
+        expect(JSON.parse(blueprintListCommand(document, { withGraphs: true, json: true }).out[0]).map((row: { id: string }) => row.id)).toEqual(["script"]);
+    });
+
     it("refuses a flag the command does not take, and guesses at the one meant", () => {
         const result = run("list", "--projct", "D:/x");
         expect(result.code).toBe(2);

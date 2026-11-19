@@ -102,9 +102,9 @@ export function peaksOf(channels: readonly Float32Array[], buckets: number): Wav
  * than it was is a cue that now overlaps the next one.
  */
 export function formatClock(milliseconds: number): string {
-    const total = Math.max(0, milliseconds) / 1000;
-    const minutes = Math.floor(total / 60);
-    const seconds = total - minutes * 60;
+    const tenths = Math.round(Math.max(0, milliseconds) / 100);
+    const minutes = Math.floor(tenths / 600);
+    const seconds = (tenths % 600) / 10;
     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds.toFixed(1)}`;
 }
 
@@ -124,7 +124,7 @@ export function formatSampleRate(hertz: number): string {
  *
  * 64 MiB is a judgement, not a measurement, like the ceilings in `vcs/diff/documentDiff.ts`. It is
  * about six minutes of stereo at 44.1 kHz, which covers a background loop and every voice line;
- * past it the header's own numbers are still reported and only the picture is withheld.
+ * past it the waveform and playback are withheld.
  */
 export const AUDIO_DECODE_BYTE_BUDGET = 64 * 1024 * 1024;
 

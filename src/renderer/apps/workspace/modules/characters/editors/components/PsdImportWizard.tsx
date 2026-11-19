@@ -15,10 +15,8 @@ import { describeReplaceNotKept } from "@/lib/workspace/assets/importFailure";
 import type { TranslationKey } from "@shared/i18n";
 import { fileUnderCharacterFolder } from "@/lib/workspace/services/character/psdImportFolder";
 import {
-    applyPsdPlan,
     nameBakeTargets,
-    psdRefreshTargets,
-    summarisePlan,
+    preparePsdImport,
 } from "@/lib/workspace/services/character/psdImportBuilder";
 import type { BlendResolution, PsdDocument } from "@shared/types/psdImport";
 import { describePsdFailure } from "./psdImportFailure";
@@ -26,8 +24,8 @@ import {
     canMergeBlendMode,
     estimateImportCost,
     flattenLeaves,
-    joinPath,
     planImport,
+    psdLayerKey,
     toBakeTargets,
     unsupportedBlends,
     type PsdDropReason,
@@ -36,6 +34,10 @@ import {
 
 const SECTION = "text-2xs tracking-wide text-fg-muted px-1";
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
+
+function blendDecision(resolutions: Record<string, BlendResolution>, key: string): BlendResolution | undefined {
+    return Object.hasOwn(resolutions, key) ? resolutions[key] : undefined;
+}
 
 // Written out rather than interpolated so the keys stay statically checkable against the catalogue.
 const DROP_REASON_KEYS = {
@@ -100,8 +102,9 @@ export function PsdImportWizard(props: {
     const leaves = useMemo(() => (document ? flattenLeaves(document.layers) : []), [document]);
     const blends = useMemo(() => unsupportedBlends(leaves), [leaves]);
     const plan = useMemo(() => planImport(leaves, resolutions), [leaves, resolutions]);
-    const undecided = blends.filter(leaf => !resolutions[joinPath(leaf.path)]);
-    const summary = document ? summarisePlan(props.appearance, plan) : null;
+    const undecided = blends.filter(leaf => !blendDecision(resolutions, psdLayerKey(leaf)));
+    const prepared = document ? preparePsdImport(props.appearance, plan) : null;
+    const summary = prepared?.summary ?? null;
     const cost = document ? estimateImportCost(plan, document) : null;
 
     const reset = useCallback(() => {
@@ -137,7 +140,7 @@ export function PsdImportWizard(props: {
         }
     }, [t]);
 
-    const runImport = useCallback(async () => {
+    const runImport = useCallback(async (prepared: ReturnType<typeof preparePsdImport>) => {
         const assetsService = context?.services.get<AssetsService>(Services.Assets);
         const characterService = context?.services.get<CharacterService>(Services.Character);
         const character = characterService?.getCharacter(props.characterId);
@@ -164,10 +167,8 @@ export function PsdImportWizard(props: {
             // A layer the last import made is refreshed in place: same image, new bytes. The bake's
             // file names are what the library named that import's images after.
             const images = assetsService.getAssets()[AssetType.Image] ?? {};
-            const refresh = psdRefreshTargets(
-                props.appearance,
-                plan,
-                new Map(layers.map(layer => [joinPath(layer.path), bakedFileStem(layer.filePath)])),
+            const refresh = prepared.refreshTargets(
+                new Map(layers.map(layer => [psdLayerKey(layer), bakedFileStem(layer.filePath)])),
                 id => images[id]?.name ?? null,
             );
             // Every image about to be written over is copied aside first, all of them before any is
@@ -184,7 +185,7 @@ export function PsdImportWizard(props: {
             const assetIds = new Map<string, string>();
             const fresh: typeof layers = [];
             for (const layer of layers) {
-                const key = joinPath(layer.path);
+                const key = psdLayerKey(layer);
                 const image = images[refresh.get(key) ?? ""];
                 if (image) {
                     const replaced = await assetsService.replaceAssetContent(image, layer.filePath);
@@ -215,7 +216,7 @@ export function PsdImportWizard(props: {
             fresh.forEach((layer, index) => {
                 const result = imported.data[index];
                 if (result?.success) {
-                    assetIds.set(joinPath(layer.path), result.data.id);
+                    assetIds.set(psdLayerKey(layer), result.data.id);
                 }
             });
             // Into the character's own folder, not the section's root. The layers are imported by
@@ -238,7 +239,7 @@ export function PsdImportWizard(props: {
             }
 
             const hadArt = props.appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
-            const slots = applyPsdPlan(props.appearance, plan, path => assetIds.get(joinPath(path)) ?? null);
+            const slots = prepared.apply(ref => assetIds.get(psdLayerKey(ref)) ?? null);
             props.appearance.setPsdFingerprint({
                 fileName: document.fileName,
                 width: document.width,
@@ -275,8 +276,8 @@ export function PsdImportWizard(props: {
     }, [close, context, document, filePath, freeze.frozen, plan, props, t]);
 
     /** What is being flattened onto a given layer, so a clip or a merge is never invisible. */
-    const attachedTo = (leaf: PsdLeaf) => (plan.attachments[joinPath(leaf.path)] ?? []).map(entry => (
-        <div key={joinPath(entry.leaf.path)} className="pl-5 text-2xs text-fg-subtle">
+    const attachedTo = (leaf: PsdLeaf) => (plan.attachments[psdLayerKey(leaf)] ?? []).map(entry => (
+        <div key={psdLayerKey(entry.leaf)} className="pl-5 text-2xs text-fg-subtle">
             {t(entry.clip ? "characters.editor.psd.clippedInto" : "characters.editor.psd.mergedInto", {
                 name: entry.leaf.name,
                 mode: entry.leaf.blendMode,
@@ -316,7 +317,7 @@ export function PsdImportWizard(props: {
                             variant: "primary",
                             disabled: !document || undecided.length > 0 || busy !== null || freeze.frozen,
                         })}
-                        onClick={() => void runImport()}
+                        onClick={() => { if (prepared) void runImport(prepared); }}
                         {...freeze.writes(!document || undecided.length > 0 || busy !== null)}
                     >
                         {busy === "importing" ? t("characters.editor.psd.importing") : t("characters.editor.psd.import")}
@@ -364,9 +365,9 @@ export function PsdImportWizard(props: {
                         <div className="space-y-1.5">
                             <div className={SECTION}>{t("characters.editor.psd.blends")}</div>
                             {blends.map(leaf => {
-                                const key = joinPath(leaf.path);
+                                const key = psdLayerKey(leaf);
                                 const mergeable = canMergeBlendMode(leaf.blendMode);
-                                const chosen = resolutions[key];
+                                const chosen = blendDecision(resolutions, key);
                                 return (
                                     <div key={key} className={ROW} data-psd-blend={key}>
                                         <span className="min-w-0 flex-1 truncate">{leaf.name}</span>
@@ -412,7 +413,7 @@ export function PsdImportWizard(props: {
                         )}
                         {/* Top of the stack reads at the top of the list, the way the art does. */}
                         {[...plan.slots].reverse().map(slot => (slot.kind === "constant" ? (
-                            <div key={joinPath(slot.leaf.path)} data-psd-constant={slot.name}>
+                            <div key={psdLayerKey(slot.leaf)} data-psd-constant={slot.name}>
                                 <div className={ROW}>
                                     <Square className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                     <span className="min-w-0 flex-1 truncate">{slot.name}</span>
@@ -434,7 +435,7 @@ export function PsdImportWizard(props: {
                                 <div className="flex flex-wrap gap-1 pl-5">
                                     {slot.options.map(option => (
                                         <span
-                                            key={joinPath(option.leaf.path)}
+                                            key={psdLayerKey(option.leaf)}
                                             data-psd-tag={option.tag}
                                             className="rounded-md border border-edge px-2 py-0.5 text-2xs"
                                         >
@@ -452,7 +453,7 @@ export function PsdImportWizard(props: {
                             <div className={SECTION}>{t("characters.editor.psd.dropped")}</div>
                             {plan.dropped.map(entry => (
                                 <div
-                                    key={joinPath(entry.leaf.path)}
+                                    key={psdLayerKey(entry.leaf)}
                                     data-psd-dropped={entry.leaf.name}
                                     className={[ROW, "text-fg-subtle"].join(" ")}
                                 >

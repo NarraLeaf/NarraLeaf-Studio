@@ -284,7 +284,7 @@ async function pasteFromClipboard(
     resolveTarget: () => UIEditorAddTarget | null,
 ): Promise<boolean> {
     const source = await resolveUiPasteSource(documentService);
-    if (!source) {
+    if (!source || source.environment?.isFrozen()) {
         return false;
     }
     if (!source.foreign) {

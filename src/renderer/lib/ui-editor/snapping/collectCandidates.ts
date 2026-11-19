@@ -50,7 +50,7 @@ export function collectSnapGuideLines(
 
     const rootId = resolveSurfaceRootElementId(document, surfaceId);
     if (!rootId) {
-        return filterSnapGuideLinesByDetailSettings(dedupeLines(lines), detailSettings);
+        return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
     }
 
     const subtree = collectSubtreeElementIds(document, rootId);
@@ -83,7 +83,7 @@ export function collectSnapGuideLines(
         );
     }
 
-    return filterSnapGuideLinesByDetailSettings(dedupeLines(lines), detailSettings);
+    return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
 }
 
 function dedupeLines(lines: SnapGuideLine[]): SnapGuideLine[] {

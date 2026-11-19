@@ -96,6 +96,11 @@ describe("findStoryPreviewRowForSlot", () => {
         expect(findStoryPreviewRowForSlot(scene(), null, "onStage")).toBe("n1");
     });
 
+    it("can show the On-Stage Game UI in a scene with commands but no dialogue", () => {
+        const s = makeScene([command("set"), command("next")], ["set", "next"]);
+        expect(findStoryPreviewRowForSlot(s, null, "onStage")).toBe("set");
+    });
+
     it("passes over rows the game never plays and rows the author is not showing", () => {
         const s = makeScene([
             disabled(say("off")), say("hidden"), say("shown"), disabled(menu("offMenu", ["o"])), option("o", "offMenu", ["inside"]), say("inside", "o"),
@@ -108,5 +113,28 @@ describe("findStoryPreviewRowForSlot", () => {
     it("passes over a line with nothing to say", () => {
         const s = makeScene([line("silent", null, "  "), line("spoken")], ["silent", "spoken"]);
         expect(findStoryPreviewRowForSlot(s, null, "dialog")).toBe("spoken");
+    });
+
+    it("searches after a disabled cursor instead of retaining it or restarting at the top", () => {
+        const s = makeScene([say("before"), disabled(say("off")), say("after")], ["before", "off", "after"]);
+        expect(findStoryPreviewRowForSlot(s, "off", "dialog")).toBe("after");
+    });
+
+    it("passes over a cursor inside a disabled container", () => {
+        const s = makeScene([
+            say("before"), disabled(nvl("off", ["inside"])), say("inside", "off"), say("after"),
+        ], ["before", "off", "after"]);
+        expect(findStoryPreviewRowForSlot(s, "inside", "nvl")).toBeNull();
+        expect(findStoryPreviewRowForSlot(s, "inside", "dialog")).toBe("after");
+    });
+
+    it("passes over a hidden cursor even when its row shows the requested slot", () => {
+        const s = makeScene([say("hidden"), say("shown")], ["hidden", "shown"]);
+        expect(findStoryPreviewRowForSlot(s, "hidden", "dialog", id => id !== "hidden")).toBe("shown");
+    });
+
+    it("does not keep a note whose preview target is disabled", () => {
+        const s = makeScene([disabled(say("off")), note("note"), say("shown")], ["off", "note", "shown"]);
+        expect(findStoryPreviewRowForSlot(s, "note", "dialog")).toBe("shown");
     });
 });

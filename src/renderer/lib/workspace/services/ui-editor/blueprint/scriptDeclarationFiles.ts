@@ -46,7 +46,7 @@ import {
     SCRIPTS_TSCONFIG_FILE,
     renderScriptsTsconfig,
 } from "@shared/project/scriptsDirectory";
-import type { UIDocument, UIElementId } from "@shared/types/ui-editor/document";
+import type { UIElement, UIElementId } from "@shared/types/ui-editor/document";
 import { UIDocumentService } from "../UIDocumentService";
 import { Services, type WorkspaceContext } from "../../services";
 import type { FileSystemService } from "../../core/FileSystem";
@@ -68,10 +68,10 @@ function isScriptableElementType(type: string): boolean {
 }
 
 /** Elements of one surface or component, in document order, each with the type its ctx is built from. */
-function elementsOf(document: UIDocument, ids: readonly UIElementId[]): ScriptSurfaceFacts["elements"] {
+function elementsOf(elements: Readonly<Record<string, UIElement>>, ids: readonly UIElementId[]): ScriptSurfaceFacts["elements"] {
     const out: { id: string; name: string; type: string; scriptable: boolean }[] = [];
     const walk = (elementId: UIElementId): void => {
-        const element = document.elements[elementId];
+        const element = elements[elementId];
         if (!element) {
             return;
         }
@@ -171,12 +171,12 @@ export function collectScriptProjectFacts(context: WorkspaceContext): ScriptProj
         surfaces: document.surfaces.map(surface => ({
             id: surface.id,
             name: surface.name,
-            elements: elementsOf(document, [surface.rootElementId]),
+            elements: elementsOf(document.elements, [surface.rootElementId]),
         })),
         components: (document.components ?? []).map(component => ({
             id: component.id,
             name: component.name,
-            elements: elementsOf(document, [component.rootElementId]),
+            elements: elementsOf(component.elements, [component.rootElementId]),
         })),
         characters: characters
             .listCharacter()

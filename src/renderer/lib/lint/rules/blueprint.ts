@@ -574,13 +574,14 @@ function runDlcEntranceUnguarded(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = [];
     for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
         const nodes = Object.values(site.ir.nodes ?? {});
+        const wired = collectWiredInputPorts(site.ir);
         const guarded = new Set(
             nodes
                 .filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED)
                 .map(node => String(node.params?.dlcId ?? "").trim()),
         );
         for (const node of nodes) {
-            if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY || wired.get(node.id)?.has("storyId")) {
                 continue;
             }
             // The picked value only. A wired Story Id pin is a story this rule cannot name, and

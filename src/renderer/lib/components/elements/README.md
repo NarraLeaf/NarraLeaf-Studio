@@ -1,10 +1,12 @@
-# UI Elements Components
+# UI elements
 
-A comprehensive set of UI components following VS Code-like design principles with dark theme styling.
+Shared React components for the Studio interface. Import them from
+`@/lib/components/elements`. The [design system](../../../../../docs/design-system.md)
+defines their use, semantic colour tokens, control sizes and overlay conventions for both themes.
 
 ## Design Principles
 
-- **Dark Theme**: Deep dark backgrounds with subtle borders and text colors
+- **Themes**: Semantic colour tokens support both light and dark Studio themes
 - **Minimal Animations**: Smooth transitions without excessive motion
 - **Consistent Spacing**: Using Tailwind's spacing system for consistency
 - **Accessible**: Proper focus states and keyboard navigation
@@ -17,6 +19,7 @@ A comprehensive set of UI components following VS Code-like design principles wi
 Universal button component with multiple variants and sizes.
 
 ```tsx
+import { X } from "lucide-react";
 import { Button, IconButton } from "@/lib/components/elements";
 
 // Basic button
@@ -30,8 +33,10 @@ import { Button, IconButton } from "@/lib/components/elements";
     size="md"
     onClick={handleClose}
     aria-label="Close"
-    title="Close"
-/>
+    data-tip="Close"
+>
+    <X size={16} />
+</IconButton>
 ```
 
 **Variants**: `primary`, `secondary`, `ghost`, `danger`
@@ -45,7 +50,7 @@ Progress indicators for loading states and progress tracking.
 import { Progress, ProgressCircle } from "@/lib/components/elements";
 
 // Linear progress
-<Progress value={75} max={100} showLabel />
+<Progress value={75} max={100} />
 
 // Circular progress
 <ProgressCircle value={75} size={40} showValue />
@@ -79,7 +84,9 @@ import { Input, TextArea, SearchInput, InputGroup } from "@/lib/components/eleme
 Container components for organizing content.
 
 ```tsx
-import { Card, InteractiveCard } from "@/lib/components/elements";
+import {
+    Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, InteractiveCard,
+} from "@/lib/components/elements";
 
 // Basic card
 <Card>
@@ -160,15 +167,12 @@ const options = [
 
 **Components**: `Select`, `Combobox`, `SelectGroup`
 
-## Color Scheme
+## Colour and tooltips
 
-The components follow a consistent dark theme:
-
-- **Background**: `#0f1115` (main), `#1e1f22` (elevated)
-- **Borders**: `border-white/10`, `border-white/20`
-- **Text**: `text-gray-200`, `text-gray-300`, `text-gray-400`
-- **Hover**: `hover:bg-white/10`, `hover:text-white`
-- **Focus**: Blue accent colors for focus states
+Use semantic tokens such as `bg-surface`, `border-edge`, `text-fg` and `hover:bg-fill`.
+The design system defines their roles and theme behaviour. Give a control a tooltip with
+`data-tip`; icon-only controls also need an `aria-label`. Use `TooltipGroup` from
+`@/lib/tooltip` for a row of controls.
 
 ## Animation Guidelines
 

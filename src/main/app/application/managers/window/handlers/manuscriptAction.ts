@@ -123,6 +123,7 @@ export class ManuscriptWriteDocxHandler extends IPCHandler<IPCEventType.manuscri
 }
 
 const PRINT_PARTITION = "manuscript-print";
+const printPages = new Map<number, string>();
 
 export class ManuscriptPrintPdfHandler extends IPCHandler<IPCEventType.manuscriptPrintPdf> {
     readonly name = IPCEventType.manuscriptPrintPdf;
@@ -139,13 +140,13 @@ export class ManuscriptPrintPdfHandler extends IPCHandler<IPCEventType.manuscrip
         const pagePath = path.join(directory, "script.html");
         const pageUrl = pathToFileURL(pagePath).href;
         let printer: BrowserWindow | null = null;
+        let printerWebContentsId: number | undefined;
         try {
             await fs.writeFile(pagePath, html, "utf-8");
-            // The page is the author's own story text, but it is still text: scripts are off and the
-            // window's session answers nothing except the one file it was given.
+            // Each printer may load only its own page, even while another print uses this session.
             const printSession = session.fromPartition(PRINT_PARTITION);
             printSession.webRequest.onBeforeRequest((details, callback) => {
-                callback({ cancel: details.url !== pageUrl });
+                callback({ cancel: details.webContentsId === undefined || printPages.get(details.webContentsId) !== details.url });
             });
             printer = new BrowserWindow({
                 show: false,
@@ -161,6 +162,8 @@ export class ManuscriptPrintPdfHandler extends IPCHandler<IPCEventType.manuscrip
                     spellcheck: false,
                 },
             });
+            printerWebContentsId = printer.webContents.id;
+            printPages.set(printerWebContentsId, pageUrl);
             printer.webContents.on("will-navigate", event => event.preventDefault());
             printer.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
             await printer.loadURL(pageUrl);
@@ -177,6 +180,7 @@ export class ManuscriptPrintPdfHandler extends IPCHandler<IPCEventType.manuscrip
         } catch (error) {
             return this.failed(error);
         } finally {
+            if (printerWebContentsId !== undefined) printPages.delete(printerWebContentsId);
             if (printer && !printer.isDestroyed()) {
                 printer.destroy();
             }

@@ -29,6 +29,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import { blueprintContract } from "@shared/blueprint/ownerShape";
 import { BLUEPRINT_NODE_PARAM_FN_REF, BLUEPRINT_NODE_TYPE_LOCAL_GET, BLUEPRINT_NODE_TYPE_LOCAL_SET, type BlueprintGraphKind } from "@shared/types/blueprint/graph";
@@ -140,9 +141,13 @@ function compileBlueprint(
     const eventIds: string[] = [];
     const functions: Record<string, BlueprintFunctionGraph> = {};
     const functionIds: string[] = [];
+    const usedScriptIds = new Set<string>();
 
     for (const graphAst of ast.graphs) {
-        const previousGraph = findExistingGraph(previous, graphAst);
+        const previousGraph = findExistingGraph(previous, graphAst, usedScriptIds);
+        if (graphAst.kind === "script" && previousGraph) {
+            usedScriptIds.add(previousGraph.id);
+        }
         const graphId = graphAst.id ?? previousGraph?.id ?? newId();
         if (graphAst.kind === "script") {
             const scriptRef = checkedScriptRef(graphAst, owner, diagnostics);
@@ -965,9 +970,18 @@ function findExistingBlueprint(
 function findExistingGraph(
     previous: Blueprint | null,
     ast: BpGraphAst,
+    usedScriptIds: ReadonlySet<string>,
 ): { id: string; graph?: BlueprintGraphIr } | null {
     if (!previous) {
         return null;
+    }
+    if (ast.kind === "script") {
+        if (ast.id) {
+            return previous.graphs.events?.[ast.id] ?? null;
+        }
+        const match = listScriptLayers(previous.graphs).find(entry =>
+            !usedScriptIds.has(entry.layerId) && entry.script.scriptRef === ast.scriptRef);
+        return match ? { id: match.layerId } : null;
     }
     const pool = ast.kind === "event" ? previous.graphs.events : previous.graphs.functions;
     if (!pool) {

@@ -56,6 +56,36 @@ describe("writeScreenshotFile", () => {
         await expect(fs.readdir(path.join(root, "screenshots"))).rejects.toThrow();
     });
 
+    it("keeps both captures when they have the same timestamp", async () => {
+        const root = await tempRoot();
+        const directory = path.join(root, "screenshots");
+        const now = () => new Date(2026, 8, 2, 13, 45, 1, 7);
+        const results = await Promise.all([
+            writeScreenshotFile({ directory, now, capture: async () => Uint8Array.of(1) }),
+            writeScreenshotFile({ directory, now, capture: async () => Uint8Array.of(2) }),
+        ]);
+        expect(results.map(result => result.outcome)).toEqual(["saved", "saved"]);
+        expect(results[0].path).not.toBe(results[1].path);
+        expect(await fs.readFile(results[0].path!)).toEqual(Buffer.from([1]));
+        expect(await fs.readFile(results[1].path!)).toEqual(Buffer.from([2]));
+    });
+
+    it("keeps an existing screenshot with the same name", async () => {
+        const root = await tempRoot();
+        const directory = path.join(root, "screenshots");
+        const now = () => new Date(2026, 8, 2, 13, 45, 1, 7);
+        await fs.mkdir(directory);
+        const existing = path.join(directory, blueprintScreenshotFileName(now()));
+        await fs.writeFile(existing, "existing");
+
+        const result = await writeScreenshotFile({ directory, now, capture: async () => Uint8Array.of(7) });
+
+        expect(result.outcome).toBe("saved");
+        expect(result.path).not.toBe(existing);
+        expect(await fs.readFile(existing, "utf-8")).toBe("existing");
+        expect(await fs.readFile(result.path!)).toEqual(Buffer.from([7]));
+    });
+
     it("reports a capture that threw as a failure the graph can branch on", async () => {
         const root = await tempRoot();
         const result = await writeScreenshotFile({

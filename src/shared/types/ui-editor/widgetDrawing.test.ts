@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { buildUIComponentInstanceKey } from "./componentInstanceKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIComponentDefinition, type UIDocument, type UIElement } from "./document";
-import { buildUIListItemInstanceKey } from "./list";
+import { buildUIListItemInstanceKey, isUIListItemInstanceKeyOf } from "./list";
 import { buildUIWidgetAddress } from "./widgetAddress";
 import { resolveUIElementDrawingKey, resolveUIWidgetAddressFromDrawing } from "./widgetDrawing";
 
@@ -174,6 +174,33 @@ describe("a graph running in a row of a list inside another list's row", () => {
 
     it("finds the page's viewer on the page", () => {
         expect(resolveUIWidgetAddressFromDrawing(chapters, "viewer", sceneRow)).toBe("viewer");
+    });
+
+    it("distinguishes nested lists whose ids share a prefix", () => {
+        const document = documentOf({
+            root: { type: "nl.root", parent: null },
+            grid: { type: "nl.list", parent: "root" },
+            gridRow: { type: "nl.container", parent: "grid", slot: "itemTemplate" },
+            heading: { type: "nl.text", parent: "gridRow" },
+            "grid-recent": { type: "nl.list", parent: "gridRow" },
+            recentRow: { type: "nl.container", parent: "grid-recent", slot: "itemTemplate" },
+        });
+        const outer = buildUIListItemInstanceKey(undefined, "grid", "first");
+        const inner = buildUIListItemInstanceKey(outer, "grid-recent", "second");
+
+        expect(resolveUIWidgetAddressFromDrawing(document, "heading", inner)).toBe(buildUIWidgetAddress("heading", outer));
+        expect(buildUIListItemInstanceKey(undefined, "grid", "recent-second"))
+            .not.toBe(buildUIListItemInstanceKey(undefined, "grid-recent", "second"));
+        expect(isUIListItemInstanceKeyOf(inner, "grid")).toBe(false);
+        expect(isUIListItemInstanceKeyOf(inner, "grid-recent")).toBe(true);
+        expect(buildUIListItemInstanceKey(undefined, "grid-recent", "second"))
+            .not.toBe(buildUIListItemInstanceKey(undefined, "grid%2Drecent", "second"));
+    });
+
+    it("keeps a row key containing the segment separator inside its list", () => {
+        const row = buildUIListItemInstanceKey(undefined, "grid", "part\0tail");
+        expect(isUIListItemInstanceKeyOf(row, "grid")).toBe(true);
+        expect(row).not.toBe(buildUIListItemInstanceKey(undefined, "grid", "part%00tail"));
     });
 });
 

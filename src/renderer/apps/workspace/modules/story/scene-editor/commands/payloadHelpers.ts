@@ -145,17 +145,16 @@ export function deriveObjectName(
             return {};
         }
         const source = assetParam ? args[assetParam] : undefined;
-        const fallback = defaultObjectName(base);
         // A slot may name something other than an asset - `/vfx snow` names a generated source by a
         // word - and the row should still be called after what the author typed rather than after the
         // command. The word IS the name in that case; there is no file to strip an extension from.
         // It is the word as the command language writes it: a zh author who typed 樱花 addresses the
         // overlay as 樱花, and naming it `sakura` refused their very next `/show 樱花`.
         const stem = source?.kind === "asset"
-            ? assetBaseName(context, stageKind, source.assetId) ?? fallback
+            ? assetBaseName(context, stageKind, source.assetId) ?? defaultObjectName(base)
             : source?.kind === "enum"
                 ? enumWord(words, source.value)
-                : fallback;
+                : defaultObjectName(base);
         return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
 }
@@ -206,7 +205,7 @@ export function deriveShownObjectName() {
     };
 }
 
-/** The asset's display name without its extension - `forest.png` → `forest` - or null when unknown. */
+/** A file's name without its extension, or an asset set's own name. */
 function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
     // An ambience overlay's clip comes out of the video library, so it names itself off the same list.
     const list = stageKind === "video" || stageKind === "vfx"
@@ -214,7 +213,12 @@ function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStag
         : stageKind === "audio" ? context.audio : context.images;
     const found = list.find(entry => entry.id === assetId);
     const stripped = found?.name.replace(/\.[^./\\]+$/, "").trim();
-    return stripped ? stripped : null;
+    if (stripped) {
+        return stripped;
+    }
+    const assetType = stageKind === "vfx" ? "video" : stageKind;
+    const setName = context.assetSets.find(entry => entry.id === assetId && entry.assetType === assetType)?.name.trim();
+    return setName || null;
 }
 
 /** `base`, or `base2`, `base3`… - the first not already taken (case-insensitive) by an object on stage. */

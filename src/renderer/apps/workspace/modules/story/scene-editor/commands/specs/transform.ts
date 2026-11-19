@@ -162,8 +162,6 @@ function cameraBlock(args: TransformArgs, generateId: () => string, operation: C
         payload,
     });
     if (operation === "stopLoop") {
-        // Ending a sway states no destination: the camera goes back to the pose it kept underneath,
-        // and the only thing the line can say about that is how long it takes.
         const durationMs = asDurationMs(args.d);
         return block({ action: "camera", operation, transform: durationMs === undefined ? {} : { durationMs } });
     }
@@ -239,12 +237,27 @@ function validateProps(
     // shift. The grammar cannot check either, so the spec is the only place it can be said.
     issues.push(...positionIssues(args, ctx));
 
+    if (args.strength !== undefined && (!args.look || (args.look.kind === "enum" && args.look.value === "none"))) {
+        const span = ctx.spanOf("strength");
+        if (span) {
+            issues.push({ code: "unsupportedParam", span, key: "strength", kind: "look" });
+        }
+    }
+
     // A Story Motion is a whole keyframed shot with its own timing; a prop bag is a destination with
     // one. A row carrying both says two different things about the same move.
-    if (args.motion !== undefined && TRANSFORM_PROP_KEYS.some(key => args[key] !== undefined)) {
+    if (asBoolean(args.motion) && TRANSFORM_PROP_KEYS.some(key => args[key] !== undefined)) {
         const span = ctx.spanOf("motion");
         if (span) {
             issues.push({ code: "conflictingParams", span, keys: ["motion", "props"] });
+        }
+    }
+    if (asBoolean(args.motion)) {
+        for (const key of ["d", "ease", "delay", "repeat", "repeatDelay", "repeatType", "from"] as const) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "conflictingParams", span, keys: ["motion", key] });
+            }
         }
     }
 
@@ -313,8 +326,9 @@ function validateLoopFlags(args: TransformArgs, ctx: StoryCommandValidateContext
     // Ending a loop states no destination - it goes back to the pose the element kept underneath -
     // so a bag beside it is a pose that would be stored and then never reach the stage.
     if (stopping) {
-        for (const key of [...TRANSFORM_PROP_KEYS, "from", "motion"] as const) {
-            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+        for (const key of [...TRANSFORM_PROP_KEYS, "from", "motion", "ease", "delay", "repeat", "repeatDelay", "repeatType"] as const) {
+            const present = key === "motion" ? asBoolean(args.motion) : args[key] !== undefined;
+            const span = present ? ctx.spanOf(key) : undefined;
             if (span) {
                 issues.push({ code: "conflictingParams", span, keys: ["stopLoop", key] });
             }
@@ -493,7 +507,16 @@ export const reset = defineStoryCommand({
         if (span && target && ctx.context.variables.some(entry => entry.name.trim().toLowerCase() === target.name.toLowerCase())) {
             issues.push({ code: "ambiguousName", span, value: target.name });
         }
-        if (args.target?.kind === "variable" || subjectOf(args.target).kind !== "camera") {
+        if (args.target?.kind === "variable") {
+            for (const key of [...RESET_CHANNEL_KEYS, "d"] as const) {
+                const paramSpan = args[key] === undefined ? undefined : ctx.spanOf(key);
+                if (paramSpan) {
+                    issues.push({ code: "unsupportedParam", span: paramSpan, key, kind: "variable" });
+                }
+            }
+            return issues;
+        }
+        if (subjectOf(args.target).kind !== "camera") {
             return issues;
         }
         // Naming a channel on the camera would ask for a clear `resetCamera` cannot express, and a

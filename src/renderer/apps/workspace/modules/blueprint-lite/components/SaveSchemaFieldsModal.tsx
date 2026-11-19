@@ -43,8 +43,11 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
         label: formatBlueprintValueTypeLabel(value, t, "option"),
     }));
 
-    const renameField = useCallback((id: string, name: string) => {
-        service?.updateField(id, { name });
+    const renameField = useCallback((field: SaveSchemaField, name: string) => {
+        const trimmed = name.trim();
+        if (trimmed && trimmed !== field.name) {
+            service?.updateField(field.id, { name: trimmed });
+        }
     }, [service]);
 
     const retypeField = useCallback((id: string, valueType: string) => {
@@ -52,7 +55,10 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
     }, [service]);
 
     const setDefault = useCallback((field: SaveSchemaField, raw: string) => {
-        service?.updateField(field.id, { defaultValue: parseDefaultValue(field.valueType, raw) as LiteralValue });
+        const value = parseDefaultValue(field.valueType, raw);
+        if (value !== undefined) {
+            service?.updateField(field.id, { defaultValue: value });
+        }
     }, [service]);
 
     return (
@@ -61,14 +67,13 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
                 <div className="flex flex-col gap-1.5">
                     {fields.map(field => (
                         <div key={field.id} className="flex items-center gap-1.5">
-                            <Input
-                                size="sm"
+                            <SaveSchemaTextInput
                                 className="flex-1"
                                 value={field.name}
-                                aria-label={t("saveSchema.field.name")}
+                                ariaLabel={t("saveSchema.field.name")}
                                 readOnly={freeze.frozen}
-                                data-tip={freeze.frozen ? freeze.reason : undefined}
-                                onChange={event => renameField(field.id, event.target.value)}
+                                tip={freeze.frozen ? freeze.reason : undefined}
+                                onChange={value => renameField(field, value)}
                             />
                             <Select
                                 size="sm"
@@ -80,15 +85,14 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
                                 ariaLabel={t("saveSchema.field.type")}
                                 onChange={value => retypeField(field.id, String(value))}
                             />
-                            <Input
-                                size="sm"
+                            <SaveSchemaTextInput
                                 className="w-40"
                                 value={formatDefaultValue(field)}
                                 placeholder={t("saveSchema.field.defaultPlaceholder")}
-                                aria-label={t("saveSchema.field.default")}
+                                ariaLabel={t("saveSchema.field.default")}
                                 readOnly={freeze.frozen}
-                                data-tip={freeze.frozen ? freeze.reason : undefined}
-                                onChange={event => setDefault(field, event.target.value)}
+                                tip={freeze.frozen ? freeze.reason : undefined}
+                                onChange={value => setDefault(field, value)}
                             />
                             <IconButton
                                 size="sm"
@@ -120,6 +124,36 @@ export function SaveSchemaFieldsModal({ isOpen, onClose }: { isOpen: boolean; on
     );
 }
 
+function SaveSchemaTextInput({
+    value, onChange, className, ariaLabel, placeholder, readOnly, tip,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    className: string;
+    ariaLabel: string;
+    placeholder?: string;
+    readOnly: boolean;
+    tip?: string;
+}) {
+    const [draft, setDraft] = useState<string | null>(null);
+    return (
+        <Input
+            size="sm"
+            className={className}
+            value={draft ?? value}
+            placeholder={placeholder}
+            aria-label={ariaLabel}
+            readOnly={readOnly}
+            data-tip={tip}
+            onBlur={() => setDraft(null)}
+            onChange={event => {
+                setDraft(event.target.value);
+                onChange(event.target.value);
+            }}
+        />
+    );
+}
+
 /**
  * A field's default, as one line of text.
  *
@@ -144,33 +178,31 @@ function formatDefaultValue(field: SaveSchemaField): string {
 /**
  * Read one line of text back into a default of the field's type.
  *
- * Unparseable input keeps the type's own empty value rather than throwing or storing the raw text:
- * this runs on every keystroke, so every half-typed number and half-typed object passes through
- * here, and a field that refuses to hold a value mid-word cannot be typed into at all.
+ * An unfinished value stays in the input until it can be parsed. It is not written to the schema.
  */
-function parseDefaultValue(valueType: SaveSchemaFieldType, raw: string): unknown {
+function parseDefaultValue(valueType: SaveSchemaFieldType, raw: string): LiteralValue | undefined {
     const text = raw.trim();
     switch (valueType) {
         case "boolean":
-            return text.toLowerCase() === "true";
+            return text.toLowerCase() === "true" ? true : text.toLowerCase() === "false" ? false : undefined;
         case "integer": {
-            const parsed = Number.parseInt(text, 10);
-            return Number.isFinite(parsed) ? parsed : 0;
+            const parsed = Number(text);
+            return text && Number.isInteger(parsed) ? parsed : undefined;
         }
         case "float": {
-            const parsed = Number.parseFloat(text);
-            return Number.isFinite(parsed) ? parsed : 0;
+            const parsed = Number(text);
+            return text && Number.isFinite(parsed) ? parsed : undefined;
         }
         case "json":
         case "array": {
             try {
-                const parsed = JSON.parse(text || (valueType === "array" ? "[]" : "{}"));
+                const parsed = JSON.parse(text);
                 if (valueType === "array") {
-                    return Array.isArray(parsed) ? parsed : [];
+                    return Array.isArray(parsed) ? parsed : undefined;
                 }
-                return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+                return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
             } catch {
-                return valueType === "array" ? [] : {};
+                return undefined;
             }
         }
         default:

@@ -168,11 +168,12 @@ export function formatBuildDuration(state: GameBuildStateSnapshot, t: Translator
         return "";
     }
     const totalSeconds = Math.max(0, state.finishedAt - state.startedAt) / 1000;
-    if (totalSeconds < 60) {
+    if (Math.round(totalSeconds * 10) < 600) {
         return t("build.report.durationSeconds", { seconds: totalSeconds.toFixed(1) });
     }
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.round(totalSeconds - minutes * 60);
+    const roundedSeconds = Math.round(totalSeconds);
+    const minutes = Math.floor(roundedSeconds / 60);
+    const seconds = roundedSeconds % 60;
     return t("build.report.durationMinutes", { minutes, seconds: String(seconds).padStart(2, "0") });
 }
 

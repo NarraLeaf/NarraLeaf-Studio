@@ -40,11 +40,44 @@ describe("renameInStoryExpression", () => {
         expect(result.status === "rewritten" && result.expression.source).toBe("'my gold' * 2");
     });
 
-    it("falls back to printing the tree when a prefixed read cannot keep its prefix", () => {
+    it("keeps the source when a prefixed read needs a quoted name", () => {
         const result = renameInStoryExpression(parse("saved.gold > 1"), { kind: "variable", ref: GOLD_SAVED, newName: "my bank" });
-        expect(result).toMatchObject({ status: "rewritten", reformatted: true });
+        expect(result).toMatchObject({ status: "rewritten", reformatted: false });
         if (result.status !== "rewritten") throw new Error("unreachable");
+        expect(result.expression.source).toBe("'my bank' > 1");
         expect(result.expression.ast).toMatchObject({ left: { kind: "var", name: "my bank", target: GOLD_SAVED } });
+    });
+
+    it("keeps other qualified references when a renamed source is reopened", () => {
+        const sceneChapter: StoryVariableRef = { scope: "scene", variableId: "scene_chapter" };
+        const savedChapter: StoryVariableRef = { scope: "saved", variableId: "saved_chapter" };
+        const originalScope = createStoryExpressionScope([
+            { name: "gold", ref: GOLD_SAVED },
+            { name: "chapter", ref: sceneChapter },
+            { name: "chapter", ref: savedChapter },
+        ]);
+        const original = parseStoryExpression("saved.gold + saved.chapter", originalScope).expression;
+        const result = renameInStoryExpression(original, {
+            kind: "variable", ref: GOLD_SAVED, newName: "my bank",
+        });
+        expect(result.status).toBe("rewritten");
+        if (result.status !== "rewritten") throw new Error("unreachable");
+        const renamedScope = createStoryExpressionScope([
+            { name: "my bank", ref: GOLD_SAVED },
+            { name: "chapter", ref: sceneChapter },
+            { name: "chapter", ref: savedChapter },
+        ]);
+        const reparsed = parseStoryExpression(result.expression.source, renamedScope);
+        expect(reparsed.issues).toEqual([]);
+        expect(reparsed.expression.ast).toEqual(result.expression.ast);
+    });
+
+    it("refuses to reformat a stale source when doing so would lose another scope", () => {
+        const expression = parse("gold + saved.gold");
+        const result = renameInStoryExpression({ ...expression, source: "1 + saved.gold" }, {
+            kind: "variable", ref: GOLD_SCENE, newName: "coins",
+        });
+        expect(result).toEqual({ status: "failed", occurrences: 1 });
     });
 
     it("leaves an expression that does not read the variable alone", () => {

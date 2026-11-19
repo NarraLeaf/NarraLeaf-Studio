@@ -179,13 +179,13 @@ async function runningGame() {
     ]);
     const stoppedByScript: string[] = [];
     /** Runs inside the global's script head, before it decides whether to stop the press. */
-    const duringGlobal = { run: (_button: string): void => undefined };
+    const duringGlobal: { run: (button: string) => void | Promise<void> } = { run: () => undefined };
     await mountCompiledScripts(
         { [scriptLayerKey("bp-global", SCRIPT_LAYER)]: { scriptRef: "scripts/bp-global.ts", url: "file:///global.mjs" } },
         undefined,
         async () => ({
-            onGamepadButtonDown: (ctx: { stopPropagation(): void }, event: { button: string }) => {
-                duringGlobal.run(event.button);
+            onGamepadButtonDown: async (ctx: { stopPropagation(): void }, event: { button: string }) => {
+                await duringGlobal.run(event.button);
                 if (event.button === "Y") {
                     stoppedByScript.push(event.button);
                     ctx.stopPropagation();
@@ -248,7 +248,7 @@ async function runningGame() {
 
     const pad = fakePad();
     setGamepadTrackerHost(pad.host);
-    running.push(listenForGamepads({
+    const stop = listenForGamepads({
         blueprintDocument,
         persistentVariables: {},
         core,
@@ -256,7 +256,8 @@ async function runningGame() {
         vocabulary: {},
         readKeyboardOwner: () => owner,
         onError: error => errors.push(String(error)),
-    }));
+    });
+    running.push(stop);
     // The first frame takes what is down as already down; nothing is.
     pad.tick();
 
@@ -291,7 +292,7 @@ async function runningGame() {
         await settle();
         return [...lines];
     };
-    return { press, errors, stoppedByScript, duringGlobal };
+    return { press, pad, stop, errors, stoppedByScript, duringGlobal };
 }
 
 beforeAll(() => {
@@ -367,5 +368,30 @@ describe("a gamepad press goes the way a key goes", () => {
         await game.press("A");
 
         expect(heard).toEqual([]);
+    });
+
+    it("does not dispatch queued presses after the listener stops", async () => {
+        const game = await runningGame();
+        let release = () => undefined as void;
+        let started = () => undefined as void;
+        const blocked = new Promise<void>(resolve => { release = resolve; });
+        const firstStarted = new Promise<void>(resolve => { started = resolve; });
+        let presses = 0;
+        game.duringGlobal.run = async () => {
+            presses += 1;
+            if (presses === 1) {
+                started();
+                await blocked;
+            }
+        };
+
+        game.pad.press("A");
+        await firstStarted;
+        game.pad.press("A");
+        game.stop();
+        release();
+        await settle();
+
+        expect(presses).toBe(1);
     });
 });

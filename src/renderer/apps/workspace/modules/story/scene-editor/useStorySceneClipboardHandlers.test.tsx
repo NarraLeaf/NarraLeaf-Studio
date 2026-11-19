@@ -822,3 +822,50 @@ describe("blueprints travelling with copied rows", () => {
         expect(pastedBlueprintId(destination.storyService)).toBe("bp-copy-1");
     });
 });
+
+describe("stage-object references in copied rows", () => {
+    it("binds a pasted action to the copied creator when both rows travel together", () => {
+        const create: StoryBlock = {
+            id: "create",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "image", operation: "create", objectName: "poster", assetId: "asset-1" },
+        };
+        const transform: StoryBlock = {
+            id: "transform",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "image", name: "poster", sourceBlockId: "create" },
+            },
+        };
+        const sourceScene = {
+            id: "scene-1", name: "One", blocks: { create, transform }, rootBlockIds: ["create", "transform"],
+        } as unknown as StoryScene;
+        const source = setup({ scene: sourceScene });
+        const destination = setup({ scene: SCENE, sceneId: "scene-2" });
+        const clipboard = new Map<string, string>();
+
+        source.result.current.copySelectionToClipboard({
+            preventDefault: () => undefined,
+            clipboardData: { setData: (mime: string, value: string) => void clipboard.set(mime, value) },
+        } as unknown as ClipboardEvent<HTMLDivElement>);
+        destination.result.current.handlePaste({
+            target: document.body,
+            preventDefault: () => undefined,
+            nativeEvent: { shiftKey: false },
+            clipboardData: { getData: (mime: string) => clipboard.get(mime) ?? "" },
+        } as unknown as ClipboardEvent<HTMLDivElement>);
+
+        const inserts = destination.storyService.insertBlocks.mock.calls[0][2] as { block: StoryBlock }[];
+        const copiedCreate = inserts[0].block;
+        const copiedTransform = inserts[1].block;
+        expect(copiedCreate.id).not.toBe(create.id);
+        expect(copiedTransform.payload).toMatchObject({ target: { sourceBlockId: copiedCreate.id } });
+        expect(transform.payload).toMatchObject({ target: { sourceBlockId: "create" } });
+    });
+});

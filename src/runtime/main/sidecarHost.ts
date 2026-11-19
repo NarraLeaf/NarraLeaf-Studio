@@ -311,6 +311,9 @@ class SidecarInstance {
         if (this.unavailableReason) {
             return Promise.reject(new Error(`Sidecar "${this.label}" is unavailable: ${this.unavailableReason}`));
         }
+        if (this.stopping) {
+            return Promise.reject(new Error(`Sidecar "${this.label}" is still shutting down`));
+        }
         if (this.state === "ready") {
             return Promise.resolve();
         }
@@ -436,6 +439,11 @@ class SidecarInstance {
             this.deps.log("warning", `sidecar ${this.label}: dropped ${dropped} bytes of an over-long protocol line`);
         });
         child.stdout?.on("data", chunk => {
+            // A process can exit before its output stream closes; its remaining frames do not
+            // belong to a replacement process that is starting or handling requests.
+            if (this.child !== child) {
+                return;
+            }
             for (const line of stdoutFramer.push(decodeChunk(stdoutDecoder, chunk))) {
                 this.handleFrame(line);
             }
@@ -494,6 +502,9 @@ class SidecarInstance {
     }
 
     private handleReady(record: Record<string, unknown>): void {
+        if (this.stopping) {
+            return;
+        }
         const protocol = record.protocol;
         if (typeof protocol === "number" && protocol !== SIDECAR_PROTOCOL_VERSION) {
             this.failStart(`speaks protocol ${protocol}, but this game hosts protocol ${SIDECAR_PROTOCOL_VERSION}`);
@@ -545,6 +556,9 @@ class SidecarInstance {
 
     public async request(method: string, params?: unknown): Promise<unknown> {
         await this.start();
+        if (this.stopping || this.state !== "ready") {
+            throw new Error(`Sidecar "${this.label}" is not running`);
+        }
         const id = this.nextRequestId++;
         return new Promise<unknown>((resolve, reject) => {
             this.pending.set(id, { method, resolve, reject });
@@ -565,11 +579,16 @@ class SidecarInstance {
         const send = () => {
             this.writeFrame({ t: "req", method, ...(params === undefined ? {} : { params }) });
         };
-        if (this.state === "ready") {
+        if (this.state === "ready" && !this.stopping) {
             send();
             return;
         }
-        void this.start().then(send).catch(error => {
+        void this.start().then(() => {
+            if (this.stopping || this.state !== "ready") {
+                throw new Error("sidecar is not running");
+            }
+            send();
+        }).catch(error => {
             this.deps.log("warning", `sidecar ${this.label}: dropped notify "${method}": ${describeError(error)}`);
         });
     }
@@ -606,6 +625,10 @@ class SidecarInstance {
             return new Promise<void>(resolve => this.stopWaiters.push(resolve));
         }
         this.stopping = true;
+        this.clearStartupTimer();
+        const settlement = this.startSettlement;
+        this.startSettlement = null;
+        settlement?.reject(new Error(`Sidecar "${this.label}" stopped during startup`));
         return new Promise<void>(resolve => {
             const timers: Array<ReturnType<typeof setTimeout>> = [];
             const finish = () => {

@@ -90,6 +90,21 @@ describe("readXlsxSheets", () => {
         expect(isXlsxPart("xl/worksheets/_rels/sheet3.xml.rels")).toBe(false);
         expect(isXlsxPart("xl/media/image1.png")).toBe(false);
     });
+
+    it("rejects worksheet coordinates outside the XLSX grid", () => {
+        const read = (sheetData: string) => readXlsxSheets({
+            "xl/workbook.xml": workbook,
+            "xl/_rels/workbook.xml.rels": rels,
+            "xl/worksheets/sheet1.xml": `<worksheet><sheetData>${sheetData}</sheetData></worksheet>`,
+        });
+
+        expect(() => read('<row r="0"/>')).toThrow();
+        expect(() => read('<row r="999999999999999999999999"/>')).toThrow();
+        expect(() => read('<row r="1048577"/>')).toThrow();
+        expect(() => read('<row r="1"><c r="XFE1"><v>1</v></c></row>')).toThrow();
+        expect(() => read('<row r="1"><c r="A1048577"><v>1</v></c></row>')).toThrow();
+        expect(read('<row r="1"><c r="XFD1"><v>1</v></c></row>')[0].rows[0]).toHaveLength(16_384);
+    });
 });
 
 describe("decodeXmlEntities", () => {

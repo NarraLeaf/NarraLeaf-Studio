@@ -134,6 +134,29 @@ describe("typography/glyph-coverage", () => {
         expect(findings[0]!.location).toMatchObject({ blockId: "b1" });
     });
 
+    it("counts only appearances whose own font stack cannot draw the character", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const page = (childrenIds: string[]) => ({
+            surfaces: [{ id: "s1", name: "Menu", rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", childrenIds },
+                missing: { id: "missing", type: "nl.text", childrenIds: [], props: { text: "こ" } },
+                covered: { id: "covered", type: "nl.text", childrenIds: [], props: { text: "こ", fontAssetId: "kana" } },
+            },
+        }) as unknown as UIDocument;
+        const findingsFor = (childrenIds: string[]) => runRule("typography/glyph-coverage", createTestLintContext({
+            uiDocument: page(childrenIds),
+            io: ioWith({ latin: LATIN, kana: KANA }) as LintContext["io"],
+        }));
+
+        for (const order of [["missing", "covered"], ["covered", "missing"]]) {
+            const findings = await findingsFor(order);
+            expect(findings).toHaveLength(1);
+            expect(findings[0].messageParams).toEqual({ character: "こ", count: 1 });
+            expect(findings[0].location).toMatchObject({ elementId: "missing" });
+        }
+    });
+
     it("passes over the characters no typeface is expected to carry", async () => {
         setActiveProjectFonts([{ assetId: "latin" }]);
         // A zero-width joiner, a private-use code point and an emoji - none of them a defect.
@@ -296,6 +319,37 @@ describe("typography/glyph-coverage / languages", () => {
         });
 
         expect(await runRule("typography/glyph-coverage", ctx)).toEqual([]);
+    });
+
+    it("checks translated story words without counting markup or interpolation placeholders", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const segment = textSegment("t1", "Hi", "dialogue", [
+            { text: "Hi", marks: { bold: true } },
+            { interpolation: { kind: "variable", target: { scope: "scene", variableId: "name" } } },
+        ]);
+        const ctx = createTestLintContext({
+            stories: [storyEntryOf("s1", "Story", [sceneOf("sc1", "", [dialogueBlock("b1", segment)])])],
+            localization: LOCALIZATION({ t1: "‹0›Hi‹/0›{0}" }),
+            io: ioWith({ latin: LATIN }) as LintContext["io"],
+        });
+
+        expect(await runRule("typography/glyph-coverage", ctx)).toEqual([]);
+    });
+
+    it("checks translated words on a line whose source is only an interpolation", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const segment = textSegment("t1", "", "dialogue", [
+            { interpolation: { kind: "variable", target: { scope: "scene", variableId: "name" } } },
+        ]);
+        const ctx = createTestLintContext({
+            stories: [storyEntryOf("s1", "Story", [sceneOf("sc1", "", [dialogueBlock("b1", segment)])])],
+            localization: LOCALIZATION({ t1: "こ{0}" }),
+            io: ioWith({ latin: LATIN }) as LintContext["io"],
+        });
+
+        const findings = await runRule("typography/glyph-coverage", ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toMatchObject({ character: "こ", language: "ja" });
     });
 
     it("names the language a character is missing in", async () => {

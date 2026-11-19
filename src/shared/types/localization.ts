@@ -273,14 +273,19 @@ export function normalizeLocalizationDocument(value: unknown, locale: LocaleCode
         if (typeof unit.target !== "string") {
             continue;
         }
-        document.units[unitId] = {
-            target: unit.target,
-            sourceHash: typeof unit.sourceHash === "string" ? unit.sourceHash : "",
-            status: unit.status === "machine" || unit.status === "translated" || unit.status === "reviewed"
-                ? unit.status
-                : "untranslated",
-            ...(typeof unit.note === "string" && unit.note ? { note: unit.note } : {}),
-        };
+        Object.defineProperty(document.units, unitId, {
+            value: {
+                target: unit.target,
+                sourceHash: typeof unit.sourceHash === "string" ? unit.sourceHash : "",
+                status: unit.status === "machine" || unit.status === "translated" || unit.status === "reviewed"
+                    ? unit.status
+                    : "untranslated",
+                ...(typeof unit.note === "string" && unit.note ? { note: unit.note } : {}),
+            },
+            enumerable: true,
+            configurable: true,
+            writable: true,
+        });
     }
     return document;
 }
@@ -508,12 +513,20 @@ export function resolveLocalizedUnitText(
     unitId: string,
 ): string | null {
     for (const code of resolveLocaleChain(bundle, locale)) {
-        const target = bundle.tables[code]?.[unitId];
+        const target = readLocalizationTarget(bundle.tables[code], unitId);
         if (target) {
             return target;
         }
     }
     return null;
+}
+
+/** Read a translation only when the table owns the unit id. */
+function readLocalizationTarget(
+    table: Readonly<Record<string, string>> | undefined,
+    unitId: string,
+): string | undefined {
+    return table && Object.hasOwn(table, unitId) ? table[unitId] : undefined;
 }
 
 /**
@@ -630,7 +643,7 @@ export function resolveLocalizedSpeakerName(
         for (const code of resolveLocaleChain(bundle, locale)) {
             const table = bundle.tables[code];
             for (const renameId of renameIds) {
-                const target = table?.[renameTranslationUnitId(renameId)];
+                const target = readLocalizationTarget(table, renameTranslationUnitId(renameId));
                 if (target) {
                     return target;
                 }

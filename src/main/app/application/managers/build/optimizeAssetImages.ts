@@ -155,8 +155,8 @@ function encodeFootprint(sourceBytes: number, width: number, height: number): nu
 }
 
 /**
- * Bumped when a change here would make a cached result wrong rather than merely
- * out of date.
+ * The version for re-encoded images. Bumped when a change would make a cached
+ * result wrong rather than merely out of date.
  *
  * It is not the Chromium version. Encoder output does drift between Chromium
  * releases, but a cached lossless result was compared against its source pixel
@@ -170,6 +170,9 @@ function encodeFootprint(sourceBytes: number, width: number, height: number): nu
  * is allowed to answer for an image.
  */
 const CACHE_VERSION = 2;
+
+/** Version 3 of the metadata-only result preserves EXIF orientation. */
+const STRIP_CACHE_VERSION = 3;
 
 /** How many "verification failed" warnings are worth printing before they stop being news. */
 const MAX_VERIFICATION_WARNINGS = 3;
@@ -576,7 +579,8 @@ type CacheAction = "lossless" | "lossy" | "strip";
 function cacheKey(bytes: Buffer, action: CacheAction, mode: string): string {
     const digest = crypto.createHash("sha256").update(bytes).digest("hex");
     const prefix = action === "lossless" ? "l" : action === "strip" ? "s" : "";
-    return `${digest}-${prefix}${mode}-v${CACHE_VERSION}`;
+    const version = action === "strip" ? STRIP_CACHE_VERSION : CACHE_VERSION;
+    return `${digest}-${prefix}${mode}-v${version}`;
 }
 
 /**

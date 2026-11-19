@@ -153,8 +153,8 @@ export function resolveTestParameterValues(
  * with its scene as well - and keeps the first one that is unique, compared without regard to case,
  * because that is how a command line matches them. Only the rows that collide are lengthened, so
  * one "Bad End" shared by two stories costs those two a prefix and nobody else anything. Rows still
- * alike at their longest are numbered in order, which only a project with two identically named
- * endings in one scene ever sees.
+ * alike at their longest are numbered in order. A numbered spelling skips every name already
+ * chosen by another row, including a name the author wrote with a number in it.
  */
 export function nameUniquely(candidates: readonly (readonly string[])[]): string[] {
     const depth = candidates.map(() => 0);
@@ -173,12 +173,24 @@ export function nameUniquely(candidates: readonly (readonly string[])[]): string
             break;
         }
     }
-    const seen = new Map<string, number>();
+    const used = new Set(candidates.map((_, row) => fold(spell(row))));
+    const nextNumber = new Map<string, number>();
     return candidates.map((_, row) => {
         const name = spell(row);
-        const nth = (seen.get(fold(name)) ?? 0) + 1;
-        seen.set(fold(name), nth);
-        return nth === 1 ? name : `${name} (${nth})`;
+        const key = fold(name);
+        let nth = nextNumber.get(key);
+        if (nth === undefined) {
+            nextNumber.set(key, 2);
+            return name;
+        }
+        let numbered = `${name} (${nth})`;
+        while (used.has(fold(numbered))) {
+            nth += 1;
+            numbered = `${name} (${nth})`;
+        }
+        used.add(fold(numbered));
+        nextNumber.set(key, nth + 1);
+        return numbered;
     });
 }
 

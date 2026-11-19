@@ -32,7 +32,9 @@ import { componentWidgetMainOwnerKey, widgetMainOwnerKey } from "./blueprint/own
 import { setPrivateOwnerBlueprint } from "./blueprint/ownerRecords";
 import { IMPORT_PLACEMENT_FROM_SOURCE, UIDocumentService } from "./UIDocumentService";
 import { UIEditorHistoryService } from "./UIEditorHistoryService";
-import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { createBlueprintFnRef } from "./blueprint/fnCatalog";
+import { scriptSelfOf } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
 
 const PAGE = "settings";
 const SLOT = "slot";
@@ -227,6 +229,19 @@ function createHarness() {
 }
 
 describe("deleting a component", () => {
+    it("counts placements inside other component definitions as uses", () => {
+        const h = createHarness();
+        const badge = h.uidoc.getDocument().components!.find(item => item.id === BADGE)!;
+        badge.elements.nested = {
+            ...element("nested", "nl.container", badge.rootElementId, []),
+            extra: { componentLink: { componentId: BACK, linked: true } },
+        };
+        badge.elements[badge.rootElementId].childrenIds.push("nested");
+
+        expect(h.uidoc.getComponentUsageCount(BACK)).toBe(3);
+        expect(h.uidoc.getComponentUsageCount(SLOT)).toBe(0);
+    });
+
     it("is one step, and undo puts it back exactly: its place, its blueprints, its list's shape", () => {
         const h = createHarness();
         const before = h.component(BACK);
@@ -347,6 +362,26 @@ describe("adding to the library", () => {
         expect(h.history.peekUndo(PROJECT)).toEqual({ key: "uiEditor.history.duplicateComponent", params: { name: "Back" } });
     });
 
+    it("points a copied component's widget and function references at the copy", () => {
+        const h = createHarness();
+        const bp = h.graphDocument.blueprintDocument;
+        const sourceId = bp.ownerRecords[componentWidgetMainOwnerKey(BACK, "backLabel")].blueprintId;
+        bp.blueprints[sourceId].graphs.events.main = { id: "main", graph: { nodes: {
+            head: { id: "head", type: "blueprint.fn.head" },
+            call: { id: "call", type: "blueprint.fn.call", params: { fnRef: createBlueprintFnRef(sourceId, "head") } },
+            ref: { id: "ref", type: "blueprint.element.ref", params: {
+                surfaceId: buildUIComponentSurfaceId(BACK), elementId: "backLabel", elementType: "nl.text",
+            } },
+        }, edges: [] } };
+
+        const copy = h.uidoc.duplicateComponent(BACK)!;
+        const label = Object.values(copy.elements).find(item => item.name === "backLabel")!;
+        const copyId = bp.ownerRecords[componentWidgetMainOwnerKey(copy.id, label.id)].blueprintId;
+        const nodes = bp.blueprints[copyId].graphs.events.main.graph!.nodes!;
+        expect(nodes.ref.params).toMatchObject({ surfaceId: buildUIComponentSurfaceId(copy.id), elementId: label.id });
+        expect(nodes.call.params?.fnRef).toBe(createBlueprintFnRef(copyId, "head"));
+    });
+
     it("takes back a component made from page elements on the page's stack, without touching the page", () => {
         const h = createHarness();
         const page = structuredClone(h.uidoc.getDocument().elements);
@@ -360,6 +395,216 @@ describe("adding to the library", () => {
 
         h.history.redo(uiSurfaceHistoryScope(PAGE));
         expect(h.library()).toEqual(["Save slot", "Back", "Badge", "List"]);
+    });
+
+    it("preserves linked placements and list field bindings when extracting a component", () => {
+        const h = createHarness();
+        const document = h.uidoc.getDocument();
+        const list = document.elements.pageList;
+        list.childrenIds = ["rowText", "rowBack"];
+        document.elements.rowText = {
+            ...element("rowText", "nl.text", list.id, []),
+            extra: { listSlot: "itemTemplate" },
+            valueBindings: { text: { kind: "listItemField", fieldId: "f-title" } },
+        };
+        document.elements.rowBack = {
+            ...element("rowBack", "nl.container", list.id, []),
+            extra: { listSlot: "itemTemplate", componentLink: { componentId: BACK, linked: true, params: { caption: "Return" } } },
+        };
+
+        const made = h.uidoc.createComponentFromElements(PAGE, [list.id], "List")!;
+        const text = Object.values(made.elements).find(item => item.name === "rowText")!;
+        const back = Object.values(made.elements).find(item => item.name === "rowBack")!;
+        expect.soft(text.valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "f-title" });
+        expect.soft(back.extra?.componentLink).toEqual({ componentId: BACK, linked: true, params: { caption: "Return" } });
+        h.history.undo(uiSurfaceHistoryScope(PAGE));
+        h.history.redo(uiSurfaceHistoryScope(PAGE));
+        const restored = h.uidoc.getComponent(made.id)!;
+        expect(restored.elements[text.id].valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "f-title" });
+        expect(restored.elements[back.id].extra?.componentLink).toEqual(back.extra?.componentLink);
+    });
+
+    it("keeps a copied slider's track and handle attached to the copied children", () => {
+        const h = createHarness();
+        const doc = h.uidoc.getDocument();
+        const badge = doc.components!.find(item => item.id === BADGE)!;
+        const root = badge.elements[badge.rootElementId];
+        root.childrenIds.push("slider");
+        badge.elements.slider = element("slider", "nl.slider", root.id, ["track", "handle"], {}, { trackElementId: "track", handleElementId: "handle" });
+        badge.elements.track = { ...element("track", "nl.container", "slider", []), extra: { sliderSlot: "track" } };
+        badge.elements.handle = { ...element("handle", "nl.container", "slider", []), extra: { sliderSlot: "handle" } };
+
+        const copy = h.uidoc.duplicateComponent(BADGE)!;
+        const slider = Object.values(copy.elements).find(item => item.name === "slider")!;
+        const track = Object.values(copy.elements).find(item => item.name === "track")!;
+        const handle = Object.values(copy.elements).find(item => item.name === "handle")!;
+        expect(slider.props).toMatchObject({ trackElementId: track.id, handleElementId: handle.id });
+        expect(slider.childrenIds).toEqual([track.id, handle.id]);
+    });
+
+    it("keeps slider parts attached through extraction, paste into a definition and unlink", () => {
+        const h = createHarness();
+        const doc = h.uidoc.getDocument();
+        const slider = element("slider", "nl.slider", "pageRoot", ["track", "handle"], {}, { trackElementId: "track", handleElementId: "handle" });
+        const track = { ...element("track", "nl.container", "slider", []), extra: { sliderSlot: "track" } };
+        const handle = { ...element("handle", "nl.container", "slider", []), extra: { sliderSlot: "handle" } };
+        Object.assign(doc.elements, { slider, track, handle });
+        doc.elements.pageRoot.childrenIds.push(slider.id);
+
+        const extracted = h.uidoc.createComponentFromElements(PAGE, [slider.id], "Slider")!;
+        const extractedRoot = extracted.elements[extracted.rootElementId];
+        expect(extractedRoot.props?.trackElementId).toBe(extractedRoot.childrenIds[0]);
+        expect(extractedRoot.props?.handleElementId).toBe(extractedRoot.childrenIds[1]);
+
+        const payload = {
+            v: 1 as const, sourceSurfaceId: PAGE, topLevelElementIds: [slider.id],
+            elements: { slider, track, handle }, widgetMainBlueprints: {}, widgetValueBlueprints: {},
+        };
+        const result = h.uidoc.pasteComponentClipboardPayload(BADGE, "badgeRoot", null, payload);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const pasted = h.uidoc.getComponent(BADGE)!.elements[result.newRootIds[0]];
+        expect(pasted.props?.trackElementId).toBe(pasted.childrenIds[0]);
+        expect(pasted.props?.handleElementId).toBe(pasted.childrenIds[1]);
+        expect(h.uiHistory.undo(buildUIComponentEditorSurfaceId(BADGE))).toBe(true);
+        expect(h.uiHistory.redo(buildUIComponentEditorSurfaceId(BADGE))).toBe(true);
+        const redone = h.uidoc.getComponent(BADGE)!.elements[pasted.id];
+        expect(redone.props?.handleElementId).toBe(redone.childrenIds[1]);
+
+        const placement = h.uidoc.createComponentInstance("pageRoot", extracted.id);
+        h.uidoc.unlinkComponentInstance(placement.id);
+        const unlinked = h.uidoc.getDocument().elements[placement.id];
+        expect(unlinked.props?.trackElementId).toBe(unlinked.childrenIds[0]);
+        expect(unlinked.props?.handleElementId).toBe(unlinked.childrenIds[1]);
+    });
+
+    it("keeps a text parameter binding when pasting within the same component", () => {
+        const h = createHarness();
+        const source = {
+            ...element("source-text", "nl.text", "badgeRoot", []),
+            valueBindings: { text: { kind: "componentParam" as const, paramId: "caption" } },
+        };
+        const result = h.uidoc.pasteComponentClipboardPayload(BADGE, "badgeRoot", null, {
+            v: 1, sourceSurfaceId: buildUIComponentEditorSurfaceId(BADGE), topLevelElementIds: [source.id],
+            elements: { [source.id]: source }, widgetMainBlueprints: {}, widgetValueBlueprints: {},
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(h.uidoc.getComponent(BADGE)!.elements[result.newRootIds[0]].valueBindings?.text)
+            .toEqual({ kind: "componentParam", paramId: "caption" });
+    });
+
+    it("restores materialised component blueprints after undo and redo", () => {
+        const h = createHarness();
+        const ids = h.uidoc.unlinkComponentInstance("backTop");
+        const document = h.uidoc.getDocument();
+        const labelId = ids.find(id => document.elements[id]?.name === "backLabel")!;
+        const key = widgetMainOwnerKey(PAGE, labelId);
+        const blueprints = h.graphDocument.blueprintDocument;
+        const copiedId = blueprints.ownerRecords[key]?.blueprintId;
+        expect(blueprints.blueprints[copiedId]?.name).toBe("backLabel logic");
+
+        expect(h.uiHistory.undo(PAGE)).toBe(true);
+        expect(h.uiHistory.redo(PAGE)).toBe(true);
+        const redoneId = blueprints.ownerRecords[key]?.blueprintId;
+        expect(blueprints.blueprints[redoneId]?.name).toBe("backLabel logic");
+    });
+
+    it("retains a nested root placement when its outer component is unlinked", () => {
+        const h = createHarness();
+        const outer = h.uidoc.createComponentFromElements(PAGE, ["backTop"], "Outer")!;
+        const placed = h.uidoc.createComponentInstance("pageRoot", outer.id);
+
+        h.uidoc.unlinkComponentInstance(placed.id);
+
+        expect(h.uidoc.getDocument().elements[placed.id].extra?.componentLink).toEqual({ componentId: BACK, linked: true });
+    });
+
+    it("materialises a placement's text parameter when it is unlinked", () => {
+        const h = createHarness();
+        const component = h.uidoc.getDocument().components!.find(item => item.id === BADGE)!;
+        component.params = [{ id: "caption", name: "Caption", type: "text", defaultValue: "Default" }];
+        component.elements.label = {
+            ...element("label", "nl.text", component.rootElementId, [], {}, { text: "Sample" }),
+            valueBindings: { text: { kind: "componentParam", paramId: "caption" } },
+        };
+        component.elements[component.rootElementId].childrenIds.push("label");
+        const placed = h.uidoc.createComponentInstance("pageRoot", BADGE);
+        h.uidoc.setComponentInstanceParam(placed.id, "caption", "Start");
+
+        const ids = h.uidoc.unlinkComponentInstance(placed.id);
+        const copied = ids.map(id => h.uidoc.getDocument().elements[id]).find(item => item.name === "label")!;
+        expect(copied.props?.text).toBe("Start");
+        expect(copied.valueBindings?.text).toBeUndefined();
+    });
+
+    it("keeps a text parameter's translation key when unlinking", () => {
+        const h = createHarness();
+        const component = h.uidoc.getDocument().components!.find(item => item.id === BADGE)!;
+        component.params = [{ id: "caption", name: "Caption", type: "text", defaultValue: "Default" }];
+        component.elements.label = {
+            ...element("label", "nl.text", component.rootElementId, [], {}, { text: "Sample" }),
+            valueBindings: { text: { kind: "componentParam", paramId: "caption" } },
+        };
+        component.elements[component.rootElementId].childrenIds.push("label");
+        const placed = h.uidoc.createComponentInstance("pageRoot", BADGE);
+        h.uidoc.setComponentInstanceParamKey(placed.id, "caption", "menu.start");
+
+        const ids = h.uidoc.unlinkComponentInstance(placed.id);
+        const copied = ids.map(id => h.uidoc.getDocument().elements[id]).find(item => item.name === "label")!;
+        expect(copied.props?.localizationKey).toBe("menu.start");
+        expect(copied.valueBindings?.text).toBeUndefined();
+    });
+
+    it("materialises Get Component Param in the copied blueprint", () => {
+        const h = createHarness();
+        const bp = h.graphDocument.blueprintDocument;
+        const sourceId = bp.ownerRecords[componentWidgetMainOwnerKey(BACK, "backLabel")].blueprintId;
+        bp.blueprints[sourceId].graphs.events = {
+            main: { id: "main", graph: { nodes: {
+                param: { id: "param", type: "blueprint.component.getParam", params: { paramId: "caption" } },
+            }, edges: [] } },
+        };
+        h.uidoc.setComponentInstanceParam("backTop", "caption", "Go back");
+        const ids = h.uidoc.unlinkComponentInstance("backTop");
+        const labelId = ids.find(id => h.uidoc.getDocument().elements[id]?.name === "backLabel")!;
+        const copiedId = bp.ownerRecords[widgetMainOwnerKey(PAGE, labelId)].blueprintId;
+        const node = bp.blueprints[copiedId].graphs.events.main.graph!.nodes!.param;
+        expect(node).toMatchObject({ id: "param", type: "blueprint.data.stringLiteral", params: { value: "Go back" } });
+    });
+
+    it("preserves the script reference when unlinking and resolves the new page owner", () => {
+        const h = createHarness();
+        const bp = h.graphDocument.blueprintDocument;
+        const sourceId = bp.ownerRecords[componentWidgetMainOwnerKey(BACK, "backLabel")].blueprintId;
+        bp.blueprints[sourceId].graphs.events = {
+            script: { id: "script", script: { scriptRef: "scripts/back.ts" } },
+        };
+        const ids = h.uidoc.unlinkComponentInstance("backTop");
+        const labelId = ids.find(id => h.uidoc.getDocument().elements[id]?.name === "backLabel")!;
+        const copiedId = bp.ownerRecords[widgetMainOwnerKey(PAGE, labelId)].blueprintId;
+        expect(bp.blueprints[copiedId].graphs.events.script.script?.scriptRef).toBe("scripts/back.ts");
+        expect(scriptSelfOf({ surfaceId: PAGE, elementId: labelId, widgetType: "nl.text" })).toMatchObject({ kind: "element" });
+        expect(scriptSelfOf({ componentId: BACK, componentParams: { caption: "Return" }, elementId: "backLabel", widgetType: "nl.text" }))
+            .toMatchObject({ kind: "componentElement", params: { caption: "Return" } });
+    });
+
+    it("preserves the script reference when extracting a page element into a component", () => {
+        const h = createHarness();
+        const bp = h.graphDocument.blueprintDocument;
+        const sourceId = "page-script";
+        const source = createMainBlueprint({ id: sourceId, name: "Page script", owner: { kind: "widgetMain", surfaceId: PAGE, elementId: "pageList" } });
+        source.graphs.events = { script: { id: "script", script: { scriptRef: "scripts/list.ts" } } };
+        bp.blueprints[sourceId] = source;
+        setPrivateOwnerBlueprint(bp, widgetMainOwnerKey(PAGE, "pageList"), sourceId);
+
+        const component = h.uidoc.createComponentFromElements(PAGE, ["pageList"], "List")!;
+        const copiedId = bp.ownerRecords[componentWidgetMainOwnerKey(component.id, component.rootElementId)].blueprintId;
+        expect(bp.blueprints[copiedId].graphs.events.script.script?.scriptRef).toBe("scripts/list.ts");
+        expect(scriptSelfOf({ surfaceId: PAGE, elementId: "pageList", widgetType: "nl.list" })).toMatchObject({ kind: "element" });
+        expect(scriptSelfOf({ componentId: component.id, elementId: component.rootElementId, widgetType: "nl.list" }))
+            .toMatchObject({ kind: "componentElement" });
     });
 
     it("is the step Ctrl+Z in the page takes back first, ahead of the page's own last edit", () => {
@@ -418,6 +663,33 @@ function templateBundle() {
 }
 
 describe("importing a template or a page", () => {
+    it("remaps forward component placements and page targets inside imported definitions", () => {
+        const h = createHarness();
+        const bundle = templateBundle();
+        const nested = {
+            ...element("outer-chip", "nl.container", "outer-root", []),
+            extra: { componentLink: { componentId: "tpl-chip", linked: true } },
+        };
+        const frame = element("outer-frame", "nl.frame", "outer-root", [], {}, { targetSurfaceId: "tpl-page" });
+        bundle.document.components!.unshift(definition("outer", "Outer", [
+            element("outer-root", "nl.container", null, [nested.id, frame.id]), nested, frame,
+        ]));
+
+        const result = h.uidoc.importTemplateBundle({ ...bundle, placement: IMPORT_PLACEMENT_FROM_SOURCE });
+        const outer = result.importedComponents.find(item => item.name === "Outer")!;
+        const chip = result.importedComponents.find(item => item.name === "Chip")!;
+        const copiedNested = Object.values(outer.elements).find(item => item.name === "outer-chip")!;
+        const copiedFrame = Object.values(outer.elements).find(item => item.name === "outer-frame")!;
+        expect.soft(copiedNested.extra?.componentLink).toMatchObject({ componentId: chip.id });
+        expect.soft(copiedFrame.props?.targetSurfaceId).toBe(result.importedSurfaces[0].id);
+
+        h.history.undo(PROJECT);
+        h.history.redo(PROJECT);
+        const restored = h.uidoc.getComponent(outer.id)!;
+        expect(restored.elements[copiedNested.id].extra?.componentLink).toMatchObject({ componentId: chip.id });
+        expect(restored.elements[copiedFrame.id].props?.targetSurfaceId).toBe(result.importedSurfaces[0].id);
+    });
+
     it("takes back every page and definition it added, with their logic, in one step", () => {
         const h = createHarness();
         const before = structuredClone(h.uidoc.getDocument());

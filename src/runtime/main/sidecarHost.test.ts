@@ -398,6 +398,27 @@ describe("SidecarHost", () => {
         await expect(start(host)).rejects.toThrow(/unavailable/);
     });
 
+    it("ignores output from an exited process after its replacement starts", async () => {
+        const { host, children, sent } = createHost();
+        const first = start(host);
+        children[0]!.sendFrame({ t: "ready" });
+        await first;
+        children[0]!.exit(1);
+        await vi.advanceTimersByTimeAsync(100);
+
+        let ready = false;
+        const second = start(host).then(() => { ready = true; });
+        children[0]!.sendFrame({ t: "ready" });
+        children[0]!.sendFrame({ t: "evt", method: "old", params: 1 });
+        await vi.advanceTimersByTimeAsync(0);
+        const acceptedOldReady = ready;
+        children[1]!.sendFrame({ t: "ready" });
+        await second;
+
+        expect(acceptedOldReady).toBe(false);
+        expect(sent.some(message => message.kind === "event" && message.method === "old")).toBe(false);
+    });
+
     it("charges a crash after a long healthy run against a fresh budget", async () => {
         const { host, children } = createHost({ restart: { maxRetries: 1, backoffMs: 100 } });
         void start(host).catch(() => undefined);
@@ -440,6 +461,52 @@ describe("SidecarHost", () => {
         // An intentional stop is not a crash: nothing is restarted.
         await vi.advanceTimersByTimeAsync(60_000);
         expect(children).toHaveLength(1);
+    });
+
+    it("does not complete startup with a ready frame received after stop", async () => {
+        const { host, children } = createHost();
+        const starting = start(host).then(() => "started", () => "stopped");
+        const stopping = host.stop(PLUGIN_ID, SIDECAR_ID);
+        children[0]!.sendFrame({ t: "ready" });
+        await vi.advanceTimersByTimeAsync(0);
+        children[0]!.exit(0);
+        await stopping;
+        expect(await starting).toBe("stopped");
+    });
+
+    it("does not start new work while a ready sidecar is stopping", async () => {
+        const { host, children } = createHost();
+        const starting = start(host);
+        children[0]!.sendFrame({ t: "ready" });
+        await starting;
+        const stopping = host.stop(PLUGIN_ID, SIDECAR_ID);
+        const next = start(host).then(() => "started", () => "stopping");
+        const request = host.request(PLUGIN_ID, SIDECAR_ID, "late").then(() => "sent", () => "stopping");
+        host.notify(PLUGIN_ID, SIDECAR_ID, "late");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(children[0]!.frames().map(frame => frame.t)).toEqual(["hello", "bye"]);
+        children[0]!.exit(0);
+        await stopping;
+        expect(await next).toBe("stopping");
+        expect(await request).toBe("stopping");
+
+        const restarted = start(host);
+        children[1]!.sendFrame({ t: "ready" });
+        await expect(restarted).resolves.toBeUndefined();
+    });
+
+    it("does not send work queued before ready when stop follows the handshake", async () => {
+        const { host, children } = createHost();
+        const request = host.request(PLUGIN_ID, SIDECAR_ID, "queued").then(() => "sent", () => "stopped");
+        host.notify(PLUGIN_ID, SIDECAR_ID, "queued");
+        children[0]!.sendFrame({ t: "ready" });
+        const stopping = host.stop(PLUGIN_ID, SIDECAR_ID);
+        await vi.advanceTimersByTimeAsync(0);
+        const frameTypes = children[0]!.frames().map(frame => frame.t);
+        children[0]!.exit(0);
+        await stopping;
+        expect(await request).toBe("stopped");
+        expect(frameTypes).toEqual(["hello", "bye"]);
     });
 
     it("stops waiting for a sidecar that ignores even SIGKILL", async () => {

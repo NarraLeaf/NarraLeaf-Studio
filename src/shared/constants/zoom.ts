@@ -17,7 +17,9 @@ export const ZOOM_PERCENT_STEPS: readonly number[] = [50, 67, 75, 80, 90, 100, 1
 
 /** Clamp anything (stale config, a hand-typed setting) onto a usable whole percentage. */
 export function normalizeZoomPercent(value: unknown): number {
-    const parsed = typeof value === "number" ? value : Number(value);
+    const parsed = typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
     if (!Number.isFinite(parsed)) {
         return ZOOM_PERCENT_DEFAULT;
     }

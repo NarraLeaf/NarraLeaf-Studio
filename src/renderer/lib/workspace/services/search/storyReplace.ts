@@ -1,4 +1,5 @@
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryId, StorySceneId, StoryTextSegment } from "@shared/types/story";
+import { encodeStableJson } from "@shared/utils/stableJson";
 import {
     getSegmentSlot,
     replaceRangesInSegment,
@@ -14,6 +15,7 @@ import { HistoryService, type HistoryGroupStep } from "../history/HistoryService
 import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
 import { searchReplaceHistoryScope, storySceneHistoryScope } from "../history/historyScopes";
 import { SearchService } from "./SearchService";
+import { storySource } from "./sources/storySource";
 import { passesFilters, type SearchFilters } from "./searchIndexModel";
 import type { CompiledMatcher } from "./textMatcher";
 
@@ -26,20 +28,17 @@ import type { CompiledMatcher } from "./textMatcher";
  * nothing. There is no half-applied state to explain, no "14 of 18 rewritten" to reason about, and
  * nothing to reconcile if the seventh scene turns out to have been deleted a moment ago.
  *
- * That is only achievable if every way this can fail happens **before the first write**, so
- * {@link planStoryReplace} is pure - it resolves every block, builds every rewritten segment, and
- * reports what it could not do - and {@link applyStoryReplace} only writes. A plan that carries any
- * failure is refused whole; a plan that carries none cannot fail part-way, because the only work
- * left is handing finished segments to the story service.
+ * {@link planStoryReplace} resolves every block, builds every rewritten segment and reports failures
+ * without writing. Before applying, {@link applyStoryReplace} checks the index revision and every
+ * original segment; it then hands the finished segments to the story service in batches.
  *
  * # Candidates from the index, rewrites from the document
  *
  * Which blocks to consider comes from the search index, because that is where `scene:` and
  * `speaker:` already mean something and where "every storyText entry in the project" is one array
- * rather than a walk of every scene of every story. What gets written is derived from the **live**
- * `StoryDocument`: the index is rebuilt on a 300ms debounce, so its copy of a line can be a third of
- * a second behind the author's last keystroke, and rewriting from it would quietly revert whatever
- * they typed in between.
+ * rather than a walk of every scene of every story. Planning waits for the story index to finish
+ * rebuilding. Rewrites come from the live `StoryDocument`, and the originals are checked again at
+ * the moment the plan is applied.
  *
  * # Only prose
  *
@@ -93,6 +92,8 @@ export interface ReplacePlan {
     failures: readonly StoryReplaceFailure[];
     /** Whether {@link applyStoryReplace} will write this plan. */
     applicable: boolean;
+    /** Story index revision used to choose the candidates in this plan. */
+    sourceRevision: number;
 }
 
 export interface StoryReplaceRequest {
@@ -112,15 +113,14 @@ const EMPTY_PLAN: ReplacePlan = {
     storyCount: 0,
     failures: [],
     applicable: false,
+    sourceRevision: -1,
 };
 
 /**
  * Phase 1: work out every rewrite, and every reason there might not be one. Writes nothing.
  *
- * A candidate that no longer matches is **not** a failure - it is the ordinary consequence of the
- * index lagging an edit, and skipping it is the correct answer. A candidate whose block, scene or
- * story has gone, or whose text cannot be spliced, is a failure: the plan then describes work that
- * cannot be completed, and completing part of it is the outcome the author ruled out.
+ * A candidate that no longer matches is skipped. A candidate whose block, scene or story has gone,
+ * or whose text cannot be spliced, makes the whole plan inapplicable.
  */
 export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceRequest): ReplacePlan {
     const { matcher, replacement, filters } = request;
@@ -129,6 +129,9 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
     }
 
     const searchService = ctx.services.get<SearchService>(Services.Search);
+    if (!searchService.isSourceCurrent(storySource.id)) {
+        return EMPTY_PLAN;
+    }
     const storyService = ctx.services.get<StoryService>(Services.Story);
 
     const edits: StoryReplaceEdit[] = [];
@@ -146,9 +149,7 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
         if (filters && !passesFilters(entry, filters)) {
             continue;
         }
-        // The index's copy is stale by up to a debounce, which is fine for *choosing* candidates and
-        // never used for the rewrite itself. It is also the cheap half of the sweep: one test per
-        // entry against a string that is already in memory.
+        // Choose candidates against the index; build each rewrite from its live segment below.
         if (!matcher.test(entry.text)) {
             continue;
         }
@@ -194,7 +195,7 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
             continue;
         }
 
-        edits.push({ storyId, sceneId, blockId, before: slot.segment, after, occurrences: ranges.length });
+        edits.push({ storyId, sceneId, blockId, before: structuredClone(slot.segment), after, occurrences: ranges.length });
         occurrences += ranges.length;
         scenes.add(`${storyId}/${sceneId}`);
         stories.add(storyId);
@@ -208,6 +209,7 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
         storyCount: stories.size,
         failures,
         applicable: failures.length === 0 && edits.length > 0,
+        sourceRevision: searchService.sourceRevision(storySource.id),
     };
 }
 
@@ -217,7 +219,7 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
  * A per-row replace is its own complete operation - one block, all of it or none - so it stays
  * available even when the sweep it was planned alongside is not.
  */
-export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
+export function planForEdit(edit: StoryReplaceEdit, sourceRevision: number): ReplacePlan {
     return {
         edits: [edit],
         occurrences: edit.occurrences,
@@ -226,6 +228,7 @@ export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
         storyCount: 1,
         failures: [],
         applicable: true,
+        sourceRevision,
     };
 }
 
@@ -264,8 +267,24 @@ export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, labe
         return false;
     }
 
+    const searchService = ctx.services.get<SearchService>(Services.Search);
+    if (!searchService.isSourceCurrent(storySource.id)
+        || searchService.sourceRevision(storySource.id) !== plan.sourceRevision) {
+        return false;
+    }
     const storyService = ctx.services.get<StoryService>(Services.Story);
     const historyService = ctx.services.get<HistoryService>(Services.History);
+
+    // The preview can outlive its source text. Revalidate every edit before writing any story, so
+    // an intervening edit or deletion cannot be overwritten or turn the sweep into a partial one.
+    const documents = new Map<StoryId, StoryDocument | null>();
+    for (const edit of plan.edits) {
+        const block = resolveDocument(storyService, documents, edit.storyId)?.scenes[edit.sceneId]?.blocks[edit.blockId];
+        const slot = block ? getSegmentSlot(block) : null;
+        if (!slot || encodeStableJson(slot.segment) !== encodeStableJson(edit.before)) {
+            return false;
+        }
+    }
 
     const written = writeSegments(storyService, plan.edits, "after");
     if (written.length === 0) {

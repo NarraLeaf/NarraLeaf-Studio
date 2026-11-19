@@ -344,7 +344,7 @@ describe("FileSystemHashHandler byte ranges", () => {
     it("serves ranges inside a directory grant, which is asked many times too", async () => {
         await fs.mkdir(path.join(tempDir, "bundle"));
         await fs.writeFile(path.join(tempDir, "bundle", "motion.bin"), bytesFrom(0, SMALL_SIZE));
-        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
+        const hash = await storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
 
         const response = await handler.handle(rangeRequest(`app://fs/${hash}/motion.bin`, "bytes=10-19"));
         expect(response.statusCode).toBe(206);
@@ -356,7 +356,7 @@ describe("FileSystemHashHandler byte ranges", () => {
         await fs.mkdir(path.join(tempDir, "bundle"));
         await fs.writeFile(path.join(tempDir, "bundle", "runtime.js"), "export default 1;");
         const distrusted = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => false });
-        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
+        const hash = await storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
 
         const response = await distrusted.handle(rangeRequest(`app://fs/${hash}/runtime.js`, "bytes=0-5"));
         expect(response.statusCode).toBe(206);
@@ -609,7 +609,7 @@ describe("FileSystemHashHandler and the code a window may run", () => {
         await fs.mkdir(path.join(tempDir, "bundle"));
         await fs.writeFile(path.join(tempDir, "bundle", "runtime.js"), "1");
         await fs.writeFile(path.join(tempDir, "bundle", "model.moc3"), Buffer.from([1, 2, 3]));
-        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 2);
+        const hash = await storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 2);
 
         const script = await handler.handle(makeRequest(`${hash}/runtime.js`));
         expect(script.headers["Content-Type"]).toBe("text/plain; charset=utf-8");

@@ -46,19 +46,19 @@ let nextId = 0;
 const generateId = () => `id_${nextId++}`;
 
 /** Parse → resolve → build, asserting the line commits. A refusal here IS the bug under test. */
-function build(source: string): StoryBlock {
+function build(source: string, context: StoryCommandContext = CONTEXT): StoryBlock {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
         throw new Error(`not a command: ${source}`);
     }
     expect(canCommit(line), `${source} does not commit`).toBe(true);
-    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    const { args, issues } = resolveCommandLine(line, context);
     expect(issues, `${source} did not resolve`).toEqual([]);
     const spec = getCommandSpec(line.def.commandId);
     if (!spec?.build) {
         throw new Error(`no build on ${line.def.commandId}`);
     }
-    return spec.build(args, { generateId, context: CONTEXT });
+    return spec.build(args, { generateId, context });
 }
 
 /**
@@ -97,6 +97,14 @@ describe("asset set command params", () => {
         ["/show Room", IMAGE_SET],
     ])("commits %s and hands the set id to assembly", (source, setId) => {
         expect(assemblyReadsSet(build(source), setId)).toBe(true);
+    });
+
+    it("names unnamed stage objects after their asset sets", () => {
+        expect(build("/image Room")).toMatchObject({ payload: { action: "image", objectName: "Room" } });
+        expect(build("/sound Chime")).toMatchObject({ payload: { action: "audio", objectName: "Chime" } });
+        expect(build("/vfx Sting")).toMatchObject({ payload: { action: "vfx", objectName: "Sting" } });
+        const occupied = { ...CONTEXT, stageObjects: { ...CONTEXT.stageObjects, image: ["Room"] } };
+        expect(build("/image Room", occupied)).toMatchObject({ payload: { objectName: "Room2" } });
     });
 
     /**

@@ -468,14 +468,8 @@ export const blueprintSource: SearchSource = {
             },
         });
     },
-    // Two documents feed this slice and they go stale independently. The blueprint document lives
-    // inside the graph document, so its mutations surface there - but the variable registry is its
-    // own file, and a registry edit does NOT bump the graph revision. Watching only the graph left a
-    // variable renamed in the variables panel showing its old name in search until something
-    // unrelated happened to touch a blueprint.
-    //
-    // The interface language is the third input: node titles, unnamed-graph names and owner names
-    // are translated into the entries, so a slice built in one language is stale in the next.
+    // Owner labels come from the interface document, variables from their registry, and translated
+    // titles from the interface language. Each can change independently of the blueprint graphs.
     watch: (ctx, signal) => {
         const graphs = ctx.services
             .get<UIGraphService>(Services.UIGraph)
@@ -483,10 +477,14 @@ export const blueprintSource: SearchSource = {
         const registry = ctx.services
             .get<VariableRegistryService>(Services.VariableRegistry)
             .onRegistryChanged(() => signal.invalidate());
+        const document = ctx.services
+            .get<UIDocumentService>(Services.UIDocument)
+            .onDocumentChanged(() => signal.invalidate());
         const locale = i18nStore.subscribe(() => signal.invalidate());
         return () => {
             graphs();
             registry();
+            document();
             locale();
         };
     },

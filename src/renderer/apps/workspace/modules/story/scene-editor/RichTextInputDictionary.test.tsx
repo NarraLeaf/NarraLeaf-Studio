@@ -43,6 +43,7 @@ const needles = (raw: unknown[]) => dictionaryNeedles(normalizeDictionaryEntries
 
 function field(props: {
     entries: unknown[];
+    runs?: StoryRichRun[];
     strict?: boolean;
     onDictionaryClick?: (info: DictionaryClickInfo) => void;
 }) {
@@ -50,7 +51,7 @@ function field(props: {
     const element = (
         <RichTextInput
             ref={ref}
-            initialRuns={RUNS}
+            initialRuns={props.runs ?? RUNS}
             dictionary={{ needles: needles(props.entries), revision: 1 }}
             onDictionaryClick={props.onDictionaryClick}
             onChange={() => {}}
@@ -77,6 +78,28 @@ describe("the dictionary overlay", () => {
 
         await waitFor(() => expect(variants(view).length).toBe(1));
         expect(readings(view).length).toBe(1);
+    });
+
+    it("draws the matching text after an emoji and at a supplementary-plane row end", async () => {
+        const measured: string[] = [];
+        const getClientRects = Range.prototype.getClientRects;
+        Range.prototype.getClientRects = function capture(this: Range) {
+            measured.push(this.toString());
+            return getClientRects.call(this);
+        };
+        const view = field({
+            runs: [{ text: "❤️colour 𠮷" }],
+            entries: [
+                { term: "color", variants: ["colour"] },
+                { term: "𠮷", reading: "よし" },
+            ],
+        });
+
+        await waitFor(() => {
+            expect(variants(view).length).toBe(1);
+            expect(readings(view).length).toBe(1);
+        });
+        expect(measured).toEqual(expect.arrayContaining(["colour", "𠮷"]));
     });
 
     it("still draws after a StrictMode remount, which is how the app runs in development", async () => {

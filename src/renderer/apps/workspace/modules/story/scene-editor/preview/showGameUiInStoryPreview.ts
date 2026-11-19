@@ -24,9 +24,10 @@ export type ShowGameUiInStoryPreviewResult = "shown" | "noRow";
  * Game UI: the cursor stays where it is if its row shows it, and otherwise steps to the next row that
  * does. Failing that, the first scene that has one - the default story first, its entry scene first -
  * is opened behind the editor the request came from, with its cursor on that row, and the preview
- * follows it. Nothing is written to the project: a cursor is view state.
+ * follows it. The On-Stage Game UI can also be shown at the start of an empty scene. Nothing is
+ * written to the project: a cursor is view state.
  *
- * `noRow` when no row of any story shows this Game UI; the preview is left as it was.
+ * `noRow` when no scene can show this Game UI; the preview is left as it was.
  */
 export async function showGameUiInStoryPreview(input: {
     context: WorkspaceContext;
@@ -68,8 +69,8 @@ export async function showGameUiInStoryPreview(input: {
         const scene = (await loadStory(stories, shown.payload.storyId))?.scenes[shown.payload.sceneId];
         const cursor = cursorOf(shown.payload.sceneId);
         const row = scene ? findStoryPreviewRowForSlot(scene, cursor, slotId, hub.getTab(shown.tabId)?.isRowShown) : null;
-        if (row) {
-            if (row !== cursor) {
+        if (scene && (row || slotId === "onStage")) {
+            if (row && row !== cursor) {
                 step(shown.tabId, shown.payload.sceneId, row);
             }
             openFloatingPreview(hub, anchor);
@@ -87,16 +88,18 @@ export async function showGameUiInStoryPreview(input: {
             const open = findStorySceneTab(store.getEditorLayout(), tabId);
             const cursor = open ? cursorOf(scene.id) : null;
             const row = findStoryPreviewRowForSlot(scene, cursor, slotId, hub.getTab(tabId)?.isRowShown);
-            if (!row) {
+            if (!row && slotId !== "onStage") {
                 continue;
             }
             if (open) {
-                if (row !== cursor) {
+                if (row && row !== cursor) {
                     step(tabId, scene.id, row);
                 }
             } else {
                 // Written before the tab exists, so the editor opens on the row when it is first shown.
-                step(tabId, scene.id, row);
+                if (row) {
+                    step(tabId, scene.id, row);
+                }
                 store.openEditorTabInGroup(createStorySceneEditorTab({ storyId, sceneId: scene.id }, scene.name), groupId ?? undefined, false);
             }
             hub.noteFocused(tabId);

@@ -34,8 +34,8 @@ export const RUNTIME_UNLOCKED_KEY = `${PLUGIN_ID}.unlocked`;
  * whose variants are its differentials; the unlock record, group filter,
  * masking and stats therefore work on all of them unchanged.
  *
- * Readers must treat an unknown kind as "not mine" and skip it, so a project
- * authored in a newer Studio degrades instead of breaking.
+ * Missing or unknown kinds normalise to "cg", so entries from older or newer
+ * projects remain visible.
  */
 export type GalleryEntryKind = "cg" | "scene" | "music" | "voice";
 

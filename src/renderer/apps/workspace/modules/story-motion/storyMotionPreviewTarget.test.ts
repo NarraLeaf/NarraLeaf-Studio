@@ -145,6 +145,52 @@ describe("resolveStoryMotionPreviewTarget", () => {
             assetId: "asset-hero",
         }));
     });
+
+    it("keeps the declared fit while following a later image swap and show", () => {
+        const document = documentWith({
+            create: { id: "create", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "create", objectName: "hero", assetId: "first", autoFit: true } },
+            swap: { id: "swap", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "setSource", objectName: "hero", assetId: "second" } },
+            show: { id: "show", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "show", objectName: "hero" } },
+            move: { id: "move", kind: "action", parentId: null, childrenIds: [], payload: { action: "displayable", operation: "transform", target: { name: "hero", kind: "image", sourceBlockId: "create" } } },
+        }, ["create", "swap", "show", "move"]);
+
+        expect(resolveStoryMotionPreviewTarget({ document, sceneId: "scene-1", blockId: "move", fallbackKind: "image", fallbackLabel: "Fallback" }))
+            .toMatchObject({ assetId: "second", autoFit: true });
+    });
+
+    it("combines a text swap with the latest font and the declaration", () => {
+        const document = documentWith({
+            create: { id: "create", kind: "action", parentId: null, childrenIds: [], payload: { action: "text", operation: "create", objectName: "title", text: "First", fontSize: 28, fontColor: "#fff" } },
+            swap: { id: "swap", kind: "action", parentId: null, childrenIds: [], payload: { action: "text", operation: "setText", objectName: "title", text: "Second" } },
+            font: { id: "font", kind: "action", parentId: null, childrenIds: [], payload: { action: "text", operation: "setFontColor", objectName: "title", fontColor: "#f00" } },
+            move: { id: "move", kind: "action", parentId: null, childrenIds: [], payload: { action: "displayable", operation: "transform", target: { name: "title", kind: "text", sourceBlockId: "create" } } },
+        }, ["create", "swap", "font", "move"]);
+
+        expect(resolveStoryMotionPreviewTarget({ document, sceneId: "scene-1", blockId: "move", fallbackKind: "text", fallbackLabel: "Fallback" }))
+            .toMatchObject({ text: "Second", fontSize: 28, fontColor: "#f00" });
+    });
+
+    it("previews an existing image on its own show row", () => {
+        const document = documentWith({
+            create: { id: "create", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "create", objectName: "hero", assetId: "portrait", autoFit: true } },
+            show: { id: "show", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "show", objectName: "hero", target: { name: "hero", kind: "image", sourceBlockId: "create" } } },
+        }, ["create", "show"]);
+
+        expect(resolveStoryMotionPreviewTarget({ document, sceneId: "scene-1", blockId: "show", fallbackKind: "image", fallbackLabel: "Fallback" }))
+            .toMatchObject({ assetId: "portrait", autoFit: true });
+    });
+
+    it("resolves stage names with the same case sensitivity as the runtime", () => {
+        const document = documentWith({
+            hero: { id: "hero", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "create", objectName: "hero", assetId: "lower" } },
+            Hero: { id: "Hero", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "create", objectName: "Hero", assetId: "upper" } },
+            move: { id: "move", kind: "action", parentId: null, childrenIds: [], payload: { action: "displayable", operation: "transform", target: { name: "hero", kind: "image", sourceBlockId: "hero" } } },
+        }, ["hero", "Hero", "move"]);
+
+        expect(resolveStoryMotionPreviewTarget({ document, sceneId: "scene-1", blockId: "move", fallbackKind: "image", fallbackLabel: "Fallback" }).assetId).toBe("lower");
+        expect(listSceneDisplayableTargets(document, "scene-1", "move").map(item => [item.name, item.sourceBlockId]))
+            .toEqual([["hero", "hero"], ["Hero", "Hero"]]);
+    });
 });
 
 describe("listSceneDisplayableTargets", () => {
@@ -189,6 +235,28 @@ describe("listSceneDisplayableTargets", () => {
         }, ["ghostShow", "ghostMove", "probe"]);
 
         expect(listSceneDisplayableTargets(document, "scene-1", "probe")).toEqual([]);
+    });
+
+    it("does not offer an image or text operation without a declaration", () => {
+        const document = documentWith({
+            swap: action("swap", { action: "image", operation: "setSource", objectName: "missing", assetId: "asset" }),
+            text: action("text", { action: "text", operation: "setText", objectName: "missing text", text: "Hello" }),
+            probe: action("probe", { action: "displayable", operation: "hide", target: { name: "missing" } }),
+        }, ["swap", "text", "probe"]);
+
+        expect(listSceneDisplayableTargets(document, "scene-1", "probe")).toEqual([]);
+    });
+
+    it("follows a swap's stable target after the image is renamed", () => {
+        const document = documentWith({
+            create: action("create", { action: "image", operation: "create", objectName: "new name", assetId: "first" }),
+            swap: action("swap", { action: "image", operation: "setSource", objectName: "old name", target: { name: "old name", kind: "image", sourceBlockId: "create" }, assetId: "second" }),
+            probe: action("probe", { action: "displayable", operation: "hide", target: { name: "new name", kind: "image" } }),
+        }, ["create", "swap", "probe"]);
+
+        expect(listSceneDisplayableTargets(document, "scene-1", "probe")).toEqual([
+            { kind: "image", name: "new name", label: "new name", assetId: "second", text: undefined, sourceBlockId: "create" },
+        ]);
     });
 });
 
@@ -319,7 +387,7 @@ describe("resolveStoryMotionPreviewTarget agrees with the forward reading", () =
         let resolved: Record<string, unknown> = { ...requested };
         for (const candidate of flat.slice(0, index)) {
             const own = targetOf(candidate);
-            if (!own || own.kind !== requested.kind || String(own.label).trim().toLowerCase() !== requested.label.trim().toLowerCase()) {
+            if (!own || own.kind !== requested.kind || String(own.label).trim() !== requested.label.trim()) {
                 continue;
             }
             resolved = { ...resolved, ...own };

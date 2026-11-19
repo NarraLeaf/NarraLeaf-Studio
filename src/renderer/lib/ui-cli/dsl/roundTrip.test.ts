@@ -31,6 +31,28 @@ function loadSkeleton(): UIDocument {
 }
 
 describe("the .ui text format", () => {
+    it("reads JSON string escapes in widget text and preserves them through show and apply", () => {
+        const source = String.raw`surface "S" id=s kind=appSurface size=8x6
+    Root: nl.root id=root @0,0 8x6
+        Label: nl.text id=label @0,0 8x6
+            text = "\u4f60\u597d\b\f"
+`;
+        const compiled = compileUiFile(parseUiFile(source));
+        expect(compiled.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+        expect(compiled.surfaces[0].elements.label.props?.text).toBe("你好\b\f");
+
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "d",
+            name: "d",
+            surfaces: [compiled.surfaces[0].surface],
+            elements: compiled.surfaces[0].elements,
+        };
+        const printed = printUiDocument(document, { includeSharedTables: false });
+        const roundTrip = compileUiFile(parseUiFile(printed), { existing: document });
+        expect(roundTrip.surfaces[0].elements.label.props?.text).toBe("你好\b\f");
+    });
+
     it("prints a keyed widget with its key and the key's words as a comment, and reads it back the same", () => {
         const document = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

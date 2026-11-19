@@ -24,8 +24,10 @@ export type UseAutoSaveOptions = {
     config: AutoSaveConfiguration;
     /** True while a playthrough is running and can be serialized. */
     isPlaying: () => boolean;
-    /** Write one autosave into the given reserved id; `reason` says whether the timer or the author asked. */
-    write: (id: string, reason: AutoSaveWriteReason) => Promise<void>;
+    /** Changes whenever a new playthrough is entered or a save is loaded. */
+    playthrough: () => number;
+    /** Call `captured` when the snapshot is taken; false means nothing reached the store. */
+    write: (id: string, reason: AutoSaveWriteReason, captured: () => void, isCurrent: () => boolean) => Promise<void | false>;
     /** Every reserved autosave currently stored, in any order. */
     listStored: () => Promise<AutoSaveEntry[]>;
     /** Story play head; every call marks the playthrough as worth re-saving. */
@@ -46,7 +48,8 @@ export function useAutoSave(options: UseAutoSaveOptions): AutoSaveRuntime {
         () => new AutoSaveScheduler({
             getConfig: () => latest.current.config,
             isPlaying: () => latest.current.isPlaying(),
-            write: (id, reason) => latest.current.write(id, reason),
+            playthrough: () => latest.current.playthrough(),
+            write: (id, reason, captured, isCurrent) => latest.current.write(id, reason, captured, isCurrent),
             listStored: () => latest.current.listStored(),
             log: (level, message) => latest.current.log(level, message),
         }),

@@ -46,8 +46,8 @@ import {
     ProjectAction,
     isEmptyOnServer,
     lastVersionLine,
-    openProjectPath,
     useLocalRepositories,
+    useOpenProjectPath,
     useNewTeamProject,
 } from "./teamProjectShared";
 
@@ -130,12 +130,14 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
     const { t } = useTranslation();
     const { servers, loading, reload } = useServers();
     const [chosen, setChosen] = useState<string | null>(null);
+    /** Why fetching a copy through the wizard did not open it. */
+    const [wizardError, setOperationError] = useState<string | null>(null);
     const [projects, setProjects] = useState<VcsServerProject[] | null>(null);
     const [problem, setProblem] = useState<TranslationKey | null>(null);
     const [reading, setReading] = useState(false);
     const { repositories, readLocal } = useLocalRepositories();
     /** Making a project for this server, and the dialog for one it would not take. */
-    const { creating, newProject: makeProject, dialog: unsentDialog } = useNewTeamProject();
+    const { creating, newProject: makeProject, dialog: unsentDialog, openError: sentOpenError } = useNewTeamProject();
     /** Where the launcher lists team projects; "projects" leaves this tab the people views. */
     const placement = useGlobalSetting(TEAM_PROJECTS_PLACEMENT_KEY, resolveTeamProjectsPlacement);
     const peopleMode = placement === "projects";
@@ -294,14 +296,21 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
 
     /** Fetch a copy of a project through the wizard, then take account of what happened. */
     const getProject = useCallback(async (remote: string) => {
-        await createProjectFromWizard({ remoteUrl: remote });
+        setOperationError(null);
+        try {
+            const error = await createProjectFromWizard({ remoteUrl: remote });
+            if (error !== null) setOperationError(error || t("launcher.projects.errorCreate"));
+        } catch (error) {
+            setOperationError(error instanceof Error ? error.message : String(error));
+        }
         // A wizard that created something has already opened the workspace and retired this
         // window; one that was cancelled leaves this list on screen, and re-reading is what
         // keeps a project that has since been fetched from still offering to fetch it.
         await readLocal();
-    }, [readLocal]);
+    }, [readLocal, t]);
 
-    const openProject = openProjectPath;
+    const { openProject, openError } = useOpenProjectPath();
+    const operationError = openError ?? sentOpenError ?? wizardError;
 
     /** A project picked from the to-dos or the active list: open the copy here, or ask to clone. */
     const pickProject = useCallback((project: VcsServerProject) => {
@@ -382,6 +391,7 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col pt-4 px-6 pb-6" data-servers-tab="list">
+            {operationError && <p className="mb-2 text-xs text-danger" role="alert">{operationError}</p>}
             {adding && (
                 <AddServerModal
                     onAdded={serverAdded}

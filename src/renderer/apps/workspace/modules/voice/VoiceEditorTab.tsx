@@ -12,7 +12,7 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AudioLines, CheckCircle2, ListMusic, Mic, PenLine } from "lucide-react";
 import type { EditorComponentProps } from "../types";
@@ -22,7 +22,8 @@ import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { isFreezeBlocking, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { useCharacterListGrouping } from "@/apps/workspace/hooks/useCharacterListGrouping";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -52,7 +53,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
-import type { StoryLibraryEntry } from "@shared/types/story";
+import type { StoryDocument, StoryLibraryEntry } from "@shared/types/story";
 import { clipVolume, normalizeAudioClipRegion } from "@shared/types/audio";
 import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
 import {
@@ -68,7 +69,7 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 import { ORPHANS_SOURCE_VALUE, OrphanUnitList, useStoryTextLineIndex, type OrphanUnitRow } from "../localization/OrphanUnits";
 import { voiceDocumentFreezeScope } from "../localization/localizationFreezeScopes";
-import { orphanVoiceUnitIds } from "@/lib/lint/rules/text/textSegments";
+import { indexStoryTextLines, liveTextIds, orphanVoiceUnitIds } from "@/lib/lint/rules/text/textSegments";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -78,6 +79,7 @@ type AuditionFilter = "all" | "approved" | "pending";
 /** Starting estimates for the windowed list; every item re-measures itself once it mounts. */
 const GROUP_ROW_HEIGHT_PX = 26;
 const VOICE_ROW_HEIGHT_PX = 37;
+const ORPHAN_INDEX_READ_ATTEMPTS = 3;
 
 /**
  * `speaker` is the column's word, in the interface language; `naming` is what the line's take is
@@ -97,6 +99,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     const locale = payload?.locale ?? "";
     /** What removing the orphans writes: this language's takes, the document the rows guard as well. */
     const takesFreeze = useFreezeGuard(voiceDocumentFreezeScope(locale));
+    const takesFreezeRef = useRef(takesFreeze);
+    useLayoutEffect(() => { takesFreezeRef.current = takesFreeze; }, [takesFreeze]);
 
     const voiceService = useMemo(
         () => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null),
@@ -126,6 +130,14 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
         [context, isInitialized],
     );
+    const orphanScopeRef = useRef<object | null>(null);
+    useLayoutEffect(() => {
+        const scope = {};
+        orphanScopeRef.current = scope;
+        return () => {
+            if (orphanScopeRef.current === scope) orphanScopeRef.current = null;
+        };
+    }, [context, voiceService, storyService, locale]);
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [characters, setCharacters] = useState<{ id: string; name: string; groupId?: string }[]>([]);
@@ -143,10 +155,13 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     const [speakerFilter, setSpeakerFilter] = useState<string>(ALL_SPEAKERS_VALUE);
     const [query, setQuery] = useState("");
     const [assetsRev, setAssetsRev] = useState(0);
+    const [lineTextRevision, setLineTextRevision] = useState(0);
 
     // Clip playback: one lazily-created audio element, one active object URL.
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const objectUrlRef = useRef<string | null>(null);
+    const playbackGeneration = useRef(0);
+    const requestedUnitRef = useRef<string | null>(null);
     const [playingUnitId, setPlayingUnitId] = useState<string | null>(null);
 
     // Import (asset picker) state, anchored under the row that opened it.
@@ -218,6 +233,13 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             offProject?.();
         };
     }, [voiceService, projectService]);
+
+    useEffect(() => {
+        const refresh = () => setLineTextRevision(revision => revision + 1);
+        const offLocalization = localizationService?.onConfigChanged(refresh);
+        const offProject = projectService?.onConfigChanged(refresh);
+        return () => { offLocalization?.(); offProject?.(); };
+    }, [localizationService, projectService]);
 
     /** False once this table's language has left the voiced list; see the localization table. */
     const localeInProject = !config || config.voicedLocales.some(entry => entry.code === locale);
@@ -296,7 +318,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             if (!disposed) {
                 extract();
             }
-        }).catch(() => setRows([]));
+        }).catch(() => { if (!disposed) setRows([]); });
         const unsubscribeStory = storyService.onDocumentChanged(event => {
             if (event.storyId === storyId) {
                 extract();
@@ -312,7 +334,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             unsubscribeStory();
             unsubscribeTranslation?.();
         };
-    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, namingSpeakerFor, characters, config?.voiceChoices]);
+    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, namingSpeakerFor, characters, config?.voiceChoices, lineTextRevision]);
 
     // Voice document for this language, read again if the language comes back to the list.
     useEffect(() => {
@@ -321,13 +343,15 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             return;
         }
         let disposed = false;
+        let changed = false;
         void voiceService.loadDocument(locale).then(document => {
-            if (!disposed) {
+            if (!disposed && !changed) {
                 setVoiceDoc(document);
             }
-        }).catch(() => setVoiceDoc(null));
+        }).catch(() => { if (!disposed && !changed) setVoiceDoc(null); });
         const unsubscribe = voiceService.onDocumentChanged(event => {
             if (event.locale === locale) {
+                changed = true;
                 setVoiceDoc(event.document);
             }
         });
@@ -373,6 +397,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     }, [voiceService, locale, uiService]);
 
     const stopPlayback = useCallback(() => {
+        playbackGeneration.current += 1;
+        requestedUnitRef.current = null;
+        if (audioRef.current) audioRef.current.onended = null;
         audioRef.current?.pause();
         if (objectUrlRef.current) {
             URL.revokeObjectURL(objectUrlRef.current);
@@ -383,13 +410,13 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
 
     // Flush pending writes and stop audio when the tab goes to the background.
     useEffect(() => {
-        if (!active) {
+        if (!active || !localeInProject) {
             stopPlayback();
-            if (voiceService) {
+            if (!active && voiceService) {
                 void voiceService.flushPendingChanges();
             }
         }
-    }, [active, voiceService, stopPlayback]);
+    }, [active, localeInProject, voiceService, stopPlayback]);
 
     useEffect(() => stopPlayback, [stopPlayback]);
 
@@ -403,7 +430,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     }, [assetsService, assetsRev]);
 
     const togglePlay = useCallback(async (unitId: string, asset: Asset | null) => {
-        if (playingUnitId === unitId) {
+        if (requestedUnitRef.current === unitId) {
             stopPlayback();
             return;
         }
@@ -411,13 +438,18 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         if (!asset || !assetsService) {
             return;
         }
+        const generation = playbackGeneration.current;
+        requestedUnitRef.current = unitId;
+        setPlayingUnitId(unitId);
         try {
             const result = await assetsService.fetch(asset);
+            if (playbackGeneration.current !== generation) return;
             if (!result.success) {
                 // By the clip's name and why, as every asset preview words a read that failed. The
                 // read's own message is English and names the clip's storage path.
                 console.warn("[voice] could not read the take", result.error);
                 uiService?.showNotification(describeAssetReadFailure(asset.id, asset.name, result.code, t), "warning");
+                stopPlayback();
                 return;
             }
             const blob = new Blob([new Uint8Array((result.data as { data: Uint8Array }).data)]);
@@ -431,15 +463,20 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             audio.src = url;
             // The level the game plays the take at: its gain, folded in the way every path folds it.
             audio.volume = clipVolume(normalizeAudioClipRegion(asset.extras));
-            audio.onended = () => stopPlayback();
-            setPlayingUnitId(unitId);
+            audio.onended = () => { if (playbackGeneration.current === generation) stopPlayback(); };
             await audio.play();
         } catch {
-            stopPlayback();
+            if (playbackGeneration.current === generation) stopPlayback();
         }
-    }, [playingUnitId, stopPlayback, assetsService, uiService, t]);
+    }, [stopPlayback, assetsService, uiService, t]);
 
     const assignAsset = useCallback((unitId: string, sourceText: string, assetId: string) => {
+        const reason = getProjectWriteFreeze()?.reason ?? null;
+        if (takesFreezeRef.current.frozen || isFreezeBlocking(reason, voiceDocumentFreezeScope(locale))) {
+            uiService?.showNotification(takesFreezeRef.current.frozen ? takesFreezeRef.current.reason
+                : t(reason?.kind === "live-session" ? "workspace.shell.freeze.unavailableLive" : "workspace.shell.freeze.unavailable"), "warning");
+            return;
+        }
         writeUnit(unitId, sourceText, { assetId });
         // Measured after the link lands, not before it: the link is the author's action and must not
         // wait on decoding a header. A patch carrying only `duration` never re-stamps the source
@@ -449,16 +486,22 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             if (!asset || !assetsService) {
                 return;
             }
+            const hashAtRead = asset.hash;
             const result = await assetsService.fetch(asset);
             if (!result.success) {
                 return;
             }
             const duration = await readAudioDuration(new Uint8Array((result.data as { data: Uint8Array }).data));
-            if (duration !== undefined) {
+            const currentAsset = assetsService.getAssets()[AssetType.Audio]?.[assetId];
+            const currentUnit = voiceService?.getDocumentIfLoaded(locale)?.units[unitId];
+            if (duration !== undefined && currentAsset && currentAsset.hash === hashAtRead && currentUnit?.assetId === assetId
+                && voiceService?.getConfiguration().voicedLocales.some(entry => entry.code === locale)
+                && !takesFreezeRef.current.frozen
+                && !isFreezeBlocking(getProjectWriteFreeze()?.reason ?? null, voiceDocumentFreezeScope(locale))) {
                 writeUnit(unitId, sourceText, { duration });
             }
-        })();
-    }, [writeUnit, assetsService]);
+        })().catch(error => console.warn("[voice] could not measure the take", error));
+    }, [writeUnit, assetsService, voiceService, locale, uiService, t]);
 
     const setNote = useCallback((unitId: string, sourceText: string, note: string) => {
         writeUnit(unitId, sourceText, { note });
@@ -830,32 +873,74 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         ));
     }, [openEditorTab, storyId]);
 
-    const localeDisplayName = useMemo(() => {
-        const config = voiceService?.getConfiguration();
-        return config?.voicedLocales.find(entry => entry.code === locale)?.displayName ?? locale;
-    }, [voiceService, locale]);
+    const localeDisplayName = config?.voicedLocales.find(entry => entry.code === locale)?.displayName ?? locale;
 
     /**
      * Unlink orphaned takes, after asking. The audio stays in the library; a line restored or enabled
      * later is unvoiced again.
      */
     const handleRemoveOrphans = useCallback(async (unitIds: string[]) => {
-        if (!voiceService || !uiService || unitIds.length === 0 || takesFreeze.frozen) {
+        if (!voiceService || !storyService || !uiService || !voiceDoc || unitIds.length === 0 || takesFreeze.frozen) {
             return;
         }
+        const scope = orphanScopeRef.current;
+        if (!scope) return;
+        const selected = new Map(unitIds
+            .filter(unitId => Object.hasOwn(voiceDoc.units, unitId))
+            .map(unitId => [unitId, voiceDoc.units[unitId]]));
         const confirmed = await uiService.showConfirm(
             tn("workspace.voice.table.orphans.removeConfirm", unitIds.length),
             t("workspace.voice.table.orphans.removeDetail"),
         );
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed || orphanScopeRef.current !== scope) return;
+        const blocked = () => {
+            const reason = getProjectWriteFreeze()?.reason ?? null;
+            const guard = takesFreezeRef.current;
+            if (!guard.frozen && !isFreezeBlocking(reason, voiceDocumentFreezeScope(locale))) return false;
+            uiService.showNotification(guard.frozen ? guard.reason
+                : t(reason?.kind === "live-session" ? "workspace.shell.freeze.unavailableLive" : "workspace.shell.freeze.unavailable"), "warning");
+            return true;
+        };
+        if (blocked()) return;
+        let invalidated = false;
+        const offLibrary = storyService.onLibraryChanged(() => { invalidated = true; });
+        const offDocument = storyService.onDocumentChanged(() => { invalidated = true; });
         try {
-            voiceService.removeUnits(locale, unitIds);
+            for (let attempt = 0; attempt < ORPHAN_INDEX_READ_ATTEMPTS; attempt += 1) {
+                if (orphanScopeRef.current !== scope || blocked()) return;
+                invalidated = false;
+                const stories: { name: string; document: StoryDocument }[] = [];
+                try {
+                    for (const entry of storyService.listStories()) {
+                        const document = await storyService.loadStory(entry.id);
+                        if (!document) throw new Error("Story could not be read");
+                        stories.push({ name: entry.name, document });
+                    }
+                } catch {
+                    if (orphanScopeRef.current !== scope) return;
+                    if (invalidated) continue;
+                    uiService.showNotification(t("workspace.voice.table.orphans.unknown"), "warning");
+                    return;
+                }
+                if (orphanScopeRef.current !== scope || blocked()) return;
+                if (invalidated) continue;
+                const current = voiceService.getDocumentIfLoaded(locale);
+                if (!current) return;
+                const remaining = new Set(orphanVoiceUnitIds(current.units, liveTextIds(indexStoryTextLines(stories))));
+                const remove = unitIds.filter(unitId => remaining.has(unitId)
+                    && selected.has(unitId) && selected.get(unitId) === current.units[unitId]);
+                if (remove.length > 0) voiceService.removeUnits(locale, remove);
+                if (remove.length !== unitIds.length) uiService.showNotification(t("common.retry"), "warning");
+                return;
+            }
+            uiService.showNotification(t("common.retry"), "warning");
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
+        } finally {
+            offLibrary();
+            offDocument();
         }
-    }, [voiceService, uiService, takesFreeze.frozen, locale, t, tn]);
+    }, [voiceService, storyService, uiService, voiceDoc, takesFreeze.frozen, locale, t, tn]);
 
     const orphanRows = useMemo<OrphanUnitRow[]>(() => {
         if (!orphanUnitIds || lineIndex.kind !== "ready") {
@@ -1097,7 +1182,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                         <OrphanUnitList
                             rows={orphanRows}
                             frozen={takesFreeze.frozen}
-                            frozenReason={takesFreeze.reason}
+                            frozenReason={takesFreeze.frozen ? takesFreeze.reason : undefined}
                             onRemove={unitIds => void handleRemoveOrphans(unitIds)}
                             strings={{
                                 summary: tn("workspace.voice.table.orphans.summary", orphanRows.length),

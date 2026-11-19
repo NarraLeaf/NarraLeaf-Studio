@@ -39,7 +39,7 @@ export function WorkspaceHistoryMenu() {
         [context],
     );
     const [focus, setFocus] = useState<FocusContext | null>(null);
-    // Bumped whenever any stack moves, so the labels and the greying follow the stacks.
+    // Bumped when a stack moves or the active editor changes, keeping the menu's target current.
     const [revision, setRevision] = useState(0);
 
     useEffect(() => {
@@ -55,7 +55,13 @@ export function WorkspaceHistoryMenu() {
         if (!history) {
             return;
         }
-        return history.on("changed", () => setRevision(current => current + 1));
+        const refresh = () => setRevision(current => current + 1);
+        const stopChanges = history.on("changed", refresh);
+        const stopActiveScope = history.on("activeScopeChanged", refresh);
+        return () => {
+            stopChanges();
+            stopActiveScope();
+        };
     }, [history]);
 
     useEffect(() => {

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -60,6 +61,37 @@ function jpegBytes(): Buffer {
     ]);
 }
 
+function orientedJpegBytes(): Buffer {
+    const artist = Buffer.from("Private Artist\0");
+    const tiff = Buffer.from([
+        ...ascii("MM"), 0, 42, 0, 0, 0, 8, 0, 2,
+        1, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0,
+        1, 0x3b, 0, 2, 0, 0, 0, artist.length, 0, 0, 0, 38,
+        0, 0, 0, 0, ...artist,
+    ]);
+    const exif = Buffer.concat([Buffer.from("Exif\0\0"), tiff]);
+    const app1 = Buffer.alloc(4);
+    app1.set([0xff, 0xe1]);
+    app1.writeUInt16BE(exif.length + 2, 2);
+    const jpeg = jpegBytes();
+    return Buffer.concat([jpeg.subarray(0, 2), app1, exif, jpeg.subarray(2)]);
+}
+
+function jpegOrientation(jpeg: Buffer): number | null {
+    const marker = jpeg.indexOf(Buffer.from("Exif\0\0"));
+    if (marker < 0) return null;
+    const start = marker + 6;
+    const little = jpeg.toString("ascii", start, start + 2) === "II";
+    const u16 = (offset: number) => little ? jpeg.readUInt16LE(offset) : jpeg.readUInt16BE(offset);
+    const u32 = (offset: number) => little ? jpeg.readUInt32LE(offset) : jpeg.readUInt32BE(offset);
+    const ifd = start + u32(start + 4);
+    for (let i = 0; i < u16(ifd); i += 1) {
+        const entry = ifd + 2 + i * 12;
+        if (u16(entry) === 0x0112) return u16(entry + 8);
+    }
+    return null;
+}
+
 type FakeCodecOptions = {
     /** Size of the encoded result as a fraction of the input. */
     ratio?: number;
@@ -116,6 +148,14 @@ const log = vi.fn();
 function contentPath(id: string): string {
     const [a, b, rest] = splitAssetStorageId(id);
     return path.join(projectPath, "assets", "content", a, b, rest);
+}
+
+async function seedCache(source: Buffer, suffix: string, result: Buffer): Promise<string> {
+    const digest = crypto.createHash("sha256").update(source).digest("hex");
+    const target = path.join(cacheDir, digest.slice(0, 2), `${digest}-${suffix}`);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, result);
+    return target;
 }
 
 async function writeLibrary(assets: Record<string, { name?: string; bytes: Buffer }>): Promise<void> {
@@ -367,6 +407,32 @@ describe("optimizeProjectImages", () => {
     describe("embedded metadata", () => {
         const AUTHOR = chunkBytes("tEXt", ascii("Author a person who is not the player"));
 
+        it("rebuilds an older stripped image with its orientation and retires the unused cache", async () => {
+            const source = orientedJpegBytes();
+            await writeLibrary({ [ASSET_A]: { bytes: source } });
+            const old = await seedCache(source, "s-v2.stripped", jpegBytes());
+            const options = {
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
+            };
+
+            const rebuilt = await optimizeProjectImages(options);
+            expect(rebuilt.stripped).toBe(1);
+            expect(rebuilt.images[ASSET_A].path).not.toBe(old);
+            const shipped = await fs.readFile(rebuilt.images[ASSET_A].path);
+            expect(jpegOrientation(shipped)).toBe(6);
+            expect(shipped.includes(Buffer.from("Private Artist"))).toBe(false);
+            await expect(fs.readFile(contentPath(ASSET_A))).resolves.toEqual(source);
+            await expect(fs.stat(old)).resolves.toBeTruthy();
+
+            const stale = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+            await fs.utimes(old, stale, stale);
+            await fs.utimes(rebuilt.images[ASSET_A].path, stale, stale);
+            const warm = await optimizeProjectImages(options);
+            expect(warm.images[ASSET_A].path).toBe(rebuilt.images[ASSET_A].path);
+            await expect(fs.stat(rebuilt.images[ASSET_A].path)).resolves.toBeTruthy();
+            await expect(fs.stat(old)).rejects.toThrow();
+        });
+
         it("strips an image the transcode refuses, without opening a codec", async () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
 
@@ -446,6 +512,34 @@ describe("optimizeProjectImages", () => {
         });
     });
     describe("the cache", () => {
+        it("keeps using existing version 2 lossless and lossy encodes", async () => {
+            const source = pngBytes();
+            await writeLibrary({ [ASSET_A]: { bytes: source } });
+            for (const { suffix, config } of [
+                { suffix: "l-v2.webp", config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION },
+                {
+                    suffix: "q40-v2.webp",
+                    config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true, imageQuality: 40 },
+                },
+            ]) {
+                const old = await seedCache(source, suffix, Buffer.alloc(100, 0x77));
+                const result = await optimizeProjectImages({ projectPath, cacheDir, config, openCodec: refuseCodec, log });
+                expect(result).toMatchObject({ converted: 1, reused: 1 });
+                expect(result.images[ASSET_A].path).toBe(old);
+            }
+        });
+
+        it("keeps using an existing version 2 lossless rejection", async () => {
+            const source = pngBytes();
+            await writeLibrary({ [ASSET_A]: { bytes: source } });
+            await seedCache(source, "l-v2.rejected", Buffer.alloc(0));
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
+            });
+            expect(result).toMatchObject({ converted: 0, keptOriginal: 1, images: {} });
+        });
+
         it("reuses a kept result without encoding again", async () => {
             await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
             const first = await optimizeProjectImages({

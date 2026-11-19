@@ -103,6 +103,43 @@ describe("replaceInSegment", () => {
         expect(next.rich).toContainEqual({ pause: true });
     });
 
+    it("keeps tokens immediately before a matched word and its own marks", () => {
+        const segment: StoryTextSegment = {
+            textId: "t1",
+            role: "dialogue",
+            value: "beforeafter",
+            rich: [
+                { text: "before", marks: { bold: true } },
+                { pause: true },
+                { text: "after", marks: { italic: true } },
+            ],
+        };
+
+        const next = replaceInSegment(segment, { start: 6, end: 11 }, "later");
+
+        expect(next.textId).toBe("t1");
+        expect(next.value).toBe("beforelater");
+        expect(next.rich).toEqual([
+            { text: "before", marks: { bold: true } },
+            { pause: true },
+            { text: "later", marks: { italic: true } },
+        ]);
+    });
+
+    it("inserts a zero-width match at a token boundary without deleting or duplicating anything", () => {
+        const segment: StoryTextSegment = {
+            textId: "t1",
+            role: "dialogue",
+            value: "beforeafter",
+            rich: [{ text: "before" }, { pause: true }, { text: "after" }],
+        };
+
+        const next = replaceInSegment(segment, { start: 6, end: 6 }, "new ");
+
+        expect(next.value).toBe("beforenew after");
+        expect(next.rich).toEqual([{ text: "before" }, { pause: true }, { text: "new after" }]);
+    });
+
     it("deletes when the replacement is empty", () => {
         const next = replaceInSegment(plain("Hello Alice"), { start: 5, end: 11 }, "");
         expect(next.value).toBe("Hello");

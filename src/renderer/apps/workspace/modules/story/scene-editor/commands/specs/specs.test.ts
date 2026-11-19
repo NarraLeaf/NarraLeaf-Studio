@@ -6,6 +6,7 @@ import { canCommit, parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
+import { transformTimingArgs } from "../transformVocabulary";
 import { declarationFromArgs } from "./variables";
 import type { TranslationKey } from "@shared/i18n";
 import { i18nStore, translate } from "@/lib/i18n";
@@ -235,6 +236,23 @@ describe("generic verbs", () => {
         expect(build("/show hero in=fade d=0.2")).toMatchObject({
             payload: { action: "image", operation: "show", objectName: "hero", transform: { to: { opacity: 1 }, durationMs: 200 } },
         });
+    });
+
+    it("places existing stage objects when they are shown", () => {
+        for (const source of ["/show hero", "/show title", "/show overlay"]) {
+            expect(build(`${source} pos=left xoffset=40 d=0.3 opacity=0.6`), source).toMatchObject({
+                payload: { transform: { to: { position: { xalign: 0.25, yalign: 0.5, xoffset: 40 }, opacity: 0.6 }, durationMs: 300 } },
+            });
+            expect(build(`${source} pos=left in=fade`), source).toMatchObject({
+                payload: { transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } },
+            });
+        }
+    });
+
+    it("refuses displayable-only reveal and placement parameters on overlays", () => {
+        expect(issuesOf("/show petals pos=left")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show petals in=zoom")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/hide petals out=zoom")).toEqual(["unsupportedParam"]);
     });
 
     it("/show carries an opacity anywhere, and a rate for an overlay alone", () => {
@@ -760,6 +778,13 @@ describe("sound (target defaults to bgm)", () => {
         expect(build("/stop clip")).toMatchObject({ payload: { action: "video", operation: "stop", objectName: "clip" } });
     });
 
+    it("refuses sound-only fades on video and ambience controls", () => {
+        expect(issuesOf("/stop clip fade=1")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/pause clip fade=1")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/resume petals fade=1")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/pause music fade=1")).toEqual([]);
+    });
+
     it("/seek names its clip and stores seconds as milliseconds", () => {
         expect(build("/seek clip 3")).toMatchObject({
             kind: "action",
@@ -832,6 +857,20 @@ describe("variables", () => {
         expect(build("/dec gold 2")).toMatchObject({ payload: { expression: { source: "gold - (2)" } } });
         expect(build("/toggle met")).toMatchObject({ payload: { target: { variableId: "var_met" }, expression: { source: "!met" } } });
         expect(build("/reset gold")).toMatchObject({ payload: { value: 10, expression: undefined } });
+    });
+
+    it("refuses displayable reset parameters on a variable", () => {
+        expect(issuesOf("/reset gold mask")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/reset gold d=0.5")).toEqual(["unsupportedParam"]);
+    });
+
+    it("checks the value produced by variable shorthand against the target type", () => {
+        expect(issuesOf("/inc met")).toEqual(["expressionTypeMismatch"]);
+        expect(issuesOf("/dec met")).toEqual(["expressionTypeMismatch"]);
+        expect(issuesOf("/toggle gold")).toEqual(["expressionTypeMismatch"]);
+        expect(issuesOf('/inc gold "points"')).toEqual(["expressionTypeMismatch"]);
+        expect(issuesOf("/inc gold 2")).toEqual([]);
+        expect(issuesOf("/toggle met")).toEqual([]);
     });
 
     it("an assignment written with an expression stores no literal beside it", () => {
@@ -1136,6 +1175,50 @@ describe("logic and effects", () => {
         expect(issuesOf("/transform hero loop stopLoop zoom=2")).toContain("conflictingParams");
         // A count and "until something stops it" are two answers to how many times it runs.
         expect(issuesOf("/transform hero loop zoom=2 repeat=3")).toEqual(["conflictingParams"]);
+    });
+
+    it("refuses stopLoop options the row does not carry", () => {
+        for (const target of ["hero", "camera"]) {
+            expect(build(`/transform ${target} stopLoop d=0.3`)).toMatchObject({ payload: { operation: "stopLoop", transform: { durationMs: 300 } } });
+            expect(issuesOf(`/transform ${target} stopLoop ease=easeIn`)).toEqual(["conflictingParams"]);
+            expect(issuesOf(`/transform ${target} stopLoop delay=0.2`)).toEqual(["conflictingParams"]);
+            expect(issuesOf(`/transform ${target} stopLoop repeat=2`)).toEqual(["conflictingParams"]);
+            expect(issuesOf(`/transform ${target} stopLoop repeatDelay=1`)).toEqual(["conflictingParams"]);
+            expect(issuesOf(`/transform ${target} stopLoop repeatType=mirror`)).toEqual(["conflictingParams"]);
+        }
+    });
+
+    it("treats motion=false as a property transform", () => {
+        expect(issuesOf("/transform hero motion=false zoom=2")).toEqual([]);
+        expect(build("/transform hero motion=false zoom=2")).toMatchObject({ payload: { transform: { to: { zoom: 2 } } } });
+    });
+
+    it("refuses timing fields that a bound Story Motion does not carry", () => {
+        for (const target of ["hero", "camera"]) {
+            for (const option of ["d=0.3", "ease=easeIn", "delay=1", "repeat=2", "repeatDelay=1", "repeatType=mirror", "from=zoom=1"]) {
+                expect(issuesOf(`/transform ${target} motion ${option}`), option).toContain("conflictingParams");
+            }
+        }
+    });
+
+    it("requires a look for its strength", () => {
+        expect(issuesOf("/transform camera strength=0.5")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/transform camera look=none strength=0.5")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/transform camera look=moonlight strength=0.5")).toEqual([]);
+    });
+
+    it("reports a start value with no number on the command line", () => {
+        expect(issuesOf("/transform hero zoom=2 from=zoom")).toEqual(["unsupportedOption"]);
+    });
+
+    it("keeps a mirrored start value when a transform row is edited as a line", () => {
+        const first = build("/transform hero zoom=2 from=scaleX=-1");
+        if (first.kind !== "action" || first.payload.action !== "displayable") throw new Error("expected a displayable transform");
+        const from = transformTimingArgs(first.payload.transform).find(arg => arg.key === "from")?.value;
+        expect(from).toBe("scaleX=-1");
+        expect(build(`/transform hero zoom=2 from='${from}'`)).toMatchObject({
+            payload: { transform: { from: { scaleX: -1 }, to: { zoom: 2 } } },
+        });
     });
 
     it("/transform camera reads the camera as a reserved target word", () => {

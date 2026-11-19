@@ -114,6 +114,19 @@ describe("querySearchIndex", () => {
         expect(boundary?.hits[0]?.entry.id).toBe("1");
     });
 
+    it("scores a hit after a supplementary letter as mid-word", () => {
+        const index = indexEntries([
+            { id: "letter", group: "storyText", text: "𠀀cat", target: { kind: "localizationKey", keyName: "x" } },
+            { id: "symbol", group: "storyText", text: "💬cat", target: { kind: "localizationKey", keyName: "x" } },
+        ] satisfies SearchIndexEntry[]);
+        for (const options of [undefined, { matcher: compileMatcher("cat", { caseSensitive: false, wholeWord: false, regex: false }) }]) {
+            const hits = querySearchIndex(index, "cat", options).find(group => group.group === "storyText")?.hits;
+            const letter = hits?.find(hit => hit.entry.id === "letter");
+            const symbol = hits?.find(hit => hit.entry.id === "symbol");
+            expect(symbol!.score).toBeGreaterThan(letter!.score);
+        }
+    });
+
     it("ANDs terms regardless of word order, across text and detail", () => {
         const forward = querySearchIndex(entries, "good morning");
         const reversed = querySearchIndex(entries, "morning good");
@@ -152,6 +165,14 @@ describe("querySearchIndex", () => {
     it("intersects supplied filters with query-syntax filters", () => {
         const groups = querySearchIndex(entries, "morning type:storyText", { filters: { groups: ["variable"] } });
         expect(groups).toEqual([]);
+    });
+
+    it("requires both supplied and query-syntax asset and name filters to match", () => {
+        expect(querySearchIndex(entries, "morning asset:audio", { filters: { assetTypes: ["image"] } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning scene:opening", { filters: { sceneName: "corridor" } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning speaker:inko", { filters: { speaker: "other" } })).toEqual([]);
+        expect(querySearchIndex(entries, "morning scene:open", { filters: { sceneName: "opening" } })
+            .find(group => group.group === "storyText")?.total).toBe(2);
     });
 
     it("returns nothing for a facet-only query", () => {

@@ -31,7 +31,8 @@ const LIBRARY_REWALK_DEBOUNCE_MS = 600;
  *   Absent until the library has loaded.
  */
 export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enabled: boolean, libraryKey?: string) {
-    const [snapshot, setSnapshot] = useState<AssetOverviewSummary | null>(null);
+    const [reading, setReading] = useState<{ context: WorkspaceContext; summary: AssetOverviewSummary } | null>(null);
+    const snapshot = reading?.context === context ? reading.summary : null;
     const [loading, setLoading] = useState(false);
     const [failed, setFailed] = useState(false);
     const requestRef = useRef(0);
@@ -49,6 +50,7 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
     const owedWalkRef = useRef(false);
     /** The last folder measurement, and the library it was taken against. */
     const walkRef = useRef<DirectorySizeResult | null>(null);
+    const walkContextRef = useRef<WorkspaceContext | null>(null);
     const walkKeyRef = useRef<string | undefined>(undefined);
     const libraryKeyRef = useRef(libraryKey);
     libraryKeyRef.current = libraryKey;
@@ -57,6 +59,11 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
     const run = useCallback((walk: boolean) => {
         if (!context) {
             return;
+        }
+        if (walkContextRef.current !== context) {
+            walkContextRef.current = context;
+            walkRef.current = null;
+            walkKeyRef.current = undefined;
         }
         const requestId = ++requestRef.current;
         runningRef.current = true;
@@ -76,13 +83,13 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
                     if (!reuse) {
                         walkRef.current = next.walk;
                     }
-                    setSnapshot(next.summary);
+                    setReading({ context, summary: next.summary });
                     setLoading(false);
                 }
             })
             .catch(error => {
-                console.warn("[AssetOverview] Failed to compute the asset snapshot", error);
                 if (requestRef.current === requestId) {
+                    console.warn("[AssetOverview] Failed to compute the asset snapshot", error);
                     setFailed(true);
                     setLoading(false);
                 }
@@ -114,10 +121,17 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
     const refresh = useCallback(() => run(true), [run]);
 
     useEffect(() => {
-        if (enabled) {
-            run(true);
+        if (!enabled || !context) {
+            return;
         }
-    }, [enabled, run]);
+        run(true);
+        return () => {
+            requestRef.current += 1;
+            runningRef.current = false;
+            changedWhileRunningRef.current = false;
+            owedWalkRef.current = false;
+        };
+    }, [context, enabled, run]);
 
     // An edit that adds or removes a reference changes which assets are orphans, which is the
     // reading most likely to be acted on. Follow the index rather than leaving a stale answer up -
@@ -136,8 +150,9 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
             return;
         }
         if (walkKeyRef.current === undefined) {
-            // The walk was started before the library had loaded, and measures the same files.
+            // The walk measured the files, but its snapshot may predate the loaded records.
             walkKeyRef.current = libraryKey;
+            request(false);
             return;
         }
         if (walkKeyRef.current === libraryKey) {
@@ -189,7 +204,7 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
 
     return {
         snapshot,
-        loading,
+        loading: enabled && context !== null && loading,
         failed,
         refresh,
         bytesByAssetId,

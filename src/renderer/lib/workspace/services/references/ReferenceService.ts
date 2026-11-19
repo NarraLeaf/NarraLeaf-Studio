@@ -346,7 +346,12 @@ export class ReferenceService extends Service<ReferenceService> {
         };
     }
 
-    public override dispose(_ctx: WorkspaceContext): void {
+    public override async dispose(_ctx: WorkspaceContext): Promise<void> {
+        try {
+            await this.readyPromise;
+        } catch {
+            // A failed build still has state to release.
+        }
         for (const unsub of this.unsubs) {
             unsub();
         }
@@ -672,6 +677,10 @@ export class ReferenceService extends Service<ReferenceService> {
                 this.rebuildCharacterSlice();
                 this.emitChanged();
             });
+            this.scheduleRebuild("blueprint", () => {
+                this.rebuildBlueprintSlice();
+                this.emitChanged();
+            });
             this.scheduleRebuild("ui", () => {
                 this.rebuildUISlice();
                 this.emitChanged();
@@ -783,6 +792,7 @@ export class ReferenceService extends Service<ReferenceService> {
         const entries = storyService.listStories();
         const liveIds = new Set(entries.map(entry => entry.id));
 
+        this.clearRemovedDocumentGaps("story:", liveIds);
         for (const storyId of [...this.storyReferences.keys()]) {
             if (!liveIds.has(storyId)) {
                 this.storyReferences.delete(storyId);
@@ -819,6 +829,7 @@ export class ReferenceService extends Service<ReferenceService> {
         const entries = storyService.listAnimationAssets();
         const liveIds = new Set(entries.map(entry => entry.id));
 
+        this.clearRemovedDocumentGaps("storyAnimation:", liveIds);
         for (const animationId of [...this.storyAnimationReferences.keys()]) {
             if (!liveIds.has(animationId)) {
                 this.storyAnimationReferences.delete(animationId);
@@ -840,6 +851,14 @@ export class ReferenceService extends Service<ReferenceService> {
                 }
             }),
         );
+    }
+
+    private clearRemovedDocumentGaps(prefix: string, liveIds: ReadonlySet<string>): void {
+        for (const key of this.sliceGaps.keys()) {
+            if (key.startsWith(prefix) && !liveIds.has(key.slice(prefix.length))) {
+                this.sliceGaps.delete(key);
+            }
+        }
     }
 
     private rebuildBlueprintSlice(): void {

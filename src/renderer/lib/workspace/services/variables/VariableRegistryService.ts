@@ -75,9 +75,7 @@ export type VariableOpSink = {
 /**
  * Everything about a registry except when it was last written, as one comparable string.
  *
- * The document's own canonical encoder, so that two registries compare equal exactly when they would
- * produce the same file - key order included, which a hand-rolled walk over `entries` would get
- * wrong the moment a mutation reinserted a key.
+ * The document's own canonical encoder compares all content in canonical key order.
  *
  * `meta` is dropped by rest, not by naming the fields to keep, so a field added to the registry later
  * is compared without anybody remembering to add it here. The one thing that must NOT be compared is
@@ -125,11 +123,10 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     private opSink: VariableOpSink | null = null;
     private dirty = false;
     private revision = 0;
-    private lastSavedRevision = 0;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.save(this.getRegistry()),
+        save: () => this.writeRegistry(this.getRegistry()),
         onError: err => console.warn("[VariableRegistryService] auto-save failed", err),
     });
 
@@ -178,48 +175,37 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         }
 
         this.revision = 0;
-        this.lastSavedRevision = 0;
         this.setDirty(false);
         this.events.emit("registryChanged", this.registry);
         return this.registry;
     }
 
     /**
-     * Write the registry, **unless doing so would only move the clock.**
-     *
-     * The declaration migration in {@link activate} re-runs on every open of a project that still
-     * holds project-scoped rows, and it re-runs by design: it has no "already done" flag, because a
-     * flag on a frozen project would record itself as done having written nothing. Its second run
-     * assigns the same entries the first one did, so the registry it hands here is byte-identical to
-     * the one on disk - and stamping `updatedAt` regardless turned that into a real change to the
-     * file, every time the project was opened, on every machine.
-     *
-     * ⚠ **That is not cosmetic; it is what makes two machines unable to share a project.** Both open
-     * it, both rewrite `editor/variables.json` with their own clock, and the next sync is a conflict
-     * on a document neither author touched - which then blocks joining a live session, because
-     * joining takes a checkpoint and syncs first. Measured on real machines: timestamps 115 ms and
-     * 813 ms apart, conflicting three times out of three.
-     *
-     * So the timestamp says when the registry last *changed*, which is what a timestamp on a
-     * document is for, and a save with nothing to say leaves the file alone entirely.
+     * Save the current registry through the automatic writer's queue. A supplied replacement is
+     * written after pending work. A content-identical save keeps the timestamp and file unchanged,
+     * so separate workspaces do not create conflicts over a clock update.
      */
     public async save(registry: VariableRegistry): Promise<void> {
-        if (this.unreadable) {
-            throw new RendererError(
-                `Refusing to write ${this.unreadable.path}: it is on disk but could not be read `
-                + `(${this.unreadable.reason}), so anything written now would replace it with an empty registry.`,
-            );
+        this.assertReadableForSave();
+        if (registry !== this.registry) {
+            await this.autoSaver.flush();
+            await this.writeRegistry(registry);
+            return;
         }
-        // This write supersedes whatever the timer was going to do.
-        this.autoSaver.cancel();
+        this.autoSaver.schedule();
+        await this.autoSaver.flush();
+    }
 
+    private async writeRegistry(registry: VariableRegistry): Promise<void> {
+        this.assertReadableForSave();
+        const current = this.registry;
+        const revision = this.revision;
         const key = contentKey(registry);
         if (key === this.savedContentKey) {
             // Nothing to write. The bookkeeping still runs: the caller asked for a save and is
             // entitled to be clean afterwards, and a dirty flag left standing here would have the
             // shell reporting unsaved work that does not exist.
             this.registry = registry;
-            this.lastSavedRevision = this.revision;
             this.setDirty(false);
             this.events.emit("registryChanged", this.registry);
             return;
@@ -233,11 +219,21 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
             },
         };
         await saveDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor(), updated);
-        this.registry = updated;
         this.savedContentKey = key;
-        this.lastSavedRevision = this.revision;
-        this.setDirty(false);
-        this.events.emit("registryChanged", this.registry);
+        if (this.registry === current && this.revision === revision) {
+            this.registry = updated;
+            this.setDirty(false);
+            this.events.emit("registryChanged", this.registry);
+        }
+    }
+
+    private assertReadableForSave(): void {
+        if (this.unreadable) {
+            throw new RendererError(
+                `Refusing to write ${this.unreadable.path}: it is on disk but could not be read `
+                + `(${this.unreadable.reason}), so anything written now would replace it with an empty registry.`,
+            );
+        }
     }
 
     public getRegistry(): VariableRegistry {
@@ -582,11 +578,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         this.events.emit("dirtyChanged", value);
     }
 
-    /**
-     * First-time registry for a project that predates M-VAR: seed from the blueprint document's
-     * persistent variables (the field being relocated). Once the field is stripped, this seed reads
-     * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
-     */
+    /** Project document storage with save-status reporting. */
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.variables", "retried"));
     }

@@ -110,6 +110,8 @@ const LEFT_STICK_BUTTONS = [
     { button: "Left Stick Right", axis: 0, sign: 1 },
 ] as const;
 
+type StickState = { id: string; buttons: ReadonlySet<string> };
+
 /**
  * The left stick as four buttons. A direction goes down past {@link GAMEPAD_STICK_PRESS} and comes
  * back up only under {@link GAMEPAD_STICK_RELEASE}, so a thumb resting near the threshold does not
@@ -131,9 +133,16 @@ function readLeftStickButtons(pad: Gamepad, previous: ReadonlySet<string>, into:
 
 function readUnion(
     pads: Array<Gamepad | null>,
-    previous: ReadonlySet<string> = new Set(),
-): { buttons: Set<string>; axes: Record<BlueprintGamepadAxis, number>; connected: boolean; controllerId?: string } {
+    previousSticks: ReadonlyMap<number, StickState> = new Map(),
+): {
+    buttons: Set<string>;
+    sticks: Map<number, StickState>;
+    axes: Record<BlueprintGamepadAxis, number>;
+    connected: boolean;
+    controllerId?: string;
+} {
     const buttons = new Set<string>();
+    const sticks = new Map<number, StickState>();
     let first: Gamepad | null = null;
     for (const pad of pads) {
         if (!isStandardPad(pad)) {
@@ -142,7 +151,13 @@ function readUnion(
         if (!first) {
             first = pad;
         }
-        readLeftStickButtons(pad, previous, buttons);
+        const heldStick = new Set<string>();
+        const previous = previousSticks.get(pad.index);
+        readLeftStickButtons(pad, previous?.id === pad.id ? previous.buttons : new Set(), heldStick);
+        sticks.set(pad.index, { id: pad.id, buttons: heldStick });
+        for (const button of heldStick) {
+            buttons.add(button);
+        }
         const count = Math.min(pad.buttons.length, BLUEPRINT_GAMEPAD_PHYSICAL_BUTTON_COUNT);
         for (let index = 0; index < count; index += 1) {
             if (pad.buttons[index]?.pressed) {
@@ -159,7 +174,7 @@ function readUnion(
             axes[BLUEPRINT_GAMEPAD_AXES[i]] = applyDeadzone(first.axes[i] ?? 0);
         }
     }
-    return { buttons, axes, connected: first !== null, ...(first ? { controllerId: first.id } : {}) };
+    return { buttons, sticks, axes, connected: first !== null, ...(first ? { controllerId: first.id } : {}) };
 }
 
 function edgesBetween(previous: ReadonlySet<string>, next: ReadonlySet<string>): UIGamepadButtonEdge[] {
@@ -187,6 +202,8 @@ function hostIsAway(host: UIGamepadHost): boolean {
 
 export function createGamepadTracker(host: UIGamepadHost | null | undefined): UIGamepadTracker {
     let buttons = new Set<string>();
+    // Hysteresis belongs to each physical stick; the public held set is their union.
+    let previousSticks = new Map<number, StickState>();
     let axes: Record<BlueprintGamepadAxis, number> = { ...NO_GAMEPAD_AXES };
     let connected = false;
     let controllerId: string | undefined;
@@ -209,7 +226,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         }
     };
 
-    const applyUnion = (next: ReturnType<typeof readUnion>, emitEdges: boolean): void => {
+    const applyUnion = (next: Omit<ReturnType<typeof readUnion>, "sticks">, emitEdges: boolean): void => {
         const previous = buttons;
         buttons = next.buttons;
         axes = next.axes;
@@ -239,6 +256,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         // Gamepad Connected does not flip false on blur. The sticks are not: a stick pushed at the
         // moment of blur would otherwise read as pushed for as long as the player is away.
         applyUnion({ buttons: new Set(), axes: { ...NO_GAMEPAD_AXES }, connected: live?.connected ?? connected }, false);
+        previousSticks.clear();
         resync = true;
     };
 
@@ -246,11 +264,12 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
         if (!host) {
             return;
         }
-        const live = readUnion(host.getGamepads(), buttons);
+        const live = readUnion(host.getGamepads(), previousSticks);
         if (hostIsAway(host)) {
             forget(live);
             return;
         }
+        previousSticks = live.sticks;
         applyUnion(live, !resync);
         resync = false;
     };
@@ -335,6 +354,7 @@ export function createGamepadTracker(host: UIGamepadHost | null | undefined): UI
             edgeListeners.clear();
             heldListeners.clear();
             buttons = new Set();
+            previousSticks.clear();
             axes = { ...NO_GAMEPAD_AXES };
             connected = false;
             resync = true;

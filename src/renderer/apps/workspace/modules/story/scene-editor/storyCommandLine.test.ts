@@ -140,6 +140,51 @@ afterEach(() => {
 });
 
 describe("projectStoryCommandLine", () => {
+    it.each(["hero", "title", "overlay"])("keeps %s's show position after saving and re-editing", subject => {
+        const original = build(`/show ${subject} pos=0.25,0.5 xoffset=40 yoffset=-12 d=0.3 opacity=0.6`);
+        const reloaded = JSON.parse(JSON.stringify(original)) as StoryBlock;
+        const projected = projectStoryCommandLine(reloaded, LOOKUPS);
+        expect(projected?.source).toContain("pos=0.25,0.5");
+        expect(projected?.source).toContain("xoffset=40");
+        expect(projected?.source).toContain("yoffset=-12");
+        expect(projected?.source).toContain("opacity=0.6");
+        const rebuilt = build(projected!.source);
+        expect(rewritesRowInPlace(reloaded, rebuilt)).toBe(true);
+        expect(JSON.parse(JSON.stringify(rebuilt.payload))).toEqual(reloaded.payload);
+    });
+
+    it.each(["en", "zh", "ja"] as const)("round-trips a positioned existing image in %s", locale => {
+        i18nStore.setLocale(locale);
+        const original = build("/show hero pos=right opacity=0.6");
+        const projected = projectStoryCommandLine(original, LOOKUPS)!;
+        expect(build(projected.source).payload).toEqual(original.payload);
+    });
+
+    it.each(["hero", "title", "overlay"])("keeps %s's explicit full opacity with its placement", subject => {
+        const original = build(`/show ${subject} pos=left opacity=1 d=0.3`);
+        const line = projectStoryCommandLine(original, LOOKUPS)!;
+        expect(line.source).toContain("opacity=1");
+        expect(build(line.source).payload).toEqual(original.payload);
+    });
+
+    it.each(["hero", "title", "overlay"])("keeps %s's precise position when its line is rebuilt", subject => {
+        for (const position of ["0.123456,0.543219", "0.00000001,0.543219"]) {
+            const original = build(`/show ${subject} pos=${position} xoffset=0.123456 yoffset=-0.00000001`);
+            const line = projectStoryCommandLine(original, LOOKUPS)!;
+            expect(build(line.source).payload).toEqual(original.payload);
+        }
+    });
+
+    it.each(["hero", "title", "overlay"])("keeps %s's opacity and offsets when its placement is edited inline", subject => {
+        const original = build(`/show ${subject} pos=0.25,0.5 xoffset=40 opacity=0.6 d=0.3`);
+        const line = projectStoryCommandLine(original, LOOKUPS)!;
+        const placement = line.edits.find(edit => edit.value === "0.25,0.5")!;
+        expect(placement).toBeDefined();
+        expect(placement.apply("right")).toMatchObject({
+            transform: { to: { position: { xalign: 0.75, yalign: 0.5, xoffset: 40 }, opacity: 0.6 }, durationMs: 300 },
+        });
+    });
+
     it("writes the line the author typed, spelled out in full", () => {
         // The abbreviations an author may TYPE are not what the row reads back: the key is written in
         // whatever spelling the command language offers, and the seconds are the seconds.

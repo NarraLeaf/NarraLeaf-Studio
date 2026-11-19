@@ -190,6 +190,19 @@ describe("AssetBrowserView", () => {
         expect(onNavigate).toHaveBeenCalledWith({ category: AssetCategory.Media, groupId: THEMES.id });
     });
 
+    it("opens the preview when a plain click replaces a multi-selection", () => {
+        const handleAssetClick = vi.fn();
+        render(<Harness location={IN_MUSIC} context={{
+            handleAssetClick,
+            selectedItems: new Set(["group:g-themes", "asset:a-title"]),
+            isMultiSelectMode: true,
+        }} />);
+
+        fireEvent.click(tile("asset:a-title"));
+
+        expect(handleAssetClick).toHaveBeenCalledWith(FILES[0], false);
+    });
+
     it("opens the folder's own menu on empty space around the contents", () => {
         const showPlaceContextMenu = vi.fn();
         render(<Harness location={IN_MUSIC} showPlaceContextMenu={showPlaceContextMenu} />);

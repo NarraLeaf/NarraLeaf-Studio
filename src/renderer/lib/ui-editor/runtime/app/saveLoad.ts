@@ -166,7 +166,7 @@ export type SaveLoadGameSeam = {
      */
     restore: (snapshot: SavedGame) => void | Promise<void>;
     /**
-     * Called only when {@link restore} itself threw, to leave the session able to be asked again.
+     * Called when a failed load cannot be restored, to leave the session able to be asked again.
      *
      * A load takes the engine's roll lock and gives it back from a render that a throw never
      * reaches. The lock is a flag rather than a count, so one that is never given back stays taken
@@ -1058,12 +1058,18 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     /**
      * Put the run back, and say what it ended up as.
      *
-     * The roll lock is given back only when the restore itself threw: `deserialize` takes it on the
-     * way in and returns it from a render a throw never reaches, and it is a flag rather than a
-     * count, so one that is never returned kills every later load in the session.
+     * `deserialize` takes the roll lock on the way in and returns it from a render a throw never
+     * reaches. A failed restore or a failed apply with no snapshot must give it back here.
      */
-    const putRunBack = async (): Promise<RunningGameState> => {
+    const putRunBack = async (releaseLockIfNoSnapshot = false): Promise<RunningGameState> => {
         if (!rollback) {
+            if (releaseLockIfNoSnapshot) {
+                try {
+                    game.releaseLoadLock?.();
+                } catch {
+                    /* nothing further is available */
+                }
+            }
             return "lost";
         }
         try {
@@ -1293,7 +1299,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     } catch (error) {
         return refuse("engine", translate("game.saveLoad.detail.engine", { error: errorText(error) }), {
             origin,
-            game: await putRunBack(),
+            game: await putRunBack(true),
         });
     }
 

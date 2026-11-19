@@ -1,4 +1,5 @@
 import { clipLength, type AudioClip } from "./audioClip";
+import { yieldToEventLoop } from "@/lib/lint/breather";
 
 /**
  * Level facts about a whole clip: how loud it peaks, how loud it sounds, how much silence pads
@@ -351,6 +352,6 @@ export async function measureLevelsInSlices(clip: AudioClip, signal: AbortSignal
                 return next.value;
             }
         } while (performance.now() - taskStart < TASK_BUDGET_MS);
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await yieldToEventLoop();
     }
 }

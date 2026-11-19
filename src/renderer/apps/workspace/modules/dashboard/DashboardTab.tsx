@@ -7,7 +7,7 @@ import {
     resolveDashboardOpen,
 } from "@shared/constants/dashboard";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
-import { Services } from "@/lib/workspace/services/services";
+import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
@@ -19,7 +19,6 @@ import {
 } from "@/lib/workspace/stats/projectStatsSnapshot";
 import { Button, Switch } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
-import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
@@ -47,22 +46,20 @@ const BUILD_HISTORY_LIMIT = 8;
  * while hidden costs nothing on the way back: the effect re-reads the current record on the
  * false -> true edge, exactly as the snapshot refresh below does.
  */
-function useProjectStats(statsService: ProjectStatsService | null, live: boolean): ProjectStatsV1 {
-    const [stats, setStats] = useState<ProjectStatsV1>(
-        () => statsService?.getStats() ?? createEmptyProjectStats(),
-    );
+function useProjectStats(statsService: ProjectStatsService | null, live: boolean, context: WorkspaceContext | null): ProjectStatsV1 {
+    const initial = useMemo(() => statsService?.getStats() ?? createEmptyProjectStats(), [statsService, context]);
+    const [record, setRecord] = useState(() => ({ context, stats: initial }));
 
     useEffect(() => {
         if (!statsService || !live) {
             return;
         }
-        // The service mutates its record in place and emits the same reference, so a plain
-        // `setStats(next)` would be a no-op bail-out. Shallow-cloning is what makes the push land.
-        setStats({ ...statsService.getStats() });
-        return statsService.onChanged(next => setStats({ ...next }));
-    }, [statsService, live]);
+        // The service mutates its record in place; cloning gives timeline derivations a new identity.
+        setRecord({ context, stats: { ...statsService.getStats() } });
+        return statsService.onChanged(next => setRecord({ context, stats: { ...next } }));
+    }, [statsService, live, context]);
 
-    return stats;
+    return record.context === context ? record.stats : initial;
 }
 
 /**
@@ -175,9 +172,11 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
     const translator = useTranslation();
     const { t, tn, formatNumber } = translator;
 
-    const [snapshot, setSnapshot] = useState<ProjectStatsSnapshot | null>(null);
-    const [failed, setFailed] = useState(false);
+    const [loadedSnapshot, setLoadedSnapshot] = useState<{ context: WorkspaceContext; value: ProjectStatsSnapshot } | null>(null);
+    const [failedContext, setFailedContext] = useState<WorkspaceContext | null>(null);
     const requestRef = useRef(0);
+    const snapshot = loadedSnapshot?.context === context ? loadedSnapshot.value : null;
+    const failed = context !== null && failedContext === context;
 
     const statsService = useMemo(() => {
         try {
@@ -186,7 +185,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
             return null;
         }
     }, [context]);
-    const stats = useProjectStats(statsService, active);
+    const stats = useProjectStats(statsService, active, context);
 
     const projectName = useMemo(() => {
         try {
@@ -217,17 +216,17 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
             return;
         }
         const requestId = ++requestRef.current;
-        setFailed(false);
+        setFailedContext(null);
         void computeProjectStatsSnapshot(context)
             .then(next => {
                 if (requestRef.current === requestId) {
-                    setSnapshot(next);
+                    setLoadedSnapshot({ context, value: next });
                 }
             })
             .catch(error => {
                 console.warn("[Dashboard] Failed to compute project snapshot", error);
                 if (requestRef.current === requestId) {
-                    setFailed(true);
+                    setFailedContext(context);
                 }
             });
     }, [context]);
@@ -240,6 +239,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
             return;
         }
         refresh();
+        return () => { requestRef.current += 1; };
     }, [active, refresh]);
 
     const now = Date.now();
@@ -289,47 +289,29 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
         if (!settingsService || !projectKey) {
             return;
         }
-        let cancelled = false;
-        void Promise.all([
-            settingsService.get<boolean>(projectKey),
-            settingsService.get<boolean>(DASHBOARD_OPEN_DEFAULT_KEY, true),
-        ])
-            .then(([projectChoice, globalDefault]) => {
-                if (!cancelled) {
-                    setOpenOnWorkspaceOpen(resolveDashboardOpen(projectChoice, globalDefault));
-                }
-            })
-            .catch(() => undefined);
-
-        // Until this project has a choice of its own it shows the global default, which the
-        // Settings window can change from another window — so follow that too, rather than
-        // displaying a stale default until the workspace restarts.
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (cancelled) {
-                return;
-            }
-            if (change.key === projectKey) {
-                setOpenOnWorkspaceOpen(change.value !== false);
-                return;
-            }
-            if (change.key === DASHBOARD_OPEN_DEFAULT_KEY && !settingsService.has(projectKey)) {
-                setOpenOnWorkspaceOpen(change.value !== false);
-            }
-        });
+        // The service loads its cache during workspace initialization and updates it before
+        // notifying listeners. Both keys therefore use the same precedence on every change.
+        const update = () => setOpenOnWorkspaceOpen(resolveDashboardOpen(
+            settingsService.getSync(projectKey),
+            settingsService.getSync(DASHBOARD_OPEN_DEFAULT_KEY, true),
+        ));
+        const stopProject = settingsService.onChange(projectKey, update);
+        const stopDefault = settingsService.onChange(DASHBOARD_OPEN_DEFAULT_KEY, update);
+        update();
 
         return () => {
-            cancelled = true;
-            token?.cancel();
+            stopProject();
+            stopDefault();
         };
     }, [settingsService, projectKey]);
 
     const handleToggleOpenOnWorkspaceOpen = useCallback(
         (checked: boolean) => {
-            if (!projectKey) {
+            if (!projectKey || !settingsService) {
                 return;
             }
             setOpenOnWorkspaceOpen(checked);
-            void settingsService?.set(projectKey, checked).catch(error => {
+            void settingsService.set(projectKey, checked).catch(error => {
                 console.warn("[Dashboard] Failed to persist setting", error);
             });
         },
@@ -473,6 +455,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                             size="sm"
                             checked={openOnWorkspaceOpen}
                             onCheckedChange={handleToggleOpenOnWorkspaceOpen}
+                            disabled={!projectKey || !settingsService}
                         />
                     </label>
                     <div className="flex justify-start">

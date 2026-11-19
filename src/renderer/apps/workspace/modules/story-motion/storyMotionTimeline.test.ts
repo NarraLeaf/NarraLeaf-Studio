@@ -205,6 +205,23 @@ describe("storyMotionTimeline", () => {
         }));
     });
 
+    it("keeps the edited keyframe when its time lands on another keyframe", () => {
+        const timeline: StoryAnimationTimeline = {
+            tracks: [{
+                id: "rotation",
+                property: "rotation",
+                keyframes: [
+                    { id: "a", timeMs: 0, value: 10 },
+                    { id: "z", timeMs: 100, value: 20 },
+                ],
+            }],
+        };
+
+        const moved = updateStoryMotionKeyframe(timeline, "a", keyframe => ({ ...keyframe, timeMs: 100 }));
+
+        expect(moved.tracks[0].keyframes).toEqual([{ id: "a", timeMs: 100, value: 10 }]);
+    });
+
     it("preserves existing easing when upserting without one", () => {
         const timeline = upsertStoryMotionKeyframe({ tracks: [] }, "rotation", 120, 8, "backOut");
         const updated = upsertStoryMotionKeyframe(timeline, "rotation", 120, 12);

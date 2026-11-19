@@ -501,10 +501,17 @@ export function MotionField(props: {
             return;
         }
         let disposed = false;
-        void storyService.loadAnimationAsset(animationId)
-            .then(loaded => { if (!disposed) setAsset(loaded); })
-            .catch(() => { if (!disposed) setAsset(null); });
-        return () => { disposed = true; };
+        let generation = 0;
+        setAsset(null);
+        const load = () => {
+            const current = ++generation;
+            void storyService.loadAnimationAsset(animationId)
+                .then(loaded => { if (!disposed && current === generation) setAsset(loaded); })
+                .catch(() => { if (!disposed && current === generation) setAsset(null); });
+        };
+        load();
+        const unsubscribe = storyService.onAnimationsChanged(load);
+        return () => { disposed = true; unsubscribe(); };
     }, [animationId, storyService]);
 
     const bind = useCallback((assetId: string) => {

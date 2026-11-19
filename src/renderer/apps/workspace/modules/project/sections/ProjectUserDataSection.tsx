@@ -81,7 +81,7 @@ export function ProjectUserDataSection({
                 <IconButton
                     size="sm"
                     aria-label={t("project.userData.copy")}
-                    title={t("project.userData.copy")}
+                    data-tip={t("project.userData.copy")}
                     onClick={() => void copy(locations, gameFolder, t, uiService)}
                 >
                     <Copy className="h-3.5 w-3.5" />

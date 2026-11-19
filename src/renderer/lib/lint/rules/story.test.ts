@@ -705,6 +705,24 @@ describe("story/rows-after-ending", () => {
         expect(findings[0].location).toMatchObject({ blockId: "n1" });
     });
 
+    it("ignores endings and rows under disabled containers", () => {
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Crossroads", [
+                    { ...condition("off", [branch("off-branch", "if", [ending("off-end", "Off"), narration("off-row")])]), disabled: true },
+                    condition("on", [
+                        { ...branch("disabled-branch", "if", [ending("disabled-end", "Off"), narration("disabled-row")]), disabled: true },
+                        branch("live-branch", "else", [ending("live-end", "End"), narration("live-row")]),
+                    ]),
+                ]),
+            ])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "live-row" });
+    });
+
     it("says nothing about a row after the CONTAINER that holds an ending", () => {
         // Whether that row plays depends on which arm ran, so it is a live path rather than a dead
         // one - and the compiler keeps it for exactly the same reason.

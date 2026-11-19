@@ -52,14 +52,19 @@ export function findStoryPreviewRowForSlot(
     if (!storyPreviewCanShowSlot(slotId)) {
         return null;
     }
-    if (cursorBlockId && scene.blocks[cursorBlockId] && storyPreviewRowShowsSlot(scene, cursorBlockId, slotId)) {
+    const rows = listSceneBlocksInDocumentOrder(scene);
+    const playable = new Set(listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => block.disabled === true }).map(block => block.id));
+    const targetId = resolvePreviewTargetBlockId(scene, cursorBlockId);
+    if (cursorBlockId && playable.has(cursorBlockId) && isShown(cursorBlockId)
+        && (slotId === "onStage" || (targetId !== null && playable.has(targetId)))
+        && storyPreviewRowShowsSlot(scene, cursorBlockId, slotId)) {
         return cursorBlockId;
     }
-    const rows = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => block.disabled === true });
     const cursorIndex = cursorBlockId ? rows.findIndex(block => block.id === cursorBlockId) : -1;
     const ordered = cursorIndex >= 0 ? [...rows.slice(cursorIndex + 1), ...rows.slice(0, cursorIndex)] : rows;
-    const found = ordered.find(block => isPreviewStopRow(scene, block) && blockShowsSlot(scene, block, slotId) && isShown(block.id));
-    return found?.id ?? null;
+    const found = ordered.find(block => playable.has(block.id) && isPreviewStopRow(scene, block) && blockShowsSlot(scene, block, slotId) && isShown(block.id));
+    const stageRow = slotId === "onStage" ? ordered.find(block => playable.has(block.id) && isShown(block.id)) : undefined;
+    return found?.id ?? stageRow?.id ?? null;
 }
 
 function blockShowsSlot(scene: StoryScene, block: StoryBlock, slotId: UIStageSlotId): boolean {

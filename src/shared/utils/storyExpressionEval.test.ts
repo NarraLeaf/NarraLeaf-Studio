@@ -19,7 +19,10 @@ describe("strictEquals", () => {
 
     it("compares json / arrays structurally, not by reference", () => {
         expect(strictEquals({ a: 1, b: [2, 3] }, { a: 1, b: [2, 3] })).toBe(true);
+        expect(strictEquals({ a: { x: 1, y: 2 }, b: [3, 4] }, { b: [3, 4], a: { y: 2, x: 1 } })).toBe(true);
         expect(strictEquals([1, 2, 3], [1, 2, 3])).toBe(true);
+        expect(strictEquals([1, 2], [2, 1])).toBe(false);
+        expect(strictEquals({ 0: "a" }, ["a"])).toBe(false);
         expect(strictEquals({ a: 1 }, { a: 2 })).toBe(false);
         expect(strictEquals([1, 2], [1, 2, 3])).toBe(false);
     });

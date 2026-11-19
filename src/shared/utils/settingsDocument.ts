@@ -1,3 +1,5 @@
+import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
+
 /**
  * The file an author moves their Studio preferences with.
  *
@@ -158,6 +160,17 @@ export function validateSettingValue(spec: SettingsValueSpec, value: unknown): s
     }
 }
 
+function settingsValuesEqual(left: unknown, right: unknown): boolean {
+    if (left === undefined || right === undefined) {
+        return left === right;
+    }
+    try {
+        return encodeCanonicalJson(left) === encodeCanonicalJson(right);
+    } catch {
+        return JSON.stringify(left) === JSON.stringify(right);
+    }
+}
+
 /**
  * What importing this document would do, key by key, before anything is written.
  *
@@ -184,7 +197,7 @@ export function planSettingsImport(
             entries.push({ key, current: current[key], incoming, verdict: "invalid", reason: problem });
             continue;
         }
-        const unchanged = JSON.stringify(current[key]) === JSON.stringify(incoming);
+        const unchanged = settingsValuesEqual(current[key], incoming);
         entries.push({ key, current: current[key], incoming, verdict: unchanged ? "same" : "apply" });
     }
 

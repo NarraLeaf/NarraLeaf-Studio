@@ -197,14 +197,15 @@ function roundTrips(source: string, original: Leaves, expected: StoryExpr): bool
     return JSON.stringify(parsed.expression.ast) === JSON.stringify(expected);
 }
 
-/** How a renamed token is spelled. Null when the spelling cannot be kept (a quoted name behind a scope prefix). */
-function spellToken(token: StoryExpressionToken, newName: string, role: TokenRole): string | null {
+/** How a renamed token is spelled. */
+function spellToken(token: StoryExpressionToken, newName: string, role: TokenRole): string {
     const formatted = formatStoryExpressionName(newName);
     if (role === "var" && !token.quoted) {
         const dot = token.text.indexOf(".");
         if (dot > 0) {
-            // `saved.gold` keeps its prefix; a name that needs quoting has no prefixed spelling.
-            return formatted === newName ? `${token.text.slice(0, dot)}.${newName}` : null;
+            // A quoted name has no prefixed spelling. Rename validation makes the new name
+            // unique in the scopes where it is read, so it can use the ordinary quoted form.
+            return formatted === newName ? `${token.text.slice(0, dot)}.${newName}` : formatted;
         }
     }
     return formatted;
@@ -231,17 +232,12 @@ export function renameInStoryExpression(
 
     if (varTokens.length === leaves.vars.length && visitedTokens.length === leaves.visited.length) {
         const replacements: { start: number; end: number; text: string }[] = [];
-        let spellable = true;
         const pair = (list: readonly StoryExpressionToken[], nodes: readonly StoryExpr[], role: TokenRole) => {
             list.forEach((token, index) => {
                 if (!matchesTarget(nodes[index], target)) {
                     return;
                 }
                 const text = spellToken(token, target.newName, role);
-                if (text === null) {
-                    spellable = false;
-                    return;
-                }
                 replacements.push({ start: token.span.start, end: token.span.end, text });
             });
         };
@@ -250,17 +246,19 @@ export function renameInStoryExpression(
         } else {
             pair(visitedTokens, leaves.visited, "visitedArg");
         }
-        if (spellable) {
-            let source = expression.source;
-            for (const replacement of [...replacements].sort((a, b) => b.start - a.start)) {
-                source = source.slice(0, replacement.start) + replacement.text + source.slice(replacement.end);
-            }
-            if (roundTrips(source, leaves, expected)) {
-                return { status: "rewritten", expression: { source, ast: expected }, occurrences: hits, reformatted: false };
-            }
+        let source = expression.source;
+        for (const replacement of [...replacements].sort((a, b) => b.start - a.start)) {
+            source = source.slice(0, replacement.start) + replacement.text + source.slice(replacement.end);
+        }
+        if (roundTrips(source, leaves, expected)) {
+            return { status: "rewritten", expression: { source, ast: expected }, occurrences: hits, reformatted: false };
         }
     }
 
+    // Printing a whole tree would discard the scope prefixes of other reads.
+    if (varTokens.some(token => !token.quoted && token.text.includes("."))) {
+        return { status: "failed", occurrences: hits };
+    }
     const printed = formatStoryExpr(expected);
     if (roundTrips(printed, leaves, expected)) {
         return { status: "rewritten", expression: { source: printed, ast: expected }, occurrences: hits, reformatted: true };

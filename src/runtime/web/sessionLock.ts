@@ -69,8 +69,10 @@ export function claimGameSession(host: SessionLockHost): Promise<GameSessionClai
             }
         };
         let request: Promise<unknown>;
+        let timeout: AbortSignal;
         try {
-            request = locks.request(host.name, { signal: host.timeoutSignal(host.waitMs) }, () => {
+            timeout = host.timeoutSignal(host.waitMs);
+            request = locks.request(host.name, { signal: timeout }, () => {
                 granted = true;
                 answer("granted");
                 // Never settles: the lock is this page's for as long as the page exists.
@@ -82,10 +84,13 @@ export function claimGameSession(host: SessionLockHost): Promise<GameSessionClai
             answer("granted");
             return;
         }
-        void Promise.resolve(request).catch(() => {
-            // The wait ran out, which is the answer, unless the lock had already been granted and
-            // the timeout only fired afterwards.
-            answer(granted ? "granted" : "taken");
+        void Promise.resolve(request).catch((error: unknown) => {
+            // Only an expired wait establishes that the session was held. A browser can also
+            // reject the request asynchronously when the API is unavailable to this origin.
+            const abortError = typeof error === "object" && error !== null
+                && "name" in error && error.name === "AbortError";
+            const timedOut = timeout.aborted && (error === timeout.reason || abortError);
+            answer(!granted && timedOut ? "taken" : "granted");
         });
     });
 }

@@ -4,12 +4,13 @@ import { LayerStackPreview } from "./LayerStackPreview";
 
 export function CharacterPosePreview({
     sequence,
+    active = true,
     ...props
-}: ComponentProps<typeof LayerStackPreview> & { sequence?: CharacterFrameSequence }) {
+}: ComponentProps<typeof LayerStackPreview> & { sequence?: CharacterFrameSequence; active?: boolean }) {
     const [index, setIndex] = useState(0);
     useEffect(() => {
         setIndex(0);
-        if (!sequence) return;
+        if (!sequence || !active || sequence.frameAssetIds.length < 2) return;
         const start = performance.now();
         let request: number;
         const tick = (now: number) => {
@@ -19,11 +20,13 @@ export function CharacterPosePreview({
                     ? frame % sequence.frameAssetIds.length
                     : Math.min(frame, sequence.frameAssetIds.length - 1),
             );
-            request = requestAnimationFrame(tick);
+            if (sequence.loop || frame < sequence.frameAssetIds.length - 1) {
+                request = requestAnimationFrame(tick);
+            }
         };
         request = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(request);
-    }, [sequence]);
+    }, [sequence, active]);
     const assetId = sequence?.frameAssetIds[index] ?? sequence?.frameAssetIds[0];
     return (
         <LayerStackPreview

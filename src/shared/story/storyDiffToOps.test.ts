@@ -54,13 +54,17 @@ function content(document: StoryDocument): unknown {
     return JSON.parse(JSON.stringify(document, (key, value) => (key === "meta" ? undefined : value)));
 }
 
-function replays(base: StoryDocument, mine: StoryDocument): void {
+function replays(base: StoryDocument, mine: StoryDocument, context?: string): void {
+    const originalBase = structuredClone(base);
+    const originalMine = structuredClone(mine);
     const ops = storyDiffToOps(base, mine);
     const replayed = structuredClone(base);
     for (const op of ops) {
         applyStoryOpToDocument(replayed, structuredClone(op), { now: NOW });
     }
-    expect(content(replayed)).toEqual(content(mine));
+    expect(content(replayed), context).toEqual(content(mine));
+    expect(base, context).toEqual(originalBase);
+    expect(mine, context).toEqual(originalMine);
 }
 
 describe("storyDiffToOps", () => {
@@ -103,6 +107,171 @@ describe("storyDiffToOps", () => {
         scene.blocks.z = row("z", "inside", "nb");
         scene.blocks.nb.childrenIds = ["z", "c"];
         scene.rootBlockIds = ["a", "box", "nb"];
+        replays(base, mine);
+    });
+
+    it("retains a row moved out of a deleted container", () => {
+        const base = withRows(fresh(), [["parent", "<box>"], ["child", "retained", "parent"]]);
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        delete scene.blocks.parent;
+        scene.blocks.child.parentId = null;
+        scene.rootBlockIds = ["child"];
+
+        const ops = storyDiffToOps(base, mine);
+        const move = ops.findIndex(op => op.op === "move-block" && op.blockId === "child");
+        const deletion = ops.findIndex(op => op.op === "delete-block" && op.blockId === "parent");
+        expect(move).toBeGreaterThanOrEqual(0);
+        expect(deletion).toBeGreaterThan(move);
+        replays(base, mine);
+    });
+
+    it("retains nested choice rows and their references when replacing and deleting containers", () => {
+        const base = withRows(fresh(), [
+            ["old-choice", "<box>"], ["option", "<box>", "old-choice"],
+            ["create", "placeholder", "option"], ["show", "placeholder", "option"],
+            ["old-child", "discarded", "old-choice"], ["discard", "discarded"], ["tail", "tail"],
+        ]);
+        const original = firstScene(base);
+        original.blocks["old-choice"] = {
+            ...original.blocks["old-choice"], kind: "nodeAction", payload: { action: "choice" },
+        } as StoryBlock;
+        original.blocks.option = {
+            ...original.blocks.option, kind: "nodeAction",
+            payload: { action: "choiceOption", text: { textId: "option-text", role: "choiceText", value: "Option" } },
+        } as StoryBlock;
+        original.blocks.create = {
+            id: "create", kind: "action", parentId: "option", childrenIds: [],
+            payload: { action: "image", operation: "create", objectName: "portrait" },
+        };
+        original.blocks.show = {
+            id: "show", kind: "action", parentId: "option", childrenIds: [],
+            payload: { action: "displayable", operation: "show", target: { kind: "image", name: "portrait", sourceBlockId: "create" } },
+        };
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        delete scene.blocks["old-choice"];
+        delete scene.blocks["old-child"];
+        delete scene.blocks.discard;
+        scene.blocks["new-choice"] = {
+            id: "new-choice", kind: "nodeAction", parentId: null, childrenIds: ["option", "new-option"],
+            payload: { action: "choice" },
+        };
+        scene.blocks["new-option"] = {
+            id: "new-option", kind: "nodeAction", parentId: "new-choice", childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "new-option-text", role: "choiceText", value: "New" } },
+        } as StoryBlock;
+        scene.blocks.option.parentId = "new-choice";
+        (scene.blocks.option.payload as { text: { value: string } }).text.value = "Edited option";
+        scene.blocks.show.disabled = true;
+        scene.rootBlockIds = ["tail", "new-choice"];
+
+        expect(storyDiffToOps(base, mine)).toContainEqual(expect.objectContaining({
+            op: "delete-blocks", blockIds: expect.arrayContaining(["old-choice", "discard"]),
+        }));
+        replays(base, mine);
+    });
+
+    it("replays a legal multi-row move followed by a batch deletion", () => {
+        const base = withRows(fresh(), [
+            ["before", "before"], ["box", "<box>"], ["a", "one", "box"], ["b", "two", "box"],
+            ["nested", "<box>", "box"], ["c", "three", "nested"], ["discard", "discard"], ["tail", "tail"],
+        ]);
+        const mine = structuredClone(base);
+        const sceneId = firstScene(mine).id;
+        applyStoryOpToDocument(mine, {
+            op: "move-blocks", sceneId, moves: [
+                { blockIds: ["a", "b"], target: { parentId: null, beforeBlockId: "tail" } },
+                { blockIds: ["nested"], target: { parentId: null, beforeBlockId: "tail" } },
+            ],
+        }, { now: NOW });
+        applyStoryOpToDocument(mine, { op: "delete-blocks", sceneId, blockIds: ["box", "discard"] }, { now: NOW });
+        expect(firstScene(mine).rootBlockIds).toEqual(["before", "a", "b", "nested", "tail"]);
+        expect(storyDiffToOps(base, mine)).toContainEqual(expect.objectContaining({
+            op: "delete-blocks", blockIds: expect.arrayContaining(["box", "discard"]),
+        }));
+        replays(base, mine);
+    });
+
+    it("keeps independent deletions in one batch without moving unchanged rows", () => {
+        const base = withRows(fresh(), [["a", "one"], ["x", "discard"], ["y", "discard"], ["b", "two"]]);
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        delete scene.blocks.x;
+        delete scene.blocks.y;
+        scene.rootBlockIds = ["a", "b"];
+
+        expect(storyDiffToOps(base, mine)).toEqual([{ op: "delete-blocks", sceneId: scene.id, blockIds: ["x", "y"] }]);
+        replays(base, mine);
+    });
+
+    it("replays nested containers whose ancestor order is reversed", () => {
+        const base = withRows(fresh(), [["outer", "<box>"], ["middle", "<box>", "outer"], ["inner", "<box>", "middle"]]);
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        scene.rootBlockIds = ["inner"];
+        scene.blocks.inner.parentId = null;
+        scene.blocks.inner.childrenIds = ["middle"];
+        scene.blocks.middle.parentId = "inner";
+        scene.blocks.middle.childrenIds = ["outer"];
+        scene.blocks.outer.parentId = "middle";
+        scene.blocks.outer.childrenIds = [];
+
+        replays(base, mine);
+    });
+
+    it("keeps new rows in order when existing siblings are reordered", () => {
+        const base = withRows(fresh(), [["a", "one"], ["b", "two"]]);
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        scene.blocks.x = row("x", "new x");
+        scene.blocks.y = row("y", "new y");
+        scene.rootBlockIds = ["x", "b", "y", "a"];
+
+        replays(base, mine);
+    });
+
+    it("updates a row to a choice before moving an option into it", () => {
+        const base = withRows(fresh(), [["destination", "prompt"], ["old-choice", "<box>"], ["option", "<box>", "old-choice"]]);
+        const original = firstScene(base);
+        original.blocks["old-choice"] = {
+            ...original.blocks["old-choice"], kind: "nodeAction", payload: { action: "choice" },
+        } as StoryBlock;
+        original.blocks.option = {
+            ...original.blocks.option, kind: "nodeAction",
+            payload: { action: "choiceOption", text: { textId: "option-text", role: "choiceText", value: "Option" } },
+        } as StoryBlock;
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        scene.blocks.destination.payload = { action: "choice", prompt: { textId: "prompt-text", role: "choicePrompt", value: "Choose" } };
+        scene.blocks.destination.childrenIds = ["option"];
+        scene.blocks.option.parentId = "destination";
+        scene.blocks["old-choice"].childrenIds = [];
+
+        replays(base, mine);
+    });
+
+    it("moves an option out before its choice becomes a narration row", () => {
+        const base = withRows(fresh(), [["source", "<box>"], ["option", "<box>", "source"], ["destination", "<box>"]]);
+        const original = firstScene(base);
+        original.blocks.source = { ...original.blocks.source, kind: "nodeAction", payload: { action: "choice" } } as StoryBlock;
+        original.blocks.destination = { ...original.blocks.destination, kind: "nodeAction", payload: { action: "choice" } } as StoryBlock;
+        original.blocks.option = {
+            ...original.blocks.option, kind: "nodeAction",
+            payload: { action: "choiceOption", text: { textId: "option-text", role: "choiceText", value: "Option" } },
+        } as StoryBlock;
+        const mine = structuredClone(base);
+        const scene = firstScene(mine);
+        scene.blocks.source.payload = row("source", "Now narration").payload;
+        scene.blocks.source.childrenIds = [];
+        scene.blocks.destination.childrenIds = ["option"];
+        scene.blocks.option.parentId = "destination";
+
+        const ops = storyDiffToOps(base, mine);
+        const move = ops.findIndex(op => op.op === "move-block" && op.blockId === "option");
+        const update = ops.findIndex(op => op.op === "update-block" && op.blockId === "source");
+        expect(move).toBeGreaterThanOrEqual(0);
+        expect(update).toBeGreaterThan(move);
         replays(base, mine);
     });
 
@@ -180,6 +349,58 @@ describe("storyDiffToOps", () => {
                 if (block.disabled === undefined) delete block.disabled;
             }
             replays(base, mine);
+        }
+    });
+
+    it("replays deterministic runs of nested moves, insertions and subtree deletions", () => {
+        let seed = 0x9e3779b9;
+        const random = (n: number): number => {
+            seed ^= seed << 13;
+            seed ^= seed >>> 17;
+            seed ^= seed << 5;
+            return (seed >>> 0) % n;
+        };
+        for (let round = 0; round < 200; round += 1) {
+            const base = withRows(fresh(), [
+                ["outer", "<box>"], ["inner", "<box>", "outer"], ["a", "one", "inner"], ["b", "two", "outer"],
+                ["other", "<box>"], ["c", "three", "other"], ["tail", "tail"],
+            ]);
+            const mine = structuredClone(base);
+            const scene = firstScene(mine);
+            let made = 0;
+            for (let step = 0; step < 20; step += 1) {
+                const blocks = Object.values(scene.blocks);
+                const id = blocks.length > 0 ? blocks[random(blocks.length)].id : undefined;
+                const action = random(4);
+                if (action === 0 && id !== undefined) {
+                    const parents = [null, ...blocks.filter(block => {
+                        if (block.kind !== "control") return false;
+                        let ancestor: string | null = block.id;
+                        while (ancestor !== null) {
+                            if (ancestor === id) return false;
+                            ancestor = scene.blocks[ancestor].parentId;
+                        }
+                        return true;
+                    }).map(block => block.id)];
+                    const parentId = parents[random(parents.length)];
+                    const siblings = (parentId === null ? scene.rootBlockIds : scene.blocks[parentId].childrenIds).filter(sibling => sibling !== id);
+                    const beforeBlockId = siblings[random(siblings.length + 1)] ?? null;
+                    applyStoryOpToDocument(mine, { op: "move-block", sceneId: scene.id, blockId: id, target: { parentId, beforeBlockId } }, { now: NOW });
+                } else if (action === 1 && id !== undefined) {
+                    applyStoryOpToDocument(mine, { op: "delete-block", sceneId: scene.id, blockId: id }, { now: NOW });
+                } else if (action === 2 || id === undefined) {
+                    const parents = [null, ...blocks.filter(block => block.kind === "control").map(block => block.id)];
+                    const parentId = parents[random(parents.length)];
+                    const siblings = parentId === null ? scene.rootBlockIds : scene.blocks[parentId].childrenIds;
+                    const beforeBlockId = siblings.length > 0 && random(2) === 0 ? siblings[random(siblings.length)] : null;
+                    const newId = `new-${round}-${made++}`;
+                    const block = random(2) === 0 ? container(newId) : row(newId, `text ${newId}`);
+                    applyStoryOpToDocument(mine, { op: "insert-block", sceneId: scene.id, block, target: { parentId, beforeBlockId } }, { now: NOW });
+                } else if (id !== undefined) {
+                    applyStoryOpToDocument(mine, { op: "set-block-disabled", sceneId: scene.id, blockId: id, disabled: random(2) === 0 }, { now: NOW });
+                }
+            }
+            replays(base, mine, `round ${round}`);
         }
     });
 });

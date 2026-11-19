@@ -11,10 +11,11 @@
  * game app now waits on before such a start.
  */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
+import * as scriptMount from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
 import { blueprintDocumentOf } from "@/lib/ui-editor/runtime/testing/rowRuntimeTestKit";
 import { runtimeCoreIsFor, useBlueprintRuntimeCore } from "./useBlueprintRuntimeCore";
 
@@ -58,6 +59,7 @@ function playerStore(): BlueprintPersistentStoreAdapter {
 
 afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
 });
 
 describe("a runtime core and the bundle it was built for", () => {
@@ -92,5 +94,27 @@ describe("a runtime core and the bundle it was built for", () => {
 
     it("answers no for no core at all", () => {
         expect(runtimeCoreIsFor(null, bundleAt(1))).toBe(false);
+    });
+
+    it("does not report a late script issue from a replaced revision", async () => {
+        const callbacks = new Map<number, NonNullable<Parameters<typeof scriptMount.mountBlueprintCompiledScripts>[1]>>();
+        const finish = new Map<number, () => void>();
+        vi.spyOn(scriptMount, "mountBlueprintCompiledScripts").mockImplementation((bundle, onIssue) => {
+            callbacks.set(bundle.revision, onIssue!);
+            return new Promise(resolve => finish.set(bundle.revision, resolve));
+        });
+        const onScriptIssue = vi.fn();
+        const view = renderHook(({ bundle }) => useBlueprintRuntimeCore(bundle, { onScriptIssue }), {
+            initialProps: { bundle: bundleAt(1) },
+        });
+        view.rerender({ bundle: bundleAt(2) });
+
+        const issue = { scriptRef: "old.ts", blueprintId: "b", message: "load failed" };
+        act(() => callbacks.get(1)!(issue));
+        expect(onScriptIssue).not.toHaveBeenCalled();
+        act(() => callbacks.get(2)!({ ...issue, scriptRef: "new.ts" }));
+        expect(onScriptIssue).toHaveBeenCalledOnce();
+        expect(onScriptIssue).toHaveBeenCalledWith({ ...issue, scriptRef: "new.ts" });
+        await act(async () => { finish.get(1)!(); finish.get(2)!(); });
     });
 });

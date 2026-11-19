@@ -111,3 +111,39 @@ describe("MagicTagDialog while the workspace is frozen", () => {
         expect(screen.getByRole("button", { name: "common.cancel" }).matches(":disabled")).toBe(false);
     });
 });
+
+describe("MagicTagDialog filename segments", () => {
+    it("uses the selected delimiters for both the preview and the applied tags", async () => {
+        const onApply = vi.fn(async () => undefined);
+        const template: MagicTagTemplate = {
+            example: "hero-happy_ja",
+            exampleSegments: ["hero", "happy", "ja"],
+            mode: "auto",
+            delimiters: [{ char: "-", count: 2, frequency: 1 }, { char: "_", count: 2, frequency: 1 }],
+            fileSegments: [["hero", "happy", "ja"], ["hero", "sad", "en"]],
+            filenames: ["hero-happy_ja", "hero-sad_en"],
+        };
+        render(<MagicTagDialog visible assets={[]} template={template} onClose={() => undefined} onApply={onApply} />);
+
+        fireEvent.click(screen.getByRole("button", { name: /_/ }));
+        expect(screen.getAllByPlaceholderText("assets.magicTag.categoryPlaceholder")).toHaveLength(2);
+        fireEvent.change(screen.getAllByPlaceholderText("assets.magicTag.categoryPlaceholder")[1], {
+            target: { value: "mood" },
+        });
+        expect(screen.getByText("mood:happy_ja")).toBeTruthy();
+        fireEvent.click(applyButton());
+
+        expect(onApply).toHaveBeenCalledWith({ 1: "mood" }, expect.objectContaining({
+            fileSegments: [["hero", "happy_ja"], ["hero", "sad_en"]],
+        }));
+    });
+
+    it("starts with an empty mapping on the next opening", () => {
+        const view = openAndMap(async () => undefined);
+        view.rerender(<MagicTagDialog visible={false} assets={[]} template={TEMPLATE} onClose={() => undefined} onApply={async () => undefined} />);
+        view.rerender(<MagicTagDialog visible assets={[]} template={TEMPLATE} onClose={() => undefined} onApply={async () => undefined} />);
+
+        expect((screen.getAllByPlaceholderText("assets.magicTag.categoryPlaceholder")[0] as HTMLInputElement).value).toBe("");
+        expect(applyButton().matches(":disabled")).toBe(true);
+    });
+});

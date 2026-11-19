@@ -33,6 +33,9 @@ export type NarralangExport = {
     dialogs: ReactNode;
 };
 
+// The palette and story panel each mount this hook; they share the same save-dialog flow.
+let exportInProgress = false;
+
 /**
  * The NarraLang export, as one thing a surface can mount.
  *
@@ -49,8 +52,6 @@ export function useNarralangExport(): NarralangExport {
     const { context, isInitialized } = useWorkspace();
     const { t } = useTranslation();
     const [report, setReport] = useState<NarralangIssueRow[] | null>(null);
-    const [busy, setBusy] = useState(false);
-
     const ready = context !== null && isInitialized;
     const fail = useCallback((error: unknown) => {
         if (!context) {
@@ -60,10 +61,10 @@ export function useNarralangExport(): NarralangExport {
     }, [context]);
 
     const runExport = useCallback(async (target: NarralangExportTarget) => {
-        if (!context) {
+        if (!context || exportInProgress) {
             return;
         }
-        setBusy(true);
+        exportInProgress = true;
         try {
             const storyService = context.services.get<StoryService>(Services.Story);
             const document: StoryDocument = await storyService.loadStory(target.storyId);
@@ -81,6 +82,10 @@ export function useNarralangExport(): NarralangExport {
             const result: NarralangSceneResult = scene
                 ? printNarralangScene(scene, lookups)
                 : printNarralangStory(document, lookups);
+            const scenes = scene
+                ? [scene]
+                : listSceneIdsInDocumentOrder(document).map(sceneId => document.scenes[sceneId]);
+            const rows = narralangIssueRows(result.issues, scenes, lookups);
 
             const selection = await appPrivilegedFacade.fs.selectSaveFile(
                 narralangFileName(scene?.name ?? document.name),
@@ -112,25 +117,21 @@ export function useNarralangExport(): NarralangExport {
             context.services.get<UIService>(Services.UI)
                 .showNotification(t("story.script.exported", { path: targetPath }), "success");
 
-            const scenes = scene
-                ? [scene]
-                : listSceneIdsInDocumentOrder(document).map(sceneId => document.scenes[sceneId]);
-            const rows = narralangIssueRows(result.issues, scenes, lookups);
             if (rows.length > 0) {
                 setReport(rows);
             }
         } catch (error) {
             fail(error);
         } finally {
-            setBusy(false);
+            exportInProgress = false;
         }
     }, [context, fail, t]);
 
     const beginExport = useCallback((target: NarralangExportTarget) => {
-        if (ready && !busy) {
+        if (ready) {
             void runExport(target);
         }
-    }, [busy, ready, runExport]);
+    }, [ready, runExport]);
 
     return {
         beginExport,

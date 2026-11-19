@@ -14,9 +14,9 @@
  *
  * # The set's own tag is what keeps it a set
  *
- * Members carry `set:<id>` for the set they belong to, plus one tag per level of nesting. Without it
- * a set of `locale` files would mean "every file in the project with a language", which is not a set
- * an author ever means. The id rather than the name, because a name is a thing an author changes.
+ * Members carry `set:<id>` for the root set, plus one tag per level of nesting. Without it a set of
+ * `locale` files would mean "every file in the project with a language". The id stays stable when
+ * the author renames the set.
  *
  * # The preview and the write come from here, both
  *
@@ -137,10 +137,9 @@ export function planAssetSet(input: {
 /**
  * A file's tags once this set claims it.
  *
- * A claimed category replaces whatever the file carried under it: two values of one category make
- * one file answer to two variants at once, which every set it belongs to then reports as ambiguous.
- * Everything else is left alone - a file carries the author's own labels, and may be a member of a
- * set that varies by something else.
+ * A claimed category replaces whatever the file carried under it; the written tags state its new
+ * coordinates and set membership. Everything else is left alone: a file carries the author's own
+ * labels, and may be a member of a set that varies by something else.
  */
 function writeTags(file: AssetSetPlanFile, written: readonly string[]): string[] {
     const claimed = new Set<string>();

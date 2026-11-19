@@ -122,8 +122,9 @@ export async function changesSince(
  */
 export async function contentFor(ports: TeamFilePorts, path: string, bytes: TeamFileBytes): Promise<TeamFileContent | null | "unsendable"> {
     if (bytes === null) return null;
-    const text = decodeText(bytes);
-    if (isProjectDocumentPath(path)) {
+    const document = isProjectDocumentPath(path);
+    const text = decodeText(bytes, !document);
+    if (document) {
         return text === null ? "unsendable" : { encoding: "utf8", data: text };
     }
     if (text !== null && bytes.length <= INLINE_TEXT) return { encoding: "utf8", data: text };
@@ -139,10 +140,10 @@ export async function bytesOf(ports: TeamFilePorts, path: string, content: TeamF
     return content.encoding === "utf8" ? new TextEncoder().encode(content.data) : decodeBase64(content.data);
 }
 
-function decodeText(bytes: Uint8Array): string | null {
+function decodeText(bytes: Uint8Array, preserveBOM: boolean): string | null {
     if (bytes.includes(0)) return null;
     try {
-        return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        return new TextDecoder("utf-8", { fatal: true, ignoreBOM: preserveBOM }).decode(bytes);
     } catch {
         return null;
     }

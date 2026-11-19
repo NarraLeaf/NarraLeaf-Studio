@@ -18,7 +18,6 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
             step: 1,
             onChange: (value: number) => {
                 documentService.updateElementProps(element.id, {
-                    ...element.props,
                     itemGap: Math.max(0, value),
                 });
             },
@@ -39,7 +38,6 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
             onChange: (value: number) => {
                 const clamped = Math.min(32, Math.max(1, Math.round(value)));
                 documentService.updateElementProps(element.id, {
-                    ...element.props,
                     placeholderCount: clamped,
                 });
             },

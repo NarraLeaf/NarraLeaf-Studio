@@ -35,11 +35,12 @@ import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
 
 export function LastBuildSection({ context }: { context: WorkspaceContext }) {
     const { t, formatNumber } = useTranslation();
-    const [run, setRun] = useState<LastGameBuildRun | null>(null);
+    const [loaded, setLoaded] = useState<{ context: WorkspaceContext; run: LastGameBuildRun | null } | null>(null);
     const [open, setOpen] = useState(false);
+    const run = loaded?.context === context ? loaded.run : null;
 
     useEffect(() => {
-        let current = true;
+        let requestId = 0;
         let buildService: BuildService;
         try {
             buildService = context.services.get<BuildService>(Services.Build);
@@ -47,11 +48,18 @@ export function LastBuildSection({ context }: { context: WorkspaceContext }) {
             return;
         }
         const load = () => {
-            void buildService.loadLastRun().then(next => {
-                if (current) {
-                    setRun(next);
-                }
-            });
+            const request = ++requestId;
+            void buildService.loadLastRun()
+                .then(next => {
+                    if (request === requestId) {
+                        setLoaded({ context, run: next });
+                    }
+                })
+                .catch(error => {
+                    if (request === requestId) {
+                        console.warn("[Dashboard] Failed to load last build", error);
+                    }
+                });
         };
         load();
         const stop = buildService.onStateChanged(state => {
@@ -60,7 +68,7 @@ export function LastBuildSection({ context }: { context: WorkspaceContext }) {
             }
         });
         return () => {
-            current = false;
+            requestId += 1;
             stop();
         };
     }, [context]);

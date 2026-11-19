@@ -132,7 +132,12 @@ export function persistentDefaultsByStorageKey(view: MergedPersistentView): Reco
     const defaults: Record<string, StoryLiteralValue> = {};
     for (const entry of view.entries) {
         if (entry.defaultValue !== undefined && !Object.prototype.hasOwnProperty.call(defaults, entry.storageKey)) {
-            defaults[entry.storageKey] = entry.defaultValue;
+            Object.defineProperty(defaults, entry.storageKey, {
+                value: entry.defaultValue,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            });
         }
     }
     return defaults;
@@ -177,7 +182,12 @@ export function declaredSavedDefaults(bundle: {
     const defaults: Record<string, StoryLiteralValue | null> = {};
     for (const entry of view.entries) {
         if (!Object.prototype.hasOwnProperty.call(defaults, entry.id)) {
-            defaults[entry.id] = entry.defaultValue ?? null;
+            Object.defineProperty(defaults, entry.id, {
+                value: entry.defaultValue ?? null,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            });
         }
     }
     return defaults;

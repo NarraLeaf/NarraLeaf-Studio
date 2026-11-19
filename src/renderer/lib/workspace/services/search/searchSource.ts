@@ -59,8 +59,8 @@ export interface SearchSource<K = void> {
     /**
      * Entries for one slice. May be async (story documents load lazily).
      *
-     * A throw here is isolated: it logs and yields an empty slice. One unreadable story, or a UI
-     * document nobody has built yet, must not take the rest of the index with it.
+     * A throw here is isolated: it logs and yields an empty slice. The source remains incomplete
+     * until that slice is rebuilt, so operations requiring every slice can wait for a complete index.
      */
     extract: (ctx: WorkspaceContext, key: K) => SearchIndexEntry[] | Promise<SearchIndexEntry[]>;
     /**

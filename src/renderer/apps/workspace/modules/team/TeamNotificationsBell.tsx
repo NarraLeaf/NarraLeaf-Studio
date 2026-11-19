@@ -37,11 +37,18 @@ export function TeamNotificationsBell() {
     const [open, setOpen] = useState(false);
     const [state, setState] = useState<{ notifications: TeamNotification[]; unread: number }>({ notifications: [], unread: 0 });
     const root = useRef<HTMLDivElement>(null);
+    const latestRead = useRef(0);
+
+    useEffect(() => {
+        setState({ notifications: [], unread: 0 });
+        setOpen(false);
+    }, [remoteOrigin, accountId]);
 
     const load = useCallback(() => {
         if (remoteOrigin === null) return;
+        const ticket = ++latestRead.current;
         void teamCall(remoteOrigin, TeamMethod.notificationsList, { limit: 30 }).then(answer => {
-            if (answer.ok) setState(readNotifications(answer.value));
+            if (ticket === latestRead.current && answer.ok) setState(readNotifications(answer.value));
         });
     }, [remoteOrigin]);
 
@@ -54,6 +61,7 @@ export function TeamNotificationsBell() {
             if (message.remoteOrigin === remoteOrigin && message.topic === topic) load();
         });
         return () => {
+            latestRead.current += 1;
             token.cancel();
             void getInterface().team.unsubscribe(remoteOrigin, topic).catch(() => undefined);
         };

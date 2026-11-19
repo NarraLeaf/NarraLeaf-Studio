@@ -75,7 +75,14 @@ export async function bakeWeatherClipsForPack(
     // other, and unlike the pre-baker there is no sense in which a later ask replaces an earlier one.
     // A preview and a build of the same project are two asks, and both want their clips.
     const claim: StudioTaskClaim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
-    options.onStart?.(() => manager.abandon(claim));
+    let abandoned = false;
+    options.onStart?.(() => {
+        abandoned = true;
+        manager.abandon(claim);
+    });
+    if (abandoned) {
+        return [];
+    }
     const uidoc = await readJson<UIDocument>(
         path.join(projectPath, "editor", "ui", "uidoc.json"),
         {
@@ -89,7 +96,7 @@ export async function bakeWeatherClipsForPack(
         uidoc ?? undefined,
         await readVfxConfiguration(projectPath),
     );
-    if (specs.length === 0) {
+    if (specs.length === 0 || abandoned) {
         return [];
     }
 
@@ -103,7 +110,10 @@ export async function bakeWeatherClipsForPack(
         quality: "final",
         threads: options.threads,
         claim,
-    });
+    }, { cancelled: () => abandoned });
+    if (abandoned) {
+        return [];
+    }
     const clips: PackedWeatherClip[] = [];
     for (const spec of specs) {
         const key = weatherBakeKey(spec);

@@ -45,13 +45,17 @@ export class UIBlueprintLifecycleCoordinator
         // next unrelated edit, and until then its events in the properties panel opened nothing.
         // Coalesced, because a plugin registers its widgets one after another.
         let queued = false;
-        this.stopWatchingWidgetTypes = widgetModuleRegistry.subscribe(() => {
+        let active = true;
+        const unsubscribe = widgetModuleRegistry.subscribe(() => {
             if (queued) {
                 return;
             }
             queued = true;
             queueMicrotask(() => {
                 queued = false;
+                if (!active) {
+                    return;
+                }
                 try {
                     this.syncFromUidoc();
                 } catch (err) {
@@ -59,6 +63,10 @@ export class UIBlueprintLifecycleCoordinator
                 }
             });
         });
+        this.stopWatchingWidgetTypes = () => {
+            active = false;
+            unsubscribe();
+        };
     }
 
     public dispose(ctx: WorkspaceContext): void {

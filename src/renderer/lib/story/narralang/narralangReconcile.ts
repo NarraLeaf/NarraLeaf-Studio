@@ -603,6 +603,7 @@ function pairEditedLines(matched: readonly [number, number][], oldCount: number,
         }
         for (let offset = 0; offset < Math.min(newGap.length, oldGap.length); offset += 1) {
             pairs.push([newGap[offset], oldGap[offset]]);
+            claimedOld.add(oldGap[offset]);
         }
         previousNew = newIndex;
         previousOld = oldIndex;

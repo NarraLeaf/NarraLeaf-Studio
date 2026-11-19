@@ -64,10 +64,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
     const { element, documentService } = ctx;
 
     const patch = (partial: Partial<ContainerWidgetProps>) => {
-        documentService.updateElementProps(element.id, {
-            ...element.props,
-            ...partial,
-        });
+        documentService.updateElementProps(element.id, partial);
     };
 
     return [

@@ -81,16 +81,20 @@ type BakeState = { running: boolean; summary: AvatarBakeSummary | null };
 export const AVATAR_REBAKE_DEBOUNCE_MS = 800;
 
 /**
- * Everything of the cast a bake reads, as one comparable string: each character's framing and its
- * appearance, without the `baked` stamps the bake itself writes back.
+ * Each character's framing, appearance and referenced image hashes, without the `baked` stamps
+ * the bake itself writes back.
  *
  * Leaving the stamps out is what keeps a bake from scheduling the next one: its own write-back
  * changes nothing here. An entry left empty by removing its stamp is dropped too, for the same
  * reason - the bake drops such an entry rather than keeping `{}`.
  */
-export function avatarBakeInputs(characters: readonly Character[]): string {
+export function avatarBakeInputs(
+    characters: readonly Character[],
+    assetHash?: (assetId: string) => string | null,
+): string {
     return JSON.stringify(characters.map(character => {
-        const appearance = character.profile.appearance.toJSON() as unknown as Record<string, unknown>;
+        const model = character.profile.appearance;
+        const appearance = model.toJSON() as unknown as Record<string, unknown>;
         const avatars = (appearance.avatars ?? {}) as Record<string, Record<string, unknown>>;
         const authored: Record<string, Record<string, unknown>> = {};
         for (const [key, entry] of Object.entries(avatars)) {
@@ -100,8 +104,23 @@ export function avatarBakeInputs(characters: readonly Character[]): string {
                 authored[key] = rest;
             }
         }
-        return [character.profile.getId(), character.profile.getPortrait() ?? null, { ...appearance, avatars: authored }];
+        const imageIds = new Set<string>();
+        for (const pose of model.getPoses()) {
+            if (pose.assetId) imageIds.add(pose.assetId);
+        }
+        for (const layer of model.getLayers()) {
+            if (layer.assetId) imageIds.add(layer.assetId);
+            for (const id of Object.values(layer.options ?? {})) {
+                if (id) imageIds.add(id);
+            }
+        }
+        const images = assetHash ? [...imageIds].sort().map(id => [id, assetHash(id)]) : [];
+        return [character.profile.getId(), character.profile.getPortrait() ?? null, { ...appearance, avatars: authored }, images];
     }));
+}
+
+function imageHash(assets: AssetsService, id: string): string | null {
+    return assets.getAssets()[AssetType.Image]?.[id]?.hash ?? null;
 }
 
 /**
@@ -194,9 +213,14 @@ export function useCharacterAvatarBake(enabled: boolean): {
         if (frozen) {
             return;
         }
-        runningBake = bakeAll(context).finally(() => {
-            runningBake = null;
-        });
+        runningBake = bakeAll(context)
+            .catch(error => {
+                bakedInputs = null;
+                throw error;
+            })
+            .finally(() => {
+                runningBake = null;
+            });
         return runningBake;
     }, [context, frozen, isInitialized]);
 
@@ -209,23 +233,31 @@ export function useCharacterAvatarBake(enabled: boolean): {
             return;
         }
         const characters = context.services.get<CharacterService>(Services.Character);
+        const assets = context.services.get<AssetsService>(Services.Assets);
+        const inputs = () => avatarBakeInputs(characters.listCharacter(), id => imageHash(assets, id));
         const run = () => rebakeRef.current();
         mountedBakeHooks += 1;
-        const unsubscribe = characters.subscribe(() => {
-            if (avatarBakeInputs(characters.listCharacter()) === bakedInputs) {
+        const schedule = () => {
+            if (inputs() === bakedInputs) {
                 return;
             }
             cancelOwedBake();
             owedBakeTimer = setTimeout(() => {
                 owedBakeTimer = null;
                 void (runningBake ?? Promise.resolve())
-                    .then(() => (avatarBakeInputs(characters.listCharacter()) === bakedInputs ? undefined : run()))
+                    .then(() => (inputs() === bakedInputs ? undefined : run()))
                     .catch(error => console.warn("[characters] avatar bake failed:", error));
             }, AVATAR_REBAKE_DEBOUNCE_MS);
-        });
+        };
+        const unsubscribe = characters.subscribe(schedule);
+        const events = assets.getEvents();
+        const offUpdated = events.on("updated", schedule);
+        const offDeleted = events.on("deleted", schedule);
         const unregister = characters.registerPendingDerivedWork(() => settleOwedBake(run));
         return () => {
             unsubscribe();
+            offUpdated();
+            offDeleted();
             unregister();
             mountedBakeHooks -= 1;
             if (mountedBakeHooks === 0) {
@@ -238,7 +270,7 @@ export function useCharacterAvatarBake(enabled: boolean): {
         if (!shouldBakeCharacterAvatars(enabled, frozen)) {
             return;
         }
-        void rebake();
+        void rebake().catch(error => console.warn("[characters] avatar bake failed:", error));
     }, [enabled, frozen, rebake]);
 
     return { rebake, running: state.running, summary: state.summary };
@@ -259,6 +291,7 @@ export function useCharacterAvatarBake(enabled: boolean): {
  */
 export async function bakeStaleAvatarsBeforeLaunch(input: {
     characters: Pick<CharacterService, "listCharacter">;
+    assetHash?: (assetId: string) => string | null;
     frozen: boolean;
     bake: () => Promise<void>;
 }): Promise<boolean> {
@@ -268,7 +301,7 @@ export async function bakeStaleAvatarsBeforeLaunch(input: {
     if (runningBake) {
         await runningBake;
     }
-    const inputs = avatarBakeInputs(input.characters.listCharacter());
+    const inputs = avatarBakeInputs(input.characters.listCharacter(), input.assetHash);
     if (inputs === bakedInputs) {
         return false;
     }
@@ -312,9 +345,11 @@ export function useAvatarBakeBeforeLaunch(): void {
             return;
         }
         const characters = context.services.get<CharacterService>(Services.Character);
+        const assets = context.services.get<AssetsService>(Services.Assets);
         return characters.registerPendingDerivedWork(async () => {
             await bakeStaleAvatarsBeforeLaunch({
                 characters,
+                assetHash: id => imageHash(assets, id),
                 frozen: frozenRef.current,
                 bake: () => bakeAll(context),
             });
@@ -328,10 +363,10 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
     const byCharacter: Record<string, AvatarBakeReport> = {};
     try {
         const characters = context.services.get<CharacterService>(Services.Character);
+        const assets = context.services.get<AssetsService>(Services.Assets);
         // What this pass reads. An edit made while it runs moves the inputs past this, so the
         // edit's own bake still happens.
-        bakedInputs = avatarBakeInputs(characters.listCharacter());
-        const assets = context.services.get<AssetsService>(Services.Assets);
+        bakedInputs = avatarBakeInputs(characters.listCharacter(), id => imageHash(assets, id));
         const project = context.services.get<ProjectService>(Services.Project);
 
         const io: AvatarBakeIO = {
@@ -362,6 +397,7 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                 continue;
             }
             const appearance = profile.appearance;
+            const beforeAvatars = appearance.getAvatars();
             // Read only where an inherited framing could apply: a preset character with a framed pose.
             const poses = appearance.getKind() === "preset" ? appearance.getPoses() : [];
             const poseSizes = poses.some(pose => pose.portrait) ? await measurePosePictures(assets, poses) : {};
@@ -369,7 +405,7 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
                 characterId: summary.id,
                 appearance: {
                     summary: summary.appearance,
-                    avatars: appearance.getAvatars(),
+                    avatars: beforeAvatars,
                     resolveDrawList: selection => appearance.resolveDrawList(selection),
                     // entry → pose → profile; see resolveAvatarBakePortrait. The entry arm is
                     // applied again inside the baker, which has the entry in hand anyway — the
@@ -398,6 +434,10 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
             // nor an override, so a differential whose art was removed stops claiming one.
             const previous = appearance.getAvatars();
             for (const key of new Set([...Object.keys(previous), ...Object.keys(report.avatars)])) {
+                // A bake may finish after the author changes this entry; leave the newer edit in place.
+                if (JSON.stringify(previous[key] ?? null) !== JSON.stringify(beforeAvatars[key] ?? null)) {
+                    continue;
+                }
                 const next = report.avatars[key] ?? null;
                 if (JSON.stringify(previous[key] ?? null) !== JSON.stringify(next)) {
                     appearance.setAvatar(key, next);
@@ -407,6 +447,9 @@ async function bakeAll(context: WorkspaceContext): Promise<void> {
             // Kept even when it is all zeroes: "nothing moved" is the answer a manual re-bake is
             // usually asking for, and an empty receipt is not the same as no receipt.
             byCharacter[summary.id] = report;
+        }
+        if (Object.values(byCharacter).some(report => report.unresolved.length > 0)) {
+            bakedInputs = null;
         }
     } finally {
         setBakeState({

@@ -4665,8 +4665,10 @@ export type IPCAssetEvents = {
         data: {
             kind: StudioClipboardKind;
             payload: string;
+            operation?: "begin";
+            publicationId?: number;
         },
-        response: { stored: boolean };
+        response: { stored: boolean; publicationId?: number };
     };
     /**
      * Read back whatever an editor selection format currently holds.

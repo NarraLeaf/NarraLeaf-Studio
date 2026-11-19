@@ -24,6 +24,8 @@
  * Comments in English per project convention.
  */
 
+import { blueprintValuesEqual } from "@shared/blueprint/blueprintValueEquality";
+
 /**
  * The field types an author can pick.
  *
@@ -354,18 +356,6 @@ export function readUIStructFieldValue(
     return coerceUIStructFieldValue(field.type, source ? source[field.key] : undefined);
 }
 
-/** Structural equality for two field values, which may be records (an image envelope, a json bag). */
-function structValuesEqual(a: unknown, b: unknown): boolean {
-    if (a === b) {
-        return true;
-    }
-    try {
-        return JSON.stringify(a) === JSON.stringify(b);
-    } catch {
-        return false;
-    }
-}
-
 /**
  * Order two field values.
  *
@@ -374,19 +364,18 @@ function structValuesEqual(a: unknown, b: unknown): boolean {
  * either direction: it has no place in the ordering, and putting it first would push the rows the
  * author sorted for off the top of the list.
  */
-function compareFieldValues(a: unknown, b: unknown): number {
+function compareFieldValues(a: unknown, b: unknown, descending: boolean): number {
     const aMissing = a === undefined || a === null || a === "";
     const bMissing = b === undefined || b === null || b === "";
     if (aMissing || bMissing) {
         return aMissing === bMissing ? 0 : aMissing ? 1 : -1;
     }
-    if (typeof a === "number" && typeof b === "number") {
-        return a - b;
-    }
-    if (typeof a === "boolean" && typeof b === "boolean") {
-        return Number(a) - Number(b);
-    }
-    return String(a).localeCompare(String(b));
+    const order = typeof a === "number" && typeof b === "number"
+        ? a - b
+        : typeof a === "boolean" && typeof b === "boolean"
+            ? Number(a) - Number(b)
+            : String(a).localeCompare(String(b));
+    return descending ? -order : order;
 }
 
 export function sortItemsByField(
@@ -399,16 +388,20 @@ export function sortItemsByField(
     if (!field) {
         return [...items];
     }
-    const read = (item: unknown): unknown =>
-        item && typeof item === "object" && !Array.isArray(item)
+    const read = (item: unknown): unknown => {
+        const value = item && typeof item === "object" && !Array.isArray(item)
             ? (item as Record<string, unknown>)[field.key]
             : undefined;
+        return value === undefined || value === null || value === ""
+            ? value
+            : coerceUIStructFieldValue(field.type, value);
+    };
     // Decorated with the original position so equal keys keep the order the author wrote them in.
     return items
         .map((item, index) => ({ item, index }))
         .sort((a, b) => {
-            const ordered = compareFieldValues(read(a.item), read(b.item));
-            return ordered !== 0 ? (descending ? -ordered : ordered) : a.index - b.index;
+            const ordered = compareFieldValues(read(a.item), read(b.item), descending);
+            return ordered !== 0 ? ordered : a.index - b.index;
         })
         .map(entry => entry.item);
 }
@@ -428,6 +421,6 @@ export function findItemIndexByField(
         const stored = item && typeof item === "object" && !Array.isArray(item)
             ? (item as Record<string, unknown>)[field.key]
             : undefined;
-        return structValuesEqual(coerceUIStructFieldValue(field.type, stored), wanted);
+        return blueprintValuesEqual(coerceUIStructFieldValue(field.type, stored), wanted);
     });
 }

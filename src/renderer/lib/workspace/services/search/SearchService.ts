@@ -19,6 +19,10 @@ type SourceState = {
     /** Ordered slice keys. Exactly one, with `key: undefined`, for an unpartitioned source. */
     slices: Array<{ sliceKey: string; key: unknown }>;
     unsubscribe: (() => void) | null;
+    pending: Set<string>;
+    failed: Set<string>;
+    rebuilding: number;
+    revision: number;
 };
 
 function sliceKeyOf(source: SearchSource<any>, key: unknown): string {
@@ -69,6 +73,7 @@ export class SearchIndexEngine {
     private started = false;
     private disposed = false;
     private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+    private generation = 0;
     /**
      * Per-key rebuild generation. A rebuild that awaits (story documents load lazily) can be overtaken
      * by a newer invalidation of the same key; the stale one then wrote its older entries over the
@@ -81,7 +86,9 @@ export class SearchIndexEngine {
         private readonly ctx: WorkspaceContext,
         sources: readonly SearchSource<any>[],
     ) {
-        this.states = sources.map(source => ({ source, slices: [], unsubscribe: null }));
+        this.states = sources.map(source => ({
+            source, slices: [], unsubscribe: null, pending: new Set(), failed: new Set(), rebuilding: 0, revision: 0,
+        }));
     }
 
     /**
@@ -102,6 +109,17 @@ export class SearchIndexEngine {
     /** True once the initial full build has completed and the sources are being watched. */
     public isReady(): boolean {
         return this.readyPromise !== null && this.started;
+    }
+
+    /** Whether every slice was indexed successfully and no rebuild remains scheduled or in flight. */
+    public isSourceCurrent(id: string): boolean {
+        const state = this.states.find(candidate => candidate.source.id === id);
+        return this.isReady() && !!state && state.pending.size === 0 && state.rebuilding === 0 && state.failed.size === 0;
+    }
+
+    /** Changes as soon as a source is invalidated, including before its debounce expires. */
+    public sourceRevision(id: string): number {
+        return this.states.find(candidate => candidate.source.id === id)?.revision ?? -1;
     }
 
     /** Query the current index. Empty query → empty result. Call {@link ensureReady} first. */
@@ -128,7 +146,7 @@ export class SearchIndexEngine {
         return this.getFlatEntries();
     }
 
-    /** Notifies whenever any slice rebuilds (so open result lists can refresh). */
+    /** Notifies on invalidation and rebuild (so open result lists and replace plans can refresh). */
     public onIndexChanged(listener: () => void): () => void {
         this.changeListeners.add(listener);
         return () => {
@@ -142,6 +160,8 @@ export class SearchIndexEngine {
             state.unsubscribe?.();
             state.unsubscribe = null;
             state.slices = [];
+            state.pending.clear();
+            state.failed.clear();
         }
         for (const timer of this.timers.values()) {
             clearTimeout(timer);
@@ -161,14 +181,28 @@ export class SearchIndexEngine {
     // ---------------------------------------------------------------------
 
     private async buildAll(): Promise<void> {
-        // In parallel: the slowest source (stories, one file each) should not be waiting on the
-        // localization key document, and neither has anything to say to the other.
-        await Promise.all(this.states.map(state => this.syncSource(state, false)));
+        // Attach first: a source that finishes before a slower one must still observe edits made
+        // while the rest of the initial index is loading.
+        try {
+            for (const state of this.states) {
+                this.watchSource(state);
+            }
+            await Promise.all(this.states.map(state => this.syncSource(state)));
+        } catch (error) {
+            for (const state of this.states) {
+                state.unsubscribe?.();
+                state.unsubscribe = null;
+                state.pending.clear();
+                this.nextGeneration(sourceGuardKey(state.source));
+            }
+            for (const timer of this.timers.values()) {
+                clearTimeout(timer);
+            }
+            this.timers.clear();
+            throw error;
+        }
         if (this.disposed) {
             return;
-        }
-        for (const state of this.states) {
-            this.watchSource(state);
         }
         this.started = true;
         this.emitChanged();
@@ -181,20 +215,29 @@ export class SearchIndexEngine {
      * an empty index, it has produced no answer, and the retry belongs to {@link ensureReady}. An
      * `extract` that throws is isolated per slice - see {@link extractSlice}.
      */
-    private async syncSource(state: SourceState, emit: boolean): Promise<void> {
+    private async syncSource(state: SourceState): Promise<void> {
         const guardKey = sourceGuardKey(state.source);
         const generation = this.nextGeneration(guardKey);
 
-        const keys = state.source.partition ? [...(await state.source.partition(this.ctx))] : [undefined];
+        let keys: unknown[];
+        try {
+            keys = state.source.partition ? [...(await state.source.partition(this.ctx))] : [undefined];
+        } catch (error) {
+            if (this.isCurrent(guardKey, generation)) {
+                state.failed.add(guardKey);
+            }
+            throw error;
+        }
         if (!this.isCurrent(guardKey, generation)) {
             return;
         }
+        state.failed.delete(guardKey);
 
         const slices = keys.map(key => ({ sliceKey: sliceKeyOf(state.source, key), key }));
         const live = new Set(slices.map(slice => slice.sliceKey));
         for (const { sliceKey } of state.slices) {
             if (!live.has(sliceKey)) {
-                this.forgetSlice(sliceKey);
+                this.forgetSlice(state, sliceKey);
             }
         }
         state.slices = slices;
@@ -214,13 +257,10 @@ export class SearchIndexEngine {
         }
         for (const item of extracted) {
             if (this.isCurrent(item.slice.sliceKey, item.generation)) {
-                this.store(state, item.slice.sliceKey, item.entries);
+                this.storeExtracted(state, item.slice.sliceKey, item.entries);
             }
         }
         this.recomputeDedup(state);
-        if (emit) {
-            this.emitChanged();
-        }
     }
 
     /** Rebuild exactly one slice of one source. */
@@ -236,19 +276,27 @@ export class SearchIndexEngine {
             // event that follows will confirm it; showing it now costs nothing.
             state.slices.push({ sliceKey, key });
         }
-        this.store(state, sliceKey, entries);
+        this.storeExtracted(state, sliceKey, entries);
         this.recomputeDedup(state);
-        this.emitChanged();
     }
 
-    /** One slice's entries. A throwing source logs and yields nothing, taking nothing else with it. */
-    private async extractSlice(state: SourceState, key: unknown, sliceKey: string): Promise<SearchIndexEntry[]> {
+    /** One slice's entries. A failure is isolated and recorded for consumers requiring a complete source. */
+    private async extractSlice(state: SourceState, key: unknown, sliceKey: string): Promise<SearchIndexEntry[] | null> {
         try {
             return await state.source.extract(this.ctx, key);
         } catch (error) {
             console.warn(`[SearchService] Failed to index ${sliceKey}:`, error);
-            return [];
+            return null;
         }
+    }
+
+    private storeExtracted(state: SourceState, sliceKey: string, entries: SearchIndexEntry[] | null): void {
+        if (entries === null) {
+            state.failed.add(sliceKey);
+        } else {
+            state.failed.delete(sliceKey);
+        }
+        this.store(state, sliceKey, entries ?? []);
     }
 
     private store(state: SourceState, sliceKey: string, entries: SearchIndexEntry[]): void {
@@ -275,14 +323,16 @@ export class SearchIndexEngine {
         this.units.set(state.source.id, indexEntries(dedupSearchEntries(raw, dedupKey)));
     }
 
-    private forgetSlice(sliceKey: string): void {
+    private forgetSlice(state: SourceState, sliceKey: string): void {
         this.rawSlices.delete(sliceKey);
         this.units.delete(sliceKey);
         this.generations.delete(sliceKey);
+        state.failed.delete(sliceKey);
         const timer = this.timers.get(sliceKey);
         if (timer) {
             clearTimeout(timer);
             this.timers.delete(sliceKey);
+            state.pending.delete(sliceKey);
         }
     }
 
@@ -293,15 +343,15 @@ export class SearchIndexEngine {
         const signal: SearchInvalidation<any> = {
             invalidate: key => {
                 const sliceKey = sliceKeyOf(state.source, key);
-                this.schedule(sliceKey, () => {
-                    void this.rebuildSlice(state, key).catch(error => {
+                this.schedule(state, sliceKey, async () => {
+                    await this.rebuildSlice(state, key).catch(error => {
                         console.warn(`[SearchService] Failed to rebuild ${sliceKey}:`, error);
                     });
                 });
             },
             invalidateAll: () => {
-                this.schedule(sourceGuardKey(state.source), () => {
-                    void this.syncSource(state, true).catch(error => {
+                this.schedule(state, sourceGuardKey(state.source), async () => {
+                    await this.syncSource(state).catch(error => {
                         console.warn(`[SearchService] Failed to rebuild ${state.source.id}:`, error);
                     });
                 });
@@ -314,25 +364,40 @@ export class SearchIndexEngine {
      * Coalesce rebuilds of one key. Change events fire per keystroke during editing, and a rebuild is
      * a full re-extraction of its slice (cheap at VN scale, but not per-keystroke cheap).
      */
-    private schedule(key: string, action: () => void): void {
+    private schedule(state: SourceState, key: string, action: () => Promise<void>): void {
         if (this.disposed) {
             return;
         }
+        const wasCurrent = state.pending.size === 0 && state.rebuilding === 0;
+        state.revision += 1;
         const existing = this.timers.get(key);
         if (existing) {
             clearTimeout(existing);
+        }
+        state.pending.add(key);
+        if (wasCurrent) {
+            this.emitChanged();
         }
         this.timers.set(
             key,
             setTimeout(() => {
                 this.timers.delete(key);
-                action();
+                state.pending.delete(key);
+                state.rebuilding += 1;
+                void action().finally(() => {
+                    state.rebuilding -= 1;
+                    if (!this.disposed) {
+                        this.emitChanged();
+                    }
+                });
             }, REBUILD_DEBOUNCE_MS),
         );
     }
 
     private nextGeneration(key: string): number {
-        const next = (this.generations.get(key) ?? 0) + 1;
+        // A forgotten slice may later return under the same key while its old extraction is still
+        // running. A fresh token must never equal that old extraction's token.
+        const next = ++this.generation;
         this.generations.set(key, next);
         return next;
     }
@@ -417,6 +482,14 @@ export class SearchService extends Service<SearchService> {
     /** True once the initial full build has completed (used for "building…" UI states). */
     public isReady(): boolean {
         return this.engine?.isReady() ?? false;
+    }
+
+    public isSourceCurrent(id: string): boolean {
+        return this.engine?.isSourceCurrent(id) ?? false;
+    }
+
+    public sourceRevision(id: string): number {
+        return this.engine?.sourceRevision(id) ?? -1;
     }
 
     /** Query the current index. Empty query → empty result. Call {@link ensureReady} first. */

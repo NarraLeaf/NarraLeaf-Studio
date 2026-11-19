@@ -398,11 +398,29 @@ describe("pure parts", () => {
                 { kind: "constant", name: "Layer 1", leaf: leaf(["Layer 1 copy"]) },
             ],
         } as unknown as ImportPlan;
-        const { spec, renamed, tagPaths, layerPaths } = specFromPsdPlan(plan, path => path.join("/"));
+        const { spec, renamed, tagPaths, layerPaths } = specFromPsdPlan(plan, ref => ref.path.join("/"));
         expect(spec.axes).toEqual([{ name: "hat", tags: ["none", "cap"] }, { name: "glasses", tags: ["glasses-none", "round"] }]);
         expect(spec.layers.map(layer => layer.name)).toEqual(["Layer 1", "hat", "glasses", "Layer 1 2"]);
         expect(renamed).toEqual(['tag "glasses/none" is "glasses-none"', 'layer "Layer 1 copy" is "Layer 1 2"']);
-        expect(tagPaths.get("glasses/glasses-none")).toEqual(["glasses", "none"]);
-        expect(layerPaths.get("layer 1 2")).toEqual(["Layer 1 copy"]);
+        expect(tagPaths.get("glasses/glasses-none")).toEqual({ path: ["glasses", "none"] });
+        expect(layerPaths.get("layer 1 2")).toEqual({ path: ["Layer 1 copy"] });
+    });
+
+    it("keeps same-named PSD layers and their fingerprint references distinct", () => {
+        const leaf = (occurrence: number, sourceId: number): PsdLeaf => ({
+            path: ["Body"], occurrence, sourceId, name: "Body", blendMode: "normal", hidden: false, clipping: false, group: null,
+        });
+        const plan = {
+            slots: [
+                { kind: "constant", name: "Body", leaf: leaf(0, 11) },
+                { kind: "constant", name: "Body", leaf: leaf(1, 22) },
+            ],
+        } as unknown as ImportPlan;
+        const { spec, layerPaths } = specFromPsdPlan(plan, ref => `image-${ref.sourceId}`);
+        expect(spec.layers.map(layer => [layer.name, layer.asset])).toEqual([
+            ["Body", "image-11"], ["Body 2", "image-22"],
+        ]);
+        expect(layerPaths.get("body")).toEqual({ path: ["Body"], occurrence: 0, sourceId: 11 });
+        expect(layerPaths.get("body 2")).toEqual({ path: ["Body"], occurrence: 1, sourceId: 22 });
     });
 });

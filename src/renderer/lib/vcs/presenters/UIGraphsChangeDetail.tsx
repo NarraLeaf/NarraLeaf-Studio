@@ -13,16 +13,21 @@ import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { uiGraphsSpec } from "@shared/documents/specs/uiGraphs";
+import { sameJsonValue } from "@shared/documents/specs/diffHelpers";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
-import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import {
+    getBlueprintNodeEditorCatalogEntry,
+    resolveBlueprintNodeEditorCatalogEntryForNode,
+} from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import type { RowReveal } from "../DocumentChangeList";
+import { elideGeneratedIdentifiers } from "../identifierDisplay";
 import { sidesOfEntry } from "./entrySides";
 import {
     canvasReadFailure,
@@ -177,23 +182,47 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
     const baseGraph = graphKey ? plan.baseGraphs.get(graphKey) ?? null : null;
     const headGraph = graphKey ? plan.headGraphs.get(graphKey) ?? null : null;
     const columns = (baseGraph ? 1 : 0) + (headGraph ? 1 : 0);
-    // One layout for the pair, for the reason there is one viewport: a card that came out a
-    // different size on the two sides would be read as an edit to a node nobody touched.
-    const shapes = useMemo(
-        () => graphNodeShapes(
-            [...(baseGraph?.nodes ?? []), ...(headGraph?.nodes ?? [])],
-            [...(baseGraph?.edges ?? []), ...(headGraph?.edges ?? [])],
-            type => describeGraphNode(type, t),
-        ),
-        [baseGraph, headGraph, t],
+    const unchangedNodes = useMemo(() => {
+        const headById = new Map((headGraph?.nodes ?? []).map(node => [node.id, node]));
+        return new Set((baseGraph?.nodes ?? [])
+            .filter(node => {
+                const other = headById.get(node.id);
+                return other && node.type === other.type && sameJsonValue(node.params ?? {}, other.params ?? {});
+            })
+            .map(node => node.id));
+    }, [baseGraph, headGraph]);
+    const sharedEdges = useMemo(
+        () => [...(baseGraph?.edges ?? []), ...(headGraph?.edges ?? [])],
+        [baseGraph, headGraph],
     );
+    // Each side's node parameters define its pins. Identical nodes still have identical shapes,
+    // and the shared viewport keeps them aligned across the two columns.
+    const baseShapes = useMemo(
+        () => graphNodeShapes(
+            baseGraph?.nodes ?? [],
+            baseGraph?.edges ?? [],
+            (type, node) => describeGraphNode(type, node.params, t),
+            { sharedEdges, unchangedNodes },
+        ),
+        [baseGraph, sharedEdges, unchangedNodes, t],
+    );
+    const headShapes = useMemo(
+        () => graphNodeShapes(
+            headGraph?.nodes ?? [],
+            headGraph?.edges ?? [],
+            (type, node) => describeGraphNode(type, node.params, t),
+            { sharedEdges, unchangedNodes },
+        ),
+        [headGraph, sharedEdges, unchangedNodes, t],
+    );
+    const baseNodes = useMemo(() => new Set(baseGraph?.nodes ?? []), [baseGraph]);
     const viewport = sharedGraphViewport(
         [baseGraph?.nodes ?? [], headGraph?.nodes ?? []],
         {
             width: columns > 1 ? Math.max(0, (frame - COLUMN_GAP) / 2) : frame,
             height: CANVAS_MAX_HEIGHT,
         },
-        node => graphShapeOf(shapes, node),
+        node => graphShapeOf(baseNodes.has(node) ? baseShapes : headShapes, node),
     );
 
     // A mark whose node is not in the graph it belongs to, on the side that has that graph. It
@@ -218,7 +247,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
      */
     const revealMask = useCallback((mask: GraphMask) => {
         setSelection({ index: mask.index, from: "row" });
-        const box = graphMaskBox(mask, baseGraph, headGraph, shapes, viewport);
+        const box = graphMaskBox(mask, baseGraph, headGraph, baseShapes, headShapes, viewport);
         if (!box) {
             return;
         }
@@ -233,10 +262,13 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
             frameBox,
             Math.max(1, Math.min(Math.max(current.zoom, readable), fits)),
         ));
-    }, [baseGraph, headGraph, shapes, viewport]);
+    }, [baseGraph, headGraph, baseShapes, headShapes, viewport]);
 
     const reveal = useMemo<RowReveal>(() => ({
-        can: candidate => revealable.has(candidate),
+        can: candidate => {
+            const mask = revealable.get(candidate);
+            return mask !== undefined && placeable(mask, baseGraph, headGraph);
+        },
         go: candidate => {
             const mask = revealable.get(candidate);
             if (mask) {
@@ -244,7 +276,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
             }
         },
         label: t("documentDiff.canvas.markLabel"),
-    }), [revealable, revealMask, t]);
+    }), [revealable, revealMask, baseGraph, headGraph, t]);
 
     return (
         <CanvasShell
@@ -288,7 +320,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                             disabled={isFittedGraphNav(nav)}
                             onClick={() => setNav(FITTED_GRAPH_NAV)}
                             aria-label={t("documentDiff.canvas.fitView")}
-                            title={t("documentDiff.canvas.fitView")}
+                            data-tip={t("documentDiff.canvas.fitView")}
                             data-graph-fit
                         >
                             <Maximize2 className="h-3.5 w-3.5" />
@@ -318,7 +350,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                                 <GraphColumn
                                     caption="documentDiff.canvas.before"
                                     graph={baseGraph}
-                                    shapes={shapes}
+                                    shapes={baseShapes}
                                     viewport={viewport}
                                     nav={nav}
                                     onNav={setNav}
@@ -333,7 +365,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                                 <GraphColumn
                                     caption="documentDiff.canvas.after"
                                     graph={headGraph}
-                                    shapes={shapes}
+                                    shapes={headShapes}
                                     viewport={viewport}
                                     nav={nav}
                                     onNav={setNav}
@@ -345,7 +377,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                         )}
                     </>
                 )}
-                {frame > 0 && !option && !failure && (
+                {frame > 0 && !option && !failure && (base.status === "loading" || head.status === "loading") && (
                     <p className="text-2xs text-fg-muted">{t("documentDiff.rows.loading")}</p>
                 )}
             </div>
@@ -415,7 +447,8 @@ function graphMaskBox(
     mask: GraphMask,
     base: GraphFacts | null,
     head: GraphFacts | null,
-    shapes: ReturnType<typeof graphNodeShapes>,
+    baseShapes: ReturnType<typeof graphNodeShapes>,
+    headShapes: ReturnType<typeof graphNodeShapes>,
     viewport: GraphViewport,
 ): Box | null {
     const sides = [mask.onHead ? head : null, mask.onBase ? base : null].filter(
@@ -428,6 +461,7 @@ function graphMaskBox(
 
     const boxOf = (graph: GraphFacts, nodeId: string): Box | null => {
         const node = graph.nodes.find(candidate => candidate.id === nodeId);
+        const shapes = graph === base ? baseShapes : headShapes;
         return node ? graphNodeBox(node, viewport, graphShapeOf(shapes, node)) : null;
     };
 
@@ -457,7 +491,7 @@ function graphMaskBox(
 interface GraphColumnProps {
     readonly caption: TranslationKey;
     readonly graph: GraphFacts;
-    /** Every card of both versions, laid out once. See {@link graphNodeShapes}. */
+    /** This version's cards. See {@link graphNodeShapes}. */
     readonly shapes: ReadonlyMap<string, GraphNodeShape>;
     readonly viewport: GraphViewport;
     /** The pan and zoom the pair shares. Both columns are handed the same one. */
@@ -595,6 +629,7 @@ function GraphColumn({
                     "relative select-none overflow-hidden rounded-md border bg-surface-canvas",
                     panning ? "cursor-grabbing" : "cursor-grab",
                     frameTone ? CHANGE_MASK_CLASS[frameTone.tone] : "border-edge",
+                    frameTone && selected === frameTone.index && "outline outline-2 outline-offset-1 outline-primary",
                 )}
                 style={{ width, height }}
             >
@@ -671,6 +706,16 @@ function GraphColumn({
                     <span className="pointer-events-none absolute inset-0 grid place-items-center px-2 text-center text-2xs text-fg-muted">
                         {t("documentDiff.canvas.emptyGraph")}
                     </span>
+                )}
+                {frameTone && (
+                    <button
+                        type="button"
+                        onClick={() => onSelect(frameTone.index)}
+                        aria-label={t("documentDiff.canvas.markLabel")}
+                        data-change-mask={frameTone.tone}
+                        data-change-index={frameTone.index}
+                        className="nl-focus-ring absolute inset-x-0 top-0 h-2"
+                    />
                 )}
             </div>
             <CanvasColumn caption={caption} detail={null} />
@@ -875,19 +920,28 @@ function wirePath(from: { x: number; y: number }, to: { x: number; y: number }):
  * it. A type identifier on a card with no pins is a worse picture and an honest one, and every
  * step below it - the card's size, where its wires end - is written to work from that.
  */
-function describeGraphNode(type: string, t: Translator["t"]): GraphNodeDescription {
+function describeGraphNode(
+    type: string,
+    params: Record<string, unknown> | undefined,
+    t: Translator["t"],
+): GraphNodeDescription {
     try {
         const catalog = getBlueprintNodeEditorCatalogEntry(type);
         if (!catalog) {
             return { title: type, pins: [] };
         }
+        // Dynamic pins and Fn signatures are stored on the node. Save and page pins use live
+        // project registries, so their static catalogue and the version's wires remain the source.
+        const version = catalog.supportsDynamicInputPins || type === "blueprint.fn.call"
+            ? resolveBlueprintNodeEditorCatalogEntryForNode(type, params)
+            : catalog;
         return {
-            title: resolveBlueprintNodeTitle(catalog.displayName, t),
-            pins: (catalog.pins ?? []).map(pin => ({
+            title: resolveBlueprintNodeTitle(version.displayName, t),
+            pins: (version.pins ?? []).map(pin => ({
                 id: pin.id,
                 kind: pin.kind,
                 exec: pin.semantic === "exec",
-                label: resolveBlueprintLabel(pin.label ?? pin.id, t),
+                label: elideGeneratedIdentifiers(resolveBlueprintLabel(pin.label ?? pin.id, t)),
             })),
         };
     } catch {

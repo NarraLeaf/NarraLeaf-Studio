@@ -427,8 +427,8 @@ Math 节点组默认具有：
 - `blueprint.boolean.or` - 布尔或
 - `blueprint.boolean.not` - 布尔取反
 - `blueprint.boolean.xor` - 布尔异或
-- `blueprint.compare.equal` - 严格相等，使用 JavaScript `===`
-- `blueprint.compare.notEqual` - 严格不相等，使用 JavaScript `!==`
+- `blueprint.compare.equal` - 按内容比较值；列表逐项比较，对象按字段比较，不转换类型
+- `blueprint.compare.notEqual` - 按相同的值比较规则判断不相等
 - `blueprint.compare.greaterThan` - 数值大于
 - `blueprint.compare.greaterThanOrEqual` - 数值大于等于
 - `blueprint.compare.lessThan` - 数值小于

@@ -96,11 +96,16 @@ export function BuildReportTab() {
             return;
         }
         let current = true;
+        let generation = 0;
+        setRun(null);
         const load = () => {
+            const request = ++generation;
             void buildService.loadLastRun().then(next => {
-                if (current) {
+                if (current && request === generation) {
                     setRun(next);
                 }
+            }).catch(error => {
+                console.warn("[BuildReport] Could not read the last build", error);
             });
         };
         load();

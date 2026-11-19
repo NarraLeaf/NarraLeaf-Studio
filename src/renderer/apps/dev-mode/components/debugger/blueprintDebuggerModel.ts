@@ -60,7 +60,7 @@ export function resolveBlueprintGraphName(
 /** Author-facing node label for a breakpoint row: the node's type is all the IR carries by itself. */
 export function resolveBlueprintNodeType(
     document: BlueprintDocument | undefined,
-    breakpoint: BlueprintBreakpoint,
+    breakpoint: Pick<BlueprintBreakpoint, "blueprintId" | "graphId" | "nodeId">,
 ): string | undefined {
     return resolveBlueprintGraphIr(document, breakpoint.blueprintId, breakpoint.graphId)?.nodes?.[breakpoint.nodeId]
         ?.type;

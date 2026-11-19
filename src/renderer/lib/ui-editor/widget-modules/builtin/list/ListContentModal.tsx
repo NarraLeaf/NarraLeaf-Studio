@@ -304,6 +304,7 @@ export function ListContentModal(props: {
                                                 {fields.map(field => (
                                                     <td key={field.id} className="px-1 align-middle">
                                                         <StructCell
+                                                            key={`${field.id}:${rowIndex}`}
                                                             field={field}
                                                             value={readCell(item, field.key)}
                                                             readOnly={readOnly}
@@ -454,31 +455,7 @@ function StructCell(props: {
     }
 
     if (field.type === "json") {
-        // Shown and typed as JSON text because that is what the value is. Unparseable input keeps
-        // the last readable value rather than throwing: this runs on every keystroke, so a
-        // half-typed object passes through here on the way to a whole one.
-        return (
-            <Input
-                size="sm"
-                className="w-full font-mono"
-                value={value === null || value === undefined ? "" : JSON.stringify(value)}
-                aria-label={label}
-                readOnly={readOnly}
-                data-tip={readOnly ? freezeReason : undefined}
-                onChange={event => {
-                    const text = event.target.value.trim();
-                    if (!text) {
-                        onChange(null);
-                        return;
-                    }
-                    try {
-                        onChange(JSON.parse(text));
-                    } catch {
-                        // Keep what is stored; the field shows the text the author is still typing.
-                    }
-                }}
-            />
-        );
+        return <JsonStructCell value={value} label={label} readOnly={readOnly} freezeReason={freezeReason} onChange={onChange} />;
     }
 
     return (
@@ -490,6 +467,44 @@ function StructCell(props: {
             readOnly={readOnly}
             data-tip={readOnly ? freezeReason : undefined}
             onChange={event => onChange(event.target.value)}
+        />
+    );
+}
+
+/** Keep incomplete JSON on screen while storing only readable values. */
+function JsonStructCell(props: {
+    value: unknown;
+    label: string;
+    readOnly: boolean;
+    freezeReason?: string;
+    onChange: (value: unknown) => void;
+}) {
+    const { value, label, readOnly, freezeReason, onChange } = props;
+    const committed = value === null || value === undefined ? "" : JSON.stringify(value);
+    const [draft, setDraft] = useState<string | null>(null);
+    return (
+        <Input
+            size="sm"
+            className="w-full font-mono"
+            value={draft ?? committed}
+            aria-label={label}
+            readOnly={readOnly}
+            data-tip={readOnly ? freezeReason : undefined}
+            onChange={event => {
+                const next = event.target.value;
+                setDraft(next);
+                const text = next.trim();
+                if (!text) {
+                    onChange(null);
+                    return;
+                }
+                try {
+                    onChange(JSON.parse(text));
+                } catch {
+                    // Keep the draft until it becomes a complete value or the field is left.
+                }
+            }}
+            onBlur={() => setDraft(null)}
         />
     );
 }

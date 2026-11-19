@@ -129,6 +129,103 @@ function document(scenes: StoryScene[]): StoryDocument {
 const coverageOf = (doc: StoryDocument, entry = "a") => computeSceneFlowCoverage(doc, new Set([entry]));
 
 describe("computeSceneFlowCoverage", () => {
+    it("does not apply writes after a jump to the scene it enters", () => {
+        const doc = document([
+            scene("a", "Start", [declaration(0), jump("j1", "end"), incBy("w1", 50)]),
+            scene("end", "End", [
+                ...ifGroup("if1", "arm1", compare("==", 0), ["e1"]),
+                ending("e1", "End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
+    it("still applies a definite write before a jump", () => {
+        const doc = document([
+            scene("a", "Start", [declaration(0), incBy("w1", 50), jump("j1", "end")]),
+            scene("end", "End", [
+                ...ifGroup("if1", "arm1", compare("==", 0), ["e1"]),
+                ending("e1", "End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(false);
+    });
+
+    it("keeps a caller's continuation reachable when a called scene changes a variable", () => {
+        const call = { ...jump("call", "sub"), payload: { targetSceneId: "sub", returnable: true } } as StoryBlock;
+        const doc = document([
+            scene("a", "Start", [declaration(0), call, jump("j1", "end")]),
+            scene("sub", "Subroutine", [incBy("w1", 50)]),
+            scene("end", "End", [
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["e1"]),
+                ending("e1", "End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
+    it("keeps a guard after a call reachable when the called scene changes a variable", () => {
+        const call = { ...jump("call", "sub"), payload: { targetSceneId: "sub", returnable: true } } as StoryBlock;
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0), call,
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["e1"]),
+                ending("e1", "End"),
+            ]),
+            scene("sub", "Subroutine", [incBy("w1", 50)]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
+    it("does not prune a guard reached after the scene jumps back to itself", () => {
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0), incBy("w1", 10),
+                ...ifGroup("if1", "arm1", compare("<=", 10), ["repeat"]),
+                jump("repeat", "a"),
+                ...ifGroup("if2", "arm2", compare(">=", 20), ["e1"]),
+                ending("e1", "End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
+    it("keeps a guard reachable when a zero-count loop skips its write", () => {
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                { id: "loop", kind: "control", parentId: null, childrenIds: ["write"], payload: { control: "repeat", times: 0 } } as StoryBlock,
+                incBy("write", 50),
+                jump("j1", "end"),
+            ]),
+            scene("end", "End", [
+                ...ifGroup("if1", "arm1", compare("==", 0), ["e1"]),
+                ending("e1", "End"),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
+    it("keeps a guard reachable when a concurrent branch can write first", () => {
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                { id: "race", kind: "control", parentId: null, childrenIds: ["if1", "write"], payload: { control: "race" } } as StoryBlock,
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["e1"]),
+                ending("e1", "End"),
+                incBy("write", 50),
+            ]),
+        ]);
+
+        expect(coverageOf(doc).reachedEndingIds.has("e1")).toBe(true);
+    });
+
     it("finds the ending gated on a number no route can accumulate", () => {
         // +2 on the way through, so the most anything carries into `end` is 2 - and the good ending
         // asks for 50. Structurally the rows lead there; no state does.

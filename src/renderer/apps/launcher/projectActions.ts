@@ -1,6 +1,7 @@
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import type { WindowAppType, WindowProps } from "@shared/types/window";
 
@@ -40,11 +41,19 @@ export async function createProjectFromWizard(
         return null;
     }
 
-    await getInterface().workspace.launch(
+    return launchProject(
         { projectPath: result.data.projectPath },
-        true, // Close launcher window after opening workspace
     );
-    return null;
+}
+
+/** Open a workspace and return the host's failure, if it could not be opened. */
+export async function launchProject(props: WindowProps[WindowAppType.Workspace]): Promise<string | null> {
+    try {
+        const result = await getInterface().workspace.launch(props, true);
+        return result.success ? null : (result.error ?? "");
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
 }
 
 export async function openProjectFromFolder(): Promise<string | null> {
@@ -57,11 +66,7 @@ export async function openProjectFromFolder(): Promise<string | null> {
         return null;
     }
 
-    await getInterface().workspace.launch(
-        { projectPath: result.data.path },
-        true,
-    );
-    return null;
+    return launchProject({ projectPath: result.data.path });
 }
 
 export type RelocateProjectResult =
@@ -76,9 +81,8 @@ export type RelocateProjectResult =
  * is the recovery path for a project that already went missing once, so the one thing it must not
  * do is trade a known path for a wrong one and leave the user with neither.
  *
- * The old entry is then removed rather than edited, because opening the project re-adds it at its
- * new path anyway (see WorkspaceContext) - and removing has to happen first, since launching
- * retires the launcher window and anything queued after it may never run.
+ * Record the new path before removing the old one. Both happen before launching, which can retire
+ * the launcher window; a launch failure leaves the validated path in the recent list.
  */
 export async function relocateRecentProject(project: RecentlyOpenedProject): Promise<RelocateProjectResult> {
     const picked = await getInterface().selectFolder();
@@ -98,7 +102,16 @@ export async function relocateRecentProject(project: RecentlyOpenedProject): Pro
         return { status: "error", message: translate("launcher.projects.missing.errorNotAProject") };
     }
 
-    await getInterface().app.removeRecentProject(project.path);
-    await getInterface().workspace.launch({ projectPath: newPath }, true);
+    if (normalizeProjectPath(newPath) !== normalizeProjectPath(project.path)) {
+        const added = await getInterface().app.addRecentProject(project.name, newPath);
+        if (!added.success) {
+            return { status: "error", message: added.error || translate("launcher.projects.errorOpenFolder") };
+        }
+        await getInterface().app.removeRecentProject(project.path);
+    }
+    const error = await launchProject({ projectPath: newPath });
+    if (error !== null) {
+        return { status: "error", message: error || translate("launcher.projects.errorOpenFolder") };
+    }
     return { status: "relocated" };
 }

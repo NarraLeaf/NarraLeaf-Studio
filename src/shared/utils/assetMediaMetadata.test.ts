@@ -260,6 +260,26 @@ describe("the cheap check that decides whether to read a whole file", () => {
         expect(mediaMetadataLikely(tagged.subarray(0, 64), tagged.subarray(tagged.length - 64))).toBe(true);
     });
 
+    it("detects a large tag after audio even when its header is outside both windows", () => {
+        const chunk = (id: string, payload: Buffer): Buffer => {
+            const header = Buffer.alloc(8);
+            header.write(id, 0, "ascii");
+            header.writeUInt32LE(payload.length, 4);
+            return Buffer.concat([header, payload, Buffer.alloc(payload.length % 2)]);
+        };
+        const body = Buffer.concat([
+            Buffer.from("WAVE"), Buffer.from(FMT),
+            chunk("data", Buffer.alloc(300_000, 7)),
+            chunk("ID3 ", Buffer.alloc(80_000, 1)),
+        ]);
+        const source = Buffer.concat([Buffer.from("RIFF"), Buffer.from(le32(body.length)), body]);
+
+        expect(mediaMetadataLikely(source.subarray(0, 256 * 1024), source.subarray(-64 * 1024))).toBe(true);
+        const stripped = stripMediaMetadata(source);
+        expect(stripped.removed).toEqual(["id3"]);
+        expect(stripped.bytes.length).toBe(source.length - 80_008);
+    });
+
     it("errs towards yes when it cannot see the whole chunk list", () => {
         // Being wrong this way costs one read. Being wrong the other way ships an
         // author's name.

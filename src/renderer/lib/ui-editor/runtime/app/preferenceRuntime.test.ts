@@ -148,6 +148,19 @@ describe("attachPlayerPreferences", () => {
         expect(write).not.toHaveBeenCalled();
     });
 
+    it("reports a rejected asynchronous preference write", async () => {
+        const preference = fakePreferenceStore();
+        const log = vi.fn();
+        const rejected = Promise.reject(new Error("store offline"));
+        void rejected.catch(() => undefined);
+        await attachPlayerPreferences({ preference, read: () => undefined, write: () => rejected, log });
+
+        preference.set("cps", 33);
+        await Promise.resolve();
+
+        expect(log).toHaveBeenCalledWith("warning", expect.stringContaining("store offline"));
+    });
+
     // An unreadable store is a player who starts at the author's defaults, not a game that fails
     // to boot: this runs on the path to the first painted frame.
     it("still applies the defaults when the store cannot be read", async () => {

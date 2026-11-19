@@ -16,10 +16,8 @@ import type { GlobalStateKeys } from "@shared/types/state/globalState";
  * preferences this flow sets (the "/" alias, the language) only reach their real default when
  * nothing is stored at all. The reader resolves; the store does not.
  *
- * Optimistic on write, corrected by the broadcast: the main process echoes every change back, so a
- * rejected write puts the control back where it belongs rather than leaving it lying. Optimistic
- * rather than waiting for the echo because these controls are dragged and typed into - a slider that
- * only moves once a round trip lands is a slider that stutters.
+ * Optimistic on write so the preview follows typing and dragging. Writes for a preference are
+ * serialised, and a newer local edit stays visible while earlier reads and broadcasts arrive.
  *
  * `deferMs` separates the two halves of a write for the controls that produce a stream of them: the
  * value in hand moves at once (so the preview beside the control keeps up, character by character
@@ -34,11 +32,46 @@ export function useGlobalPreference<T>(
 ): [T, (next: unknown) => void] {
     const [value, setValue] = useState<T>(() => resolve(undefined));
     /** The write this control owes the store, while its stream of changes is still arriving. */
-    const pending = useRef<{ timer: ReturnType<typeof setTimeout>; value: unknown } | null>(null);
+    const pending = useRef<{ timer: ReturnType<typeof setTimeout>; value: unknown; revision: number } | null>(null);
+    const revision = useRef(0);
+    const settled = useRef(0);
+    const confirmed = useRef<T>(resolve(undefined));
+    const confirmedByWrite = useRef(false);
+    const latestBroadcast = useRef<{ value: unknown } | null>(null);
+    const writes = useRef<Promise<void>>(Promise.resolve());
+    const alive = useRef(false);
+
+    const send = useCallback((next: unknown, writeRevision: number) => {
+        writes.current = writes.current.then(async () => {
+            latestBroadcast.current = null;
+            let saved = false;
+            try {
+                const result = await getInterface().app.state.setGlobalState(key, next as never);
+                saved = result.success;
+            } catch {
+                // Keep later edits in the queue even if this request failed.
+            }
+            // A broadcast can arrive while the IPC request is in flight.
+            const broadcast = latestBroadcast.current as { value: unknown } | null;
+            if (saved) {
+                confirmed.current = resolve(broadcast ? broadcast.value : next);
+                confirmedByWrite.current = true;
+            }
+            if (revision.current === writeRevision) {
+                settled.current = writeRevision;
+                latestBroadcast.current = null;
+                if (alive.current) setValue(() => confirmed.current);
+            }
+        });
+        // `resolve` belongs to the preference identified by `key`.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
 
     useEffect(() => {
-        let alive = true;
+        alive.current = true;
+        let active = true;
         let pushed = false;
+        const initialRevision = revision.current;
 
         // Subscribed before the read: a change landing while the read is in flight would otherwise
         // reach nobody, and the control would go on showing the previous value.
@@ -47,20 +80,29 @@ export function useGlobalPreference<T>(
                 return;
             }
             pushed = true;
-            setValue(() => resolve(change.value));
+            confirmed.current = resolve(change.value);
+            if (revision.current !== settled.current) {
+                latestBroadcast.current = { value: change.value };
+            } else {
+                setValue(() => resolve(change.value));
+            }
         });
 
         void getInterface()
             .app.state.getGlobalState(key)
             .then(result => {
-                if (alive && !pushed) {
-                    setValue(() => resolve(result.success ? result.data.value : undefined));
+                if (active && !pushed && !confirmedByWrite.current && result.success) {
+                    confirmed.current = resolve(result.data.value);
+                    if (revision.current === initialRevision || revision.current === settled.current) {
+                        setValue(() => confirmed.current);
+                    }
                 }
             })
             .catch(() => undefined);
 
         return () => {
-            alive = false;
+            active = false;
+            alive.current = false;
             token?.cancel();
         };
         // `resolve` is deliberately not a dependency: it is a function of the stored value alone, so
@@ -74,29 +116,31 @@ export function useGlobalPreference<T>(
         if (owed) {
             clearTimeout(owed.timer);
             pending.current = null;
-            void getInterface().app.state.setGlobalState(key, owed.value as never);
+            send(owed.value, owed.revision);
         }
-    }, [key]);
+    }, [send]);
 
     const write = useCallback((next: unknown) => {
+        const nextRevision = ++revision.current;
         setValue(() => resolve(next));
         if (pending.current) {
             clearTimeout(pending.current.timer);
             pending.current = null;
         }
         if (deferMs <= 0) {
-            void getInterface().app.state.setGlobalState(key, next as never);
+            send(next, nextRevision);
             return;
         }
         pending.current = {
             value: next,
+            revision: nextRevision,
             timer: setTimeout(() => {
                 pending.current = null;
-                void getInterface().app.state.setGlobalState(key, next as never);
+                send(next, nextRevision);
             }, deferMs),
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key, deferMs]);
+    }, [send, deferMs]);
 
     return [value, write];
 }

@@ -62,21 +62,27 @@ export function pushProjectDocumentSource(projectPath: string, source: DocumentS
     if (source.origin.kind === "working-tree") {
         return () => undefined;
     }
+    let held: ActiveSource;
     if (active && active.projectPath === projectPath && active.source === source) {
-        active.depth += 1;
+        held = active;
+        held.depth += 1;
     } else {
         // A window is one project (see the multi-project window model), so a source naming
         // a different project is one left behind by a project that has already closed.
-        active = { projectPath, source, depth: 1 };
+        held = { projectPath, source, depth: 1 };
+        active = held;
     }
     let released = false;
     return () => {
-        if (released || !active) {
+        if (released) {
             return;
         }
         released = true;
-        active.depth -= 1;
-        if (active.depth <= 0) {
+        if (active !== held) {
+            return;
+        }
+        held.depth -= 1;
+        if (held.depth <= 0) {
             active = null;
         }
     };

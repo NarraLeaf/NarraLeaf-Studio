@@ -121,12 +121,12 @@ export function createOutlinePanelMenuActions(params: {
             if (!menuSel) {
                 return;
             }
-            for (const id of menuSel.elementIds) {
-                const el = doc.elements[id];
-                if (el && el.type !== ROOT_WIDGET_TYPE) {
-                    documentService.updateElementLayout(id, { visible });
-                }
-            }
+            const patches = Object.fromEntries(
+                menuSel.elementIds
+                    .filter(id => doc.elements[id] && doc.elements[id].type !== ROOT_WIDGET_TYPE)
+                    .map(id => [id, { visible }]),
+            );
+            documentService.updateElementLayouts(patches);
         },
         groupSelection: () => {
             uiEditorGroupSelection(documentService, stateService, surfaceId, menuSel);

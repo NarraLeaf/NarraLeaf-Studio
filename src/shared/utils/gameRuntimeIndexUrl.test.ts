@@ -5,7 +5,7 @@ import {
     withoutGameRuntimeCrashDetails,
 } from "./gameRuntimeIndexUrl";
 
-const LOG = "C:\Users\Player\AppData\Roaming\my-game\logs\game.log";
+const LOG = String.raw`C:\Users\Player\AppData\Roaming\my-game\logs\game.log`;
 
 describe("the address the shell gives its own page", () => {
     it("carries what the crash screen needs before it can read anything", () => {
@@ -14,6 +14,7 @@ describe("the address the shell gives its own page", () => {
 
         expect(new URL(url).pathname).toBe("/index.html");
         expect(read).toEqual({ policy: "log", logPath: LOG, crashDetails: null, launch: null });
+        expect(read.logPath).toContain("\\AppData\\Roaming\\");
     });
 
     it("states the policy even when there is no failure to draw", () => {

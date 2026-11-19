@@ -191,6 +191,25 @@ describe("what happens to the faces", () => {
 });
 
 describe("when a font cannot be shown", () => {
+    it("reports both reasons when the two versions fail differently", async () => {
+        sideStates.set("before", { status: "tooLarge", value: null, size: 0, error: null });
+        sideStates.set("after", { status: "failed", value: null, size: 0, error: null });
+
+        const { container } = draw();
+
+        await waitFor(() => expect(container.textContent).toContain("documentDiff.presenter.font.unreadable"));
+        expect(container.textContent).toContain("documentDiff.presenter.font.tooLarge");
+        expect(container.textContent).toContain("documentDiff.presenter.before");
+        expect(container.textContent).toContain("documentDiff.presenter.after");
+    });
+
+    it("shows the rows without a loading message when no versions were supplied", () => {
+        const { container } = render(<ChangeDetailHost entry={entry()} />);
+
+        expect(container.textContent).toContain("documentDiff.content.changed");
+        expect(container.textContent).not.toContain("documentDiff.rows.loading");
+    });
+
     it("says the file was refused rather than setting the sample in something else", async () => {
         // The failure this sentence exists for: with no face installed, a specimen with no message
         // beside it is drawn in the system's default face and reads as a typeface that happens to

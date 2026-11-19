@@ -137,11 +137,7 @@ export function AppearanceAuthoringPanel({
     // Entered on an ancestor counts. A switch's parts are drawn in the switch's state, so with the
     // switch turned on the canvas shows the track's on variant - and a panel still editing the
     // resting one takes the author's new colour and puts it where they are not looking.
-    const stateHost = useMemo(
-        () => findStateHost(inspectorData.documentService.getDocument(), elementId),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [elementId, inspectorData.documentService, draftResetKey],
-    );
+    const stateHost = findStateHost(inspectorData.documentService.getDocument(), elementId);
     const stateOwnerId = entered?.elementId === elementId ? elementId : stateHost?.element.id ?? null;
     const shownVariantId = isUsableAppearanceModel(appearance)
         ? entered && entered.elementId === stateOwnerId

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 import { ARTIFACT_DIGEST_FILE_NAME, formatArtifactDigests, writeArtifactDigests } from "./artifactDigests";
 import { setStepProgressReporter } from "./stepProgress";
@@ -137,5 +137,23 @@ describe("what the hashing pass reports while it runs", () => {
         // Null last: what follows the checksums is a build that has nothing left to count, and a
         // fraction left standing would go on describing this pass.
         expect(seen.at(-1)).toBeNull();
+    });
+
+    it("ends the count when reading an artifact fails", async () => {
+        const dir = await tempDir();
+        const file = path.join(dir, "game.zip");
+        await fs.writeFile(file, "abc");
+        const stats = await fs.stat(file);
+        await fs.rm(file);
+        const stat = vi.spyOn(fs, "stat").mockResolvedValueOnce(stats);
+        const seen: (StudioTaskProgress | null)[] = [];
+        setStepProgressReporter(progress => seen.push(progress));
+
+        try {
+            await expect(writeArtifactDigests([file], dir, noop)).rejects.toThrow();
+            expect(seen.at(-1)).toBeNull();
+        } finally {
+            stat.mockRestore();
+        }
     });
 });

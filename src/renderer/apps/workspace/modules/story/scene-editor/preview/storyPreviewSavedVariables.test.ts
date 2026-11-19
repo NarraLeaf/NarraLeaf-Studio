@@ -102,3 +102,22 @@ describe("a saved variable on a screen in the live preview", () => {
         expect(await affectionOnScreenAt("after")).toEqual({ value: 40, found: true });
     });
 });
+
+describe("the live preview at scene start", () => {
+    it("compiles an empty scene without a target row", async () => {
+        const document = storyDocument();
+        document.scenes["scene-1"].rootBlockIds = [];
+        document.scenes["scene-1"].blocks = {};
+        const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: null });
+        const compiled = await compileStagePreviewToNlr({
+            document,
+            sceneId: "scene-1",
+            snapshot,
+            targetBlockId: null,
+            onBeforeTarget: () => {},
+            onAfterTarget: () => {},
+        });
+        expect(compiled.scene).toBeDefined();
+        expect(compiled.diagnostics.filter(entry => entry.level === "error")).toEqual([]);
+    });
+});

@@ -15,8 +15,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { StoryDocument } from "@shared/types/story";
+import type { StoryDocument, StoryScene } from "@shared/types/story";
 import type { NarralangParseLookups } from "@/lib/story/narralang/narralangParse";
+import { printNarralangScene } from "@/lib/story/narralang/narralangPrinter";
+import { reconcileNarralangScene } from "@/lib/story/narralang/narralangReconcile";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Services } from "@/lib/workspace/services/services";
 import {
@@ -190,5 +192,42 @@ describe("the NarraLang reference tables", () => {
         } as unknown as WorkspaceContext["services"];
 
         expect(narralangReferences(twins, DOCUMENT).parseLookups.appTagId?.("Demo")).toBe("ambiguous");
+    });
+
+    it("refuses an ambiguous asset name when reconciling a printed scene", () => {
+        const twins = {
+            get(id: Services) {
+                if (id === Services.Assets) {
+                    return { getAssets: () => ({ image: { image: { name: "shared" } }, audio: { audio: { name: "shared" } } }) };
+                }
+                return SERVICES.get(id);
+            },
+        } as unknown as WorkspaceContext["services"];
+        const scene = {
+            id: "scene-1",
+            name: "Hall",
+            runtimeName: "Hall",
+            rootBlockIds: ["background"],
+            blocks: {
+                background: {
+                    id: "background", kind: "action", parentId: null, childrenIds: [],
+                    payload: { action: "setBackground", assetId: "image" },
+                },
+            },
+        } as StoryScene;
+        const { lookups: names, parseLookups: references } = narralangReferences(twins, DOCUMENT);
+        const printed = printNarralangScene(scene, names);
+
+        expect(printed.issues).toEqual([]);
+        const result = reconcileNarralangScene({
+            scene,
+            nextText: `${printed.text}  Additional narration.\n`,
+            lookups: names,
+            parseLookups: references,
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toContainEqual(expect.objectContaining({ reason: "ambiguousName", detail: "asset" }));
+        }
     });
 });

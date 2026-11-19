@@ -142,6 +142,7 @@ export const test = {
                 noEntryPoint: "没有故事标明起始位置",
                 undecidableEntry: "无法从「{blueprint}」中的「开始游戏」读出起始位置",
                 storiesUnread: "有故事无法读取",
+                unsettled: "路线分析未能完成所有故事",
             },
             finding: {
                 sceneUnreachable: "没有路径能满足通往「{scene}」的条件",

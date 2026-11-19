@@ -372,6 +372,23 @@ describe("reconcileNarralangScene", () => {
         expect(result.rootBlockIds).not.toEqual(hostile.rootBlockIds);
     });
 
+    it("keeps every line when moves cross edits on both sides", () => {
+        const original = scene(["A", "B", "C", "D", "E"].map((value) => ({
+            id: `row-${value}`,
+            kind: "nodeAction",
+            payload: { action: "narration", text: text(value, "narration") },
+        })) as never);
+        const header = script(original).split("\n")[0];
+        const result = reconciled(original, `${header}\n  First edit\n  E\n  Middle edit\n  A\n  Last edit\n`);
+
+        expect(new Set(result.rootBlockIds).size).toBe(5);
+        expect(result.rootBlockIds).toHaveLength(5);
+        expect(result.rootBlockIds.map((id) => (result.blocks[id].payload as { text: StoryTextSegment }).text.value))
+            .toEqual(["First edit", "E", "Middle edit", "A", "Last edit"]);
+        expect(result.blocks["row-A"]).toEqual(original.blocks["row-A"]);
+        expect(result.blocks["row-E"]).toEqual(original.blocks["row-E"]);
+    });
+
     it("a re-indented line hangs off its new parent and stays the same row", () => {
         const lines = script(hostile).split("\n");
         const index = lineIndex(lines, DIALOGUE);

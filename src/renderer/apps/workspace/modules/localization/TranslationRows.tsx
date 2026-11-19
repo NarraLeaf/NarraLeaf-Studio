@@ -8,7 +8,7 @@
  * Comments in English per project convention.
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { StoryRichRun } from "@shared/types/story";
 import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
 import { MarkedText, TextareaMarkLayer } from "@/apps/workspace/components/ui/FindMarks";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils/cn";
 import type { LocalizationUnitState } from "@/lib/workspace/services/localization/localizationModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { localizationKeysFreezeScope, translationDocumentFreezeScope } from "./localizationFreezeScopes";
+import { compositionHandlers, isComposingText, isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** Minimal row shape both modes render; the tab supplies story/UI/key rows alike. */
 export type TranslationTableRow = {
@@ -458,6 +459,12 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
     const [expanded, setExpanded] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
     const [sourceDraft, setSourceDraft] = useState("");
+    const composing = useRef(false);
+    useEffect(() => () => {
+        if (composing.current) {
+            compositionHandlers.onCompositionEnd();
+        }
+    }, []);
 
     const cancel = () => {
         setExpanded(false);
@@ -492,7 +499,18 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
     return (
         <div
             className="flex items-center gap-1.5 px-4 py-2"
+            onCompositionStart={() => {
+                composing.current = true;
+                compositionHandlers.onCompositionStart();
+            }}
+            onCompositionEnd={() => {
+                composing.current = false;
+                compositionHandlers.onCompositionEnd();
+            }}
             onKeyDown={event => {
+                if (isImeKeyEvent(event)) {
+                    return;
+                }
                 if (event.key === "Escape") {
                     cancel();
                 } else if (event.key === "Enter") {
@@ -501,7 +519,7 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
                 }
             }}
             onBlur={event => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                if (!isComposingText() && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
                     cancel();
                 }
             }}

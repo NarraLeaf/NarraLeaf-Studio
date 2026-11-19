@@ -519,14 +519,26 @@ export function EffectsStackEditor({
     const enabled = listEnabledKindsInOrder(values, supportedKinds);
     const remaining = listRemainingKinds(values, supportedKinds);
     const addOptions = remaining.map(k => ({ value: k, labelKey: EFFECT_KIND_LABEL_KEY[k] }));
+    const pendingAvailable = pendingAdd !== null && remaining.includes(pendingAdd);
+
+    useLayoutEffect(() => {
+        setPendingAdd(null);
+        closePanel();
+    }, [draftResetKey, closePanel]);
+
+    useEffect(() => {
+        if (pendingAdd && !pendingAvailable) {
+            setPendingAdd(null);
+        }
+    }, [pendingAdd, pendingAvailable]);
 
     const addSelected = useCallback(() => {
-        if (!pendingAdd) {
+        if (!pendingAdd || !pendingAvailable) {
             return;
         }
         onChange(mergeEffects(values, enableEffectKindPatch(pendingAdd)));
         setPendingAdd(null);
-    }, [pendingAdd, onChange, values]);
+    }, [pendingAdd, pendingAvailable, onChange, values]);
 
     const removeKind = useCallback(
         (kind: VisualEffectKind) => {
@@ -558,7 +570,7 @@ export function EffectsStackEditor({
                     size="md"
                     className="shrink-0 self-stretch px-3"
                     aria-label={t("widgetChrome.effects.addEffect")}
-                    disabled={!pendingAdd || addOptions.length === 0}
+                    disabled={!pendingAvailable}
                     onClick={addSelected}
                 >
                     <Plus className="h-4 w-4" />

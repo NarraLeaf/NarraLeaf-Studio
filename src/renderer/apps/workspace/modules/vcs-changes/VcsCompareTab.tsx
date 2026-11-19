@@ -12,7 +12,7 @@ import { useStoryScript } from "@/lib/vcs/compare/useStoryScript";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
 import { revisionLabel } from "../../components/layout/versionRailModel";
-import type { VcsComparePayload } from "./vcsCompareIds";
+import { vcsCompareTabId, type VcsComparePayload } from "./vcsCompareIds";
 
 /**
  * One document at two versions, in a tab of its own.
@@ -45,7 +45,7 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
         () => (payload?.comparison.mode === "between"
             ? { mode: "between", from: payload.comparison.from, to: payload.comparison.to }
             : { mode: "working-tree" }),
-        [payload?.comparison],
+        [payload],
     );
     const diff = useDocumentDiff(request, { enabled: payload !== undefined });
     const entry = diff.result?.documents.find(document => document.path === payload?.path) ?? null;
@@ -87,6 +87,7 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
      */
     const script = useStoryScript({ entry, path: payload?.path ?? "", sides });
     const rowAction = useComparisonElements({
+        comparisonId: payload ? vcsCompareTabId(payload) : "",
         entry,
         path: payload?.path ?? "",
         sides,

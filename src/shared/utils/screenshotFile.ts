@@ -43,7 +43,6 @@ export async function writeScreenshotFile(
     options: ScreenshotWriteOptions,
 ): Promise<BlueprintScreenshotResult> {
     const { directory, capture, now } = options;
-    const file = path.join(directory, blueprintScreenshotFileName(now ? now() : new Date()));
     try {
         const bytes = await capture();
         if (!bytes || bytes.length === 0) {
@@ -53,8 +52,17 @@ export async function writeScreenshotFile(
             return { outcome: "failed", path: null, error: "The window could not be captured." };
         }
         await fs.mkdir(directory, { recursive: true });
-        await fs.writeFile(file, bytes);
-        return { outcome: "saved", path: file, error: null };
+        const name = blueprintScreenshotFileName(now ? now() : new Date());
+        const stem = name.slice(0, -".png".length);
+        for (let index = 0; ; index += 1) {
+            const file = path.join(directory, index === 0 ? name : `${stem}-${index}.png`);
+            try {
+                await fs.writeFile(file, bytes, { flag: "wx" });
+                return { outcome: "saved", path: file, error: null };
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+            }
+        }
     } catch (error) {
         return {
             outcome: "failed",

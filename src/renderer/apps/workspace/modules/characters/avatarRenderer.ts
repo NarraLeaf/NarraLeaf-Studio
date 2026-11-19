@@ -151,9 +151,12 @@ async function encodeSquare(
 export function createAvatarRenderer(decode: AvatarAssetDecoder): AvatarRenderer {
     return async ({ layers, crop, maxSize }) => {
         const ids = layers.filter((assetId): assetId is string => Boolean(assetId));
-        const bitmaps = (await Promise.all(ids.map(id => decode(id))))
-            .filter((bitmap): bitmap is ImageBitmap => Boolean(bitmap));
+        const decoded = await Promise.allSettled(ids.map(id => decode(id)));
+        const bitmaps = decoded.flatMap(result => result.status === "fulfilled" && result.value ? [result.value] : []);
         try {
+            if (bitmaps.length !== ids.length) {
+                return null;
+            }
             const composite = compositeStack(bitmaps);
             const ctx = composite?.getContext("2d");
             if (!composite || !ctx) {

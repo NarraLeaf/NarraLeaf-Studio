@@ -171,6 +171,7 @@ export const test = {
                 noEntryPoint: "No story marks where play begins",
                 undecidableEntry: "Where play begins cannot be read from Start Game in \"{blueprint}\"",
                 storiesUnread: "A story could not be read",
+                unsettled: "Route analysis did not finish for every story",
             },
             // Each of these means the same thing in a different unit: the rows lead here, and the
             // numbers never do. Worded so an author can tell that from a structural dead end.

@@ -681,26 +681,32 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
 
         if (!(result instanceof Promise)) {
             this.suppressionDepth -= 1;
-            accept();
-            this.touch(id);
-            this.events.emit("changed", { scopeId: id, cause: direction });
+            if (accept()) {
+                this.touch(id);
+                this.events.emit("changed", { scopeId: id, cause: direction });
+            }
             return true;
         }
 
-        this.pending = result
+        let retained = false;
+        const pending = result
             .then(() => {
-                accept();
+                retained = accept();
             })
             .catch(error => {
-                put();
+                retained = put();
                 console.error(`[History] ${direction} failed in ${id}`, error);
             })
             .finally(() => {
+                if (this.pending !== pending) return;
                 this.suppressionDepth -= 1;
                 this.pending = null;
-                this.touch(id);
-                this.events.emit("changed", { scopeId: id, cause: direction });
+                if (retained) {
+                    this.touch(id);
+                    this.events.emit("changed", { scopeId: id, cause: direction });
+                }
             });
+        this.pending = pending;
         return true;
     }
 
@@ -752,9 +758,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         // also the only moment it can be read. Captured once and kept, so redo is repeatable.
         if (direction === "undo") {
             const present = scope.capture();
-            if (present !== null) {
-                entry.body.after = { value: present };
-            }
+            if (present === null) throw new Error(`Cannot capture history scope "${entry.scopeId}"`);
+            entry.body.after = { value: present };
             scope.apply(entry.body.before.value);
             return;
         }

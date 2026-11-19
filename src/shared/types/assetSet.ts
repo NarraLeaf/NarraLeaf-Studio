@@ -77,9 +77,8 @@
  *
  * # What is not decided here
  *
- * This module is the model and the evaluation. Collapsing a build axis into a package, and
- * deriving a storage key for a surviving runtime axis, belong to the build and the runtime and are
- * not implemented yet.
+ * This module is the model and the evaluation. Collapsing a build axis into a package and
+ * materialising a surviving runtime axis belong to the build and the runtime.
  */
 
 import { migrateAppTagId } from "./appTag";
@@ -213,7 +212,7 @@ export function makeAssetSetAxis(
  * One entry in the asset library that stands for a family of files.
  *
  * Carries no member ids. Everything about which files belong to it is said in {@link filter} and
- * {@link axes}, and answered by reading the library's tags.
+ * {@link axis}, and answered by reading the library's tags.
  */
 export interface AssetSet {
     id: string;
@@ -356,8 +355,8 @@ export function assetSetCoordinateLabel(set: AssetSet, coordinate: AssetSetCoord
 /**
  * What resolution needs to know about a library row.
  *
- * Deliberately two fields. Resolution is a pure function of the tags, so handing it the asset
- * record would let a later change make it depend on something else.
+ * Resolution uses the id, type and tags, so handing it the full asset record would let a later
+ * change make it depend on something else.
  */
 export interface AssetSetCandidate {
     id: string;
@@ -418,7 +417,11 @@ export function childAssetSets(
     sets: readonly AssetSet[],
 ): AssetSet[] {
     const required = filterTags(parent);
-    required.add(formatAssetTag(parent.axis.key, value));
+    const coordinateTag = formatAssetTag(parent.axis.key, value);
+    if (required.has(coordinateTag)) {
+        return [];
+    }
+    required.add(coordinateTag);
     return sets.filter(candidate => {
         if (candidate.id === parent.id || candidate.type !== parent.type) {
             return false;
@@ -761,13 +764,12 @@ function normalizeAxis(raw: unknown): AssetSetAxis | null {
     // not turn every set in an existing project into one the panel reports as unfinished.
     const fallback = typeof record.fallback === "string" ? record.fallback.trim() : undefined;
     // A release axis promises edition ids, and the release edition's id used to be `release`. A set
-    // written then still names the same edition; migrating on read keeps its coordinates resolvable
-    // without a pass over every project's documents.
+    // written then still names the same edition; its declared values and fallback migrate on read.
     const migrate = (value: string) => (kind === "release" ? migrateAppTagId(value) : value);
     return {
         ...makeAssetSetAxis(
             kind,
-            normalizeStringList(record.values).map(migrate),
+            [...new Set(normalizeStringList(record.values).map(migrate))],
             fallback === undefined ? undefined : migrate(fallback),
         ),
     };

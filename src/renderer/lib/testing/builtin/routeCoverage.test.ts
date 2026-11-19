@@ -11,6 +11,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { TEST_PROTOCOL_VERSION, type TestFinding, type TestRunContext } from "../types";
 import type { BuiltInTestHost } from "./index";
 import { createRouteCoverageTest } from "./routeCoverage";
+import * as coverageEngine from "@/apps/workspace/modules/story-flow/sceneFlowCoverage";
+import * as entryPoints from "./entryPoints";
 
 // The definition reaches the workspace through its host, so the import graph touches the service
 // registry. Nothing here starts a workspace, so an empty bridge is enough.
@@ -125,6 +127,55 @@ async function run(testHost: BuiltInTestHost) {
 }
 
 describe("narraleaf-studio:route-coverage", () => {
+    it("does not report a pass when the coverage walk did not settle", async () => {
+        const compute = vi.spyOn(coverageEngine, "computeSceneFlowCoverage").mockReturnValue({ settled: false } as never);
+        try {
+            const { verdict, findings } = await run(host(recollection(), []));
+            expect(verdict.status).toBe("skipped");
+            expect(findings).toEqual([]);
+        } finally {
+            compute.mockRestore();
+        }
+    });
+
+    it("retains findings from completed stories when another story did not settle", async () => {
+        const base = host(recollection(), []);
+        const registry = base.services();
+        const twoStories = {
+            services: () => ({
+                get: (id: string) => id === Services.Story
+                    ? {
+                        getLibraryIndex: () => ({ stories: [{ id: STORY, name: "Main" }, { id: "story-2", name: "Other" }] }),
+                        loadStory: async (storyId: string) => ({ ...story(), id: storyId }),
+                    }
+                    : registry.get(id as never),
+            }),
+        } as unknown as BuiltInTestHost;
+        const scan = vi.spyOn(entryPoints, "scanEntryPointsAndReport").mockReturnValue({
+            scan: { byStory: new Map([[STORY, new Set(["opening"])], ["story-2", new Set(["opening"])]]) },
+            blocked: null,
+        } as never);
+        const compute = vi.spyOn(coverageEngine, "computeSceneFlowCoverage")
+            .mockReturnValueOnce({
+                settled: true, frontierUnreachableSceneIds: new Set(["close"]),
+                structuralBranchIds: new Set(), structuralEndingIds: new Set(),
+                reachedEndingIds: new Set(), reachableSceneIds: new Set(),
+            } as never)
+            .mockReturnValueOnce({ settled: false } as never);
+        try {
+            const { verdict, findings } = await run(twoStories);
+            expect(verdict).toEqual({ status: "skipped", summary: { key: "test.builtin.routeCoverage.skipped.unsettled" } });
+            expect(findings).toEqual([expect.objectContaining({
+                message: { key: "test.builtin.routeCoverage.finding.sceneUnreachable", params: { scene: "close" } },
+                target: expect.objectContaining({ storyId: STORY, sceneId: "close" }),
+            })]);
+            expect(compute).toHaveBeenCalledTimes(2);
+        } finally {
+            scan.mockRestore();
+            compute.mockRestore();
+        }
+    });
+
     it("runs on a project whose recollection screen replays from the Gallery", async () => {
         // The starter template's shape, with nothing in the Gallery yet: the screen begins nowhere,
         // so it is no reason to decline.

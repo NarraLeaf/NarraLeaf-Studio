@@ -17,7 +17,7 @@ import {
     authorizeActorCapabilityRequest,
     authorizeActorFileSystemRequest,
 } from "../actorAuthorization";
-import { getRuntimeGrantPolicy } from "../permissions";
+import { canUsePluginFileSystemGrantsAsWindowPolicy, getRuntimeGrantPolicy } from "../permissions";
 import { IPCHandler } from "./IPCHandler";
 
 function unauthorizedResult<T>(message: string): FsRequestResult<T> {
@@ -56,6 +56,36 @@ async function ensureActorPathsAllowed<T>(
         }
     }
     return null;
+}
+
+async function ensureActorTreeAllowed<T>(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.privilegedFsCall]["data"],
+    fsPath: string,
+    mode: "read" | "write",
+): Promise<FsRequestResult<T> | null> {
+    const denied = await ensureActorPathAllowed<T>(window, data, fsPath, mode);
+    if (denied) return denied;
+    if (await window.app.storageManager.isPathTreeProtected(fsPath)) {
+        return unauthorizedResult<T>("Protected application storage cannot be accessed");
+    }
+    if (data.actor.kind === "plugin") {
+        const grant = window.app.pluginPermissionManager.getExistingGrantResult({
+            kind: "filesystem",
+            plugin: { id: data.actor.pluginId, version: data.actor.version },
+            requestId: "",
+            path: fsPath,
+            mode,
+            recursive: true,
+            persistence: "temporary",
+        });
+        if (!grant) return unauthorizedResult<T>("Plugin file system permission does not cover this directory tree");
+    }
+    if (await window.app.storageManager.isPathTreeAllowed(window, fsPath, mode)
+        || (data.actor.kind === "plugin" && canUsePluginFileSystemGrantsAsWindowPolicy(window))) {
+        return null;
+    }
+    return unauthorizedResult<T>("Window file system policy does not cover this directory tree");
 }
 
 export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedFsCall> {
@@ -226,13 +256,22 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 return this.success(denied ?? await Fs.deleteFile(data.path));
             }
             case "deleteDir": {
-                const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
+                const denied = await ensureActorTreeAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.deleteDir(data.path));
             }
             case "rename": {
                 const nextPath = pathModule.join(pathModule.dirname(data.oldPath), data.newName);
                 const denied = await ensureActorPathsAllowed<void>(window, data, "write", data.oldPath, nextPath);
-                return this.success(denied ?? await Fs.rename(data.oldPath, nextPath));
+                if (denied) return this.success(denied);
+                const directory = await Fs.isDir(data.oldPath);
+                if (!directory.ok) return this.success(directory);
+                if (directory.data) {
+                    for (const target of [data.oldPath, nextPath]) {
+                        const treeDenied = await ensureActorTreeAllowed<void>(window, data, target, "write");
+                        if (treeDenied) return this.success(treeDenied);
+                    }
+                }
+                return this.success(await Fs.rename(data.oldPath, nextPath));
             }
             case "copyFile": {
                 const readDenied = await ensureActorPathAllowed<void>(window, data, data.src, "read");
@@ -241,22 +280,34 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 return this.success(writeDenied ?? await Fs.cpFile(data.src, data.dest));
             }
             case "copyDir": {
-                const readDenied = await ensureActorPathAllowed<void>(window, data, data.src, "read");
+                const readDenied = await ensureActorTreeAllowed<void>(window, data, data.src, "read");
                 if (readDenied) return this.success(readDenied);
-                const writeDenied = await ensureActorPathAllowed<void>(window, data, data.dest, "write");
+                const writeDenied = await ensureActorTreeAllowed<void>(window, data, data.dest, "write");
                 return this.success(writeDenied ?? await Fs.copyDir(data.src, data.dest));
             }
             case "moveFile": {
                 const readDenied = await ensureActorPathAllowed<void>(window, data, data.src, "read");
                 if (readDenied) return this.success(readDenied);
                 const writeDenied = await ensureActorPathsAllowed<void>(window, data, "write", data.src, data.dest);
-                return this.success(writeDenied ?? await Fs.moveFile(data.src, data.dest));
+                if (writeDenied) return this.success(writeDenied);
+                const directory = await Fs.isDir(data.src);
+                if (!directory.ok) return this.success(directory);
+                if (directory.data) {
+                    for (const [target, mode] of [[data.src, "read"], [data.src, "write"], [data.dest, "write"]] as const) {
+                        const treeDenied = await ensureActorTreeAllowed<void>(window, data, target, mode);
+                        if (treeDenied) return this.success(treeDenied);
+                    }
+                }
+                return this.success(await Fs.moveFile(data.src, data.dest));
             }
             case "moveDir": {
-                const readDenied = await ensureActorPathAllowed<void>(window, data, data.src, "read");
+                const readDenied = await ensureActorTreeAllowed<void>(window, data, data.src, "read");
                 if (readDenied) return this.success(readDenied);
-                const writeDenied = await ensureActorPathsAllowed<void>(window, data, "write", data.src, data.dest);
-                return this.success(writeDenied ?? await Fs.moveDir(data.src, data.dest));
+                for (const target of [data.src, data.dest]) {
+                    const denied = await ensureActorTreeAllowed<void>(window, data, target, "write");
+                    if (denied) return this.success(denied);
+                }
+                return this.success(await Fs.moveDir(data.src, data.dest));
             }
             case "fileExists": {
                 const denied = await ensureActorPathAllowed<boolean>(window, data, data.path, "read");

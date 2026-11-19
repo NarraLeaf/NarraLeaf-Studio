@@ -233,11 +233,9 @@ function collectVideoClips(scene: StoryScene | null): StoryCommandVideoClips {
  * Which row declares each of those objects - the id half {@link collectStageObjects} throws away
  * when it flattens the scan to names.
  *
- * A separate walk rather than a widening of that one, because the two answer different questions and
- * must keep doing so: the name list is everything a row may address (the engine materialises an
- * object on first mention, so a `/show poster` with no create row ahead of it still belongs there),
- * while an entry here means a row genuinely *defines* the object, which is the only thing a stable
- * reference may bind to. Hence the strict identity functions, not the permissive ones.
+ * The name list and the source map answer different questions: audio and ambience names can be
+ * mentioned by later operations, while an entry here identifies the row that actually declares an
+ * object. A stable reference binds only to that declaration.
  */
 function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageObjectSources {
     if (!scene) {

@@ -196,7 +196,7 @@ function appearanceHasArt(appearance: CharacterAppearance): boolean {
     return true;
 }
 
-export function CharacterEditor({ tabId, payload }: EditorComponentProps<CharacterEditorPayload>) {
+export function CharacterEditor({ tabId, payload, active }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     /**
@@ -430,9 +430,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
         } else if (slot.kind === "layer") {
             appearance.setLayerAsset(slot.layerId, assetId);
         } else if (slot.kind === "avatar") {
-            // Clearing the override hands the differential back to the baker, so the bake
-            // field is dropped with it - the next reconcile renders one.
-            appearance.setAvatar(slot.avatarKey, assetId ? { overrideAssetId: assetId } : null);
+            setAvatarOverride(appearance, slot.avatarKey, assetId);
         } else {
             appearance.setLayerOption(slot.layerId, slot.tagId, assetId);
         }
@@ -725,6 +723,7 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                     ) : (
                     <CharacterPosePreview
                         sequence={kind === "preset" ? previewPose?.sequence : undefined}
+                        active={active}
                         layers={visibleLayers}
                         onion={onionLayers}
                         canvas={appearance.getCanvas()}
@@ -863,11 +862,11 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
                                 if (avatarKey) openSlot({ kind: "avatar", avatarKey }, anchor);
                             }}
                             onClearOverride={() => {
-                                if (avatarKey) appearance.setAvatar(avatarKey, null);
+                                if (avatarKey) setAvatarOverride(appearance, avatarKey, null);
                             }}
                             frozen={freeze.frozen}
                             freezeReason={freeze.reason}
-                            onRebake={() => void rebake()}
+                            onRebake={() => void rebake().catch(error => console.warn("[characters] avatar bake failed:", error))}
                             rebaking={rebaking}
                             receipt={bakeReceipt}
                         />
@@ -1267,6 +1266,16 @@ export function CharacterEditor({ tabId, payload }: EditorComponentProps<Charact
             />
         </div>
     );
+}
+
+function setAvatarOverride(appearance: CharacterAppearance, key: string, assetId: string | null): void {
+    const entry = { ...appearance.getAvatar(key) };
+    if (assetId) {
+        entry.overrideAssetId = assetId;
+    } else {
+        delete entry.overrideAssetId;
+    }
+    appearance.setAvatar(key, entry);
 }
 
 /** What the picker should open showing as already chosen. */

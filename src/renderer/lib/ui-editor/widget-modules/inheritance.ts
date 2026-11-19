@@ -156,6 +156,7 @@ export function applyInspectorOverrides(
         }
         return { ...tab, fields: nextFields };
     });
+    const fields = mapFields(schema.fields, visit);
 
     if (unresolved.size > 0) {
         console.warn(
@@ -177,7 +178,7 @@ export function applyInspectorOverrides(
         ...schema,
         id: options.id,
         ...(options.title !== undefined ? { title: options.title } : {}),
-        fields: mapFields(schema.fields, visit),
+        fields,
         tabs: [...tabs, ...(overrides.addTabs ?? [])],
     };
 }

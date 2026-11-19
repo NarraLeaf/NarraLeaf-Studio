@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { blueprintSource, extractBlueprintEntries } from "./blueprintSource";
+import { SearchIndexEngine } from "../SearchService";
 import { dedupSearchEntries } from "../searchSource";
 import { indexEntries, querySearchIndex, type SearchIndexEntry } from "../searchIndexModel";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -334,7 +335,7 @@ describe("blueprintSource in a workspace", () => {
             [Services.BlueprintNodeCatalog]: {
                 resolveCatalogEntry: (type: string) => ({ type, displayName: type === "blueprint.sound.play" ? "Play Sound" : type }),
             },
-            [Services.UIDocument]: { getDocument: () => ({ surfaces: [], components: [], elements: {} }) },
+            [Services.UIDocument]: { getDocument: () => ({ surfaces: [], components: [], elements: {} }), onDocumentChanged: () => () => undefined },
             [Services.UIGraph]: { onGraphsChanged: () => () => undefined },
             [Services.VariableRegistry]: { onRegistryChanged: () => () => undefined },
         };
@@ -366,6 +367,46 @@ describe("blueprintSource in a workspace", () => {
         i18nStore.setLocale("ja");
         expect(invalidate).not.toHaveBeenCalled();
     });
+});
+
+it("refreshes blueprint owner names when the interface document changes", async () => {
+    vi.useFakeTimers();
+    let changed: (() => void) | undefined;
+    const ownerKey = widgetMainOwnerKey("title", "start");
+    const blueprintDocument = {
+        ownerRecords: { [ownerKey]: { blueprintId: "bp" } },
+        blueprints: { bp: { id: "bp", name: "Logic", graphs: { events: {}, functions: {} } } },
+    };
+    const uiDocument = {
+        surfaces: [{ id: "title", name: "Title" }],
+        components: [],
+        elements: { start: { id: "start", type: "nl.button", name: "Start" } },
+    };
+    const services: Partial<Record<Services, unknown>> = {
+        [Services.LocalBlueprint]: { getBlueprintDocument: () => blueprintDocument, listPersistentVariables: () => [], listSavedVariables: () => [] },
+        [Services.BlueprintNodeCatalog]: { resolveCatalogEntry: (type: string) => ({ type, displayName: type }) },
+        [Services.UIDocument]: {
+            getDocument: () => uiDocument,
+            onDocumentChanged: (listener: () => void) => { changed = listener; return () => { changed = undefined; }; },
+        },
+        [Services.UIGraph]: { onGraphsChanged: () => () => {} },
+        [Services.VariableRegistry]: { onRegistryChanged: () => () => {} },
+    };
+    const context = { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+    const engine = new SearchIndexEngine(context, [blueprintSource]);
+    try {
+        await engine.ensureReady();
+        expect(engine.search("title")[0]?.hits[0]?.entry.detail).toBe("Title › Start");
+        uiDocument.surfaces[0].name = "Menu";
+        changed?.();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(engine.search("menu")[0]?.hits[0]?.entry.detail).toBe("Menu › Start");
+        expect(engine.search("title")).toEqual([]);
+    } finally {
+        engine.dispose();
+        vi.useRealTimers();
+    }
+    expect(changed).toBeUndefined();
 });
 
 describe("what a blueprint hit says it hangs on", () => {

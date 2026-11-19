@@ -41,6 +41,39 @@ describe("collecting a playthrough", () => {
         });
         expect(saved).toEqual({ route: "north" });
     });
+
+    it.each([0, { chapter: 2 }])("collects and applies special storage keys with __proto__ value %j", async protoValue => {
+        const written = new Map<string, unknown>([
+            ["__proto__", protoValue],
+            ["constructor", 0],
+            ["prototype", "route"],
+            ["toString", false],
+            ["hasOwnProperty", null],
+        ]);
+        const defs = [...written.keys(), "unwritten"].map(storageKey => ({ storageKey }));
+        const values = await collectGameProgressVariables(defs, key => written.get(key));
+
+        expect(Object.getPrototypeOf(values)).toBe(Object.prototype);
+        expect(Object.keys(values)).toEqual([...written.keys()]);
+        expect(JSON.parse(JSON.stringify(values))).toEqual(Object.fromEntries(written));
+
+        const imported = new Map<string, unknown>();
+        expect(applyGameProgressVariables(defs, values, (key, value) => imported.set(key, value)))
+            .toEqual([...written.keys()]);
+        expect(imported).toEqual(written);
+    });
+
+    it("keeps whitespace in a declared storage key when collecting and applying progress", async () => {
+        const written = new Map<string, unknown>([[" __proto__ ", 1], [" constructor ", 2]]);
+        const defs = [...written.keys(), "   "].map(storageKey => ({ storageKey }));
+        const values = await collectGameProgressVariables(defs, key => written.get(key));
+
+        expect(Object.keys(values)).toEqual([...written.keys()]);
+        const imported = new Map<string, unknown>();
+        expect(applyGameProgressVariables(defs, values, (key, value) => imported.set(key, value)))
+            .toEqual([...written.keys()]);
+        expect(imported).toEqual(written);
+    });
 });
 
 describe("applying a document", () => {

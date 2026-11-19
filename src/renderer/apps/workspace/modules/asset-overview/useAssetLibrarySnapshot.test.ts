@@ -89,7 +89,7 @@ describe("useAssetLibrarySnapshot", () => {
         expect(reusedWalks()).toEqual([false, false]);
     });
 
-    it("does not measure again for the library loading after the first walk", async () => {
+    it("reuses the first walk when the library loads", async () => {
         const { context } = fakeContext();
         const { rerender } = renderHook(({ key }) => useAssetLibrarySnapshot(context, true, key), {
             initialProps: { key: undefined as string | undefined },
@@ -102,7 +102,7 @@ describe("useAssetLibrarySnapshot", () => {
         });
         await settle();
 
-        expect(reusedWalks()).toEqual([false]);
+        expect(reusedWalks()).toEqual([false, true]);
     });
 
     it("walks once when switched back on after the library changed while it was off", async () => {

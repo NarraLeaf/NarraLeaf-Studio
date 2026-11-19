@@ -50,6 +50,7 @@ export function useStoryTextLineIndex(storyService: StoryService | null): StoryT
         let run = 0;
         const read = async () => {
             const mine = ++run;
+            setIndex({ kind: "loading" });
             const stories: { name: string; document: StoryDocument }[] = [];
             let lines: ReturnType<typeof indexStoryTextLines>;
             try {

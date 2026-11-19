@@ -133,6 +133,19 @@ describe("assign-time name matching", () => {
         expect(buildAssetNameKeyMap([{ id: "a1", name: "序章_002_優希" }]).get(key)).toBe("a1");
     });
 
+    it("matches takes from scenes distinguished by combining marks", () => {
+        const entries: VoiceScriptEntry[] = [
+            { ...entry, unitId: "t-a", sceneName: "कल", indexInScene: 1, speaker: "मीरा" },
+            { ...entry, unitId: "t-b", sceneName: "काल", indexInScene: 1, speaker: "मीरा" },
+        ];
+        const pattern = "{scene}_{index}_{character}";
+        const files = ["कल_001_मीरा.wav", "काल_001_मीरा.wav"];
+        const result = matchImportedFiles(files, buildVoiceNameKeyMap(entries, pattern, "en"));
+
+        expect(result.matched.map(match => match.unitId)).toEqual(["t-a", "t-b"]);
+        expect(result.unmatched).toEqual([]);
+    });
+
     it("drops a key two assets share rather than guessing between them", () => {
         const assets = buildAssetNameKeyMap([
             { id: "a1", name: "FirstDay_002_Nattou" },

@@ -8,6 +8,9 @@ import {
 import { parseCommandLine } from "../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../storyCommandResolution";
 import { buildStoryCommandContext } from "../storyCommandContext";
+import { compileStoryFile } from "@/lib/story-cli/dsl/compile";
+import { parseStoryFile } from "@/lib/story-cli/dsl/parse";
+import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { getCommandSpec } from "./registry";
 
 /**
@@ -143,6 +146,17 @@ describe("a row that addresses a displayable names the row that declared it", ()
             action: "displayable",
             operation: "show",
             target: { kind: "layer", name: "overlay", label: "overlay", sourceBlockId: "b_layer" },
+        });
+    });
+
+    it.each([
+        ["hero", "image", "b_img"],
+        ["title", "text", "b_txt"],
+        ["overlay", "layer", "b_layer"],
+    ])("/show %s keeps its declaring reference and placement", (name, kind, sourceBlockId) => {
+        expect(build(`/show ${name} pos=left xoffset=40 opacity=0.6`)).toMatchObject({
+            target: { kind, name, sourceBlockId },
+            transform: { to: { position: { xalign: 0.25, yalign: 0.5, xoffset: 40 }, opacity: 0.6 } },
         });
     });
 
@@ -327,5 +341,64 @@ describe("the reference follows a rename of the row that declared the object", (
         // the case that proves it has to be written: without it the row would read as a UUID.
         expect(resolveDisplayableTargetRef({ ...DECLARED.scenes[SCENE_ID], blocks: {} }, payload.target))
             .toMatchObject({ name: "c1", label: "Alice" });
+    });
+});
+
+describe("a displayed image's placement through story compilation", () => {
+    function compile(body: string) {
+        const existing = documentWith({}).scenes[SCENE_ID];
+        const parsed = parseStoryFile(`#nlstory 1\n#scene Scene\n\n${body}\n`);
+        let nextId = 0;
+        const result = compileStoryFile({
+            ast: parsed.ast,
+            existing,
+            document: null,
+            contextFor: scene => ({
+                ...buildStoryCommandContext({ assets: undefined, characters: [], document: null, sceneId: SCENE_ID, scene }),
+                images: [{ id: "i1", name: "forest" }],
+            }),
+            prose: { characterName: () => null, charactersNamed: () => [] },
+            conditions: { variableName: () => null },
+            mintId: () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, "0")}`,
+        });
+        expect(parsed.diagnostics).toEqual([]);
+        return result;
+    }
+
+    it("keeps placement for existing and new images", () => {
+        const existing = compile("/image forest name=hero\n/show hero pos=left");
+        expect(existing.diagnostics).toEqual([]);
+        expect(existing.scene!.blocks[existing.scene!.rootBlockIds[1]]).toMatchObject({
+            payload: { target: { sourceBlockId: existing.scene!.rootBlockIds[0] }, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } },
+        });
+        const result = compile("/show forest name=hero pos=left xoffset=40 d=0.3");
+        expect(result.diagnostics).toEqual([]);
+        const scene = result.scene!;
+        expect(scene.blocks[scene.rootBlockIds[0]]).toMatchObject({
+            payload: { transform: { to: { position: { xalign: 0.25, yalign: 0.5, xoffset: 40 } }, durationMs: 300 } },
+        });
+    });
+
+    it("emits a new image's position in the compiled game action", async () => {
+        const result = compile("/show forest name=hero pos=left xoffset=40 d=0.3");
+        expect(result.diagnostics).toEqual([]);
+        const scene = result.scene!;
+        const shownId = scene.rootBlockIds[0];
+        const document = documentWith({});
+        document.scenes[SCENE_ID] = scene;
+        const game = await compileStudioStoryToNlr({ document, sceneId: SCENE_ID, resolveAssetUrl: async id => `nlr://${id}` });
+        expect(game.diagnostics).toEqual([]);
+        const actions = game.actionIdBindings.filter(binding => binding.blockId === shownId).map(binding => binding.action as any);
+        const seen = new Set<unknown>();
+        const visit = (action: any): any[] => {
+            if (!action || seen.has(action)) return [];
+            seen.add(action);
+            const children = typeof action.getFutureActions === "function" ? action.getFutureActions(game.story, { allowFutureScene: true }) : [];
+            return [action, ...children.flatMap(visit)];
+        };
+        const props = actions.flatMap(visit)
+            .filter(action => action.type === "displayable:applyTransform")
+            .flatMap(action => action.contentNode?.getContent?.()[0]?.sequences?.map((sequence: any) => sequence.props) ?? []);
+        expect(props).toContainEqual(expect.objectContaining({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5, xoffset: 40 }) }));
     });
 });

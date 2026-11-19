@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { i18nStore } from "@/lib/i18n";
 import { Services, type WorkspaceContext } from "../services";
 import { ProjectFileAccessError, ProjectService } from "./ProjectService";
@@ -22,9 +23,10 @@ vi.mock("@/lib/app/privilegedFacade", () => ({
     },
 }));
 
-function mount(readRaw: () => Promise<unknown>, createDir: () => Promise<unknown> = async () => ({ ok: true, data: undefined })) {
+async function mount(readRaw: () => Promise<unknown>, createDir: () => Promise<unknown> = async () => ({ ok: true, data: undefined })) {
     const service = new ProjectService();
-    service.setContext({
+    const config = encodeProjectConfig({ name: "Demo", identifier: "demo", metadata: {} } as never);
+    const ctx = {
         project: {
             getConfig: () => ({ projectPath: "D:/projects/demo" }),
             resolve: (segments: string[]) => `D:/projects/demo/${segments.join("/")}`,
@@ -32,17 +34,22 @@ function mount(readRaw: () => Promise<unknown>, createDir: () => Promise<unknown
         services: {
             get: (id: Services) => {
                 if (id === Services.FileSystem) {
-                    return { readRaw, createDir };
+                    return {
+                        list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
+                        readRaw: async (path: string) => path.endsWith(".nlproj") ? { ok: true, data: config } : readRaw(),
+                        createDir,
+                    };
                 }
                 throw new Error(`Unexpected service ${id}`);
             },
         },
-    } as unknown as WorkspaceContext);
+    } as unknown as WorkspaceContext;
+    await service.initialize(ctx, async () => undefined);
     return service;
 }
 
-async function failure(service: ProjectService): Promise<Error> {
-    return service.importProjectIconSource("master").then(
+async function failure(service: Promise<ProjectService>): Promise<Error> {
+    return (await service).importProjectIconSource("master").then(
         () => { throw new Error("expected the import to fail"); },
         (error: Error) => error,
     );

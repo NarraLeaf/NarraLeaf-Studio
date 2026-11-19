@@ -178,6 +178,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
      */
     const clips = new Map<string, AudioClipRegion | undefined>();
     let nextId = 0;
+    let generation = 0;
 
     const engine = (): EngineSoundHost | null => {
         const liveGame = getLiveGame();
@@ -212,7 +213,11 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
 
     return {
         async play(input) {
+            const startedIn = generation;
             const host = await arrivingEngine();
+            if (startedIn !== generation) {
+                return null;
+            }
             if (!host?.playSound) {
                 // No running game (editor preview) or an engine dist without the
                 // API. Warn once per call and let the graph continue silently -
@@ -221,6 +226,9 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 return null;
             }
             const url = await resolveAssetUrl(input.assetId, "audio");
+            if (startedIn !== generation) {
+                return null;
+            }
             if (typeof url !== "string" || !url.trim()) {
                 log("warning", `Play Sound: audio asset ${input.assetId} could not be resolved.`);
                 return null;
@@ -234,6 +242,10 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             const sound = createSound({ src: url, busId: playback.busId, loop: playback.loop, ...config });
             const token = await host.playSound(sound);
             if (!token) {
+                return null;
+            }
+            if (startedIn !== generation) {
+                token.stop?.();
                 return null;
             }
             // `LiveGame.playSound` forwards to `AudioManager.playSoundToken` with its default
@@ -263,6 +275,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             // No handle means "everything this family started", which is what a
             // Page's exit handler wants: it does not track what it played.
             if (!handle) {
+                generation += 1;
                 for (const token of tokens.values()) {
                     token.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
                 }
@@ -339,6 +352,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
         },
 
         dispose() {
+            generation += 1;
             for (const token of tokens.values()) {
                 token.stop?.();
             }

@@ -23,7 +23,6 @@ import {
 } from "@shared/types/blueprint/graph";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
 import { findBlueprintFnByRef, isBlueprintFnVisibleToOwner } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
-import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
@@ -35,6 +34,7 @@ import type {
     BehaviorGraphValueTracking,
 } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import {
+    abortablePromise,
     BlueprintGraphExecutionError,
     isBlueprintGraphExecutionCancelledError,
     stepLimitOfExecutionError,
@@ -317,8 +317,7 @@ function buildDispatchScriptContext(input: {
             elementInstanceKey: input.ownerDrawingKey,
         }),
         signal: input.signal,
-        // A script says `ctx.stopPropagation()` where a graph places `Stop Propagation` or
-        // `Keep Window Open`; both reach the same event control.
+        // Scripts use the same event control that Keep Window Open uses for a close request.
         stopPropagation: () => input.eventControl?.stopPropagation(),
     });
 }
@@ -366,6 +365,7 @@ async function runScriptBlueprintHandler(input: {
     });
     input.debug.emit({ type: "execution.started", executionId, blueprintId });
     try {
+        throwIfBlueprintExecutionCancelled(execution?.signal);
         const ctx = buildDispatchScriptContext({
             hostAdapter: input.hostAdapter,
             blueprintDocument: input.blueprintDocument,
@@ -379,7 +379,7 @@ async function runScriptBlueprintHandler(input: {
             signal: execution?.signal,
         });
         throwIfBlueprintExecutionCancelled(execution?.signal);
-        await Promise.resolve(input.handler(ctx, input.eventPayload ?? {}));
+        await abortablePromise(Promise.resolve(input.handler(ctx, input.eventPayload ?? {})), execution?.signal);
         throwIfBlueprintExecutionCancelled(execution?.signal);
         input.debug.emit({ type: "execution.finished", executionId, blueprintId });
     } catch (err) {
@@ -955,7 +955,7 @@ export async function dispatchBlueprintUiEvent(options: {
         });
         debug.emit({ type: "execution.started", executionId, blueprintId });
 
-        const blueprintLocals = acquireBlueprintExecutionLocals({
+        const blueprintLocals = execution?.signal.aborted ? {} : acquireBlueprintExecutionLocals({
             blueprintDocument,
             currentBlueprintId: blueprintId,
             surfaceId,
@@ -963,7 +963,6 @@ export async function dispatchBlueprintUiEvent(options: {
             elementId,
             elementInstanceKey: variablesDrawingKey,
         });
-
         try {
             await runExecutionHeads({
                 runs: listHeadRuns(matchingGraphs, "blueprintEvent", blueprintId, (graph, headId) => executeGraph({
@@ -1253,7 +1252,7 @@ async function runFannedOutListener(input: {
             allowClosedScopeExecution: input.allowClosedScopeExecution,
         });
         debug.emit({ type: "execution.started", executionId, blueprintId });
-        const blueprintLocals = acquireBlueprintExecutionLocals({
+        const blueprintLocals = execution?.signal.aborted ? {} : acquireBlueprintExecutionLocals({
             blueprintDocument,
             currentBlueprintId: blueprintId,
             surfaceId,
@@ -1698,6 +1697,7 @@ export async function invokeBlueprintFnCall(options: {
     depth: number;
     signal?: AbortSignal;
     callerExecutionId?: string;
+    callerLocals?: Record<string, unknown>;
     hostAdapter: UIHostAdapter;
     debug: DebugBridge;
     maxSteps?: number;
@@ -1743,13 +1743,14 @@ export async function invokeBlueprintFnCall(options: {
         : undefined;
     const blueprintLocals = acquireBlueprintExecutionLocals(
         decl.owner.kind === "globalMain"
-            ? { blueprintDocument, currentBlueprintId: decl.blueprintId, observer: variableObserver }
+            ? { blueprintDocument, currentBlueprintId: decl.blueprintId, callerLocals: options.callerLocals, observer: variableObserver }
             : {
                   observer: variableObserver,
                   blueprintDocument,
                   currentBlueprintId: decl.blueprintId,
                   surfaceId,
                   runtimeScopeId,
+                  callerLocals: options.callerLocals,
                   elementId: declElementId,
                   // The owner's variables where its own events keep them: a fn on a list called
                   // from Item Click sees what Init set, and one on a card sees this placement's.
@@ -1764,7 +1765,6 @@ export async function invokeBlueprintFnCall(options: {
     for (const param of decl.params) {
         seededArgs[param.pinId] = args[param.pinId];
     }
-    writeBlueprintNodeOutputValues(blueprintLocals, decl.headNodeId, seededArgs);
 
     const graph = adaptBlueprintGraphIr(decl.ir, buildBlueprintRunGraphId("fnCall", decl.blueprintId, decl.graphId));
     const executionOwner =
@@ -1783,6 +1783,7 @@ export async function invokeBlueprintFnCall(options: {
         entry: { start: { nodeId: decl.headNodeId, port: "then" as const } },
         hostAdapter,
         blueprintLocals,
+        entryOutputs: seededArgs,
         executionOwner,
         instanceKey: options.callerInstanceKey,
         listItemScope: options.callerListItemScope ?? null,

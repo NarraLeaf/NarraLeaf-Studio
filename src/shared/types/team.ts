@@ -1300,6 +1300,12 @@ export interface TeamConnection {
     /** What the server called itself in its opening frame. */
     serverName?: string;
     serverVersion?: string;
+    /**
+     * The id the server gave this link session in its opening frame, present only while `ready`.
+     * A reconnect is a new session with a new id, which is how a window tells that whatever it
+     * agreed with the server (the document kernel, see `doc.head`) has to be agreed again.
+     */
+    session?: string;
     /** Why it is not ready, in English, for a log. Absent while it is. */
     detail?: string;
     /**

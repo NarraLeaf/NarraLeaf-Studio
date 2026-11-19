@@ -115,4 +115,148 @@ describe("Service lifecycle", () => {
         expect(service.disposedContexts).toEqual([ctx1]);
         expect(service.getContext()).toBe(ctx2);
     });
+
+    it("finishes teardown before starting the same service in a new workspace", async () => {
+        const disposeStarted = deferred();
+        const allowDispose = deferred();
+        const events: string[] = [];
+        class SlowDisposal extends Service<SlowDisposal> {
+            protected init(ctx: WorkspaceContext): void {
+                events.push(ctx === first ? "init first" : "init second");
+            }
+            public override async dispose(): Promise<void> {
+                events.push("dispose started");
+                disposeStarted.resolve();
+                await allowDispose.promise;
+                events.push("dispose finished");
+            }
+        }
+        const service = new SlowDisposal();
+        const first = createContext([service]);
+        const second = createContext([service]);
+        await Service.initializeAll(first);
+
+        const teardown = Service.disposeAll(first);
+        await disposeStarted.promise;
+        const next = Service.initializeAll(second);
+        await Promise.resolve();
+        allowDispose.resolve();
+        await Promise.all([teardown, next]);
+
+        expect(events).toEqual(["init first", "dispose started", "dispose finished", "init second"]);
+        expect(service.isInitialized(second)).toBe(true);
+        expect(service.getContext()).toBe(second);
+    });
+
+    it("waits for a context switch before tearing down its new workspace", async () => {
+        const disposeStarted = deferred();
+        const allowDispose = deferred();
+        const events: string[] = [];
+        class SlowDisposal extends Service<SlowDisposal> {
+            protected init(ctx: WorkspaceContext): void {
+                events.push(ctx === first ? "init first" : "init second");
+            }
+            public override async dispose(ctx: WorkspaceContext): Promise<void> {
+                events.push(ctx === first ? "dispose first" : "dispose second");
+                if (ctx === first) {
+                    disposeStarted.resolve();
+                    await allowDispose.promise;
+                }
+            }
+        }
+        const service = new SlowDisposal();
+        const first = createContext([service]);
+        const second = createContext([service]);
+        await Service.initializeAll(first);
+
+        const next = Service.initializeAll(second);
+        await disposeStarted.promise;
+        const teardown = Service.disposeAll(second);
+        allowDispose.resolve();
+        await Promise.all([next, teardown]);
+
+        expect(events).toEqual(["init first", "dispose first", "init second", "dispose second"]);
+        expect(service.isInitialized(second)).toBe(false);
+        expect(() => service.getContext()).toThrow();
+    });
+
+    it("disposes a context once even if teardown is requested twice", async () => {
+        const disposeStarted = deferred();
+        const allowDispose = deferred();
+        let disposeCount = 0;
+        class SlowDisposal extends Service<SlowDisposal> {
+            protected init(): void { }
+            public override async dispose(): Promise<void> {
+                disposeCount++;
+                disposeStarted.resolve();
+                await allowDispose.promise;
+            }
+        }
+        const service = new SlowDisposal();
+        const ctx = createContext([service]);
+        await Service.initializeAll(ctx);
+        const first = Service.disposeAll(ctx);
+        await disposeStarted.promise;
+        const second = Service.disposeAll(ctx);
+        allowDispose.resolve();
+        await Promise.all([first, second]);
+        expect(disposeCount).toBe(1);
+        expect(service.isInitialized(ctx)).toBe(false);
+    });
+
+    it("reinitializes the same workspace after an in-flight teardown", async () => {
+        const disposeStarted = deferred();
+        const allowDispose = deferred();
+        let initCount = 0;
+        class SlowDisposal extends Service<SlowDisposal> {
+            protected init(): void { initCount++; }
+            public override async dispose(): Promise<void> {
+                disposeStarted.resolve();
+                await allowDispose.promise;
+            }
+        }
+        const service = new SlowDisposal();
+        const ctx = createContext([service]);
+        await Service.initializeAll(ctx);
+        const teardown = Service.disposeAll(ctx);
+        await disposeStarted.promise;
+        const next = Service.initializeAll(ctx);
+        allowDispose.resolve();
+        await Promise.all([teardown, next]);
+        expect(initCount).toBe(2);
+        expect(service.isInitialized(ctx)).toBe(true);
+    });
+
+    it.each(["normal", "recovery"] as const)("waits for in-flight %s dependents before choosing teardown order", async mode => {
+        const dependentStarted = deferred();
+        const allowDependent = deferred();
+        const order: string[] = [];
+        class Base extends Service<Base> {
+            protected init(): void { }
+            public override dispose(): void { order.push("base"); }
+        }
+        class Dependent extends Service<Dependent> {
+            protected async init(_ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+                await depend([base]);
+                dependentStarted.resolve();
+                await allowDependent.promise;
+            }
+            public override dispose(): void {
+                order.push(base.isInitialized(ctx) ? "dependent" : "dependent after base");
+            }
+        }
+        const base = new Base();
+        const dependent = new Dependent();
+        const ctx = createContext([base, dependent]);
+        const init = mode === "normal"
+            ? Service.initializeAll(ctx)
+            : Service.initializeTolerant(ctx, [dependent, base]);
+        await dependentStarted.promise;
+        const teardown = Service.disposeAll(ctx);
+        allowDependent.resolve();
+        await Promise.all([init, teardown]);
+        expect(order).toEqual(["dependent", "base"]);
+        expect(base.isInitialized(ctx)).toBe(false);
+        expect(dependent.isInitialized(ctx)).toBe(false);
+    });
 });

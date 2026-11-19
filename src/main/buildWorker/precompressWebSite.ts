@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import zlib from "zlib";
 import { promisify } from "util";
+import { forEachInLanes } from "./buildLanes";
 import { countBuildStep } from "./stepProgress";
 
 /**
@@ -82,20 +83,18 @@ export async function precompressWebSite(sourceDir: string, targetDir: string): 
     // of the files this pass has to look at.
     const counted = countBuildStep(candidates.length, "file");
 
-    let cursor = 0;
-    const workers = new Array(Math.min(CONCURRENCY, candidates.length)).fill(null).map(async () => {
-        for (let index = cursor++; index < candidates.length; index = cursor++) {
+    try {
+        await forEachInLanes(candidates, CONCURRENCY, async relativePath => {
             // The count is advanced however this iteration leaves, because the two early exits
             // below are files this pass considered and finished with, not files it skipped.
             try {
-                const relativePath = candidates[index];
                 const source = await fs.readFile(path.join(sourceDir, ...relativePath.split("/")));
                 if (source.length < MIN_PRECOMPRESS_BYTES) {
-                    continue;
+                    return;
                 }
                 const variants = await compressVariants(source);
                 if (variants.length === 0) {
-                    continue;
+                    return;
                 }
                 const destination = path.join(targetDir, ...relativePath.split("/"));
                 await fs.mkdir(path.dirname(destination), { recursive: true });
@@ -108,10 +107,7 @@ export async function precompressWebSite(sourceDir: string, targetDir: string): 
             } finally {
                 counted.advance();
             }
-        }
-    });
-    try {
-        await Promise.all(workers);
+        });
     } finally {
         counted.end();
     }

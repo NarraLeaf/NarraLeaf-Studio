@@ -1,8 +1,4 @@
-/**
- * Pure helpers for a future duplicate/paste workflow (P1: rules + hooks only, no clipboard UI).
- * When copying a subtree, element ids and widgetMain blueprint ids must be regenerated and
- * bindings / blueprintEvent refs remapped consistently.
- */
+/** Allocate new element and private blueprint ids for a copied subtree. */
 
 export type SubtreeDuplicateRemapPlan = {
     /** Old element id in copied subtree → new element id */

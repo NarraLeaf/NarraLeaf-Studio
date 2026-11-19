@@ -807,15 +807,18 @@ async function openLayers(
     }
 
     const found: { file: string; kind: LayerKind }[] = [];
-    // Windows resolves `DLC` and `dlc` to one directory, so probing both spellings
-    // there finds every file twice. The same layer would then be applied twice, and
-    // the second application would look like a change nobody shipped.
+    // Both DLC directory spellings can name the same files on a case-insensitive
+    // volume. File identity also preserves distinct files on a case-sensitive one.
     const seen = new Set<string>();
     for (const kind of layerKinds()) {
         for (const root of roots) {
             for (const directory of kind.directories) {
                 for (const file of await listLayerFiles(path.join(root, directory), kind.matches)) {
-                    const key = file.toLowerCase();
+                    const stats = await fs.stat(file).catch(() => null);
+                    const absolute = path.resolve(file);
+                    const key = stats?.ino
+                        ? `${stats.dev}:${stats.ino}`
+                        : process.platform === "win32" ? absolute.toLowerCase() : absolute;
                     if (seen.has(key)) {
                         continue;
                     }
@@ -843,8 +846,9 @@ async function openLayers(
     const refusedAsTooNew: string[] = [];
     for (const [at, entry] of found.entries()) {
         const label = path.basename(entry.file);
+        let reader: AssetOverlayReader | undefined;
         try {
-            const reader = await openAssetOverlay(binaryPath, entry.file, {
+            reader = await openAssetOverlay(binaryPath, entry.file, {
                 ...(build.verificationKey ? { verificationKey: build.verificationKey } : {}),
             });
             const descriptor = await readLayerDescriptor(reader);
@@ -886,6 +890,9 @@ async function openLayers(
                 at,
             });
         } catch (error) {
+            if (reader) {
+                await reader.close().catch(() => undefined);
+            }
             // The reason is the reader's own wording about how a layer is bound to its build, so a
             // shipped game states the file and stops there.
             const reason = options.explainRefusedPatches

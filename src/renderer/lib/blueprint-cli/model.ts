@@ -342,9 +342,8 @@ export type ProjectVariables = {
  * The project-level variable registry, which is what a `Get Persistent` / `Get Saved` node's id is
  * checked against. Takes the parsed `editor/variables.json` (`{ entries }`), or the entries as a list.
  *
- * Only the registry: the same two scopes can also be declared by a `/save` or `/global` row inside a
- * story document, and reading those means parsing (and migrating) every story in the project. A node
- * pointing at one of those is reported as an unresolved variable here - a warning, never a refusal.
+ * Older story declarations are migrated to the registry when the project opens in Studio. A node
+ * referring to a declaration not yet migrated can be reported as unresolved, as a warning.
  */
 export function projectVariablesOf(
     registry: { entries?: Record<string, VariableRegistryEntry> } | readonly VariableRegistryEntry[] | null | undefined,

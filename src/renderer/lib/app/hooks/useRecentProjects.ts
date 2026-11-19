@@ -25,23 +25,25 @@ export function useRecentProjects(): RecentlyOpenedProject[] {
 
     useEffect(() => {
         let cancelled = false;
+        let receivedChange = false;
+
+        const token = getInterface().app.state.onGlobalStateChanged((change) => {
+            if (change.key === RECENT_PROJECTS_KEY) {
+                receivedChange = true;
+                setRecentProjects(withRecentProjectNames((change.value as RecentlyOpenedProject[] | null) ?? []));
+            }
+        });
 
         void (async () => {
             try {
                 const result = await getInterface().app.state.getGlobalState(RECENT_PROJECTS_KEY);
-                if (!cancelled && result.success) {
+                if (!cancelled && !receivedChange && result.success) {
                     setRecentProjects(withRecentProjectNames(result.data.value ?? []));
                 }
             } catch (error) {
                 console.error("[recent] Failed to load recent projects:", error);
             }
         })();
-
-        const token = getInterface().app.state.onGlobalStateChanged((change) => {
-            if (change.key === RECENT_PROJECTS_KEY) {
-                setRecentProjects(withRecentProjectNames((change.value as RecentlyOpenedProject[] | null) ?? []));
-            }
-        });
 
         return () => {
             cancelled = true;
@@ -114,11 +116,13 @@ export function useRecentProjectIcons(): ReadonlyMap<string, string> {
 
     useEffect(() => {
         let cancelled = false;
+        let generation = 0;
 
         const load = async () => {
+            const ticket = ++generation;
             try {
                 const result = await getInterface().app.recentProjectIcons();
-                if (!cancelled && result.success) {
+                if (!cancelled && ticket === generation && result.success) {
                     setIcons(new Map(result.data.icons.map(
                         entry => [normalizeProjectPath(entry.path), entry.icon],
                     )));

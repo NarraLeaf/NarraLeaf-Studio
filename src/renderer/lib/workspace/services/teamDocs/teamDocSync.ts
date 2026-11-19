@@ -8,6 +8,7 @@ import {
     changesSince,
     contentFor,
     decodeBase64,
+    encodeBase64,
     isAssetContentPath,
     manifestOf,
     type TeamFileBytes,
@@ -51,6 +52,8 @@ export class TeamDocSync {
     private catchingUp: Promise<void> | null = null;
     private online = false;
     private started = false;
+    /** Identifies the start whose state load is still current. */
+    private startGeneration = 0;
     private stopListening: (() => void) | null = null;
     private stopConnection: (() => void) | null = null;
     private nextClient = 0;
@@ -58,6 +61,11 @@ export class TeamDocSync {
     private readonly listeners = new Set<(view: TeamDocView) => void>();
     /** Offline: what this window and the server last agreed on, and the seq it stood at. */
     private offlineBase: TeamDocOfflineBase | null = null;
+    /** Offline story operations and the complete documents they came from, until replay finishes. */
+    private replay: TeamDocReplay | null = null;
+    /** State writes share one order with conflict additions and removals. */
+    private stateQueue: Promise<void> = Promise.resolve();
+    private persistenceBlocked = false;
     /** While true, arriving effects wait in {@link pending}. See {@link holdEffects}. */
     private held = false;
     /** Holds taken while a file is put back from the server; effects wait while any is up. */
@@ -77,6 +85,18 @@ export class TeamDocSync {
     private scanTimer: ReturnType<typeof setTimeout> | null = null;
     private scanInterval: ReturnType<typeof setInterval> | null = null;
     private stopObserving: (() => void) | null = null;
+    /**
+     * The link session the server agreed this window's kernel on, or null. Nothing from the server is
+     * taken and nothing is sent to it without one, and an agreement belongs to one connection: a
+     * reconnect is a new session the server knows nothing about until it is asked again.
+     */
+    private agreed: string | null = null;
+    /** Connecting runs one at a time, so a reconnect during a follow waits for it rather than racing it. */
+    private following: Promise<void> = Promise.resolve();
+    /** An offline base being captured after a connection was found gone mid-edit. */
+    private capturing: Promise<void> | null = null;
+    /** A kernel mismatch already told to the author, so a reconnecting window does not repeat it. */
+    private mismatchTold = false;
 
     public constructor(private readonly ports: TeamDocPorts) {}
 
@@ -100,8 +120,14 @@ export class TeamDocSync {
             return;
         }
         this.started = true;
+        const generation = ++this.startGeneration;
         const held = await this.ports.state.load();
+        if (generation !== this.startGeneration) {
+            return;
+        }
         this.offlineBase = held?.offline ?? null;
+        this.replay = held?.replay ?? null;
+        this.set({ conflicts: (held?.conflicts ?? []).map(loadConflict) });
         this.appliedSeq = held?.seq ?? -1;
         this.known = new Map(Object.entries(held?.files ?? {}));
         this.knownLoaded = held?.files !== undefined;
@@ -114,7 +140,7 @@ export class TeamDocSync {
         }
         this.stopListening = this.ports.listen(payload => this.receive(payload));
         this.stopConnection = this.ports.onConnection(online => {
-            void (online ? this.goOnline() : this.goOffline());
+            void (online ? this.goOnline() : this.goOffline()).catch(error => this.storageFailure(error));
         });
         if (this.ports.isOnline()) {
             await this.goOnline();
@@ -124,6 +150,7 @@ export class TeamDocSync {
     }
 
     public stop(): void {
+        this.startGeneration += 1;
         this.stopListening?.();
         this.stopConnection?.();
         this.stopObserving?.();
@@ -135,6 +162,8 @@ export class TeamDocSync {
         this.scanTimer = null;
         this.scanInterval = null;
         this.ports.documents.install(null);
+        this.online = false;
+        this.agreed = null;
         this.started = false;
     }
 
@@ -156,7 +185,7 @@ export class TeamDocSync {
 
     /** Forget the conflicts reported so far. */
     public dismissConflicts(): void {
-        this.set({ conflicts: [] });
+        void this.updateConflicts(() => []).catch(error => this.storageFailure(error));
     }
 
     /**
@@ -172,24 +201,84 @@ export class TeamDocSync {
             ? await this.sendFile({ path: conflict.path, bytes: conflict.mine }, this.appliedSeq)
             : await this.send({ doc: "story", storyId: conflict.storyId }, conflict.op);
         if (answer.kind === "effect") {
-            this.set({ conflicts: this.view.conflicts.filter((_, at) => at !== index) });
-            return true;
+            try {
+                await this.updateConflicts(conflicts => conflicts.filter(item => item !== conflict));
+                return true;
+            } catch (error) {
+                this.storageFailure(error);
+            }
         }
         return false;
     }
 
     /* -------------------------------------------------------------- connection */
 
-    private async goOnline(): Promise<void> {
-        if (this.online) {
+    private goOnline(): Promise<void> {
+        const run = this.following.then(async () => {
+            try {
+                await this.followOnline();
+            } catch (error) {
+                if (!(error instanceof TeamDocStateError)) throw error;
+                this.storageFailure(error);
+            }
+        });
+        this.following = run.catch(() => undefined);
+        return run;
+    }
+
+    /** Whether a follow that began at `generation` on `link` no longer stands: stopped, switched, or reconnected. */
+    private lost(generation: number, link: string): boolean {
+        return generation !== this.startGeneration || this.agreed !== link || this.ports.link() !== link;
+    }
+
+    private async followOnline(): Promise<void> {
+        const generation = this.startGeneration;
+        if (!this.started) {
             return;
         }
-        const head = await this.ports.call("doc.head", {});
+        if (this.online && this.agreed !== null && this.agreed === this.ports.link()) {
+            return;
+        }
+        if (this.online) {
+            // Agreed on a connection that has since been replaced: what was agreed went with it.
+            await this.goOffline();
+        }
+        await this.capturing;
+        const link = this.ports.link();
+        if (link === null || !this.ports.isOnline()) {
+            await this.goOffline();
+            return;
+        }
+        // **The kernel is agreed before anything is taken or sent.** Two machines applying the same
+        // operation with different code drift apart silently, so a server that does not say it runs
+        // this window's kernel - an older one that says nothing, or one on another version - is
+        // treated as unreachable: edits stay here, kept for replay, until both sides match.
+        const head = await this.ports.call("doc.head", { kernel: this.ports.kernel });
+        if (generation !== this.startGeneration) {
+            return;
+        }
         if (!head.ok) {
+            if (head.problem.code === "refused") this.tellMismatch(undefined, head.problem.detail);
             // Reachable but refusing, or not reachable after all: carry on as offline.
             await this.goOffline();
             return;
         }
+        const theirs = readNumber(head.value, "kernel");
+        if (readBoolean(head.value, "compatible") !== true || theirs !== this.ports.kernel) {
+            this.tellMismatch(theirs);
+            await this.goOffline();
+            return;
+        }
+        if (readText(head.value, "session") !== link || this.ports.link() !== link) {
+            // Agreed on a connection that is not the one there is now (a reconnect while asking):
+            // ask again on the one there is.
+            await this.goOffline();
+            if (this.ports.isOnline() && this.ports.link() !== null && this.ports.link() !== link) void this.goOnline();
+            return;
+        }
+        this.agreed = link;
+        this.mismatchTold = false;
+        this.persistenceBlocked = false;
         this.online = true;
         const seq = readNumber(head.value, "seq") ?? 0;
         const mayEdit = readBoolean(head.value, "mayEdit") ?? true;
@@ -202,52 +291,72 @@ export class TeamDocSync {
         const files = this.ports.files;
         const fileBase = offline?.seq ?? this.appliedSeq;
         let fileChanges: TeamFileChange[] = [];
-        if (files !== undefined && mayEdit && fileBase >= 0) {
-            if (offline?.files !== undefined) {
-                fileChanges = await changesSince(files, new Map(Object.entries(offline.files)), "all");
-            } else if (this.knownLoaded) {
-                fileChanges = await changesSince(files, this.known, "whole");
-            }
-        }
-
-        // Offline edits are taken out of the documents first, so the catch-up applies to the base
-        // the server and this window agreed on.
-        let replay: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> = [];
-        if (offline !== null) {
-            replay = this.offlineOps(offline);
-            this.ports.story.restore(offline.stories);
-            this.appliedSeq = offline.seq;
-        }
-
-        // A window that does not know where it stands - never opened here, or its copy was found
-        // to differ - starts from the last saved version, which holds everything up to its seq.
-        // (A window that does know follows the log from its own seq, which the server keeps whole.)
-        // So does one the server's log no longer reaches back to: it was away longer than the log is
-        // kept, and the last saved version is the nearest point both still have.
-        // Whole files first, against the seq they were based on: one somebody else wrote since comes
-        // back refused, is kept for its author as a conflict, and is put back from the server once
-        // the catch-up is done - nothing that arrives for it meanwhile is applied over the author's
-        // copy.
-        const fileConflicts: TeamDocConflict[] = [];
         const putBack: string[] = [];
-        for (const change of fileChanges) {
-            const answer = await this.sendFile(change, fileBase);
-            if (answer.kind === "refusal" && answer.reason !== "nothing-there") {
-                fileConflicts.push({ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
-                putBack.push(change.path);
-                this.skipThrough.set(change.path, Number.POSITIVE_INFINITY);
+        this.fileHolds += 1;
+        try {
+            if (files !== undefined && mayEdit && fileBase >= 0) {
+                if (offline?.files !== undefined) {
+                    fileChanges = await changesSince(files, new Map(Object.entries(offline.files)), "all");
+                } else if (this.knownLoaded) {
+                    fileChanges = await changesSince(files, this.known, "whole");
+                }
             }
-        }
 
-        if (this.appliedSeq < 0 || this.appliedSeq < prunedThrough) {
-            if (!(await this.adoptBase())) {
-                this.online = false;
-                this.set({ state: "offline" });
-                return;
+            // Keep the complete author documents before restoring the agreed base.
+            if (offline !== null) {
+                if (this.replay === null) {
+                    const stories = this.ports.story.snapshot();
+                    const operations = this.offlineOps(offline, stories);
+                    if (operations.length > 0) {
+                        this.replay = { basedOn: offline.seq, stories, operations };
+                        try {
+                            await this.persist();
+                        } catch (error) {
+                            this.replay = null;
+                            throw error;
+                        }
+                    }
+                }
+                this.ports.story.restore(offline.stories);
+                this.appliedSeq = offline.seq;
             }
+
+            // A refused file is recorded before any server version can replace the author's copy.
+            for (const change of fileChanges) {
+                const answer = await this.sendFile(change, fileBase);
+                if (answer.kind === "refusal" && answer.reason === "unreachable") {
+                    // Not sent at all (the connection went): read again from disk on the next follow.
+                    if (!this.lost(generation, link)) await this.goOffline();
+                    return;
+                }
+                if (answer.kind === "refusal" && answer.reason !== "nothing-there") {
+                    await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+                    putBack.push(change.path);
+                    this.skipThrough.set(change.path, Number.POSITIVE_INFINITY);
+                }
+            }
+
+            // An unknown or pruned seq starts again from the server's saved version. An unknown one
+            // means nothing proves what this copy shares with the server, so it is not diffed: what is
+            // here is recorded where the author can find it first (see keepLocalWork).
+            if (this.appliedSeq < 0 || this.appliedSeq < prunedThrough) {
+                const unknown = this.appliedSeq < 0;
+                if (!(await this.adoptBase(unknown ? { generation, link } : undefined))) {
+                    if (generation !== this.startGeneration) return;
+                    this.online = false;
+                    this.agreed = null;
+                    this.ports.documents.install(null);
+                    this.set({ state: "offline" });
+                    return;
+                }
+            }
+        } finally {
+            this.fileHolds -= 1;
         }
+        if (this.lost(generation, link)) return;
 
         await this.catchUp(seq);
+        if (this.persistenceBlocked || this.lost(generation, link)) return;
         for (const path of putBack) {
             await this.putBack(path);
         }
@@ -257,31 +366,77 @@ export class TeamDocSync {
             this.known = await manifestOf(files, "whole");
             this.knownLoaded = true;
         }
-        this.ports.documents.install(mayEdit ? this.handler : null);
+        while (this.replay !== null && this.replay.operations.length > 0) {
+            const { storyId, op } = this.replay.operations[0]!;
+            const answer = await this.send({ doc: "story", storyId }, op, undefined, this.replay.basedOn);
+            if (answer.kind === "refusal" && answer.reason === "unreachable") {
+                // Not sent: the replay stays as it is, for the next follow.
+                if (!this.lost(generation, link)) await this.goOffline();
+                return;
+            }
+            await this.finishReplayOperation(answer);
+            if (this.persistenceBlocked || this.lost(generation, link)) return;
+        }
+        const priorOffline = this.offlineBase;
+        const priorReplay = this.replay;
         this.offlineBase = null;
-        await this.persist();
+        this.replay = null;
+        try {
+            await this.persist();
+        } catch (error) {
+            this.offlineBase = priorOffline;
+            this.replay = priorReplay;
+            throw error;
+        }
+        if (this.lost(generation, link)) return;
+        this.ports.documents.install(mayEdit ? this.handler : null);
         this.set({ state: "online", seq: this.appliedSeq });
-        if (fileConflicts.length > 0) {
-            this.set({ conflicts: [...this.view.conflicts, ...fileConflicts] });
-        }
+    }
 
-        if (replay.length > 0) {
-            const conflicts: TeamDocConflict[] = [];
-            for (const { storyId, op } of replay) {
-                const answer = await this.send({ doc: "story", storyId }, op, undefined, offline?.seq);
-                if (answer.kind === "refusal") {
-                    conflicts.push({ kind: "story", storyId, op, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
-                }
-            }
-            if (conflicts.length > 0) {
-                this.set({ conflicts: [...this.view.conflicts, ...conflicts] });
-            }
+    private tellMismatch(theirs: number | undefined, detail?: string): void {
+        if (this.mismatchTold) return;
+        this.mismatchTold = true;
+        this.ports.notify({ kind: "kernel-mismatch", ours: this.ports.kernel, ...(theirs === undefined ? {} : { theirs }), ...(detail === undefined ? {} : { detail }) });
+    }
+
+    /**
+     * The connection this window agreed on is gone, found out mid-edit rather than told: stop sending,
+     * and keep what this window and the server agreed so far - the stories at once, before the edit
+     * in hand lands in the copy - so that everything from here is replayed once agreed again.
+     */
+    private dropLink(): Promise<void> {
+        if (this.online || this.agreed !== null) {
+            this.online = false;
+            this.agreed = null;
+            this.ports.documents.install(null);
+            this.set({ state: "offline" });
         }
+        if (this.offlineBase === null && this.appliedSeq >= 0 && this.capturing === null) {
+            const stories = this.ports.story.snapshot();
+            const capturing = (async () => {
+                const full = await this.captureBase();
+                this.offlineBase = { ...full, stories };
+                await this.persist();
+            })();
+            const tracked: Promise<void> = capturing.finally(() => {
+                if (this.capturing === tracked) this.capturing = null;
+            });
+            this.capturing = tracked;
+        }
+        const captured = (this.capturing ?? Promise.resolve()).catch(error => this.storageFailure(error));
+        void captured.then(() => {
+            if (this.started && this.ports.isOnline()) return this.goOnline();
+        }).catch(error => this.storageFailure(error));
+        return captured;
     }
 
     private async goOffline(): Promise<void> {
+        // Only wait when a capture is under way: yielding with none would let an edit land in the copy
+        // before the base below is taken, and an edit inside the base is never replayed.
+        while (this.capturing !== null) await this.capturing.catch(() => undefined);
         const wasOnline = this.online;
         this.online = false;
+        this.agreed = null;
         // Edits go straight into this window's copy from here on.
         this.ports.documents.install(null);
         if (this.offlineBase === null && this.appliedSeq >= 0) {
@@ -325,6 +480,8 @@ export class TeamDocSync {
             seq: this.appliedSeq,
             ...(offline === undefined ? {} : { offline }),
             ...(this.knownLoaded ? { files: Object.fromEntries(this.known) } : {}),
+            ...(this.replay === null ? {} : { replay: this.replay }),
+            ...(this.view.conflicts.length === 0 ? {} : { conflicts: this.view.conflicts.map(storeConflict) }),
         };
     }
 
@@ -332,7 +489,7 @@ export class TeamDocSync {
      * Replace this window's copy with the last saved version, read from the server, and stand at
      * its seq. Read a file a chunk at a time; a version saved halfway through starts it again.
      */
-    private async adoptBase(): Promise<boolean> {
+    private async adoptBase(first?: { generation: number; link: string }): Promise<boolean> {
         for (let attempt = 0; attempt < 3; attempt += 1) {
             const read = await this.readFiles("doc.base", {}, true);
             if (read === null) {
@@ -347,10 +504,18 @@ export class TeamDocSync {
                 if (isWholeFilePath(path)) whole.set(path, bytes);
                 else if (isProjectDocumentPath(path)) documents.set(path, new TextDecoder().decode(bytes));
             }
-            await this.ports.story.adoptFiles(documents);
-            if (!(await this.adoptWholeFiles(whole, read.notes, read.revision))) {
+            // **Everything is read before anything is written over.** A large file that cannot be
+            // fetched leaves this window exactly as it was, rather than with the server's stories and
+            // its own files.
+            const wanted = await this.wantedWholeFiles(whole, read.notes, read.revision);
+            if (wanted === null) {
                 return false;
             }
+            if (first !== undefined && !(await this.keepLocalWork(first.generation, first.link))) {
+                return false;
+            }
+            await this.ports.story.adoptFiles(documents);
+            await this.writeWholeFiles(wanted);
             this.appliedSeq = read.seq;
             this.pending.clear();
             return true;
@@ -359,24 +524,74 @@ export class TeamDocSync {
     }
 
     /**
+     * Before a window that cannot prove what it shares with the server takes the server's version:
+     * settle every save, record what is here in the project's local history (where the author finds
+     * it as any other version), and go on only if nothing changed while that was being recorded and
+     * this follow still stands. A save or a record that fails, a stop, a switch or a reconnect takes
+     * nothing - the copy stays the author's, offline, and the next follow tries again.
+     */
+    private async keepLocalWork(generation: number, link: string): Promise<boolean> {
+        try {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                const before = await this.localPrint();
+                if (this.lost(generation, link)) return false;
+                const kept = await this.ports.local.keep();
+                if (this.lost(generation, link)) return false;
+                const after = await this.localPrint();
+                if (this.lost(generation, link)) return false;
+                if (after === before) {
+                    if (kept.revision !== null) this.ports.notify({ kind: "local-kept", revision: kept.revision });
+                    return true;
+                }
+                // Edited while being recorded: record again, so the version taken over is the one kept.
+            }
+            this.ports.notify({ kind: "local-keep-failed", detail: "the project kept changing while it was being recorded" });
+        } catch (error) {
+            if (!this.lost(generation, link)) {
+                this.ports.notify({ kind: "local-keep-failed", detail: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        return false;
+    }
+
+    /** What this window holds, settled to disk first, as one comparable string. */
+    private async localPrint(): Promise<string> {
+        await this.ports.local.settle();
+        const files = this.ports.files;
+        let manifest: Array<[string, string]> = [];
+        if (files !== undefined) {
+            await files.flush();
+            manifest = [...(await manifestOf(files, "all"))].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+        }
+        return JSON.stringify([this.ports.story.snapshot(), manifest]);
+    }
+
+    /**
      * Bring every whole file to the version's, and remove those it does not have - the server is
      * where the project is, and a window starting from a version holds nothing of its own yet.
      */
-    private async adoptWholeFiles(
+    private async wantedWholeFiles(
         files: ReadonlyMap<string, Uint8Array>,
         notes: readonly TeamFileNote[],
         revision: string | null,
-    ): Promise<boolean> {
-        const port = this.ports.files;
-        if (port === undefined) {
-            return true;
-        }
+    ): Promise<Map<string, Uint8Array> | null> {
         const wanted = new Map(files);
+        if (this.ports.files === undefined) {
+            return wanted;
+        }
         for (const note of notes) {
             if (!isWholeFilePath(note.path)) continue;
             const bytes = await this.noteBytes(note, revision);
-            if (bytes === null) return false;
+            if (bytes === null) return null;
             wanted.set(note.path, bytes);
+        }
+        return wanted;
+    }
+
+    private async writeWholeFiles(wanted: ReadonlyMap<string, Uint8Array>): Promise<void> {
+        const port = this.ports.files;
+        if (port === undefined) {
+            return;
         }
         await port.flush();
         const known = new Map<string, string>();
@@ -399,7 +614,6 @@ export class TeamDocSync {
         this.known = known;
         this.knownLoaded = true;
         if (wrote) await port.reload();
-        return true;
     }
 
     /** The bytes a note stands for: a large file read from the saved version, or one still in transfer. */
@@ -519,7 +733,7 @@ export class TeamDocSync {
         this.catchingUp = (async () => {
             try {
                 for (;;) {
-                    if (this.isHeld()) {
+                    if (this.persistenceBlocked || this.isHeld()) {
                         return;
                     }
                     const page = await this.ports.call("doc.effects", { after: this.appliedSeq });
@@ -557,6 +771,11 @@ export class TeamDocSync {
     }
 
     private receive(payload: unknown): void {
+        // Only on the session this window agreed its kernel on. Anything earlier, or delivered on a
+        // connection since replaced, is read from the log once agreed - the log is the record.
+        if (this.agreed === null || this.agreed !== this.ports.link()) {
+            return;
+        }
         const kind = readText(payload, "kind");
         if (kind === "doc-effect") {
             const effect = readEffect(readRecord(payload, "effect"));
@@ -611,7 +830,7 @@ export class TeamDocSync {
     }
 
     private drain(): void {
-        if (this.isHeld() || this.fileBatch !== null) {
+        if (this.persistenceBlocked || this.isHeld() || this.fileBatch !== null) {
             return;
         }
         let moved = false;
@@ -636,7 +855,7 @@ export class TeamDocSync {
             }
         }
         if (moved) {
-            void this.persist();
+            void this.persist().catch(error => this.storageFailure(error));
             this.set({ seq: this.appliedSeq });
         }
     }
@@ -650,8 +869,8 @@ export class TeamDocSync {
             for (;;) {
                 const next = this.pending.get(this.appliedSeq + 1);
                 if (next === undefined || fileOf(next) === null || this.held) break;
-                this.pending.delete(next.seq);
                 wrote = (await this.applyFile(next)) || wrote;
+                this.pending.delete(next.seq);
                 this.appliedSeq = next.seq;
             }
             if (wrote) await files.reload();
@@ -659,10 +878,10 @@ export class TeamDocSync {
             this.set({ seq: this.appliedSeq });
         });
         this.fileBatch = batch;
-        void batch.finally(() => {
+        void batch.catch(error => this.storageFailure(error)).finally(() => {
             if (this.fileBatch === batch) this.fileBatch = null;
             this.drain();
-            if (this.pending.size > 0 && this.online && !this.isHeld() && this.fileBatch === null) {
+            if (this.pending.size > 0 && this.online && !this.persistenceBlocked && !this.isHeld() && this.fileBatch === null) {
                 void this.catchUp();
             }
         });
@@ -716,7 +935,7 @@ export class TeamDocSync {
             const agreed = this.known.get(path) ?? null;
             if (this.sentFiles.get(path) === (theirs ?? "")) this.sentFiles.delete(path);
             if (mine !== agreed && mine !== theirs && this.sentFiles.get(path) !== mine) {
-                this.addConflicts([{ kind: "file", path, mine: disk, reason: "conflict" }]);
+                await this.addConflicts([{ kind: "file", path, mine: disk, reason: "conflict" }]);
             }
             if (theirs === null) this.known.delete(path);
             else this.known.set(path, theirs);
@@ -807,8 +1026,14 @@ export class TeamDocSync {
         return null;
     }
 
-    private addConflicts(conflicts: TeamDocConflict[]): void {
-        this.set({ conflicts: [...this.view.conflicts, ...conflicts] });
+    private async addConflicts(conflicts: TeamDocConflict[]): Promise<void> {
+        await this.updateConflicts(current => {
+            const next = [...current];
+            for (const conflict of conflicts) {
+                if (!next.some(existing => sameConflict(existing, conflict))) next.push(conflict);
+            }
+            return next;
+        });
     }
 
     /* -------------------------------------------------------------- whole files */
@@ -818,7 +1043,7 @@ export class TeamDocSync {
         if (this.scanTimer !== null) return;
         this.scanTimer = setTimeout(() => {
             this.scanTimer = null;
-            void this.enqueue(() => this.scanWhole());
+            void this.enqueue(() => this.scanWhole()).catch(error => this.storageFailure(error));
         }, SCAN_DELAY_MS);
     }
 
@@ -845,8 +1070,8 @@ export class TeamDocSync {
             if (answer.reason === "unreachable") {
                 return;
             }
-            this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
-            void this.putBack(change.path);
+            await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+            void this.putBack(change.path).catch(error => this.storageFailure(error));
         }
         await this.persist();
     }
@@ -888,7 +1113,7 @@ export class TeamDocSync {
             // A document this window holds differently from the server: the honest repair is a
             // fresh start from the last version, which the next connection makes.
             this.ports.notify({ kind: "diverged", detail: error instanceof Error ? error.message : String(error) });
-            void this.ports.state.save({ seq: -1 });
+            void this.persist(-1).catch(error => this.storageFailure(error));
         }
     }
 
@@ -906,7 +1131,25 @@ export class TeamDocSync {
             this.ports.notify({ kind: "refused", reason: "area", detail: area });
             return true;
         }
+        if (this.agreed === null || this.agreed !== this.ports.link()) {
+            // The connection changed under this window before it was told: the edit is the author's,
+            // made here, and replayed once the new connection has agreed.
+            void this.dropLink();
+            return false;
+        }
         void this.send(document, op, derived).then(answer => {
+            if (answer.kind === "refusal" && answer.reason === "unreachable") {
+                // Never reached the server (the connection went, or the new one has not agreed):
+                // it goes into this window's copy and is replayed, rather than lost.
+                void this.dropLink().then(() => {
+                    try {
+                        this.ports.documents.apply(document, op, derived);
+                    } catch (error) {
+                        this.ports.notify({ kind: "refused", reason: "unreachable", detail: error instanceof Error ? error.message : String(error) });
+                    }
+                });
+                return;
+            }
             if (answer.kind === "refusal") {
                 this.ports.notify({ kind: "refused", reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
             }
@@ -943,8 +1186,7 @@ export class TeamDocSync {
      * What changed in the stories since `base`, as operations: rows and structure by diff, and a
      * story made or removed here as making or removing it.
      */
-    private offlineOps(base: TeamDocOfflineBase): Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> {
-        const now = this.ports.story.snapshot();
+    private offlineOps(base: TeamDocOfflineBase, now: Record<StoryId, StoryDocument>): TeamDocReplay["operations"] {
         const ops: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }> = [];
         for (const [storyId, mine] of Object.entries(now)) {
             const was = base.stories[storyId];
@@ -967,12 +1209,65 @@ export class TeamDocSync {
         return ops;
     }
 
-    private async persist(): Promise<void> {
-        await this.ports.state.save({
-            seq: this.appliedSeq,
+    private snapshotState(conflicts = this.view.conflicts, replay = this.replay, seq = this.appliedSeq): TeamDocState {
+        return {
+            seq,
             ...(this.offlineBase === null ? {} : { offline: this.offlineBase }),
             ...(this.knownLoaded ? { files: Object.fromEntries(this.known) } : {}),
+            ...(replay === null ? {} : { replay }),
+            ...(conflicts.length === 0 ? {} : { conflicts: conflicts.map(storeConflict) }),
+        };
+    }
+
+    private async writeState(state: TeamDocState): Promise<void> {
+        try {
+            await this.ports.state.save(state);
+        } catch (error) {
+            throw new TeamDocStateError(error);
+        }
+    }
+
+    private queueState(task: () => Promise<void>): Promise<void> {
+        const result = this.stateQueue.then(task);
+        this.stateQueue = result.catch(() => undefined);
+        return result;
+    }
+
+    private persist(seq?: number): Promise<void> {
+        return this.queueState(() => this.writeState(this.snapshotState(undefined, undefined, seq)));
+    }
+
+    private updateConflicts(update: (conflicts: TeamDocConflict[]) => TeamDocConflict[]): Promise<void> {
+        return this.queueState(async () => {
+            const conflicts = update(this.view.conflicts);
+            await this.writeState(this.snapshotState(conflicts));
+            this.set({ conflicts });
         });
+    }
+
+    private finishReplayOperation(answer: TeamDocAnswer): Promise<void> {
+        return this.queueState(async () => {
+            const replay = this.replay!;
+            const { storyId, op } = replay.operations[0]!;
+            const next = { ...replay, operations: replay.operations.slice(1) };
+            const conflicts: TeamDocConflict[] = answer.kind === "effect" ? this.view.conflicts : [
+                ...this.view.conflicts,
+                { kind: "story", storyId, op, mine: replay.stories[storyId] ?? null, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) },
+            ];
+            await this.writeState(this.snapshotState(conflicts, next));
+            this.replay = next;
+            if (conflicts !== this.view.conflicts) this.set({ conflicts });
+        });
+    }
+
+    private storageFailure(error: unknown): void {
+        if (!(error instanceof TeamDocStateError)) {
+            console.warn("[TeamDocSync] synchronization failed", error);
+        }
+        this.persistenceBlocked = true;
+        this.online = false;
+        this.ports.documents.install(null);
+        this.set({ state: "offline", mayEdit: false });
     }
 
     private set(patch: Partial<TeamDocView>): void {
@@ -1022,6 +1317,8 @@ export type TeamDocConflict =
         kind: "story";
         storyId: StoryId;
         op: LiveStoryOp | TeamStoryLibraryOp;
+        /** The author's complete story before replay, or null when they removed it. */
+        mine: StoryDocument | null;
         reason: string;
         detail?: string;
     }
@@ -1055,15 +1352,51 @@ export type TeamDocOfflineBase = {
     files?: Record<string, string>;
 };
 
+type TeamDocReplay = {
+    basedOn: number;
+    stories: Record<StoryId, StoryDocument>;
+    operations: Array<{ storyId: StoryId; op: LiveStoryOp | TeamStoryLibraryOp }>;
+};
+
+type StoredTeamDocConflict =
+    | Extract<TeamDocConflict, { kind: "story" }>
+    | (Omit<Extract<TeamDocConflict, { kind: "file" }>, "mine"> & { mine: string | null });
+
 export type TeamDocState = {
     /** The last seq applied here, or -1 when this window's tree is not known to be at any. */
     seq: number;
     offline?: TeamDocOfflineBase;
     /** What this window and the server last agreed each whole file is: its digest, by path. */
     files?: Record<string, string>;
+    /** Story replay work survives interruptions before its conflicts have been recorded. */
+    replay?: TeamDocReplay;
+    /** Unresolved conflicts; file bytes are base64 for the JSON store. */
+    conflicts?: StoredTeamDocConflict[];
 };
 
-export type TeamDocOutcome<T> = { ok: true; value: T } | { ok: false; problem: { detail: string } };
+class TeamDocStateError extends Error {
+    public constructor(public readonly original: unknown) {
+        super("Could not save team document recovery state");
+    }
+}
+
+function storeConflict(conflict: TeamDocConflict): StoredTeamDocConflict {
+    return conflict.kind === "story"
+        ? conflict
+        : { ...conflict, mine: conflict.mine === null ? null : encodeBase64(conflict.mine) };
+}
+
+function loadConflict(conflict: StoredTeamDocConflict): TeamDocConflict {
+    return conflict.kind === "story"
+        ? conflict
+        : { ...conflict, mine: conflict.mine === null ? null : decodeBase64(conflict.mine) };
+}
+
+function sameConflict(left: TeamDocConflict, right: TeamDocConflict): boolean {
+    return JSON.stringify(storeConflict(left)) === JSON.stringify(storeConflict(right));
+}
+
+export type TeamDocOutcome<T> = { ok: true; value: T } | { ok: false; problem: { detail: string; code?: string } };
 
 type TeamDocAnswer = { kind: "effect" } | { kind: "refusal"; reason: string; detail?: string };
 
@@ -1071,12 +1404,29 @@ export type TeamDocNotice =
     | { kind: "refused"; reason: string; detail?: string }
     | { kind: "version-saved"; revision: string; seq: number; label?: string }
     | { kind: "restored"; revision: string; by?: string }
-    | { kind: "diverged"; detail: string };
+    | { kind: "diverged"; detail: string }
+    /** The server does not run this window's kernel (or did not say which it runs): nothing is synced. */
+    | { kind: "kernel-mismatch"; ours: number; theirs?: number; detail?: string }
+    /** The author's copy was recorded in local history before the server's version replaced it. */
+    | { kind: "local-kept"; revision: string }
+    /** It could not be, so the server's version was not taken. */
+    | { kind: "local-keep-failed"; detail: string };
 
 /** Everything {@link TeamDocSync} needs from the world. */
 export type TeamDocPorts = {
     /** This window's instance id, the prefix of every intent id it mints. */
     instance: string;
+    /** The Studio kernel this window applies operations with (`KERNEL_VERSION`), agreed with the server. */
+    kernel: number;
+    /** The link session this window's calls go out on now, or null while there is none. */
+    link(): string | null;
+    /** The author's own copy, before a server version that cannot be diffed against it replaces it. */
+    local: {
+        /** Write every pending edit to disk. Throws when a save fails. */
+        settle(): Promise<void>;
+        /** Record the project as it is in its local history; revision null when it already was. Throws on failure. */
+        keep(): Promise<{ revision: string | null }>;
+    };
     /** Call a `doc.*` method on the project's server; the project id is filled in. */
     call(method: string, params: Record<string, unknown>): Promise<TeamDocOutcome<unknown>>;
     /** Follow the project's `doc` topic. */

@@ -137,7 +137,7 @@ describe("reading a conversation", () => {
                 updatedAt: 2,
                 comments: 300,
             },
-            comments: [{ id: "c1", thread: "t1", createdAt: 1 }],
+            comments: [{ id: "c1", thread: "t1", body: "", createdAt: 1 }],
             cursor: "c1",
         });
 
@@ -147,5 +147,41 @@ describe("reading a conversation", () => {
         expect(read.value.comments).toHaveLength(1);
         expect(read.value.thread.comments).toBe(300);
         expect(read.value.cursor).toBe("c1");
+    });
+
+    it("hands conversation page cursors back unchanged", async () => {
+        answers({ threads: [] });
+        await listThreads("https://server.example", "p1", { limit: 200, before: "thread cursor" });
+        expect(call.mock.calls[0].slice(0, 3)).toEqual([
+            "https://server.example", "threads.list", { project: "p1", limit: 200, before: "thread cursor" },
+        ]);
+        answers({ thread: { id: "t1", project: "p1", anchor: {}, createdAt: 1, updatedAt: 2 }, comments: [] });
+        await getThread("https://server.example", "t1", { limit: 200, after: "comment cursor" });
+        expect(call.mock.calls[1].slice(0, 3)).toEqual([
+            "https://server.example", "threads.get", { thread: "t1", limit: 200, after: "comment cursor" },
+        ]);
+    });
+
+    it("rejects a thread page containing an unreadable entry", async () => {
+        answers({ threads: [{ id: "t1" }] });
+        expect((await listThreads("https://server.example", "p1")).ok).toBe(false);
+    });
+
+    it("rejects a comment page containing an unreadable entry", async () => {
+        answers({
+            thread: { id: "t1", project: "p1", anchor: {}, createdAt: 1, updatedAt: 2 },
+            comments: [{ id: "c1", thread: "t1", createdAt: 1 }],
+        });
+        expect((await getThread("https://server.example", "t1")).ok).toBe(false);
+    });
+
+    it("rejects an unreadable pagination cursor", async () => {
+        answers({ threads: [], cursor: 3 });
+        expect((await listThreads("https://server.example", "p1")).ok).toBe(false);
+        answers({
+            thread: { id: "t1", project: "p1", anchor: {}, createdAt: 1, updatedAt: 2 },
+            comments: [], cursor: 3,
+        });
+        expect((await getThread("https://server.example", "t1")).ok).toBe(false);
     });
 });

@@ -9,8 +9,10 @@ import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/compone
 import {
     DEFAULT_OPAQUE_BACKGROUND,
     MAX_ICON_INSET,
+    PROJECT_ICON_OUTPUTS,
     PROJECT_ICON_TARGETS,
     outputsForTarget,
+    resolveIconSource,
     type ProjectIconOutputId,
     type ProjectIconSet,
     type ProjectIconSpec,
@@ -90,24 +92,8 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
         urlsRef.current = [];
     }, []);
 
-    /**
-     * Bake, persist whatever moved, and reload the previews. Called on open as
-     * well as after every edit: an up-to-date project performs reads only, so
-     * the common case leaves the working tree untouched.
-     *
-     * "Reads only" is the common case, not the guarantee - the bake persists
-     * whatever moved - so while frozen it loads the previews and skips both the
-     * bake and the write. Same deferral as the character avatars; the effect
-     * below re-runs on thaw because `frozen` is one of its inputs.
-     */
-    const bakeAndLoad = useCallback(async (edit?: (set: ProjectIconSet) => ProjectIconSet) => {
-        let persisted = projectService.getProjectIconSet();
-        if (isDeferredWriteAllowed(freeze.frozen)) {
-            // The edit applies to the set as it stands when this bake's turn comes, not as it stood
-            // when the control was touched - see `enqueue`.
-            const report = await bakeProjectIcons(projectService, edit ? edit(persisted) : persisted);
-            persisted = await projectService.updateProjectIconSet(() => report.set);
-        }
+    /** Load previews for the committed icon set. */
+    const showIconSet = useCallback(async (persisted: ProjectIconSet) => {
         setSet(persisted);
         onConfigChange(projectService.getProjectConfig());
         if (!mounted.current) {
@@ -116,23 +102,44 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
             return;
         }
 
-        releaseUrls();
         const loaded: Partial<Record<ProjectIconOutputId | "master", string>> = {};
-        if (persisted.master) {
-            const url = await toObjectUrl(projectService, persisted.master.path, persisted.master.mediaType);
-            if (url) {
-                loaded.master = url;
+        try {
+            if (persisted.master) {
+                const url = await toObjectUrl(projectService, persisted.master.path, persisted.master.mediaType);
+                if (url) {
+                    loaded.master = url;
+                }
             }
-        }
-        for (const [id, bake] of Object.entries(persisted.baked)) {
-            const url = await toObjectUrl(projectService, bake.path, "image/png");
-            if (url) {
-                loaded[id as ProjectIconOutputId] = url;
+            for (const [id, bake] of Object.entries(persisted.baked)) {
+                const url = await toObjectUrl(projectService, bake.path, "image/png");
+                if (url) {
+                    loaded[id as ProjectIconOutputId] = url;
+                }
             }
+        } catch (error) {
+            Object.values(loaded).forEach(url => { if (url) URL.revokeObjectURL(url); });
+            throw error;
         }
-        urlsRef.current = Object.values(loaded).filter((url): url is string => !!url);
+        const urls = Object.values(loaded).filter((url): url is string => !!url);
+        if (!mounted.current) {
+            urls.forEach(url => URL.revokeObjectURL(url));
+            return;
+        }
+        releaseUrls();
+        urlsRef.current = urls;
         setPreviews(loaded);
-    }, [freeze.frozen, onConfigChange, projectService, releaseUrls]);
+    }, [onConfigChange, projectService, releaseUrls]);
+
+    /** Bake on open and after edits; a frozen workspace shows the committed previews. */
+    const bakeAndLoad = useCallback(async (edit?: (set: ProjectIconSet) => ProjectIconSet) => {
+        let persisted = projectService.getProjectIconSet();
+        if (isDeferredWriteAllowed(freeze.frozen)) {
+            // The edit applies to the set as it stands when this bake's turn comes.
+            const report = await bakeProjectIcons(projectService, edit ? edit(persisted) : persisted);
+            persisted = await projectService.updateProjectIconSet(() => report.set);
+        }
+        await showIconSet(persisted);
+    }, [freeze.frozen, projectService, showIconSet]);
 
     /**
      * Run one icon operation after the ones before it.
@@ -180,14 +187,18 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
     }, [refresh, releaseUrls]);
 
     const importInto = useCallback((slot: "master" | ProjectIconTarget) => enqueue(async () => {
-        const imported = await projectService.importProjectIconSource(slot);
-        if (!imported) {
-            return;
-        }
-        await bakeAndLoad(current => (slot === "master"
-            ? { ...current, master: imported.source }
-            : withSpec(current, slot, { override: imported.source })));
-    }), [bakeAndLoad, enqueue, projectService]);
+        const persisted = await projectService.importProjectIconAndBake(slot, async (current, source, io) => {
+            const next = slot === "master"
+                ? { ...current, master: source }
+                : withSpec(current, slot, { override: source });
+            const report = await bakeProjectIcons(io, next);
+            const failed = PROJECT_ICON_OUTPUTS.some(output => report.unreadable.includes(output.id)
+                && resolveIconSource(next, output.target)?.path === source.path);
+            if (failed) throw new Error("Could not bake the imported project icon");
+            return report.set;
+        });
+        if (persisted) await showIconSet(persisted);
+    }), [enqueue, projectService, showIconSet]);
 
     /** Show a value on a target's controls without committing it - a drag or a picker in progress. */
     const draftSpec = useCallback((target: ProjectIconTarget, patch: Partial<ProjectIconSpec>) => {

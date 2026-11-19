@@ -102,6 +102,13 @@ export function StoryScenePreviewPane(props: {
             ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
             : null;
     };
+    const handleStagePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const press = pressRef.current;
+        if (press && press.pointerId === event.pointerId
+            && (Math.abs(event.clientX - press.x) >= STAGE_CLICK_SLOP_PX || Math.abs(event.clientY - press.y) >= STAGE_CLICK_SLOP_PX)) {
+            pressRef.current = null;
+        }
+    };
     // Only a press that went down on the stage and came up near where it went down. A window dragged
     // by its header or an edge and let go over the stage never went down here.
     const handleStagePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -212,8 +219,10 @@ export function StoryScenePreviewPane(props: {
                 style={stageAspectRatio ? { aspectRatio: stageAspectRatio } : undefined}
                 data-story-preview-stage=""
                 onPointerDown={handleStagePointerDown}
+                onPointerMove={handleStagePointerMove}
                 onPointerUp={handleStagePointerUp}
                 onPointerCancel={handleStagePointerCancel}
+                onPointerLeave={handleStagePointerCancel}
             >
                 {/* Double-buffered stage: array order is stacking order. During a rebuild the
                     incoming session paints beneath the held frame; the controller unmounts the

@@ -135,4 +135,44 @@ describe("a script on a plugin's widget, as the compiler sees it", () => {
         // Still an element of the page by id, which is what `ctx.host.widget.*` takes.
         expect(rendered).toContain("\"ghost\"");
     });
+
+    it("keeps authored names inside comments in the generated declarations", () => {
+        const diagnostics = compile({
+            ".narraleaf/script.d.ts": SCRIPT_API_DECLARATIONS,
+            ".narraleaf/project.d.ts": renderProjectDeclarations({
+                ...FACTS,
+                surfaces: [{ id: "title", name: "Title */ Name", elements: [
+                    { id: "start", name: "Start */ Name", type: "nl.button" },
+                ] }],
+                pluginWidgets: [{ ...FACTS.pluginWidgets![0], displayName: "Rating */ Name" }],
+            }),
+            "script.ts": 'import type { TitleNameStartNameCtx } from "@narraleaf/script";\nexport type Context = TitleNameStartNameCtx;',
+        });
+        expect(diagnostics).toEqual([]);
+    }, 60_000);
+
+    it("gives repeated names their own correctly typed context aliases", () => {
+        const diagnostics = compile({
+            ".narraleaf/script.d.ts": SCRIPT_API_DECLARATIONS,
+            ".narraleaf/project.d.ts": renderProjectDeclarations({
+                ...FACTS,
+                surfaces: [{ id: "title", name: "Title", elements: [
+                    { id: "button", name: "Start", type: "nl.button" },
+                    { id: "slider", name: "Start", type: "nl.slider" },
+                ] }],
+                components: [{ id: "component", name: "Title", elements: [
+                    { id: "text", name: "Start", type: "nl.text" },
+                ] }],
+            }),
+            "script.ts": `
+                import type { TitleStartCtx, TitleStart2Ctx, Title2StartCtx, WidgetCtx, ComponentWidgetCtx } from "@narraleaf/script";
+                type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+                type Assert<T extends true> = T;
+                export type Button = Assert<Equal<TitleStartCtx, WidgetCtx<"nl.button">>>;
+                export type Slider = Assert<Equal<TitleStart2Ctx, WidgetCtx<"nl.slider">>>;
+                export type Text = Assert<Equal<Title2StartCtx, ComponentWidgetCtx<"nl.text">>>;
+            `,
+        });
+        expect(diagnostics).toEqual([]);
+    }, 60_000);
 });
