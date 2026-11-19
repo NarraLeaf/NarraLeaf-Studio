@@ -251,6 +251,7 @@ export function TeamHistoryRail({
         return (
             <aside
                 data-workspace-team-history="collapsed"
+                data-help-topic="teamProject"
                 className="shrink-0 flex flex-col items-center border-r border-edge bg-surface py-2 gap-2"
                 style={{ width: teamHistoryWidth(true, true) }}
             >
@@ -269,6 +270,7 @@ export function TeamHistoryRail({
     return (
         <aside
             data-workspace-team-history
+            data-help-topic="teamProject"
             className="shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden"
             style={{ width: teamHistoryWidth(false, previewing !== null) }}
         >

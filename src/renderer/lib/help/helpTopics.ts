@@ -43,6 +43,7 @@ export const HELP_TOPIC_IDS = [
     "search",
     "undo",
     "studioSettings",
+    "agents",
     "storyScene",
     "storyCommands",
     "storyVariables",
@@ -98,6 +99,7 @@ export const HELP_TOPIC_IDS = [
     "versionRestore",
     "versionConflicts",
     "versionServer",
+    "teamProject",
     "freeze",
     "build",
     "saveLocation",
@@ -221,7 +223,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "studioSettings",
         section: "start",
         clip: true,
-        related: ["keyboard", "plugins"],
+        related: ["keyboard", "plugins", "agents"],
+    },
+    {
+        id: "agents",
+        section: "start",
+        related: ["studioSettings", "undo", "runModes"],
     },
 
     // --- Story ----------------------------------------------------------------
@@ -562,7 +569,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "versionControl",
         section: "version",
         clip: true,
-        related: ["versionChanges", "versionViewing", "versionRestore", "versionServer"],
+        related: ["versionChanges", "versionViewing", "versionRestore", "versionServer", "teamProject"],
     },
     {
         id: "versionChanges",
@@ -582,12 +589,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "versionConflicts",
         section: "version",
-        related: ["versionServer", "versionChanges", "freeze"],
+        related: ["versionServer", "versionChanges", "freeze", "teamProject"],
     },
     {
         id: "versionServer",
         section: "version",
-        related: ["versionControl", "versionConflicts", "newProject"],
+        related: ["versionControl", "versionConflicts", "newProject", "teamProject"],
+    },
+    {
+        id: "teamProject",
+        section: "version",
+        related: ["versionServer", "versionControl", "newProject"],
     },
     {
         id: "freeze",

@@ -172,7 +172,7 @@ export function AgentAccessPanel() {
                 : t("settings.agent.portHint");
 
     return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1" data-help-topic="agents">
             {/* A development launch decides both from its flags; the switch and the port show them and hold still. */}
             <Row label={t("settings.agent.enable")} description={t(settings.setByLaunch ? "settings.agent.enableSetByLaunch" : "settings.agent.enableHint")}>
                 <Switch

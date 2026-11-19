@@ -146,7 +146,12 @@ export const help = {
                 + "- A project cloned from a server stays connected to it, and the local copy is editable.\n"
                 + "- The Empty template holds the project structure only. The Skeleton template is a short story "
                 + "that runs as delivered: three scenes, one choice, and splash, title, extra, save, load, config "
-                + "and backlog screens with their blueprints already wired.",
+                + "and backlog screens with their blueprints already wired.\n"
+                + "- A template with a sample lists it under Sample content. Unticked parts are left out of the "
+                + "new project; the screens always come in.\n"
+                + "- The launcher also lists the team projects on a signed-in Team server, in the project list or "
+                + "on the Team page as set in Settings. One that is not on this machine yet is cloned from its "
+                + "row.",
         },
         undo: {
             title: "Undo and redo",
@@ -169,7 +174,29 @@ export const help = {
                 + "- Language, theme, editor text and every shortcut are set here.\n"
                 + "- Reset returns one setting, or all of them, to its default value.\n"
                 + "- Cached files can be listed and cleared. Cleared files are rebuilt when they are next needed.\n"
-                + "- Settings can be exported to a file and imported on another machine.",
+                + "- Settings can be exported to a file and imported on another machine. Signed in to Team, they "
+                + "can also be backed up to the server and restored on another computer.",
+        },
+        agents: {
+            title: "AI agents",
+            body:
+                "Studio can serve an MCP endpoint on this computer so that an AI agent, such as Claude Code or "
+                + "opencode, edits the open project directly and its changes appear in the editors at once. It is "
+                + "off until Allow agents to connect is switched on under Agent access in Settings.\n"
+                + "\n"
+                + "- With Allow agents to change projects off, an agent can read projects and every change it "
+                + "tries is refused.\n"
+                + "- Each change an agent makes is one undo step.\n"
+                + "- While an agent edits the story or the interface, that editor is read-only for the author. "
+                + "Read-write, on the notice at the top of the editor, switches it back. The lock lifts after "
+                + "five minutes without a call from the agent.\n"
+                + "- An agent imports files from inside the project. Another folder needs approval, unless full "
+                + "access is allowed.\n"
+                + "- An agent can play-test in Dev Mode. Running the game meanwhile hands Dev Mode back to the "
+                + "author and pauses the agent.\n"
+                + "- The Agent menu pauses and resumes the agent, and Agent log lists its calls.\n"
+                + "- The Agent Skill describes NarraLeaf projects to an agent. It is installed or exported on the "
+                + "same settings page.",
         },
         storyScene: {
             title: "Scenes and rows",
@@ -519,7 +546,11 @@ export const help = {
                 "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
-                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.\n"
+                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime "
+                + "shows the Default dialog avatar from its properties.\n"
+                + "- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a "
+                + "detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one "
+                + "portrait. The framing stays adjustable.\n"
                 + "- A character can speak without being on stage.",
         },
         appearances: {
@@ -1040,7 +1071,8 @@ export const help = {
                 + "workspace closes, before a build and before a restore.\n"
                 + "\n"
                 + "- Submitting a version appends to the list. It never replaces or removes an existing version.\n"
-                + "- Changes are not detected automatically. Run a check to list them.",
+                + "- Changes are not detected automatically. Run a check to list them.\n"
+                + "- A team project keeps its history on the Team server instead, and none of this applies to it.",
         },
         versionChanges: {
             title: "Changes since the last version",
@@ -1059,27 +1091,52 @@ export const help = {
                 + "side to keep. The project stays frozen until every conflict has an answer.\n"
                 + "\n"
                 + "- Both sides are shown side by side, and one side is kept per item.\n"
-                + "- Everything that merged automatically is already in place. Only the parts that "
-                + "could not be merged require an answer.\n"
+                + "- Everything that merged automatically is already in place. Only the parts that could not be "
+                + "merged require an answer.\n"
                 + "- Finishing the merge submits a version, and the result is stored in the history like any "
-                + "other.",
+                + "other.\n"
+                + "- A team project has no merge. Offline edits the server could not apply are listed in its "
+                + "version history instead.",
         },
         versionServer: {
             title: "Working with a server",
             body:
-                "A project can be connected to a version control server so that several people can work on it. "
-                + "Nothing is sent or fetched except by an explicit action.\n"
+                "A project can be connected to a version control server and exchange versions with it. Nothing "
+                + "is sent or fetched except by an explicit action.\n"
                 + "\n"
                 + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
                 + "- When both sides have new versions, Get first and Send afterwards.\n"
-                + "- Checking the current state contacts the server.\n"
-                + "- The server, and the account versions are recorded under, are set from NarraLeaf Team "
-                + "in the bottom-left corner of the window.\n"
-                + "- While a team project is open, its server cannot be changed or signed out of. Once it is closed, "
-                + "convert it to a personal project from the launcher, or sign out of the server in Settings.\n"
-                + "- After signing out of a server, the team projects that use it cannot be opened; they can only be "
-                + "deleted or converted to personal projects.",
+                + "- The server, and the account versions are recorded under, are set in NarraLeaf Team, opened "
+                + "from the bottom-left corner of the window or from Manage Team in the title bar's account "
+                + "menu.\n"
+                + "- On a Team server that supports realtime collaboration, a project is synced while it is "
+                + "edited and has no Send or Get.\n"
+                + "- While a team project is open, its server cannot be changed or signed out of. Once it is "
+                + "closed, convert it to a personal project from the launcher, or sign out of the server in "
+                + "Settings.\n"
+                + "- After signing out of a server, the team projects that use it cannot be opened; they can only "
+                + "be deleted or converted to personal projects.",
+        },
+        teamProject: {
+            title: "Team projects",
+            body:
+                "A project on a Team server that supports realtime collaboration is a team project. Each edit "
+                + "is sent to the server as it is made, and everyone with the project open sees it.\n"
+                + "\n"
+                + "- Version history is in the account menu in the title bar. The server saves a version when the "
+                + "project is idle, and Save version marks a point by hand.\n"
+                + "- View opens a saved version without changing anything. Compare with now lists what changed "
+                + "since it.\n"
+                + "- Restore applies an earlier version for everyone. It is saved as a new version and can be "
+                + "undone the same way.\n"
+                + "- Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be "
+                + "applied are listed in the version history, and each one can be applied by choice.\n"
+                + "- The project's owners decide which parts each member may edit. A read-only role edits "
+                + "nothing.\n"
+                + "- Convert to personal project, in the launcher, keeps a copy consistent with the server. "
+                + "Reconnect to the team project later sends the changes back and lists anything the team also "
+                + "changed to choose from.",
         },
         versionViewing: {
             title: "Viewing an old version",
@@ -1293,7 +1350,8 @@ export const help = {
                 + "- Web, Android and iOS builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "
                 + "game is still possible.\n"
-                + "- The other switch on this page decides whether the game may use the network.",
+                + "- Whether the game may use the network is set by Network policy, in the same group of project "
+                + "settings.",
         },
         screenEffects: {
             title: "Screen effect frame rate",
