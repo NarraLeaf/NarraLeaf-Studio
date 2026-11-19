@@ -67,6 +67,8 @@ The rail on the left switches the side panel, among them story, characters, sear
 - 位置必须是空文件夹；尚不存在的文件夹在创建项目时一并创建
 - 从服务器克隆的项目保持与该服务器的连接，本地副本可正常编辑
 - 模板「空白」只有项目结构；模板「骨架」是一个可直接运行的短故事，包含三个场景、一次分支选择，以及启动画面、标题、鉴赏、存档、读档、设置、记录七个界面，蓝图均已配置
+- 带示例的模板在「示例内容」中列出示例的各部分；未勾选的部分不会放进新项目，界面始终保留
+- 启动器也列出已登录 Team 服务器上的团队项目，按设置显示在项目列表或 Team 页中；尚未在本机的项目从其所在行克隆
 
 The launcher adds a project three ways: New project, Import .nlspkg, and Clone from a server.
 
@@ -74,6 +76,8 @@ The launcher adds a project three ways: New project, Import .nlspkg, and Clone f
 - The location must be an empty folder. A folder that does not exist yet is created with the project.
 - A project cloned from a server stays connected to it, and the local copy is editable.
 - The Empty template holds the project structure only. The Skeleton template is a short story that runs as delivered: three scenes, one choice, and splash, title, extra, save, load, config and backlog screens with their blueprints already wired.
+- A template with a sample lists it under Sample content. Unticked parts are left out of the new project; the screens always come in.
+- The launcher also lists the team projects on a signed-in Team server, in the project list or on the Team page as set in Settings. One that is not on this machine yet is cloned from its row.
 
 相关主题 · Related：工作区布局 · Workspace layout、与服务器协作 · Working with a server
 
@@ -195,16 +199,40 @@ Undo reverses the last change, in the editor that made it. The editor with focus
 - 界面语言、主题、编辑器文字和全部快捷键都在这里设置
 - 还原将单项或全部设置恢复为默认值
 - 缓存文件可以列出并清除，清除的部分在下次需要时重新生成
-- 设置可以导出为文件，并在其他设备上导入
+- 设置可以导出为文件，并在其他设备上导入；登录 Team 后，也可以备份到服务器，在其他电脑上恢复
 
 Settings belong to Studio on this machine, not to a project. Opening another project leaves them unchanged, and a project given to someone else does not carry them.
 
 - Language, theme, editor text and every shortcut are set here.
 - Reset returns one setting, or all of them, to its default value.
 - Cached files can be listed and cleared. Cleared files are rebuilt when they are next needed.
-- Settings can be exported to a file and imported on another machine.
+- Settings can be exported to a file and imported on another machine. Signed in to Team, they can also be backed up to the server and restored on another computer.
 
-相关主题 · Related：键盘与鼠标 · Keyboard and Mouse、插件 · Plugins
+相关主题 · Related：键盘与鼠标 · Keyboard and Mouse、插件 · Plugins、AI Agent · AI agents
+
+### AI Agent · AI agents
+
+Studio 可以在本机提供 MCP 端点，让 Claude Code、opencode 等 AI Agent 直接修改打开的项目，修改即时显示在编辑器中；该功能默认关闭，在设置的「Agent 接入」中打开「允许 Agent 连接」后启用
+
+- 「允许 Agent 修改项目」关闭时，Agent 只能读取项目，尝试的修改一律被拒绝
+- Agent 的每次修改是一步撤销
+- Agent 编辑故事或界面时，该编辑器对作者只读；编辑器顶部提示中的「改为读写」可恢复读写；Agent 五分钟没有调用后锁定自动解除
+- Agent 可以导入项目内的文件；其他文件夹需要批准，允许完全访问时除外
+- Agent 可以在开发模式中试玩；此时运行游戏会把开发模式交还给作者，并暂停 Agent
+- 「Agent」菜单可暂停和恢复 Agent，「Agent 日志」列出它的调用
+- Agent Skill 向 Agent 说明 NarraLeaf 项目，在同一设置页中安装或导出
+
+Studio can serve an MCP endpoint on this computer so that an AI agent, such as Claude Code or opencode, edits the open project directly and its changes appear in the editors at once. It is off until Allow agents to connect is switched on under Agent access in Settings.
+
+- With Allow agents to change projects off, an agent can read projects and every change it tries is refused.
+- Each change an agent makes is one undo step.
+- While an agent edits the story or the interface, that editor is read-only for the author. Read-write, on the notice at the top of the editor, switches it back. The lock lifts after five minutes without a call from the agent.
+- An agent imports files from inside the project. Another folder needs approval, unless full access is allowed.
+- An agent can play-test in Dev Mode. Running the game meanwhile hands Dev Mode back to the author and pauses the agent.
+- The Agent menu pauses and resumes the agent, and Agent log lists its calls.
+- The Agent Skill describes NarraLeaf projects to an agent. It is installed or exported on the same settings page.
+
+相关主题 · Related：Studio 设置 · Studio settings、撤销 · Undo and redo、运行游戏 · Running the game
 
 ## 故事 · Story
 
@@ -749,11 +777,13 @@ A build stops while any such file remains in the project, and lists them in the 
 角色包含名称、颜色和一组外观；外观是角色在舞台上的形象，故事行按名称在外观之间切换
 
 - 对白旁的头像由立绘生成；由运行时绘制的角色显示角色属性中的「默认对白头像」
+- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；取景之后仍可调整
 - 角色不在舞台上时也可以发言
 
 A character has a name, a color and a set of appearances. An appearance is the character's form on stage, and story rows switch between appearances by name.
 
 - The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.
+- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. The framing stays adjustable.
 - A character can speak without being on stage.
 
 相关主题 · Related：角色外观 · Character appearances、资产 · Assets、场景与行 · Scenes and rows
@@ -1440,13 +1470,15 @@ When part of a project cannot be read, Studio offers to open the window read-onl
 
 - 提交版本只向列表追加，不替换也不删除已有版本
 - 变更不会自动检测，执行一次检查即可列出
+- 团队项目的历史由 Team 服务器保存，以上内容不适用于团队项目
 
 A version is a point that can be returned to, and history is kept inside the project folder. Submitting creates a version, and Studio also records checkpoints of its own: at the interval set in Settings, every 15 minutes by default and only when something changed, and before the workspace closes, before a build and before a restore.
 
 - Submitting a version appends to the list. It never replaces or removes an existing version.
 - Changes are not detected automatically. Run a check to list them.
+- A team project keeps its history on the Team server instead, and none of this applies to it.
 
-相关主题 · Related：改动内容 · Changes since the last version、查看历史版本 · Viewing an old version、恢复到某个版本 · Restoring a version、与服务器协作 · Working with a server
+相关主题 · Related：改动内容 · Changes since the last version、查看历史版本 · Viewing an old version、恢复到某个版本 · Restoring a version、与服务器协作 · Working with a server、团队项目 · Team projects
 
 ### 改动内容 · Changes since the last version
 
@@ -1499,38 +1531,62 @@ Restoring replaces the files in the project with that version's contents. It is 
 - 两边并排显示，逐条选择保留其中一边
 - 可以自动合并的部分已经就位，只有无法自动合并的部分需要选择
 - 完成合并会提交一个版本，结果与其他版本一样保存在历史中
+- 团队项目没有合并；服务器未能应用的离线修改改为列在该项目的历史版本中
 
 When the same part of a file changed locally and on the server, the merge stops and asks which side to keep. The project stays frozen until every conflict has an answer.
 
 - Both sides are shown side by side, and one side is kept per item.
 - Everything that merged automatically is already in place. Only the parts that could not be merged require an answer.
 - Finishing the merge submits a version, and the result is stored in the history like any other.
+- A team project has no merge. Offline edits the server could not apply are listed in its version history instead.
 
-相关主题 · Related：与服务器协作 · Working with a server、改动内容 · Changes since the last version、冻结的项目 · Frozen projects
+相关主题 · Related：与服务器协作 · Working with a server、改动内容 · Changes since the last version、冻结的项目 · Frozen projects、团队项目 · Team projects
 
 ### 与服务器协作 · Working with a server
 
-项目可以连接到版本控制服务器，供多人协作；数据的发送和获取都由手动操作触发
+项目可以连接到版本控制服务器，与之交换版本；数据的发送和获取都由手动操作触发
 
 - 发送把已提交的版本上传到服务器
 - 获取把服务器上的版本下载下来，并合并到本地
 - 两边都有新版本时，先获取，再发送
-- 检查当前状态需要访问服务器
-- 服务器与版本记录使用的账号，在窗口左下角的 NarraLeaf Team 中设置
-- 已连接服务器的团队项目打开时，不能更换服务器或退出登录；关闭项目后，可在启动器中将其转为个人项目，或在设置中退出该服务器的登录
+- 服务器与版本记录使用的账号在 NarraLeaf Team 中设置，从窗口左下角或标题栏账号菜单中的「管理 Team」打开
+- 在支持实时协作的 Team 服务器上，项目在编辑时即同步，没有发送和获取
+- 团队项目打开时，不能更换服务器或退出登录；关闭项目后，可在启动器中将其转为个人项目，或在设置中退出该服务器的登录
 - 退出某服务器的登录后，使用它的团队项目无法打开，只能删除或转为个人项目
 
-A project can be connected to a version control server so that several people can work on it. Nothing is sent or fetched except by an explicit action.
+A project can be connected to a version control server and exchange versions with it. Nothing is sent or fetched except by an explicit action.
 
 - Send uploads submitted versions to the server.
 - Get downloads the versions on the server and merges them into the local project.
 - When both sides have new versions, Get first and Send afterwards.
-- Checking the current state contacts the server.
-- The server, and the account versions are recorded under, are set from NarraLeaf Team in the bottom-left corner of the window.
+- The server, and the account versions are recorded under, are set in NarraLeaf Team, opened from the bottom-left corner of the window or from Manage Team in the title bar's account menu.
+- On a Team server that supports realtime collaboration, a project is synced while it is edited and has no Send or Get.
 - While a team project is open, its server cannot be changed or signed out of. Once it is closed, convert it to a personal project from the launcher, or sign out of the server in Settings.
 - After signing out of a server, the team projects that use it cannot be opened; they can only be deleted or converted to personal projects.
 
-相关主题 · Related：版本控制 · Version control、合并冲突 · Merge conflicts、添加项目 · Adding a project
+相关主题 · Related：版本控制 · Version control、合并冲突 · Merge conflicts、添加项目 · Adding a project、团队项目 · Team projects
+
+### 团队项目 · Team projects
+
+连接到支持实时协作的 Team 服务器的项目是团队项目；每次编辑都即时发送到服务器，打开该项目的所有人都能看到
+
+- 「历史版本」在标题栏的账号菜单中；项目空闲时服务器自动保存版本，「保存版本」可手动标记一个节点
+- 「查看」打开已保存的版本，不做任何修改；「与当前对比」列出此后的变更
+- 「恢复」为所有人恢复到较早的版本；恢复本身保存为新版本，可用同样的方式撤回
+- 离线时，修改保存在本机，重新连接后发送；未能应用的修改列在历史版本中，可逐条选择应用
+- 项目所有者决定每位成员可以编辑的部分；只读角色不能编辑
+- 启动器中的「转为个人项目」保留一份与服务器一致的副本；之后「重新连接到团队项目」把修改发回，团队同时改动的部分列出供选择
+
+A project on a Team server that supports realtime collaboration is a team project. Each edit is sent to the server as it is made, and everyone with the project open sees it.
+
+- Version history is in the account menu in the title bar. The server saves a version when the project is idle, and Save version marks a point by hand.
+- View opens a saved version without changing anything. Compare with now lists what changed since it.
+- Restore applies an earlier version for everyone. It is saved as a new version and can be undone the same way.
+- Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be applied are listed in the version history, and each one can be applied by choice.
+- The project's owners decide which parts each member may edit. A read-only role edits nothing.
+- Convert to personal project, in the launcher, keeps a copy consistent with the server. Reconnect to the team project later sends the changes back and lists anything the team also changed to choose from.
+
+相关主题 · Related：与服务器协作 · Working with a server、版本控制 · Version control、添加项目 · Adding a project
 
 ### 冻结的项目 · Frozen projects
 
@@ -1750,13 +1806,13 @@ A signature states where a build came from. An unsigned build runs, but the firs
 
 - Web、Android 与 iOS 构建始终不启用资产保护
 - 资产保护阻止用常规工具打开文件；从运行中的游戏读取仍然可行
-- 本页的另一个开关决定游戏是否可以使用网络
+- 游戏能否使用网络由同一组项目设置中的「网络策略」决定
 
 With asset protection enabled, the images, audio, story text and plugin code inside a packaged game are encrypted. The player's saves are not. Dev Mode is unaffected.
 
 - Web, Android and iOS builds always ship without it.
 - It prevents the files from being opened with ordinary tools. Reading them from the running game is still possible.
-- The other switch on this page decides whether the game may use the network.
+- Whether the game may use the network is set by Network policy, in the same group of project settings.
 
 相关主题 · Related：构建 · Builds、减小下载体积 · Reducing download size、插件 · Plugins、网络请求 · Network requests
 
