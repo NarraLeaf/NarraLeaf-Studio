@@ -110,6 +110,37 @@ emphasis dots, an inline pause or variable, all set in Studio - prints as a `»`
 as it is. Text tags from another engine (`{size=…}`, `{w}`, `{a=…}`, …) are not understood: rewrite
 the three above, drop the rest.
 
+### Expression changes inside a line
+
+A dialogue line can change its speaker's look partway through, at the moment the typewriter reaches
+the tag - the way a character's face keeps moving while they talk:
+
+```
+/show Aoi normal
+Aoi: I-it's not like {char blush fade=0.2}I did it for you{char angry}...
+Aoi: {char smile fade=0}Fine. {sound chime}Thank you.
+```
+
+- `{char <look>}` takes the words a `/char` row takes after the name: `{char blush}` in an `Aoi:` line
+  is what `/char Aoi blush` would set - for a layered character, the one tag it changes, as on the
+  row (`{char casual}`). A look the speaker does not have is refused like the row
+  (`compile.inlineMarkup`, naming the look).
+- Only in a dialogue line whose speaker is a character of the project, and it changes that speaker.
+  The character must be on stage already (a `/show` above); otherwise the change is skipped and the
+  game build warns. To change someone else mid-line, end the line and write a `/char` row.
+- `fade=<seconds>` cross-fades into the new look (`fade=0.2`; `0.2s` is read too). `fade=0` swaps
+  instantly. Leave `fade=` off and the change uses the fade of the previous expression change in
+  the scene - top to bottom, across lines and speakers - so set it once on the first change and the
+  rest follow; each scene starts with none. A change that sets its own fade is followed by the ones
+  after it, never the ones before.
+- `sound=<audio>` plays an audio asset at the same point; `{sound <audio>}` plays one with no look
+  change, in narration as well as dialogue. A name with a space is quoted: `{sound 'door slam'}`.
+- The tag takes the look only: `d=`, `t=`, `pos=` and the like belong to a `/char` row and are
+  refused. A skipped line, or one shown all at once, lands every change instantly, ending on the
+  last look.
+- `story_show` prints these tags for lines written in Studio too; a literal `{char …}` meant as text
+  is written `\{char …}`.
+
 ## Anchors: the row's identity
 
 `story_show` ends each line with `⟦…⟧` - the first characters of the row's id, optionally followed by

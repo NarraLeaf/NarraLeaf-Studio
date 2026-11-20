@@ -138,6 +138,16 @@ never printed. A `{` that would read as one of those tags is written `\{`; any
 other brace is text. Styling the format has no tag for - ruby, size, typing
 speed, emphasis, an inline pause or variable - keeps the row as a `»` line.
 
+Inline events are single tags with no closing partner, and are this format's own
+(the Script View does not spell them): `{char <look> [fade=<s>] [sound=<audio>]}`
+changes a dialogue line's speaker to `<look>` as the typewriter reaches it, and
+`{sound <audio>}` plays a sound there. The look is read as the speaker's `/char`
+row (`/char <speaker> <look>`, through the command parser), so it resolves and is
+refused exactly as that row would be; `fade=` is the change's own cross-fade, 0
+for none, and left off the change takes the one before it in the scene
+(`@shared/story/inlineExpressionFade`). The codec is `createInlineEventCodec` in
+`dsl/compile.ts`.
+
 ### The anchor is the row
 
 The trailing `⟦…⟧` carries the block id - its first eight characters, or more

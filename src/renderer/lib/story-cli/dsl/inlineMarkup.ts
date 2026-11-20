@@ -27,13 +27,23 @@
  * with the Script View's reader would turn every placeholder into an unknown tag and every escaped
  * line break into the letter `n`.
  *
+ * ## Inline events: `{char …}` and `{sound …}`
+ *
+ * An inline event - the expression change, or the sound, the typewriter fires as it reaches a point
+ * in the line - is one tag, with no closing partner: `{char sad}`, `{char sad fade=0.2 sound=chime}`,
+ * `{sound chime}`. What follows the word names things in the project (a look of the speaker, an audio
+ * asset), which this module cannot resolve, so it only finds the tags: the caller hands a speller to
+ * {@link spellRichSegment} and a reader to {@link readInlineMarkup} (`prose.ts`, with the codec in
+ * `compile.ts`). Without one, a segment holding an event is not spelled and a line holding an event
+ * tag is refused. The words are this format's own; the Script View does not spell inline events.
+ *
  * ## What is spelled, and what stays a `»` row
  *
- * Only a segment whose every run is plain text marked with nothing but bold, italic and colour is
- * spelled. A segment with anything else - ruby, size, typing speed, emphasis dots, an inline pause,
- * an interpolated variable, an inline event - returns null from {@link spellRichSegment}, and the
- * printer keeps the row as an opaque `»` line, exactly as it kept every styled row before this
- * existed. The printer also echo-checks every line it writes (see `print.ts`), so a run layout this
+ * A segment is spelled when every run is plain text marked with nothing but bold, italic and colour,
+ * or an inline event the caller can spell. A segment with anything else - ruby, size, typing speed,
+ * emphasis dots, an inline pause, an interpolated variable - returns null from
+ * {@link spellRichSegment}, and the printer keeps the row as an opaque `»` line, exactly as it kept
+ * every styled row before this existed. The printer also echo-checks every line it writes (see `print.ts`), so a run layout this
  * reader would rebuild differently (two adjacent runs with the same marks, an empty run) falls back
  * the same way rather than being silently merged.
  *
@@ -49,7 +59,7 @@
  * Comments in English per project convention.
  */
 
-import type { StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import type { StoryInlineEvent, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 import { NARRALANG_DEFAULT_DIALECT } from "@/lib/story/narralang/narralangDialect";
 import { decodeNarralangEscapes } from "@/lib/story/narralang/narralangLex";
 import { narralangTagArgument } from "@/lib/story/narralang/narralangSyntax";
@@ -87,7 +97,28 @@ type TagMatch = {
     close: boolean;
     /** A colour's value, decoded. Empty when the tag names none, which the reader refuses. */
     value?: string;
+    event?: undefined;
+} | {
+    length: number;
+    /** An inline event tag; `body` is everything after the word, trimmed, still undecoded. */
+    event: InlineEventTag;
+    mark?: undefined;
+    close?: undefined;
+    value?: undefined;
 };
+
+/** The two inline event tags' words: an expression change of the speaker, and a sound alone. */
+export const INLINE_EVENT_WORDS = ["char", "sound"] as const;
+export type InlineEventWord = typeof INLINE_EVENT_WORDS[number];
+
+/** An inline event tag as written: its word, the words after it, and the whole tag. */
+export type InlineEventTag = { word: InlineEventWord; body: string; source: string };
+
+/** The tag text for an inline event run, or null when it has no spelling here. */
+export type InlineEventSpeller = (event: StoryInlineEvent) => string | null;
+
+/** An inline event tag read into the event it means, or why it cannot be. */
+export type InlineEventReader = (tag: InlineEventTag) => { ok: true; event: StoryInlineEvent } | { ok: false; detail: string };
 
 /**
  * A tag at `at` in `text`, or null. The shapes are `{b}`, `{/b}`, `{i}`, `{/i}`, `{/color}`,
@@ -122,7 +153,26 @@ function matchTag(text: string, at = 0): TagMatch | null {
             return { length: read.end - at, mark, close: false, value: read.value };
         }
     }
+    if (!close) {
+        for (const word of INLINE_EVENT_WORDS) {
+            if (!text.startsWith(word, index) || text[index + word.length] !== " ") {
+                continue;
+            }
+            // The words up to the closing fence, on one line and with no fence inside: what they name
+            // is resolved by the caller, so all this needs to find is where the tag ends.
+            const match = new RegExp(`^ ([^{}\\n\\r]*)${escapeRegExp(TEXT.close)}`).exec(text.slice(index + word.length));
+            if (!match || !match[1].trim()) {
+                continue;
+            }
+            const length = index + word.length + match[0].length - at;
+            return { length, event: { word, body: match[1].trim(), source: text.slice(at, at + length) } };
+        }
+    }
     return null;
+}
+
+function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** A colour tag's value from just after its word up to and including the closing fence, or null. */
@@ -249,9 +299,9 @@ const LITERAL_BRACE = "";
  * use anything this format does not spell. A segment without `rich` is not this module's business:
  * the caller escapes its plain `value` as it always has.
  */
-export function spellRichSegment(segment: StoryTextSegment): string | null {
+export function spellRichSegment(segment: StoryTextSegment, spellEvent?: InlineEventSpeller): string | null {
     const runs = segment.rich;
-    if (!runs || runs.length === 0 || !runs.every(isSpellableRun)) {
+    if (!runs || runs.length === 0 || !runs.every(run => isSpellableRun(run) || ("event" in run && spellEvent !== undefined))) {
         return null;
     }
     const tags: string[] = [];
@@ -261,8 +311,18 @@ export function spellRichSegment(segment: StoryTextSegment): string | null {
     };
     let body = "";
     let open: OpenTag[] = [];
-    for (const run of runs as { text: string; marks?: StoryTextMarks }[]) {
-        if (PRIVATE_USE.test(run.text)) {
+    for (const run of runs) {
+        if ("event" in run) {
+            // An event is a point between characters, not styling: it is written where it falls and
+            // leaves whatever tags are open around it open, so `{b}a{char sad}b{/b}` keeps one bold.
+            const tag = spellEvent?.(run.event) ?? null;
+            if (tag === null || /[\n\r]/.test(tag) || PRIVATE_USE.test(tag)) {
+                return null;
+            }
+            body += standIn(tag);
+            continue;
+        }
+        if (!("text" in run) || PRIVATE_USE.test(run.text)) {
             return null;
         }
         const wanted = tagsFor(run.marks);
@@ -280,6 +340,10 @@ export function spellRichSegment(segment: StoryTextSegment): string | null {
         }
         open = wanted;
         body += escapeLiteralTags(run.text);
+    }
+    // A segment that is nothing but events reads back as an empty line, which a prose line cannot be.
+    if (!runs.some(run => "text" in run && run.text)) {
+        return null;
     }
     for (let index = open.length - 1; index >= 0; index -= 1) {
         body += standIn(closeText(open[index]));
@@ -325,8 +389,8 @@ export type InlineMarkupResult =
  * Read an escaped line body (still escaped - a `\{` must stay literal) into its plain value and, when
  * it holds tags, its runs. Escapes are decoded here exactly as `unescapeText` decodes them.
  */
-export function readInlineMarkup(escaped: string): InlineMarkupResult {
-    const runs: { text: string; marks?: StoryTextMarks }[] = [];
+export function readInlineMarkup(escaped: string, readEvent?: InlineEventReader): InlineMarkupResult {
+    const runs: StoryRichRun[] = [];
     const open: OpenTag[] = [];
     let sawTag = false;
     let text = "";
@@ -364,6 +428,23 @@ export function readInlineMarkup(escaped: string): InlineMarkupResult {
             continue;
         }
         const match = matchTag(escaped, index);
+        if (match?.event) {
+            flush();
+            sawTag = true;
+            if (!readEvent) {
+                return {
+                    ok: false,
+                    detail: `"${match.event.source}" fires mid-line, which only a narration or dialogue line can carry`,
+                };
+            }
+            const read = readEvent(match.event);
+            if (!read.ok) {
+                return { ok: false, detail: read.detail };
+            }
+            runs.push({ event: read.event });
+            index += match.length - 1;
+            continue;
+        }
         if (match) {
             flush();
             sawTag = true;
@@ -393,8 +474,8 @@ export function readInlineMarkup(escaped: string): InlineMarkupResult {
     if (open.length > 0) {
         return { ok: false, detail: `${open.map(openText).join(", ")} ${open.length === 1 ? "is" : "are"} never closed` };
     }
-    const value = runs.map(run => run.text).join("");
-    if (!sawTag || runs.every(run => !run.marks)) {
+    const value = runs.map(run => ("text" in run ? run.text : "")).join("");
+    if (!sawTag || runs.every(run => "text" in run && !run.marks)) {
         return { ok: true, value };
     }
     return { ok: true, value, rich: runs };

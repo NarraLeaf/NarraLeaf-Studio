@@ -22,9 +22,12 @@
  * ## Rich text: three marks are spelled, the rest is kept verbatim
  *
  * Bold, italic and colour runs are written as inline tags (`{b}…{/b}`, `{i}…{/i}`,
- * `{color #e04040}…{/color}`, the Script View's spelling; see `inlineMarkup.ts`). A segment carrying any other styling (ruby,
- * size, typing speed, emphasis, an inline pause or variable) has no spelling, so the row stays an
- * opaque `»` line and keeps every mark - restyle it in Studio. Notes are never styled.
+ * `{color #e04040}…{/color}`, the Script View's spelling; see `inlineMarkup.ts`), and so are inline
+ * events, when the lookups carry an {@link InlineEventCodec}: `{char sad fade=0.2}` changes the
+ * speaker's look as the typewriter reaches it, `{sound chime}` plays a sound there. A segment carrying
+ * any other styling (ruby, size, typing speed, emphasis, an inline pause or variable) has no
+ * spelling, so the row stays an opaque `»` line and keeps every mark - restyle it in Studio. Notes are
+ * never styled.
  *
  * Comments in English per project convention.
  */
@@ -40,7 +43,14 @@ import {
     unescapeText,
     type StoryLineShape,
 } from "./shapes";
-import { escapePlainWithTags, readInlineMarkup, spellRichSegment } from "./inlineMarkup";
+import {
+    escapePlainWithTags,
+    readInlineMarkup,
+    spellRichSegment,
+    type InlineEventReader,
+    type InlineEventSpeller,
+    type InlineEventTag,
+} from "./inlineMarkup";
 import { escapeOptionWords } from "./optionConditions";
 
 /** Naming the things a prose line mentions. Only characters, since prose names nothing else. */
@@ -56,6 +66,23 @@ export type ProseLookups = {
      * than resolved by whichever came first. The caller reports; this module never guesses.
      */
     charactersNamed: (name: string) => readonly { id: string; name: string }[];
+    /**
+     * Spelling and reading inline events, which name a look of the speaker and audio assets - names
+     * only the command context knows. The printer and the compiler add it (see
+     * `createInlineEventCodec`); without it a line with an event stays a `»` row and an event tag is
+     * refused.
+     */
+    inlineEvents?: InlineEventCodec;
+};
+
+/**
+ * Inline events against one line's speaker. `speakerId` is the character the line is bound to, or
+ * null for narration, an option or a speaker with no character behind the name - which can carry a
+ * `{sound …}` but not a `{char …}`, the look of nobody.
+ */
+export type InlineEventCodec = {
+    spell: (event: Parameters<InlineEventSpeller>[0], speakerId: string | null) => string | null;
+    read: (tag: InlineEventTag, speakerId: string | null) => ReturnType<InlineEventReader>;
 };
 
 export type ProseLine = { shape: StoryLineShape; text: string };
@@ -85,13 +112,13 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
     const payload = block.payload;
     switch (payload.action) {
         case "narration": {
-            const words = spokenWords(payload.text);
+            const words = spokenWords(payload.text, lookups, null);
             return words === null ? null : { shape: "narration", text: words };
         }
         case "choiceOption": {
             // The words only: the printer adds the option's clauses (`optionConditions.ts`), which
             // need condition lookups this module does not have.
-            const words = spokenWords(payload.text);
+            const words = spokenWords(payload.text, lookups, null);
             return words === null ? null : { shape: "option", text: escapeOptionWords(words) };
         }
         case "dialogue": {
@@ -103,7 +130,7 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
             }
             // The speaker is escaped as prose too: a name holding `: ` would otherwise split the
             // line in the wrong place on the way back in.
-            const words = spokenWords(payload.text);
+            const words = spokenWords(payload.text, lookups, payload.characterId ?? null);
             if (words === null) {
                 return null;
             }
@@ -119,8 +146,17 @@ export function proseLineOf(block: StoryBlock, lookups: ProseLookups): ProseLine
  * The words of a narration, dialogue or option segment as the line spells them: styled runs as inline
  * tags, plain text with a literal tag shape escaped. Null when the styling has no spelling.
  */
-function spokenWords(text: StoryTextSegment): string | null {
-    return text.rich ? spellRichSegment(text) : escapePlainWithTags(text.value);
+function spokenWords(text: StoryTextSegment, lookups: ProseLookups, speakerId: string | null): string | null {
+    const codec = lookups.inlineEvents;
+    return text.rich
+        ? spellRichSegment(text, codec ? event => codec.spell(event, speakerId) : undefined)
+        : escapePlainWithTags(text.value);
+}
+
+/** The reader for a line's inline event tags, or undefined when nothing can resolve them. */
+function eventReader(lookups: ProseLookups, speakerId: string | null): InlineEventReader | undefined {
+    const codec = lookups.inlineEvents;
+    return codec ? tag => codec.read(tag, speakerId) : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +203,7 @@ export function buildProseBlock(
         };
     }
     if (line.shape === "narration") {
-        const words = readInlineMarkup(line.text);
+        const words = readInlineMarkup(line.text, eventReader(lookups, null));
         if (!words.ok) {
             return { ok: false, reason: "inlineMarkup", detail: words.detail };
         }
@@ -178,7 +214,7 @@ export function buildProseBlock(
         return { ok: true, block: { ...base, kind: "nodeAction", payload } };
     }
     if (line.shape === "option") {
-        const words = readInlineMarkup(line.text);
+        const words = readInlineMarkup(line.text, eventReader(lookups, null));
         if (!words.ok) {
             return { ok: false, reason: "inlineMarkup", detail: words.detail };
         }
@@ -198,10 +234,7 @@ export function buildProseBlock(
     // Dialogue.
     const split = speakerSplit(line.text);
     const speaker = unescapeText(split?.speaker ?? "").trim();
-    const words = readInlineMarkup(split?.words ?? "");
-    if (!words.ok) {
-        return { ok: false, reason: "inlineMarkup", detail: words.detail };
-    }
+    // The speaker first: a `{char …}` in the words names a look of this character.
     const matches = speaker ? lookups.charactersNamed(speaker) : [];
     if (matches.length > 1) {
         return {
@@ -209,6 +242,10 @@ export function buildProseBlock(
             reason: "ambiguousSpeaker",
             detail: `${matches.length} characters are called "${speaker}"`,
         };
+    }
+    const words = readInlineMarkup(split?.words ?? "", eventReader(lookups, matches.length === 1 ? matches[0].id : null));
+    if (!words.ok) {
+        return { ok: false, reason: "inlineMarkup", detail: words.detail };
     }
     const carried = previousNodeAction(previous, "dialogue");
     const payload: StoryNodeActionPayload = {

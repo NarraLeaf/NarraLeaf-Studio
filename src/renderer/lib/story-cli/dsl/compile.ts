@@ -53,8 +53,15 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
+    StoryInlineEvent,
     StoryScene,
 } from "@shared/types/story";
+import { ownInlineFadeMs } from "@shared/story/inlineExpressionFade";
+import {
+    projectStoryCommandLine,
+    type StoryCommandLineLookups,
+} from "@/apps/workspace/modules/story/scene-editor/storyCommandLine";
+import { quoteEntityValue } from "@/apps/workspace/modules/story/scene-editor/storyCommandCursor";
 import { canAcceptChildren } from "@services/story/storyModel";
 import {
     canCommit,
@@ -77,7 +84,7 @@ import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLin
 import { conditionFromSource, conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { splitOptionLine } from "./optionConditions";
-import { buildProseBlock, type ProseBuildResult, type ProseLookups } from "./prose";
+import { buildProseBlock, type InlineEventCodec, type ProseBuildResult, type ProseLookups } from "./prose";
 import { applySceneSettings } from "./sceneSettings";
 import { applySceneLayerDirectives } from "./sceneLayers";
 import { BRANCH_ELSE, escapeText, unescapeText } from "./shapes";
@@ -270,13 +277,15 @@ function compilePass(
     const guessedRowIds = new Set<StoryBlockId>();
     const rowsAbove = new Set<StoryBlockId>();
 
+    // Inline events name looks and sounds, which only this pass's command context can resolve.
+    const prose = withInlineEvents(input.prose, { context, conditions: input.conditions });
     for (const [index, line] of lines.entries()) {
         const previous = previousOf[index];
         const built = buildLineBlock(line, {
             previous,
             context,
             rowsAbove,
-            prose: input.prose,
+            prose,
             conditions: input.conditions,
             data: input.ast.data,
             mintId: lineMinter(minted, index, input.mintId),
@@ -419,7 +428,7 @@ function proseFailure(built: Extract<ProseBuildResult, { ok: false }>, line: Sto
             errorAt(
                 `compile.${built.reason}`,
                 built.reason === "inlineMarkup"
-                    ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; write \\{ for a literal brace that would read as a tag.`
+                    ? `${built.detail}. Inline styling is {b}…{/b}, {i}…{/i} and {color #rrggbb}…{/color} ({color=#rrggbb} is read too), each closed in the same line; an inline event is {char <look> fade=<seconds> sound=<audio>} or {sound <audio>}; write \\{ for a literal brace that would read as a tag.`
                     : `${built.detail}. Rename one of them, or write the line without a speaker binding.`,
                 line.lineNumber,
             ),
@@ -1029,4 +1038,254 @@ function checkStructure(
         }
     }
     return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Inline events: `{char …}` and `{sound …}` inside a line
+// ---------------------------------------------------------------------------
+
+/** The command word an inline `{char …}` borrows its look words from: the speaker's `/char` row. */
+const INLINE_LOOK_COMMAND = "/char";
+
+/** `lookups` with an inline event codec over `context`, unless it carries one already. */
+export function withInlineEvents(
+    lookups: ProseLookups,
+    input: { context: StoryCommandContext; conditions: ConditionLookups; rowLookups?: StoryCommandLineLookups },
+): ProseLookups {
+    return lookups.inlineEvents ? lookups : { ...lookups, inlineEvents: createInlineEventCodec({ ...input, prose: lookups }) };
+}
+
+/**
+ * Spelling and reading inline events against one command context.
+ *
+ * `{char <look> [fade=<seconds>] [sound=<audio>]}` changes the speaker's look as the typewriter
+ * reaches it. The look is written exactly as on the speaker's `/char` row - `{char sad}` is
+ * `/char Aoi sad` - because it IS read as that row: the words go through the command parser with the
+ * speaker's name in front, so a pose, a layered character's tags, quoting and a renamed pose resolve
+ * the way they do everywhere else, and an unknown look gets the same `unknownForm` the row would.
+ * Printing runs the other way through `projectStoryCommandLine`, and the printer's echo check keeps
+ * any spelling that would not read back.
+ *
+ * `fade=` is the change's own cross-fade in seconds; 0 turns it off, and leaving it out lets the
+ * change take the one before it in the scene (`inlineExpressionFade`). `sound=` plays an audio asset
+ * at the same point, and `{sound <audio>}` plays one with no look change. A `{char …}` needs a line
+ * spoken by a character; a `{sound …}` can sit in any narration or dialogue line.
+ *
+ * Without `rowLookups` the codec reads but does not spell, which is all the compiler needs.
+ */
+export function createInlineEventCodec(input: {
+    context: StoryCommandContext;
+    conditions: ConditionLookups;
+    prose: ProseLookups;
+    rowLookups?: StoryCommandLineLookups;
+}): InlineEventCodec {
+    const { context } = input;
+    const characterName = (characterId: string) => context.characters.find(entry => entry.id === characterId)?.name ?? null;
+    const audioName = (assetId: string) => context.audio.find(entry => entry.id === assetId)?.name ?? null;
+    const audioNamed = (name: string): { id: string } | "ambiguous" | null => {
+        const wanted = name.trim().toLowerCase();
+        const found = context.audio.filter(entry => entry.name.trim().toLowerCase() === wanted);
+        return found.length > 1 ? "ambiguous" : found[0] ?? null;
+    };
+
+    const readLook = (characterId: string, look: string): { ok: true; pose?: string; tags?: unknown } | { ok: false; detail: string } => {
+        const name = characterName(characterId);
+        if (name === null) {
+            return { ok: false, detail: "the speaker is not a character of this project" };
+        }
+        const text = `${INLINE_LOOK_COMMAND} ${quoteEntityValue(name)} ${look}`;
+        const built = buildLineBlock(
+            { lineNumber: 0, depth: 0, shape: "command", text, anchorId: null, disabled: false },
+            {
+                previous: null,
+                context,
+                rowsAbove: new Set(),
+                prose: input.prose,
+                conditions: input.conditions,
+                data: {},
+                mintId: () => "inline-look",
+            },
+        );
+        if (!built.ok) {
+            return { ok: false, detail: built.diagnostics.map(diagnostic => diagnostic.message).join(" ") };
+        }
+        const payload = built.block.payload as unknown as Record<string, unknown>;
+        if (built.block.kind !== "action" || payload.action !== "character" || payload.operation !== "expression"
+            || payload.characterId !== characterId) {
+            return { ok: false, detail: `"${look}" does not read as a look of ${name}` };
+        }
+        // The look and nothing else: a duration, a transition or a placement belongs to a `/char` row,
+        // and an inline change carries a cross-fade of its own (`fade=`) instead.
+        const extra = Object.keys(payload).filter(key => !["action", "operation", "characterId", "pose", "tags"].includes(key));
+        if (extra.length > 0) {
+            return { ok: false, detail: `an inline {char …} takes the look only, not ${extra.join(", ")}: write fade= for a cross-fade` };
+        }
+        return {
+            ok: true,
+            ...(typeof payload.pose === "string" ? { pose: payload.pose } : {}),
+            ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
+        };
+    };
+
+    const spellLook = (characterId: string, expression: NonNullable<StoryInlineEvent["expression"]>): string | null => {
+        const name = characterName(characterId);
+        if (!input.rowLookups || name === null) {
+            return null;
+        }
+        const row = {
+            id: "inline-look",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "character",
+                operation: "expression",
+                characterId,
+                ...(expression.pose !== undefined ? { pose: expression.pose } : {}),
+                ...(expression.tags !== undefined ? { tags: expression.tags } : {}),
+            },
+        } as unknown as StoryBlock;
+        const projected = projectStoryCommandLine(row, input.rowLookups);
+        const prefix = `${INLINE_LOOK_COMMAND} ${quoteEntityValue(name)} `;
+        if (!projected || !projected.source.startsWith(prefix)) {
+            return null;
+        }
+        const look = projected.source.slice(prefix.length).trim();
+        return look && !/[{}\n\r]/.test(look) ? look : null;
+    };
+
+    return {
+        spell: (event, speakerId) => {
+            const sound = event.sound ? audioName(event.sound.assetId) : undefined;
+            if (sound === null) {
+                return null;
+            }
+            const soundWord = sound === undefined ? "" : quoteEntityValue(sound);
+            if (!event.expression) {
+                return sound === undefined ? null : `{sound ${soundWord}}`;
+            }
+            if (!speakerId || event.expression.characterId !== speakerId) {
+                return null;
+            }
+            const look = spellLook(speakerId, event.expression);
+            if (look === null) {
+                return null;
+            }
+            const fade = ownInlineFadeMs(event);
+            return `{char ${look}${fade === undefined ? "" : ` fade=${fade / 1000}`}${sound === undefined ? "" : ` sound=${soundWord}`}}`;
+        },
+        read: (tag, speakerId) => {
+            const words = splitInlineWords(tag.body);
+            if (words === null) {
+                return { ok: false, detail: `"${tag.source}" opens a quote it does not close` };
+            }
+            const look: string[] = [];
+            let fadeMs: number | undefined;
+            let soundId: string | undefined;
+            for (const word of words) {
+                const option = /^(fade|sound)=(.*)$/.exec(word.raw);
+                if (!option) {
+                    look.push(word.raw);
+                    continue;
+                }
+                if (option[1] === "fade") {
+                    const seconds = /^(\d+(?:\.\d+)?|\.\d+)s?$/.exec(option[2]);
+                    if (!seconds) {
+                        return { ok: false, detail: `"${word.raw}" in "${tag.source}" is not a number of seconds: write fade=0.2, or fade=0 for no cross-fade` };
+                    }
+                    fadeMs = Math.round(Number(seconds[1]) * 1000);
+                    continue;
+                }
+                const name = unquoteInlineWord(option[2]);
+                const found = audioNamed(name);
+                if (found === "ambiguous") {
+                    return { ok: false, detail: `more than one audio asset is called "${name}"` };
+                }
+                if (!found) {
+                    return { ok: false, detail: `no audio asset is called "${name}"` };
+                }
+                soundId = found.id;
+            }
+            const sound = soundId === undefined ? {} : { sound: { assetId: soundId } };
+            if (tag.word === "sound") {
+                if (fadeMs !== undefined || soundId !== undefined || look.length !== 1) {
+                    return { ok: false, detail: `"${tag.source}" names one audio asset and nothing else: {sound chime}` };
+                }
+                const name = unquoteInlineWord(look[0]);
+                const found = audioNamed(name);
+                if (found === "ambiguous") {
+                    return { ok: false, detail: `more than one audio asset is called "${name}"` };
+                }
+                return found
+                    ? { ok: true, event: { sound: { assetId: found.id } } }
+                    : { ok: false, detail: `no audio asset is called "${name}"` };
+            }
+            if (!speakerId) {
+                return {
+                    ok: false,
+                    detail: `"${tag.source}" changes the speaker's look, so it needs a dialogue line spoken by a character of this project`,
+                };
+            }
+            if (look.length === 0) {
+                return { ok: false, detail: `"${tag.source}" names no look: write {char sad}` };
+            }
+            const read = readLook(speakerId, look.join(" "));
+            if (!read.ok) {
+                return read;
+            }
+            const expression = {
+                characterId: speakerId,
+                ...(read.pose !== undefined ? { pose: read.pose } : {}),
+                ...(read.tags !== undefined ? { tags: read.tags } : {}),
+                ...(fadeMs !== undefined ? { fadeMs } : {}),
+            } as NonNullable<StoryInlineEvent["expression"]>;
+            return { ok: true, event: { expression, ...sound } };
+        },
+    };
+}
+
+/**
+ * The words of an inline event tag, split on spaces outside quotes. `raw` keeps a word as written,
+ * quotes included, because the look words are handed on to the command parser, which reads them.
+ * Null when a quote is never closed.
+ */
+function splitInlineWords(body: string): { raw: string }[] | null {
+    const words: { raw: string }[] = [];
+    let current = "";
+    let quote: string | null = null;
+    for (const char of body) {
+        if (quote) {
+            current += char;
+            if (char === quote) {
+                quote = null;
+            }
+            continue;
+        }
+        if (char === "'" || char === "\"") {
+            quote = char;
+            current += char;
+            continue;
+        }
+        if (char === " ") {
+            if (current) {
+                words.push({ raw: current });
+                current = "";
+            }
+            continue;
+        }
+        current += char;
+    }
+    if (quote) {
+        return null;
+    }
+    if (current) {
+        words.push({ raw: current });
+    }
+    return words;
+}
+
+/** A name as written in a tag, without the quotes `quoteEntityValue` puts around one with a space. */
+function unquoteInlineWord(word: string): string {
+    const match = /^(['"])(.*)\1$/.exec(word);
+    return match ? match[2] : word;
 }
