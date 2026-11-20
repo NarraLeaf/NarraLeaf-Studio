@@ -1228,6 +1228,20 @@ export const help = {
                 + "- Do not restore progress: the slot is absent from the save list, and a load request "
                 + "fails.",
         },
+        projectCleanup: {
+            title: "Cleaning up a project",
+            body:
+                "Clean Up Project in the Run menu runs several tidying tasks over the whole project at once. Each row shows how much it would change; a row with nothing to change is greyed\n"
+                + "\n"
+                + "- Auto-frame dialog avatars frames avatars on the head the detector finds, as Auto-frame all in the Characters panel does. Differentials that already have a framing keep it unless Replace existing framings is ticked\n"
+                + "- Clear project cache deletes asset thumbnails and the files builds and previews leave in the project. They are made again when needed. Preview saves are kept\n"
+                + "- Format all blueprints arranges every graph as Format graph does on the canvas\n"
+                + "- Delete unwired blueprint nodes removes nodes with no wire in or out that cannot run on their own. Event heads, function entries and comments stay\n"
+                + "- Delete orphaned comments removes comment threads whose row is in no story\n"
+                + "- Delete orphaned translations removes translations of lines that are in no story. Translations of disabled lines stay\n"
+                + "\n"
+                + "Blueprint changes undo in each blueprint's editor, and deleted comments return with one undo. Deleted translations cannot be restored",
+        },
         patches: {
             title: "Patches",
             body:

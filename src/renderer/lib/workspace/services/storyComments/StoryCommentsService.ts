@@ -300,6 +300,37 @@ export class StoryCommentsService extends Service<StoryCommentsService> {
         return true;
     }
 
+    /**
+     * Remove several threads as one step of undo: the project clean-up deleting every orphan at once,
+     * which one undo should put back together rather than one thread per press.
+     *
+     * Resolves to how many were removed; ids that name no thread are skipped.
+     */
+    public deleteThreads(threadIds: readonly string[], options: StoryCommentEditOptions = {}): number {
+        const before = threadIds
+            .map(threadId => this.getThread(threadId))
+            .filter((thread): thread is StoryCommentThread => thread !== null);
+        if (before.length === 0) {
+            return 0;
+        }
+        const removeAll = () => {
+            for (const thread of before) this.write(thread.id, null);
+        };
+        removeAll();
+        try {
+            this.getContext().services.get<HistoryService>(Services.History).pushCommand(options.scopeId ?? projectHistoryScope(), {
+                label: { key: "storyComments.history.deleteOrphans" },
+                undo: () => {
+                    for (const thread of before) this.write(thread.id, thread);
+                },
+                redo: removeAll,
+            });
+        } catch {
+            // No history in this context (a test that never registered it); the edit itself stands.
+        }
+        return before.length;
+    }
+
     public setResolved(threadId: string, resolved: boolean, options: StoryCommentEditOptions = {}): boolean {
         const thread = this.getThread(threadId);
         if (!thread || thread.resolved === resolved) {

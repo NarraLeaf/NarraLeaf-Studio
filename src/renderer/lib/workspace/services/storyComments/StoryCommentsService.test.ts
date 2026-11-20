@@ -154,6 +154,20 @@ describe("story comments", () => {
         expect(history.canUndo(projectHistoryScope())).toBe(false);
     });
 
+    it("deletes several threads as one undo step on the project stack", async () => {
+        const { service, history } = await createHarness();
+        const first = service.createThread({ ...row, body: "One" })!;
+        const second = service.createThread({ ...row, blockId: "block-2", body: "Two" })!;
+        expect(service.deleteThreads([first.id, second.id, "missing"])).toBe(2);
+        expect(service.listThreads()).toHaveLength(0);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(service.listThreads().map(thread => thread.id).sort()).toEqual([first.id, second.id].sort());
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(service.listThreads()).toHaveLength(0);
+        expect(service.deleteThreads(["missing"])).toBe(0);
+    });
+
     it("removes the thread with its last comment", async () => {
         const { service } = await createHarness();
         const thread = service.createThread({ ...row, body: "One" })!;

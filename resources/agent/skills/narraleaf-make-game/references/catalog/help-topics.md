@@ -1430,6 +1430,32 @@ A test runs the game and reports whether a condition held: that an ending can be
 
 相关主题 · Related：项目检查 · Project checks、运行游戏 · Running the game、构建 · Builds
 
+### 整理项目 · Cleaning up a project
+
+运行菜单中的「整理项目」一次对整个项目执行多项整理。每一项右侧显示将处理的数量，无需处理的项不可勾选
+
+- 自动截取对白头像：按检测到的头部截取头像，与角色面板中「自动截取全部对白头像」相同。已有取景的差分保持不变，勾选「覆盖已有取景」后一并重新截取
+- 清除项目缓存：删除资源缩略图以及构建、预览留在项目中的文件，需要时重新生成。预览的存档保留
+- 格式化全部蓝图：按画布上「格式化蓝图」的方式排列每张图
+- 删除未连线的蓝图节点：删除没有任何连线且无法单独运行的节点。事件、函数入口与注释保留
+- 删除失效批注：删除对应的行已不在任何故事中的批注线程
+- 删除孤立译文：删除对应的行已不在任何故事中的译文。已停用的行的译文保留
+
+蓝图的改动在各自的蓝图编辑器中撤销，删除的批注可一步撤销。删除的译文无法恢复
+
+Clean Up Project in the Run menu runs several tidying tasks over the whole project at once. Each row shows how much it would change; a row with nothing to change is greyed
+
+- Auto-frame dialog avatars frames avatars on the head the detector finds, as Auto-frame all in the Characters panel does. Differentials that already have a framing keep it unless Replace existing framings is ticked
+- Clear project cache deletes asset thumbnails and the files builds and previews leave in the project. They are made again when needed. Preview saves are kept
+- Format all blueprints arranges every graph as Format graph does on the canvas
+- Delete unwired blueprint nodes removes nodes with no wire in or out that cannot run on their own. Event heads, function entries and comments stay
+- Delete orphaned comments removes comment threads whose row is in no story
+- Delete orphaned translations removes translations of lines that are in no story. Translations of disabled lines stay
+
+Blueprint changes undo in each blueprint's editor, and deleted comments return with one undo. Deleted translations cannot be restored
+
+相关主题 · Related：蓝图 · Blueprints、故事行批注 · Comments on story rows、语言 · Languages、项目检查 · Project checks
+
 ### 项目统计 · Project statistics
 
 仪表盘统计项目的内容量和近期增量：场景、对白行、字数、角色、资产，以及写作天数

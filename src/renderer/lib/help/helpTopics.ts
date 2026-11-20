@@ -91,6 +91,7 @@ export const HELP_TOPIC_IDS = [
     "spellcheck",
     "lint",
     "tests",
+    "projectCleanup",
     "dashboard",
     "recovery",
     "versionControl",
@@ -551,6 +552,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "tests",
         section: "quality",
         related: ["lint", "runModes", "build"],
+    },
+    // The Run menu's clean-up dialog: which tasks touch what, and which of them undo.
+    {
+        id: "projectCleanup",
+        section: "quality",
+        related: ["blueprints", "storyComments", "localization", "lint"],
     },
     {
         id: "dashboard",

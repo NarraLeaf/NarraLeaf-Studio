@@ -60,6 +60,7 @@ export const storyComments = {
         edit: "edit comment",
         deleteComment: "delete comment",
         deleteThread: "delete comment thread",
+        deleteOrphans: "delete orphaned comments",
         resolve: "resolve comment",
         reopen: "reopen comment",
         markTodo: "mark comment as to-do",

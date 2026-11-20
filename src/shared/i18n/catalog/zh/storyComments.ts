@@ -61,6 +61,7 @@ export const storyComments = {
         edit: "编辑批注",
         deleteComment: "删除批注",
         deleteThread: "删除批注线程",
+        deleteOrphans: "删除失效批注",
         resolve: "将批注标为已解决",
         reopen: "重新打开批注",
         markTodo: "将批注标为待办",

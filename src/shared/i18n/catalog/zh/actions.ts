@@ -24,6 +24,8 @@ export const actions = {
         productionBuild: "生产构建…",
         // 和「生产构建」并列，因为它们是同一类事：产出一个文件而不是把什么跑起来。
         exportPatch: "导出补丁…",
+        // 打开整理对话框：把 Studio 逐项进行的整理一次运行到整个项目。
+        cleanup: "整理项目…",
         runAs: "运行为",
             runWithDlc: "带 DLC 运行",
             dlcCount: "{active} / {total}",
@@ -49,6 +51,45 @@ export const actions = {
         resetDetail: "该项目的所有存档与持久化数据将被清除",
         resetDone: "玩家数据已重置",
         resetFailed: "无法重置玩家数据",
+    },
+    // 整理对话框。每一项都是 Studio 已有的逐项操作，这里对整个项目运行一次。
+    cleanup: {
+        title: "整理项目",
+        scanning: "正在检查项目",
+        scanFailed: "无法检查项目：{message}",
+        task: {
+            avatars: "自动截取对白头像",
+            projectCache: "清除项目缓存",
+            blueprintLayout: "格式化全部蓝图",
+            danglingNodes: "删除未连线的蓝图节点",
+            orphanComments: "删除失效批注",
+            orphanTranslations: "删除孤立译文",
+        },
+        // 头像一项下方：已有取景的差分是否重新截取。
+        avatarsOverwrite: "覆盖已有取景",
+        amount: {
+            differentials: { other: "{count} 个差分" },
+            blueprints: { other: "{count} 个蓝图" },
+            nodes: { other: "{count} 个节点" },
+            comments: { other: "{count} 条批注" },
+            translations: { other: "{count} 条译文" },
+        },
+        nothing: "无需处理",
+        cacheBusy: "构建或预览正在使用",
+        noUndo: "无法撤销",
+        run: "整理",
+        failed: "整理未完成：{message}",
+        done: {
+            title: "项目整理完成：{summary}",
+            nothing: "项目整理完成，无需更改",
+            separator: "，",
+            avatars: "截取 {count} 个头像",
+            projectCache: "清除 {size} 缓存",
+            blueprintLayout: "格式化 {count} 个蓝图",
+            danglingNodes: "删除 {count} 个节点",
+            orphanComments: "删除 {count} 条批注",
+            orphanTranslations: "删除 {count} 条译文",
+        },
     },
     file: {
         label: "文件",

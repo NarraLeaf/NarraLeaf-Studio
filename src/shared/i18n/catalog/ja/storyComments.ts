@@ -59,6 +59,7 @@ export const storyComments = {
         edit: "コメントの編集",
         deleteComment: "コメントの削除",
         deleteThread: "コメントスレッドの削除",
+        deleteOrphans: "対象行のないコメントの削除",
         resolve: "コメントの解決",
         reopen: "コメントの再開",
         markTodo: "コメントを TODO にする",
