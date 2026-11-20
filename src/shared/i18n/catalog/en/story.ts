@@ -596,6 +596,9 @@ export const story = {
         title: "Inline event",
         noCharacter: "This row has no character.",
         sound: "Sound effect",
+        fade: "Cross-fade",
+        fadeSeconds: "s",
+        fadeHint: "0 swaps instantly. A skipped line, or one shown all at once, swaps without the fade.",
     },
     actionCreator: {
         starred: "Starred",

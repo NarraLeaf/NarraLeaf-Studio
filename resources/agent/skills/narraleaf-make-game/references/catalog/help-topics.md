@@ -556,6 +556,30 @@ A thread follows its row when the row is moved. When the row is deleted, the thr
 
 相关主题 · Related：场景与行 · Scenes and rows、版本控制 · Version control
 
+### 行内表情切换 · Expression changes inside a line
+
+对白中插入的表情切换在打字机显示到该位置时更换说话角色的立绘，同一行可以插入多个
+
+- 编辑对白行时，在文字工具栏选择「插入表情切换」，在光标处插入并打开设置
+- 设置中选择立绘或差分，可附加一个音效
+- 过渡时长大于 0 时新表情以淡入方式出现，为 0 时瞬间切换；新插入的表情切换沿用最近一次设置的时长
+
+跳过对白或整句直接显示时，各处切换立即生效，不播放过渡，立绘停在最后一个表情
+
+只作用于该行的说话角色，且该角色需已通过 /show 上场；未上场时构建会给出警告
+
+An expression change inserted in a line of dialogue changes the speaking character's portrait when the typewriter reaches it. One line can hold several.
+
+- While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.
+- In the settings, choose the portrait or variant. A sound effect can play at the same point.
+- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly. A newly inserted change takes the cross-fade set most recently.
+
+When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.
+
+Only the speaking character of the row changes, and that character must already be on stage through /show. A build reports a warning otherwise.
+
+相关主题 · Related：场景与行 · Scenes and rows、角色 · Characters、角色外观 · Character appearances
+
 ### 词典标记 · Dictionary marks
 
 检查原文拼写时，词典中的每一种拼写都会被接受，词条与异体写法一样

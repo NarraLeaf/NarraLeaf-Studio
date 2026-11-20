@@ -374,6 +374,18 @@ export const help = {
                 + "- Recent version-control revisions can be searched as well.\n"
                 + "- Restore this version changes that line only. Undo reverts it.",
         },
+        storyInlineExpression: {
+            title: "Expression changes inside a line",
+            body:
+                "An expression change inserted in a line of dialogue changes the speaking character's portrait when the typewriter reaches it. One line can hold several.\n"
+                + "\n"
+                + "- While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.\n"
+                + "- In the settings, choose the portrait or variant. A sound effect can play at the same point.\n"
+                + "- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly. A newly inserted change takes the cross-fade set most recently.\n"
+                + "\n"
+                + "When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.\n"
+                + "Only the speaking character of the row changes, and that character must already be on stage through /show. A build reports a warning otherwise.",
+        },
         storyComments: {
             title: "Comments on story rows",
             body:

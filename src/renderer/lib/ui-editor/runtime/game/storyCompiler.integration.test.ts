@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BlurDissolve, Control, Darkness, DevTools, Exposure, Pause, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { BlurDissolve, Control, Darkness, DevTools, Dissolve, Exposure, Pause, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
@@ -964,6 +964,34 @@ describe("compileStudioStoryToNlr", () => {
             expect(event.config.expression?.image).toBeTruthy();
             // The token contributes no glyphs: the plain projection is just the surrounding text.
             expect(plainText(words)).toBe("AB");
+            // No fade asked for: the swap is the instant one it always was.
+            expect(event.config.expression?.transition).toBeUndefined();
+        });
+
+        it("compiles an expression's fade into a Dissolve of that length", async () => {
+            const enter: StoryBlock = {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "enter", characterId: "char-alice" },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(
+                    { enter, ...eventDialogue({ event: { expression: { characterId: "char-alice", pose: "pose-angry", fadeMs: 200 } } }) },
+                    ["enter", "say"],
+                ),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const event = sayWords(compiled).filter(word => word.isTextEvent?.())[0].text as any;
+            expect(event.config.expression?.appearance).toBe("nlr://asset-angry");
+            const transition = event.config.expression?.transition;
+            expect(transition).toBeInstanceOf(Dissolve);
+            expect(transition.duration).toBe(200);
         });
 
         it("compiles a sound-only event into a TextEvent carrying the SE", async () => {

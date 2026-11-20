@@ -60,6 +60,7 @@ export const HELP_TOPIC_IDS = [
     "stagePlacement",
     "dictionary",
     "storyComments",
+    "storyInlineExpression",
     "dictionaryMarks",
     "assets",
     "assetSources",
@@ -316,6 +317,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "storyComments",
         section: "story",
         related: ["storyScene", "versionControl"],
+    },
+    // The expression change a dialogue line carries inline, and its cross-fade - F1 inside its settings.
+    {
+        id: "storyInlineExpression",
+        section: "story",
+        related: ["storyScene", "characters", "appearances"],
     },
     {
         id: "dictionaryMarks",

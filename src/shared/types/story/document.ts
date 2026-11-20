@@ -1593,6 +1593,13 @@ export type StoryInlineEvent = {
         characterId: string;
         pose?: string;
         tags?: StoryCharacterTagSelection;
+        /**
+         * How long the swap cross-fades, in milliseconds. Absent or 0 swaps instantly, which is what
+         * every token written before this field did. It compiles to a `Dissolve` the engine plays
+         * only when the typewriter reaches the token: a skipped line, or one shown all at once, still
+         * swaps instantly. Additive, so no schema step - a document without it reads as before.
+         */
+        fadeMs?: number;
     };
     sound?: { assetId: string };
 };

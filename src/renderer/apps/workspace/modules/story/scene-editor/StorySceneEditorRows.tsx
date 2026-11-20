@@ -69,7 +69,7 @@ import { useStoryDictionary } from "./useStoryDictionary";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
-import { ExpressionPopover } from "./ExpressionPopover";
+import { ExpressionPopover, initialExpressionFadeMs } from "./ExpressionPopover";
 import {
     collectStoryVariableOptions,
     resolveInterpolationName,
@@ -978,7 +978,10 @@ function TextEditBox(props: {
         if (!characterId) {
             return;
         }
-        const info = props.editorRef.current?.insertEvent({ expression: { characterId } });
+        // A new token starts with the cross-fade the author last set, so a line that changes face
+        // several times takes the same fade on each change without retyping it.
+        const fadeMs = initialExpressionFadeMs();
+        const info = props.editorRef.current?.insertEvent({ expression: { characterId, ...(fadeMs ? { fadeMs } : {}) } });
         if (info) {
             openEvent(info);
         }

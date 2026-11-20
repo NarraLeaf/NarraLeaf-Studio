@@ -8,7 +8,22 @@ import { useTranslation } from "@/lib/i18n";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { AssetField } from "./AssetField";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { keepStoryKeysInPopover } from "./PausePopover";
+
+/**
+ * The cross-fade the author last set on an expression token, which the next inserted token starts
+ * with. A line that changes face several times usually wants the same fade on every change, and
+ * typing it into each token is the chore this saves. Kept for the session only: it is a convenience
+ * of the editor, not a setting of the project, and a new session starts from an instant swap.
+ */
+let lastFadeMs: number | undefined;
+
+/** The fade a newly inserted expression token starts with, or undefined for an instant swap. */
+export function initialExpressionFadeMs(): number | undefined {
+    return lastFadeMs;
+}
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
@@ -56,7 +71,22 @@ export function ExpressionPopover(props: {
         if (!characterId) {
             return;
         }
-        props.onChange({ ...props.value, expression: { characterId, pose: next.pose, tags: next.tags } });
+        // The fade belongs to the token, not to the look it switches to - picking another look keeps it.
+        const fadeMs = expression?.fadeMs;
+        props.onChange({
+            ...props.value,
+            expression: { characterId, pose: next.pose, tags: next.tags, ...(fadeMs ? { fadeMs } : {}) },
+        });
+    };
+    const setFade = (ms: number) => {
+        if (!expression) {
+            return;
+        }
+        const { fadeMs, ...rest } = expression;
+        void fadeMs;
+        const next = Math.max(0, Math.round(ms));
+        lastFadeMs = next > 0 ? next : undefined;
+        props.onChange({ ...props.value, expression: next > 0 ? { ...rest, fadeMs: next } : rest });
     };
     const setSound = (assetId: string | undefined) => {
         const { sound, ...rest } = props.value;
@@ -76,6 +106,7 @@ export function ExpressionPopover(props: {
             // window below it and scrolls instead of running off the bottom.
             className="fixed z-[70] w-[26rem] overflow-y-auto rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left), maxHeight: Math.max(240, view.innerHeight - top - 8) }}
+            data-help-topic="storyInlineExpression"
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
@@ -92,6 +123,25 @@ export function ExpressionPopover(props: {
                     {t("story.inlineEvent.noCharacter")}
                 </div>
             )}
+            {expression ? (
+                <div className="mt-2">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-fg-muted">{t("story.inlineEvent.fade")}</span>
+                        <NumericDraftEnhancedInput
+                            committedDisplay={formatStorySecondsValue(expression.fadeMs ?? 0)}
+                            onFiniteNumber={seconds => setFade(storySecondsToMs(seconds))}
+                            onEmpty={() => setFade(0)}
+                            type="text"
+                            inputMode="decimal"
+                            popoverWhenNarrow={false}
+                            className="w-20"
+                            aria-label={t("story.inlineEvent.fade")}
+                        />
+                        <span className="text-xs text-fg-muted">{t("story.inlineEvent.fadeSeconds")}</span>
+                    </div>
+                    <div className="mt-1 text-2xs text-fg-subtle">{t("story.inlineEvent.fadeHint")}</div>
+                </div>
+            ) : null}
             <div className="mt-2">
                 <AssetField
                     label={t("story.inlineEvent.sound")}

@@ -3441,7 +3441,7 @@ async function compileEventRun(
     }
 
     if (event.expression) {
-        const { characterId, pose, tags } = event.expression;
+        const { characterId, pose, tags, fadeMs } = event.expression;
         if (!characterId) {
             diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineNoCharacter"));
         } else {
@@ -3470,7 +3470,16 @@ async function compileEventRun(
                         character: characterNameById(ctx, characterId),
                     }));
                 } else if (image) {
-                    return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                    // A cross-fade is a plain `Dissolve`, the same one a `/face` row's dissolve plays.
+                    // The engine copies it per firing and plays it only when the typewriter reaches
+                    // the token, so one instance serves every replay of the line.
+                    const fade = typeof fadeMs === "number" && Number.isFinite(fadeMs) && fadeMs > 0
+                        ? new Dissolve({ duration: fadeMs })
+                        : undefined;
+                    return TextEvent.expression(image, src, {
+                        ...(sound ? { sound } : {}),
+                        ...(fade ? { transition: fade } : {}),
+                    });
                 } else {
                     diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineNotOnStage", {
                         character: characterNameById(ctx, characterId),

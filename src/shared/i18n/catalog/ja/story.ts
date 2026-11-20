@@ -537,6 +537,9 @@ export const story = {
         title: "行の中のイベント",
         noCharacter: "この行にキャラクターがいない",
         sound: "効果音",
+        fade: "クロスフェード",
+        fadeSeconds: "秒",
+        fadeHint: "0 で即時に切り替え。スキップや一括表示ではフェードしない",
     },
     actionCreator: {
         starred: "お気に入り",
