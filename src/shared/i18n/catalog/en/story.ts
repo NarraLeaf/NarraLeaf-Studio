@@ -598,7 +598,9 @@ export const story = {
         sound: "Sound effect",
         fade: "Cross-fade",
         fadeSeconds: "s",
-        fadeHint: "0 swaps instantly. A skipped line, or one shown all at once, swaps without the fade.",
+        fadeInherited: "Same as the previous change",
+        fadeInherit: "Use the previous change's",
+        fadeHint: "0 changes instantly. Later changes with no cross-fade of their own use this one.",
     },
     actionCreator: {
         starred: "Starred",

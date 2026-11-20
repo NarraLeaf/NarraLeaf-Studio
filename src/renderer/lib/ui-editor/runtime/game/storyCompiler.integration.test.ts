@@ -994,6 +994,58 @@ describe("compileStudioStoryToNlr", () => {
             expect(transition.duration).toBe(200);
         });
 
+        it("gives a change with no fade of its own the one set before it in the scene", async () => {
+            const enter: StoryBlock = {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "enter", characterId: "char-alice" },
+            };
+            const line = (id: string, fadeMs?: number): StoryBlock => ({
+                id,
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    characterId: "char-alice",
+                    text: {
+                        textId: `text-${id}`,
+                        value: "AB",
+                        role: "dialogue",
+                        rich: [
+                            { text: "A" },
+                            { event: { expression: { characterId: "char-alice", pose: "pose-angry", ...(fadeMs === undefined ? {} : { fadeMs }) } } },
+                            { text: "B" },
+                        ],
+                    },
+                },
+            });
+            const order = ["one", "two", "three", "four"];
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(
+                    { enter, one: line("one", 200), two: line("two"), three: line("three", 0), four: line("four") },
+                    ["enter", ...order],
+                ),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const fadeOf = (blockId: string) => {
+                const binding = compiled.actionIdBindings.find(entry => entry.blockId === blockId);
+                const content = (binding!.action as any).contentNode?.getContent?.();
+                const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+                const token = (sentence.text as any[]).find(word => word.isTextEvent?.());
+                return token.text.config.expression?.transition?.duration ?? 0;
+            };
+            // 200 is set on the first line and carried by the second; 0 on the third turns it off for
+            // the fourth as well, and leaves the first two as they were.
+            expect(order.map(fadeOf)).toEqual([200, 200, 0, 0]);
+        });
+
         it("compiles a sound-only event into a TextEvent carrying the SE", async () => {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(eventDialogue({ event: { sound: { assetId: "asset-sting" } } }), ["say"]),

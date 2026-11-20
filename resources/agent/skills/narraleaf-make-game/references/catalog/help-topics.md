@@ -562,7 +562,9 @@ A thread follows its row when the row is moved. When the row is deleted, the thr
 
 - 编辑对白行时，在文字工具栏选择「插入表情切换」，在光标处插入并打开设置
 - 设置中选择立绘或差分，可附加一个音效
-- 过渡时长大于 0 时新表情以淡入方式出现，为 0 时瞬间切换；新插入的表情切换沿用最近一次设置的时长
+- 过渡时长大于 0 时新表情以淡入方式出现，为 0 时瞬间切换
+- 未单独设置过渡时长的表情切换沿用本场景中前一个表情切换的设置；修改某一个，之后沿用它的表情切换随之改变，之前的不受影响
+- 清空输入框或选择「改为沿用前一个」，恢复沿用
 
 跳过对白或整句直接显示时，各处切换立即生效，不播放过渡，立绘停在最后一个表情
 
@@ -572,7 +574,9 @@ An expression change inserted in a line of dialogue changes the speaking charact
 
 - While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.
 - In the settings, choose the portrait or variant. A sound effect can play at the same point.
-- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly. A newly inserted change takes the cross-fade set most recently.
+- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly.
+- A change with no cross-fade of its own uses the one set on the previous change in the scene. Changing one changes every later change that uses it, and leaves earlier changes as they are.
+- Clear the field, or choose Use the previous change's, to use the previous change's cross-fade again.
 
 When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.
 

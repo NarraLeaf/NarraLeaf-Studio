@@ -1,5 +1,6 @@
 import { indexStoryVoiceUnits, type StoryVoiceIndex } from "./storyVoiceIndex";
 import { storyTextOutlineFilter } from "@shared/story/textOutline";
+import { foldInlineFades, inlineFadesAtBlockStart } from "@shared/story/inlineExpressionFade";
 import {
     BlurDissolve,
     Character,
@@ -3409,11 +3410,14 @@ async function resolveSegmentEvents(
     if (!segment.rich) {
         return map;
     }
+    // An expression change that sets no fade takes the one in effect before it in the scene, so the
+    // fade is worked out along the scene rather than read off the run (see `inlineExpressionFade`).
+    const { fades } = foldInlineFades(segment.rich, inlineFadesAtBlockStart(ctx.scene).get(blockId) ?? 0);
     for (const run of segment.rich) {
         if (!("event" in run)) {
             continue;
         }
-        const event = await compileEventRun(ctx, run.event, blockId);
+        const event = await compileEventRun(ctx, run.event, blockId, fades.get(run) ?? 0);
         if (event) {
             map.set(run, event);
         }
@@ -3426,6 +3430,7 @@ async function compileEventRun(
     ctx: SceneCompileContext,
     event: StoryInlineEvent,
     blockId: string,
+    fadeMs: number,
 ): Promise<TextEvent | null> {
     let sound: Sound | undefined;
     if (event.sound?.assetId) {
@@ -3441,7 +3446,7 @@ async function compileEventRun(
     }
 
     if (event.expression) {
-        const { characterId, pose, tags, fadeMs } = event.expression;
+        const { characterId, pose, tags } = event.expression;
         if (!characterId) {
             diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineNoCharacter"));
         } else {
@@ -3473,7 +3478,7 @@ async function compileEventRun(
                     // A cross-fade is a plain `Dissolve`, the same one a `/face` row's dissolve plays.
                     // The engine copies it per firing and plays it only when the typewriter reaches
                     // the token, so one instance serves every replay of the line.
-                    const fade = typeof fadeMs === "number" && Number.isFinite(fadeMs) && fadeMs > 0
+                    const fade = fadeMs > 0
                         ? new Dissolve({ duration: fadeMs })
                         : undefined;
                     return TextEvent.expression(image, src, {

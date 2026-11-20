@@ -539,7 +539,9 @@ export const story = {
         sound: "効果音",
         fade: "クロスフェード",
         fadeSeconds: "秒",
-        fadeHint: "0 で即時に切り替え。スキップや一括表示ではフェードしない",
+        fadeInherited: "前の変更と同じ",
+        fadeInherit: "前の変更に合わせる",
+        fadeHint: "0 で即時に切り替え。以降の個別設定のない変更もこの設定を使う",
     },
     actionCreator: {
         starred: "お気に入り",

@@ -10,20 +10,8 @@ import { AssetField } from "./AssetField";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { ownInlineFadeMs } from "@shared/story/inlineExpressionFade";
 import { keepStoryKeysInPopover } from "./PausePopover";
-
-/**
- * The cross-fade the author last set on an expression token, which the next inserted token starts
- * with. A line that changes face several times usually wants the same fade on every change, and
- * typing it into each token is the chore this saves. Kept for the session only: it is a convenience
- * of the editor, not a setting of the project, and a new session starts from an instant swap.
- */
-let lastFadeMs: number | undefined;
-
-/** The fade a newly inserted expression token starts with, or undefined for an instant swap. */
-export function initialExpressionFadeMs(): number | undefined {
-    return lastFadeMs;
-}
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
@@ -35,6 +23,11 @@ export function ExpressionPopover(props: {
     anchor: { top: number; left: number; bottom: number };
     value: StoryInlineEvent;
     character: Character | null;
+    /**
+     * The fade this change takes when it sets none: the one in effect after the changes before it in
+     * the scene (see `inlineExpressionFade`). Shown in the field while the change inherits.
+     */
+    inheritedFadeMs: number;
     onChange: (event: StoryInlineEvent) => void;
     onRemove: () => void;
     onClose: () => void;
@@ -71,23 +64,30 @@ export function ExpressionPopover(props: {
         if (!characterId) {
             return;
         }
-        // The fade belongs to the token, not to the look it switches to - picking another look keeps it.
-        const fadeMs = expression?.fadeMs;
+        // The fade belongs to the token, not to the look it switches to - picking another look keeps
+        // it, and keeps it inheriting when it was.
+        const fadeMs = expression ? ownInlineFadeMs(props.value) : undefined;
         props.onChange({
             ...props.value,
-            expression: { characterId, pose: next.pose, tags: next.tags, ...(fadeMs ? { fadeMs } : {}) },
+            expression: { characterId, pose: next.pose, tags: next.tags, ...(fadeMs !== undefined ? { fadeMs } : {}) },
         });
     };
-    const setFade = (ms: number) => {
+    // A value typed here is this change's own, 0 included: an explicit 0 turns the fade off for this
+    // change and for the ones after it that inherit, where clearing the value hands it back to the
+    // one before. Equal to the inherited value or not, it stays its own until it is cleared.
+    const setFade = (ms: number | undefined) => {
         if (!expression) {
             return;
         }
         const { fadeMs, ...rest } = expression;
         void fadeMs;
-        const next = Math.max(0, Math.round(ms));
-        lastFadeMs = next > 0 ? next : undefined;
-        props.onChange({ ...props.value, expression: next > 0 ? { ...rest, fadeMs: next } : rest });
+        props.onChange({
+            ...props.value,
+            expression: ms === undefined ? rest : { ...rest, fadeMs: Math.max(0, Math.round(ms)) },
+        });
     };
+    const ownFadeMs = expression ? ownInlineFadeMs(props.value) : undefined;
+    const inherits = ownFadeMs === undefined;
     const setSound = (assetId: string | undefined) => {
         const { sound, ...rest } = props.value;
         void sound;
@@ -128,16 +128,31 @@ export function ExpressionPopover(props: {
                     <div className="flex items-center gap-1.5">
                         <span className="text-xs text-fg-muted">{t("story.inlineEvent.fade")}</span>
                         <NumericDraftEnhancedInput
-                            committedDisplay={formatStorySecondsValue(expression.fadeMs ?? 0)}
+                            committedDisplay={formatStorySecondsValue(ownFadeMs ?? props.inheritedFadeMs)}
                             onFiniteNumber={seconds => setFade(storySecondsToMs(seconds))}
-                            onEmpty={() => setFade(0)}
+                            // Emptying the field is the keyboard's way back to inheriting.
+                            onEmpty={() => setFade(undefined)}
                             type="text"
                             inputMode="decimal"
                             popoverWhenNarrow={false}
+                            // An inherited value reads quieter than one this change sets, as an inherited
+                            // differential chip does beside an owned one.
                             className="w-20"
+                            inputClassName={inherits ? "text-fg-muted" : undefined}
                             aria-label={t("story.inlineEvent.fade")}
                         />
                         <span className="text-xs text-fg-muted">{t("story.inlineEvent.fadeSeconds")}</span>
+                        {inherits ? (
+                            <span className="text-2xs text-fg-subtle">{t("story.inlineEvent.fadeInherited")}</span>
+                        ) : (
+                            <button
+                                type="button"
+                                className="text-2xs text-fg-muted transition-colors hover:text-fg"
+                                onClick={() => setFade(undefined)}
+                            >
+                                {t("story.inlineEvent.fadeInherit")}
+                            </button>
+                        )}
                     </div>
                     <div className="mt-1 text-2xs text-fg-subtle">{t("story.inlineEvent.fadeHint")}</div>
                 </div>

@@ -381,7 +381,9 @@ export const help = {
                 + "\n"
                 + "- While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.\n"
                 + "- In the settings, choose the portrait or variant. A sound effect can play at the same point.\n"
-                + "- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly. A newly inserted change takes the cross-fade set most recently.\n"
+                + "- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly.\n"
+                + "- A change with no cross-fade of its own uses the one set on the previous change in the scene. Changing one changes every later change that uses it, and leaves earlier changes as they are.\n"
+                + "- Clear the field, or choose Use the previous change's, to use the previous change's cross-fade again.\n"
                 + "\n"
                 + "When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.\n"
                 + "Only the speaking character of the row changes, and that character must already be on stage through /show. A build reports a warning otherwise.",

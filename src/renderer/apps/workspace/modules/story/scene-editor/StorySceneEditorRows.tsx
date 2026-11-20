@@ -69,7 +69,8 @@ import { useStoryDictionary } from "./useStoryDictionary";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
-import { ExpressionPopover, initialExpressionFadeMs } from "./ExpressionPopover";
+import { ExpressionPopover } from "./ExpressionPopover";
+import { foldInlineFades, inlineFadesAtBlockStart } from "@shared/story/inlineExpressionFade";
 import {
     collectStoryVariableOptions,
     resolveInterpolationName,
@@ -888,6 +889,16 @@ function TextEditBox(props: {
     );
     const [interpEdit, setInterpEdit] = useState<InterpolationClickInfo | null>(null);
     const [eventEdit, setEventEdit] = useState<EventClickInfo | null>(null);
+    /**
+     * The fade the line's `eventIndex`-th event chip takes when it sets none: the fade in effect as the
+     * row begins, carried through the line's events before it. The line is read from the editor, not
+     * the document, so a change just made to an earlier chip in the same line already counts.
+     */
+    const inheritedFadeAt = (eventIndex: number): number => {
+        const rowStart = inlineFadesAtBlockStart(props.scene).get(props.block.id) ?? 0;
+        const events = (props.editorRef.current?.getRuns() ?? []).filter(run => "event" in run);
+        return foldInlineFades(events.slice(0, Math.max(0, eventIndex)), rowStart).endMs;
+    };
     // The row's speaking character, resolved for the inline-expression picker (dialogue rows only).
     const rowCharacter = useMemo(
         () => props.characters.find(character => character.profile.getId() === dialoguePayload?.characterId) ?? null,
@@ -978,10 +989,8 @@ function TextEditBox(props: {
         if (!characterId) {
             return;
         }
-        // A new token starts with the cross-fade the author last set, so a line that changes face
-        // several times takes the same fade on each change without retyping it.
-        const fadeMs = initialExpressionFadeMs();
-        const info = props.editorRef.current?.insertEvent({ expression: { characterId, ...(fadeMs ? { fadeMs } : {}) } });
+        // Inserted with no fade of its own, so it takes the one in effect before it in the scene.
+        const info = props.editorRef.current?.insertEvent({ expression: { characterId } });
         if (info) {
             openEvent(info);
         }
@@ -1148,6 +1157,7 @@ function TextEditBox(props: {
                     anchor={eventEdit.anchor}
                     value={eventEdit.value}
                     character={rowCharacter}
+                    inheritedFadeMs={inheritedFadeAt(eventEdit.eventIndex)}
                     onChange={event => {
                         props.editorRef.current?.updateEventAt(eventEdit.unit, event);
                         setEventEdit(current => (current ? { ...current, value: event } : current));

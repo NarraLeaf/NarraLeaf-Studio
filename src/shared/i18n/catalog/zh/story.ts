@@ -509,7 +509,9 @@ export const story = {
         sound: "音效",
         fade: "过渡时长",
         fadeSeconds: "秒",
-        fadeHint: "0 为瞬间切换；跳过或整句直接显示时不播放过渡",
+        fadeInherited: "沿用前一个表情切换",
+        fadeInherit: "改为沿用前一个",
+        fadeHint: "0 为瞬间切换；之后未单独设置的表情切换沿用此设置",
     },
     actionCreator: {
         starred: "已收藏",

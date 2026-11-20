@@ -1594,10 +1594,12 @@ export type StoryInlineEvent = {
         pose?: string;
         tags?: StoryCharacterTagSelection;
         /**
-         * How long the swap cross-fades, in milliseconds. Absent or 0 swaps instantly, which is what
-         * every token written before this field did. It compiles to a `Dissolve` the engine plays
-         * only when the typewriter reaches the token: a skipped line, or one shown all at once, still
-         * swaps instantly. Additive, so no schema step - a document without it reads as before.
+         * How long the swap cross-fades, in milliseconds; 0 swaps instantly. Absent means the token
+         * sets none and takes the fade in effect before it in the scene, which starts at 0 - so a
+         * document written before this field, where no token sets one, swaps instantly as it did.
+         * The carrying-forward is worked out in `@shared/story/inlineExpressionFade`. It compiles to
+         * a `Dissolve` the engine plays only when the typewriter reaches the token: a skipped line, or
+         * one shown all at once, still swaps instantly. Additive, so no schema step.
          */
         fadeMs?: number;
     };
