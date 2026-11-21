@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Server } from "lucide-react";
 import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
+import { deepLinkServerHost } from "@shared/utils/teamDeepLink";
 
 import { getInterface } from "@/lib/app/bridge";
 import {
@@ -270,9 +271,10 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
         }
         // Only a server already held. A link that names any other is a link anybody could
         // write, and it gets no further than this.
-        const held = servers.find(server => {
+        const wanted = deepLinkServerHost(link.server);
+        const held = wanted === undefined ? undefined : servers.find(server => {
             try {
-                return new URL(server.authUrl).origin === link.server;
+                return new URL(server.authUrl).host.toLowerCase() === wanted;
             } catch {
                 return false;
             }

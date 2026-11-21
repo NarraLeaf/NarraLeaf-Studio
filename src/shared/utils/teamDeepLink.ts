@@ -1,7 +1,7 @@
 /**
  * `narraleaf://` links a Team server's web console hands out.
  *
- *     narraleaf://team/connect?server=https://team.example:54080
+ *     narraleaf://team/connect?server=nlteam://team.example:54080
  *         add this server — the Add Server dialog, its address filled in, nothing else
  *     narraleaf://team/open?server=…&project=<id>[&doc=…&element=…]
  *         open a project of a server this installation is already signed in to
@@ -27,13 +27,29 @@ function field(params: URLSearchParams, name: string): string | undefined {
     return trimmed === "" || trimmed.length > FIELD_LIMIT ? undefined : trimmed;
 }
 
-/** The server address in a link, as an https origin, or undefined when it is not one. */
+/**
+ * The server address in a link, or undefined when it is not one. An `nlteam://host:port`
+ * address - the one a person types into Add Server - stays in that form; an https one
+ * becomes its origin. Either names the listener the server's discovery document is on.
+ */
 function serverOf(params: URLSearchParams): string | undefined {
     const raw = field(params, "server");
     if (raw === undefined) return undefined;
     try {
         const url = new URL(raw);
-        return url.protocol === "https:" && url.username === "" && url.password === "" ? url.origin : undefined;
+        if (url.username !== "" || url.password !== "" || url.host === "") return undefined;
+        if (url.protocol === "https:") return url.origin;
+        if (url.protocol === "nlteam:") return `nlteam://${url.host.toLowerCase()}`;
+        return undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** The `host[:port]` a link's server names, to match against a server already held. */
+export function deepLinkServerHost(server: string): string | undefined {
+    try {
+        return new URL(server).host.toLowerCase() || undefined;
     } catch {
         return undefined;
     }
