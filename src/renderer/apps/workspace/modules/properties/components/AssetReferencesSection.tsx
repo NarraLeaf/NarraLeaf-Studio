@@ -45,6 +45,11 @@ const KIND_ORDER: readonly ReferenceSiteKind[] = [
  * global search uses, so a row jumps straight to the block or blueprint node holding the reference;
  * sites that have no deep link yet (voice takes, character variants) render as plain rows.
  */
+/** What makes two references "the same place" on screen: their kind, label and second line. */
+function siteKey(reference: AssetReference): string {
+    return `${reference.kind}\u0000${reference.label}\u0000${reference.detail ?? ""}`;
+}
+
 export function AssetReferencesSection({ assetId, assetType }: { assetId: string; assetType: AssetType }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
@@ -91,11 +96,30 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
         };
     }, [referenceService, assetId, assetType]);
 
+    // References that name the same place (one scene's label and path) collapse into one row with a
+    // count; the row jumps to the first of them.
+    const siteCounts = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const reference of references) {
+            counts.set(siteKey(reference), (counts.get(siteKey(reference)) ?? 0) + 1);
+        }
+        return counts;
+    }, [references]);
+
     const grouped = useMemo(() => {
-        return KIND_ORDER.map(kind => ({
-            kind,
-            items: references.filter(reference => reference.kind === kind),
-        })).filter(group => group.items.length > 0);
+        return KIND_ORDER.map(kind => {
+            const seen = new Set<string>();
+            return {
+                kind,
+                items: references.filter(reference => {
+                    if (reference.kind !== kind || seen.has(siteKey(reference))) {
+                        return false;
+                    }
+                    seen.add(siteKey(reference));
+                    return true;
+                }),
+            };
+        }).filter(group => group.items.length > 0);
     }, [references]);
 
     const handleJump = useCallback(
@@ -177,6 +201,13 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
                                                 >
                                                     <span className="flex items-baseline gap-1.5">
                                                         <span className="truncate">{reference.label}</span>
+                                                        {/* One row per place: several references from the same scene used to
+                                                            print as identical lines, so the row says how many it stands for. */}
+                                                        {(siteCounts.get(siteKey(reference)) ?? 1) > 1 ? (
+                                                            <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
+                                                                ×{siteCounts.get(siteKey(reference))}
+                                                            </span>
+                                                        ) : null}
                                                         {reference.dormant && (
                                                             <span
                                                                 className="shrink-0 px-1 rounded-md bg-surface-raised text-fg-subtle"

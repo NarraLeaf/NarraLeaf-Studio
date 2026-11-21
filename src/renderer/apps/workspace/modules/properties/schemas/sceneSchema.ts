@@ -8,7 +8,7 @@ import type {
 } from "@shared/types/ui-editor/document";
 import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { DEFAULT_UI_STAGE_SLOT_ID } from "@shared/types/ui-editor/stageSlots";
-import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
+import { getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
 import { getSurfaceDefaultBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import type {
@@ -68,13 +68,6 @@ const getInterfaceTypeLabel = (data: SceneEditorContext, t: TranslateFn): string
         return t("uiEditor.surfaceKind.mainPage");
     }
     return getSurfaceKindNoun(data.surface, t);
-};
-
-const getGameUiSlotLabel = (surface: UISurface, t: TranslateFn): string => {
-    if (!isGameUi(surface)) {
-        return "-";
-    }
-    return getStageSlotLabel(surface.mount.slotId, t);
 };
 
 function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
@@ -154,11 +147,8 @@ export const scenePropertySchema = (t: TranslateFn) =>
                     label: t("properties.layout.size"),
                     getValue: data => `${data.surface.designSize.width}×${data.surface.designSize.height}`,
                 },
-                {
-                    label: t("properties.scene.slot"),
-                    getValue: data => getGameUiSlotLabel(data.surface, t),
-                    hidden: data => !isGameUi(data.surface),
-                },
+                // No slot row: a game interface's slot is its own field further down (a select), and
+                // listing it here as well said the same value twice in one inspector.
             ],
         }),
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
