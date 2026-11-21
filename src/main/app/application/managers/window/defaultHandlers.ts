@@ -1,7 +1,7 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { ProjectListScriptEditorsHandler, ProjectOpenScriptHandler } from "./handlers/projectScriptAction";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppTrashRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppTakeDeepLinkHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppExportLogArchiveHandler, AppOpenLogsFolderHandler, AppOpenThirdPartyNoticesHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppTrashRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppTakeDeepLinkHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppExportLogArchiveHandler, AppOpenLogsFolderHandler, AppOpenThirdPartyNoticesHandler, AppOpenPrivacyNoticeHandler, AppOpenLicensingNoticeHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     SpellcheckCheckHandler,
@@ -271,6 +271,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppExportLogArchiveHandler(),
         new AppOpenLogsFolderHandler(),
         new AppOpenThirdPartyNoticesHandler(),
+        new AppOpenPrivacyNoticeHandler(),
+        new AppOpenLicensingNoticeHandler(),
         new AppProbeDownloadSourceHandler(),
         new AppCacheInventoryHandler(),
         new AppCacheClearHandler(),

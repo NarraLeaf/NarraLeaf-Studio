@@ -217,6 +217,17 @@ extraResources:
   # pack-electron.js refuses to package when it is missing or incomplete.
   - from: ./dist/THIRD-PARTY-NOTICES.txt
     to: THIRD-PARTY-NOTICES.txt
+  # The privacy notice the About page opens (AppOpenPrivacyNoticeHandler), beside the third-party
+  # notice for the same reason. Renamed to .txt: Windows has no default application for .md.
+  - from: ./PRIVACY.md
+    to: PRIVACY.txt
+  - from: ./PRIVACY.zh-CN.md
+    to: PRIVACY.zh-CN.txt
+  # The licensing notice, opened from the same About page (AppOpenLicensingNoticeHandler).
+  - from: ./LICENSING.md
+    to: LICENSING.txt
+  - from: ./LICENSING.zh-CN.md
+    to: LICENSING.zh-CN.txt
 mac:
   # The zip is what the updater downloads on macOS: electron-updater's mac
   # channel (`latest-mac.yml`) lists it, and Squirrel.Mac swaps the .app inside

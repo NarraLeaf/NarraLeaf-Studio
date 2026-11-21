@@ -7,4 +7,6 @@ export const about = {
     contributorsLabel: "贡献者",
     visitWebsite: "访问官网",
     openSourceLicenses: "开源许可证",
+    privacyNotice: "隐私说明",
+    licensingNotice: "授权说明",
 } satisfies LocaleNamespace<"about">;

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { FileText, Globe, Info, Users } from "lucide-react";
+import { FileText, Globe, Info, Scale, ShieldCheck, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button } from "@/lib/components/elements";
@@ -32,6 +32,14 @@ export function AboutEditor(_: EditorComponentProps) {
 
     const handleOpenNotices = useCallback(() => {
         void getInterface().app.openThirdPartyNotices();
+    }, []);
+
+    const handleOpenPrivacy = useCallback(() => {
+        void getInterface().app.openPrivacyNotice();
+    }, []);
+
+    const handleOpenLicensing = useCallback(() => {
+        void getInterface().app.openLicensingNotice();
     }, []);
 
     return (
@@ -83,8 +91,17 @@ export function AboutEditor(_: EditorComponentProps) {
                     </ul>
                 </div>
 
-                {/* Licences of the packages Studio is built from: one quiet line, not a section. */}
-                <div className="flex justify-center mt-6">
+                {/* The licensing and privacy notices, and the licences of the packages Studio is built
+                    from: one quiet line, not a section. Wraps rather than overflowing a narrow tab. */}
+                <div className="flex flex-wrap justify-center gap-2 mt-6">
+                    <Button variant="ghost" size="sm" className="font-normal" onClick={handleOpenLicensing}>
+                        <Scale className="w-3.5 h-3.5" />
+                        <span>{t("about.licensingNotice")}</span>
+                    </Button>
+                    <Button variant="ghost" size="sm" className="font-normal" onClick={handleOpenPrivacy}>
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>{t("about.privacyNotice")}</span>
+                    </Button>
                     <Button variant="ghost" size="sm" className="font-normal" onClick={handleOpenNotices}>
                         <FileText className="w-3.5 h-3.5" />
                         <span>{t("about.openSourceLicenses")}</span>

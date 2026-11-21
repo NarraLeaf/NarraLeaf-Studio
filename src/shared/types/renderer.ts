@@ -682,6 +682,8 @@ export interface RendererPreloadedInterface {
          * the one main knows, in the app's resources.
          */
         openThirdPartyNotices(): Promise<RequestStatus<void>>;
+        openPrivacyNotice(): Promise<RequestStatus<void>>;
+        openLicensingNotice(): Promise<RequestStatus<void>>;
         /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.

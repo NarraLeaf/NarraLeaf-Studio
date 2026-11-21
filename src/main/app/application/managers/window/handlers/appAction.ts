@@ -782,6 +782,68 @@ export class AppOpenThirdPartyNoticesHandler extends IPCHandler<IPCEventType.app
     }
 }
 
+/** The two notices at the repository root the About page opens: `PRIVACY.md` and `LICENSING.md`. */
+export type BundledNotice = "PRIVACY" | "LICENSING";
+
+/**
+ * A bundled notice's file, by interface language. The repository root holds the Markdown sources
+ * (GitHub renders them); a packaged Studio carries them in its resources folder renamed to `.txt`
+ * (electron-builder.yml), because Windows has no default application for `.md` and `openPath` would
+ * fail there. Languages without a translation read the English one.
+ */
+export function bundledNoticeFile(notice: BundledNotice, locale: string, packaged: boolean): string {
+    const suffix = locale.toLowerCase().startsWith("zh") ? ".zh-CN" : "";
+    return `${notice}${suffix}${packaged ? ".txt" : ".md"}`;
+}
+
+/** Open one bundled notice in the system's text editor. Main names the file; nothing is taken from the caller. */
+async function openBundledNotice(window: AppWindow, notice: BundledNotice): Promise<void> {
+    const packaged = window.app.isPackaged();
+    const name = bundledNoticeFile(notice, getMainLocale(window.app), packaged);
+    const file = packaged
+        ? path.join(process.resourcesPath, name)
+        : path.join(window.app.getAppPath(), name);
+    await fs.access(file);
+    // openPath answers with a message rather than throwing, and an empty string means it worked.
+    const failure = await shell.openPath(file);
+    if (failure) {
+        throw new Error(failure);
+    }
+}
+
+/**
+ * Open Studio's privacy notice in the system's text editor, in the interface language. Shaped
+ * after the third-party notice above: it takes no path and opens one of two files main names.
+ */
+export class AppOpenPrivacyNoticeHandler extends IPCHandler<IPCEventType.appOpenPrivacyNotice> {
+    readonly name = IPCEventType.appOpenPrivacyNotice;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        try {
+            await openBundledNotice(window, "PRIVACY");
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/** Open Studio's licensing notice (what a game made with Studio may do), like the privacy notice. */
+export class AppOpenLicensingNoticeHandler extends IPCHandler<IPCEventType.appOpenLicensingNotice> {
+    readonly name = IPCEventType.appOpenLicensingNotice;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        try {
+            await openBundledNotice(window, "LICENSING");
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
 /**
  * Reachability of one mirror address, for the Network settings panel.
  *
