@@ -313,6 +313,8 @@ export const characters = {
         entranceZoom: "Drag to scale",
         // Visual-novel framing: head just under the top edge, the top 80% of a full-length sprite shown
         entranceApplyFramed: "Apply standard framing",
+        // Share the zoom and baseline of a cast member whose art is the same size, keeping their heights apart
+        entranceMatch: "Match \"{name}\"",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

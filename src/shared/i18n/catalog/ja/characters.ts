@@ -301,6 +301,7 @@ export const characters = {
         entranceDrag: "ドラッグで配置",
         entranceZoom: "ドラッグで拡大縮小",
         entranceApplyFramed: "標準の構図を適用",
+        entranceMatch: "「{name}」に合わせる",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

@@ -66,7 +66,7 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
-import { defaultSpriteSize, stageSize } from "@/lib/workspace/services/agent/spriteFacts";
+import { castEntranceMatches, defaultSpriteSize, measureCharacterSprite, stageSize } from "@/lib/workspace/services/agent/spriteFacts";
 import { entranceForFirstArt } from "@/lib/workspace/services/agent/spriteStage";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
@@ -399,19 +399,26 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
     }, []);
 
     /**
-     * Stand the character on the floor when her first art has just landed (`entranceForFirstArt`):
-     * without it a new character's picture comes on at its own pixels, centred on the stage.
+     * Frame the character when her first art has just landed (`entranceForFirstArt`): without it a
+     * new character's picture comes on at its own pixels, centred on the stage. A cast member whose
+     * art is the same size is followed; otherwise her figure is measured. No head model here - this
+     * runs by itself, and the model is loaded only when an author asks.
      */
     const fitFirstArt = useCallback(async (hadArt: boolean) => {
         if (hadArt || !context || !character || character.profile.getEntranceTransform() !== undefined) {
             return;
         }
         const sprite = await defaultSpriteSize(context, character);
+        const [match] = await castEntranceMatches(context, character, sprite);
+        const measure = match ? null : await measureCharacterSprite(context, character);
         const entrance = entranceForFirstArt({
             hadArt,
+            // Read after the waits: the author may have set them meanwhile, and those stay.
             current: character.profile.getEntranceTransform(),
             sprite,
             stage: stageSize(context),
+            measure,
+            match,
         });
         if (entrance) {
             character.profile.setEntranceTransform(entrance);

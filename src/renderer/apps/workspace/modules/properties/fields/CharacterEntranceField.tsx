@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoryTransformProps, StoryTransformRef } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -8,7 +8,8 @@ import { TransformChannelEditor } from "@/apps/workspace/modules/story/scene-edi
 import { resolveStoryMotionStageSize } from "@/apps/workspace/modules/story-motion/StoryMotionEditorTab";
 import { Button, type ContextMenuDef } from "@/lib/components/elements";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
-import { framedEntrance } from "@/lib/workspace/services/agent/spriteStage";
+import { framedEntrance, type EntranceMatch } from "@/lib/workspace/services/agent/spriteStage";
+import { castEntranceMatches, measureCharacterSprite, type SpriteHeadDetector } from "@/lib/workspace/services/agent/spriteFacts";
 import { CharacterEntrancePreview, SPRITE_COMPOSITE_PX } from "./CharacterEntrancePreview";
 import type { CustomFieldProps } from "../framework/types";
 import type { CharacterEditorContext } from "../schemas/characterSchema";
@@ -31,6 +32,10 @@ import type { CharacterEditorContext } from "../schemas/characterSchema";
  * the picker to the channels this record can hold - a duration or a reveal belongs to the row that
  * plays an entrance, not to the character entering.
  */
+/** The head model, loaded on first use: it is a few megabytes of WebAssembly and weights. */
+const detectHead: SpriteHeadDetector = async layers =>
+    (await import("@/lib/workspace/services/character/headDetector")).detectHeadFrame(layers);
+
 export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEditorContext>) {
     const { t } = useTranslation();
     const profile = data.character.profile;
@@ -57,19 +62,54 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
         ? appearance.resolvePoseAssetId(undefined) ?? undefined
         : undefined;
 
-    // The standard framing for her art (`framedEntrance`), the one a new character is given when her
-    // first picture lands. Offered for a character that never got it - made before that rule, or
-    // filled in some other way - and as a way back after hand edits. Same composite the preview
-    // asks for, so the compositor answers both from one entry; its `size` is the artwork's.
+    // The standard framing (`framedEntrance`), measured on her figure when asked for: where the
+    // silhouette sits in the picture and, from the head model, how many heads tall she is. The model
+    // loads only here, on the author's click - never on its own. Same composite the preview asks for,
+    // so the compositor answers both from one entry; its `size` is the artwork's.
     const sprite = useCompositedSprite(data.character, {}, SPRITE_COMPOSITE_PX);
-    const framed = useMemo(
-        () => (sprite.size ? framedEntrance(sprite.size, stageSize) : undefined),
-        [sprite.size, stageSize],
-    );
-    const isFramed = framed !== undefined && JSON.stringify(framed) === JSON.stringify(value);
+    const [framing, setFraming] = useState(false);
+    const applyFramed = async (): Promise<void> => {
+        const size = sprite.size;
+        if (!context || !isInitialized || !size || framing) {
+            return;
+        }
+        setFraming(true);
+        try {
+            const measure = await measureCharacterSprite(context, data.character, detectHead);
+            commitProps(framedEntrance(size, stageSize, measure ?? undefined));
+        } finally {
+            setFraming(false);
+        }
+    };
+
+    // Cast members whose art is the same size: drawn to one scale, so sharing their defaults keeps
+    // the difference in heights that framing each character on her own would erase.
+    const [matched, setMatched] = useState<{ characterId: string; matches: EntranceMatch[] }>({ characterId, matches: [] });
+    useEffect(() => {
+        if (!context || !isInitialized || !sprite.size) {
+            return;
+        }
+        let live = true;
+        void castEntranceMatches(context, data.character, sprite.size)
+            .then(matches => { if (live) setMatched({ characterId, matches }); })
+            .catch(() => undefined);
+        return () => { live = false; };
+    }, [characterId, context, data.character, isInitialized, sprite.size]);
+    const matches = matched.characterId === characterId ? matched.matches : [];
+    const sameAs = (props: StoryTransformProps) => JSON.stringify(props) === JSON.stringify(value);
+
     const applyFramedLabel = t("characters.properties.entranceApplyFramed");
-    const menuItems: ContextMenuDef | undefined = framed
-        ? [{ id: "apply-framed", label: applyFramedLabel, disabled: isFramed, onClick: () => commitProps(framed) }]
+    const matchLabel = (match: EntranceMatch) => t("characters.properties.entranceMatch", { name: match.name });
+    const menuItems: ContextMenuDef | undefined = sprite.size
+        ? [
+            { id: "apply-framed", label: applyFramedLabel, disabled: framing, onClick: () => void applyFramed() },
+            ...matches.slice(0, 5).map((match, index) => ({
+                id: `match-${index}`,
+                label: matchLabel(match),
+                disabled: sameAs(match.props),
+                onClick: () => commitProps(structuredClone(match.props)),
+            })),
+        ]
         : undefined;
 
     const commit = (next: StoryTransformRef): void => {
@@ -103,8 +143,11 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
             {value === undefined && (
                 <div className="mt-1 flex items-center gap-2">
                     <p className="min-w-0 flex-1 text-xs text-fg-subtle">{t("characters.properties.entranceEmpty")}</p>
-                    {framed && (
-                        <Button size="sm" onClick={() => commitProps(framed)}>{applyFramedLabel}</Button>
+                    {matches[0] && (
+                        <Button size="sm" onClick={() => commitProps(structuredClone(matches[0].props))}>{matchLabel(matches[0])}</Button>
+                    )}
+                    {sprite.size && (
+                        <Button size="sm" disabled={framing} onClick={() => void applyFramed()}>{applyFramedLabel}</Button>
                     )}
                 </div>
             )}

@@ -46,8 +46,8 @@ import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
 import { opaqueImageWarning } from "../imageAlpha";
-import { drawnBoxAtCenter, framedEntrance, standingEntrance, type PixelSize } from "../spriteStage";
-import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
+import { drawnBoxAtCenter, framedEntrance, standingEntrance, type EntranceMatch, type PixelSize, type SpriteMeasure } from "../spriteStage";
+import { castEntranceMatches, defaultSpriteSize, measureCharacterSprite, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
 import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
@@ -304,12 +304,30 @@ export function readEntrance(args: Record<string, unknown>): EntranceInput {
 }
 
 /**
+ * What the framing is computed from besides the picture's size: where the figure sits in it, and a
+ * cast member whose art is the same size, whose defaults a newly fitted character shares.
+ */
+export type EntranceFit = { measure?: SpriteMeasure | null; match?: EntranceMatch | null };
+
+/** Whether `applyEntrance` will fit the defaults to the art, and so needs an {@link EntranceFit}. */
+export function entranceNeedsFit(profile: Character["profile"], entrance: EntranceInput, gotArt: boolean): boolean {
+    return entrance.kind === "framed" || (gotArt && entrance.kind === "keep" && profile.getEntranceTransform() === undefined);
+}
+
+/** Measure the draft's figure and find a same-sized cast member, for `applyEntrance`. */
+export async function readEntranceFit(ctx: WorkspaceContext, draft: Character, sprite: PixelSize | null, entrance: EntranceInput): Promise<EntranceFit> {
+    // An explicit "framed" frames her on her own figure; only the automatic first fit follows the cast.
+    const [match] = entrance.kind === "framed" ? [] : await castEntranceMatches(ctx, draft, sprite);
+    return { match: match ?? null, measure: match ? null : await measureCharacterSprite(ctx, draft) };
+}
+
+/**
  * Set a character's entrance defaults on `profile` as `entrance` asks, given the default look's
  * pixel size. Returns a sentence for the answer when a default was chosen without being asked for.
  *
- * A character that gets art and has none stands on the bottom edge at its own pixels: the stage's
- * neutral would centre it vertically, which no visual novel wants, and an agent cannot see the stage
- * to notice. A character that already has defaults keeps them - they are an author's decision - but
+ * A character that gets art and has none is fitted: the stage's neutral would centre it vertically,
+ * which no visual novel wants, and an agent cannot see the stage to notice. She shares the defaults
+ * of a cast member whose art is the same size (`fitting.match`), or is framed on her measured figure. A character that already has defaults keeps them - they are an author's decision - but
  * when its art was just replaced the numbers were chosen for other pixels (the skeleton's demo cast
  * is tuned for its demo sprite), so a warning says so.
  */
@@ -320,6 +338,7 @@ export function applyEntrance(
     stage: PixelSize,
     gotArt: boolean,
     warnings: string[],
+    fitting: EntranceFit = {},
 ): string {
     if (entrance.kind === "set") {
         profile.setEntranceTransform(entrance.props);
@@ -337,8 +356,14 @@ export function applyEntrance(
             }
             return "";
         }
-        profile.setEntranceTransform(entrance.kind === "standing" ? standingEntrance(sprite, stage) : framedEntrance(sprite, stage));
-        return fit ? "" : " Entrance set to the framed default (head under the top edge, the top 80% of a full-length figure on the stage).";
+        if (!fit && fitting.match) {
+            profile.setEntranceTransform(structuredClone(fitting.match.props));
+            return ` Entrance shared with "${fitting.match.name}", whose art is the same size, so their heights compare as drawn.`;
+        }
+        profile.setEntranceTransform(entrance.kind === "standing"
+            ? standingEntrance(sprite, stage)
+            : framedEntrance(sprite, stage, fitting.measure ?? undefined));
+        return fit ? "" : " Entrance set to the framed default, measured on the figure (head under the top edge; a full-length figure shows its top 80%).";
     }
     if (gotArt && profile.getEntranceTransform() !== undefined) {
         warnings.push(
@@ -481,7 +506,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const defaultSprite = defaultAssetId
         ? (poseFacts.get(defaultAssetId) ?? await readImageFacts(ctx, defaultAssetId))?.size ?? null
         : await defaultSpriteSize(ctx, draft);
-    const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, Boolean(poses && poses.length > 0), warnings);
+    const gotArt = Boolean(poses && poses.length > 0);
+    const fitting = entranceNeedsFit(profile, entrance, gotArt) ? await readEntranceFit(ctx, draft, defaultSprite, entrance) : {};
+    const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, gotArt, warnings, fitting);
 
     // Reading the stories and measuring the poses took a while; the author may have paused meanwhile.
     assertAgentMayStillWrite({ ctx, request, follow });

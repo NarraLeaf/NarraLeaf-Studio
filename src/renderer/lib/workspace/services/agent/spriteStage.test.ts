@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnBoxAtCenter, entranceForFirstArt, framedEntrance, stageSizeOf, standingEntrance } from "./spriteStage";
+import { drawnBoxAtCenter, entranceForFirstArt, framedEntrance, framingKind, opaqueBounds, stageSizeOf, standingEntrance } from "./spriteStage";
 
 const STAGE = { width: 1920, height: 1080 };
 const SPRITE = { width: 700, height: 1000 };
@@ -82,5 +82,78 @@ describe("a character's first art", () => {
         expect(entranceForFirstArt({ hadArt: false, current: set, sprite: MIO, stage: STAGE })).toBeUndefined();
         expect(entranceForFirstArt({ hadArt: true, current: undefined, sprite: MIO, stage: STAGE })).toBeUndefined();
         expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: null, stage: STAGE })).toBeUndefined();
+    });
+});
+
+/** An RGBA buffer with one opaque rectangle, in pixels. */
+function silhouette(width: number, height: number, box: { x0: number; y0: number; x1: number; y1: number }): Uint8ClampedArray {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let y = box.y0; y < box.y1; y += 1) {
+        for (let x = box.x0; x < box.x1; x += 1) data[(y * width + x) * 4 + 3] = 255;
+    }
+    return data;
+}
+
+describe("measuring the figure", () => {
+    it("bounds the opaque pixels as shares of the picture, ignoring faint haze", () => {
+        const data = silhouette(100, 200, { x0: 30, y0: 20, x1: 70, y1: 180 });
+        data[(5 * 100 + 5) * 4 + 3] = 10;
+        expect(opaqueBounds(data, 100, 200)).toEqual({ top: 0.1, bottom: 0.9, left: 0.3, right: 0.7 });
+        expect(opaqueBounds(new Uint8ClampedArray(4 * 4 * 4), 4, 4)).toBeNull();
+    });
+
+    it("tells cut, full-length and bust apart by the figure, not the canvas", () => {
+        const square = { width: 2000, height: 2000 };
+        // A square canvas with a standing figure in it: the shape alone would have called it a bust.
+        expect(framingKind(square, { top: 0.05, bottom: 0.95, left: 0.35, right: 0.65 })).toBe("fullLength");
+        expect(framingKind(square, { top: 0.05, bottom: 1, left: 0.2, right: 0.8 })).toBe("cut");
+        // Seven heads is a standing figure; two and a half is a chibi, kept whole.
+        expect(framingKind(square, { top: 0.05, bottom: 0.95, left: 0.3, right: 0.7, head: { top: 0.05, height: 0.13 } })).toBe("fullLength");
+        expect(framingKind(square, { top: 0.3, bottom: 0.95, left: 0.3, right: 0.7, head: { top: 0.3, height: 0.26 } })).toBe("bust");
+    });
+});
+
+describe("framing on the measured figure", () => {
+    const art = { width: 2000, height: 3000 };
+
+    it("puts a full-length figure's head under the top edge and shows its top 80%, padding or not", () => {
+        for (const pad of [0, 0.1, 0.25]) {
+            const measure = { top: pad, bottom: pad + 0.6, left: 0.3, right: 0.7 };
+            const box = drawnBoxAtCenter(art, framedEntrance(art, STAGE, measure), STAGE);
+            const headTop = box.top + measure.top * box.height;
+            const feet = box.top + measure.bottom * box.height;
+            expect(headTop).toBeCloseTo(43.2, -0.5);
+            expect((STAGE.height - headTop) / (feet - headTop)).toBeCloseTo(0.8, 2);
+        }
+    });
+
+    it("gives the margin to the head, not to an ahoge above it", () => {
+        const measure = { top: 0.05, bottom: 0.9, left: 0.3, right: 0.7, head: { top: 0.1, height: 0.12 } };
+        const box = drawnBoxAtCenter(art, framedEntrance(art, STAGE, measure), STAGE);
+        expect(box.top + 0.1 * box.height).toBeCloseTo(43.2, -0.5);
+    });
+
+    it("stands art cut by its artist on the bottom edge, head under the margin", () => {
+        const measure = { top: 0.08, bottom: 1, left: 0.2, right: 0.8 };
+        const box = drawnBoxAtCenter(art, framedEntrance(art, STAGE, measure), STAGE);
+        expect(Math.abs(box.top + box.height - STAGE.height)).toBeLessThanOrEqual(1);
+        expect(box.top + 0.08 * box.height).toBeCloseTo(43.2, -0.5);
+    });
+
+    it("stands a bust on its feet, whatever transparent space is under them", () => {
+        const small = { width: 800, height: 900 };
+        const measure = { top: 0.2, bottom: 0.85, left: 0.2, right: 0.8, head: { top: 0.2, height: 0.25 } };
+        const box = drawnBoxAtCenter(small, framedEntrance(small, STAGE, measure), STAGE);
+        expect(Math.abs(box.top + 0.85 * box.height - STAGE.height)).toBeLessThanOrEqual(1);
+        expect(box.height).toBe(900);
+    });
+
+    it("follows a cast member whose art is the same size instead of framing her alone", () => {
+        const props = { position: { xalign: 0.5, yalign: 0.5, yoffset: -120 }, zoom: 0.5 };
+        const measure = { top: 0.3, bottom: 0.9, left: 0.3, right: 0.7 };
+        const fitted = entranceForFirstArt({ hadArt: false, current: undefined, sprite: art, stage: STAGE, measure, match: { name: "Aoi", props } });
+        expect(fitted).toEqual(props);
+        expect(fitted).not.toBe(props);
+        expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: art, stage: STAGE, measure })).toEqual(framedEntrance(art, STAGE, measure));
     });
 });

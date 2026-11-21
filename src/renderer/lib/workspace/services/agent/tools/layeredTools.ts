@@ -84,6 +84,8 @@ import {
 } from "../layeredSpec";
 import {
     applyEntrance,
+    entranceNeedsFit,
+    readEntranceFit,
     coldSwitchCheck,
     commitRecord,
     describeCharacter,
@@ -270,7 +272,10 @@ async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "fo
     const artChanged = created || previous?.kind !== "layered"
         || previousCanvas?.width !== appearance.canvas?.width || previousCanvas?.height !== appearance.canvas?.height;
     const stage = stageSize(ctx);
-    const entranceNote = applyEntrance(draft.profile, input.entrance, appearance.canvas, stage, artChanged, warnings);
+    const fitting = entranceNeedsFit(draft.profile, input.entrance, artChanged)
+        ? await readEntranceFit(ctx, draft, appearance.canvas ?? null, input.entrance)
+        : {};
+    const entranceNote = applyEntrance(draft.profile, input.entrance, appearance.canvas, stage, artChanged, warnings, fitting);
 
     const notes = input.notes ?? [];
     const combinations = enumerateCombinations(new CharacterAppearance(appearance), 1).total;

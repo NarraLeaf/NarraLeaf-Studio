@@ -272,8 +272,10 @@ export const characters = {
         entranceEmpty: "未设置时，登场行使用舞台的默认值",
         entranceDrag: "拖动放置",
         entranceZoom: "拖动缩放",
-        // 按 GalGame 常见构图摆放：头顶贴近上沿，全身立绘只露出自头往下约八成
+        // 按 GalGame 常见构图摆放：测量立绘里人物的实际位置与头身比，头顶贴近上沿，全身立绘露出自头往下约八成
         entranceApplyFramed: "应用标准取景",
+        // 与画布同尺寸的另一角色共用缩放与基线，保留两人的身高差
+        entranceMatch: "与“{name}”一致",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",
