@@ -1,6 +1,10 @@
 import type { LocaleNamespace } from "../types";
 
 export const build = {
+    railAttention: {
+        warning: "该部分有需要检查的设置",
+        error: "该部分有阻止构建的问题",
+    },
     dialog: {
         title: "构建发行包",
         start: "开始构建",

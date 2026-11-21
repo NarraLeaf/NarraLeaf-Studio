@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, PencilLine } from "lucide-react";
+import { ArrowRight, ChevronRight, PencilLine } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { Input } from "@/lib/components/elements/Input";
@@ -60,14 +60,18 @@ function EditRow(props: { edit: RenameEdit; checked: boolean; onToggle: (checked
     const { edit } = props;
     return (
         <div className={cn("flex items-start gap-2 rounded-md px-2 py-1.5", !props.checked && "opacity-60")}>
-            <Checkbox
-                checked={props.checked}
-                disabled={edit.required}
-                onCheckedChange={props.onToggle}
-                boxClassName="mt-0.5"
-                aria-label={referenceSiteDetail(edit.site, t)}
-                data-tip={edit.required ? t("refactor.dialog.required" as TranslationKey) : undefined}
-            />
+            {/* A change the rename cannot skip (the declaration itself) has no box: a checked box that
+                cannot be unchecked asks a question with one answer. Its slot stays so the rows line up. */}
+            {edit.required ? (
+                <span className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+                <Checkbox
+                    checked={props.checked}
+                    onCheckedChange={props.onToggle}
+                    boxClassName="mt-0.5"
+                    aria-label={referenceSiteDetail(edit.site, t)}
+                />
+            )}
             <div className="min-w-0 flex-1">
                 <div className="text-2xs text-fg-subtle">
                     {referenceSiteDetail(edit.site, t)}
@@ -271,8 +275,10 @@ export function RenamePreviewHost() {
                         </div>
 
                         {plan.followers.length > 0 ? (
-                            <details className="text-xs">
-                                <summary className="cursor-default select-none text-fg-muted">
+                            <details className="group text-xs">
+                                {/* The project's chevron, not the browser's own triangle. */}
+                                <summary className="flex cursor-default select-none list-none items-center gap-1 text-fg-muted [&::-webkit-details-marker]:hidden">
+                                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-fg-subtle transition-transform group-open:rotate-90" />
                                     {t("refactor.dialog.followersTitle" as TranslationKey)}
                                 </summary>
                                 <div className="mt-1 flex max-h-48 flex-col overflow-y-auto rounded-md border border-edge-subtle">

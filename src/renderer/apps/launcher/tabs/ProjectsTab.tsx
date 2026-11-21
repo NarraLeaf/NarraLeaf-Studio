@@ -1,7 +1,7 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentProjectMissingReason, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { ConfirmModal, ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { Button, ConfirmModal, ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -519,17 +519,17 @@ export function ProjectsTab() {
                 >
                     <FolderOpen className="h-4 w-4" />
                 </IconButton>
-                <IconButton
-                    variant="ghost"
+                {/* The screen's first action carries its words: a bare "+" in the corner was the weakest
+                    control on a page whose whole job is to start or open a project. */}
+                <Button
                     size="sm"
                     onClick={handleAddClick}
                     disabled={isBusy}
-                    data-tip={t("launcher.projects.addProject")}
-                    aria-label={t("launcher.projects.addProject")}
                     data-projects-action="add"
                 >
-                    <Plus className="h-4 w-4" />
-                </IconButton>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("launcher.projects.addProject")}
+                </Button>
             </div>
 
             {operationError && <OperationError message={operationError} />}

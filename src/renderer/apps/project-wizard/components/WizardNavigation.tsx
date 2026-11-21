@@ -56,10 +56,14 @@ export function WizardNavigation({
         <div className="flex items-center justify-between border-t border-edge px-5 py-3">
             {/* Locked while a project is being written or copied down: both leave a folder
                 half-populated if abandoned, and the clone has a server on the other end. */}
+            {/* On the first page there is nowhere to go back to: the button keeps its place but is not
+                drawn, rather than sitting there greyed out as if something were blocking it. */}
             <Button
                 variant="ghost"
                 onClick={onPrevStep}
                 disabled={currentStepIndex <= 0 || isBusy}
+                className={currentStepIndex <= 0 ? "invisible" : undefined}
+                aria-hidden={currentStepIndex <= 0 ? true : undefined}
             >
                 <ChevronLeft className="w-4 h-4 mr-2" />
                 {t("common.back")}
