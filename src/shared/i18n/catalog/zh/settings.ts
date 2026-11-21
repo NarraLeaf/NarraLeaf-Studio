@@ -325,6 +325,10 @@ export const settings = {
             label: "关闭工作区时弹出提示",
             description: "关闭工作区窗口时先询问确认",
         },
+        closeShowsLauncher: {
+            label: "关闭工作区后显示启动器",
+            description: "关闭此项时，关闭工作区窗口后不显示启动器，NarraLeaf Studio 在后台继续运行",
+        },
         reopenLastProject: {
             label: "启动时打开上次的项目",
             description: "打开上次所在的项目，而不是停在启动器",

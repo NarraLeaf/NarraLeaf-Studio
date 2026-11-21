@@ -346,6 +346,10 @@ export const settings = {
             label: "Confirm before closing a workspace",
             description: "Ask for confirmation when a workspace window is closed.",
         },
+        closeShowsLauncher: {
+            label: "Show the launcher after closing a workspace",
+            description: "Turn this off to keep NarraLeaf Studio running in the background with no window open.",
+        },
         reopenLastProject: {
             label: "Reopen the last project on startup",
             description: "Open the project the last session was in, instead of starting on the launcher.",

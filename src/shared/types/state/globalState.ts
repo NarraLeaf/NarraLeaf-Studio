@@ -331,6 +331,23 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "workspace.reopenLastProject": boolean;
     /**
+     * Closing a workspace window - the close box, the macOS red light, Cmd+W - brings the home
+     * screen up when it was the last workspace on screen.
+     *
+     * Read by `App.handleWorkspaceExitRequest` for the `"close"` intent only; File ▸ Back to
+     * Launcher always goes home, and a quit never does. Off, the close stands on its own and the
+     * last-window handling takes over: Studio stays resident (the Dock on macOS, the tray
+     * elsewhere) rather than quitting.
+     *
+     * On by default. With a second workspace still open the home screen is not raised whatever
+     * this says - the author already has somewhere to work, and a launcher appearing beside it is
+     * a window they did not ask for.
+     *
+     * A new key rather than the retired `workspace.returnToLauncherOnClose`, which every older
+     * profile still carries and `sweepRetiredKeys` deletes on each start.
+     */
+    "workspace.closeShowsLauncher": boolean;
+    /**
      * Open a workspace window maximized rather than at the frame it was placed at.
      *
      * Read by `App.launchWorkspace` as each window is built. Off by default: the frame a workspace
@@ -655,6 +672,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.reopenLastProject": false,
+    "workspace.closeShowsLauncher": true,
     "workspace.maximizeOnOpen": false,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
@@ -702,7 +720,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
  * `workspace.returnToLauncherOnClose` is the switch that used to make closing a workspace and
  * returning to the home screen the same exit. Both are now available at once - the close box and
  * File ▸ Back to Launcher - so nothing reads it, and every profile that predates the split is
- * carrying it.
+ * carrying it. Its successor is `workspace.closeShowsLauncher`, a fresh key so that the value an
+ * old profile carries is not read as the author's answer to the new question.
  *
  * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
  */
