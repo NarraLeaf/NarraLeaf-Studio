@@ -492,7 +492,7 @@ The 100 nodes in the "Game" palette category, titled as the node palette shows t
 
 `blueprint.game.isGameOverlay` · 纯数据节点，没有执行针脚 · Pure: no exec pins
 
-所在的页面、叠加页面或游戏 UI 显示在进行中的游戏之上时为真。在应用逻辑中，有页面或模态叠加页面覆盖剧情画面时为真
+所在的页面、叠加页面或游戏界面显示在进行中的游戏之上时为真。在应用逻辑中，有页面或模态叠加页面覆盖剧情画面时为真
 
 True when this page, layer or Game UI is shown over a running game. In App logic, true while a page or a modal layer covers the story.
 
@@ -590,7 +590,7 @@ True when this page, layer or Game UI is shown over a running game. In App logic
 
 `blueprint.game.postNotification`
 
-在进行中的游戏里将「消息」显示为通知，位置与游戏自身的提示相同。项目有通知游戏 UI 时由其显示。「时长（秒）」以秒为单位，留空时使用默认的 3 秒。通知关闭前，「获取通知」会列出该条通知。需要进行中的游戏
+在进行中的游戏里将「消息」显示为通知，位置与游戏自身的提示相同。项目有通知游戏界面时由其显示。「时长（秒）」以秒为单位，留空时使用默认的 3 秒。通知关闭前，「获取通知」会列出该条通知。需要进行中的游戏
 
 Shows Message as a notification in the running game, in the same place as the game's own notices. A project with a Notifications Game UI shows it there. Duration is in seconds, and 3 seconds when left empty. Get Notifications lists the notification until it closes. Needs a running game.
 

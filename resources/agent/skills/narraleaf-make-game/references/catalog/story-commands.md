@@ -49,7 +49,7 @@ Change which of a character's looks is showing
 - `form` / `表情`（外观 · Appearance）：characterForm 或 · or puppetName；按位置填写 · positional
 - `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
-- `hold`（保持秒数 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /motion · 动作 · Motion
 
@@ -127,7 +127,7 @@ Replace an object's image or text
 - `target`（目标 · Target）：target；按位置填写 · positional
 - `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
-- `hold`（保持秒数 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `content`（内容 · Content）：content；按位置填写 · positional，吃掉本行剩余文字 · takes the rest of the line
 
 ### /front · 置顶 · Bring to Front
@@ -182,7 +182,7 @@ Move, scale, rotate, mask, filter or fade anything on stage — or the camera
 - `lens`（镜头效果 · Lens Effect）：enum：`blink`、`slowBlink`、`vignettePulse`、`none`；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `ease` / `easing`（缓动 · Easing）：enum：`linear`、`easeIn`、`easeOut`、`easeInOut`、`circIn`、`circOut`、`circInOut`、`backIn`、`backOut`、`backInOut`、`anticipate`；写成 key=value · named
-- `delay`（延迟秒数 · Delay Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `delay`（延迟 · Delay Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `repeat`（重复次数 · Repeat Times）：number，≥ 0；写成 key=value · named
 - `repeatDelay`（重复间隔 · Repeat Gap）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `repeatType`（重复方式 · Repeat Direction）：enum：`loop`、`reverse`、`mirror`；写成 key=value · named
@@ -272,7 +272,7 @@ Set the scene background image or color
 - `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
 - `rule` / `ruleimage`（规则图 · Rule image）：asset；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
-- `hold`（保持秒数 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /jump · 跳转 · Jump
 
@@ -284,7 +284,7 @@ Go to another scene, unloading this one unless Return is set
 - `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
 - `rule` / `ruleimage`（规则图 · Rule image）：asset；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
-- `hold`（保持秒数 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `return` / `comeback` / `call`（返回 · Return）：boolean；写成 key=value · named
 
 ### /nvl · NVL
@@ -320,7 +320,7 @@ Set the background music
 - `audio` / `src`（音频 · Audio）：asset；按位置填写 · positional
 - `track`（音轨 · Audio Track）：audioTrack；写成 key=value · named
 - `vol` / `volume`（音量 · Volume）：number，≥ 0，≤ 1；写成 key=value · named
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `loop`（循环 · Loop）：boolean；写成 key=value · named
 
 ### /sound · 音效 · Sound
@@ -334,7 +334,7 @@ Play a sound effect
 - `name`（名称 · Name）：text；写成 key=value · named
 - `track`（音轨 · Audio Track）：audioTrack；写成 key=value · named
 - `vol` / `volume`（音量 · Volume）：number，≥ 0，≤ 1；写成 key=value · named
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `loop`（循环 · Loop）：boolean；写成 key=value · named
 - `wait`（等待播放结束 · Wait for the clip）：boolean；写成 key=value · named
 
@@ -347,7 +347,7 @@ Set a sound's volume (BGM by default)
 - 也可以写 · Also typed as：`/volume`
 - `target`（目标 · Target）：target；按位置填写 · positional
 - `volume` / `vol`（音量 · Volume）：number，≥ 0，≤ 1；按位置填写 · positional
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /rate · 倍速 · Rate
 
@@ -365,7 +365,7 @@ Set a sound's speed (BGM by default)
 Stop a sound or a video (BGM by default)
 
 - `target`（目标 · Target）：target；按位置填写 · positional
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /pause · 暂停 · Pause
 
@@ -375,7 +375,7 @@ Pause a sound or a video (BGM by default)
 
 - 也可以写 · Also typed as：`/pausesound`
 - `target`（目标 · Target）：target；按位置填写 · positional
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /resume · 继续 · Resume
 
@@ -384,7 +384,7 @@ Pause a sound or a video (BGM by default)
 Resume a sound or a video (BGM by default)
 
 - `target`（目标 · Target）：target；按位置填写 · positional
-- `fade`（淡入淡出秒数 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
+- `fade`（淡入淡出 · Fade Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
 ### /mute · 静音 · Mute
 
@@ -637,7 +637,7 @@ Wait until the player holds an input action down for a number of seconds
 
 - 也可以写 · Also typed as：`/longpress`
 - `action`（输入动作 · Input Action）：inputAction；按位置填写 · positional
-- `seconds`（按住秒数 · Hold Seconds）：number，≥ 0，单位 · unit s；按位置填写 · positional
+- `seconds`（按住时长 · Hold Seconds）：number，≥ 0，单位 · unit s；按位置填写 · positional
 - `timeout` / `limit`（时限 · Time Limit）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `into` / `result`（结果变量 · Result Variable）：variable；写成 key=value · named
 
