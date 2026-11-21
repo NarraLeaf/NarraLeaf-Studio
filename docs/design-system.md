@@ -140,6 +140,27 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 小字**只用单档** `text-2xs`（11px）——收敛原先的 `text-[9px]/[10px]/[11px]`。常规层级用 `text-xs`(12px)、`text-sm`(14px)、`text-base`(16px)。**禁用 `text-[Npx]` 任意值。**
 
+## 4.1 文字层级
+
+标题和标签只从五级里取，类名由 [`textLevels.ts`](../src/renderer/lib/components/elements/textLevels.ts) 给出（`textLevelClass(level, density)`），不要手写组合。两种密度共用同一套级别：**panel** 是侧栏、属性面板、检查器；**page** 是设置窗口、对话框、仪表盘、启动器。
+
+| 级别 | 用途 | panel | page | 承载组件 |
+|---|---|---|---|---|
+| title | 面板标题栏、窗口与对话框标题 | 14 semibold | 16 semibold | `PanelHeader`、`Modal` |
+| section | 一组字段或设置的名字 | 12 semibold | 14 semibold | `SectionTitle`（`SectionField`、故事检查器 `Section` 都用它） |
+| item | 一条设置、一张卡片、列表主文字 | 12 regular | 14 regular | 列表行、`SectionCard` 标题 |
+| label | 控件上方或旁边的名字 | 11 regular | 12 regular | `FieldLabel` |
+| meta | 一句话预期、计数、尺寸、时间 | 11 | 12 | 纯文本 |
+
+四条规则：
+
+- **title、section、item 一律 `text-fg`**，只有 label 用 `fg-muted`、meta 用 `fg-subtle`。标题永远不比它统领的内容更暗。
+- **相邻两级至少两处不同**（字号、字重、颜色、间距、容器）。section 与 item 同字号时靠字重和上方分隔线区分。
+- **同一级只有一种样式。** 可折叠的分区是 section 加折叠箭头（`SectionTitle` 的 `onToggle`），不是灰底条。灰底条只留给 `SectionStack` 的分区头。
+- **容器最多两层**：面板本身一层，`SectionCard` 一层，卡片里不再套卡片。分区名写在框外。只读键值不加框、不加冒号（`InfoField`）。
+
+计数是名称后面的 meta 文本（`Backgrounds 4`），不加括号、不加「项」。
+
 ## 5. 交互态（统一写法）
 
 - **hover**：行 / 图标按钮一律 `hover:bg-fill`——共享 `Button` 的 ghost 变体内部就是它,手写行照抄这一档才与组件对齐;要更轻一档(密集列表、已有底色上再叠一层)用 `hover:bg-fill-subtle`。**hover 底不写 `edge` 系**:`edge` 只给 `border-`/`divide-`(见 §1),本条早先误写成 `hover:bg-edge-subtle` / `hover:bg-edge`,全仓没有一处是照它写的。
@@ -182,7 +203,8 @@ Phase 2 新增(用来替换各处手写模式):
 | `TabStrip` | tab 条 + 下划线(原 4 套实现) |
 | `Badge` | 状态 pill(tone: neutral/primary/binding/danger/success/warning) |
 | `EmptyState` | 居中空状态占位 |
-| `FieldLabel` | eyebrow 小标签(原 `FIELD_LABEL_CLASS` 复制) |
+| `FieldLabel` | label 级字段名（§4.1），不加粗、不大写 |
+| `SectionTitle` | section 级分区标题（§4.1），可折叠时带箭头 |
 | `SectionCard` | 带边框的区块卡片 |
 | `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
 | `Tooltip` | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1） |
