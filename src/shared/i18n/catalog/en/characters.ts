@@ -311,6 +311,8 @@ export const characters = {
         entranceEmpty: "Entrance rows use the stage's own values until this is set.",
         entranceDrag: "Drag to place",
         entranceZoom: "Drag to scale",
+        // Visual-novel framing: head just under the top edge, the top 80% of a full-length sprite shown
+        entranceApplyFramed: "Apply standard framing",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

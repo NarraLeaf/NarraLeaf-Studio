@@ -60,13 +60,53 @@ export function standingEntrance(sprite: PixelSize, stage: PixelSize): StoryTran
     };
 }
 
+/** Share of the stage height left above the head by the framed default. */
+const FRAMED_TOP_MARGIN = 0.04;
+/**
+ * Share of a full-length sprite's height that stays on the stage, measured from the top of the
+ * picture. Commercial visual novels measured at 78-85%; the rest runs below the bottom edge, where
+ * the dialogue box would have covered it anyway.
+ */
+const FRAMED_VISIBLE_SHARE = 0.8;
+/** Height over width from which a picture is taken to be a full-length figure rather than a bust. */
+const FULL_LENGTH_ASPECT = 1.5;
+
+/**
+ * Entrance defaults in the framing visual novels use: the head just under the top edge and the
+ * bottom edge cutting the figure about four fifths of the way down, so the face sits well above the
+ * dialogue box instead of beside it.
+ *
+ * Only a full-length picture (taller than {@link FULL_LENGTH_ASPECT} times its width) is cut off; it
+ * is scaled, up or down, until its top {@link FRAMED_VISIBLE_SHARE} fills the stage under the
+ * margin. A picture that is already a bust has nothing below the waist to lose, so it stands on the
+ * bottom edge whole, scaled down only to keep its head on the stage.
+ *
+ * The art's own transparent padding is not measured: the margin is a share of the picture, which is
+ * close enough for a default the author can still drag.
+ */
+export function framedEntrance(sprite: PixelSize, stage: PixelSize): StoryTransformProps {
+    const fullLength = sprite.height >= sprite.width * FULL_LENGTH_ASPECT;
+    const headroom = stage.height * (1 - FRAMED_TOP_MARGIN);
+    const targetHeight = fullLength ? headroom / FRAMED_VISIBLE_SHARE : Math.min(sprite.height, headroom);
+    const zoom = Math.round((targetHeight / sprite.height) * 1000) / 1000;
+    const drawnHeight = sprite.height * zoom;
+    // Hung from the margin when the figure runs past the bottom edge; stood on the edge otherwise.
+    const centreUp = fullLength ? headroom - drawnHeight / 2 : drawnHeight / 2;
+    const yoffset = Math.round(centreUp - stage.height / 2);
+    return {
+        position: { xalign: 0.5, yalign: 0.5, yoffset },
+        ...(zoom !== 1 ? { zoom } : {}),
+    };
+}
+
 /**
  * The entrance defaults a character takes when its first art lands, or `undefined` to leave them.
  *
  * Only a character that had no art and states no defaults is fitted: its first picture would
  * otherwise come on at its own pixels centred on the stage - a full-size PSD 1.6 times the height of
- * the stage, head cut off by the top - and nothing would say why. Defaults an author set are theirs,
- * and so is a character whose art is being replaced. The same rule the agent's tools apply.
+ * the stage, head cut off by the top - and nothing would say why. She is given the framed default
+ * ({@link framedEntrance}). Defaults an author set are theirs, and so is a character whose art is
+ * being replaced. The same rule the agent's tools apply.
  */
 export function entranceForFirstArt(input: {
     hadArt: boolean;
@@ -77,7 +117,7 @@ export function entranceForFirstArt(input: {
     if (input.hadArt || input.current !== undefined || !input.sprite) {
         return undefined;
     }
-    return standingEntrance(input.sprite, input.stage);
+    return framedEntrance(input.sprite, input.stage);
 }
 
 /**

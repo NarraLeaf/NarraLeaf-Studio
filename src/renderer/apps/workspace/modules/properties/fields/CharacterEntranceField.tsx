@@ -6,7 +6,10 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import { useWorkspace } from "@/apps/workspace/context";
 import { TransformChannelEditor } from "@/apps/workspace/modules/story/scene-editor/TransformChannelEditor";
 import { resolveStoryMotionStageSize } from "@/apps/workspace/modules/story-motion/StoryMotionEditorTab";
-import { CharacterEntrancePreview } from "./CharacterEntrancePreview";
+import { Button, type ContextMenuDef } from "@/lib/components/elements";
+import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
+import { framedEntrance } from "@/lib/workspace/services/agent/spriteStage";
+import { CharacterEntrancePreview, SPRITE_COMPOSITE_PX } from "./CharacterEntrancePreview";
 import type { CustomFieldProps } from "../framework/types";
 import type { CharacterEditorContext } from "../schemas/characterSchema";
 
@@ -54,6 +57,21 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
         ? appearance.resolvePoseAssetId(undefined) ?? undefined
         : undefined;
 
+    // The standard framing for her art (`framedEntrance`), the one a new character is given when her
+    // first picture lands. Offered for a character that never got it - made before that rule, or
+    // filled in some other way - and as a way back after hand edits. Same composite the preview
+    // asks for, so the compositor answers both from one entry; its `size` is the artwork's.
+    const sprite = useCompositedSprite(data.character, {}, SPRITE_COMPOSITE_PX);
+    const framed = useMemo(
+        () => (sprite.size ? framedEntrance(sprite.size, stageSize) : undefined),
+        [sprite.size, stageSize],
+    );
+    const isFramed = framed !== undefined && JSON.stringify(framed) === JSON.stringify(value);
+    const applyFramedLabel = t("characters.properties.entranceApplyFramed");
+    const menuItems: ContextMenuDef | undefined = framed
+        ? [{ id: "apply-framed", label: applyFramedLabel, disabled: isFramed, onClick: () => commitProps(framed) }]
+        : undefined;
+
     const commit = (next: StoryTransformRef): void => {
         commitProps(next.to);
     };
@@ -79,10 +97,16 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
                 targetKind="character"
                 scope="characterDefaults"
                 previewAssetId={previewAssetId}
+                menuItems={menuItems}
                 onChange={commit}
             />
             {value === undefined && (
-                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.entranceEmpty")}</p>
+                <div className="mt-1 flex items-center gap-2">
+                    <p className="min-w-0 flex-1 text-xs text-fg-subtle">{t("characters.properties.entranceEmpty")}</p>
+                    {framed && (
+                        <Button size="sm" onClick={() => commitProps(framed)}>{applyFramedLabel}</Button>
+                    )}
+                </div>
             )}
         </div>
     );

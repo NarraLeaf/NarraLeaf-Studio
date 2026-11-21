@@ -15,7 +15,7 @@
  * How big a sprite is drawn and where its feet land is the character's `entranceTransform` - the
  * transform every entrance row falls back to, channel by channel, and the "Entrance" section of
  * Studio's character panel. `spriteStage.ts` states the runtime's rule; this file exposes the field,
- * gives a character that has none a standing default the first time it gets art, and reports the
+ * gives a character that has none the framed default the first time it gets art, and reports the
  * box a sprite lands in so an agent need not take a screenshot to learn it.
  *
  * Comments in English per project convention.
@@ -46,7 +46,7 @@ import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
 import { opaqueImageWarning } from "../imageAlpha";
-import { drawnBoxAtCenter, standingEntrance, type PixelSize } from "../spriteStage";
+import { drawnBoxAtCenter, framedEntrance, standingEntrance, type PixelSize } from "../spriteStage";
 import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
@@ -246,8 +246,11 @@ function readPoses(raw: unknown): PoseInput[] | undefined {
     });
 }
 
-/** What `entranceTransform` asks for: leave it, clear it, fit it to the art, or state it. */
-export type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
+/**
+ * What `entranceTransform` asks for: leave it, clear it, fit it to the art (`framed`: the visual-novel
+ * framing a new character gets; `standing`: the whole figure on the bottom edge), or state it.
+ */
+export type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "framed" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
 
 const ENTRANCE_KEYS = ["zoom", "scaleX", "scaleY", "position"] as const;
 const POSITION_KEYS = ["xalign", "yalign", "xoffset", "yoffset"] as const;
@@ -260,11 +263,11 @@ export function readEntrance(args: Record<string, unknown>): EntranceInput {
     if (raw === null) {
         return { kind: "clear" };
     }
-    if (raw === "standing") {
-        return { kind: "standing" };
+    if (raw === "standing" || raw === "framed") {
+        return { kind: raw };
     }
     if (typeof raw !== "object" || Array.isArray(raw)) {
-        throw refuse("invalid_args", "`entranceTransform` must be \"standing\", null, or { zoom, scaleX, scaleY, position }.");
+        throw refuse("invalid_args", "`entranceTransform` must be \"framed\", \"standing\", null, or { zoom, scaleX, scaleY, position }.");
     }
     const record = raw as Record<string, unknown>;
     const props: StoryTransformProps = {};
@@ -326,20 +329,21 @@ export function applyEntrance(
         profile.setEntranceTransform(undefined);
         return "";
     }
-    if (entrance.kind === "standing" || (gotArt && profile.getEntranceTransform() === undefined)) {
+    const fit = entrance.kind === "framed" || entrance.kind === "standing";
+    if (fit || (gotArt && profile.getEntranceTransform() === undefined)) {
         if (!sprite) {
-            if (entrance.kind === "standing") {
+            if (fit) {
                 throw refuse("unavailable", `"${profile.getName()}" has no readable picture to fit.`, "Give it art first, or state `entranceTransform` as numbers.");
             }
             return "";
         }
-        profile.setEntranceTransform(standingEntrance(sprite, stage));
-        return entrance.kind === "standing" ? "" : " Entrance set to a standing sprite (feet on the bottom edge, own pixel size).";
+        profile.setEntranceTransform(entrance.kind === "standing" ? standingEntrance(sprite, stage) : framedEntrance(sprite, stage));
+        return fit ? "" : " Entrance set to the framed default (head under the top edge, the top 80% of a full-length figure on the stage).";
     }
     if (gotArt && profile.getEntranceTransform() !== undefined) {
         warnings.push(
             `"${profile.getName()}" keeps its entrance defaults ${JSON.stringify(profile.getEntranceTransform())}, chosen for its previous art. `
-            + "Check drawnAtCenter below; pass `entranceTransform: \"standing\"` to refit them to the new art, or state them.",
+            + "Check drawnAtCenter below; pass `entranceTransform: \"framed\"` (or \"standing\") to refit them to the new art, or state them.",
         );
     }
     return "";
@@ -403,7 +407,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
             warnings.push(...await coldSwitchCheck(ctx, character, "preset", confirmSwitch));
         } else if (defaultPose) {
             throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no poses.`, kind === "layered" ? "Its looks are axes and tags: character_layered_set." : undefined);
-        } else if (entrance.kind === "standing" && kind !== "layered") {
+        } else if ((entrance.kind === "standing" || entrance.kind === "framed") && kind !== "layered") {
             throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no single picture to fit; state \`entranceTransform\` as numbers instead.`);
         }
     }

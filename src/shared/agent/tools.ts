@@ -78,9 +78,9 @@ const DRY_RUN: AgentJsonSchema = {
 /** A character's entrance defaults, as the layered character tools take them (see character_upsert). */
 const LAYERED_ENTRANCE: AgentJsonSchema = {
     description:
-        "Entrance defaults, as on character_upsert: `\"standing\"` fits them to the canvas (feet on the bottom edge), null clears them, an object `{ zoom, scaleX, scaleY, position: { xalign, yalign, xoffset, yoffset } }` replaces them. A new character, or one whose canvas changed, gets a standing entrance when it has none.",
+        "Entrance defaults, as on character_upsert: `\"framed\"` fits them to the canvas in the usual visual-novel framing (head under the top edge, the top 80% of a full-length figure on the stage), `\"standing\"` stands the whole figure on the bottom edge, null clears them, an object `{ zoom, scaleX, scaleY, position: { xalign, yalign, xoffset, yoffset } }` replaces them. A new character, or one whose canvas changed, gets the framed entrance when it has none.",
     oneOf: [
-        { type: "string", enum: ["standing"] },
+        { type: "string", enum: ["framed", "standing"] },
         { type: "null" },
         { type: "object" },
     ],
@@ -325,7 +325,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites: after giving a character sprites, call character_avatars_autoframe so they are framed on the detected head. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given the framed one Studio's character panel also applies (head just under the top edge; a full-length picture, at least 1.5 times as tall as wide, is scaled so its top 80% fills the stage; a bust stands whole on the bottom edge). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"framed\"` to refit, or `\"standing\"` for the whole figure on the bottom edge. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites: after giving a character sprites, call character_avatars_autoframe so they are framed on the detected head. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -361,9 +361,9 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             confirmSwitch: CONFIRM_SWITCH,
             entranceTransform: {
                 description:
-                    "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"standing\"` fits it to the default pose (feet on the bottom edge); null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
+                    "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"framed\"` fits it to the default pose in the visual-novel framing (head under the top edge, the top 80% of a full-length figure on the stage), `\"standing\"` stands the whole figure on the bottom edge; null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
                 oneOf: [
-                    { type: "string", enum: ["standing"] },
+                    { type: "string", enum: ["framed", "standing"] },
                     { type: "null" },
                     {
                         type: "object",

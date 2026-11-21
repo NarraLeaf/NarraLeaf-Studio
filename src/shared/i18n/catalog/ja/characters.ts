@@ -300,6 +300,7 @@ export const characters = {
         entranceEmpty: "未設定の間、登場の行はステージの既定値を使う",
         entranceDrag: "ドラッグで配置",
         entranceZoom: "ドラッグで拡大縮小",
+        entranceApplyFramed: "標準の構図を適用",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

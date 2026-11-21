@@ -20,6 +20,7 @@ import {
     Select,
     Slider,
     useSliderDraft,
+    type ContextMenuDef,
     type PanelAnchor,
     type SelectOption,
 } from "@/lib/components/elements";
@@ -912,6 +913,8 @@ export function TransformChannelEditor(props: {
      * so the picker offers only the channels that record can keep.
      */
     scope?: "row" | "characterDefaults";
+    /** Extra rows at the top of the card's overflow menu. */
+    menuItems?: ContextMenuDef;
     onChange: (value: StoryTransformRef) => void;
 }) {
     const { t } = useTranslation();
@@ -976,7 +979,7 @@ export function TransformChannelEditor(props: {
                     onAdd={channel => props.onChange(seedFromInherited(ref, channel.add(ref), props.inherited))}
                 />
                 <div className="ml-auto">
-                    <TransformCardMenu value={props.value} onChange={props.onChange} />
+                    <TransformCardMenu value={props.value} onChange={props.onChange} leadingItems={props.menuItems} />
                 </div>
             </div>
         </div>

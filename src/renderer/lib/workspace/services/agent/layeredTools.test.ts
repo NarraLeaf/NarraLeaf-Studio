@@ -145,7 +145,7 @@ const MEI_SET = {
 };
 
 describe("character_layered_set", () => {
-    it("creates a layered character as one step of undo, standing on its canvas", async () => {
+    it("creates a layered character as one step of undo, framed on its canvas", async () => {
         const { cast, history, run, undoDepth } = harness();
         const out = await run(characterLayeredSet, MEI_SET);
         expect(out.created).toBe(true);
@@ -154,8 +154,8 @@ describe("character_layered_set", () => {
         expect(out.character.kind).toBe("layered");
         expect(out.character.layered.canvas).toEqual({ width: 1000, height: 1800 });
         expect(out.character.layered.layers[2]).toEqual({ name: "jacket", axis: "outfit", options: { school: null, casual: "mei_jacket_casual" } });
-        // Taller than the stage, so scaled to fit with the feet on the bottom edge.
-        expect(out.character.entranceTransform).toEqual({ position: { xalign: 0.5, yalign: 0.5, yoffset: 0 }, zoom: 0.6 });
+        // A full-length canvas, so the standard framing: head under the top edge, its top 80% on stage.
+        expect(out.character.entranceTransform).toEqual({ position: { xalign: 0.5, yalign: 0.5, yoffset: -151 }, zoom: 0.72 });
         expect(undoDepth()).toBe(1);
 
         history.undo(projectHistoryScope());

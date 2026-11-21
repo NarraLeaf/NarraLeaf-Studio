@@ -120,6 +120,20 @@ function percent(value: string): number {
 }
 
 describe("CharacterEntrancePreview", () => {
+    it("draws the starter dialogue box over her, so a framing can be judged against it", () => {
+        const character = characterWithArt("dialogue-box", { width: 960, height: 1440 });
+        const { getByTestId, rerender } = render(
+            <CharacterEntrancePreview character={character} value={undefined} stageSize={STAGE} onCommit={() => undefined} />,
+        );
+        const box = getByTestId("entrance-dialogue-box");
+        expect([box.style.left, box.style.width, box.style.bottom, box.style.height]).toEqual(["7%", "86%", "4%", "24%"]);
+        // A short stage keeps the box's 180 design-pixel floor, as the starter UI does.
+        rerender(
+            <CharacterEntrancePreview character={character} value={undefined} stageSize={{ width: 1280, height: 600 }} onCommit={() => undefined} />,
+        );
+        expect(percent(getByTestId("entrance-dialogue-box").style.height)).toBeCloseTo(30, 5);
+    });
+
     it("frames the stage in the project's own resolution", () => {
         const character = characterWithArt("frame-only", { width: 960, height: 1440 });
         const { container, rerender } = render(

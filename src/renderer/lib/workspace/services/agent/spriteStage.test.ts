@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnBoxAtCenter, entranceForFirstArt, stageSizeOf, standingEntrance } from "./spriteStage";
+import { drawnBoxAtCenter, entranceForFirstArt, framedEntrance, stageSizeOf, standingEntrance } from "./spriteStage";
 
 const STAGE = { width: 1920, height: 1080 };
 const SPRITE = { width: 700, height: 1000 };
@@ -33,6 +33,34 @@ describe("sprite stage geometry", () => {
         expect(box.top + box.height).toBe(1080);
     });
 
+    it("frames a full-length sprite the way visual novels do: head under the top, top 80% on stage", () => {
+        const sprite = { width: 1088, height: 1984 };
+        const entrance = framedEntrance(sprite, STAGE);
+        const box = drawnBoxAtCenter(sprite, entrance, STAGE);
+        // 4% of the stage above the head; the bottom edge cuts her four fifths of the way down.
+        expect(box.top).toBe(43);
+        expect((STAGE.height - box.top) / box.height).toBeCloseTo(0.8, 2);
+        expect(entrance.position).toMatchObject({ xalign: 0.5, yalign: 0.5 });
+    });
+
+    it("scales a small full-length sprite up to the same framing", () => {
+        const sprite = { width: 400, height: 900 };
+        const box = drawnBoxAtCenter(sprite, framedEntrance(sprite, STAGE), STAGE);
+        expect(box.top).toBe(43);
+        expect((STAGE.height - box.top) / box.height).toBeCloseTo(0.8, 2);
+    });
+
+    it("stands a bust whole on the bottom edge instead of cutting it", () => {
+        const bust = { width: 1200, height: 1400 };
+        const entrance = framedEntrance(bust, STAGE);
+        const box = drawnBoxAtCenter(bust, entrance, STAGE);
+        // Top and height round apart, so the bottom can land a pixel short.
+        expect(Math.abs(box.top + box.height - 1080)).toBeLessThanOrEqual(1);
+        expect(box.top).toBeGreaterThanOrEqual(42);
+        // One that fits already is left at its own pixels.
+        expect(framedEntrance(SPRITE, STAGE)).toEqual(standingEntrance(SPRITE, STAGE));
+    });
+
     it("reads the project's resolution in either stored shape", () => {
         expect(stageSizeOf({ width: 1280, height: 720 })).toEqual({ width: 1280, height: 720 });
         expect(stageSizeOf("2560x1440")).toEqual({ width: 2560, height: 1440 });
@@ -44,8 +72,8 @@ describe("a character's first art", () => {
     // 美绪 from a 1600x1586 PSD came on at her own pixels, 1.6 times Narra, head out of the stage.
     const MIO = { width: 1600, height: 1586 };
 
-    it("stands her on the floor, scaled to fit the stage", () => {
-        expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: MIO, stage: STAGE })).toEqual(standingEntrance(MIO, STAGE));
+    it("gives her the standard framing, head on the stage", () => {
+        expect(entranceForFirstArt({ hadArt: false, current: undefined, sprite: MIO, stage: STAGE })).toEqual(framedEntrance(MIO, STAGE));
         expect(drawnBoxAtCenter(MIO, entranceForFirstArt({ hadArt: false, current: undefined, sprite: MIO, stage: STAGE }), STAGE).height).toBeLessThanOrEqual(STAGE.height);
     });
 

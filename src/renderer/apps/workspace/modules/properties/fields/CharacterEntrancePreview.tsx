@@ -11,9 +11,18 @@ import type { Character } from "@/lib/workspace/services/character/Character";
  * Longest edge of the picture asked for, which is plenty for a box the width of a side panel. It sets
  * how sharply she is drawn and never how big: her size comes from the artwork's own pixels.
  */
-const SPRITE_COMPOSITE_PX = 512;
+export const SPRITE_COMPOSITE_PX = 512;
 /** Screen pixels of horizontal drag per 1.0 of zoom - the sensitivity the Story Motion stage uses. */
 const ZOOM_DRAG_PX = 180;
+/**
+ * The dialogue box of a new project's starter UI, as shares of the stage (`createDialogStageTemplate`
+ * in `UIDocumentService`): 86% wide, centred, 24% tall but never under 180 design pixels, 4% off the
+ * bottom. A stand-in, not the project's own box - the point is to see whether her face clears it.
+ */
+const DIALOGUE_BOX_WIDTH = 0.86;
+const DIALOGUE_BOX_HEIGHT = 0.24;
+const DIALOGUE_BOX_MIN_PX = 180;
+const DIALOGUE_BOX_BOTTOM = 0.04;
 /** A stage a sprite is placed on is 0-1 in each axis; past that she is off the world. */
 function clampAlign(value: number): number {
     return Math.min(1, Math.max(0, value));
@@ -60,6 +69,7 @@ export function CharacterEntrancePreview(props: {
     // picture to composite (the backend draws her at play time), and falls back to the sample figure:
     // the placement is still hers, and it is the placement this box is for.
     const sprite = useCompositedSprite(props.character, {}, SPRITE_COMPOSITE_PX);
+    const dialogueBoxHeight = Math.min(1, Math.max(DIALOGUE_BOX_HEIGHT, DIALOGUE_BOX_MIN_PX / stageHeight));
 
     useEffect(() => {
         setDraft(null);
@@ -194,8 +204,7 @@ export function CharacterEntrancePreview(props: {
             }}
             onPointerCancel={() => setDraft(null)}
         >
-            {/* The floor. A character's baseline is read against it, so it is the one piece of
-                furniture this box needs - a dialogue bar would only cover the answer. */}
+            {/* The floor. A character's baseline is read against it. */}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-edge" />
             <div className="pointer-events-none absolute" style={frameStyle}>
                 {sprite.url ? (
@@ -209,6 +218,18 @@ export function CharacterEntrancePreview(props: {
                     <SampleSubject />
                 )}
             </div>
+            {/* Where the dialogue box sits, over her as it would be in play: what a framing is
+                judged by is whether her face stays clear of it. */}
+            <div
+                className="pointer-events-none absolute rounded-md border border-edge-strong bg-surface-raised opacity-80"
+                data-testid="entrance-dialogue-box"
+                style={{
+                    left: `${(100 - DIALOGUE_BOX_WIDTH * 100) / 2}%`,
+                    width: `${DIALOGUE_BOX_WIDTH * 100}%`,
+                    bottom: `${DIALOGUE_BOX_BOTTOM * 100}%`,
+                    height: `${dialogueBoxHeight * 100}%`,
+                }}
+            />
             <div
                 className="absolute bottom-1 right-1 h-4 w-4 cursor-ew-resize rounded-md border border-edge-strong bg-primary"
                 onPointerDown={startZoomDrag}

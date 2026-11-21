@@ -272,6 +272,8 @@ export const characters = {
         entranceEmpty: "未设置时，登场行使用舞台的默认值",
         entranceDrag: "拖动放置",
         entranceZoom: "拖动缩放",
+        // 按 GalGame 常见构图摆放：头顶贴近上沿，全身立绘只露出自头往下约八成
+        entranceApplyFramed: "应用标准取景",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

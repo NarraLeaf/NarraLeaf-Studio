@@ -184,7 +184,7 @@ What to look for in each screenshot:
 
 - [ ] the right background and sprites, at a believable size and position (a sprite is its pixel size
   times its character's entrance `zoom`; fix a floating or shrunken one with `character_upsert
-  {id, entranceTransform:"standing"}`);
+  {id, entranceTransform:"framed"}`);
 - [ ] the speaker's name and colour correct; the line fully inside the box, no overflow;
 - [ ] the dialogue band readable over this background (contrast);
 - [ ] the choice menu legible and not covering a face;

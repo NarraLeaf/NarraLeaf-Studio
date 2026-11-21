@@ -214,11 +214,13 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   `sad`, `angry`, `surprised`).
 - Reuse the skeleton's characters for your first two: `characters_list`, then `character_upsert`
   with their `id` and your name and poses. A reused character that already has an entrance (the
-  skeleton's sprite character, tuned for the demo art) keeps it: pass `entranceTransform: "standing"`
-  with the new poses. A new character
-  given poses gets a standing entrance by itself - feet on the bottom edge, at its own pixel size
-  (art taller than the stage is scaled to fit). `characters_list` shows each one's `drawnAtCenter`
-  box; the lower third of a full-height sprite behind the dialogue band is normal VN framing.
+  skeleton's sprite character, tuned for the demo art) keeps it: pass `entranceTransform: "framed"`
+  with the new poses. A new character given poses gets the framed entrance by itself, the one
+  Studio's character panel applies: head just under the top edge, and a full-length picture (at least
+  1.5 times as tall as wide) scaled so its top 80% fills the stage, the rest below the bottom edge; a
+  bust stands whole on the bottom edge. `"standing"` instead stands the whole figure on the bottom
+  edge. `characters_list` shows each one's `drawnAtCenter` box; a figure running past the bottom edge
+  behind the dialogue band is normal VN framing.
 - **Art in parts** (a PSD, or files like `mei_body.png`, `mei_eyes_smile.png`, `mei_outfit_casual.png`)
   makes a **layered** character instead: read `layered-sprites`, import the parts named
   `<character>_<layer>_<tag>`, then `character_layers_import` (with the stacking `order` and which

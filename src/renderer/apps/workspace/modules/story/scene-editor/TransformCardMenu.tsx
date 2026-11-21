@@ -44,6 +44,8 @@ import { useTransformPresets } from "./useTransformPresets";
 export function TransformCardMenu(props: {
     value: StoryTransformRef | undefined;
     onChange: (value: StoryTransformRef) => void;
+    /** Rows of the caller's own, above the card's: what the whole bag can be reset to, say. */
+    leadingItems?: ContextMenuDef;
 }) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
@@ -71,7 +73,11 @@ export function TransformCardMenu(props: {
     // Nothing stated is nothing to keep and nothing to empty - the two rows say so rather than
     // writing a preset that seeds no channel.
     const emptyRow = { disabled: stated.length === 0, tooltip: stated.length === 0 ? t("storyInspector.transformCard.noChannels") : undefined };
+    const leading: ContextMenuDef = props.leadingItems?.length
+        ? [...props.leadingItems, { id: "sep-leading", separator: true }]
+        : [];
     const items: ContextMenuDef = [
+        ...leading,
         {
             id: "save-preset",
             label: t("storyInspector.transformCard.savePreset"),
