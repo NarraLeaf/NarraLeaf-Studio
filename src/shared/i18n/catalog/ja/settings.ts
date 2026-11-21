@@ -340,6 +340,10 @@ export const settings = {
             label: "ワークスペースを閉じる前に確認",
             description: "ワークスペースのウィンドウを閉じるときに確認する",
         },
+        closeShowsLauncher: {
+            label: "ワークスペースを閉じた後にランチャーを表示",
+            description: "オフにすると、ウィンドウを閉じても NarraLeaf Studio はバックグラウンドで動作を続ける",
+        },
         reopenLastProject: {
             label: "起動時に前回のプロジェクトを開く",
             description: "ランチャーではなく、前回作業していたプロジェクトを開く",
