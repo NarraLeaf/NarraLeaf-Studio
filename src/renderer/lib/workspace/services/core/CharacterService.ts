@@ -316,6 +316,49 @@ export class CharacterService extends Service<CharacterService> implements IChar
     }
 
     /**
+     * Several existing characters' records landed as ONE step of undo - a change the author made to the
+     * whole cast in one gesture (a behaviour preset applied to every character) is taken back in one.
+     *
+     * The many-record form of {@link commitCharacterRecord}'s update arm: each record is normalised the
+     * same way, unchanged ones are left out, and a record for a character that no longer exists is
+     * skipped rather than created. Inside a live session each change goes to the sink as its own
+     * operation and no step is pushed, as everywhere else. Returns how many characters changed.
+     */
+    public commitCharacterRecords(records: readonly StoredCharacter[], label: HistoryLabel): number {
+        const changes: { id: string; before: StoredCharacter; after: StoredCharacter }[] = [];
+        for (const record of records) {
+            const id = record.profile.id;
+            const existing = this.characters[id];
+            if (!existing) {
+                continue;
+            }
+            const after = Character.fromJSON(structuredClone(record) as StoredCharacter).toJSON() as StoredCharacter;
+            const before = existing.toJSON() as StoredCharacter;
+            if (JSON.stringify(before) !== JSON.stringify(after)) {
+                changes.push({ id, before, after });
+            }
+        }
+        if (changes.length === 0) {
+            return 0;
+        }
+        if (this.opSink) {
+            for (const change of changes) {
+                this.handedToSink({ op: "update-character", characterId: change.id, character: change.after });
+            }
+            return changes.length;
+        }
+        for (const change of changes) {
+            this.adoptRecord(change.id, change.after, "as-written");
+        }
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => changes.forEach(change => this.adoptRecord(change.id, change.before)),
+            redo: () => changes.forEach(change => this.adoptRecord(change.id, change.after)),
+        });
+        return changes.length;
+    }
+
+    /**
      * Leave one step of undo on the project stack for edits a caller has just made to a character in
      * place, through the setters the editor uses - together with whatever the same gesture did outside
      * the cast (`library`: the images a PSD import wrote over and the ones it brought in).

@@ -826,6 +826,8 @@ A character has a name, a color and a set of appearances. An appearance is the c
 - 行为中的命令与对白同时开始，不延迟文字显示；作用于同一对象的命令依次执行
 - 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和音效；不能登场、退场、更换音乐或跳转
 
+「应用预设」写入常用的成对命令，例如不说话时变暗、说话时放大；数值以该角色的登场默认值为基准，写入后可以像普通命令一样修改，再次应用同类预设会替换原有命令；「应用到所有角色」为每个角色按各自的登场默认值写入，可一次撤销
+
 在对白或旁白的属性中关闭「触发角色行为」后，该句不执行任何行为，说话人视为未变化
 
 对白上方手写的命令与行为设置同一角色的同一属性时，以手写的命令为准，项目检查在该行显示警告
@@ -837,6 +839,8 @@ Behaviours are commands a character runs automatically when it starts or stops s
 - Only characters on stage run behaviours. Nothing runs before a character enters or after it exits
 - Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order
 - Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump
+
+Apply preset writes a common pair of commands, such as dimming when not speaking or enlarging when speaking. The numbers are relative to the character's entrance defaults, the commands can be edited like any other, and applying a preset for the same property again replaces them. Apply to all characters writes it for every character from their own entrance defaults, as one step of undo
 
 With "Trigger character behaviours" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged
 

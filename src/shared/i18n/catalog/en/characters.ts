@@ -42,6 +42,7 @@ export const characters = {
         renameCharacter: "rename character {name}",
         createCharacter: "create character {name}",
         editCharacter: "edit character {name}",
+        applyBehaviourPresetAll: "apply preset \"{preset}\" to all characters",
         deleteGroup: "delete group {name}",
         autoFrameAvatars: "auto-frame dialog avatars of {name}",
     },
@@ -318,6 +319,16 @@ export const characters = {
         // A character's behaviours: command rows it runs on its own when it starts or stops speaking
         behaviours: "Behaviours",
         behaviourAdd: "Add behaviour",
+        // A preset writes ordinary command rows, shown and editable in the list; its numbers are relative to the entrance defaults
+        behaviourPresets: "Apply preset",
+        behaviourPresetAll: "Apply to all characters",
+        behaviourPreset: {
+            dimWhenSilent: "Dim when not speaking",
+            fadeWhenSilent: "Fade when not speaking",
+            growWhenSpeaking: "Enlarge when speaking",
+            shrinkWhenSilent: "Shrink when not speaking",
+            frontWhenSpeaking: "Bring to front when speaking",
+        },
         behaviourEvent: {
             startSpeaking: "When starting to speak",
             stopSpeaking: "When stopping speaking",

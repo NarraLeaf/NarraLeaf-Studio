@@ -38,6 +38,7 @@ export const characters = {
         renameCharacter: "重命名角色 {name}",
         createCharacter: "新建角色 {name}",
         editCharacter: "编辑角色 {name}",
+        applyBehaviourPresetAll: "为所有角色应用预设「{preset}」",
         deleteGroup: "删除分组 {name}",
         autoFrameAvatars: "自动截取 {name} 的对白头像",
     },
@@ -279,6 +280,16 @@ export const characters = {
         // 角色行为：角色开始或停止说话时自动执行的命令行
         behaviours: "角色行为",
         behaviourAdd: "添加行为",
+        // 预设写入的是普通命令行，可在列表中查看和修改；数值以登场默认值为基准
+        behaviourPresets: "应用预设",
+        behaviourPresetAll: "应用到所有角色",
+        behaviourPreset: {
+            dimWhenSilent: "不说话时变暗",
+            fadeWhenSilent: "不说话时淡化",
+            growWhenSpeaking: "说话时放大",
+            shrinkWhenSilent: "不说话时缩小",
+            frontWhenSpeaking: "说话时置于最前",
+        },
         behaviourEvent: {
             startSpeaking: "开始说话时",
             stopSpeaking: "停止说话时",

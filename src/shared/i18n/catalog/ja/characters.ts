@@ -42,6 +42,7 @@ export const characters = {
         renameCharacter: "キャラクター {name} の名前変更",
         createCharacter: "キャラクター {name} の作成",
         editCharacter: "キャラクター {name} の編集",
+        applyBehaviourPresetAll: "すべてのキャラクターにプリセット「{preset}」を適用",
         deleteGroup: "グループ {name} の削除",
         autoFrameAvatars: "{name} のアバターの自動切り抜き",
     },
@@ -305,6 +306,16 @@ export const characters = {
         // キャラクターの振る舞い：話し始め・話し終わりに自動で実行するコマンド行
         behaviours: "振る舞い",
         behaviourAdd: "振る舞いを追加",
+        // プリセットは通常のコマンド行を書き込み、一覧で確認・編集できる。数値は登場時の既定値が基準
+        behaviourPresets: "プリセットを適用",
+        behaviourPresetAll: "すべてのキャラクターに適用",
+        behaviourPreset: {
+            dimWhenSilent: "話していないときに暗くする",
+            fadeWhenSilent: "話していないときに薄くする",
+            growWhenSpeaking: "話しているときに拡大する",
+            shrinkWhenSilent: "話していないときに縮小する",
+            frontWhenSpeaking: "話しているときに最前面へ",
+        },
         behaviourEvent: {
             startSpeaking: "話し始めたとき",
             stopSpeaking: "話し終えたとき",

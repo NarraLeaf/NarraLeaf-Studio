@@ -15,8 +15,14 @@ import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
-import type { Character } from "@/lib/workspace/services/character/Character";
+import { Character } from "@/lib/workspace/services/character/Character";
+import type { StoredCharacter } from "@/lib/workspace/services/character/types";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
+import {
+    applyCharacterBehaviourPreset,
+    characterBehaviourPresetRows,
+    CHARACTER_BEHAVIOUR_PRESET_IDS,
+} from "@/lib/story/characterBehaviourPresets";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { InsertRow } from "@/apps/workspace/modules/story/scene-editor/StorySceneEditorRows";
 import {
@@ -62,11 +68,54 @@ export function CharacterBehavioursField({ data }: CustomFieldProps<CharacterEdi
         setDraft({ characterId, value: profile.getBehaviours() });
     };
 
-    const { characters, commandContext } = useBehaviourCommandContext();
+    const { characters, commandContext, characterService } = useBehaviourCommandContext();
     const slashAtAlias = useSlashAtAlias();
     const present = CHARACTER_BEHAVIOUR_EVENTS.filter(event => behaviours?.[event] !== undefined);
     const missing = CHARACTER_BEHAVIOUR_EVENTS.filter(event => behaviours?.[event] === undefined);
     const addMenu = useContextMenu();
+    const presetMenu = useContextMenu();
+    const presetCharacter = (character: Character) => ({
+        id: character.profile.getId(),
+        name: character.profile.getName(),
+        entrance: character.profile.getEntranceTransform(),
+    });
+    const newRowId = () => globalThis.crypto.randomUUID();
+    const presetItems: ContextMenuDef = [
+        ...CHARACTER_BEHAVIOUR_PRESET_IDS.map(presetId => ({
+            id: presetId,
+            label: t(`characters.properties.behaviourPreset.${presetId}`),
+            onClick: () => commit(applyCharacterBehaviourPreset(behaviours, characterBehaviourPresetRows(presetId, presetCharacter(data.character), newRowId))),
+        })),
+        { id: "separator", separator: true as const },
+        {
+            id: "all",
+            label: t("characters.properties.behaviourPresetAll"),
+            disabled: !characterService,
+            submenu: CHARACTER_BEHAVIOUR_PRESET_IDS.map(presetId => ({
+                id: `all:${presetId}`,
+                label: t(`characters.properties.behaviourPreset.${presetId}`),
+                onClick: () => {
+                    if (!characterService) {
+                        return;
+                    }
+                    // Each character from its own entrance defaults, landed as one step of undo.
+                    const records = characterService.listCharacter().map(character => {
+                        const draft = Character.fromJSON(character.toJSON());
+                        draft.profile.setBehaviours(applyCharacterBehaviourPreset(
+                            draft.profile.getBehaviours(),
+                            characterBehaviourPresetRows(presetId, presetCharacter(draft), newRowId),
+                        ));
+                        return draft.toJSON() as StoredCharacter;
+                    });
+                    characterService.commitCharacterRecords(records, {
+                        key: "characters.history.applyBehaviourPresetAll",
+                        params: { preset: t(`characters.properties.behaviourPreset.${presetId}`) },
+                    });
+                    setDraft({ characterId, value: profile.getBehaviours() });
+                },
+            })),
+        },
+    ];
     const addItems: ContextMenuDef = missing.map(event => ({
         id: event,
         label: t(`characters.properties.behaviourEvent.${event}`),
@@ -93,17 +142,28 @@ export function CharacterBehavioursField({ data }: CustomFieldProps<CharacterEdi
                         }}
                     />
                 ))}
-                {missing.length > 0 && (
-                    <Button size="sm" onClick={addMenu.showMenu}>
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("characters.properties.behaviourAdd")}
+                <div className="flex flex-wrap items-center gap-2">
+                    {missing.length > 0 && (
+                        <Button size="sm" onClick={addMenu.showMenu}>
+                            <Plus className="h-3.5 w-3.5" />
+                            {t("characters.properties.behaviourAdd")}
+                        </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={presetMenu.showMenu}>
+                        {t("characters.properties.behaviourPresets")}
                     </Button>
-                )}
+                </div>
                 <ContextMenu
                     items={addItems}
                     position={addMenu.menuState.position}
                     visible={addMenu.menuState.visible}
                     onClose={addMenu.hideMenu}
+                />
+                <ContextMenu
+                    items={presetItems}
+                    position={presetMenu.menuState.position}
+                    visible={presetMenu.menuState.visible}
+                    onClose={presetMenu.hideMenu}
                 />
             </div>
         </StoryCommandLineProvider>
@@ -363,7 +423,7 @@ function BehaviourLineInput(props: {
  * the audio buses. No scene: a behaviour runs in every scene, so a name only one scene declares is
  * not one it can count on, and a command that needs one reports it as unknown.
  */
-function useBehaviourCommandContext(): { characters: Character[]; commandContext: StoryCommandContext } {
+function useBehaviourCommandContext(): { characters: Character[]; commandContext: StoryCommandContext; characterService: CharacterService | null } {
     const { context, isInitialized } = useWorkspace();
     const services = context && isInitialized ? context.services : null;
     const characterService = useMemo(() => services?.get<CharacterService>(Services.Character) ?? null, [services]);
@@ -383,7 +443,7 @@ function useBehaviourCommandContext(): { characters: Character[]; commandContext
         scene: null,
         audioTracks,
     }), [assetSetService, assetsService, audioTracks, characters]);
-    return { characters, commandContext };
+    return { characters, commandContext, characterService };
 }
 
 function assetFolders(assetsService: AssetsService | null): StoryCommandAssetFolderInput[] {

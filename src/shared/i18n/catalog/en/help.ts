@@ -580,6 +580,8 @@ export const help = {
                 + "- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order\n"
                 + "- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump\n"
                 + "\n"
+                + "Apply preset writes a common pair of commands, such as dimming when not speaking or enlarging when speaking. The numbers are relative to the character's entrance defaults, the commands can be edited like any other, and applying a preset for the same property again replaces them. Apply to all characters writes it for every character from their own entrance defaults, as one step of undo\n"
+                + "\n"
                 + "With \"Trigger character behaviours\" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged\n"
                 + "\n"
                 + "When a command written above a line sets the same property of the same character as a behaviour, the written command is used and project checks show a warning on that row",
