@@ -383,7 +383,7 @@ function Reactions({
                         type="button"
                         disabled={busy}
                         onClick={() => void give(emoji)}
-                        className="rounded px-1 text-xs leading-5 hover:bg-fill"
+                        className="rounded-md px-1 text-xs leading-5 hover:bg-fill"
                     >
                         {emoji}
                     </button>
