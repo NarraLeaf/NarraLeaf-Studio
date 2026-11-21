@@ -313,7 +313,7 @@ export const characters = {
         behaviourAddRow: "コマンドを追加…",
         behaviourRowDelete: "コマンドを削除",
         behaviourRowIncomplete: "コマンドが不完全です",
-        // 台詞と同時に実行できるのはステージ系のコマンドのみ：変形、表情、音、カメラ
+        // 台詞と同時に実行できるのはステージ系のコマンドのみ：変形、表情、効果音、カメラ
         behaviourRowNotAllowed: "このコマンドは振る舞いに使用できません",
         select: "選択",
         thumbnailAlt: "サムネイル",

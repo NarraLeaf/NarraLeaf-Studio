@@ -326,7 +326,7 @@ export const characters = {
         behaviourAddRow: "Add command…",
         behaviourRowDelete: "Delete command",
         behaviourRowIncomplete: "Incomplete command",
-        // Only stage commands may run with a line: moving, posing, sound, the camera
+        // Only stage commands may run with a line: moving, posing, sound effects, the camera
         behaviourRowNotAllowed: "This command cannot be used in a behaviour",
         select: "Select",
         thumbnailAlt: "thumbnail",

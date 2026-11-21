@@ -2168,6 +2168,12 @@ export function InsertRow(props: {
     onBackspaceEmpty: () => void;
     /** When on, a leading "@" opens the action creator like "/" (see `editor.slashAtAlias`). */
     slashAtAlias: boolean;
+    /**
+     * A slot hosted outside a scene that writes only certain commands - a character's behaviours.
+     * The menu offers those commands alone (no plugin actions), and the line can be nothing but a
+     * command: `#` opens no speaker picker, since there is no line of dialogue for it to start.
+     */
+    commandScope?: { commandIds: ReadonlySet<string> };
 }) {
     const { t } = useTranslation();
     // The action creator is command vocabulary end to end — command names, their categories, the
@@ -2220,7 +2226,8 @@ export function InsertRow(props: {
     // The menu is derived from the text, never stored - so a reopened draft row always has its
     // completion. Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
-    const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
+    const typedChooser = insertChooserType(value, props.slashAtAlias);
+    const chooser = props.mode.chooserDismissed || (props.commandScope && typedChooser === "character") ? "none" : typedChooser;
     // The trigger this line is actually wearing — the author's own key, not the canonical "/".
     const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
     // Composition state is local and short-lived: it exists only to hand the glyphs back to the field
@@ -2241,6 +2248,8 @@ export function InsertRow(props: {
     // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
     const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
     const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
+    // Read as the set itself, so the memoized lists below key on it rather than on a fresh object.
+    const commandIds = props.commandScope?.commandIds ?? null;
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
@@ -2255,14 +2264,14 @@ export function InsertRow(props: {
                 ...availableSpecCommands(specPaletteCommands(), props.commandContext).map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
-            ];
+            ].filter(command => !commandIds || commandIds.has(command.id));
             return searchActionCommands(
                 scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
                 chooserQuery,
                 abbreviations,
             );
         },
-        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [abbreviations, chooserQuery, commandIds, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2271,13 +2280,18 @@ export function InsertRow(props: {
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
         () => {
-            const groups = availableSidebarGroups(
+            const available = availableSidebarGroups(
                 buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
                 props.commandContext,
             );
+            const groups = commandIds
+                ? available
+                    .map(entry => ({ ...entry, commands: entry.commands.filter(command => commandIds.has(command.id)) }))
+                    .filter(entry => entry.commands.length > 0)
+                : available;
             return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [commandIds, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the
@@ -2394,6 +2408,10 @@ export function InsertRow(props: {
      * Returns whether it took the line. The caller has already established that the line was empty.
      */
     const foldTypedTrigger = (typed: string): boolean => {
+        // A command-only slot has no speaker to name, so a typed "＃" stays the character it is.
+        if (props.commandScope && typed.startsWith("＃")) {
+            return false;
+        }
         const folded = foldInputMethodTrigger(typed, {
             command: word => commandNamedByWord(word, abbreviations) !== null,
             speaker: name => isSpeakerName(props.characters, props.tempSpeakers, name),
@@ -2507,7 +2525,9 @@ export function InsertRow(props: {
                     // there, but neither is why the author pressed the trigger on a speaker's line.
                     placeholder={props.mode.confirmation
                         ? ""
-                        : scopeName !== null
+                        : props.commandScope
+                            ? t("story.rows.insertPlaceholderCommand", { trigger: props.slashAtAlias ? "@" : "/" })
+                            : scopeName !== null
                             ? t("story.rows.insertPlaceholderCharacter", { name: scopeName })
                             : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {

@@ -960,6 +960,8 @@ export const story = {
         playBranch: "この枝を再生",
         insertPlaceholder: "地の文を書く。{trigger} でアクション、# でキャラクター…",
         insertPlaceholderCharacter: "{name} のアクションを選ぶ…",
+        // A slot that writes commands only (a character's behaviours): no narration, no speaker
+        insertPlaceholderCommand: "{trigger} でコマンドを選択…",
         noCategoryActionFound: "{category} のアクションが見つからない",
         actionTypes: "アクションの種類",
         noCharacterFound: "キャラクターが見つからない",

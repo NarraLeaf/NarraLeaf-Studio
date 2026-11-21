@@ -287,7 +287,7 @@ export const characters = {
         behaviourAddRow: "添加命令…",
         behaviourRowDelete: "删除命令",
         behaviourRowIncomplete: "命令不完整",
-        // 只有舞台类命令可以随对白执行：变换、表情、声音、镜头
+        // 只有舞台类命令可以随对白执行：变换、表情、音效、镜头
         behaviourRowNotAllowed: "该命令不能用于角色行为",
         select: "选择",
         thumbnailAlt: "缩略图",

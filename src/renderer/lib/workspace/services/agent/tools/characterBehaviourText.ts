@@ -94,7 +94,7 @@ export function readBehaviourLines(
                         ? `behaviours.${event}: "${line}" is not a command a behaviour can run.`
                         : `behaviours.${event}: "${line}" is not a complete command line.`,
                     result.reason === "notAllowed"
-                        ? "Behaviours run stage commands only: /transform (a character or the camera), /char, /front, /motion, /skin, /param, /reset and the sound commands."
+                        ? "Behaviours run stage commands only: /transform (a character or the camera), /char, /front, /motion, /skin, /param, /reset and /sound."
                         : "Write it as a .story command line, the way story_apply takes it.",
                 );
             }

@@ -923,6 +923,8 @@ export const story = {
         playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
+        // A slot that writes commands only (a character's behaviours): no narration, no speaker
+        insertPlaceholderCommand: "输入 {trigger} 选择命令…",
         noCategoryActionFound: "未找到 {category} 动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",

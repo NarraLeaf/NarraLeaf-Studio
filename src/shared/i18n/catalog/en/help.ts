@@ -578,7 +578,7 @@ export const help = {
                 + "- Narration counts as nobody speaking: the previous speaker runs \"When stopping speaking\"\n"
                 + "- Only characters on stage run behaviours. Nothing runs before a character enters or after it exits\n"
                 + "- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order\n"
-                + "- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound. A behaviour cannot enter, exit or jump\n"
+                + "- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump\n"
                 + "\n"
                 + "With \"Trigger character behaviours\" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged\n"
                 + "\n"

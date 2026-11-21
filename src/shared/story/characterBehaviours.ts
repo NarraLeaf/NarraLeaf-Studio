@@ -71,8 +71,10 @@ export function isCharacterBehaviourBlock(block: StoryBlock): boolean {
         case "displayable":
             return DISPLAYABLE_OPERATIONS.has(payload.operation);
         case "camera":
-        case "audio":
             return true;
+        case "audio":
+            // A sound effect; the music and the sound controls belong to the scene.
+            return payload.operation === "playSound";
         default:
             return false;
     }

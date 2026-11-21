@@ -1041,6 +1041,8 @@ export const story = {
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
         insertPlaceholderCharacter: "Pick an action for {name}…",
+        // A slot that writes commands only (a character's behaviours): no narration, no speaker
+        insertPlaceholderCommand: "Type {trigger} to choose a command…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",

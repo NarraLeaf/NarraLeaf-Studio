@@ -824,7 +824,7 @@ A character has a name, a color and a set of appearances. An appearance is the c
 - 旁白视为无人说话，上一位说话人执行「停止说话时」
 - 只有在舞台上的角色执行行为；角色登场前和退场后不执行
 - 行为中的命令与对白同时开始，不延迟文字显示；作用于同一对象的命令依次执行
-- 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和声音；不能登场、退场或跳转
+- 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和音效；不能登场、退场、更换音乐或跳转
 
 在对白或旁白的属性中关闭「触发角色行为」后，该句不执行任何行为，说话人视为未变化
 
@@ -836,7 +836,7 @@ Behaviours are commands a character runs automatically when it starts or stops s
 - Narration counts as nobody speaking: the previous speaker runs "When stopping speaking"
 - Only characters on stage run behaviours. Nothing runs before a character enters or after it exits
 - Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order
-- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound. A behaviour cannot enter, exit or jump
+- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump
 
 With "Trigger character behaviours" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged
 

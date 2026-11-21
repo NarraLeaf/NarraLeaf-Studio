@@ -29,7 +29,7 @@ import {
 import { toDisplayedCommandLine } from "@/apps/workspace/modules/story/scene-editor/commandTrigger";
 import { buildStoryCommandContext, type StoryCommandAssetFolderInput } from "@/apps/workspace/modules/story/scene-editor/storyCommandContext";
 import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
-import { buildBehaviourBlockFromLine } from "@/apps/workspace/modules/story/scene-editor/storyBehaviourLine";
+import { buildBehaviourBlockFromLine, CHARACTER_BEHAVIOUR_COMMAND_IDS } from "@/apps/workspace/modules/story/scene-editor/storyBehaviourLine";
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import type { EditorMode } from "@/apps/workspace/modules/story/scene-editor/storySceneEditorTypes";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
@@ -213,7 +213,9 @@ function BehaviourEventSection(props: {
                     <button
                         type="button"
                         className="flex min-h-[var(--nl-story-row-box)] w-full items-center gap-2 px-2 py-1 text-left text-sm italic text-fg-subtle hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                        onClick={() => open(null, "")}
+                        // Opened on the trigger, so the command menu is up at once: a behaviour line is
+                        // a command and nothing else.
+                        onClick={() => open(null, trigger)}
                     >
                         <Plus className="h-3.5 w-3.5 shrink-0" />
                         {t("characters.properties.behaviourAddRow")}
@@ -267,6 +269,9 @@ function BehaviourRow(props: {
     );
 }
 
+/** Module-level so the slot's memoized menus key on one object for the life of the app. */
+const BEHAVIOUR_COMMAND_SCOPE = { commandIds: CHARACTER_BEHAVIOUR_COMMAND_IDS };
+
 /**
  * The story editor's own command-line slot, hosted outside a scene.
  *
@@ -305,7 +310,8 @@ function BehaviourLineInput(props: {
     };
     const resolve = () => {
         const line = draftRef.current.trim();
-        if (!line) {
+        // A bare trigger is the line the slot opened with: nothing was written.
+        if (!line || line === "/" || line === "@") {
             props.onClose();
             return;
         }
@@ -342,11 +348,12 @@ function BehaviourLineInput(props: {
                     reseed(`/${token} `);
                 }
             }}
-            // A speaker belongs to a line of dialogue, which a behaviour never holds.
+            // Never reached: the scope turns the `#` speaker picker off.
             onChooseCharacter={() => undefined}
             onChooseTempSpeaker={() => undefined}
             onBackspaceEmpty={() => props.onClose()}
             slashAtAlias={props.slashAtAlias}
+            commandScope={BEHAVIOUR_COMMAND_SCOPE}
         />
     );
 }
