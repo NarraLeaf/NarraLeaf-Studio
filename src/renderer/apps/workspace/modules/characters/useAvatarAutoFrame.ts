@@ -20,8 +20,9 @@ const detectHeadFrame: HeadFrameDetector = async layers =>
  * one differential beside its framing box. Both share one run at a time with the agent tool, so a
  * button reads `running` to grey itself while any of them is working.
  *
- * Neither is ever started by Studio itself: model framing is an author's request. The bake that runs
- * on its own keeps the silhouette heuristic.
+ * Adding or replacing a picture in the character editor runs the same model on the differentials it
+ * changed (`autoFrameAfterArtChange`); these buttons are for the rest. Opening a project never loads
+ * the model: the bake that runs on its own keeps the silhouette heuristic.
  */
 export function useAvatarAutoFrame(): {
     running: boolean;

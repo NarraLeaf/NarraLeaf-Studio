@@ -564,7 +564,8 @@ export const help = {
                 + "shows the Default dialog avatar from its properties.\n"
                 + "- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a "
                 + "detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one "
-                + "portrait. The framing stays adjustable.\n"
+                + "portrait. Adding or replacing art in the character editor frames the avatars whose pictures changed; "
+                + "a framing adjusted by hand is kept. The framing stays adjustable.\n"
                 + "- A character can speak without being on stage.",
         },
         appearances: {

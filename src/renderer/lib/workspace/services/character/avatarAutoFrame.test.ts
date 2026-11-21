@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Character } from "./Character";
-import { applyAutoFrames, planAutoFrame } from "./avatarAutoFrame";
+import { applyAutoFrames, avatarKeysAfterArtChange, captureAvatarLooks, planAutoFrame } from "./avatarAutoFrame";
+import { Services, type WorkspaceContext } from "../services";
+import { AssetType } from "../assets/assetTypes";
 
 const crop = { x: 0.3, y: 0.02, w: 0.4, h: 0.2 };
 
@@ -99,5 +101,49 @@ describe("applyAutoFrames", () => {
         const record = applyAutoFrames(character, new Map([["t2", { selection: { tags: { face: "t2" } }, crop }]]));
         const avatars = (record.profile.appearance as { avatars: Record<string, unknown> }).avatars;
         expect(avatars.t2).toEqual({ baked: "abcd1234", portrait: crop });
+    });
+});
+
+describe("framing avatars after an art edit", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    /** Pictures decode to a tag naming their asset, so the fake model can answer per picture. */
+    function setup(model: Record<string, typeof crop | null>) {
+        vi.stubGlobal("createImageBitmap", async (blob: Blob) => ({ asset: await blob.text(), width: 100, height: 200, close: () => undefined }));
+        const assets = {
+            getAssets: () => ({ [AssetType.Image]: new Proxy({}, { get: (_target, id) => ({ id }) }) }),
+            fetch: async (asset: { id: string }) => ({ success: true, data: { data: new TextEncoder().encode(asset.id) } }),
+        };
+        const ctx = { services: { get: (name: string) => (name === Services.Assets ? assets : undefined) } } as unknown as WorkspaceContext;
+        const detect = vi.fn(async (layers: readonly ImageBitmap[]) => model[(layers[0] as unknown as { asset: string }).asset] ?? null);
+        return { ctx, detect };
+    }
+
+    it("frames a differential whose picture changed and that has no framing of its own", async () => {
+        const { ctx, detect } = setup({});
+        const character = preset();
+        const before = captureAvatarLooks(character);
+        character.profile.appearance.setPoseAsset("p4", "a4");
+        expect(await avatarKeysAfterArtChange(ctx, character, before, detect)).toEqual(["p4"]);
+        // Nothing to compare for a differential with no framing, so the model was not asked.
+        expect(detect).not.toHaveBeenCalled();
+    });
+
+    it("refits a framing the model placed on the old picture, keeps one the author placed", async () => {
+        const { ctx, detect } = setup({ a2: { x: 0.1, y: 0.1, w: 0.2, h: 0.1 }, a1: { x: 0.2, y: 0.2, w: 0.3, h: 0.15 } });
+        const character = preset();
+        const before = captureAvatarLooks(character);
+        // p2's framing is what the model finds on a2; p1's (an entry framing) is not what it finds on a1.
+        character.profile.appearance.setPoseAsset("p2", "b2");
+        character.profile.appearance.setPoseAsset("p1", "b1");
+        expect(await avatarKeysAfterArtChange(ctx, character, before, detect)).toEqual(["p2"]);
+    });
+
+    it("leaves differentials whose pictures did not change, and hand-drawn avatars", async () => {
+        const { ctx, detect } = setup({});
+        const character = preset();
+        const before = captureAvatarLooks(character);
+        character.profile.appearance.setPoseAsset("p3", "b3");
+        expect(await avatarKeysAfterArtChange(ctx, character, before, detect)).toEqual([]);
     });
 });

@@ -67,6 +67,7 @@ import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/
 import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import { captureDefaultLook, entranceAfterArtChange, loadHeadDetector, type DefaultLook } from "@/lib/workspace/services/agent/spriteFacts";
+import { autoFrameAfterArtChange, captureAvatarLooks, type AvatarLooks } from "@/lib/workspace/services/character/avatarAutoFrame";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
     CHARACTER_INSPECTOR_MAX_FRACTION,
@@ -184,6 +185,13 @@ function DefaultStar(props: {
  * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
  * cannot be persisted - `toLayeredDefinition` never learns about it.
  */
+
+/** What an art edit is compared with: the default look (for the entrance) and each avatar's layers. */
+type ArtBefore = { look: DefaultLook | null; avatars: AvatarLooks };
+
+function captureArtBefore(character: Character | null | undefined): ArtBefore | null {
+    return character ? { look: captureDefaultLook(character), avatars: captureAvatarLooks(character) } : null;
+}
 
 export function CharacterEditor({ tabId, payload, active }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
@@ -395,15 +403,20 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
      *
      * Written only if nothing else changed them while the pictures were read.
      */
-    const psdBeforeRef = useRef<DefaultLook | null>(null);
-    const fitAfterArt = useCallback(async (before: DefaultLook | null) => {
+    const psdBeforeRef = useRef<ArtBefore | null>(null);
+    const fitAfterArt = useCallback(async (before: ArtBefore | null) => {
         if (!context || !character) {
             return;
         }
         const started = JSON.stringify(character.profile.getEntranceTransform() ?? null);
-        const entrance = await entranceAfterArtChange(context, character, before, loadHeadDetector).catch(() => undefined);
+        const entrance = await entranceAfterArtChange(context, character, before?.look ?? null, loadHeadDetector).catch(() => undefined);
         if (entrance && JSON.stringify(character.profile.getEntranceTransform() ?? null) === started) {
             character.profile.setEntranceTransform(entrance);
+        }
+        // The dialog avatars the new pictures changed, framed on the head the model finds - the
+        // Auto-frame button's run, limited to those differentials. A framing the author placed stays.
+        if (before) {
+            await autoFrameAfterArtChange(context, character, before.avatars, loadHeadDetector).catch(() => null);
         }
     }, [character, context]);
 
@@ -413,7 +426,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
             setSlot(null);
             return;
         }
-        const before = character ? captureDefaultLook(character) : null;
+        const before = slot.kind !== "avatar" ? captureArtBefore(character) : null;
         if (slot.kind === "pose") {
             appearance.setPoseAsset(slot.poseId, assetId);
         } else if (slot.kind === "layer") {
@@ -762,7 +775,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                                     onClick={() => {
                                         // The look the import replaces, for deciding whether its
                                         // defaults were Studio's fit or the author's.
-                                        psdBeforeRef.current = character ? captureDefaultLook(character) : null;
+                                        psdBeforeRef.current = captureArtBefore(character);
                                         setPsdOpen(true);
                                     }}
                                     aria-label={t("characters.editor.psd.title")}
