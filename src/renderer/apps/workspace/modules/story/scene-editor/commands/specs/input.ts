@@ -145,7 +145,9 @@ export const rumble = defineStoryCommand({
         },
         left: { hint: "rumbleLeft", type: { kind: "number", min: 0, max: 1 } },
         right: { hint: "rumbleRight", type: { kind: "number", min: 0, max: 1 } },
-        d: secondsParam(),
+        // Its own hint: everywhere else `d` is how long an animation plays, and the shared word
+        // says so in Chinese (动画持续时间). A vibration is not an animation.
+        d: secondsParam("rumbleDuration"),
         wait: { hint: "rumbleWait", type: { kind: "boolean" } },
     },
     build(args, ctx): StoryBlock {

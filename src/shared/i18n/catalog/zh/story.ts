@@ -564,6 +564,7 @@ export const story = {
         rumbleLeft: "左马达",
         rumbleRight: "右马达",
         rumbleWait: "等待振动结束",
+        rumbleDuration: "振动持续时间",
         inputLock: "锁定 / 解锁",
         inputAction: "输入动作",
         inputTimeout: "时限",
@@ -577,9 +578,11 @@ export const story = {
         seekTime: "秒数",
         cameraLookStrength: "色调强度",
 
-        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
-        // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
-        duration: "持续时间",
+        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<动画持续时间>`、以及作者可以直接敲的键
+        // （`动画持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
+        // 写「动画」而不是光写「持续时间」：`@显示 Narra 持续时间=0.3秒` 会被读成角色在场 0.3 秒，
+        // 而它说的是这次出场（淡入、移动）播多久。不是动画的时长（振动）用自己的词，见 rumbleDuration。
+        duration: "动画持续时间",
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",

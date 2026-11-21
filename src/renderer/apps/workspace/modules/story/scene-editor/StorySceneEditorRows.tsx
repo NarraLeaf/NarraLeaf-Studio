@@ -4434,7 +4434,7 @@ function BackgroundRowArtwork({ payload, selected, active }: {
 /**
  * A background row: the command line, held clear of the artwork strip at the row's trailing edge.
  *
- * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 持续时间=0.5` names
+ * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 动画持续时间=0.5` names
  * the image, and the strip beside it shows which image that is — so the only thing this preview adds
  * over the shared overview is the width cap that keeps the text from running under the picture.
  */

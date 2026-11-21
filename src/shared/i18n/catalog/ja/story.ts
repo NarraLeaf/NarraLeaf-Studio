@@ -598,6 +598,7 @@ export const story = {
         rumbleLeft: "左モーター",
         rumbleRight: "右モーター",
         rumbleWait: "振動の終了を待つ",
+        rumbleDuration: "秒",
         inputLock: "ロック / 解除",
         inputAction: "入力アクション",
         inputTimeout: "制限時間",

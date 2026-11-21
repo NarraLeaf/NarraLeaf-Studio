@@ -658,6 +658,7 @@ export const story = {
         rumbleLeft: "Left Motor",
         rumbleRight: "Right Motor",
         rumbleWait: "Wait for the rumble",
+        rumbleDuration: "Seconds",
         inputLock: "Lock / Unlock",
         inputAction: "Input Action",
         inputTimeout: "Time Limit",

@@ -805,13 +805,13 @@ A build stops while any such file remains in the project, and lists them in the 
 角色包含名称、颜色和一组外观；外观是角色在舞台上的形象，故事行按名称在外观之间切换
 
 - 对白旁的头像由立绘生成；由运行时绘制的角色显示角色属性中的「默认对白头像」
-- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；取景之后仍可调整
+- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；在角色编辑器中添加或更换立绘后，画面变化的头像自动截取，手动调整过的取景保持不变；取景之后仍可调整
 - 角色不在舞台上时也可以发言
 
 A character has a name, a color and a set of appearances. An appearance is the character's form on stage, and story rows switch between appearances by name.
 
 - The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.
-- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. The framing stays adjustable.
+- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. Adding or replacing art in the character editor frames the avatars whose pictures changed; a framing adjusted by hand is kept. The framing stays adjustable.
 - A character can speak without being on stage.
 
 相关主题 · Related：角色外观 · Character appearances、资产 · Assets、场景与行 · Scenes and rows

@@ -55,7 +55,7 @@ describe("a reserved target word in a zh or ja slot", () => {
 
     it("resolves from that name when it is typed out", () => {
         i18nStore.setLocale("zh");
-        expect(target("/重置 镜头 持续时间=1")).toEqual({ kind: "target", target: { type: "reserved", name: "camera" } });
+        expect(target("/重置 镜头 动画持续时间=1")).toEqual({ kind: "target", target: { type: "reserved", name: "camera" } });
         expect(target("/变换 基准图层 缩放=1.2")).toEqual({ kind: "target", target: { type: "reserved", name: "displayableLayer" } });
         i18nStore.setLocale("ja");
         expect(target("/リセット カメラ")).toEqual({ kind: "target", target: { type: "reserved", name: "camera" } });
