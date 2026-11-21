@@ -88,7 +88,7 @@ import type {
  * A committed row read back as the command line that would produce it.
  *
  * The row used to print a *description* — `隐藏 Anyo` with a `d 1s` token beside it — while the line
- * the author typed was `@隐藏 Anyo 持续时间=1`. Two vocabularies for one row: the words differed, the
+ * the author typed was `@隐藏 Anyo 动画持续时间=1`. Two vocabularies for one row: the words differed, the
  * modifiers were abbreviated to one letter or dropped entirely, and the trigger character (the one
  * thing that says "this is a command") was missing. An author scanning a scene had to translate every
  * row back into the language they write in.
@@ -282,7 +282,7 @@ function choicesOf(entries: readonly { id: string; name: string }[] | readonly s
 /**
  * One argument, named by the SPEC param it fills rather than by the word it prints.
  *
- * The spec param is what supplies both the localized key (`d` → `持续时间`) and, for an enum, the
+ * The spec param is what supplies both the localized key (`d` → `动画持续时间`) and, for an enum, the
  * option set a canonical value is respelled against (`fade` → `淡变`). Naming the param instead of
  * the word is what lets this table stay in the canonical vocabulary and the display follow the
  * author's command language for free.
@@ -471,7 +471,7 @@ const NUMERIC = /^-?\d+(?:\.\d+)?$/;
  *
  * Read off the param rather than off the payload field, so "which values carry a unit" is answered
  * once, by the grammar, for the row and the typed line alike — and spelled through
- * {@link localizedUnit}, which comes out of the same table the parser accepts, so the `持续时间=1秒` a
+ * {@link localizedUnit}, which comes out of the same table the parser accepts, so the `动画持续时间=1秒` a
  * Chinese author reads is a line they can type back.
  */
 function unitOf(param: StoryCommandParam | null): string {

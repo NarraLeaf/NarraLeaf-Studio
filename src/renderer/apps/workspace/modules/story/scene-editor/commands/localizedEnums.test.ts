@@ -80,8 +80,8 @@ describe("the parse, end to end", () => {
     it("reads a fully Chinese command line", () => {
         i18nStore.setLocale("zh");
         // Verb, param key and value, all translated — the sentence that was impossible before.
-        expect(codes("/背景 forest 转场=淡变 持续时间=1")).toEqual([]);
-        const line = command("/背景 forest 转场=淡变 持续时间=1");
+        expect(codes("/背景 forest 转场=淡变 动画持续时间=1")).toEqual([]);
+        const line = command("/背景 forest 转场=淡变 动画持续时间=1");
         expect(line.def?.commandId).toBe("background");
         expect(getArgValue(line, "t")).toBe("淡变");
     });

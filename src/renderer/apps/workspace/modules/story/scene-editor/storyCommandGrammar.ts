@@ -252,7 +252,7 @@ export type StoryCommandParamType =
            * parses exactly like `d=1`.
            *
            * A **suffix, never a scale**: `1s` and `1` are the same number, and nothing converts. It
-           * exists because the committed row prints the unit (it is what makes `持续时间=1` read as a
+           * exists because the committed row prints the unit (it is what makes `动画持续时间=1` read as a
            * time rather than a count), and an author must be able to type back what a row shows them.
            * Optional on input in every locale — the bare number is still the canonical spelling.
            */

@@ -992,6 +992,20 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: false,
     },
     {
+        // Applied by the main process in `App.handleWorkspaceExitRequest`, for the close box,
+        // the macOS red light and Cmd+W. Only when the window was the last workspace on screen;
+        // File ▸ Back to Launcher goes home whichever way this is set.
+        key: "workspace.closeShowsLauncher",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show the launcher after closing a workspace",
+        labelKey: "settings.items.closeShowsLauncher.label",
+        description: "Turn this off to keep NarraLeaf Studio running in the background with no window open.",
+        descriptionKey: "settings.items.closeShowsLauncher.description",
+        defaultValue: true,
+    },
+    {
         // Read once per launch by `App.resolveSessionStartupProject`. Closing a workspace is no
         // longer what this is about: leaving a project for the home screen is its own File menu
         // entry, so both behaviours are available whichever way this is set.

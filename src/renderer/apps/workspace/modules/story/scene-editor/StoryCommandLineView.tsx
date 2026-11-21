@@ -35,7 +35,7 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
  *  - **value** — enums and numbers alike. One colour for both: `fade` and `1` are the same *kind* of
  *    thing (what the modifier is set to), and splitting them would say they are not.
  *  - **scaffold** — the trigger, the `=`, the param keys. Muted, and the keys most of all: a Chinese
- *    key (`持续时间`) is four full-width glyphs and would out-shout the value it introduces.
+ *    key (`动画持续时间`) is six full-width glyphs and would out-shout the value it introduces.
  *
  * The committed row uses the same colours at a lower opacity rather than a second palette — same
  * skeleton, only dimmed, which is what makes a row read as the line that produced it.
@@ -321,7 +321,7 @@ export function storyCommandLineParts(
  *
  * `edits` marks the value spans a click can change. A span is handed to `renderEdit` **whole**, with
  * its own colouring inside it, because an editable value is not always one coloured piece:
- * `持续时间=1秒` colours the number and mutes the unit, and the affordance covers both. Matching a span
+ * `动画持续时间=1秒` colours the number and mutes the unit, and the affordance covers both. Matching a span
  * against a single piece was what silently dropped the affordance the moment units arrived — the
  * token simply stopped being a button, with nothing to see.
  */
@@ -510,7 +510,7 @@ const LINE_CLIP_BLEED: CSSProperties = { paddingBlock: "0.25em", marginBlock: "-
  *
  * The pieces sit in an INLINE child rather than directly in the flex box. A flex container blockifies
  * its children, and a block box drops its leading and trailing whitespace — which is exactly what the
- * spaces between a line's tokens are, so the line came out as `@隐藏Anyo持续时间=1`. Keeping them in one
+ * spaces between a line's tokens are, so the line came out as `@隐藏Anyo动画持续时间=1`. Keeping them in one
  * inline flow is what makes the spaces the projection wrote survive to the screen.
  */
 export function StoryCommandLineBox(props: { style?: CSSProperties; className?: string; children: ReactNode }) {

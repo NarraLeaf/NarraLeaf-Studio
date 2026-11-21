@@ -284,23 +284,23 @@ describe("projectStoryCommandLine", () => {
     it("says it in the command language, keys and values and all", () => {
         i18nStore.setLocale("zh");
         // The line the request asked for: nothing abbreviated, nothing in a language the author is not
-        // writing in — and `持续时间=1` is a spelling their own parser accepts.
+        // writing in — and `动画持续时间=1` is a spelling their own parser accepts.
         // `转场=淡出` is the block's own transform preset — the field the engine plays and the field
         // the inspector's 变换 → 预设 edits, spelled with the inspector's own word so the two surfaces
         // read alike. `/hide`'s default block carries a fade-out.
-        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 退场=淡出 持续时间=1秒");
+        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 退场=淡出 动画持续时间=1秒");
         // Both spellings reach the same option: the word the row now shows, and the vocabulary's own
         // word an author may already have typed.
         expect(build("/隐藏 Alice 退场=淡出").payload).toEqual(build("/hide Alice out=fade").payload);
         expect(build("/隐藏 Alice 退场=淡变").payload).toEqual(build("/hide Alice out=fade").payload);
-        // And the unit it prints is one the parser takes back — `持续时间=1秒` builds the same block
+        // And the unit it prints is one the parser takes back — `动画持续时间=1秒` builds the same block
         // `d=1` did, which is the whole reason the unit is a vocabulary entry rather than a suffix
         // glued on at render time.
-        expect(build("/隐藏 Alice 持续时间=1秒").payload).toEqual(build("/hide Alice d=1").payload);
+        expect(build("/隐藏 Alice 动画持续时间=1秒").payload).toEqual(build("/hide Alice d=1").payload);
         // A whole-screen fade IS a crossfade, and the inspector's transition dropdown calls it 溶解 —
         // so the row does too. The unified word `淡变` still parses; it is just not what is shown.
         expect(project("/bg forest_day t=fade")).toBe("/背景 forest_day 转场=溶解");
-        expect(project("/transform camera zoom=2 d=0.4")).toBe("/变换 camera 缩放=2 持续时间=0.4秒");
+        expect(project("/transform camera zoom=2 d=0.4")).toBe("/变换 camera 缩放=2 动画持续时间=0.4秒");
     });
 
     it("keeps the canonical trigger — swapping in the author's is the view's job", () => {

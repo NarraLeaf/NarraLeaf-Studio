@@ -180,7 +180,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase();
         case "number": {
-            // Localized: the row prints `持续时间=1秒`, so that spelling has to parse — English first
+            // Localized: the row prints `动画持续时间=1秒`, so that spelling has to parse — English first
             // by construction of the table, so `d=1s` behaves identically in every command language.
             const parsed = numberValueOfLocalized(type, value);
             if (parsed === null) {
