@@ -1060,7 +1060,7 @@ function TextEditBox(props: {
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
                 // A group member needs no indent of its own: the row holds the portrait column open
                 // for it, so read and edit start at the same x and entering edit never jumps.
-                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, props.characters, commandLine.trigger, props.continuing, t)}
                 onChange={props.onEditRichChange}
@@ -1892,7 +1892,7 @@ function ContainerFooter(props: {
     return (
         <button
             type="button"
-            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
+            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-fg-muted"
             style={{ marginLeft: rowIndent(1) }}
             onClick={event => {
                 event.stopPropagation();
@@ -1973,7 +1973,7 @@ function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderIn
     const def = info.commandId ? getDefById(info.commandId) : null;
     if (!def) {
         return (
-            <span className={HEADER_WORD_CLASS + " italic text-fg-muted"} style={textStyle}>
+            <span className={HEADER_WORD_CLASS + " text-fg-muted"} style={textStyle}>
                 {info.pill}
             </span>
         );
@@ -2127,7 +2127,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
             ) : (
-                <span className="italic text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+                <span className="text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
             )}
         </span>
     );
@@ -2494,7 +2494,7 @@ export function InsertRow(props: {
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
                     className={[
-                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:italic placeholder:text-fg-subtle",
+                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:text-fg-subtle",
                         // Transparent glyphs, opaque caret: the colours come from the mirror behind.
                         // Prose keeps its own text — there is nothing to colour, and a line the mirror
                         // would not draw must never be invisible.
@@ -3309,7 +3309,7 @@ function ActionCommandMenu(props: {
                     // The starred rows lead, under a header of their own in the shape of the subject
                     // headers below it — and with no gap above, being the first section.
                     <div className="pt-2 first:pt-0">
-                        <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                        <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs text-fg-muted">
                             <Star className="h-3 w-3 shrink-0" style={{ color: STARRED_ICON_COLOR }} />
                             <span>{t("story.actionCreator.starred")}</span>
                         </div>
@@ -3340,7 +3340,7 @@ function ActionCommandMenu(props: {
                             {/* A scoped menu has one section, and the panel's own header already
                                 named it — a second "角色" under it would only say it twice. */}
                             {props.scopeLabel ? null : (
-                            <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                            <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs text-fg-muted">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                 <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
@@ -3382,7 +3382,7 @@ function ActionCommandMenu(props: {
                 // menu that opens on a blank slot are the same object in two states rather than two
                 // panels of different sizes appearing at the same anchor.
                 <div className="flex h-72 flex-col">
-                    <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                    <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2 text-2xs text-fg-muted">
                         <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
                         <span className="truncate">{props.scopeLabel}</span>
                     </div>
@@ -4066,7 +4066,7 @@ export function CharacterSelectTrigger(props: {
                         // The speaker's own colour, through the one seam the gutter's marks use — so
                         // the name and the face beside it cannot disagree about whose line this is.
                         speakerPaint ? speakerPaint.className : "",
-                        unassigned ? cn("italic text-fg-subtle", !frozen && "hover:text-primary") : speakerPaint ? "" : "text-fg-muted",
+                        unassigned ? cn("text-fg-subtle", !frozen && "hover:text-primary") : speakerPaint ? "" : "text-fg-muted",
                         props.className ?? "",
                         // The same underline every pointing word on a command line takes while the
                         // modifier is held, so "this leads somewhere" reads identically in the two
@@ -4289,13 +4289,13 @@ function BlockPreview(props: {
             // Empty rows are click-to-edit too: the caret clamps to 0 in the empty editor, so the
             // placeholder's own offset never matters — a single click just opens the line.
             return (
-                <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "italic text-fg-subtle"}>
+                <TextClickTarget style={textStyle} className={note ? "text-fg-muted" : "text-fg-subtle"}>
                     {getEmptyTextPlaceholder(block)}
                 </TextClickTarget>
             );
         }
         return (
-            <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "text-fg"}>
+            <TextClickTarget style={textStyle} className={note ? "text-fg-muted" : "text-fg"}>
                 <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words" segment={text} document={props.document} sceneId={props.scene.id} />
             </TextClickTarget>
         );

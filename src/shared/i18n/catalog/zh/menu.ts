@@ -17,7 +17,7 @@ export const menu = {
         quit: "退出 {name}",
         residencyNotice: {
             title: "NarraLeaf Studio 仍在运行",
-            body: "它留在通知区域，以便下载和更新继续完成。右键单击图标可重新打开或退出。",
+            body: "它留在通知区域，以便下载和更新继续完成。右键单击图标可重新打开或退出",
         },
     },
     file: {

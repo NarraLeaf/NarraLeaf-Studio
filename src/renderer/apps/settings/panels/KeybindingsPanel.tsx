@@ -207,7 +207,7 @@ export function KeybindingsPanel() {
                 ) : (
                     grouped.map(group => (
                         <div key={group.category}>
-                            <div className="px-2 pt-3 pb-1 text-xs font-medium text-fg-muted">
+                            <div className="px-2 pt-3 pb-1 text-2xs text-fg-muted">
                                 {group.category}
                             </div>
                             {group.items.map(row => {

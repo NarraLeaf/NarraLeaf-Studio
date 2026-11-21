@@ -103,7 +103,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick, problems = [], 
         // of sentences to read, and under a wallpaper a clear frame plate left them on the photograph.
         // It takes the editor's reading plate instead, the one the story prose and the inspector use.
         <div className="nl-editor-surface max-h-32 shrink-0 overflow-y-auto border-t border-edge px-2 py-1.5">
-            <p className="mb-1 px-1 text-2xs tracking-wide text-fg-subtle">
+            <p className="mb-1 px-1 text-2xs text-fg-muted">
                 {t("lint.report.counts", {
                     errors: tn("common.count.errors", count("error")),
                     warnings: tn("common.count.warnings", count("warning")),

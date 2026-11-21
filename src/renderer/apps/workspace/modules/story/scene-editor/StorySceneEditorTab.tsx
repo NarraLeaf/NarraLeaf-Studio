@@ -224,7 +224,7 @@ const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 /** The docked preview under the script: never more than its share of the body's height. */
 const STACKED_PREVIEW_STYLE: CSSProperties = { maxHeight: `${STORY_PREVIEW_STACK_MAX_FRACTION * 100}%` };
 
-const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
+const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs text-fg-muted";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
 
 /**
@@ -475,7 +475,7 @@ export function StorySceneOverviewBlock(props: {
                                 {...writes.writes()}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
-                                <span className={["truncate", backgroundAsset ? "" : "italic text-fg-subtle"].join(" ")}>
+                                <span className={["truncate", backgroundAsset ? "" : "text-fg-subtle"].join(" ")}>
                                     {backgroundLabel}
                                 </span>
                             </button>
@@ -2765,7 +2765,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm ",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",

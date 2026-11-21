@@ -171,7 +171,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMo
                         />
                     ) : null}
                     {activeMode === "null" ? (
-                        <span className="text-2xs text-fg-subtle italic">{t("blueprint.literal.noValue")}</span>
+                        <span className="text-2xs text-fg-subtle">{t("blueprint.literal.noValue")}</span>
                     ) : null}
                 </div>
             ) : null}

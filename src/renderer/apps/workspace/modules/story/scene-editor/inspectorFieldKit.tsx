@@ -16,7 +16,7 @@ import { EasingCurveEditor } from "../../../components/ui/EasingCurveEditor";
  * inspector grows a second visual dialect one action at a time.
  */
 
-export const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+export const FIELD_LABEL_CLASS = "block text-2xs text-fg-muted mb-1";
 
 export type TFunc = Translator["t"];
 
@@ -100,7 +100,7 @@ export function Section(props: { title?: string; right?: ReactNode; className?: 
             {props.title || props.right ? (
                 <div className="mb-2 flex items-center justify-between gap-2">
                     {props.title ? (
-                        <div className="min-w-0 truncate text-2xs font-medium tracking-wide text-fg-muted">{props.title}</div>
+                        <div className="min-w-0 truncate text-2xs text-fg-muted">{props.title}</div>
                     ) : <span />}
                     {props.right ? <div className="shrink-0">{props.right}</div> : null}
                 </div>
@@ -114,7 +114,7 @@ export function Section(props: { title?: string; right?: ReactNode; className?: 
 export function Disclosure(props: { title: string; children: ReactNode }) {
     return (
         <details className="group">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs font-medium tracking-wide text-fg-subtle transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs text-fg-muted transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
                 <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
                 {props.title}
             </summary>

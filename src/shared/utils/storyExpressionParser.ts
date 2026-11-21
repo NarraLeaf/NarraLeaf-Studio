@@ -7,6 +7,7 @@ import {
     isAppTagExpr,
     isStoryExprFunction,
     isStoryVisitedCall,
+    parseStoryBooleanWord,
     storyVisitedRefToken,
     type StoryExpr,
     type StoryExprBinaryOp,
@@ -555,10 +556,12 @@ class ExpressionParser {
             return { kind: "var", target, name };
         }
 
-        // Keywords first: `true`/`false`/`null` are identifiers to the tokenizer and literals here.
+        // Keywords first: `true`/`false`/`null` (and the Chinese `真`/`假`) are identifiers to the tokenizer
+        // and literals here.
         const lowered = name.toLowerCase();
-        if (lowered === "true" || lowered === "false") {
-            return { kind: "literal", value: lowered === "true" };
+        const booleanWord = parseStoryBooleanWord(name);
+        if (booleanWord !== undefined) {
+            return { kind: "literal", value: booleanWord };
         }
         if (lowered === "null") {
             return { kind: "literal", value: null };
@@ -800,7 +803,7 @@ export function formatStoryExpressionName(name: string): string {
     // `AppTag` sits with the three literal keywords: a variable that happens to carry the name would
     // re-lex as the build-variant constant if it were printed bare, so the printer quotes it - which
     // is the spelling that still reaches the variable.
-    const keyword = lowered === "true" || lowered === "false" || lowered === "null"
+    const keyword = parseStoryBooleanWord(name) !== undefined || lowered === "null"
         || lowered === APP_TAG_EXPR_KEYWORD.toLowerCase();
     // A dot never passes isIdentifierPart, so a dotted name (which would re-parse as a scope prefix)
     // is quoted by the same test.

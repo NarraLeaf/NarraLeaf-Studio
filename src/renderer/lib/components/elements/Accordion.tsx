@@ -444,7 +444,7 @@ export function AccordionItem({
                         {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
 
                         {/* Title */}
-                        <span className="flex-1 text-sm text-fg-muted">{title}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">{title}</span>
                     </button>
 
                     {/* Actions */}

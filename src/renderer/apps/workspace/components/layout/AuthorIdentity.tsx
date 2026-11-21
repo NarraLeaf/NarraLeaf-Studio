@@ -60,7 +60,7 @@ export function AuthorIdentity({ surface, always = false }: { surface: VersionSu
 
     return (
         <div data-vcs-seam="author-identity" className="mb-2">
-            <label className="block text-2xs tracking-wide text-fg-subtle" htmlFor={AUTHOR_INPUT_ID}>
+            <label className="block text-2xs text-fg-muted" htmlFor={AUTHOR_INPUT_ID}>
                 {t("workspace.shell.versionControl.authorLabel")}
             </label>
             <div className="mt-1 flex items-center gap-1.5">

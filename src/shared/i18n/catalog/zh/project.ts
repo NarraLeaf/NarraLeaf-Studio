@@ -69,7 +69,7 @@ export const project = {
         advanced: "高级",
     },
     distribution: {
-        description: "随项目保存，参与构建的成员使用同一密钥。构建仅接受由其自身密钥生成的补丁。",
+        description: "随项目保存，参与构建的成员使用同一密钥。构建仅接受由其自身密钥生成的补丁",
         absent: "尚未创建密钥",
         rotatedAt: "上次更换于 {date}",
         createAction: "创建",
@@ -93,8 +93,8 @@ export const project = {
      * 在这里点名它们等于留一份会落后于词汇表的清单；「会话携带的那些」不会落后。
      */
     frozen: {
-        live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
-        frozen: "项目被冻结期间，项目自身的设置是只读的。",
+        live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些",
+        frozen: "项目被冻结期间，项目自身的设置是只读的",
     },
     writeFailed: {
         plain: "无法保存项目文件",
@@ -123,11 +123,11 @@ export const project = {
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
     // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
     userData: {
-        description: "发布后的桌面版游戏把玩家的存档与进度存放在这里。",
+        description: "发布后的桌面版游戏把玩家的存档与进度存放在这里",
         windowsLinux: "Windows 和 Linux",
-        windowsLinuxDescription: "Windows 与 Linux 版本把玩家文件放在哪里。",
+        windowsLinuxDescription: "Windows 与 Linux 版本把玩家文件放在哪里",
         macos: "macOS",
-        macosDescription: "macOS 版本把玩家文件放在哪里。",
+        macosDescription: "macOS 版本把玩家文件放在哪里",
         mode: {
             appRoot: "游戏文件夹内",
             userData: "用户文件夹内",
@@ -211,14 +211,14 @@ export const project = {
         idTitle: "ID",
         idFile: "产出文件为 {file}",
         idChangeConfirm: "将 ID 改为“{id}”",
-        idChangeDetail: "已发布的文件保留原文件名。标记为原 ID 的故事将不再指向该 DLC。",
+        idChangeDetail: "已发布的文件保留原文件名。标记为原 ID 的故事将不再指向该 DLC",
         idChangeAction: "更改",
         attachTitle: "装入",
         delete: "删除",
         deleteConfirm: "删除“{name}”",
         deleteDetail: {
-            one: "{count} 个故事将回到基础构建中。",
-            other: "{count} 个故事将回到基础构建中。",
+            one: "{count} 个故事将回到基础构建中",
+            other: "{count} 个故事将回到基础构建中",
         },
     },
     assets: {
@@ -520,11 +520,11 @@ export const project = {
     },
     window: {
         resizableTitle: "可调整窗口大小",
-        resizableDescription: "玩家可以拖拽窗口改变大小。舞台在窗口内保持自身比例。",
+        resizableDescription: "玩家可以拖拽窗口改变大小。舞台在窗口内保持自身比例",
         rememberTitle: "记住窗口",
-        rememberDescription: "游戏按上次关闭时的大小、位置与显示模式重新打开。",
+        rememberDescription: "游戏按上次关闭时的大小、位置与显示模式重新打开",
         fullscreenTitle: "启动时全屏",
-        fullscreenDescription: "首次启动时以全屏打开。",
+        fullscreenDescription: "首次启动时以全屏打开",
     },
     screenEffects: {
         frameRateTitle: "天气帧率",

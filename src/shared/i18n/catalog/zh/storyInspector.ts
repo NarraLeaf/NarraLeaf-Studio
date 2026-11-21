@@ -86,9 +86,9 @@ export const storyInspector = {
         nameLabel: "名称",
         namePlaceholder: "预设名称",
         replace: "覆盖",
-        nameTaken: "该名称已被另一个预设使用。",
+        nameTaken: "该名称已被另一个预设使用",
         manageTitle: "变换预设",
-        empty: "本项目没有保存的预设。",
+        empty: "本项目没有保存的预设",
         rename: "重命名",
         delete: "删除",
         noChannels: "没有可保存的通道",
@@ -263,7 +263,7 @@ export const storyInspector = {
         reset: "重置镜头",
     },
 
-    cameraResetHint: "重置机位、色调与镜头效果。",
+    cameraResetHint: "重置机位、色调与镜头效果",
 
     cameraLook: {
         memory: "回忆",
@@ -281,9 +281,9 @@ export const storyInspector = {
     },
 
     cameraLookHint: {
-        channel: "后添加的色调会覆盖舞台压暗。重置镜头会清除色调。",
-        monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
-        hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
+        channel: "后添加的色调会覆盖舞台压暗。重置镜头会清除色调",
+        monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角",
+        hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢",
     },
 
     transformChannel: {
@@ -571,7 +571,7 @@ export const storyInspector = {
         endingPageNone: "不显示任何页面",
         quitPage: "结束后显示的页面",
         quitPageUnset: "未设置",
-        quitHint: "本次游玩在此行结束，随后显示该页面，不记录结局。",
+        quitHint: "本次游玩在此行结束，随后显示该页面，不记录结局",
         pagePage: "页面",
         pageHint: "页面在剧情上方打开，剧情会等到页面用「关闭本叠加页面」关闭自己后再继续。关闭时返回的结果按变量类型写入结果变量；没有返回结果时变量保持原值",
         branch: "分支",

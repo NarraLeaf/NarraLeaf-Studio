@@ -246,7 +246,7 @@ export function StoryRowFilterMenu(props: {
                 // a wrapper box here would give the list a second scroll context to compress inside.
                 <div key={section.key} className="contents">
                     <div className="my-0.5 h-px shrink-0 bg-edge" />
-                    <div className="shrink-0 px-2 pb-0.5 text-2xs font-medium text-fg-subtle">{section.label}</div>
+                    <div className="shrink-0 px-2 pb-0.5 text-2xs text-fg-muted">{section.label}</div>
                     {section.facets.map(facet => {
                         const Icon = storyRowFacetIcon(facet);
                         return (
@@ -265,7 +265,7 @@ export function StoryRowFilterMenu(props: {
             {cast.length > 0 ? (
                 <>
                     <div className="my-0.5 h-px shrink-0 bg-edge" />
-                    <div className="shrink-0 px-2 pb-0.5 text-2xs font-medium text-fg-subtle">{t("story.view.filter.sectionCast")}</div>
+                    <div className="shrink-0 px-2 pb-0.5 text-2xs text-fg-muted">{t("story.view.filter.sectionCast")}</div>
                     {cast.map(member => (
                         <FilterRow
                             key={member.key}

@@ -56,7 +56,7 @@ function ToggleFieldInner<TData>({ field, data, onSaving }: ToggleFieldProps<TDa
             />
             {field.label && <span className="text-sm text-fg-muted">{field.label}</span>}
             {field.tip && <HintPopover text={field.tip} />}
-            {field.helpText && <p className="text-xs text-fg-subtle">{field.helpText}</p>}
+            {field.helpText && <p className="text-2xs text-fg-subtle">{field.helpText}</p>}
         </div>
     );
 }

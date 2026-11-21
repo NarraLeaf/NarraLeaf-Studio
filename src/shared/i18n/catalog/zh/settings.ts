@@ -222,7 +222,7 @@ export const settings = {
         spellcheckLanguage: {
             label: "拼写检查语言",
             description: "在故事正文中标出拼写错误。译文一律不检查",
-            noDictionary: "尚未安装本项目所用语言的拼写词典。",
+            noDictionary: "尚未安装本项目所用语言的拼写词典",
             options: {
                 followProject: "跟随项目语言",
                 off: "不检查拼写",
@@ -402,7 +402,7 @@ export const settings = {
         },
         projectTrust: {
             label: "受信任的项目",
-            description: "非 Studio 创建的项目，以及它们是否可以运行。",
+            description: "非 Studio 创建的项目，以及它们是否可以运行",
         },
         cacheInventory: {
             label: "缓存文件",
@@ -437,16 +437,16 @@ export const settings = {
         download: "下载",
         update: "更新",
         downloading: "正在下载…",
-        failed: "无法获取词典列表。检查设置中的网络策略。",
+        failed: "无法获取词典列表。检查设置中的网络策略",
         installed: {
             title: "已安装",
             emptyTitle: "尚未安装词典",
-            emptyDescription: "下载词典后即可对正文进行拼写检查。",
+            emptyDescription: "下载词典后即可对正文进行拼写检查",
         },
         available: {
             title: "可下载",
-            prompt: "尚未获取词典列表。",
-            none: "可用词典已全部安装。",
+            prompt: "尚未获取词典列表",
+            none: "可用词典已全部安装",
         },
     },
     servers: {
@@ -496,11 +496,11 @@ export const settings = {
         browserLead: "将在浏览器中打开 {name} 的登录页，登录并授权后会自动返回此处",
         browserSignIn: "在浏览器中登录",
         browserWaiting: "请在浏览器中完成登录…",
-        deviceLead: "适合浏览器无法回到 Studio 的情况（远程桌面、其他设备上的浏览器）。会显示一个代码，在 {name} 的页面上输入它并允许即可。",
+        deviceLead: "适合浏览器无法回到 Studio 的情况（远程桌面、其他设备上的浏览器）。会显示一个代码，在 {name} 的页面上输入它并允许即可",
         deviceSignIn: "获取设备码",
         deviceWaiting: "等待在浏览器中确认…",
         deviceCode: "在 {url} 输入此代码：",
-        deviceOpened: "已尝试在浏览器中打开这个页面；也可以在任何设备上手动打开。",
+        deviceOpened: "已尝试在浏览器中打开这个页面；也可以在任何设备上手动打开",
         browserProblems: {
             denied: "已在浏览器中拒绝授权",
             timeout: "等待浏览器登录超时，请重试",
@@ -615,7 +615,7 @@ export const settings = {
             revoke: "取消信任",
             delete: "从列表中移除",
             deleteCovered: "位于已信任的项目内，无法移除",
-            reloadNote: "已打开的项目在信任状态变更时重新载入。",
+            reloadNote: "已打开的项目在信任状态变更时重新载入",
             origin: {
                 package: "来自项目包",
                 remote: "来自远程源",

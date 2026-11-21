@@ -760,8 +760,8 @@ export const workspace = {
             dismiss: "关闭",
         },
         assetLock: {
-            theirs: "{name} 锁定了这个资源，到 {until}。在那之前，其他人对它的修改都会被服务器拒绝。",
-            mine: "你锁定了这个资源，到 {until}。在那之前其他人无法修改它。",
+            theirs: "{name} 锁定了这个资源，到 {until}。在那之前，其他人对它的修改都会被服务器拒绝",
+            mine: "你锁定了这个资源，到 {until}。在那之前其他人无法修改它",
             release: "解锁",
             dismiss: "知道了",
         },
@@ -1010,7 +1010,7 @@ export const workspace = {
         statusBar: {
             distrusted: {
                 label: "未受信任",
-                tooltip: "此项目受信任后方可运行。点击以信任。",
+                tooltip: "此项目受信任后方可运行。点击以信任",
             },
             // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",

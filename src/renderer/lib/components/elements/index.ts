@@ -87,9 +87,13 @@ export type { TabItem, TabStripProps } from "./Tabs";
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
 
-// FieldLabel component (the eyebrow label; see docs/design-system.md §7)
+// The five text levels and the components that draw them (docs/design-system.md §4.1).
+export { TEXT_LEVEL_CLASS, textLevelClass } from "./textLevels";
+export type { TextDensity, TextLevel } from "./textLevels";
 export { FieldLabel } from "./FieldLabel";
 export type { FieldLabelProps } from "./FieldLabel";
+export { SectionTitle } from "./SectionTitle";
+export type { SectionTitleProps } from "./SectionTitle";
 
 // SectionCard / PanelHeader (docs/design-system.md §7). Both are listed there as shared components
 // and were reachable only by deep import until now, which is how a panel ends up hand-rolling one.

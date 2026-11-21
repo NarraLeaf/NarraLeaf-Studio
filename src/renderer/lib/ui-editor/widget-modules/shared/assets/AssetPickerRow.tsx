@@ -114,14 +114,14 @@ export function AssetPickerRow({
             onClearEmpty?.();
         }
     }, [assetId, onChange, onClearEmpty]);
-    const actionClass = "shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted";
+    const actionClass = "shrink-0 rounded-md px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill hover:text-fg-muted";
 
     return (
         <>
             <div className="flex flex-col gap-1">
                 {label ? (
                     <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-fg-muted">{label}</span>
+                        <span className="text-2xs text-fg-muted">{label}</span>
                         {tip ? <HintPopover text={tip} /> : null}
                     </div>
                 ) : null}
@@ -157,7 +157,7 @@ export function AssetPickerRow({
                                     {action.label}
                                 </span>
                             ))}
-                            <span className="shrink-0 text-2xs tracking-wider text-fg-subtle">{chooseLabel}</span>
+                            <span className="shrink-0 text-2xs text-fg-muted">{chooseLabel}</span>
                         </>
                     )}
                 </button>

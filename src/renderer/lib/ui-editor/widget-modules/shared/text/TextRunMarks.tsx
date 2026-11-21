@@ -146,7 +146,7 @@ export function TextRunMarksEditor(props: {
                 }}
             />
             <TooltipGroup className="flex items-center gap-1">
-                <span className="mr-1 text-2xs font-medium tracking-wide text-fg-muted">
+                <span className="mr-1 text-2xs text-fg-muted">
                     {t("widgets.textMarks.title")}
                 </span>
                 <ToolbarButton

@@ -13,6 +13,7 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { formatStoryLiteral } from "@shared/types/story";
+import { localizedBooleanWord } from "./commands/localizedBoolean";
 import {
     actionableSubjectWord,
     declarationDefaultForType,
@@ -400,7 +401,9 @@ function assignedValueArg(
         // a value. `String()` here printed it bare, so a row assigning any string with a space in it
         // showed a line the author could not type back. Numbers, booleans and null are unchanged -
         // `formatStoryLiteral` writes those exactly as `String` did.
-        return positional("value", payload.expression ? source : formatStoryLiteral(payload.value ?? null));
+        // A boolean reads in the author's command language (`真`), which the expression parser takes back.
+        const literal = typeof payload.value === "boolean" ? localizedBooleanWord(payload.value) : formatStoryLiteral(payload.value ?? null);
+        return positional("value", payload.expression ? source : literal);
     }
     return positional("value", sceneName, {
         editValue: source,
@@ -422,8 +425,9 @@ function numberValue(value: number | undefined): string {
     return value === undefined ? "" : String(value);
 }
 
+/** A flag in the author's command language (`真` / `假` in Chinese); the parser reads every spelling back. */
 function booleanValue(value: boolean | undefined): string {
-    return value === undefined ? "" : String(value);
+    return value === undefined ? "" : localizedBooleanWord(value);
 }
 
 /**
@@ -1516,7 +1520,7 @@ function cameraSentence(
     if (payload.transform?.mode === "animation") {
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the shot's name rides the inspector.
-        return { commandId, args: [subject, arg("motion", "true")] };
+        return { commandId, args: [subject, arg("motion", booleanValue(true))] };
     }
     return { commandId, args: [subject, ...transformArgs(payload, lookups)] };
 }
@@ -1580,7 +1584,7 @@ function displayableSentence(
             commandId,
             args: [
                 positional("target", label, who),
-                arg("stopLoop", "true"),
+                arg("stopLoop", booleanValue(true)),
                 arg("d", seconds(payload.transform?.durationMs), {
                     apply: next => patchTransform(payload, { durationMs: msOf(next) }),
                 }),
@@ -1590,12 +1594,12 @@ function displayableSentence(
     if (payload.operation === "transform" || payload.operation === "loop") {
         // The flag is what makes the row read as the thing it is - a motion that keeps going rather
         // than a pose the scene waits for - so it is printed first, next to the subject.
-        const looping = payload.operation === "loop" ? [arg("loop", "true")] : [];
+        const looping = payload.operation === "loop" ? [arg("loop", booleanValue(true))] : [];
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired
         // `/camera motion` had.
         if (payload.transform?.mode === "animation") {
-            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", "true")] };
+            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", booleanValue(true))] };
         }
         // The whole neutral bag, and only the whole one, is a `/reset`. A partial clear prints as the
         // `=none` that produced it (`/transform hero mask=none`), which is the same row and the
@@ -1906,7 +1910,7 @@ function inputSentence(
                         apply: next => ({ ...payload, weakMagnitude: motorStrength(next) }),
                     }),
                     arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    arg("wait", payload.wait ? "true" : undefined, {
+                    arg("wait", payload.wait ? booleanValue(true) : undefined, {
                         apply: next => ({ ...payload, wait: next === "true" ? true : undefined }),
                     }),
                 ],
@@ -1997,7 +2001,7 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                 // Printed only when it is on, and spelled out as `return=true` the way every bare
                 // flag reads back. A row that has never been flagged prints the line it has always
                 // printed, so an existing project's jumps are untouched by the flag existing.
-                arg("return", payload.returnable ? "true" : undefined, {
+                arg("return", payload.returnable ? booleanValue(true) : undefined, {
                     apply: next => ({ ...payload, returnable: next === "true" ? true : undefined }),
                 }),
             ],
@@ -2142,6 +2146,8 @@ function declarationDefaultArg(value: StoryLiteralValue | undefined): Arg | null
     if (value === undefined) {
         return null;
     }
+    // Booleans stay `true` / `false` here: declarations print in the source vocabulary (see the retired
+    // scopes in `projectStoryCommandLine`'s tests), and this text is also what the script export writes.
     return { param: "default", value: typeof value === "string" ? value : JSON.stringify(value) };
 }
 

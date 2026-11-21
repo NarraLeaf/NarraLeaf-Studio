@@ -28,7 +28,7 @@ export function FieldLabelRow({ field, htmlFor }: FieldLabelRowProps) {
     }
     return (
         <div className="mb-1 flex items-center gap-1.5">
-            <label htmlFor={htmlFor} className="text-xs font-medium text-fg-muted">
+            <label htmlFor={htmlFor} className="text-2xs text-fg-muted">
                 {field.label}
             </label>
             {mark ? (

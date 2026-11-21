@@ -3,7 +3,7 @@ import type { LocaleNamespace } from "../types";
 export const uiEditor = {
     surfaceKind: {
         page: "页面",
-        gameUi: "游戏 UI",
+        gameUi: "游戏界面",
         mainPage: "入口页面",
         pageDescription: "页面是完整的屏幕，例如标题、设置、存档、记录或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
@@ -34,7 +34,7 @@ export const uiEditor = {
         interfaces: "界面",
         interfaceType: "界面类型",
         createPage: "新建页面",
-        createGameUi: "新建游戏 UI",
+        createGameUi: "新建游戏界面",
         globalSubtitle: "全局",
         blueprintType: "蓝图",
         openGlobalBlueprint: "打开应用逻辑",
@@ -51,8 +51,8 @@ export const uiEditor = {
         deleteDetail: "此 {label} 中的所有元素将被移除",
         duplicateFailed: "无法复制页面",
         pageValidationHint: "创建前检查页面名称和尺寸",
-        gameUiSlotHint: "创建前选择可用的游戏 UI 位置",
-        allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
+        gameUiSlotHint: "创建前选择可用的游戏界面位置",
+        allSlotsUsed: "所有游戏界面位置均已有界面。从列表中打开已有的游戏界面",
         starterTitlePage: {
             title: "新建标题页",
             description: "带有可用的「开始」「继续」按钮，替换空白的入口页面",
@@ -159,9 +159,9 @@ export const uiEditor = {
         },
     },
     createDialog: {
-        slotIntro: "选择该游戏 UI 在游玩期间所属的位置",
-        slotAlreadyCreated: "已创建，从列表中打开现有的游戏 UI",
-        resolutionNote: "游戏 UI 使用项目分辨率：{width}×{height}",
+        slotIntro: "选择该游戏界面在游玩期间所属的位置",
+        slotAlreadyCreated: "已创建，从列表中打开现有的游戏界面",
+        resolutionNote: "游戏界面使用项目分辨率：{width}×{height}",
         nameRequired: "名称不能为空",
         width: "宽度",
         height: "高度",
@@ -301,9 +301,9 @@ export const uiEditor = {
         },
     },
     reference: {
-        label: "游戏 UI 参考",
-        heading: "其他游戏 UI",
-        none: "本项目没有其他游戏 UI",
+        label: "游戏界面参考",
+        heading: "其他游戏界面",
+        none: "本项目没有其他游戏界面",
         sizeDiffers: "尺寸不同：{name} {width}×{height}",
     },
     crossProject: {
@@ -369,7 +369,7 @@ export const uiEditor = {
         },
         placement: {
             page: "一个新页面",
-            gameUi: "游戏界面 · {slot}",
+            gameUi: "游戏界面· {slot}",
         },
         error: {
             load: "无法加载模板商店",

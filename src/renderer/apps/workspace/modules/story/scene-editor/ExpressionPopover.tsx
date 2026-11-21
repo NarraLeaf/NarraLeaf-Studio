@@ -110,7 +110,7 @@ export function ExpressionPopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.inlineEvent.title")}</div>
+            <div className="mb-1.5 text-2xs text-fg-muted">{t("story.inlineEvent.title")}</div>
             {props.character ? (
                 <CharacterAppearancePicker
                     character={props.character}

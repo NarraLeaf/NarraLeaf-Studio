@@ -1,5 +1,5 @@
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
-import { storyVariableRefKey } from "@shared/types/story";
+import { parseStoryBooleanWord, STORY_BOOLEAN_WORDS, storyVariableRefKey } from "@shared/types/story";
 import { inferStoryExpressionType } from "@shared/utils/storyExpressionEval";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import {
@@ -92,10 +92,11 @@ function findByName(entries: readonly StoryCommandNamedRef[], raw: string): Stor
  */
 export function parseLiteral(raw: string): StoryLiteralValue {
     const trimmed = raw.trim();
-    if (trimmed === "true") {
+    // Exact spellings only (`真`, never a case-folded `TRUE`), as `true` / `false` always were.
+    if ((STORY_BOOLEAN_WORDS.true as readonly string[]).includes(trimmed)) {
         return true;
     }
-    if (trimmed === "false") {
+    if ((STORY_BOOLEAN_WORDS.false as readonly string[]).includes(trimmed)) {
         return false;
     }
     // `null` for the same reason as the JSON arm below, and it is the value that arm is missing: a
@@ -484,10 +485,10 @@ function resolveAgainstType(
         case "boolean": {
             // The human spellings collapse to the canonical pair here.
             const normalized = value.trim().toLowerCase();
-            if (["true", "on", "yes"].includes(normalized)) {
+            if (parseStoryBooleanWord(normalized) === true || ["on", "yes"].includes(normalized)) {
                 return { value: { kind: "boolean", value: true } };
             }
-            if (["false", "off", "no"].includes(normalized)) {
+            if (parseStoryBooleanWord(normalized) === false || ["off", "no"].includes(normalized)) {
                 return { value: { kind: "boolean", value: false } };
             }
             return null;

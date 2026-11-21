@@ -35,8 +35,8 @@ export const documentDiff = {
         sampleRate: "采样率（{fromHertz} Hz → {toHertz} Hz）",
         family: "字族（{from} → {to}）",
         changed: "内容已改动",
-        notInspected: "内容已改动，未读取文件头。",
-        unrecognized: "内容已改动。Studio 无法识别此格式。",
+        notInspected: "内容已改动，未读取文件头",
+        unrecognized: "内容已改动。Studio 无法识别此格式",
         moved: "自 {from} 移动而来",
     },
     summary: {
@@ -785,7 +785,7 @@ export const documentDiff = {
         abandon: "放弃合并",
         abandonConfirm: "放弃合并",
         abandonConfirmDetail:
-            "所有文件将恢复到从服务器获取前的状态，包括已自动合并的文件。本地内容不会丢失，需要时可再次获取。",
+            "所有文件将恢复到从服务器获取前的状态，包括已自动合并的文件。本地内容不会丢失，需要时可再次获取",
         /**
          * 第二档：在一个文件内部逐条变更选边。
          *

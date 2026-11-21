@@ -42,7 +42,7 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {imageData && (
                 <div>
-                    <label className="block text-xs font-medium text-fg-muted mb-1">
+                    <label className="block text-2xs text-fg-muted mb-1">
                         {t("properties.asset.image.info")}
                     </label>
                     <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">

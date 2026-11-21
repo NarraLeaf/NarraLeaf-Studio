@@ -124,7 +124,7 @@ function FieldRows({
     return (
         <div className="grid min-w-0 gap-1.5">
             <div className="grid min-w-0 gap-0.5">
-                <span className="truncate text-2xs font-medium text-fg-muted">{field.label}</span>
+                <span className="truncate text-2xs text-fg-muted">{field.label}</span>
                 {field.description ? (
                     <span className="text-2xs leading-relaxed text-fg-subtle">{field.description}</span>
                 ) : null}

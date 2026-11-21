@@ -542,7 +542,7 @@ export function MotionField(props: {
                     and, in an inspector-width panel, it won: a bound motion read as "Stag…" with a
                     tidy "0.42s / Position" beside it. The summary is one hover away in the picker and
                     on the row in the editor; which motion is bound is the thing this control is for. */}
-                <span className={["min-w-0 truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
+                <span className={["min-w-0 truncate", animationId ? "" : "text-fg-subtle"].join(" ")}>
                     {asset?.name ?? (animationId ? t("motion.field.motionAsset") : t("motion.field.choosePlaceholder"))}
                 </span>
             </button>

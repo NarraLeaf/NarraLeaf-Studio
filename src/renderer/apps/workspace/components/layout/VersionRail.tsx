@@ -609,7 +609,7 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-2xs tracking-wide text-fg-subtle">
+                <span className="text-2xs text-fg-muted">
                     {t("workspace.shell.versionControl.changes")}
                 </span>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -1624,7 +1624,7 @@ function MergeSection({ surface }: { surface: VersionSurface }) {
         <div data-vcs-seam="merge" data-help-topic="versionConflicts" className="border-b border-edge bg-danger/5 px-3 py-2">
             <div className="group/help flex items-center gap-1.5">
                 <GitMerge className="h-3 w-3 shrink-0 text-danger" aria-hidden />
-                <span className="min-w-0 flex-1 text-2xs tracking-wide text-danger">
+                <span className="min-w-0 flex-1 text-2xs text-danger">
                     {t("workspace.shell.versionControl.mergeOpen")}
                 </span>
                 {/* A state the author did not choose, cannot undo their way out of, and which
@@ -1755,7 +1755,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                 has to be visible from wherever the author ended up. */}
             <div className="nl-frame-sticky sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
                 <div className="flex items-center justify-between gap-2">
-                    <span className="text-2xs tracking-wide text-fg-subtle">
+                    <span className="text-2xs text-fg-muted">
                         {t("workspace.shell.versionControl.history")}
                     </span>
                     {(surface.hiddenCheckpoints > 0 || surface.showCheckpoints) && (

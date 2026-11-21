@@ -32,7 +32,7 @@ import {
     type PsdLeaf,
 } from "@shared/utils/psdLayerPlan";
 
-const SECTION = "text-2xs tracking-wide text-fg-muted px-1";
+const SECTION = "text-2xs text-fg-muted px-1";
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 
 function blendDecision(resolutions: Record<string, BlendResolution>, key: string): BlendResolution | undefined {

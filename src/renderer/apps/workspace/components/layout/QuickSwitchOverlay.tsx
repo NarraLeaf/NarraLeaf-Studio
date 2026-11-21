@@ -144,7 +144,7 @@ export function QuickSwitchOverlay({
                                 {heading && (
                                     <div
                                         role="presentation"
-                                        className="px-3 pt-2 pb-1 text-2xs font-medium uppercase tracking-wide text-fg-subtle"
+                                        className="px-3 pt-2 pb-1 text-2xs text-fg-muted"
                                     >
                                         {heading}
                                     </div>

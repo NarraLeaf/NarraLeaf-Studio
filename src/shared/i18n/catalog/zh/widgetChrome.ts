@@ -44,7 +44,7 @@ export const widgetChrome = {
         previewExit: "预览退出",
         wait: "等待",
         preset: "预设",
-        seconds: "秒",
+        seconds: "时长",
         delay: "延迟",
         direction: "方向",
         angle: "角度",

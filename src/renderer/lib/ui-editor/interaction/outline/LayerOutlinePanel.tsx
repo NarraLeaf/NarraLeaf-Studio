@@ -511,7 +511,7 @@ export function UILayersPanel({
         // `min-h-full`: the empty space under the last row is the outline's too, and a right click
         // there is answered with the outline's menu rather than falling through to the canvas.
         <div className="min-h-full space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
-            <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
+            <div className="text-xs text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
                 <div className="text-2xs leading-snug text-warning px-0.5">
                     {t("widgetChrome.outline.linkedSurfaceHint")}

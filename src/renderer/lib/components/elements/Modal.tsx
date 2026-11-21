@@ -187,7 +187,7 @@ export function Modal({
                     <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
                         {/* `flex-1` so the two trailing controls sit together on the right rather
                             than being spread apart by the close button's own `ml-auto`. */}
-                        {title && <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{title}</h2>}
+                        {title && <h2 className="min-w-0 flex-1 text-base font-semibold text-fg">{title}</h2>}
                         {helpTopic && <HelpTrigger topic={helpTopic} />}
                         {showCloseButton && (
                             <button

@@ -218,7 +218,7 @@ function DetailField({
     return (
         <label className="grid gap-1.5" data-tip={frozen["data-tip"]}>
             <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-fg-subtle">{label}</span>
+                <span className="text-2xs text-fg-muted">{label}</span>
                 {required ? <span className="text-2xs text-fg-subtle">{t("project.details.required")}</span> : null}
                 {inFlight > 0 ? <Loader2 className="h-3 w-3 animate-spin text-fg-subtle" /> : null}
             </div>
@@ -277,7 +277,7 @@ function ReadOnlyField({
 }) {
     return (
         <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-fg-subtle">{label}</span>
+            <span className="text-2xs text-fg-muted">{label}</span>
             <div className="flex min-w-0 items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5">
                 <Lock className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                 <span className="min-w-0 truncate text-sm text-fg-muted">{value || "—"}</span>

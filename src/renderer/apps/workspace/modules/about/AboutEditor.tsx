@@ -56,7 +56,7 @@ export function AboutEditor(_: EditorComponentProps) {
 
                 {/* Owner */}
                 <div className="bg-surface-raised rounded-lg p-6 border border-edge mb-4">
-                    <h2 className="text-xs font-semibold tracking-wide text-fg-muted mb-3">
+                    <h2 className="text-xs font-semibold text-fg mb-3">
                         {t("about.ownerLabel")}
                     </h2>
                     <div className="flex items-center justify-between gap-4">
@@ -78,7 +78,7 @@ export function AboutEditor(_: EditorComponentProps) {
 
                 {/* Contributors */}
                 <div className="bg-surface-raised rounded-lg p-6 border border-edge">
-                    <h2 className="text-xs font-semibold tracking-wide text-fg-muted mb-3">
+                    <h2 className="text-xs font-semibold text-fg mb-3">
                         {t("about.contributorsLabel")}
                     </h2>
                     <ul className="flex flex-col gap-2">

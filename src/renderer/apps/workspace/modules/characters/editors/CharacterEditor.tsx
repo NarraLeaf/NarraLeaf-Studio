@@ -119,7 +119,7 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
-                <span className="text-2xs tracking-wide text-fg-muted">{props.title}</span>
+                <span className="text-2xs text-fg-muted">{props.title}</span>
                 <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
                     <Plus className="w-4 h-4" />
                 </button>
@@ -802,7 +802,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                     )}
                     {diagnostics.length > 0 && (
                         <div className="max-h-48 shrink-0 overflow-y-auto border-t border-edge">
-                            <div className="px-4 py-1.5 text-2xs tracking-wide text-fg-muted">
+                            <div className="px-4 py-1.5 text-2xs text-fg-muted">
                                 {t("characters.editor.problems")}
                             </div>
                             {diagnostics.map((diagnostic, index) => {

@@ -382,7 +382,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 
                       <div className="space-y-3">
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.imageFill.modeLabel")}</span>
+                              <span className="text-xs text-fg-muted">{t("properties.imageFill.modeLabel")}</span>
                               <Select
                                   options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
@@ -395,7 +395,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                           </div>
 
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.preview")}</span>
+                              <span className="text-xs text-fg-muted">{t("properties.preview")}</span>
                               <button
                                   ref={previewRef}
                                   type="button"

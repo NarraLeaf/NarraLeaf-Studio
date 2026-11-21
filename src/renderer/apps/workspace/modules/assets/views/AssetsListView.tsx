@@ -734,7 +734,7 @@ function AssetSetInheritedRow({ asset, cell, level, coordinate, onContextMenu }:
             level={level}
             icon={<Icon className="w-4 h-4 shrink-0 text-fg-subtle" />}
             label={asset.name}
-            labelClassName="italic text-fg-muted"
+            labelClassName="text-fg-muted"
             meta={<span className="text-fg-subtle">{t("assets.sets.inspector.variantInherited")}</span>}
             trailing={coordinate}
             dataAttributes={{ "data-asset-set-member": cell.label, "data-asset-set-inherited": "" }}

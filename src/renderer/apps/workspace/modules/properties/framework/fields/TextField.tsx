@@ -68,7 +68,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
                     className={`${textAreaClassName} resize-none`}
                 />
                 {field.helpText && (
-                    <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
+                    <p className="mt-1 text-2xs text-fg-subtle">{field.helpText}</p>
                 )}
             </div>
         );
@@ -91,7 +91,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
                 className={inputClassName}
             />
             {field.helpText && (
-                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

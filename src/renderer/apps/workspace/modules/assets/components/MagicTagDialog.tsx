@@ -140,7 +140,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Delimiter Selection (Auto mode only) */}
                     {selectedTemplate.mode === 'auto' && selectedTemplate.delimiters && selectedTemplate.delimiters.length > 0 && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.detectedDelimiters")}</label>
+                            <label className="text-xs text-fg-muted">{t("assets.magicTag.detectedDelimiters")}</label>
                             <div className="flex flex-wrap gap-2">
                                 {selectedTemplate.delimiters.map((delim) => (
                                     <button
@@ -172,7 +172,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Pattern Description */}
                     {selectedTemplate.mode === 'regex' && selectedTemplate.regex && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.regexPattern")}</label>
+                            <label className="text-xs text-fg-muted">{t("assets.magicTag.regexPattern")}</label>
                             <div className="bg-fill rounded-md p-3 font-mono text-sm text-fg-muted">
                                 {selectedTemplate.regex.pattern}
                             </div>
@@ -184,7 +184,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
 
                     {/* Segment Input Bubbles */}
                     <div className="space-y-4">
-                        <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.categoryMapping")}</label>
+                        <label className="text-xs text-fg-muted">{t("assets.magicTag.categoryMapping")}</label>
                         <div className="bg-fill rounded-lg p-4 space-y-4">
                             {/* Example display */}
                             <div className="pb-4 border-b border-edge">
@@ -234,7 +234,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Preview Section */}
                     {Object.keys(categoryMapping).length > 0 && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-fg-muted">{t("assets.preview")}</label>
+                            <label className="text-xs text-fg-muted">{t("assets.preview")}</label>
                             <div className="bg-fill rounded-lg p-4 max-h-64 overflow-y-auto space-y-3">
                                 {preview.slice(0, 10).map((item, idx) => (
                                     <div key={idx} className="text-sm">
@@ -250,13 +250,13 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-fg-subtle text-xs italic">{t("assets.noTags")}</span>
+                                                <span className="text-fg-subtle text-xs">{t("assets.noTags")}</span>
                                             )}
                                         </div>
                                     </div>
                                 ))}
                                 {preview.length > 10 && (
-                                    <div className="text-xs text-fg-subtle italic pt-2 border-t border-edge">
+                                    <div className="text-xs text-fg-subtle pt-2 border-t border-edge">
                                         {tn("assets.magicTag.moreFiles", preview.length - 10)}
                                     </div>
                                 )}

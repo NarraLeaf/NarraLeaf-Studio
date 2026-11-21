@@ -98,7 +98,7 @@ export function PausePopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-                <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.pause.title")}</div>
+                <div className="mb-1.5 text-2xs text-fg-muted">{t("story.pause.title")}</div>
                 <div className="mb-2 inline-flex overflow-hidden rounded-md border border-edge bg-surface">
                     <button
                         type="button"

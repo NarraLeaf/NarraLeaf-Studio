@@ -236,7 +236,7 @@ function DetailsRow({ item, top, columns, showLocation, measures, gestures, onDr
         case "inherited":
             icon = <RowThumb item={item} />;
             name = item.caption;
-            nameClassName = "italic text-fg-muted";
+            nameClassName = "text-fg-muted";
             trailing = (
                 <span className="shrink-0 truncate text-2xs text-fg-subtle">
                     {`${item.asset.name} · ${t("assets.sets.inspector.variantInherited")}`}

@@ -559,7 +559,7 @@ export function SearchPanel() {
                 ) : (
                     visibleResults.map(group => (
                         <div key={group.group}>
-                            <div className="px-3 pt-3 pb-1 text-xs font-medium text-fg-muted">
+                            <div className="px-3 pt-3 pb-1 text-2xs text-fg-muted">
                                 {t(SEARCH_GROUP_TITLE_KEYS[group.group])}
                             </div>
                             {group.hits.map(hit => {

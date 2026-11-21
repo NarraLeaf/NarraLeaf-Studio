@@ -201,7 +201,7 @@ export function PuppetRuntimeInstaller(props: {
         if (phase.step === "notice" && runtime) {
             return (
                 <div className="space-y-3 py-1">
-                    <p className="text-2xs font-medium tracking-wide text-fg-muted">
+                    <p className="text-2xs text-fg-muted">
                         {t("characters.editor.runtime.licenseTitle")}
                     </p>
                     <p className="text-xs leading-relaxed text-fg-muted">{t(TERMS_KEY[runtime.id])}</p>

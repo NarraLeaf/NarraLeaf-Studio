@@ -16,7 +16,7 @@ import { useFloatingLayer } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets, type SceneDisplayableRef } from "../../story-motion/storyMotionPreviewTarget";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+const FIELD_LABEL_CLASS = "block text-2xs text-fg-muted mb-1";
 /** The rows of a target or layer list, for the floating layer's keyboard walk. */
 export const STAGE_OPTION_SELECTOR = "[role=\"option\"]";
 
@@ -211,7 +211,7 @@ export function DisplayableTargetField(props: {
                         )}
                     </>
                 ) : (
-                    <span className="truncate italic text-fg-subtle">{t("story.targetField.placeholder")}</span>
+                    <span className="truncate text-fg-subtle">{t("story.targetField.placeholder")}</span>
                 )}
                 <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </button>

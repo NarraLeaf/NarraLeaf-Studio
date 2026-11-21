@@ -684,7 +684,7 @@ export function SettingsExplorer<T>({
                     marksItsOwnBlock && SETTINGS_HIGHLIGHT_RING,
                 )}
             >
-                <span className="text-sm font-medium text-fg">{descriptor.label}</span>
+                <span className="text-sm text-fg">{descriptor.label}</span>
                 <div className="mt-2">
                     {highlighted ? (
                         <SettingsHighlightContext.Provider value={panelHighlightState}>
@@ -725,7 +725,7 @@ export function SettingsExplorer<T>({
                     there, where `justify-between` alone would push a lone item back to the left. */}
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-col gap-1 min-w-0 grow basis-64">
-                        <span className="flex items-center gap-1 text-sm font-medium text-fg">
+                        <span className="flex items-center gap-1 text-sm text-fg">
                             {descriptor.label}
                             {/* Hover-revealed and only where there is something to undo; see
                                 `isModified`. `focus-within` on the row would be the keyboard

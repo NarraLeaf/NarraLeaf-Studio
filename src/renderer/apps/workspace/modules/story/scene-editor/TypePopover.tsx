@@ -141,7 +141,7 @@ export function TypePopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.emphasis")}</div>
+            <div className="text-2xs text-fg-muted">{t("story.textType.emphasis")}</div>
             <TooltipGroup className="mt-1 flex items-center gap-1">
                 <ToolbarButton
                     size="xs"
@@ -177,7 +177,7 @@ export function TypePopover(props: {
                 ))}
             </TooltipGroup>
 
-            <div className="mt-2 text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.size")}</div>
+            <div className="mt-2 text-2xs text-fg-muted">{t("story.textType.size")}</div>
             <TooltipGroup className="mt-1 flex items-center gap-1">
                 <ToolbarButton
                     size="xs"
@@ -209,7 +209,7 @@ export function TypePopover(props: {
 
             {props.omitSpeed ? null : (
                 <>
-                    <div className="mt-2 text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.speed")}</div>
+                    <div className="mt-2 text-2xs text-fg-muted">{t("story.textType.speed")}</div>
                     <div className="mt-1 flex items-center gap-1.5">
                         <Input
                             size="sm"

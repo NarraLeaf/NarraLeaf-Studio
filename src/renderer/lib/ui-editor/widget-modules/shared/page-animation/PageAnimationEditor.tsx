@@ -207,7 +207,7 @@ function AnimationPhaseBlock({
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs font-semibold tracking-wide text-fg-muted">{label}</span>
+                <span className="text-2xs text-fg-muted">{label}</span>
                 {showExitBlocking ? (
                     <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
                         <span>{t("widgetChrome.pageAnimation.wait")}</span>
@@ -221,7 +221,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.preset")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.preset")}</span>
                     <Select
                         fullWidth
                         options={presetOptions}
@@ -231,7 +231,7 @@ function AnimationPhaseBlock({
                     />
                 </label>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.seconds")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.seconds")}</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatDurationSeconds(durationSeconds)}
                         onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
@@ -248,7 +248,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
                 <div className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.direction")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.direction")}</span>
                     <IconButtonSegGroup
                         options={directionOptions}
                         mode="single"
@@ -260,7 +260,7 @@ function AnimationPhaseBlock({
                     />
                 </div>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.angle")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.angle")}</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatAngleDegrees(angleDegrees)}
                         onFiniteNumber={value => onAngleChange(normalizeAngleInput(value))}
@@ -269,7 +269,7 @@ function AnimationPhaseBlock({
                         min={0}
                         max={359}
                         step={ANGLE_STEP_DEGREES}
-                        unit="deg"
+                        unit="°"
                         disabled={!isAngle}
                         className={`w-full min-w-0 ${isAngle ? "" : "opacity-55"}`}
                         popoverThreshold={112}
@@ -279,7 +279,7 @@ function AnimationPhaseBlock({
             {/* Its own labelled row rather than a third column beside the seconds: the inspector is
                 narrow enough that a third column truncates the preset name to one character. */}
             <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
+                <span className="min-w-0 text-2xs text-fg-muted">
                     {t("widgetChrome.pageAnimation.delay")}
                 </span>
                 <NumericDraftEnhancedInput
@@ -321,7 +321,7 @@ function ChildTimingBlock({
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs font-semibold tracking-wide text-fg-muted">
+                <span className="text-2xs text-fg-muted">
                     {t("widgetChrome.pageAnimation.children")}
                 </span>
                 <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
@@ -334,7 +334,7 @@ function ChildTimingBlock({
                 </label>
             </div>
             <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
+                <span className="min-w-0 text-2xs text-fg-muted">
                     {t("widgetChrome.pageAnimation.stagger")}
                 </span>
                 <NumericDraftEnhancedInput
@@ -386,7 +386,7 @@ export function PageAnimationEditor({
         <div className="space-y-2.5">
             {onInheritedChange ? (
                 <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-edge bg-fill-subtle px-3 py-1.5">
-                    <span className="min-w-0 text-xs font-medium text-fg-muted">{resolvedInheritLabel}</span>
+                    <span className="min-w-0 text-2xs text-fg-muted">{resolvedInheritLabel}</span>
                     <Switch
                         checked={inherited}
                         size="sm"

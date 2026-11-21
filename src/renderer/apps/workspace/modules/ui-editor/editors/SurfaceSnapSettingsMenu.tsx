@@ -82,7 +82,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail, gridSpacing, 
                 </SurfaceEditorToolbarSegButton>
             </SurfaceEditorToolbarSegSlot>
             <SurfaceToolbarPopoverPanel popover={popover} dataAttribute="snap-settings">
-                <div className="border-b border-edge px-3 pb-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                <div className="border-b border-edge px-3 pb-2 text-2xs text-fg-muted">
                     {t("uiEditor.snap.targets")}
                 </div>
                 <div className="pt-1">

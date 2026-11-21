@@ -44,7 +44,7 @@ export function DropdownGroupField<TData>({
                     return (
                         <div key={dropdown.id} className={`flex-1 min-w-[120px] ${dropdown.className ?? ""}`}>
                             {dropdown.label && (
-                                <span className="text-2xs tracking-wider text-fg-subtle">
+                                <span className="text-2xs text-fg-muted">
                                     {dropdown.label}
                                 </span>
                             )}

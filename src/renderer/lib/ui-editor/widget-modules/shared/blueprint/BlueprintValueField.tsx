@@ -81,7 +81,7 @@ export function ListItemFieldBindingRow(props: {
 
     return (
         <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <span className="shrink-0 text-2xs text-fg-muted">{label}</span>
             <Select
                 size="sm"
                 className="min-w-0 flex-1"
@@ -142,7 +142,7 @@ export function ComponentParamBindingRow(props: {
 
     return (
         <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <span className="shrink-0 text-2xs text-fg-muted">{label}</span>
             <Select
                 size="sm"
                 className="min-w-0 flex-1"
@@ -203,7 +203,7 @@ export function PageParamBindingRow(props: {
 
     return (
         <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <span className="shrink-0 text-2xs text-fg-muted">{label}</span>
             <Select
                 size="sm"
                 className="min-w-0 flex-1"

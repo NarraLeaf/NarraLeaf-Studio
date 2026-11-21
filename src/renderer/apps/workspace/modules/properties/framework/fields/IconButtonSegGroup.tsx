@@ -163,7 +163,7 @@ export function IconButtonSegGroup({
                             {/* A worded segment may go without an icon, when the words are all the room has. */}
                             {option.icon ? <span className="text-base leading-none">{option.icon}</span> : null}
                             {showLabels && option.label ? (
-                                <span className="text-xs tracking-wide">{option.label}</span>
+                                <span className="text-xs">{option.label}</span>
                             ) : null}
                         </div>
                     </button>

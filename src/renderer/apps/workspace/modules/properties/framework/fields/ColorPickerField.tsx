@@ -1084,7 +1084,7 @@ export function ColorPickerTrigger({
                 (`overflow-y: auto`), and the shared CSS Tooltip is clipped inside such a container. */}
             {brandColors.length > 0 && (
                 <div className="mt-3 border-t border-edge pt-2">
-                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                    <div className="mb-1 text-2xs text-fg-muted">
                         {t("brand.picker.section")}
                     </div>
                     <div className="flex flex-wrap gap-1">

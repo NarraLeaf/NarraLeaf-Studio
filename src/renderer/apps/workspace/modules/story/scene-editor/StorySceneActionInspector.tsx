@@ -3477,7 +3477,7 @@ function BackgroundActionEditor(props: {
                         <div>
                             <div className={FIELD_LABEL_CLASS}>{t("storyInspector.background.image")}</div>
                             <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-sm text-fg-muted">
-                                <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>
+                                <span className={["truncate", selectedAsset ? "" : "text-fg-subtle"].join(" ")}>
                                     {imageLabel}
                                 </span>
                             </div>

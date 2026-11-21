@@ -569,7 +569,7 @@ export const story = {
         inputAction: "输入动作",
         inputTimeout: "时限",
         inputResult: "结果变量",
-        holdDuration: "按住秒数",
+        holdDuration: "按住时长",
         mashCount: "按键次数",
         scene: "场景",
         track: "音轨",
@@ -591,7 +591,7 @@ export const story = {
         waitFor: "秒数或 click",
         waitForEnd: "等待播放结束",
         hideOnEnd: "播放结束后隐藏",
-        fade: "淡入淡出秒数",
+        fade: "淡入淡出",
         loop: "循环",
         returnable: "返回",
         vol: "音量",
@@ -599,14 +599,15 @@ export const story = {
         rate: "速度",
         muted: "静音",
         color: "颜色",
-        hold: "保持秒数",
+        hold: "保持",
         opacity: "不透明度",
         size: "字号",
         outline: "描边宽度",
         outlineColor: "描边颜色",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
         // 两个偏移是叠加在 `pos=` 上的设计像素，正值向右、向上。
-        // 与「模糊像素」（en Blur px）同一写法：单位写进词里。
+        // 与「模糊像素」（en Blur px）同一写法：单位写进词里，因为像素值在行里显示为裸数字。
+        // 秒数不同：时长值在行里带「秒」（`1.2秒`），所以 fade / hold / delay 的词里不再写「秒数」。
         xOffset: "横向偏移像素",
         yOffset: "纵向偏移像素",
         zoom: "缩放",
@@ -637,7 +638,7 @@ export const story = {
         blendMode: "混合模式",
         storyMotion: "动效",
         easing: "缓动",
-        delay: "延迟秒数",
+        delay: "延迟",
         repeat: "重复次数",
         repeatDelay: "重复间隔",
         repeatType: "重复方式",
@@ -1527,7 +1528,7 @@ export const story = {
         mergeScenes: {
             confirm: "将“{merged}”合并到“{surviving}”？",
             detail: {
-                other: "其中 {count} 行将移到 {surviving} 的末尾。",
+                other: "其中 {count} 行将移到 {surviving} 的末尾",
             },
             done: {
                 other: "已将 {count} 行合并到 {scene}",

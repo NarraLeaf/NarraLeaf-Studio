@@ -139,7 +139,7 @@ export function StoryMotionPicker(props: {
     return (
         <div className="rounded-lg border border-edge bg-fill-subtle p-2">
             <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-fg-muted">{t("motion.storyMotion")}</div>
+                <div className="text-2xs text-fg-muted">{t("motion.storyMotion")}</div>
                 <button
                     type="button"
                     className={TOOL_BUTTON_CLASS}

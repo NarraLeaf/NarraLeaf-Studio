@@ -216,7 +216,7 @@ export function LocalizationKeyPicker({
             >
                 <div className="space-y-3">
                     <div>
-                        <label className="mb-1 block text-xs font-medium text-fg-muted">
+                        <label className="mb-1 block text-2xs text-fg-muted">
                             {t("widgets.localization.keyName")}
                         </label>
                         <input
@@ -243,7 +243,7 @@ export function LocalizationKeyPicker({
                         />
                     </div>
                     <div>
-                        <label className="mb-1 block text-xs font-medium text-fg-muted">
+                        <label className="mb-1 block text-2xs text-fg-muted">
                             {sourceTextLabel}
                         </label>
                         <textarea

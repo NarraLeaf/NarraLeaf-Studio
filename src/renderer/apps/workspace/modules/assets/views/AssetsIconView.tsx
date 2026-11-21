@@ -859,7 +859,7 @@ function AssetSetInheritedTile({ asset, caption, onContextMenu }: {
                 </div>
             )}
             <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-xs font-medium italic text-fg-muted" data-tip={asset.name}>{asset.name}</span>
+                <span className="truncate text-xs font-medium text-fg-muted" data-tip={asset.name}>{asset.name}</span>
                 <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("assets.sets.inspector.variantInherited")}</span>
             </div>
             <span className="-mt-1 truncate text-2xs text-fg-subtle" data-tip={caption}>{caption}</span>

@@ -311,7 +311,6 @@ export function AssetSetInspector({
                                         "flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-0.5 text-2xs transition-colors",
                                         "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
                                         missing || ambiguous ? "text-warning" : "text-fg-subtle",
-                                        cell.inherited && "italic",
                                     )}
                                     {...freeze.writes(!assetsService)}
                                     onClick={event => {

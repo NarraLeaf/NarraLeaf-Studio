@@ -61,9 +61,6 @@ export function SettingsApp() {
     const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
     const [selectedSettingId, setSelectedSettingId] = useState<string | undefined>(undefined);
     const [categoryScrollSignal, setCategoryScrollSignal] = useState(0);
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-        () => new Set(categories[0] ? [categories[0].key] : []),
-    );
 
     // Availability of workspace-bound actions, keyed by setting key. Evaluated on mount, whenever
     // this window regains focus — the user may have opened or closed a workspace since — and
@@ -272,26 +269,7 @@ export function SettingsApp() {
     const handleCategoryClick = useCallback((categoryKey: string) => {
         setSelectedCategory(categoryKey);
         setSelectedSettingId(undefined);
-        setExpandedCategories(prev => new Set(prev).add(categoryKey));
         setCategoryScrollSignal(value => value + 1);
-    }, []);
-
-    const handleSettingClick = useCallback((categoryKey: string, settingId: string) => {
-        setSelectedCategory(categoryKey);
-        setSelectedSettingId(settingId);
-        setCategoryScrollSignal(value => value + 1);
-    }, []);
-
-    const handleToggleCategory = useCallback((categoryKey: string) => {
-        setExpandedCategories(prev => {
-            const next = new Set(prev);
-            if (next.has(categoryKey)) {
-                next.delete(categoryKey);
-            } else {
-                next.add(categoryKey);
-            }
-            return next;
-        });
     }, []);
 
     /**
@@ -308,7 +286,6 @@ export function SettingsApp() {
             setSearchQuery("");
             setSelectedCategory(setting.category);
             setSelectedSettingId(setting.key);
-            setExpandedCategories(prev => new Set(prev).add(setting.category));
             setCategoryScrollSignal(value => value + 1);
             return true;
         }
@@ -316,7 +293,6 @@ export function SettingsApp() {
             setSearchQuery("");
             setSelectedCategory(highlight);
             setSelectedSettingId(undefined);
-            setExpandedCategories(prev => new Set(prev).add(highlight));
             setCategoryScrollSignal(value => value + 1);
             return true;
         }
@@ -371,30 +347,28 @@ export function SettingsApp() {
                 data-help-topic="studioSettings"
             >
                 <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
+                    {/* No title of its own: the window's title bar already says Settings. The help `?`
+                        stays beside the search box, since this window is where an author asks whether
+                        a setting belongs to Studio or to their project, which nothing else here says. */}
                     <div className="group/help flex items-center gap-1">
-                        <p className="min-w-0 flex-1 text-lg font-semibold text-fg">{t("settings.title")}</p>
-                        {/* This window is where an author asks whether a setting belongs to Studio
-                            or to their project, which nothing else here says. */}
-                        <HelpTrigger topic="studioSettings" />
-                    </div>
-                    {localizedCategories.length > 0 ? (
-                        <>
+                        {localizedCategories.length > 0 ? (
                             <SearchBox
                                 value={searchQuery}
                                 onChange={setSearchQuery}
                                 placeholder={t("settings.searchPlaceholder")}
-                                className="w-full"
+                                className="min-w-0 flex-1"
                             />
-                            <SettingsNavTree
-                                categories={navCategories}
-                                expanded={expandedCategories}
-                                onToggle={handleToggleCategory}
-                                selectedCategory={selectedCategory}
-                                selectedSettingId={selectedSettingId}
-                                onSelectCategory={handleCategoryClick}
-                                onSelectSetting={handleSettingClick}
-                            />
-                        </>
+                        ) : (
+                            <span className="flex-1" />
+                        )}
+                        <HelpTrigger topic="studioSettings" />
+                    </div>
+                    {localizedCategories.length > 0 ? (
+                        <SettingsNavTree
+                            categories={navCategories}
+                            selectedCategory={selectedCategory}
+                            onSelectCategory={handleCategoryClick}
+                        />
                     ) : (
                         <p className="text-xs text-fg-subtle">
                             {t("settings.noneExposed")}

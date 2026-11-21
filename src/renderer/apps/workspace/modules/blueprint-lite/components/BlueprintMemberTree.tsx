@@ -123,7 +123,7 @@ function CollapsibleSection({
 
     return (
         <section className="shrink-0">
-            <div className="mb-1 flex items-center justify-between gap-2 text-2xs tracking-wide text-fg-subtle">
+            <div className="mb-1 flex items-center justify-between gap-2 text-2xs text-fg-muted">
                 <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-fg-muted"
@@ -326,7 +326,7 @@ function BlueprintPersistentVariableRow({
     return (
         <div className="group rounded-md border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
-                <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs font-medium text-fg-subtle">
+                <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs text-fg-muted">
                     {t("common.name")}
                 </label>
                 <button
@@ -958,7 +958,7 @@ export function BlueprintMemberTree({
     return (
         <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-fg-muted">
             <section className="shrink-0">
-                <div className="mb-1 flex items-center justify-between text-2xs font-medium text-fg-subtle">
+                <div className="mb-1 flex items-center justify-between text-2xs text-fg-muted">
                     <span>{t("blueprint.memberTree.layers")}</span>
                     <span className="inline-flex items-center gap-2">
                         {onOpenTemplateLibrary ? (

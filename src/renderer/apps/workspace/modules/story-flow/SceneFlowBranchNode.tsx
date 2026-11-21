@@ -89,7 +89,7 @@ export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
             {arm.showForkHeader && (
                 <div
                     style={{ height: SCENE_FLOW_BRANCH_HEADER_HEIGHT, ...FORK_HEADER_STYLE }}
-                    className="flex items-center overflow-hidden border-t border-edge px-3 uppercase tracking-wide text-fg-subtle"
+                    className="flex items-center overflow-hidden border-t border-edge px-3 text-fg-subtle"
                 >
                     <span className="truncate">
                         {t(arm.forkKind === "choice"

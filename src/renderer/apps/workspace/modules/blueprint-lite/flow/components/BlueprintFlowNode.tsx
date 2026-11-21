@@ -199,7 +199,7 @@ export type BlueprintFlowNodeFamilyChoice = {
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-primary";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
 const PIN_LABEL_CLASS = "text-fg-muted";
-const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
+const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle ";
 
 const CARD_INPUT =
     "rounded-md border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
@@ -1488,7 +1488,7 @@ function InspectorParamOnCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{resolveBlueprintLabel(spec.label, t)}</div>
+            <div className="mb-0.5 text-2xs text-fg-muted">{resolveBlueprintLabel(spec.label, t)}</div>
             {spec.kind === "select" && selectComponentOptions ? (
                 <Select
                     fullWidth
@@ -1717,7 +1717,7 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
 }
 
 function CardFieldLabel({ children }: { children: ReactNode }) {
-    return <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{children}</div>;
+    return <div className="mb-0.5 text-2xs text-fg-muted">{children}</div>;
 }
 
 function CardNumberInput({
@@ -2594,7 +2594,7 @@ function BlueprintImageAssetLiteralNodeCard({
             aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge px-2 py-1.5">
-                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="text-2xs text-fg-muted">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
                 <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
             </div>
             <div className="mx-2 my-1.5">
@@ -2960,12 +2960,12 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                     tooltips, or none, and should not all answer with the node's description. */}
                 <div data-tip={titleTip}>
                     {isUnknown ? (
-                        <div className="flex items-center gap-1 text-2xs font-medium tracking-wide text-warning">
+                        <div className="flex items-center gap-1 text-2xs font-medium text-warning">
                             <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
                             <span>{t("blueprint.canvas.unknownNode")}</span>
                         </div>
                     ) : (
-                        <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                        <div className="text-2xs text-fg-muted">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
                     )}
                     <div className="flex items-center gap-1.5">
                         <div

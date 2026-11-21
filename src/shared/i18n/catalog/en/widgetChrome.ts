@@ -43,7 +43,7 @@ export const widgetChrome = {
         previewExit: "Preview exit",
         wait: "Wait",
         preset: "Preset",
-        seconds: "Seconds",
+        seconds: "Duration",
         delay: "Delay",
         direction: "Direction",
         angle: "Angle",

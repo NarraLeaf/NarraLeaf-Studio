@@ -600,11 +600,11 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         )}
                                         {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
 
-                                        {/* A preview tab wears its title in italics - the same one
-                                            mark every editor uses for "this is not settled yet",
-                                            and the only thing separating a tab that will be taken
-                                            over from one that will not. */}
-                                        <span className={`text-sm whitespace-nowrap ${tab.preview ? "italic" : ""}`}>
+                                        {/* A preview tab underlines its title with dots: the mark for "this is not
+                                            settled yet", and the only thing separating a tab that will be taken
+                                            over from one that will not. Not italics, the usual editor mark,
+                                            because Chinese and Japanese titles have no true italic and only lean. */}
+                                        <span className={`text-sm whitespace-nowrap ${tab.preview ? "underline decoration-dotted decoration-fg-subtle underline-offset-4" : ""}`}>
                                             {String(tab.title)}
                                         </span>
 

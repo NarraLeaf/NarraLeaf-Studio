@@ -378,7 +378,7 @@ function TrackItem({
                 </Field>
 
                 <div className="flex min-w-0 items-center justify-between gap-2" data-tip={frozen["data-tip"]}>
-                    <span className="flex min-w-0 items-center gap-1 text-2xs font-medium text-fg-muted">
+                    <span className="flex min-w-0 items-center gap-1 text-2xs text-fg-muted">
                         <span className="truncate">{t("project.audio.loopTitle")}</span>
                         {/*
                           * The one per-field explanation that survives as prose, and it is behind an
@@ -470,7 +470,7 @@ function Field({
     return (
         <div className="grid min-w-0 gap-1 [&>*]:min-w-0">
             <div className="flex min-w-0 items-baseline justify-between gap-2">
-                <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
+                <span className="min-w-0 truncate text-2xs text-fg-muted">{label}</span>
                 {trailing}
             </div>
             {children}

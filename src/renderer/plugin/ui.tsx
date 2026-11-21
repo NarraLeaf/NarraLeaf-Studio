@@ -169,7 +169,7 @@ export function PluginPanelSection({
         <section className={cx("min-w-0 py-2", className)} {...props}>
             {(title || actions) && (
                 <div className="mb-2 flex items-center justify-between gap-2">
-                    {title && <h3 className="text-xs font-semibold tracking-wide text-fg-muted">{title}</h3>}
+                    {title && <h3 className="text-xs font-semibold text-fg">{title}</h3>}
                     {actions && <div className="flex items-center gap-1">{actions}</div>}
                 </div>
             )}

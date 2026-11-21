@@ -8,6 +8,9 @@ import { getCommandSpec } from "./commands/registry";
 import { projectStoryCommandLine, type StoryCommandLineLookups } from "./storyCommandLine";
 import { storyCommandLineParts } from "./StoryCommandLineView";
 import { rewritesRowInPlace } from "./storySceneBlockUtils";
+import { parseStoryExpression, type StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+
+const NO_VARIABLES = { lookup: () => null, lookupIn: () => null } as unknown as StoryExpressionScope;
 
 /**
  * The row reads back as the line that made it.
@@ -512,6 +515,14 @@ describe("projectStoryCommandLine", () => {
         // The regression itself: with no registry in hand the row falls back to the word reserved for
         // a declaration that was DELETED, which is what every one of these rows printed.
         expect(projectStoryCommandLine(setSaved, LOOKUPS)!.source).toBe("/set variable 5");
+
+        // In Chinese a boolean reads as the variables panel names it, and the expression parser takes
+        // that spelling back, so the row still shows a line the editor accepts.
+        i18nStore.setLocale("zh");
+        const zhLine = projectStoryCommandLine(setPersistent, withRegistry)!.source;
+        expect(zhLine.endsWith(" 真")).toBe(true);
+        expect(parseStoryExpression("真", NO_VARIABLES).expression.ast).toEqual({ kind: "literal", value: true });
+        expect(parseStoryExpression("假", NO_VARIABLES).expression.ast).toEqual({ kind: "literal", value: false });
     });
 
     /**

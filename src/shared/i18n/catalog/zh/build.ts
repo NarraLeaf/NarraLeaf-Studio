@@ -139,8 +139,8 @@ export const build = {
             title: "导出补丁",
             kindLabel: "导出",
             kindPatch: "补丁",
-            dlcVariantHint: "在 项目 ▸ 应用 的 DLC 上设置。",
-            dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}。",
+            dlcVariantHint: "在 项目 ▸ 应用 的 DLC 上设置",
+            dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}",
             baselineModeLabel: "本补丁更新的构建",
             baselineModeVariant: "在本次导出中构建",
             baselineModeArtifact: "已有的构建目录",
@@ -211,7 +211,7 @@ export const build = {
         aliasEmpty: "该 keystore 里没有签名密钥",
         keyPasswordSame: "与 keystore 密码相同",
         macIdentityLoading: "正在读取钥匙串…",
-        macIdentityEmpty: "本机钥匙串中没有代码签名证书。请在「钥匙串访问」中安装，或改用证书文件导入。",
+        macIdentityEmpty: "本机钥匙串中没有代码签名证书。请在「钥匙串访问」中安装，或改用证书文件导入",
         macIdentityNotDeveloperId: "不能用于分发",
         notarized: "已配置 Apple 公证",
         notNotarized: "未公证，玩家首次打开时会看到 Gatekeeper 警告",
@@ -256,8 +256,8 @@ export const build = {
         artifactsEmpty: "选择目标后此处会列出产物",
             includeDlc: "同时构建这个变体的 DLC",
             includeDlcHint: {
-                one: "{count} 个 DLC，输出到安装包旁的独立文件夹中。",
-                other: "{count} 个 DLC，各自输出到安装包旁的独立文件夹中。",
+                one: "{count} 个 DLC，输出到安装包旁的独立文件夹中",
+                other: "{count} 个 DLC，各自输出到安装包旁的独立文件夹中",
             },
         openWhenDone: "构建完成后打开输出目录",
     },
@@ -274,9 +274,9 @@ export const build = {
         official: "官方源",
         change: "修改",
         downloadFailed:
-            "构建所需的文件下载失败。当前网络访问 github.com 缓慢或无法访问时，可在 设置 › {section} 中为构建下载选择镜像，然后重新构建。",
+            "构建所需的文件下载失败。当前网络访问 github.com 缓慢或无法访问时，可在 设置 › {section} 中为构建下载选择镜像，然后重新构建",
         certificateFailed:
-            "无法验证下载地址的证书，本机的代理、网络加速器或杀毒软件可能正在拦截 HTTPS。关闭这些软件后重新构建，无需使用镜像。",
+            "无法验证下载地址的证书，本机的代理、网络加速器或杀毒软件可能正在拦截 HTTPS。关闭这些软件后重新构建，无需使用镜像",
     },
     preflight: {
         "no-targets": "请至少选择一个平台和格式",

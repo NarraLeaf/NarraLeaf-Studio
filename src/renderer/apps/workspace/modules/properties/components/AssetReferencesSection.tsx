@@ -111,7 +111,7 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
     return (
         <div>
             <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-fg-muted">
+                <label className="block text-2xs text-fg-muted">
                     {t("properties.references.label")}
                 </label>
                 {!building && references.length > 0 && (

@@ -12,7 +12,7 @@ import { useTranslation } from "@/lib/i18n";
 import { STAGE_OPTION_SELECTOR, useAutoMenuPlacement } from "./DisplayableTargetField";
 import { useFloatingLayer } from "@/lib/components/layout";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+const FIELD_LABEL_CLASS = "block text-2xs text-fg-muted mb-1";
 
 /**
  * Layer picker for `image` / `text` / `layer` rows: every layer of the scene's stack, front to back,

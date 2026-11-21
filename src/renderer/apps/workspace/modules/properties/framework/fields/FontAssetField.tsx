@@ -156,7 +156,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                     className="relative mt-1 w-full rounded-xl border border-edge bg-surface px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-primary/70"
                     {...freeze.writes()}
                 >
-                    <div className="flex items-center gap-2 text-xs text-fg-muted tracking-widest">
+                    <div className="flex items-center gap-2 text-xs text-fg-muted">
                         <Type className="h-3.5 w-3.5 shrink-0" />
                         <span>{t("properties.preview")}</span>
                     </div>
@@ -172,7 +172,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                             <button
                                 type="button"
                                 onClick={handleClear}
-                                className="shrink-0 rounded-md px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="shrink-0 rounded-md px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill hover:text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                                 {...freeze.writes()}
                             >
                                 {t("common.clear")}

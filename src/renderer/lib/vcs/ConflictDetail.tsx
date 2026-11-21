@@ -228,7 +228,7 @@ function MergeChangeRow({
 function MergeValue({ view }: { view: MergeValueView }) {
     const { t } = useTranslation();
     if (view.absent) {
-        return <span className="block truncate text-2xs italic text-fg-subtle">{t("documentDiff.resolve.change.absent")}</span>;
+        return <span className="block truncate text-2xs text-fg-subtle">{t("documentDiff.resolve.change.absent")}</span>;
     }
     return (
         <span className="block min-w-0">

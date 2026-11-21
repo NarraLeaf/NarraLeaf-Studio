@@ -135,7 +135,7 @@ export function InterpolationPopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.interpolation.title")}</div>
+            <div className="mb-1.5 text-2xs text-fg-muted">{t("story.interpolation.title")}</div>
             <div className="flex flex-col gap-1.5">
                 <Select options={kindOptions} value={kind} onChange={value => setKind(String(value))} size="sm" fullWidth portalMenu menuZIndex={MENU_Z} menuDataAttributes={{ "data-select-menu": "true" }} />
                 {kind === "variable" ? (

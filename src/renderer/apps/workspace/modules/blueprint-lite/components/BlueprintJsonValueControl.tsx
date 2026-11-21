@@ -235,7 +235,7 @@ function PrimitiveValueEditor({
         );
     }
     if (value === null) {
-        return <span className="px-1 text-2xs italic text-fg-subtle">null</span>;
+        return <span className="px-1 text-2xs text-fg-subtle">null</span>;
     }
     return null;
 }
@@ -381,7 +381,7 @@ function JsonTreeRow({
                     )}
                     {lockedKind ? (
                         <span
-                            className="w-[6.25rem] shrink-0 rounded-md border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
+                            className="w-[6.25rem] shrink-0 rounded-md border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize text-fg-muted"
                             data-tip={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
@@ -718,7 +718,7 @@ function JsonEditorPortal({
             <JsonEditorScopeContext.Provider value={scopeId}>
                 <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-edge pb-2">
                     <div className="min-w-0 flex-1">
-                        <div className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.json.label")}</div>
+                        <div className="text-2xs text-fg-muted">{t("blueprint.json.label")}</div>
                         <div className="truncate font-mono text-2xs text-fg-muted">
                             {summarizeJsonValue(root, count => tn("blueprint.json.itemCount", count))}
                         </div>
@@ -798,7 +798,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
             <div className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-1.5 py-1">
-                <div className="text-2xs capitalize tracking-wide text-fg-subtle">{t(`blueprint.json.${kind}`)}</div>
+                <div className="text-2xs capitalize text-fg-muted">{t(`blueprint.json.${kind}`)}</div>
                 <div className="truncate font-mono text-2xs text-fg-muted" data-tip={summary}>
                     {summary}
                 </div>

@@ -192,7 +192,7 @@ function Section(props: { title: string; action?: ReactNode; children: ReactNode
                 {/* FieldLabel's typography, spelled out because that component is a label/span/div
                     and a section heading wants to stay an <h3>. Not uppercased: the eyebrow style
                     this matches is not, and shouting a word is not what makes it read as a heading. */}
-                <h3 className="text-2xs font-medium tracking-wide text-fg-subtle">{props.title}</h3>
+                <h3 className="text-2xs text-fg-muted">{props.title}</h3>
                 {props.action}
             </div>
             {props.children}

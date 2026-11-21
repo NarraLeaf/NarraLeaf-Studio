@@ -44,7 +44,7 @@ export const widgetChrome = {
         previewExit: "退場をプレビュー",
         wait: "待機",
         preset: "プリセット",
-        seconds: "秒",
+        seconds: "長さ",
         delay: "遅延",
         direction: "方向",
         angle: "角度",

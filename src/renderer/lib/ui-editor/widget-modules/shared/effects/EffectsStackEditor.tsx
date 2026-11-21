@@ -95,7 +95,7 @@ function ShadowStoredFields({
     return (
         <div className="grid grid-cols-2 gap-2 min-w-0">
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowOffsetX")}</span>
+                <span className="text-2xs text-fg-muted block mb-0.5">{t("widgetChrome.effects.shadowOffsetX")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetX)}
@@ -107,7 +107,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowOffsetY")}</span>
+                <span className="text-2xs text-fg-muted block mb-0.5">{t("widgetChrome.effects.shadowOffsetY")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetY)}
@@ -119,7 +119,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowBlur")}</span>
+                <span className="text-2xs text-fg-muted block mb-0.5">{t("widgetChrome.effects.shadowBlur")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, L.blur))}
@@ -133,7 +133,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowSpread")}</span>
+                <span className="text-2xs text-fg-muted block mb-0.5">{t("widgetChrome.effects.shadowSpread")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.spread)}
@@ -580,7 +580,7 @@ export function EffectsStackEditor({
             {enabled.map(kind => (
                 <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-edge bg-fill-subtle px-2 py-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-2xs font-medium text-fg-muted shrink-0 w-[4.5rem]">
+                        <span className="text-2xs text-fg-muted shrink-0 w-[4.5rem]">
                             {t(EFFECT_KIND_LABEL_KEY[kind])}
                         </span>
                         <span className="text-2xs text-fg-subtle truncate flex-1 min-w-0 font-mono">

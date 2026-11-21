@@ -272,7 +272,7 @@ function BehaviourEventSection(props: {
                 ) : (
                     <button
                         type="button"
-                        className="flex min-h-[var(--nl-story-row-box)] w-full items-center gap-2 px-2 py-1 text-left text-sm italic text-fg-subtle hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                        className="flex min-h-[var(--nl-story-row-box)] w-full items-center gap-2 px-2 py-1 text-left text-sm text-fg-subtle hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                         // Opened on the trigger, so the command menu is up at once: a behaviour line is
                         // a command and nothing else.
                         onClick={() => open(null, trigger)}
