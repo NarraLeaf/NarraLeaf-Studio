@@ -93,6 +93,7 @@ import {
     readEntrance,
     type EntranceInput,
 } from "./castTools";
+import { behaviourLinesOf } from "./characterBehaviourText";
 import { readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { loadAllStories } from "./textFormat";
 
@@ -283,7 +284,7 @@ async function writeLayered(tool: Pick<AgentToolContext, "ctx" | "request" | "fo
     const name = draft.profile.getName();
     const structured = (live: Character) => ({
         created,
-        character: describeCharacter(live, assetsService(ctx), stage, appearance.canvas ?? null, cast),
+        character: describeCharacter(live, assetsService(ctx), stage, appearance.canvas ?? null, cast, behaviourLinesOf(ctx, live.profile.getBehaviours())),
         combinations,
         ...(scoped.length > 0 ? { scoped } : {}),
         ...(notes.length > 0 ? { notes } : {}),

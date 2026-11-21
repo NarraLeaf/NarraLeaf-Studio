@@ -197,6 +197,7 @@ export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> 
     defaultAvatarAssetId: "characters.properties.defaultAvatar",
     voiceTrackId: "characters.properties.voiceTrack",
     entranceTransform: "characters.properties.entrance",
+    behaviours: "characters.properties.behaviours",
     portrait: "characters.preview.portraitTitle",
     nicknames: "characters.properties.aliases",
     // One the panel shows without labelling: the group a row was moved into.

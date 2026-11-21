@@ -1,5 +1,6 @@
 import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
+import { hasCharacterBehaviourRows } from "@shared/story/characterBehaviours";
 import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
@@ -13,6 +14,7 @@ import type {
     StoryEndingPage,
     StoryGroupKind,
     StoryLiteralValue,
+    StoryNodeActionPayload,
     StoryRumblePresetId,
     StoryScene,
     StorySceneId,
@@ -677,6 +679,34 @@ export function ActionInspector(props: {
     );
 }
 
+/**
+ * Whether this line sets off the cast's behaviours (`@shared/story/characterBehaviours`). On by
+ * default; off makes the line count as though the floor had not changed hands.
+ *
+ * Shown only in a project where some character has a behaviour row: anywhere else the switch would
+ * be a control that changes nothing.
+ */
+function CharacterBehavioursToggle(props: {
+    characters: Character[];
+    payload: Extract<StoryNodeActionPayload, { action: "dialogue" | "narration" }>;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    if (!props.characters.some(character => hasCharacterBehaviourRows(character.profile.getBehaviours()))) {
+        return null;
+    }
+    return (
+        <ToggleField
+            label={t("storyInspector.field.characterBehaviours")}
+            checked={props.payload.skipCharacterBehaviours !== true}
+            onChange={checked => {
+                const { skipCharacterBehaviours: _skipped, ...rest } = props.payload;
+                props.onUpdatePayload(checked ? rest : { ...rest, skipCharacterBehaviours: true });
+            }}
+        />
+    );
+}
+
 function InspectorFields(props: {
     block: StoryBlock;
     document: StoryDocument;
@@ -699,6 +729,7 @@ function InspectorFields(props: {
                 <div className="grid grid-cols-1 gap-2">
                     <div className="text-xs text-fg-subtle">{t("storyInspector.narration.editHint")}</div>
                     <TextIdReadout text={payload.text} />
+                    <CharacterBehavioursToggle characters={props.characters} payload={payload} onUpdatePayload={props.onUpdatePayload} />
                     <VoiceInspectorSection block={block} />
                 </div>
             );
@@ -722,6 +753,7 @@ function InspectorFields(props: {
                         />
                         <TextIdReadout text={payload.text} />
                     </FieldGrid>
+                    <CharacterBehavioursToggle characters={props.characters} payload={payload} onUpdatePayload={props.onUpdatePayload} />
                     <VoiceInspectorSection block={block} />
                 </div>
             );

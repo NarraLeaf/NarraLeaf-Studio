@@ -320,7 +320,7 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot. `groups` lists the cast groups the Characters panel files characters under (id, name, member count), and each character's `group`/`groupId` names its own (null = ungrouped); character_upsert {group} moves one.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands), `behaviours` (command lines it runs on its own when it starts and stops speaking, in the shape character_upsert takes) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot. `groups` lists the cast groups the Characters panel files characters under (id, name, member count), and each character's `group`/`groupId` names its own (null = ungrouped); character_upsert {group} moves one.",
     ),
     ws(
         "character_upsert",
@@ -379,6 +379,21 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                         },
                         additionalProperties: false,
                     },
+                ],
+            },
+            behaviours: {
+                description:
+                    "Command lines the character runs on its own - the Behaviours section of the character panel. `startSpeaking` runs on a line where it takes over as speaker, `stopSpeaking` on the next line someone else (or narration) speaks; each only while the character is on stage, together with that line and without delaying its text. Lines are `.story` command lines naming the character by name, e.g. `/transform Mei zoom=1.05 d=0.3`; only stage commands are accepted (/transform, /char, /front, /motion, /skin, /param, /reset, sound). An event given replaces that event's lines, [] keeps the event with no lines, null on an event removes it; null for the whole field removes every behaviour. A row written right above a line that sets the same thing (the same character's zoom, say) wins over the behaviour there, and project checks warn about it. A line can be excluded in Studio (Trigger character behaviours, in the line's properties); editing that line through story_apply keeps the setting.",
+                oneOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            startSpeaking: { oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+                            stopSpeaking: { oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+                        },
+                        additionalProperties: false,
+                    },
+                    { type: "null" },
                 ],
             },
         },

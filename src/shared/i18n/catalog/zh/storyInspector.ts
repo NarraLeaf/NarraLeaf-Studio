@@ -24,6 +24,8 @@ export const storyInspector = {
         openTable: "打开配音表",
     },
     field: {
+        // A line of dialogue or narration that sets off the cast's behaviours
+        characterBehaviours: "触发角色行为",
         operation: "操作",
         value: "值",
         valueJson: "值（JSON）",

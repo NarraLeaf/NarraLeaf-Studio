@@ -210,6 +210,8 @@ export function buildProseBlock(
         const payload: StoryNodeActionPayload = {
             action: "narration",
             text: segment(previous, "narration", words, mintId),
+            // Bound to the row like a voice clip: no line spells it, so editing the words keeps it.
+            ...(carriedSkipsBehaviours(previousNodeAction(previous, "narration")) ? { skipCharacterBehaviours: true as const } : {}),
         };
         return { ok: true, block: { ...base, kind: "nodeAction", payload } };
     }
@@ -257,6 +259,8 @@ export function buildProseBlock(
         text: segment(previous, "dialogue", words, mintId),
         // A voice clip is bound to the row, not stated by the line - editing the words keeps it.
         ...(carried?.action === "dialogue" && carried.voiceAssetId ? { voiceAssetId: carried.voiceAssetId } : {}),
+        // And so is a line's opt-out from the cast's behaviours.
+        ...(carried?.action === "dialogue" && carried.skipCharacterBehaviours ? { skipCharacterBehaviours: true as const } : {}),
     };
     return { ok: true, block: { ...base, kind: "nodeAction", payload } };
 }
@@ -301,6 +305,11 @@ function previousSegment(block: StoryBlock | null): StoryTextSegment | null {
         return payload.text;
     }
     return payload.action === "choice" ? payload.prompt ?? null : null;
+}
+
+/** Whether the row a line replaces had opted out of the cast's behaviours. */
+function carriedSkipsBehaviours(payload: StoryNodeActionPayload | null): boolean {
+    return (payload?.action === "narration" || payload?.action === "dialogue") && payload.skipCharacterBehaviours === true;
 }
 
 function previousNodeAction(block: StoryBlock | null, action: string): StoryNodeActionPayload | null {

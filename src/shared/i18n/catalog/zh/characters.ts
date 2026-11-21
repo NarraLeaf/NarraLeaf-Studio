@@ -276,6 +276,19 @@ export const characters = {
         entranceApplyFramed: "应用标准取景",
         // 与画布同尺寸的另一角色共用缩放与基线，保留两人的身高差
         entranceMatch: "与“{name}”一致",
+        // 角色行为：角色开始或停止说话时自动执行的命令行
+        behaviours: "角色行为",
+        behaviourAdd: "添加行为",
+        behaviourEvent: {
+            startSpeaking: "开始说话时",
+            stopSpeaking: "停止说话时",
+        },
+        behaviourRemove: "移除行为",
+        behaviourAddRow: "添加命令…",
+        behaviourRowDelete: "删除命令",
+        behaviourRowIncomplete: "命令不完整",
+        // 只有舞台类命令可以随对白执行：变换、表情、声音、镜头
+        behaviourRowNotAllowed: "该命令不能用于角色行为",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

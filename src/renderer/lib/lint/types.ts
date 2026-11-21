@@ -168,6 +168,7 @@ export type LintRuleId =
     | "story/background-unchanged"
     | "story/tag-name-shared"
     | "story/parallel-same-target"
+    | "story/behaviour-conflict"
     | "blueprint/reference-missing"
     | "blueprint/element-ref-missing"
     | "blueprint/fn-target-missing"

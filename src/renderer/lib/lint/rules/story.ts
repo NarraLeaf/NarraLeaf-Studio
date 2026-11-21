@@ -1,3 +1,4 @@
+import { findCharacterBehaviourConflicts } from "@shared/story/characterBehaviours";
 import { collectCutPoints } from "@shared/story/appTagFold";
 import { createLintBreather } from "../breather";
 import {
@@ -1765,6 +1766,50 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                                 target: blockTarget(entry, scene, row.id),
                             });
                         }
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A hand-written row that sets the same stage channel a character behaviour sets at the same
+         * line - `/move Alice zoom=1.2` right above a line where Alice's own `startSpeaking` sets her
+         * zoom too. The row wins (the compile leaves that behaviour row out there); this says so,
+         * because two places writing one number is how an author ends up editing the one that is
+         * not being used.
+         *
+         * Read off `findCharacterBehaviourConflicts`, the same function the compile and the stage walk
+         * consult, so the row marked here is exactly the row that took over.
+         */
+        id: "story/behaviour-conflict",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyBehaviourConflict",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            const behaviours = new Map(ctx.characters.flatMap(character => (
+                character.behaviours ? [[character.id, character.behaviours] as const] : []
+            )));
+            if (behaviours.size === 0) {
+                return findings;
+            }
+            const names = new Map(ctx.characters.map(character => [character.id, character.name]));
+            for (const { entry, scene } of eachScene(ctx)) {
+                const reported = new Set<string>();
+                for (const conflict of findCharacterBehaviourConflicts(scene, behaviours)) {
+                    const key = `${conflict.rowBlockId}|${conflict.characterId}`;
+                    if (reported.has(key)) {
+                        continue;
+                    }
+                    reported.add(key);
+                    findings.push({
+                        ruleId: "story/behaviour-conflict",
+                        messageKey: "lint.rule.storyBehaviourConflict.message",
+                        messageParams: { character: names.get(conflict.characterId) ?? "" },
+                        location: storyLocation(entry, scene, conflict.rowBlockId),
+                        target: blockTarget(entry, scene, conflict.rowBlockId),
                     });
                 }
             }

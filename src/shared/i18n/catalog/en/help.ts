@@ -568,6 +568,22 @@ export const help = {
                 + "a framing adjusted by hand is kept. The framing stays adjustable.\n"
                 + "- A character can speak without being on stage.",
         },
+        characterBehaviours: {
+            title: "Character behaviours",
+            body:
+                "Behaviours are commands a character runs automatically when it starts or stops speaking. "
+                + "They are set under Behaviours in the character's properties and written like commands in the story editor.\n"
+                + "\n"
+                + "- When the speaker changes, the previous speaker runs \"When stopping speaking\" and the new speaker runs \"When starting to speak\". Consecutive lines by one character run it once, on the first line\n"
+                + "- Narration counts as nobody speaking: the previous speaker runs \"When stopping speaking\"\n"
+                + "- Only characters on stage run behaviours. Nothing runs before a character enters or after it exits\n"
+                + "- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order\n"
+                + "- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound. A behaviour cannot enter, exit or jump\n"
+                + "\n"
+                + "With \"Trigger character behaviours\" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged\n"
+                + "\n"
+                + "When a command written above a line sets the same property of the same character as a behaviour, the written command is used and project checks show a warning on that row",
+        },
         appearances: {
             title: "Character appearances",
             body:

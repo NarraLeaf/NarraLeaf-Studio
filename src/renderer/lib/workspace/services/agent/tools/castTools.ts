@@ -21,6 +21,7 @@
  * Comments in English per project convention.
  */
 
+import { behaviourLinesOf, readBehaviourLines, type CharacterBehaviourLines } from "./characterBehaviourText";
 import type { StoryLiteralValue, StoryTransformProps } from "@shared/types/story";
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
@@ -68,6 +69,7 @@ export function describeCharacter(
     stage: PixelSize,
     sprite: PixelSize | null,
     cast?: Pick<CharacterService, "getGroup">,
+    behaviourLines?: CharacterBehaviourLines | null,
 ) {
     const profile = character.profile;
     const groupId = profile.getGroupId();
@@ -112,6 +114,9 @@ export function describeCharacter(
         ...looks,
         ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
         entranceTransform: entranceTransform ?? null,
+        // Command lines the character runs on its own when it starts or stops speaking, in the words
+        // `character_upsert`'s `behaviours` takes back. Null when it has none.
+        behaviours: behaviourLines ?? null,
         // The default look's own pixels (a layered character's canvas), and the box it lands in on a
         // `pos=center` row - the numbers an agent needs to judge size and baseline without a
         // playtest screenshot.
@@ -193,7 +198,7 @@ export const charactersList: AgentToolHandler = async (_args, { ctx }) => {
     const stage = stageSize(ctx);
     const characters = [];
     for (const character of cast.listCharacter()) {
-        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast));
+        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast, behaviourLinesOf(ctx, character.profile.getBehaviours())));
     }
     // In the Characters panel's order; every character names its group by `group` / `groupId`.
     const groups = cast.listGroups().map(group => ({
@@ -384,6 +389,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
     const avatarArgs = readAvatarArgs(args);
+    if (args.behaviours !== undefined && args.behaviours !== null && (typeof args.behaviours !== "object" || Array.isArray(args.behaviours))) {
+        throw refuse("invalid_args", "`behaviours` must be { startSpeaking?: string[], stopSpeaking?: string[] } or null.");
+    }
     if (args.group !== undefined && args.group !== null && typeof args.group !== "string") {
         throw refuse("invalid_args", "`group` must be a group's name or id, or null to take the character out of its group.");
     }
@@ -500,6 +508,12 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     if (asksForAvatars(avatarArgs)) {
         applyAvatarRequest(appearance, assetId => profile.setDefaultAvatarAssetId(assetId), profile.getName(), avatarRequest);
     }
+    // Read against the live cast, so a line may name this character by the name the call just gave it
+    // only once it is saved; lines name characters by their current names.
+    const behaviours = readBehaviourLines(ctx, args.behaviours, profile.getBehaviours());
+    if (behaviours !== undefined) {
+        profile.setBehaviours(behaviours ?? undefined);
+    }
 
     const stage = stageSize(ctx);
     const defaultAssetId = appearance.getKind() === "preset" ? appearance.resolvePoseAssetId(undefined) : null;
@@ -529,7 +543,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     return answerJson(
         {
             created,
-            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast),
+            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast, behaviourLinesOf(ctx, current.profile.getBehaviours())),
             ...(groupTarget?.kind === "create" ? { createdGroup: groupTarget.name } : {}),
             ...(warnings.length > 0 ? { warnings } : {}),
         },

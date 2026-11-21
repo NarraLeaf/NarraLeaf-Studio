@@ -1,3 +1,4 @@
+import type { CharacterBehaviours } from "@shared/story/characterBehaviours";
 import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
@@ -75,6 +76,8 @@ export type LintCharacterEntry = {
      * can name a look by. Absent for every other kind, and where nothing read the appearance.
      */
     axes?: readonly { name: string; tags: readonly string[] }[];
+    /** The rows the character runs when it starts or stops speaking; absent when it has none. */
+    behaviours?: CharacterBehaviours;
 };
 
 /** A display name declared in both the project registry and a story declaration row. */

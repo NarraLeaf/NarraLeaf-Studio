@@ -315,6 +315,19 @@ export const characters = {
         entranceApplyFramed: "Apply standard framing",
         // Share the zoom and baseline of a cast member whose art is the same size, keeping their heights apart
         entranceMatch: "Match \"{name}\"",
+        // A character's behaviours: command rows it runs on its own when it starts or stops speaking
+        behaviours: "Behaviours",
+        behaviourAdd: "Add behaviour",
+        behaviourEvent: {
+            startSpeaking: "When starting to speak",
+            stopSpeaking: "When stopping speaking",
+        },
+        behaviourRemove: "Remove behaviour",
+        behaviourAddRow: "Add command…",
+        behaviourRowDelete: "Delete command",
+        behaviourRowIncomplete: "Incomplete command",
+        // Only stage commands may run with a line: moving, posing, sound, the camera
+        behaviourRowNotAllowed: "This command cannot be used in a behaviour",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

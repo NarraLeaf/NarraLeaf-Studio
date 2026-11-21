@@ -717,6 +717,14 @@ export type StoryNodeActionPayload =
     | {
           action: "narration";
           text: StoryTextSegment;
+          /**
+           * The line declines to set off character behaviours (`@shared/story/characterBehaviours`):
+           * nobody's start or stop runs here and the last speaker stays who it was, as though the
+           * floor had not changed hands. Absent is the ordinary case, a line that takes part.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          skipCharacterBehaviours?: true;
       }
     | {
           action: "dialogue";
@@ -733,6 +741,14 @@ export type StoryNodeActionPayload =
           speakerName?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
+          /**
+           * The line declines to set off character behaviours (`@shared/story/characterBehaviours`):
+           * nobody's start or stop runs here and the last speaker stays who it was, as though the
+           * floor had not changed hands. Absent is the ordinary case, a line that takes part.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          skipCharacterBehaviours?: true;
       }
     | {
           action: "choice";

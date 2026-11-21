@@ -805,16 +805,44 @@ A build stops while any such file remains in the project, and lists them in the 
 角色包含名称、颜色和一组外观；外观是角色在舞台上的形象，故事行按名称在外观之间切换
 
 - 对白旁的头像由立绘生成；由运行时绘制的角色显示角色属性中的「默认对白头像」
-- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；取景之后仍可调整
+- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；在角色编辑器中添加或更换立绘后，画面变化的头像自动截取，手动调整过的取景保持不变；取景之后仍可调整
 - 角色不在舞台上时也可以发言
 
 A character has a name, a color and a set of appearances. An appearance is the character's form on stage, and story rows switch between appearances by name.
 
 - The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.
-- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. The framing stays adjustable.
+- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. Adding or replacing art in the character editor frames the avatars whose pictures changed; a framing adjusted by hand is kept. The framing stays adjustable.
 - A character can speak without being on stage.
 
 相关主题 · Related：角色外观 · Character appearances、资产 · Assets、场景与行 · Scenes and rows
+
+### 角色行为 · Character behaviours
+
+角色行为是角色在开始说话或停止说话时自动执行的命令，在角色属性的「角色行为」中设置，写法与故事编辑器的命令相同
+
+- 说话人换人时，上一位说话人执行「停止说话时」，新说话人执行「开始说话时」；同一角色连续说话只在第一句执行一次
+- 旁白视为无人说话，上一位说话人执行「停止说话时」
+- 只有在舞台上的角色执行行为；角色登场前和退场后不执行
+- 行为中的命令与对白同时开始，不延迟文字显示；作用于同一对象的命令依次执行
+- 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和声音；不能登场、退场或跳转
+
+在对白或旁白的属性中关闭「触发角色行为」后，该句不执行任何行为，说话人视为未变化
+
+对白上方手写的命令与行为设置同一角色的同一属性时，以手写的命令为准，项目检查在该行显示警告
+
+Behaviours are commands a character runs automatically when it starts or stops speaking. They are set under Behaviours in the character's properties and written like commands in the story editor.
+
+- When the speaker changes, the previous speaker runs "When stopping speaking" and the new speaker runs "When starting to speak". Consecutive lines by one character run it once, on the first line
+- Narration counts as nobody speaking: the previous speaker runs "When stopping speaking"
+- Only characters on stage run behaviours. Nothing runs before a character enters or after it exits
+- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order
+- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound. A behaviour cannot enter, exit or jump
+
+With "Trigger character behaviours" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged
+
+When a command written above a line sets the same property of the same character as a behaviour, the written command is used and project checks show a warning on that row
+
+相关主题 · Related：角色 · Characters、指令 · Commands、项目检查 · Project checks
 
 ### 角色外观 · Character appearances
 
@@ -2689,6 +2717,30 @@ A character with layered sprites has a tag of the same name on two of its axes, 
 A typed row such as /char names a look by its tag alone, so the name reaches only the tag on the earlier axis. The other tag can be chosen only in the row's Properties.
 
 - Rename one of the two tags in the character editor.
+
+相关主题 · Related：项目检查 · Project checks
+
+### 该行覆盖角色行为 · Row overrides a character behaviour
+
+该行下方的对白会触发角色行为，而该行为设置的属性与该行相同，例如同一角色的缩放或表情
+
+剧本中手写的行优先：在这句对白处，角色行为不执行这项修改
+
+可按以下方式处理
+
+- 角色行为已满足需求时，删除该行
+- 这句对白需要手动安排舞台时，在该对白的属性中关闭「触发角色行为」
+- 在角色属性中修改角色行为
+
+The line below this row sets off a character behaviour, and that behaviour sets the same thing this row does, such as the same character's zoom or expression.
+
+The row written in the script wins: at this line the behaviour leaves that change out
+
+To resolve it, do one of the following:
+
+- Remove the row if the behaviour already does what you want
+- Turn off "Trigger character behaviours" on the line if this line should be staged by hand
+- Change the behaviour in the character's properties
 
 相关主题 · Related：项目检查 · Project checks
 

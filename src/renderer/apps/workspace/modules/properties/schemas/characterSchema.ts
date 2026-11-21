@@ -11,6 +11,7 @@ import { CharacterAliasesField } from "../fields/CharacterAliasesField";
 import { CharacterColorField } from "../fields/CharacterColorField";
 import { CharacterVoiceTrackField } from "../fields/CharacterVoiceTrackField";
 import { CharacterEntranceField } from "../fields/CharacterEntranceField";
+import { CharacterBehavioursField } from "../fields/CharacterBehavioursField";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -146,6 +147,15 @@ export const characterPropertySchema = (t: TranslateFn) =>
             label: t("characters.properties.entrance"),
             component: CharacterEntranceField,
             order: 80,
+        },
+        {
+            // Under the entrance defaults: both are staging the character carries so the script does
+            // not have to restate it - one for the moment she comes on, this for every line after.
+            id: "behaviours",
+            type: "custom",
+            label: t("characters.properties.behaviours"),
+            component: CharacterBehavioursField,
+            order: 90,
         },
     ],
     showSavingIndicator: false,

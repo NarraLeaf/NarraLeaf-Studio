@@ -31,6 +31,8 @@ export const storyInspector = {
     },
 
     field: {
+        // A line of dialogue or narration that sets off the cast's behaviours
+        characterBehaviours: "Trigger character behaviours",
         operation: "Operation",
         value: "Value",
         valueJson: "Value (JSON)",

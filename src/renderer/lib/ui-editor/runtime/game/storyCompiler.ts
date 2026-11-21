@@ -157,6 +157,18 @@ import {
 } from "@shared/story/transformProps";
 import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import {
+    behaviourRowOverridden,
+    characterBehaviourPresenceChange,
+    characterBehaviourStageNames,
+    handWrittenChannelsBeforeLine,
+    hasCharacterBehaviourRows,
+    speakingRowSkipsBehaviours,
+    speakingRowSpeaker,
+    storyRowStageChannels,
+    type CharacterBehaviourEvent,
+    type CharacterBehaviours,
+} from "@shared/story/characterBehaviours";
+import {
     boolProp,
     characterStageName,
     getCharacterStageObjectName,
@@ -991,6 +1003,12 @@ type SceneCompileContext = {
      */
     pluginInjections?: Map<string, { before: NlrStatement[]; after: NlrStatement[] }>;
     /**
+     * The cast's behaviours (`@shared/story/characterBehaviours`), when any character has one -
+     * planned once per scene and read by {@link compileBlock} at every line and every entrance.
+     * Undefined in a project where no character has a behaviour row, which costs one property read.
+     */
+    behaviourPlan?: CharacterBehaviourPlan;
+    /**
      * Every media url this scene resolved, in the order the compiler reached it, with the row that
      * asked for it.
      *
@@ -1444,6 +1462,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         // never make it, so `ctx.pluginInjections` stays unset there and their snapshots stay free of
         // anything a plugin injected.
         runStoryCompilePasses(ctx);
+        ctx.behaviourPlan = createCharacterBehaviourPlan(ctx);
         buildSceneLayers(ctx);
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
@@ -1691,6 +1710,8 @@ async function buildLaunchEntryScene(params: {
         nextActionIndex: params.nextActionIndex,
     };
 
+    ctx.behaviourPlan = createCharacterBehaviourPlan(ctx);
+
     // The stage as it stands at the target row, followed by everything the rest of the scene
     // declares that this path never reached. The second half is not stage state and arrives hidden:
     // it is here so the tail's rows find the objects a full compile of the scene would have
@@ -1846,6 +1867,8 @@ async function buildLaunchEntryScene(params: {
     statements.push(...await compileLaunchMusic(ctx, snapshot.music, sceneMusic, `${launchIdPrefix}:scene`));
     statements.push(...await compileLaunchSounds(ctx, snapshot.sounds));
 
+    statements.push(...seedCharacterBehaviourState(ctx, snapshot));
+
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
     statements.push(...await compilePlaybackTail(ctx, plan));
@@ -1995,6 +2018,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     };
 
     // The scene's layers first so images/texts can bind to them, pre-posed as the row left them.
+    // The row being previewed is a line the cast may react to, and the still under it already
+    // carries what earlier lines' behaviours did (the walk applies them), so the line's own runs too.
+    ctx.behaviourPlan = createCharacterBehaviourPlan(ctx);
     buildSceneLayers(ctx, snapshot.displayables);
     const registrations = await prePoseSnapshotElements(ctx, snapshot.displayables);
     // Injected elements sit outside the action tree, so story construction never assigns them
@@ -2063,6 +2089,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         statements.push(Control.sleep(input.revealGate));
     }
 
+    statements.push(...seedCharacterBehaviourState(ctx, snapshot));
     statements.push(previewMarker(input.onBeforeTarget));
     let playbackStop: StoryPlaybackStop | undefined;
     if (input.continuous) {
@@ -2984,7 +3011,7 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     const own = await compileBlockCore(ctx, blockId);
     const injection = ctx.pluginInjections?.get(blockId);
     if (!injection || (injection.before.length === 0 && injection.after.length === 0)) {
-        return own;
+        return withCharacterBehaviours(ctx, blockId, own);
     }
     // A row that compiled to nothing still gets its injection: a marker block IS that case, and it is
     // the one carrying the pass's own before/after.
@@ -2992,11 +3019,243 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     // Named after the row it wraps, once the row itself has been: a plugin's actions take the row's
     // numbers after the row's own, so installing a plugin cannot rename what the row already had.
     // Not bound, so the play head does not step onto the row before the row has begun.
-    return [
-        ...nameRowInternals(ctx, injection.before, blockId) as NlrStatement[],
-        ...own,
-        ...nameRowInternals(ctx, injection.after, blockId) as NlrStatement[],
-    ];
+    const before = nameRowInternals(ctx, injection.before, blockId) as NlrStatement[];
+    const after = nameRowInternals(ctx, injection.after, blockId) as NlrStatement[];
+    // Behaviours are named after the plugin's injection, so adding one to a character never renames
+    // what a plugin already attached to this row - the same rule that put the plugin after the row.
+    const staged = await withCharacterBehaviours(ctx, blockId, own);
+    return [...before, ...staged, ...after];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Character behaviours
+// ---------------------------------------------------------------------------------------------
+//
+// What a character does on its own when it starts or stops speaking - see
+// `@shared/story/characterBehaviours` for the authoring side. Here they become engine actions placed
+// in front of each line, decided at runtime rather than at compile time, because who spoke last is
+// only known once play has chosen its branches: a line after a menu takes the floor from whichever
+// option's speaker the player heard.
+//
+// Two pieces of state carry that, both in the scene's own local storage (reset on scene entry, which
+// is also when the stage empties) and both written through a Script that returns its undo cleaner -
+// the rule `storyCompilePass.ts` explains for plugin flags: without one a rewind leaves the value
+// where play left it, and every guard after it takes the wrong branch.
+//
+//  - who has the floor, written by every line that takes part;
+//  - whether each character with behaviours is on stage, written after its entrance and its exit,
+//    because a behaviour stages a portrait and a character who is off stage has none.
+
+type CharacterBehaviourPlan = {
+    behaviours: ReadonlyMap<string, CharacterBehaviours>;
+    namespace: string;
+    /**
+     * A portrait's stage key back to the character it belongs to, for `/show` and `/hide` rows that
+     * address a character by the name its portrait is registered under.
+     */
+    characterByStageName: ReadonlyMap<string, string>;
+};
+
+const BEHAVIOUR_SPEAKER_KEY = "__nls_behaviour_speaker";
+
+function behaviourPresenceKey(characterId: string): string {
+    return `__nls_behaviour_onstage:${characterId}`;
+}
+
+function createCharacterBehaviourPlan(ctx: SceneCompileContext): CharacterBehaviourPlan | undefined {
+    const behaviours = new Map<string, CharacterBehaviours>();
+    for (const [characterId, summary] of ctx.characterSummaries) {
+        if (summary.behaviours && hasCharacterBehaviourRows(summary.behaviours)) {
+            behaviours.set(characterId, summary.behaviours);
+        }
+    }
+    if (behaviours.size === 0) {
+        return undefined;
+    }
+    const characterByStageName = characterBehaviourStageNames(ctx.scene, behaviours.keys());
+    return { behaviours, namespace: DevTools.getNamespaceName(ctx.nlrScene.local), characterByStageName };
+}
+
+function writeBehaviourState(namespace: string, key: string, value: string | boolean): NlrStatement {
+    return Script.execute((scriptCtx: ScriptCtx) => {
+        const ns = scriptCtx.storable.getNamespace(namespace);
+        const had = ns.has(key);
+        const previous = ns.get(key);
+        ns.set(key, value as never);
+        return () => { ns.set(key, (had ? previous : undefined) as never); };
+    }) as unknown as NlrStatement;
+}
+
+function readBehaviourState(scriptCtx: ScriptCtx, namespace: string, key: string): unknown {
+    return scriptCtx.storable.getNamespace(namespace).get(key);
+}
+
+/**
+ * The behaviour state a walked path leaves, put back in front of a launch's or a preview's first row.
+ * Those compile the rows after the target only, so without this the target line would find nobody
+ * on stage and nobody holding the floor, and decide its behaviours from a state play never had.
+ */
+function seedCharacterBehaviourState(ctx: SceneCompileContext, snapshot: StoryStageSnapshot): NlrStatement[] {
+    const plan = ctx.behaviourPlan;
+    if (!plan) {
+        return [];
+    }
+    const statements: NlrStatement[] = [];
+    for (const characterId of snapshot.behaviourPresence ?? []) {
+        if (plan.behaviours.has(characterId)) {
+            statements.push(writeBehaviourState(plan.namespace, behaviourPresenceKey(characterId), true));
+        }
+    }
+    statements.push(writeBehaviourState(plan.namespace, BEHAVIOUR_SPEAKER_KEY, snapshot.behaviourFloor ?? ""));
+    return statements;
+}
+
+/**
+ * A row's compiled output with the cast's behaviours attached: the presence write after an entrance
+ * or an exit, the start/stop staging in front of a line.
+ *
+ * Everything here is named after the row it wraps and after the row's own actions, so giving a
+ * character a behaviour never renames an action a save already points at.
+ */
+async function withCharacterBehaviours(ctx: SceneCompileContext, blockId: string, own: NlrStatement[]): Promise<NlrStatement[]> {
+    const plan = ctx.behaviourPlan;
+    const block = ctx.scene.blocks[blockId];
+    // A row that compiled to nothing did not happen: no entrance to record, no line to accompany.
+    if (!plan || !block || block.disabled || own.length === 0) {
+        return own;
+    }
+    const presence = characterBehaviourPresenceChange(block, plan.characterByStageName);
+    if (presence) {
+        const write = writeBehaviourState(plan.namespace, behaviourPresenceKey(presence.characterId), presence.onStage);
+        return [...own, nameRowInternals(ctx, write, blockId)];
+    }
+    const speaker = speakingRowSpeaker(block);
+    if (speaker === undefined || speakingRowSkipsBehaviours(block)) {
+        return own;
+    }
+    return [...await compileLineBehaviours(ctx, plan, block, speaker), ...own];
+}
+
+/**
+ * What runs in front of one line: if the floor changes hands here, the previous speaker's stop and
+ * this speaker's start - each only for a character on stage - and then the floor is recorded.
+ */
+async function compileLineBehaviours(
+    ctx: SceneCompileContext,
+    plan: CharacterBehaviourPlan,
+    line: StoryBlock,
+    speaker: string | null,
+): Promise<NlrStatement[]> {
+    const floor = speaker ?? "";
+    const namespace = plan.namespace;
+    const written = handWrittenChannelsBeforeLine(ctx.scene, line.id);
+    const runs: NlrStatement[] = [];
+    for (const [characterId, behaviours] of plan.behaviours) {
+        if (characterId === speaker || !behaviours.stopSpeaking?.length) {
+            continue;
+        }
+        const run = await compileBehaviourRun(ctx, line, characterId, "stopSpeaking", behaviours.stopSpeaking, written);
+        if (run) {
+            runs.push(Condition.If(
+                ((scriptCtx: ScriptCtx) => readBehaviourState(scriptCtx, namespace, BEHAVIOUR_SPEAKER_KEY) === characterId
+                    && readBehaviourState(scriptCtx, namespace, behaviourPresenceKey(characterId)) === true) as never,
+                [run] as never,
+            ) as unknown as NlrStatement);
+        }
+    }
+    const start = speaker ? plan.behaviours.get(speaker)?.startSpeaking : undefined;
+    if (speaker && start?.length) {
+        const run = await compileBehaviourRun(ctx, line, speaker, "startSpeaking", start, written);
+        if (run) {
+            runs.push(Condition.If(
+                ((scriptCtx: ScriptCtx) => readBehaviourState(scriptCtx, namespace, behaviourPresenceKey(speaker)) === true) as never,
+                [run] as never,
+            ) as unknown as NlrStatement);
+        }
+    }
+    const statements: NlrStatement[] = [];
+    if (runs.length > 0) {
+        statements.push(Condition.If(
+            ((scriptCtx: ScriptCtx) => (readBehaviourState(scriptCtx, namespace, BEHAVIOUR_SPEAKER_KEY) ?? "") !== floor) as never,
+            runs as never,
+        ) as unknown as NlrStatement);
+    }
+    statements.push(writeBehaviourState(namespace, BEHAVIOUR_SPEAKER_KEY, floor));
+    return nameRowInternals(ctx, statements as unknown as NlrStatement, line.id) as unknown as NlrStatement[];
+}
+
+/** Whether what a behaviour row addresses exists on this scene's stage by this point of the compile. */
+function behaviourRowTargetStaged(ctx: SceneCompileContext, row: StoryBlock): boolean {
+    if (row.kind !== "action") {
+        return false;
+    }
+    const payload = row.payload;
+    if (payload.action === "character") {
+        return stagedCharacterElement(ctx, getCharacterStageObjectName(payload)) !== null;
+    }
+    if (payload.action === "displayable") {
+        return Boolean(payload.target?.builtin) || resolveDisplayableActionTarget(ctx, payload.target) !== null;
+    }
+    return true;
+}
+
+/**
+ * One character's rows for one event at one line, as a single statement that starts them and does
+ * not wait: rows on the same stage element run one after another, since an element carries one
+ * transform at a time (`compileParallelGroupBody` explains the hang two branches on one element
+ * cause), and different elements run side by side.
+ *
+ * A row left out here is one of three things, none of them an error: overridden by a hand-written
+ * row at this line, addressing something this scene never put on stage, or compiling to nothing.
+ */
+async function compileBehaviourRun(
+    ctx: SceneCompileContext,
+    line: StoryBlock,
+    characterId: string,
+    event: CharacterBehaviourEvent,
+    rows: readonly StoryBlock[],
+    written: ReadonlyMap<string, string>,
+): Promise<NlrStatement | null> {
+    const prefix = `${line.id}~${characterId}~${event}~`;
+    const diagnosticsFrom = ctx.diagnostics.length;
+    const bindingsFrom = ctx.actionIdBindings.length;
+    const branches = new Map<string, NlrStatement[]>();
+    for (const row of rows) {
+        if (row.kind !== "action" || behaviourRowOverridden(row, written) || !behaviourRowTargetStaged(ctx, row)) {
+            continue;
+        }
+        // A row of its own per line, so its actions are named `studio:<story>:<scene>:<line>~…` -
+        // stable for as long as the line and the behaviour row are, whatever else changes.
+        const synthetic = { ...row, id: `${prefix}${row.id}`, parentId: line.parentId, childrenIds: [] } as Extract<StoryBlock, { kind: "action" }>;
+        const compiled = await compileStoryAction(ctx, synthetic);
+        if (compiled.length === 0) {
+            continue;
+        }
+        const element = [...storyRowStageChannels(row)][0]?.split("|")[0] ?? synthetic.id;
+        const branch = branches.get(element);
+        if (branch) {
+            branch.push(...compiled);
+        } else {
+            branches.set(element, [...compiled]);
+        }
+    }
+    // What the behaviour rows reported, and the play head's bindings, belong to the line an author
+    // can open - not to a row id that exists nowhere in the scene.
+    for (let index = diagnosticsFrom; index < ctx.diagnostics.length; index += 1) {
+        if (ctx.diagnostics[index].blockId?.startsWith(prefix)) {
+            ctx.diagnostics[index].blockId = line.id;
+        }
+    }
+    for (let index = bindingsFrom; index < ctx.actionIdBindings.length; index += 1) {
+        if (ctx.actionIdBindings[index].blockId.startsWith(prefix)) {
+            ctx.actionIdBindings[index].blockId = line.id;
+        }
+    }
+    if (branches.size === 0) {
+        return null;
+    }
+    const parallel = [...branches.values()].map(branch => (branch.length === 1 ? branch[0] : Control.do(branch as any) as unknown as NlrStatement));
+    return Control.allAsync(parallel as any) as unknown as NlrStatement;
 }
 
 async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
@@ -3150,7 +3409,7 @@ async function compilePreviewTargetOwnStatements(
             // Normally normalized to the parent choice upstream; preview the option's branch state.
             return [];
         }
-        return compileNodeAction(ctx, block);
+        return withCharacterBehaviours(ctx, block.id, await compileNodeAction(ctx, block));
     }
     if (block.kind === "action") {
         if (block.payload.action === "nvl") {

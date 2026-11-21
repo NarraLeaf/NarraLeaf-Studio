@@ -302,6 +302,19 @@ export const characters = {
         entranceZoom: "ドラッグで拡大縮小",
         entranceApplyFramed: "標準の構図を適用",
         entranceMatch: "「{name}」に合わせる",
+        // キャラクターの振る舞い：話し始め・話し終わりに自動で実行するコマンド行
+        behaviours: "振る舞い",
+        behaviourAdd: "振る舞いを追加",
+        behaviourEvent: {
+            startSpeaking: "話し始めたとき",
+            stopSpeaking: "話し終えたとき",
+        },
+        behaviourRemove: "振る舞いを削除",
+        behaviourAddRow: "コマンドを追加…",
+        behaviourRowDelete: "コマンドを削除",
+        behaviourRowIncomplete: "コマンドが不完全です",
+        // 台詞と同時に実行できるのはステージ系のコマンドのみ：変形、表情、音、カメラ
+        behaviourRowNotAllowed: "このコマンドは振る舞いに使用できません",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

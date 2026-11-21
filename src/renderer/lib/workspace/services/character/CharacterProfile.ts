@@ -2,6 +2,7 @@ import { CharacterAppearance, AssetChangeCallback, emptyAppearance } from "./Cha
 import { CharacterAppearanceKind, CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
 import type { StoryTransformProps } from "@shared/types/story/document";
 import { sanitizeCharacterEntranceProps } from "@shared/story/characterEntrance";
+import { sanitizeCharacterBehaviours, type CharacterBehaviours } from "@shared/story/characterBehaviours";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
     appearance: ICharacterAppearance;
@@ -221,6 +222,30 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    /** The rows this character runs when it starts or stops speaking; `undefined` when it has none. */
+    public getBehaviours(): CharacterBehaviours | undefined {
+        return this.profile.behaviours;
+    }
+
+    /**
+     * Stored sanitized, so a row the compiler reads back is one this setter accepted. An event kept
+     * with no rows is kept on purpose (a behaviour added and not filled yet); a record with no events
+     * at all is stored as no record.
+     */
+    public setBehaviours(behaviours: CharacterBehaviours | undefined): void {
+        const next = sanitizeCharacterBehaviours(behaviours);
+        if (next === undefined) {
+            if (this.profile.behaviours === undefined) {
+                return;
+            }
+            delete this.profile.behaviours;
+            this.notifyChange();
+            return;
+        }
+        this.profile.behaviours = next;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -263,6 +288,7 @@ export class CharacterProfile {
             ...(this.profile.entranceTransform === undefined
                 ? {}
                 : { entranceTransform: this.profile.entranceTransform }),
+            ...(this.profile.behaviours === undefined ? {} : { behaviours: this.profile.behaviours }),
             appearance: this.appearance.toJSON(),
         };
     }

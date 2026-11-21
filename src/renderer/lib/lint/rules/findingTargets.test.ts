@@ -608,6 +608,29 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             }],
         }),
     }],
+    "story/behaviour-conflict": [{
+        context: () => createTestLintContext({
+            characters: [{
+                id: "char-alice",
+                name: "Alice",
+                assetIds: [],
+                behaviours: {
+                    startSpeaking: [{
+                        id: "grow",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "character", operation: "move", characterId: "char-alice", transform: { mode: "props", to: { zoom: 1.05 } } },
+                    }],
+                },
+            }],
+            stories: [story("s1", "Main", [scene("sc1", "Opening", [
+                action("enter", { action: "character", operation: "enter", characterId: "char-alice" }),
+                action("move", { action: "character", operation: "move", characterId: "char-alice", transform: { mode: "props", to: { zoom: 1.2 } } }),
+                { id: "line", kind: "nodeAction", payload: { action: "dialogue", characterId: "char-alice", text: { textId: "text-line", value: "Hi", role: "dialogue" } } },
+            ])])],
+        }),
+    }],
     "story/parallel-same-target": [{
         context: () => stories(story("s1", "Main", [scene("sc1", "Credits", [
             action("create", { action: "text", operation: "create", objectName: "credit", text: "Staff" }),
