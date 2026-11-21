@@ -1,6 +1,6 @@
 // Electron
 import { app, dialog, nativeTheme } from "electron/main";
-import { crashReporter } from "electron";
+import { crashReporter, session as electronSession } from "electron";
 
 // Utils
 import fs from "fs";
@@ -69,6 +69,7 @@ import { markSessionRunning } from "./sessionMarker";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
 import { getMainTranslator } from "./i18n";
+import { disableChromiumSpellchecker, disableChromiumSpellcheckerForAllSessions } from "./chromiumSpellcheck";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -1353,7 +1354,12 @@ export class BaseApp {
             this.startDebugServer();
         }
 
+        // Chromium's built-in spellchecker would fetch its dictionaries from Google on Windows and
+        // Linux; Studio checks spelling itself. Installed before ready so the default session is
+        // covered as it is created, and applied to it again below in case it already existed.
+        disableChromiumSpellcheckerForAllSessions(this.electronApp);
         await this.electronApp.whenReady();
+        disableChromiumSpellchecker(electronSession.defaultSession);
 
         // Resolve the persisted theme before any window exists, so the first
         // window already paints (backgroundColor + prefers-color-scheme) in
