@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { AlertCircle, Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
@@ -163,6 +164,26 @@ export function AssetsListView({
         return () => publishRowOrder([]);
     }, [publishRowOrder, rowOrder]);
 
+    /**
+     * A section's root as a drop target: its header row and the body around the rows that sit in no
+     * folder. One handler for both, so the two light up together and agree on what they take.
+     */
+    const isRootDropTarget = (category: AssetCategory) => dropTargetId === `root:${category}`;
+    const rootDragOver = (event: DragEvent, category: AssetCategory) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (draggedItem?.category === category
+            || draggedAssetSet?.category === category
+            || otherPanelDragCategories?.has(category)
+            || event.dataTransfer.types.includes("Files")) {
+            setDropTargetId(`root:${category}`);
+        }
+    };
+    const rootDragLeave = (event: DragEvent, category: AssetCategory) => {
+        event.stopPropagation();
+        setDropTargetId((prev) => (prev === `root:${category}` ? null : prev));
+    };
+
     return (
         <Accordion openItems={openItems} onOpenChange={onOpenChange} multiple disableAnimation={disableAnimation}>
             {ASSET_CATEGORY_ORDER.map((category) => {
@@ -184,6 +205,14 @@ export function AssetsListView({
                             // where a command about the section as a whole belongs — today, Other's
                             // "New Text File". The body below still swallows contextmenu.
                             onContextMenu: (event) => showContextMenu(event, category, null, false),
+                            // The section's own row is its root as a drop target too. Below it, a
+                            // folder row and every row inside an open folder take the drop for that
+                            // folder, so a section holding nothing but folders had no root left to
+                            // drop on except a few pixels of padding.
+                            className: cn(isRootDropTarget(category) && "bg-primary/10"),
+                            onDragOver: (event) => rootDragOver(event, category),
+                            onDragLeave: (event) => rootDragLeave(event, category),
+                            onDrop: (event) => handleRootDrop(event, category),
                         }}
                         title={
                             <span className="flex items-center gap-1.5">
@@ -191,65 +220,61 @@ export function AssetsListView({
                                 <span className="text-xs text-fg-subtle">{tn("assets.itemCount", categoryAssets.length)}</span>
                             </span>
                         }
+                        // Always drawn: Import is how a file picker is reached at all, and a command
+                        // that appears only under the pointer reads as a command that does not exist.
+                        actionsAlwaysVisible
                         actions={
                             actionLoading ? (
-                                <RefreshCw className="w-3 h-3 animate-spin text-fg" />
+                                <span className="grid h-6 w-6 place-items-center">
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-fg-muted" />
+                                </span>
                             ) : (
                                 <>
-                                    <button
+                                    <ToolbarButton
+                                        size="xs"
+                                        aria-label={t("common.import")}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleImport(category);
                                         }}
-                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(false, t("common.import"))}
                                     >
-                                        <Upload className="w-3 h-3" />
-                                    </button>
-                                    <button
+                                        <Upload className="h-3.5 w-3.5" />
+                                    </ToolbarButton>
+                                    <ToolbarButton
+                                        size="xs"
+                                        aria-label={t("assets.importRemote")}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleImportRemote(category);
                                         }}
-                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(
                                             Boolean(remoteImportBlockedReason),
                                             remoteImportBlockedReason ?? t("assets.importRemote"),
                                         )}
                                     >
-                                        <Link className="w-3 h-3" />
-                                    </button>
-                                    <button
+                                        <Link className="h-3.5 w-3.5" />
+                                    </ToolbarButton>
+                                    <ToolbarButton
+                                        size="xs"
+                                        aria-label={t("assets.menu.newGroup")}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleCreateGroup(category);
                                         }}
-                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(false, t("assets.menu.newGroup"))}
                                     >
-                                        <FolderPlus className="w-3 h-3" />
-                                    </button>
+                                        <FolderPlus className="h-3.5 w-3.5" />
+                                    </ToolbarButton>
                                 </>
                             )
                         }
                     >
                         <div
-                            className={`${dropTargetId === `root:${category}` ? 'bg-primary/10' : ''}`}
+                            className={cn(isRootDropTarget(category) && "bg-primary/10")}
                             onDrop={(e) => handleRootDrop(e, category)}
-                            onDragOver={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (draggedItem?.category === category
-                                    || draggedAssetSet?.category === category
-                                    || otherPanelDragCategories?.has(category)
-                                    || e.dataTransfer.types.includes('Files')) {
-                                    setDropTargetId(`root:${category}`);
-                                }
-                            }}
-                            onDragLeave={(e) => {
-                                e.stopPropagation();
-                                setDropTargetId((prev) => (prev === `root:${category}` ? null : prev));
-                            }}
+                            onDragOver={(e) => rootDragOver(e, category)}
+                            onDragLeave={(e) => rootDragLeave(e, category)}
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {/* A section whose file could not be read draws this instead of rows. It

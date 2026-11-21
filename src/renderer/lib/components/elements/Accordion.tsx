@@ -212,6 +212,14 @@ export interface AccordionItemProps {
     icon?: ReactNode;
     /** Additional actions/content to show after the title */
     actions?: ReactNode;
+    /**
+     * Whether the actions wait for the pointer to reach the header (the default) or are always drawn.
+     *
+     * Hover suits a command that is a shortcut for something the row also does another way. A
+     * section whose actions are its only way in - the asset library's Import - must stay visible,
+     * or the author never learns the command is there.
+     */
+    actionsAlwaysVisible?: boolean;
     /** Disable this item */
     disabled?: boolean;
     /** Whether this item can receive focus */
@@ -244,6 +252,7 @@ export function AccordionItem({
     children,
     icon,
     actions,
+    actionsAlwaysVisible = false,
     disabled = false,
     focusable = true,
     className = "",
@@ -440,7 +449,13 @@ export function AccordionItem({
 
                     {/* Actions */}
                     {actions && (
-                        <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div
+                            className={cn(
+                                "flex items-center gap-1 pr-3",
+                                !actionsAlwaysVisible && "opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+                            )}
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             {actions}
                         </div>
                     )}

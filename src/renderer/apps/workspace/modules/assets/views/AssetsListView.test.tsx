@@ -60,7 +60,9 @@ const FOLDER: AssetGroup = {
 const importToGroup = vi.fn();
 const dropOnItem = vi.fn();
 
-function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>(), onAssetClick = () => undefined }: {
+function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>(), onAssetClick = () => undefined, onRootDrop = async () => undefined, onImport = () => undefined }: {
+    onRootDrop?: (event: React.DragEvent, category: AssetCategory) => Promise<void>;
+    onImport?: (category: AssetCategory) => void;
     publishRowOrder?: (keys: readonly string[]) => void;
     assetTransfers?: Readonly<Record<string, number>>;
     unreadableCategories?: ReadonlySet<AssetCategory>;
@@ -122,8 +124,8 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unrea
             <div ref={setScrollElement} style={{ overflowY: "auto" }}>
                 <AssetsListView
                     dropTargetId={null}
-                    handleRootDrop={async () => undefined}
-                    handleImport={() => undefined}
+                    handleRootDrop={onRootDrop}
+                    handleImport={onImport}
                     handleImportRemote={() => undefined}
                     handleCreateGroup={() => undefined}
                     actionLoading={false}
@@ -182,6 +184,33 @@ describe("AssetsListView on a large library", () => {
         expect(importToGroup).toHaveBeenCalledTimes(1);
         expect(importToGroup.mock.calls[0][0]).toBe(AssetCategory.Image);
         expect(importToGroup.mock.calls[0][1]).toBe(FOLDER.id);
+    });
+
+    it("drops onto the section header into the section root, past its folders", async () => {
+        const onRootDrop = vi.fn(async () => undefined);
+        render(<Harness onRootDrop={onRootDrop} />);
+
+        // A section of nothing but folders has every row claiming the drop for a folder. The header
+        // is the root that is always there.
+        const header = document.querySelector(`[data-asset-category="${AssetCategory.Image}"]`) as HTMLElement;
+        fireEvent.drop(header, { dataTransfer: { files: [], types: ["Files"] } });
+
+        expect(onRootDrop).toHaveBeenCalledTimes(1);
+        expect(onRootDrop.mock.calls[0][1]).toBe(AssetCategory.Image);
+        expect(importToGroup).not.toHaveBeenCalled();
+    });
+
+    it("keeps the header's Import on screen without hovering and opens the picker from it", () => {
+        const onImport = vi.fn();
+        render(<Harness onImport={onImport} />);
+
+        const header = document.querySelector(`[data-asset-category="${AssetCategory.Image}"]`) as HTMLElement;
+        const button = header.querySelector('button[aria-label="Import"]') as HTMLButtonElement;
+        expect(button).toBeTruthy();
+        expect(button.closest(".opacity-0")).toBeNull();
+        fireEvent.click(button);
+
+        expect(onImport).toHaveBeenCalledWith(AssetCategory.Image);
     });
 
     it("drops onto a folder's own row into that folder", () => {
