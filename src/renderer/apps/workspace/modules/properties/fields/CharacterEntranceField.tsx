@@ -9,7 +9,7 @@ import { resolveStoryMotionStageSize } from "@/apps/workspace/modules/story-moti
 import { Button, type ContextMenuDef } from "@/lib/components/elements";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import { framedEntrance, type EntranceMatch } from "@/lib/workspace/services/agent/spriteStage";
-import { castEntranceMatches, measureCharacterSprite, type SpriteHeadDetector } from "@/lib/workspace/services/agent/spriteFacts";
+import { castEntranceMatches, loadHeadDetector, measureCharacterSprite } from "@/lib/workspace/services/agent/spriteFacts";
 import { CharacterEntrancePreview, SPRITE_COMPOSITE_PX } from "./CharacterEntrancePreview";
 import type { CustomFieldProps } from "../framework/types";
 import type { CharacterEditorContext } from "../schemas/characterSchema";
@@ -32,10 +32,6 @@ import type { CharacterEditorContext } from "../schemas/characterSchema";
  * the picker to the channels this record can hold - a duration or a reveal belongs to the row that
  * plays an entrance, not to the character entering.
  */
-/** The head model, loaded on first use: it is a few megabytes of WebAssembly and weights. */
-const detectHead: SpriteHeadDetector = async layers =>
-    (await import("@/lib/workspace/services/character/headDetector")).detectHeadFrame(layers);
-
 export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEditorContext>) {
     const { t } = useTranslation();
     const profile = data.character.profile;
@@ -63,8 +59,9 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
         : undefined;
 
     // The standard framing (`framedEntrance`), measured on her figure when asked for: where the
-    // silhouette sits in the picture and, from the head model, how many heads tall she is. The model
-    // loads only here, on the author's click - never on its own. Same composite the preview asks for,
+    // silhouette sits in the picture and, from the head model, how many heads tall she is. Adding art
+    // in the editor does the same by itself (`entranceAfterArtChange`); this is the way back after
+    // hand edits, and the way in for a character whose defaults an author set. Same composite the preview asks for,
     // so the compositor answers both from one entry; its `size` is the artwork's.
     const sprite = useCompositedSprite(data.character, {}, SPRITE_COMPOSITE_PX);
     const [framing, setFraming] = useState(false);
@@ -75,7 +72,7 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
         }
         setFraming(true);
         try {
-            const measure = await measureCharacterSprite(context, data.character, detectHead);
+            const measure = await measureCharacterSprite(context, data.character, loadHeadDetector);
             commitProps(framedEntrance(size, stageSize, measure ?? undefined));
         } finally {
             setFraming(false);
