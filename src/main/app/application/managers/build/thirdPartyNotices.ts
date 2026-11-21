@@ -118,14 +118,46 @@ export function composeThirdPartyNotices(parts: readonly ThirdPartyNoticesPart[]
     return parts[0].document.header + keys.map(key => blocks.get(key)).join("");
 }
 
+/** Where NarraLeaf Studio's source code is published. */
+export const STUDIO_SOURCE_REPOSITORY = "https://github.com/NarraLeaf/NarraLeaf-Studio";
+
+/**
+ * The entry for Studio's own code inside a game: the runtime, and the built-in plugins it carries.
+ *
+ * The build scripts leave the repository's own source out of the documents - it is not third-party -
+ * but a game is a copy of it all the same, and MPL-2.0 (section 3.2) asks whoever distributes an
+ * executable form to tell its recipients where the source is. A game author never touches this file,
+ * so the entry is written for them: name, version, licence, and the release's tag on GitHub.
+ * Placed first, after the header, so it is not mistaken for one more npm package.
+ */
+export function studioRuntimeNoticeBlock(studioVersion: string, builtInPluginNames: readonly string[]): string {
+    const parts = builtInPluginNames.length === 0
+        ? "The game runtime is"
+        : `The game runtime and the built-in plugins ${builtInPluginNames.join(", ")} are`;
+    return [
+        "",
+        "=".repeat(80),
+        `NarraLeaf Studio game runtime ${studioVersion}`,
+        "License: MPL-2.0",
+        `Source: ${STUDIO_SOURCE_REPOSITORY}/tree/v${studioVersion}`,
+        "",
+        `${parts} part of NarraLeaf Studio and distributed under the`,
+        "Mozilla Public License, Version 2.0. Their source code is available at the address above.",
+        "The licence text is at https://mozilla.org/MPL/2.0/.",
+        "",
+    ].join("\n");
+}
+
 /**
  * The notice a game compiled for `shell` ships, from the runtime dist it was compiled from and the
- * plugins it carries.
+ * plugins it carries, opened by the entry for Studio's own code ({@link studioRuntimeNoticeBlock}).
  */
 export async function gameThirdPartyNotices(input: {
     runtimeDistDir: string;
     shell: "electron" | "web";
     plugins: readonly GameRuntimePluginSource[];
+    /** The Studio version building the game; names the release whose source the game carries. */
+    studioVersion: string;
 }): Promise<string> {
     const parts: ThirdPartyNoticesPart[] = [{
         document: await readThirdPartyNoticesDocument(input.runtimeDistDir, "the game runtime"),
@@ -140,5 +172,8 @@ export async function gameThirdPartyNotices(input: {
             outputs: [plugin.entry],
         });
     }
-    return composeThirdPartyNotices(parts);
+    const header = parts[0].document.header;
+    const composed = composeThirdPartyNotices(parts);
+    const studio = studioRuntimeNoticeBlock(input.studioVersion, builtIn.map(plugin => plugin.manifest.name ?? plugin.manifest.id));
+    return header + studio + composed.slice(header.length);
 }

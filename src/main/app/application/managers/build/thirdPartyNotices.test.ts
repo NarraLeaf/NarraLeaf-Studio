@@ -280,7 +280,7 @@ describe("a game's notice", () => {
         const repo = await builtFixture();
         const runtimeDistDir = path.join(repo.dist, "runtime");
 
-        const desktop = await gameThirdPartyNotices({ runtimeDistDir, shell: "electron", plugins: [] });
+        const desktop = await gameThirdPartyNotices({ runtimeDistDir, shell: "electron", plugins: [], studioVersion: "9.9.9" });
         expect(desktop).toContain("\nalpha 1.0.0\n");
         expect(desktop).toContain("\n@scope/beta 2.0.0\n");
         // Shipped beside main.js, which only a desktop game carries.
@@ -288,7 +288,7 @@ describe("a game's notice", () => {
         // Only in web.js.
         expect(desktop).not.toContain("gamma");
 
-        const web = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [] });
+        const web = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [], studioVersion: "9.9.9" });
         expect(web).toContain("\n@scope/beta 2.0.0\n");
         expect(web).toContain("\ngamma 0.1.0\n");
         expect(web).not.toContain("alpha");
@@ -300,12 +300,12 @@ describe("a game's notice", () => {
         const runtimeDistDir = path.join(repo.dist, "runtime");
         const installPath = path.join(repo.dist, "builtin-plugins", "sample");
 
-        const withPlugin = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, true)] });
+        const withPlugin = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, true)], studioVersion: "9.9.9" });
         expect(withPlugin).toContain("\ndelta 1.0.0\n");
         // gamma is in the plugin's Studio entry too, but it is here because of web.js alone.
         expect(withPlugin.match(/\ngamma 0\.1\.0\n/g)).toHaveLength(1);
 
-        const thirdParty = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, false)] });
+        const thirdParty = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, false)], studioVersion: "9.9.9" });
         expect(thirdParty).not.toContain("delta");
     });
 
@@ -316,10 +316,30 @@ describe("a game's notice", () => {
         expect(everything).toBe(readNotices(repo.dist, "runtime"));
     });
 
+    it("opens with Studio's own entry, naming the release's source and the built-in plugins it carries", async () => {
+        const repo = await builtFixture();
+        const runtimeDistDir = path.join(repo.dist, "runtime");
+        const installPath = path.join(repo.dist, "builtin-plugins", "sample");
+
+        const bare = await gameThirdPartyNotices({ runtimeDistDir, shell: "electron", plugins: [], studioVersion: "9.9.9" });
+        expect(bare.startsWith("THIRD-PARTY SOFTWARE NOTICES\n")).toBe(true);
+        expect(bare).toContain("\nNarraLeaf Studio game runtime 9.9.9\nLicense: MPL-2.0\n");
+        expect(bare).toContain("Source: https://github.com/NarraLeaf/NarraLeaf-Studio/tree/v9.9.9\n");
+        expect(bare).toContain("The game runtime is part of NarraLeaf Studio");
+        // First, ahead of every npm package.
+        expect(bare.indexOf("NarraLeaf Studio game runtime")).toBeLessThan(bare.indexOf("\nalpha 1.0.0\n"));
+
+        const withPlugin = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, true)], studioVersion: "9.9.9" });
+        expect(withPlugin).toMatch(/The game runtime and the built-in plugins \S.* are part of NarraLeaf Studio/);
+
+        const thirdParty = await gameThirdPartyNotices({ runtimeDistDir, shell: "web", plugins: [plugin(installPath, false)], studioVersion: "9.9.9" });
+        expect(thirdParty).toContain("The game runtime is part of NarraLeaf Studio");
+    });
+
     it("refuses to package without the runtime's document", async () => {
         const empty = fs.mkdtempSync(path.join(os.tmpdir(), "nls-notices-"));
         temporaryDirs.push(empty);
-        await expect(gameThirdPartyNotices({ runtimeDistDir: empty, shell: "electron", plugins: [] }))
+        await expect(gameThirdPartyNotices({ runtimeDistDir: empty, shell: "electron", plugins: [], studioVersion: "9.9.9" }))
             .rejects.toThrow(/The third-party notice of the game runtime is missing/);
     });
 });
