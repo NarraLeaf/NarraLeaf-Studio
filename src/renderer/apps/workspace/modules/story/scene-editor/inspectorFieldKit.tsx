@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import type { Translator } from "@shared/i18n";
-import { CONTROL_HEIGHT_CLASS, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { CONTROL_HEIGHT_CLASS, SectionTitle, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { EasingCurveEditor } from "../../../components/ui/EasingCurveEditor";
@@ -91,19 +91,19 @@ export function nextEasingValue(picked: string, current: string | undefined): st
 }
 
 /**
- * A titled, boxed group used to organise the compact action editor into scannable
- * sections (Basics / Appearance / Motion / Transition / Timing / ...).
+ * A titled group in the compact action editor (Basics / Appearance / Motion / Transition / Timing / ...).
+ *
+ * The same `section` level as the property inspector's `SectionField` (docs/design-system.md §4.1): a
+ * heading over a divider, no box. The groups used to be boxed cards with a muted label inside, so the
+ * group's name read like one more field label, and a choice card inside one was a card in a card.
  */
 export function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
     return (
-        <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>
+        <section className={["border-t border-edge-subtle pt-3 first:border-t-0 first:pt-0", props.className ?? ""].join(" ")}>
             {props.title || props.right ? (
-                <div className="mb-2 flex items-center justify-between gap-2">
-                    {props.title ? (
-                        <div className="min-w-0 truncate text-2xs text-fg-muted">{props.title}</div>
-                    ) : <span />}
-                    {props.right ? <div className="shrink-0">{props.right}</div> : null}
-                </div>
+                <SectionTitle className="mb-2.5" actions={props.right}>
+                    {props.title ?? ""}
+                </SectionTitle>
             ) : null}
             {props.children}
         </section>

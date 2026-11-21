@@ -217,7 +217,7 @@ export function AssetsListView({
                         title={
                             <span className="flex items-center gap-1.5">
                                 <span>{t(`assets.categories.${category}`)}</span>
-                                <span className="text-xs text-fg-subtle">{tn("assets.itemCount", categoryAssets.length)}</span>
+                                <span className="text-2xs tabular-nums text-fg-subtle" aria-label={tn("assets.itemCount", categoryAssets.length)}>{categoryAssets.length}</span>
                             </span>
                         }
                         // Always drawn: Import is how a file picker is reached at all, and a command
@@ -828,7 +828,7 @@ function GroupItem({ row }: { row: Extract<TreeListRow, { kind: "group" }> }) {
             )}
             icon={<FolderPlus className="w-4 h-4 shrink-0 text-primary" />}
             label={group.name}
-            meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length + groupSets.length})</span>}
+            meta={<span className="text-2xs tabular-nums text-fg-subtle">{groupAssets.length + childGroups.length + groupSets.length}</span>}
             onClick={(e) => {
                 handleItemSelect(group.id, true, e);
                 handleGroupFocus(group.id);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Plus, X } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import {
     CHARACTER_BEHAVIOUR_EVENTS,
@@ -125,11 +125,19 @@ export function CharacterBehavioursField({ data }: CustomFieldProps<CharacterEdi
     return (
         <StoryCommandLineProvider slashAtAlias={slashAtAlias} commandContext={commandContext}>
             {/* The story editor's row metrics, narrowed to a panel: no gutter mark, a slim margin. */}
-            <div data-help-topic="characterBehaviours" className="min-w-0 space-y-3 [--nl-story-gutter:20px] [--nl-story-mark:0px]">
+            <div className="min-w-0 space-y-2 [--nl-story-gutter:20px] [--nl-story-mark:0px]">
                 {present.map(event => (
                     <BehaviourEventSection
                         key={`${characterId}:${event}`}
                         event={event}
+                        otherEvents={missing}
+                        onRetarget={next => {
+                            // The rows move with the trigger: changing when a behaviour runs is not a
+                            // reason to retype what it does.
+                            const moved: CharacterBehaviours = { ...(behaviours ?? {}), [next]: behaviours?.[event] ?? [] };
+                            delete moved[event];
+                            commit(moved);
+                        }}
                         rows={behaviours?.[event] ?? []}
                         characters={characters}
                         commandContext={commandContext}
@@ -142,14 +150,20 @@ export function CharacterBehavioursField({ data }: CustomFieldProps<CharacterEdi
                         }}
                     />
                 ))}
-                <div className="flex flex-wrap items-center gap-2">
+                {/* Adding is a dashed ghost row, apart from the boxes above it: the box's own add row adds a
+                    command to that behaviour, this one adds a behaviour. Gone once both events exist. */}
+                <div className="flex items-center gap-2">
                     {missing.length > 0 && (
-                        <Button size="sm" onClick={addMenu.showMenu}>
-                            <Plus className="h-3.5 w-3.5" />
-                            {t("characters.properties.behaviourAdd")}
-                        </Button>
+                        <button
+                            type="button"
+                            onClick={addMenu.showMenu}
+                            className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-dashed border-edge px-2 text-left text-xs text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill-subtle hover:text-fg focus-visible:!outline focus-visible:!outline-1 focus-visible:!outline-primary/60"
+                        >
+                            <Plus className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{t("characters.properties.behaviourAdd")}</span>
+                        </button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={presetMenu.showMenu}>
+                    <Button size="sm" variant="ghost" className={missing.length > 0 ? "shrink-0" : undefined} onClick={presetMenu.showMenu}>
                         {t("characters.properties.behaviourPresets")}
                     </Button>
                 </div>
@@ -172,6 +186,9 @@ export function CharacterBehavioursField({ data }: CustomFieldProps<CharacterEdi
 
 function BehaviourEventSection(props: {
     event: CharacterBehaviourEvent;
+    /** The events this character does not react to yet: where the trigger can be moved to. */
+    otherEvents: readonly CharacterBehaviourEvent[];
+    onRetarget: (event: CharacterBehaviourEvent) => void;
     rows: StoryBlock[];
     characters: Character[];
     commandContext: StoryCommandContext;
@@ -220,23 +237,52 @@ function BehaviourEventSection(props: {
         return true;
     };
 
+    const eventLabel = t(`characters.properties.behaviourEvent.${props.event}`);
+    const rowMenu = useContextMenu();
+    const triggerMenu = useContextMenu();
+    // One "…" for the behaviour as a whole. Its only action is removal, kept off the face of the box so
+    // a delete never sits beside the trigger a click is meant to change.
+    const rowMenuItems: ContextMenuDef = [
+        { id: "remove", label: t("characters.properties.behaviourRemove"), onClick: props.onRemove },
+    ];
+    const triggerItems: ContextMenuDef = props.otherEvents.map(event => ({
+        id: event,
+        label: t(`characters.properties.behaviourEvent.${event}`),
+        onClick: () => props.onRetarget(event),
+    }));
+
     return (
-        <div className="min-w-0">
-            <div className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg-muted">
-                    {t(`characters.properties.behaviourEvent.${props.event}`)}
-                </span>
+        <div className="min-w-0 overflow-hidden rounded-md border border-edge">
+            {/* The trigger heads its own box: it names when the commands under it run. */}
+            <div className="group/behaviour flex min-h-8 items-center gap-1 border-b border-edge-subtle bg-fill-subtle py-0.5 pl-2 pr-1">
+                {props.otherEvents.length > 0 ? (
+                    <button
+                        type="button"
+                        onClick={triggerMenu.showMenu}
+                        aria-haspopup="menu"
+                        className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-xs text-fg hover:bg-fill focus-visible:!outline focus-visible:!outline-1 focus-visible:!outline-primary/60"
+                    >
+                        <span className="truncate">{eventLabel}</span>
+                        <ChevronDown aria-hidden="true" className="h-3 w-3 shrink-0 text-fg-subtle" />
+                    </button>
+                ) : (
+                    <span className="min-w-0 truncate px-1 text-xs text-fg">{eventLabel}</span>
+                )}
+                <span className="flex-1" />
                 <IconButton
                     size="sm"
                     variant="ghost"
-                    aria-label={t("characters.properties.behaviourRemove")}
-                    title={t("characters.properties.behaviourRemove")}
-                    onClick={props.onRemove}
+                    aria-label={t("characters.properties.behaviourMore")}
+                    data-tip={t("characters.properties.behaviourMore")}
+                    className="opacity-0 focus-visible:opacity-100 group-hover/behaviour:opacity-100"
+                    onClick={rowMenu.showMenu}
                 >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <MoreHorizontal className="h-3.5 w-3.5" />
                 </IconButton>
+                <ContextMenu items={rowMenuItems} position={rowMenu.menuState.position} visible={rowMenu.menuState.visible} onClose={rowMenu.hideMenu} />
+                <ContextMenu items={triggerItems} position={triggerMenu.menuState.position} visible={triggerMenu.menuState.visible} onClose={triggerMenu.hideMenu} />
             </div>
-            <div className="mt-1 overflow-hidden rounded-md border border-edge">
+            <div>
                 {props.rows.map(row => (
                     editing?.rowId === row.id ? (
                         <BehaviourLineInput
@@ -282,7 +328,7 @@ function BehaviourEventSection(props: {
                     </button>
                 )}
             </div>
-            {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+            {error && <p className="border-t border-edge-subtle px-2 py-1 text-2xs text-danger">{error}</p>}
         </div>
     );
 }

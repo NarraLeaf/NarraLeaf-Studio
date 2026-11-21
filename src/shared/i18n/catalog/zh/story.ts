@@ -3,6 +3,7 @@ import type { LocaleNamespace } from "../types";
 export const story = {
     panel: {
         storiesCount: "故事（{count}）",
+        stories: "故事",
         newStory: "新建故事",
         emptyStories: "此项目中还没有故事",
         storyActions: "故事操作",

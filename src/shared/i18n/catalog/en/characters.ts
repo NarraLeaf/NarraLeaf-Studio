@@ -334,6 +334,7 @@ export const characters = {
             stopSpeaking: "When stopping speaking",
         },
         behaviourRemove: "Remove behaviour",
+        behaviourMore: "More actions",
         behaviourAddRow: "Add command…",
         behaviourRowDelete: "Delete command",
         behaviourRowIncomplete: "Incomplete command",

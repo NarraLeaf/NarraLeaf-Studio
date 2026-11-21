@@ -119,7 +119,7 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
-                <span className="text-2xs text-fg-muted">{props.title}</span>
+                <span className="text-xs font-semibold text-fg">{props.title}</span>
                 <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
                     <Plus className="w-4 h-4" />
                 </button>

@@ -16,9 +16,9 @@ export const pluginPermission = {
     },
     install: {
         type: "Plugin Install Request",
-        title: "{requester} requests to install {plugin}",
-        body1: "Studio identified what this install grants:",
-        body2: "Approving this install grants everything listed to this plugin version. Only install plugins you trust.",
+        title: "Install plugin {plugin}",
+        body1: "Approving this install grants everything listed to this plugin version.",
+        body2: "Only install plugins you trust.",
         source: "Source: {source}",
     },
     filesystem: {
@@ -38,7 +38,7 @@ export const pluginPermission = {
     },
     trust: {
         type: "Plugin Trust Request",
-        title: "{requester} requests to trust {plugin}",
+        title: "Trust plugin {plugin}",
         body1: "Studio can enable a trusted plugin without asking again.",
         body2: "Only trust plugins from sources you recognize.",
         permission: "Trust this plugin identity",
@@ -72,6 +72,9 @@ export const pluginPermission = {
             agentTools: "AI agents",
         },
         sidecarPlatforms: "Runs on {platforms}",
+        platformWithArch: "{os} ({arch})",
+        archAppleSilicon: "Apple silicon",
+        archUniversal: "Universal",
         /** `{tools}` and `{writes}` are the two phrases below, already counted. */
         agentToolsSummary: "{tools} ({writes})",
         agentTools: {

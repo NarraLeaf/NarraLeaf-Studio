@@ -295,7 +295,7 @@ export function AgentAccessPanel() {
             <div className="rounded-md px-2 py-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 grow basis-64 flex-col gap-1">
-                        <span className="text-sm font-medium text-fg">{t("settings.agent.importRoots")}</span>
+                        <span className="text-sm text-fg">{t("settings.agent.importRoots")}</span>
                         <span className="text-xs text-fg-subtle">{t("settings.agent.importRootsHint")}</span>
                     </div>
                     <Button
@@ -339,7 +339,7 @@ export function AgentAccessPanel() {
               */}
             <div className="rounded-md px-2 py-2">
                 <div className="flex min-w-0 flex-col gap-1">
-                    <span className="text-sm font-medium text-fg">{t("settings.agent.pluginTools")}</span>
+                    <span className="text-sm text-fg">{t("settings.agent.pluginTools")}</span>
                     <span className="text-xs text-fg-subtle">{t("settings.agent.pluginToolsHint")}</span>
                 </div>
                 {settings.pluginTools.length === 0 ? (
@@ -402,7 +402,7 @@ function Row({
         <div className="rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 grow basis-64 flex-col gap-1">
-                    <span className="text-sm font-medium text-fg">{label}</span>
+                    <span className="text-sm text-fg">{label}</span>
                     <span className={cn("text-xs", TONE_CLASS[descriptionTone])}>{description}</span>
                 </div>
                 <div className={cn("ml-auto flex max-w-full flex-col items-end gap-1", !wide && SETTING_CONTROL_WIDTH)}>

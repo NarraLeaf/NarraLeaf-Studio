@@ -403,10 +403,16 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                                     ? tn("dashboard.units.days", streak, { count: streak })
                                     : t("dashboard.activity.streakNone")
                             }
+                            empty={streak <= 0}
                         />
                     </StatList>
-                    <WritingActivityChart points={windowPoints} peak={summary.peakDelta} />
-                    {!hasCurve && <p className="text-2xs text-fg-subtle">{t("dashboard.activity.empty")}</p>}
+                    {/* No empty axes: with nothing recorded the chart frame showed a dashed line and two
+                        dates, and the sentence under it is the whole answer. */}
+                    {hasCurve ? (
+                        <WritingActivityChart points={windowPoints} peak={summary.peakDelta} />
+                    ) : (
+                        <p className="text-2xs text-fg-subtle">{t("dashboard.activity.empty")}</p>
+                    )}
                 </DashboardSection>
 
                 {context ? <LastBuildSection context={context} /> : null}

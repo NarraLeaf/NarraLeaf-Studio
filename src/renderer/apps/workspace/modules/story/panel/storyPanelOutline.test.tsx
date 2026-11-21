@@ -107,25 +107,25 @@ describe("the story outline's chapters", () => {
     it("opens a story with every chapter expanded", async () => {
         render(<StoryPanel panelId="story" />);
 
-        expect(await chapterIsExpanded("first chapter (1)")).toBe(true);
+        expect(await chapterIsExpanded("first chapter")).toBe(true);
     });
 
     it("keeps them expanded after switching to another story", async () => {
         render(<StoryPanel panelId="story" />);
-        await screen.findByText("first chapter (1)");
+        await screen.findByText("first chapter");
 
         fireEvent.click(screen.getByText("Second story"));
         await waitFor(async () => {
-            expect(await chapterIsExpanded("second chapter (1)")).toBe(true);
+            expect(await chapterIsExpanded("second chapter")).toBe(true);
         });
     });
 
     it("does not write the switched-to story an empty set of open chapters", async () => {
         render(<StoryPanel panelId="story" />);
-        await screen.findByText("first chapter (1)");
+        await screen.findByText("first chapter");
 
         fireEvent.click(screen.getByText("Second story"));
-        await screen.findByText("second chapter (1)");
+        await screen.findByText("second chapter");
 
         await waitFor(() => {
             const state = savedPanelState as { chapterOpenItemsByStoryId?: Record<string, string[]> };
@@ -144,6 +144,6 @@ describe("the story outline's chapters", () => {
         // The first story's stored list names no chapter, which is not a state worth restoring: an
         // outline with nothing under any heading is what the older switch bug left behind, and it is
         // indistinguishable from an author having shut every section by hand.
-        expect(await chapterIsExpanded("first chapter (1)")).toBe(true);
+        expect(await chapterIsExpanded("first chapter")).toBe(true);
     });
 });

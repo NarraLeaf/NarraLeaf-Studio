@@ -295,6 +295,7 @@ export const characters = {
             stopSpeaking: "停止说话时",
         },
         behaviourRemove: "移除行为",
+        behaviourMore: "更多操作",
         behaviourAddRow: "添加命令…",
         behaviourRowDelete: "删除命令",
         behaviourRowIncomplete: "命令不完整",

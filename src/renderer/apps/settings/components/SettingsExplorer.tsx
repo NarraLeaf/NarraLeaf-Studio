@@ -684,7 +684,7 @@ export function SettingsExplorer<T>({
                     marksItsOwnBlock && SETTINGS_HIGHLIGHT_RING,
                 )}
             >
-                <span className="text-sm text-fg">{descriptor.label}</span>
+                <h3 className="m-0 text-sm font-semibold text-fg">{descriptor.label}</h3>
                 <div className="mt-2">
                     {highlighted ? (
                         <SettingsHighlightContext.Provider value={panelHighlightState}>
@@ -846,7 +846,7 @@ export function SettingsExplorer<T>({
                                 className="scroll-mt-3"
                             >
                                 <div className="mb-2 border-b border-edge px-2 pb-2">
-                                    <h2 className="text-sm font-semibold text-fg">{entry.category.label}</h2>
+                                    <h2 className="text-base font-semibold text-fg">{entry.category.label}</h2>
                                 </div>
                                 <div className="space-y-0">
                                     {entry.entries.map(renderSetting)}

@@ -4,6 +4,7 @@
 export const story = {
     panel: {
         storiesCount: "Stories ({count})",
+        stories: "Stories",
         newStory: "New Story",
         emptyStories: "No stories in this project.",
         storyActions: "Story actions",

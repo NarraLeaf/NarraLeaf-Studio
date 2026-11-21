@@ -1,6 +1,7 @@
 import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
 import { hasCharacterBehaviourRows } from "@shared/story/characterBehaviours";
+import { useDeveloperMode } from "@/lib/developer/developerMode";
 import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
@@ -3906,6 +3907,12 @@ function TextSegmentEditor(props: {
 function TextIdReadout(props: { text: StoryTextSegment }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
+    // A uuid is nothing an author reads, so the row exists only with developer options on, where every
+    // other id in Studio is offered as well.
+    const developerMode = useDeveloperMode();
+    if (!developerMode) {
+        return null;
+    }
     return (
         <div>
             <button

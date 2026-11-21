@@ -13,9 +13,9 @@ export const pluginPermission = {
     },
     install: {
         type: "插件安装请求",
-        title: "{requester} 请求安装 {plugin}",
-        body1: "Studio 已识别出本次安装将授予的内容：",
-        body2: "同意安装即向该插件版本授予下列全部权限；请只安装可信来源的插件",
+        title: "安装插件 {plugin}",
+        body1: "同意安装即向该插件版本授予下列全部权限",
+        body2: "请只安装可信来源的插件",
         source: "来源：{source}",
     },
     filesystem: {
@@ -35,7 +35,7 @@ export const pluginPermission = {
     },
     trust: {
         type: "插件信任请求",
-        title: "{requester} 请求信任 {plugin}",
+        title: "信任插件 {plugin}",
         body1: "受信任的插件，Studio 会直接启用，不再询问",
         body2: "请仅信任来源可辨识的插件",
         permission: "信任此插件身份",
@@ -64,6 +64,9 @@ export const pluginPermission = {
             agentTools: "AI Agent",
         },
         sidecarPlatforms: "运行平台：{platforms}",
+        platformWithArch: "{os}（{arch}）",
+        archAppleSilicon: "Apple 芯片",
+        archUniversal: "通用",
         agentToolsSummary: "{tools}（{writes}）",
         agentTools: {
             one: "向连接到 Studio 的 AI Agent 提供 {count} 个工具",

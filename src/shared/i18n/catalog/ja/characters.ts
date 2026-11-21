@@ -321,6 +321,7 @@ export const characters = {
             stopSpeaking: "話し終えたとき",
         },
         behaviourRemove: "振る舞いを削除",
+        behaviourMore: "その他の操作",
         behaviourAddRow: "コマンドを追加…",
         behaviourRowDelete: "コマンドを削除",
         behaviourRowIncomplete: "コマンドが不完全です",

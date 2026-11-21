@@ -311,11 +311,13 @@ export function PluginPermissionApp() {
                                 <span className="whitespace-nowrap">{t("pluginPermission.button.allowOnce")}</span>
                             </button>
                         ) : null}
+                        {/* Not filled with the accent: a grant is not the answer this dialog leans towards.
+                            Focus starts on the refusal, and every answer weighs the same. */}
                         <button
                             type="button"
                             onClick={() => handleApprove(showPersistentChoices ? "permanent" : undefined)}
                             disabled={!request || busy}
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Check size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{busy ? t("pluginPermission.button.granting") : showPersistentChoices ? t("pluginPermission.button.alwaysAllow") : t("pluginPermission.button.allow")}</span>
