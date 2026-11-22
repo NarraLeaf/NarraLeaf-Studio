@@ -1,0 +1,202 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: var(--figma-color-text, #1e1e1e);
+    --fg-muted: var(--figma-color-text-secondary, #6b6b6b);
+    --bg: var(--figma-color-bg, #ffffff);
+    --edge: var(--figma-color-border, #e6e6e6);
+    --primary: #40a8c4;
+    --danger: var(--figma-color-text-danger, #d93f3f);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 12px;
+    font: 12px/1.5 Inter, system-ui, -apple-system, "PingFang SC", sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 0 4px; }
+  .hint { color: var(--fg-muted); margin: 0 0 10px; }
+  .list {
+    flex: 1;
+    overflow: auto;
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    padding: 4px 0;
+  }
+  label.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  label.row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .size { color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--fg-muted); padding: 12px 10px; }
+  .status { min-height: 18px; margin: 8px 0; color: var(--fg-muted); }
+  .status.error { color: var(--danger); }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  button {
+    font: inherit;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--edge);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #ffffff; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <h1 id="title"></h1>
+  <p class="hint" id="hint"></p>
+  <div class="list" id="list"></div>
+  <div class="status" id="status"></div>
+  <div class="actions">
+    <button id="close"></button>
+    <button id="export" class="primary" disabled></button>
+  </div>
+<script>
+  var zh = /^zh/i.test(navigator.language || "");
+  var copy = zh
+    ? {
+        title: "导出到 NarraLeaf Studio",
+        hintSelection: "已选中的画框",
+        hintPage: "当前页面的顶层画框，在画布上选中画框可只导出所选内容",
+        empty: "当前页面没有画框",
+        exportOne: "导出 1 个画框",
+        exportMany: "导出 {n} 个画框",
+        close: "关闭",
+        progress: "正在导出“{name}”（{i}/{n}）",
+        done: "已导出，在 Studio 的界面编辑器中选择「导入 Figma 设计稿」打开该文件",
+        error: "导出失败：{message}",
+      }
+    : {
+        title: "Export to NarraLeaf Studio",
+        hintSelection: "Selected frames",
+        hintPage: "Top-level frames on this page. Select frames on the canvas to export only those",
+        empty: "This page has no frames",
+        exportOne: "Export 1 frame",
+        exportMany: "Export {n} frames",
+        close: "Close",
+        progress: "Exporting “{name}” ({i} of {n})",
+        done: "Exported. Open the file with Import Figma Design in Studio's interface editor",
+        error: "Export failed: {message}",
+      };
+
+  function format(text, params) {
+    return text.replace(/\{(\w+)\}/g, function (_, key) { return params[key] === undefined ? "" : String(params[key]); });
+  }
+
+  var list = document.getElementById("list");
+  var status = document.getElementById("status");
+  var exportButton = document.getElementById("export");
+  var busy = false;
+  document.getElementById("title").textContent = copy.title;
+  document.getElementById("close").textContent = copy.close;
+
+  function checkedIds() {
+    return Array.prototype.slice.call(list.querySelectorAll("input:checked")).map(function (input) { return input.value; });
+  }
+
+  function refreshButton() {
+    var count = checkedIds().length;
+    exportButton.textContent = count === 1 ? copy.exportOne : format(copy.exportMany, { n: count });
+    exportButton.disabled = busy || count === 0;
+  }
+
+  function setStatus(text, isError) {
+    status.textContent = text;
+    status.className = isError ? "status error" : "status";
+  }
+
+  function render(message) {
+    document.getElementById("hint").textContent = message.fromSelection ? copy.hintSelection : copy.hintPage;
+    list.textContent = "";
+    if (message.frames.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = copy.empty;
+      list.appendChild(empty);
+    }
+    message.frames.forEach(function (frame) {
+      var row = document.createElement("label");
+      row.className = "row";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = frame.id;
+      box.checked = true;
+      box.addEventListener("change", refreshButton);
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = frame.name;
+      var size = document.createElement("span");
+      size.className = "size";
+      size.textContent = frame.width + " × " + frame.height;
+      row.appendChild(box);
+      row.appendChild(name);
+      row.appendChild(size);
+      list.appendChild(row);
+    });
+    refreshButton();
+  }
+
+  function download(json, baseName) {
+    var safe = String(baseName || "figma").replace(/[\\/:*?"<>|]+/g, " ").trim() || "figma";
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = safe + ".narraleaf-figma.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  exportButton.addEventListener("click", function () {
+    busy = true;
+    refreshButton();
+    setStatus("", false);
+    parent.postMessage({ pluginMessage: { type: "export", ids: checkedIds() } }, "*");
+  });
+  document.getElementById("close").addEventListener("click", function () {
+    parent.postMessage({ pluginMessage: { type: "close" } }, "*");
+  });
+
+  window.onmessage = function (event) {
+    var message = event.data && event.data.pluginMessage;
+    if (!message) return;
+    if (message.type === "frames") {
+      if (!busy) render(message);
+    } else if (message.type === "progress") {
+      setStatus(format(copy.progress, { name: message.name, i: message.index, n: message.total }), false);
+    } else if (message.type === "result") {
+      busy = false;
+      download(message.json, message.fileName);
+      setStatus(copy.done, false);
+      refreshButton();
+    } else if (message.type === "error") {
+      busy = false;
+      setStatus(format(copy.error, { message: message.message }), true);
+      refreshButton();
+    }
+  };
+
+  parent.postMessage({ pluginMessage: { type: "ready" } }, "*");
+</script>
+</body>
+</html>
