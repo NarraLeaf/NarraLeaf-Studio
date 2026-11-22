@@ -334,6 +334,71 @@ export const uiEditor = {
         slotTaken: "{slot} 槽位已有一个游戏界面",
         surfaceNotAdded: "无法粘贴该界面",
     },
+    figmaImport: {
+        open: "导入 Figma 设计稿",
+        pickerTitle: "选择 Figma 导出文件",
+        title: "导入 Figma 设计稿",
+        frames: "画框",
+        size: "{width} × {height}",
+        import: "导入",
+        importing: "正在导入…",
+        willAdd: {
+            other: "将添加 {count} 个页面",
+        },
+        added: {
+            other: "已添加 {count} 个页面",
+        },
+        reportTitle: "导入时的简化",
+        noNotes: "所有图层均按设计导入",
+        imagesSkipped: {
+            other: "有 {count} 张图片未能写入资产",
+        },
+        error: {
+            read: "无法读取该文件",
+            notExport: "该文件不是 NarraLeaf Figma 导出文件",
+            tooNew: "该文件由更新版本的插件导出，请先更新 Studio",
+            noFrames: "该文件不包含画框",
+            apply: "无法导入该设计稿",
+        },
+        note: {
+            rasterized: {
+                other: "{count} 个图层已转为图片",
+            },
+            multipleFills: {
+                other: "{count} 个图层有多层填充，仅保留最上层",
+            },
+            missingFont: {
+                other: "{count} 种字体没有对应的字体资产，已使用默认字体",
+            },
+            letterSpacing: {
+                other: "{count} 个文本图层的字间距未导入",
+            },
+            mixedTextStyles: {
+                other: "{count} 个文本图层含多种样式，已统一为首段样式",
+            },
+            justifiedText: {
+                other: "{count} 个两端对齐的文本图层已改为左对齐",
+            },
+            blendMode: {
+                other: "{count} 个图层的混合模式未导入",
+            },
+            paintSimplified: {
+                other: "{count} 处描边或文字的渐变、图片填充已改为纯色",
+            },
+            autoLayoutFlattened: {
+                other: "{count} 个自动布局画框已改为固定位置",
+            },
+            missingImage: {
+                other: "文件中缺少 {count} 张图片",
+            },
+            aspectMismatch: {
+                other: "{count} 个画框的宽高比与项目不同，已居中放置",
+            },
+            hiddenSkipped: {
+                other: "{count} 个隐藏图层未导入",
+            },
+        },
+    },
     templateStore: {
         open: "从模板开始",
         title: "界面模板",

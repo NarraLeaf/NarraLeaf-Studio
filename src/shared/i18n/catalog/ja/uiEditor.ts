@@ -340,6 +340,71 @@ export const uiEditor = {
         slotTaken: "{slot} スロットにはすでにゲーム UI がある",
         surfaceNotAdded: "このインターフェースを貼り付けられなかった",
     },
+    figmaImport: {
+        open: "Figma デザインを読み込む",
+        pickerTitle: "Figma の書き出しファイルを選択",
+        title: "Figma デザインの読み込み",
+        frames: "フレーム",
+        size: "{width} × {height}",
+        import: "読み込む",
+        importing: "読み込み中…",
+        willAdd: {
+            other: "{count} ページを追加する",
+        },
+        added: {
+            other: "{count} ページを追加した",
+        },
+        reportTitle: "読み込み時の簡略化",
+        noNotes: "すべてのレイヤーをデザインどおりに読み込んだ",
+        imagesSkipped: {
+            other: "{count} 枚の画像をアセットに追加できなかった",
+        },
+        error: {
+            read: "ファイルを読み込めない",
+            notExport: "NarraLeaf の Figma 書き出しファイルではない",
+            tooNew: "新しいバージョンのプラグインで書き出されたファイル。読み込むには Studio を更新する",
+            noFrames: "フレームが含まれていない",
+            apply: "デザインを読み込めない",
+        },
+        note: {
+            rasterized: {
+                other: "{count} 個のレイヤーを画像として読み込んだ",
+            },
+            multipleFills: {
+                other: "{count} 個のレイヤーに複数の塗りがあり、最上位の塗りだけを残した",
+            },
+            missingFont: {
+                other: "{count} 種類のフォントに対応するアセットがなく、既定のフォントを使う",
+            },
+            letterSpacing: {
+                other: "{count} 個のテキストレイヤーの字間は読み込んでいない",
+            },
+            mixedTextStyles: {
+                other: "{count} 個のテキストレイヤーは複数のスタイルを含み、最初のスタイルに統一した",
+            },
+            justifiedText: {
+                other: "両端揃えのテキストレイヤー {count} 個を左揃えにした",
+            },
+            blendMode: {
+                other: "{count} 個のレイヤーの描画モードは読み込んでいない",
+            },
+            paintSimplified: {
+                other: "線やテキストのグラデーション・画像の塗り {count} 件を単色にした",
+            },
+            autoLayoutFlattened: {
+                other: "{count} 個のオートレイアウトフレームを固定配置にした",
+            },
+            missingImage: {
+                other: "ファイルに {count} 枚の画像が含まれていない",
+            },
+            aspectMismatch: {
+                other: "{count} 個のフレームは縦横比がプロジェクトと異なるため、中央に配置した",
+            },
+            hiddenSkipped: {
+                other: "{count} 個の非表示レイヤーは読み込んでいない",
+            },
+        },
+    },
     templateStore: {
         open: "テンプレートから始める",
         title: "UI テンプレート",

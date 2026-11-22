@@ -1,4 +1,4 @@
-import { ClipboardPaste, LayoutTemplate, Plus } from "lucide-react";
+import { ClipboardPaste, Import, LayoutTemplate, Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { interfaceDocumentFreezeScope } from "../uiFreezeScope";
@@ -10,6 +10,9 @@ type SurfaceActionsProps = {
     onOpenTemplateStore: () => void;
     templateLabel: string;
     templateDisabled: boolean;
+    /** Pick a Figma export and import its frames as pages. */
+    onImportFigma: () => void;
+    importFigmaLabel: string;
     /**
      * Add the interface on the machine's clipboard, or undefined when there is not one.
      *
@@ -34,11 +37,14 @@ export function SurfaceActions({
     onOpenTemplateStore,
     templateLabel,
     templateDisabled,
+    onImportFigma,
+    importFigmaLabel,
     onPaste,
     pasteLabel,
 }: SurfaceActionsProps) {
-    // All three write: one creates a surface, one opens the store whose Apply imports a template
-    // bundle into the interface document, and one adds a copied interface to it.
+    // All four write: one creates a surface, one opens the store whose Apply imports a template
+    // bundle into the interface document, one imports Figma frames as pages, and one adds a copied
+    // interface to it.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     return (
         <div className="shrink-0 px-2 mt-2 space-y-1.5">
@@ -62,6 +68,16 @@ export function SurfaceActions({
                     className={SECONDARY_CLASS}
                 >
                     <LayoutTemplate className="w-4 h-4 shrink-0" />
+                </button>
+                <button
+                    type="button"
+                    onClick={onImportFigma}
+                    {...freeze.writes(templateDisabled, importFigmaLabel)}
+                    aria-label={importFigmaLabel}
+                    data-surface-figma-import=""
+                    className={SECONDARY_CLASS}
+                >
+                    <Import className="w-4 h-4 shrink-0" />
                 </button>
                 {onPaste && (
                     <button

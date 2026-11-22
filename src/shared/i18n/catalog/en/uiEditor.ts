@@ -371,6 +371,86 @@ export const uiEditor = {
         slotTaken: "The {slot} slot already has a Game UI",
         surfaceNotAdded: "The interface could not be pasted",
     },
+    figmaImport: {
+        open: "Import Figma design",
+        pickerTitle: "Choose a Figma export",
+        title: "Import Figma design",
+        frames: "Frames",
+        size: "{width} × {height}",
+        import: "Import",
+        importing: "Importing…",
+        willAdd: {
+            one: "Adds {count} page.",
+            other: "Adds {count} pages.",
+        },
+        added: {
+            one: "Added {count} page.",
+            other: "Added {count} pages.",
+        },
+        reportTitle: "Simplified on import",
+        noNotes: "Every layer was imported as designed.",
+        imagesSkipped: {
+            one: "{count} picture could not be added to the assets.",
+            other: "{count} pictures could not be added to the assets.",
+        },
+        error: {
+            read: "Could not read the file.",
+            notExport: "The file is not a NarraLeaf Figma export.",
+            tooNew: "The file was exported by a newer version of the plugin. Update Studio to import it.",
+            noFrames: "The file contains no frames.",
+            apply: "Could not import the design.",
+        },
+        note: {
+            rasterized: {
+                one: "{count} layer was imported as a picture.",
+                other: "{count} layers were imported as pictures.",
+            },
+            multipleFills: {
+                one: "{count} layer has several fills. Only the top one was kept.",
+                other: "{count} layers have several fills. Only the top one was kept.",
+            },
+            missingFont: {
+                one: "{count} font has no matching font asset and uses the default font.",
+                other: "{count} fonts have no matching font asset and use the default font.",
+            },
+            letterSpacing: {
+                one: "Letter spacing on {count} text layer was not imported.",
+                other: "Letter spacing on {count} text layers was not imported.",
+            },
+            mixedTextStyles: {
+                one: "{count} text layer mixes styles and uses its first style throughout.",
+                other: "{count} text layers mix styles and use their first style throughout.",
+            },
+            justifiedText: {
+                one: "{count} justified text layer is aligned left.",
+                other: "{count} justified text layers are aligned left.",
+            },
+            blendMode: {
+                one: "The blend mode of {count} layer was not imported.",
+                other: "The blend modes of {count} layers were not imported.",
+            },
+            paintSimplified: {
+                one: "{count} gradient or image paint on a stroke or text is a single colour.",
+                other: "{count} gradient or image paints on strokes or text are a single colour.",
+            },
+            autoLayoutFlattened: {
+                one: "{count} auto layout frame keeps its positions without auto layout.",
+                other: "{count} auto layout frames keep their positions without auto layout.",
+            },
+            missingImage: {
+                one: "{count} picture is missing from the file.",
+                other: "{count} pictures are missing from the file.",
+            },
+            aspectMismatch: {
+                one: "{count} frame has a different aspect ratio from the project and is centred.",
+                other: "{count} frames have a different aspect ratio from the project and are centred.",
+            },
+            hiddenSkipped: {
+                one: "{count} hidden layer was left out.",
+                other: "{count} hidden layers were left out.",
+            },
+        },
+    },
     templateStore: {
         open: "Start from a template",
         title: "UI templates",
