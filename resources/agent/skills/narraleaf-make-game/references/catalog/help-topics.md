@@ -1303,6 +1303,42 @@ Widgets that belong together can be saved as a component and placed on any scree
 
 相关主题 · Related：游戏界面 · Game screens、界面上的值 · Values on a screen
 
+### 导入设计稿 · Importing designs
+
+在其他工具中绘制的画面可导入为界面编辑器中的页面；在「界面」面板中选择「导入设计稿」，再选取 Figma 导出文件、PSD 或一张及以上的图片
+
+- Figma：使用 NarraLeaf Studio Export 插件导出画框；画框、编组和矩形导入为容器，自动布局在可表达时导入为堆叠容器，文本导入为文本，矢量和蒙版导入为图片
+- PSD：编组导入为容器，每个图层按 Photoshop 中的位置导入为图片；剪贴图层和使用混合模式的图层合并到所属图层，隐藏图层不导入
+- 图片：所选图片导入到同一个页面；与最大图片尺寸相同的图片与其对齐，较小的图片居中放置，需手动调整位置
+
+每个页面按项目分辨率缩放，其中的图片存入图片资产中新建的文件夹；导入完成后会列出所有经过简化的内容，例如未导入的 PSD 图层样式
+
+按状态绘制的按钮会导入为可交互的按钮：在 PSD 或 Figma 中将各状态放在同一个编组里，分别命名为 normal、hover、pressed、disabled（或普通、悬停、按下、禁用），同组中的一个文本图层作为按钮文字；名为 start.png、start_hover.png、start_pressed.png 的图片文件合成为一个按钮；带「状态」属性的 Figma 组件同样导入为按钮
+
+带边框的面板或按钮图片改变尺寸时，可将图片填充设为「九宫格」并设置切分位置，边框和四角不会变形
+
+画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方
+
+Figma 插件位于 NarraLeaf Studio 源代码的 tools/figma-plugin 文件夹，在 Figma 中通过「插件 › 开发 › 从清单导入插件」添加
+
+A screen drawn in another tool becomes a page in the UI editor. In the Interfaces panel, choose Import design and pick a Figma export, a PSD, or one or more images.
+
+- Figma: export frames with the NarraLeaf Studio Export plugin. Frames, groups and rectangles become containers, auto layout becomes a stack where a stack can express it, text becomes text, and vectors and masks arrive as pictures.
+- PSD: groups become containers and each layer becomes an image where Photoshop drew it. Clipped layers and layers with blend modes are merged into the layer they belong to, and hidden layers are left out.
+- Images: all the chosen images arrive on one page. Images the size of the largest one line up with it, and smaller ones are placed in the centre to be moved into place.
+
+Each page is scaled to the project resolution, and its pictures go into a new folder in the image assets. Everything that was simplified is listed after the import, such as PSD layer styles, which are not imported.
+
+Buttons drawn in states become working buttons. In a PSD or a Figma design, put the states in one group and name them normal, hover, pressed and disabled; a text layer beside them becomes the label. Image files named start.png, start_hover.png and start_pressed.png become one button. A Figma component with a State property becomes a button as well.
+
+A framed panel or button picture can be resized without distorting its border: set its image fill to Nine-slice and set where it is cut.
+
+Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.
+
+The Figma plugin is in the tools/figma-plugin folder of the NarraLeaf Studio source code. In Figma, add it with Plugins, Development, Import plugin from manifest.
+
+相关主题 · Related：游戏界面 · Game screens、可复用的部件 · Reusable parts、配色与字体 · Colors and fonts
+
 ### 蓝图 · Blueprints
 
 蓝图定义一个界面的行为：按钮被按下时执行什么、界面打开时执行什么；每张图从一个事件开始

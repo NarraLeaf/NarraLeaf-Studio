@@ -173,6 +173,11 @@ export function DesignImportModal({ source, onClose, documentService, onApplied 
                     <div className="text-sm text-fg">
                         {tn("uiEditor.designImport.added", result.surfaces.length, { count: result.surfaces.length })}
                     </div>
+                    {result.buttons > 0 && (
+                        <div className="text-sm text-fg" data-design-import-buttons="">
+                            {tn("uiEditor.designImport.buttons", result.buttons, { count: result.buttons })}
+                        </div>
+                    )}
                     {result.imagesSkipped > 0 && (
                         <div className="text-sm text-warning">
                             {tn("uiEditor.designImport.imagesSkipped", result.imagesSkipped, { count: result.imagesSkipped })}

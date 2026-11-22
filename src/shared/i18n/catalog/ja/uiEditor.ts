@@ -359,6 +359,9 @@ export const uiEditor = {
         added: {
             other: "{count} ページを追加した",
         },
+        buttons: {
+            other: "{count} 組の状態レイヤーをボタンにまとめた",
+        },
         reportTitle: "読み込み時の簡略化",
         noNotes: "すべてのレイヤーをデザインどおりに読み込んだ",
         imagesSkipped: {
@@ -420,6 +423,9 @@ export const uiEditor = {
             },
             imageCentered: {
                 other: "{count} 枚の画像はキャンバスと大きさが異なるため、中央に配置した",
+            },
+            buttonNotRecognized: {
+                other: "{count} 組のボタン状態レイヤーにほかのレイヤーが含まれるため、ボタンにせずそのまま読み込んだ",
             },
             hiddenSkipped: {
                 other: "{count} 個の非表示レイヤーは読み込んでいない",

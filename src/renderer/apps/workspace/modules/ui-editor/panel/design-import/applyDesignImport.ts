@@ -17,6 +17,8 @@ export type ApplyDesignImportResult = {
     notes: FigmaImportNote[];
     /** Pictures that could not be written into the asset library; the widgets showing them are empty. */
     imagesSkipped: number;
+    /** Buttons made out of state layers or variants. */
+    buttons: number;
 };
 
 /** The resolution every imported page is fitted to: the project's, as a new page gets. */
@@ -167,5 +169,5 @@ export async function applyDesignImport(
         assetIdMap,
     });
     await documentService.save(documentService.getDocument());
-    return { surfaces: imported.importedSurfaces, notes: converted.notes, imagesSkipped };
+    return { surfaces: imported.importedSurfaces, notes: converted.notes, imagesSkipped, buttons: converted.buttons };
 }

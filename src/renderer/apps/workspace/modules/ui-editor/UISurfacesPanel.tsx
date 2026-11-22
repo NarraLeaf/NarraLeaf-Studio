@@ -34,6 +34,7 @@ import { useRailSections } from "./panel/useRailSections";
 import { UI_RAIL_FILL_SECTION, UI_RAIL_SECTIONS, type UIRailSection } from "./panel/railSections";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { DesignImportModal } from "./panel/design-import/DesignImportModal";
+import { projectDesignSize } from "./panel/design-import/applyDesignImport";
 import {
     DESIGN_IMPORT_EXTENSIONS,
     DesignSourceError,
@@ -479,7 +480,11 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
         const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
         try {
-            const source = await openDesignSource(selection.data.data, filesystem);
+            const source = await openDesignSource(
+                selection.data.data,
+                filesystem,
+                documentService ? projectDesignSize(documentService) : { ...DEFAULT_UI_SURFACE_SIZE },
+            );
             // The design arrives as pages, so the list shows pages while the dialog is open and after.
             setKind("appSurface");
             setDesignSource(source);
@@ -490,7 +495,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 "warning",
             );
         }
-    }, [context, t, uiService]);
+    }, [context, documentService, t, uiService]);
 
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
         if (!documentService || surface.kind !== "appSurface") {

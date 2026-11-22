@@ -363,6 +363,56 @@ async function rasterize(node, reason, state) {
   };
 }
 
+var STATE_PROPERTY = /state|status|interaction|状态|狀態|状態/i;
+
+/**
+ * For an instance of a component set: the variant property that reads as the button state, and the
+ * other variants that differ from this one in that property alone. Studio decides which values are
+ * states (`Default`, `Hover`, `Pressed` ...); this only picks the property - one named like a state,
+ * or else the only property that has such siblings.
+ */
+async function variantsOf(node, state) {
+  if (node.type !== "INSTANCE" || !node.variantProperties) {
+    return null;
+  }
+  var main = await node.getMainComponentAsync();
+  var set = main && main.parent && main.parent.type === "COMPONENT_SET" ? main.parent : null;
+  if (!set) {
+    return null;
+  }
+  var own = node.variantProperties;
+  var keys = Object.keys(own);
+  var siblingsBy = {};
+  keys.forEach(function (key) {
+    siblingsBy[key] = set.children.filter(function (child) {
+      var props = child.variantProperties;
+      if (!props || child.type !== "COMPONENT" || props[key] === own[key]) return false;
+      return keys.every(function (other) {
+        return other === key || props[other] === own[other];
+      });
+    });
+  });
+  var withSiblings = keys.filter(function (key) {
+    return siblingsBy[key].length > 0;
+  });
+  var named = withSiblings.filter(function (key) {
+    return STATE_PROPERTY.test(key);
+  });
+  var key = named.length > 0 ? named[0] : withSiblings.length === 1 ? withSiblings[0] : null;
+  if (!key) {
+    return null;
+  }
+  var variants = [];
+  for (var i = 0; i < siblingsBy[key].length; i += 1) {
+    var sibling = siblingsBy[key][i];
+    var exported = await walk(sibling, state, true);
+    if (exported) {
+      variants.push({ value: sibling.variantProperties[key], node: exported });
+    }
+  }
+  return variants.length > 0 ? { value: own[key], variants: variants } : null;
+}
+
 async function walk(node, state, isRoot) {
   if (!node.visible) {
     state.skippedHidden += 1;
@@ -419,6 +469,11 @@ async function walk(node, state, isRoot) {
   }
   var auto = autoLayoutOf(node);
   if (auto) out.autoLayout = auto;
+  var variants = await variantsOf(node, state);
+  if (variants) {
+    out.variantValue = variants.value;
+    out.variants = variants.variants;
+  }
   if ("children" in node) {
     var children = [];
     for (var i = 0; i < node.children.length; i += 1) {

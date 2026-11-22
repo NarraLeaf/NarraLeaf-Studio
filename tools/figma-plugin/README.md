@@ -27,6 +27,8 @@ The plugin requests no network access. Everything it writes goes into the downlo
 | Text | Text (first style run; letter spacing is dropped) |
 | Vector, boolean, star, polygon, line, non-circular ellipse, masked group, multi-fill shape, blend modes | PNG at 2x, placed exactly over the layer |
 | Hidden layers | Left out |
+| Instance of a component set with a state property (`State=Default / Hover / Pressed / Disabled`) | Button, each state a look |
+| Group or frame whose layers are named `normal`, `hover`, `pressed`, `disabled` (or 普通, 悬停, 按下, 禁用), plus at most one text | Button, each state a look |
 
 Add `[raster]` to a layer's name to export it as a picture regardless.
 

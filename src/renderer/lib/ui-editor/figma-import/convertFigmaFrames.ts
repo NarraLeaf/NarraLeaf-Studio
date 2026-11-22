@@ -47,11 +47,15 @@ import { DEFAULT_ELEMENT_EFFECT_VALUES, type EffectShadowStored, type ElementEff
 import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import {
+    createInitialButtonAppearance,
     createInitialContainerAppearance,
     createInitialImageAppearanceFromProps,
     createInitialTextAppearance,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import { defaultButtonWidgetProps, type ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import type { AppearanceSystemCondition } from "@shared/types/ui-editor/appearance";
+import { buttonStateOfName, type ButtonState } from "./buttonStates";
 import type {
     FigmaEffect,
     FigmaExportFile,
@@ -82,6 +86,8 @@ export type ConvertFigmaFramesResult = {
     /** Image keys the document refers to, each once, in the order met. */
     imageRefs: string[];
     notes: FigmaImportNote[];
+    /** How many buttons were made out of state layers or variants. */
+    buttons: number;
 };
 
 const MAX_EXAMPLES = 3;
@@ -113,6 +119,7 @@ type Context = {
     resolveFont?: FigmaFontResolver;
     /** Families already reported, so the report counts fonts rather than text layers. */
     missingFonts: Set<string>;
+    buttons: number;
     nextId: () => string;
 };
 
@@ -129,6 +136,7 @@ export function convertFigmaFrames(file: FigmaExportFile, options: ConvertFigmaF
         notes,
         resolveFont: options.resolveFont,
         missingFonts: new Set(),
+        buttons: 0,
         nextId: () => `figma-${++counter}`,
     };
     if (file.skippedHidden && file.skippedHidden > 0) {
@@ -193,6 +201,7 @@ export function convertFigmaFrames(file: FigmaExportFile, options: ConvertFigmaF
         },
         imageRefs: ctx.imageRefs,
         notes: notes.list(),
+        buttons: ctx.buttons,
     };
 }
 
@@ -236,6 +245,12 @@ function convertNode(ctx: Context, node: FigmaExportNode, parentId: string, box:
 
     if (node.kind === "text" && node.text) {
         return addElement(ctx, parentId, { type: "nl.text", name, layout, props: textProps(ctx, node) });
+    }
+
+    const button = recognizeButton(ctx, node);
+    if (button) {
+        ctx.buttons += 1;
+        return addElement(ctx, parentId, { type: "nl.button", name, layout, props: buttonProps(ctx, node, button) });
     }
 
     const fill = pickFill(ctx, node);
@@ -416,6 +431,213 @@ function chromeProps(ctx: Context, node: FigmaExportNode, fill: FigmaPaint | nul
         transformRotation: 0,
         transformOpacity: 1,
     };
+}
+
+type RecognizedButton = {
+    /** The look of each state the source has. `default` is always present. */
+    states: Partial<Record<ButtonState, FigmaExportNode>>;
+    /** The text that becomes the button's label, taken from the placed button. */
+    label: FigmaExportNode | null;
+    /** Each state's own text, when the states are variants that restyle it. */
+    labels: Partial<Record<ButtonState, FigmaExportNode>>;
+};
+
+const childrenOf = (node: FigmaExportNode): FigmaExportNode[] => (Array.isArray(node.children) ? node.children : []);
+
+/** A look a state can be: a picture, a shape, or a frame drawn by its own fill and stroke. */
+function isStateLook(node: FigmaExportNode): boolean {
+    return node.kind === "raster" || node.kind === "shape" || node.kind === "ellipse"
+        || ((node.kind === "frame" || node.kind === "group") && childrenOf(node).length === 0);
+}
+
+/**
+ * Whether a node is a button drawn in states, and its states if so.
+ *
+ * Two shapes are read. An instance of a Figma component set whose variants differ in a state
+ * property; each variant may hold at most one text, the label. Or a group or frame whose children are
+ * named for states (`normal`, `hover` ... in any language `buttonStates.ts` reads), with at most one
+ * text beside them. Either needs a default look and at least one other. A group that has states but
+ * also other layers is left as it is and reported, so the author knows which name to change.
+ */
+function recognizeButton(ctx: Context, node: FigmaExportNode): RecognizedButton | null {
+    if (node.variantValue && Array.isArray(node.variants) && node.variants.length > 0) {
+        const own = buttonStateOfName(node.variantValue);
+        if (!own) {
+            return null;
+        }
+        const states: RecognizedButton["states"] = { [own]: node };
+        for (const variant of node.variants) {
+            const state = buttonStateOfName(variant.value);
+            if (state && !states[state]) {
+                states[state] = variant.node;
+            }
+        }
+        if (!states.default || Object.keys(states).length < 2) {
+            return null;
+        }
+        const looks = Object.values(states) as FigmaExportNode[];
+        if (looks.some(look => childrenOf(look).some(child => child.kind !== "text") || childrenOf(look).length > 1)) {
+            ctx.notes.add("buttonNotRecognized", cleanName(node.name));
+            return null;
+        }
+        const labels: RecognizedButton["labels"] = {};
+        for (const [state, look] of Object.entries(states) as [ButtonState, FigmaExportNode][]) {
+            const text = childrenOf(look)[0];
+            if (text) labels[state] = text;
+        }
+        return { states, label: childrenOf(node)[0] ?? null, labels };
+    }
+
+    if (node.kind !== "group" && node.kind !== "frame") {
+        return null;
+    }
+    const children = childrenOf(node);
+    const states: RecognizedButton["states"] = {};
+    let label: FigmaExportNode | null = null;
+    let others = 0;
+    for (const child of children) {
+        const state = buttonStateOfName(child.name);
+        if (state && !states[state] && isStateLook(child)) {
+            states[state] = child;
+        } else if (child.kind === "text" && !label) {
+            label = child;
+        } else {
+            others += 1;
+        }
+    }
+    if (!states.default || Object.keys(states).length < 2) {
+        return null;
+    }
+    if (others > 0) {
+        ctx.notes.add("buttonNotRecognized", cleanName(node.name));
+        return null;
+    }
+    return { states, label, labels: {} };
+}
+
+/** A state's look as button props: its fill, stroke, corner and shadows. */
+function buttonLookOf(ctx: Context, look: FigmaExportNode): Record<string, unknown> {
+    if (look.kind === "raster") {
+        const ref = look.raster?.imageRef;
+        const present = Boolean(ref && ctx.file.images[ref]);
+        if (!present) {
+            ctx.notes.add("missingImage", cleanName(look.name));
+        }
+        return {
+            fillType: "image",
+            imageFill: { mode: "stretch", assetId: present ? useImage(ctx, ref!) : null },
+            fillVisible: present,
+            fillOpacity: 1,
+            borderWidth: 0,
+            borderStyle: "none",
+        };
+    }
+    const chrome = chromeProps(ctx, look, pickFill(ctx, look));
+    const effects = effectsOf(ctx, look, false);
+    return {
+        backgroundColor: chrome.backgroundColor,
+        fillType: chrome.fillType,
+        fillOpacity: chrome.fillOpacity,
+        fillVisible: chrome.fillVisible,
+        imageFill: chrome.imageFill ?? null,
+        gradientFill: chrome.gradientFill ?? null,
+        borderRadius: chrome.borderRadius,
+        borderWidth: chrome.borderWidth,
+        borderColor: chrome.borderColor,
+        borderStyle: chrome.strokeVisible ? chrome.borderStyle : "none",
+        strokeOpacity: chrome.strokeOpacity,
+        strokeAlign: chrome.strokeAlign,
+        strokeSide: chrome.strokeSide,
+        effectShadow: effects.effectShadow,
+        effectInnerShadow: effects.effectInnerShadow,
+        effectBlur: effects.effectBlur,
+        effectBackgroundBlur: effects.effectBackgroundBlur,
+    };
+}
+
+/** The parts of a label a state may restyle. Read without reporting, which the label itself does. */
+function labelLookOf(ctx: Context, text: FigmaExportNode): Record<string, unknown> {
+    const style = text.text;
+    if (!style) return {};
+    const fills = (Array.isArray(text.fills) ? text.fills : []).filter(paint => num(paint.opacity, 1) > 0);
+    const top = fills[fills.length - 1];
+    const weight = num(style.fontWeight, 400);
+    return {
+        ...(top?.type === "SOLID" ? { color: figmaColorToCss(top.color, num(top.opacity, 1)) } : {}),
+        fontSize: round2(Math.max(1, num(style.fontSize, 16)) * ctx.scale),
+        fontWeight: weight >= 700 ? "bold" : weight >= 600 ? "600" : "normal",
+    };
+}
+
+const STATE_CONDITIONS: Record<Exclude<ButtonState, "default">, AppearanceSystemCondition> = {
+    hover: { hovered: true },
+    pressed: { active: true },
+    disabled: { disabled: true },
+};
+
+/**
+ * A recognised button as `nl.button` props. The default look is the button's own; every other state
+ * adds a conditional row to each appearance group it changes, in the order hover, pressed, disabled -
+ * the last matching row wins, so pressing (which is also hovering) shows the pressed look.
+ */
+function buttonProps(ctx: Context, node: FigmaExportNode, button: RecognizedButton): ButtonWidgetProps {
+    const base = buttonLookOf(ctx, button.states.default!);
+    const props = { ...defaultButtonWidgetProps, ...base, label: "" } as ButtonWidgetProps & Record<string, unknown>;
+    props.effects = {
+        ...DEFAULT_ELEMENT_EFFECT_VALUES,
+        effectShadow: (base.effectShadow as EffectShadowStored | null | undefined) ?? null,
+        effectInnerShadow: (base.effectInnerShadow as EffectShadowStored | null | undefined) ?? null,
+        effectBlur: num(base.effectBlur, 0),
+        effectBackgroundBlur: num(base.effectBackgroundBlur, 0),
+    };
+    for (const key of ["effectShadow", "effectInnerShadow", "effectBlur", "effectBackgroundBlur"]) {
+        delete props[key];
+    }
+
+    if (button.label?.text) {
+        const text = textProps(ctx, button.label);
+        Object.assign(props, {
+            label: text.text,
+            fontSize: text.fontSize,
+            color: text.color,
+            fontWeight: text.fontWeight,
+            fontAssetId: text.fontAssetId,
+            lineHeight: text.lineHeight,
+            textAlign: text.textAlign,
+            textVerticalAlign: text.textVerticalAlign,
+            textWrapMode: text.textWrapMode,
+        });
+        props.effects.effectTextShadow = text.effects.effectTextShadow;
+        // The label sits where it was drawn: the gap on its aligned side becomes the padding.
+        const placed = placeInParent(
+            { transform: matrixOf(button.label.transform), width: num(button.label.width, 0), height: num(button.label.height, 0) },
+            matrixOf(node.transform),
+        );
+        const left = Math.max(0, placed.x) * ctx.scale;
+        const right = Math.max(0, num(node.width, 0) - placed.x - placed.width) * ctx.scale;
+        props.paddingX = round2(text.textAlign === "left" ? left : text.textAlign === "right" ? right : Math.min(left, right));
+        props.paddingY = 0;
+    }
+
+    const model = withEffectRows(createInitialButtonAppearance(props), props.effects);
+    const variant = model.variants.find(entry => entry.id === model.defaultVariantId) ?? model.variants[0];
+    for (const state of ["hover", "pressed", "disabled"] as const) {
+        const look = button.states[state];
+        if (!look) continue;
+        const values: Record<string, unknown> = {
+            ...buttonLookOf(ctx, look),
+            ...(button.labels[state] ? labelLookOf(ctx, button.labels[state]!) : {}),
+        };
+        for (const group of variant.propertyGroups) {
+            if (!Object.prototype.hasOwnProperty.call(values, group.key)) continue;
+            const baseRow = group.rows.find(row => !row.conditions);
+            const value = values[group.key] as AppearanceRowValue;
+            if (JSON.stringify(baseRow?.value ?? null) === JSON.stringify(value ?? null)) continue;
+            group.rows.push({ conditions: STATE_CONDITIONS[state], value });
+        }
+    }
+    props.appearance = model;
+    return props;
 }
 
 function containerProps(ctx: Context, node: FigmaExportNode, fill: FigmaPaint | null): ContainerWidgetProps {

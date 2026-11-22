@@ -353,6 +353,9 @@ export const uiEditor = {
         added: {
             other: "已添加 {count} 个页面",
         },
+        buttons: {
+            other: "已将 {count} 组状态图层合成为按钮",
+        },
         reportTitle: "导入时的简化",
         noNotes: "所有图层均按设计导入",
         imagesSkipped: {
@@ -414,6 +417,9 @@ export const uiEditor = {
             },
             imageCentered: {
                 other: "{count} 张图片与画布尺寸不同，已居中放置",
+            },
+            buttonNotRecognized: {
+                other: "{count} 组按钮状态图层中含有其他图层，未合成按钮，已按原样导入",
             },
             hiddenSkipped: {
                 other: "{count} 个隐藏图层未导入",

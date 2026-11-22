@@ -42,6 +42,7 @@ export const FIGMA_IMPORT_NOTE_CODES = [
     "clipBaseDropped",
     "layerStyles",
     "imageCentered",
+    "buttonNotRecognized",
 ] as const;
 
 export type FigmaImportNoteCode = (typeof FIGMA_IMPORT_NOTE_CODES)[number];
@@ -155,6 +156,13 @@ export type FigmaExportNode = {
      * to begin with - a PSD layer, a plain image - which it does not.
      */
     raster?: { imageRef: string; reason: string };
+    /**
+     * For an instance of a component set: the value of the variant property that reads as a button
+     * state (`Default`, `Hover` ...), and the other variants that differ from this one in that
+     * property alone. Studio decides which values are states; the plugin only picks the property.
+     */
+    variantValue?: string;
+    variants?: { value: string; node: FigmaExportNode }[];
     children?: FigmaExportNode[];
 };
 

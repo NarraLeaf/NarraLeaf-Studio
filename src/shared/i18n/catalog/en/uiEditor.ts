@@ -392,6 +392,10 @@ export const uiEditor = {
             one: "Added {count} page.",
             other: "Added {count} pages.",
         },
+        buttons: {
+            one: "Made {count} button from its state layers.",
+            other: "Made {count} buttons from their state layers.",
+        },
         reportTitle: "Simplified on import",
         noNotes: "Every layer was imported as designed.",
         imagesSkipped: {
@@ -469,6 +473,10 @@ export const uiEditor = {
             imageCentered: {
                 one: "{count} image is not the size of the canvas and was placed in the centre.",
                 other: "{count} images are not the size of the canvas and were placed in the centre.",
+            },
+            buttonNotRecognized: {
+                one: "{count} group of button states has other layers beside the states and was imported as it is.",
+                other: "{count} groups of button states have other layers beside the states and were imported as they are.",
             },
             hiddenSkipped: {
                 one: "{count} hidden layer was left out.",

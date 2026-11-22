@@ -17,6 +17,12 @@
  * - Hidden layers are left out.
  * - Layer styles are not drawn by the bake; the layers that have them are reported.
  *
+ * A group whose layers are named for button states (`normal`, `hover`, `pressed`, `disabled`, in the
+ * languages `buttonStates.ts` reads) is a button. Its state layers are used even when hidden - a PSD
+ * shows one state and hides the rest - and its other visible layers, typically the label, are baked
+ * onto every state. Every state is cut out of the same rectangle, so the pictures line up and the
+ * converter can make one button of them.
+ *
  * Pure: no service, no file.
  *
  * Comments in English per project convention.
@@ -26,12 +32,20 @@ import type { PsdBakeTarget, PsdDocument, PsdLayerNode } from "@shared/types/psd
 import { canMergeBlendMode, isUnsupportedBlend, psdLayerKey, psdLayerReference } from "@shared/utils/psdLayerPlan";
 import type { FigmaExportFile, FigmaExportNode, FigmaImportNote, FigmaImportNoteCode, FigmaMatrix } from "./figmaExportFormat";
 import { FIGMA_EXPORT_FORMAT, FIGMA_EXPORT_VERSION } from "./figmaExportFormat";
+import { buttonStateOfName, type ButtonState } from "./buttonStates";
 
 export type PsdCropRect = { left: number; top: number; width: number; height: number };
 
 export type PsdDesignNode =
     | { kind: "group"; name: string; opacity: number; blendMode: string; children: PsdDesignNode[] }
-    | { kind: "layer"; key: string; name: string; blendMode: string };
+    | {
+        kind: "layer";
+        key: string;
+        name: string;
+        blendMode: string;
+        /** What the picture is called in the asset library, when the layer name alone says too little. */
+        assetName?: string;
+    };
 
 export type PsdDesignPlan = {
     /** One per layer that becomes an image, with what is flattened onto it. */
@@ -104,6 +118,13 @@ export function planPsdDesign(document: PsdDocument): PsdDesignPlan {
                 continue;
             }
             if (node.children) {
+                const button = planButtonGroup(node);
+                if (button) {
+                    out.push(button);
+                    clipBase = node;
+                    below = null;
+                    continue;
+                }
                 const children = walk(node.children, false);
                 if (children.length > 0) {
                     out.push({ kind: "group", name: node.name, opacity: node.opacity, blendMode: node.blendMode, children });
@@ -155,6 +176,72 @@ export function planPsdDesign(document: PsdDocument): PsdDesignPlan {
             out.push({ kind: "layer", key, name: node.name, blendMode: unsupported ? node.blendMode : "normal" });
         }
         return out;
+    };
+
+    /**
+     * A group of button states, planned as one: each state a target with the group's own clipped
+     * layers and its shared layers baked on, all cut from one rectangle. Null when the group is not a
+     * button, or is one this can not bake faithfully (a nested group, a shared layer under the states).
+     */
+    const planButtonGroup = (group: PsdLayerNode): PsdDesignNode | null => {
+        const children = group.children ?? [];
+        if (children.some(child => child.children)) {
+            return null;
+        }
+        const states = new Map<ButtonState, PsdLayerNode>();
+        for (const child of children) {
+            const state = child.clipping ? null : buttonStateOfName(child.name);
+            if (state && !states.has(state) && boundsOf(child)) {
+                states.set(state, child);
+            }
+        }
+        if (!states.has("default") || states.size < 2) {
+            return null;
+        }
+        const stateLayers = new Set(states.values());
+        const firstState = children.findIndex(child => stateLayers.has(child));
+        const shared = children.filter(child => !child.clipping && !stateLayers.has(child) && !child.hidden);
+        if (shared.some(child => children.indexOf(child) < firstState)) {
+            return null;
+        }
+        // Each clipped layer belongs to the nearest unclipped layer under it.
+        const clips = new Map<PsdLayerNode, PsdLayerNode[]>();
+        let base: PsdLayerNode | null = null;
+        for (const child of children) {
+            if (!child.clipping) {
+                base = child;
+                continue;
+            }
+            if (base && stateLayers.has(base)) {
+                clips.set(base, [...(clips.get(base) ?? []), child]);
+            } else if (!child.hidden) {
+                note("clipBaseDropped", child.name);
+            }
+        }
+        let extent: Bounds | null = null;
+        for (const layer of [...stateLayers, ...shared]) {
+            extent = union(extent, boundsOf(layer));
+            if (layer.styled) note("layerStyles", layer.name);
+        }
+        for (const child of children) {
+            if (child.hidden && !stateLayers.has(child) && !child.clipping) skippedHidden += 1;
+        }
+        const nodes: PsdDesignNode[] = [];
+        for (const child of children) {
+            if (!stateLayers.has(child)) continue;
+            const key = psdLayerKey(child);
+            targets.set(key, {
+                ...psdLayerReference(child),
+                name: `${group.name} ${child.name}`,
+                mergeFrom: [
+                    ...(clips.get(child) ?? []).map(clip => ({ ...psdLayerReference(clip), clip: true })),
+                    ...shared.map(layer => psdLayerReference(layer)),
+                ],
+            });
+            extents.set(key, extent!);
+            nodes.push({ kind: "layer", key, name: child.name, blendMode: "normal", assetName: `${group.name} ${child.name}` });
+        }
+        return { kind: "group", name: group.name, opacity: group.opacity, blendMode: group.blendMode, children: nodes };
     };
 
     const tree = walk(document.layers, false);
@@ -234,7 +321,7 @@ export function buildPsdDesignFile(
                     continue;
                 }
                 const ref = `psd-${++counter}`;
-                images[ref] = { mime: "image/png", bytes: picture.bytes, name: node.name };
+                images[ref] = { mime: "image/png", bytes: picture.bytes, name: node.assetName ?? node.name };
                 built.push({
                     ...emptyNode(),
                     id: ref,

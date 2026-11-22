@@ -5,6 +5,7 @@ import { parseFigmaExport, type FigmaExportFile } from "@/lib/ui-editor/figma-im
 import { buildImageDesignFile, type DesignPicture } from "@/lib/ui-editor/figma-import/imageDesign";
 import { buildPsdDesignFile, planPsdDesign, type PsdBakedPicture, type PsdCropRect } from "@/lib/ui-editor/figma-import/psdDesign";
 import { psdLayerKey } from "@shared/utils/psdLayerPlan";
+import { buttonBaseName, buttonStateOfName, type ButtonState } from "@/lib/ui-editor/figma-import/buttonStates";
 import { basename } from "@shared/utils/path";
 
 /** The file types the picker offers: a Figma export, a PSD, and plain pictures. */
@@ -51,7 +52,11 @@ function stemOf(path: string): string {
  * Open what the picker returned: one Figma export, one PSD, or any number of pictures. Anything else
  * - two PSDs, a PSD with pictures - is refused with a sentence that says what can be picked.
  */
-export async function openDesignSource(paths: readonly string[], filesystem: FileSystemService): Promise<DesignSource> {
+export async function openDesignSource(
+    paths: readonly string[],
+    filesystem: FileSystemService,
+    projectSize: { width: number; height: number },
+): Promise<DesignSource> {
     const kinds = paths.map(path => {
         const extension = extensionOf(path);
         if (extension === "json") return "figma";
@@ -59,7 +64,7 @@ export async function openDesignSource(paths: readonly string[], filesystem: Fil
         return IMAGE_MIME[extension] ? "images" : "other";
     });
     if (kinds.every(kind => kind === "images")) {
-        return openImages(paths, filesystem);
+        return openImages(paths, filesystem, projectSize);
     }
     if (paths.length === 1 && kinds[0] === "figma") {
         return openFigmaExport(paths[0], filesystem);
@@ -133,8 +138,13 @@ async function openPsd(path: string, filesystem: FileSystemService): Promise<Des
     };
 }
 
-async function openImages(paths: readonly string[], filesystem: FileSystemService): Promise<DesignSource> {
-    const pictures: DesignPicture[] = [];
+async function openImages(
+    paths: readonly string[],
+    filesystem: FileSystemService,
+    projectSize: { width: number; height: number },
+): Promise<DesignSource> {
+    type Read = { path: string; stem: string; mime: string; bytes: Uint8Array; measured: MeasuredPicture };
+    const reads: Read[] = [];
     for (const path of paths) {
         const read = await filesystem.readRaw(path);
         if (!read.ok) {
@@ -143,54 +153,122 @@ async function openImages(paths: readonly string[], filesystem: FileSystemServic
         }
         const mime = IMAGE_MIME[extensionOf(path)];
         try {
-            const measured = await measurePicture(read.data, mime);
-            pictures.push({ name: stemOf(path), mime, bytes: read.data, ...measured });
+            reads.push({ path, stem: stemOf(path), mime, bytes: read.data, measured: await measurePicture(read.data, mime) });
         } catch (error) {
             console.warn("[design import] could not decode an image", error);
             throw new DesignSourceError(translate("uiEditor.designImport.error.imageRead", { name: basename(path) }));
         }
     }
+
+    // Files named for the states of one button (`start.png`, `start_hover.png` ...) share a key. A
+    // file with no state word is the default look of the button whose states name it.
+    const stateOf = (stem: string): ButtonState | null => buttonStateOfName(stem);
+    const keyOf = (stem: string) => buttonBaseName(stem).toLowerCase();
+    const statedKeys = new Set(reads.filter(read => stateOf(read.stem)).map(read => keyOf(read.stem)));
+    const buttonOf = (read: Read): { key: string; state: ButtonState } | undefined => {
+        const key = keyOf(read.stem);
+        if (!statedKeys.has(key)) return undefined;
+        return { key, state: stateOf(read.stem) ?? "default" };
+    };
+    // Every state of one button is cut from the union of their opaque areas, so the looks line up.
+    const groupBounds = new Map<string, PictureBounds>();
+    for (const read of reads) {
+        const button = buttonOf(read);
+        if (!button) continue;
+        groupBounds.set(button.key, unionBounds(groupBounds.get(button.key) ?? null, read.measured.bounds));
+    }
+
+    const pictures: DesignPicture[] = [];
+    for (const read of reads) {
+        const button = buttonOf(read);
+        const { width, height } = read.measured;
+        const bounds = (button ? groupBounds.get(button.key) : read.measured.bounds) ?? { left: 0, top: 0, width, height };
+        const whole = bounds.left === 0 && bounds.top === 0 && bounds.width === width && bounds.height === height;
+        pictures.push({
+            name: read.stem,
+            mime: whole ? read.mime : "image/png",
+            bytes: whole ? read.bytes : await cropPicture(read.bytes, bounds, read.mime),
+            width: bounds.width,
+            height: bounds.height,
+            coverage: read.measured.coverage,
+            left: bounds.left,
+            top: bounds.top,
+            sourceWidth: width,
+            sourceHeight: height,
+            ...(button ? { button } : {}),
+        });
+    }
     const pageName = pictures.length === 1 ? pictures[0].name : translate("uiEditor.designImport.imagesPageName");
     return {
         kind: "images",
         label: pictures.length === 1 ? basename(paths[0]) : pageName,
-        items: pictures.map((picture, index) => ({ id: String(index), name: picture.name, width: picture.width, height: picture.height })),
+        items: pictures.map((picture, index) => ({
+            id: String(index),
+            name: picture.name,
+            width: picture.sourceWidth ?? picture.width,
+            height: picture.sourceHeight ?? picture.height,
+        })),
         pagesFor: ticked => (ticked > 0 ? 1 : 0),
         load: async ids => {
             const chosen = pictures.filter((_, index) => ids.includes(String(index)));
             const name = chosen.length === 1 ? chosen[0].name : pageName;
-            return { file: buildImageDesignFile(chosen, name), frameIds: ["images"] };
+            return { file: buildImageDesignFile(chosen, name, projectSize), frameIds: ["images"] };
         },
     };
 }
 
-/** Side of the thumbnail opacity is sampled on: enough to tell a background from a cut-out. */
-const COVERAGE_SAMPLE = 64;
+type PictureBounds = { left: number; top: number; width: number; height: number };
+type MeasuredPicture = { width: number; height: number; coverage: number; bounds: PictureBounds };
 
-async function measurePicture(bytes: Uint8Array, mime: string): Promise<{ width: number; height: number; coverage: number }> {
+function unionBounds(a: PictureBounds | null, b: PictureBounds): PictureBounds {
+    if (!a) return b;
+    const left = Math.min(a.left, b.left);
+    const top = Math.min(a.top, b.top);
+    const right = Math.max(a.left + a.width, b.left + b.width);
+    const bottom = Math.max(a.top + a.height, b.top + b.height);
+    return { left, top, width: right - left, height: bottom - top };
+}
+
+/**
+ * A picture's size, how much of it is opaque, and the rectangle its opaque pixels occupy. A picture
+ * with nothing opaque keeps its whole rectangle, so it still arrives as something to select.
+ */
+async function measurePicture(bytes: Uint8Array, mime: string): Promise<MeasuredPicture> {
     const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mime }));
     try {
-        const canvas = new OffscreenCanvas(COVERAGE_SAMPLE, COVERAGE_SAMPLE);
+        const { width, height } = bitmap;
+        const canvas = new OffscreenCanvas(width, height);
         const context = canvas.getContext("2d");
-        let coverage = 1;
-        if (context) {
-            context.drawImage(bitmap, 0, 0, COVERAGE_SAMPLE, COVERAGE_SAMPLE);
-            const data = context.getImageData(0, 0, COVERAGE_SAMPLE, COVERAGE_SAMPLE).data;
-            let opaque = 0;
-            for (let index = 3; index < data.length; index += 4) {
-                opaque += data[index] / 255;
-            }
-            coverage = opaque / (COVERAGE_SAMPLE * COVERAGE_SAMPLE);
+        if (!context) {
+            return { width, height, coverage: 1, bounds: { left: 0, top: 0, width, height } };
         }
-        return { width: bitmap.width, height: bitmap.height, coverage };
+        context.drawImage(bitmap, 0, 0);
+        const data = context.getImageData(0, 0, width, height).data;
+        let opaque = 0;
+        let minX = width, minY = height, maxX = -1, maxY = -1;
+        for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x < width; x += 1) {
+                const alpha = data[(y * width + x) * 4 + 3];
+                if (alpha === 0) continue;
+                opaque += alpha / 255;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        const bounds = maxX < 0
+            ? { left: 0, top: 0, width, height }
+            : { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+        return { width, height, coverage: opaque / Math.max(1, width * height), bounds };
     } finally {
         bitmap.close();
     }
 }
 
-/** A baked full-document PNG cut down to the rectangle its layer occupies. */
-async function cropPicture(bytes: Uint8Array, crop: PsdCropRect): Promise<Uint8Array> {
-    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }), crop.left, crop.top, crop.width, crop.height);
+/** A picture cut down to a rectangle of it, as a PNG. */
+async function cropPicture(bytes: Uint8Array, crop: PsdCropRect, mime = "image/png"): Promise<Uint8Array> {
+    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mime }), crop.left, crop.top, crop.width, crop.height);
     try {
         const canvas = new OffscreenCanvas(crop.width, crop.height);
         const context = canvas.getContext("2d");
