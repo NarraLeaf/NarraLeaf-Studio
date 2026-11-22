@@ -326,22 +326,25 @@ function ChildTimingBlock({
     const { t } = useTranslation();
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
-            <div className="flex min-h-7 items-center justify-between gap-2">
+            <div className="flex min-h-7 items-center">
                 <span className={NESTED_SECTION_CLASS.panel}>
                     {t("widgetChrome.pageAnimation.children")}
                 </span>
-                <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
-                    <span>{t("widgetChrome.pageAnimation.waitForChildren")}</span>
-                    <Switch
-                        checked={waitsForChildren}
-                        size="sm"
-                        onCheckedChange={onWaitsForChildrenChange}
-                    />
-                </label>
             </div>
-            {/* Label above, in the numbers' column, as in the phase blocks above. */}
+            {/* The block's two settings side by side, each labelled above: the switch takes the
+                left cell and the stagger the numbers' column, as in the phase blocks above. With
+                the switch up in the heading the left cell sat empty under a lone number. */}
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
-                <span aria-hidden="true" />
+                <label className="min-w-0 space-y-1">
+                    <span className="block truncate text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.waitForChildren")}</span>
+                    <span className="flex h-9 items-center">
+                        <Switch
+                            checked={waitsForChildren}
+                            size="sm"
+                            onCheckedChange={onWaitsForChildrenChange}
+                        />
+                    </span>
+                </label>
                 <label className="min-w-0 space-y-1">
                     <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.stagger")}</span>
                     <NumericDraftEnhancedInput
