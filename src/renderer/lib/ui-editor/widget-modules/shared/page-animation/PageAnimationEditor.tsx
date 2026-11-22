@@ -222,22 +222,41 @@ function AnimationPhaseBlock({
                     </label>
                 ) : null}
             </div>
+            {/* Every cell holds a field: the preset on its own line, the two timings side by side,
+                then the direction and its angle. Delay used to sit alone on a third row with an
+                empty cell beside it, and a third column would cut the preset name to one character.
+                The right column is the same 92px on both rows, so the numbers line up. */}
+            <label className="min-w-0 space-y-1">
+                <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.preset")}</span>
+                <Select
+                    fullWidth
+                    options={presetOptions}
+                    value={preset}
+                    onChange={value => onPresetChange(value as UIPageAnimationPreset)}
+                    portalMenu
+                />
+            </label>
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
-                <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.preset")}</span>
-                    <Select
-                        fullWidth
-                        options={presetOptions}
-                        value={preset}
-                        onChange={value => onPresetChange(value as UIPageAnimationPreset)}
-                        portalMenu
-                    />
-                </label>
                 <label className="min-w-0 space-y-1">
                     <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.seconds")}</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatDurationSeconds(durationSeconds)}
                         onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
+                    />
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.delay")}</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(delaySeconds)}
+                        onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
                         inputMode="decimal"
                         type="number"
                         min={MIN_DURATION_SECONDS}
@@ -276,28 +295,6 @@ function AnimationPhaseBlock({
                         disabled={!isAngle}
                         className={`w-full min-w-0 ${isAngle ? "" : "opacity-55"}`}
                         popoverThreshold={112}
-                    />
-                </label>
-            </div>
-            {/* Its own row rather than a third column beside the seconds: the inspector is narrow
-                enough that a third column truncates the preset name to one character. Label above,
-                in the numbers' column, like Duration and Angle over it: a label beside the field
-                made it the one field in the block read the other way. */}
-            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
-                <span aria-hidden="true" />
-                <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.delay")}</span>
-                    <NumericDraftEnhancedInput
-                        committedDisplay={formatDurationSeconds(delaySeconds)}
-                        onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
-                        inputMode="decimal"
-                        type="number"
-                        min={MIN_DURATION_SECONDS}
-                        max={MAX_DURATION_SECONDS}
-                        step={DURATION_STEP_SECONDS}
-                        unit="s"
-                        className="w-full min-w-0"
-                        popoverThreshold={128}
                     />
                 </label>
             </div>
