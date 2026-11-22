@@ -298,7 +298,6 @@ export const characters = {
         // 登場の行が書いていないチャンネルはここに戻る。行に出ている動詞（`charOp.enter`）と
         // 同じ言い方にしてある。
         entrance: "登場時の既定値",
-        entranceEmpty: "未設定の間、登場の行はステージの既定値を使う",
         entranceDrag: "ドラッグで配置",
         entranceZoom: "ドラッグで拡大縮小",
         entranceApplyFramed: "標準の構図を適用",

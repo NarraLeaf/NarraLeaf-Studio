@@ -59,6 +59,14 @@ import {
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
+/** The card footer's buttons: `Add`, and any action the host puts beside it. */
+const FOOTER_BUTTON_CLASS = cn(
+    "inline-flex items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted",
+    "transition-colors duration-150 hover:bg-edge-subtle hover:text-fg",
+    "disabled:pointer-events-none disabled:opacity-50",
+    CONTROL_HEIGHT_CLASS.sm,
+);
+
 /**
  * The stated channels of a transform, one row each, plus the picker that adds another.
  *
@@ -771,11 +779,7 @@ function AddChannelPicker(props: {
             <button
                 ref={triggerRef}
                 type="button"
-                className={cn(
-                    "inline-flex items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted",
-                    "transition-colors duration-150 hover:bg-edge-subtle hover:text-fg",
-                    CONTROL_HEIGHT_CLASS.sm,
-                )}
+                className={FOOTER_BUTTON_CLASS}
                 aria-expanded={open}
                 onClick={() => (open ? close() : setOpen(true))}
             >
@@ -931,6 +935,8 @@ export function TransformChannelEditor(props: {
     scope?: "row" | "characterDefaults";
     /** Extra rows at the top of the card's overflow menu. */
     menuItems?: ContextMenuDef;
+    /** Buttons beside `Add`, drawn in its style: an action the host offers on the whole bag. */
+    footerActions?: { id: string; label: string; disabled?: boolean; onClick: () => void }[];
     onChange: (value: StoryTransformRef) => void;
 }) {
     const { t } = useTranslation();
@@ -996,6 +1002,17 @@ export function TransformChannelEditor(props: {
                     t={t}
                     onAdd={channel => props.onChange(seedFromInherited(ref, channel.add(ref), props.inherited))}
                 />
+                {props.footerActions?.map(action => (
+                    <button
+                        key={action.id}
+                        type="button"
+                        className={FOOTER_BUTTON_CLASS}
+                        disabled={action.disabled}
+                        onClick={action.onClick}
+                    >
+                        {action.label}
+                    </button>
+                ))}
                 <div className="ml-auto">
                     <TransformCardMenu value={props.value} onChange={props.onChange} leadingItems={props.menuItems} />
                 </div>

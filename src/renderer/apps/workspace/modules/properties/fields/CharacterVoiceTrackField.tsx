@@ -72,7 +72,7 @@ export function CharacterVoiceTrackField({ data }: CustomFieldProps<CharacterEdi
         <div className="min-w-0">
             <Select fullWidth options={options} value={trackId} onChange={value => commit(String(value))} />
             {buses.length === 0 && (
-                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.voiceTrackEmpty")}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{t("characters.properties.voiceTrackEmpty")}</p>
             )}
         </div>
     );

@@ -309,7 +309,6 @@ export const characters = {
         // operation the rows carry (`charOp.enter`), which is the word an author already reads on
         // the row itself.
         entrance: "Entrance defaults",
-        entranceEmpty: "Entrance rows use the stage's own values until this is set.",
         entranceDrag: "Drag to place",
         entranceZoom: "Drag to scale",
         // Visual-novel framing: head just under the top edge, the top 80% of a full-length sprite shown

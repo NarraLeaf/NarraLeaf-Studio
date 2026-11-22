@@ -6,7 +6,7 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import { useWorkspace } from "@/apps/workspace/context";
 import { TransformChannelEditor } from "@/apps/workspace/modules/story/scene-editor/TransformChannelEditor";
 import { resolveStoryMotionStageSize } from "@/apps/workspace/modules/story-motion/StoryMotionEditorTab";
-import { Button, type ContextMenuDef } from "@/lib/components/elements";
+import { type ContextMenuDef } from "@/lib/components/elements";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import { framedEntrance, type EntranceMatch } from "@/lib/workspace/services/agent/spriteStage";
 import { castEntranceMatches, loadHeadDetector, measureCharacterSprite } from "@/lib/workspace/services/agent/spriteFacts";
@@ -135,19 +135,11 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
                 scope="characterDefaults"
                 previewAssetId={previewAssetId}
                 menuItems={menuItems}
+                // Beside Add rather than under an explanation of the empty state: it is the one-click
+                // way to fill the bag, and the cast matches stay in the card's overflow menu.
+                footerActions={sprite.size ? [{ id: "apply-framed", label: applyFramedLabel, disabled: framing, onClick: () => void applyFramed() }] : undefined}
                 onChange={commit}
             />
-            {value === undefined && (
-                <div className="mt-1 flex items-center gap-2">
-                    <p className="min-w-0 flex-1 text-xs text-fg-subtle">{t("characters.properties.entranceEmpty")}</p>
-                    {matches[0] && (
-                        <Button size="sm" onClick={() => commitProps(structuredClone(matches[0].props))}>{matchLabel(matches[0])}</Button>
-                    )}
-                    {sprite.size && (
-                        <Button size="sm" disabled={framing} onClick={() => void applyFramed()}>{applyFramedLabel}</Button>
-                    )}
-                </div>
-            )}
         </div>
     );
 }

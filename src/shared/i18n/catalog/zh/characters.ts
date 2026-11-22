@@ -270,7 +270,6 @@ export const characters = {
         voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条音轨，即可为该角色单独控制音量",
         // 登场行未写明的每一项都回落到这里。用的是行上那个动词（`charOp.enter`）的说法
         entrance: "登场默认值",
-        entranceEmpty: "未设置时，登场行使用舞台的默认值",
         entranceDrag: "拖动放置",
         entranceZoom: "拖动缩放",
         // 按 GalGame 常见构图摆放：测量立绘里人物的实际位置与头身比，头顶贴近上沿，全身立绘露出自头往下约八成
