@@ -226,6 +226,14 @@ export const properties = {
             stretch: "引き伸ばし",
             crop: "切り抜き",
             tile: "タイル",
+            nineSlice: "9 スライス",
+        },
+        slice: {
+            label: "スライス",
+            top: "上",
+            right: "右",
+            bottom: "下",
+            left: "左",
         },
     },
     menu: {

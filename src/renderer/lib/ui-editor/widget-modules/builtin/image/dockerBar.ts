@@ -1,6 +1,6 @@
 import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
-import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { IMAGE_FILL_MODES, type ImageFill, type ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createRectangleDockerBarItems } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleDockerBar";
@@ -9,7 +9,7 @@ import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared
 import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 
-const FIT_OPTION_VALUES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
+const FIT_OPTION_VALUES: readonly ImageFillMode[] = IMAGE_FILL_MODES;
 
 const FIT_OPTION_LABEL_KEYS = {
     cover: "widgetChrome.dockerItems.cover",
@@ -17,6 +17,7 @@ const FIT_OPTION_LABEL_KEYS = {
     stretch: "widgetChrome.dockerItems.stretch",
     crop: "widgetChrome.dockerItems.crop",
     tile: "widgetChrome.dockerItems.tile",
+    nineSlice: "widgetChrome.dockerItems.nineSlice",
 } as const;
 
 const DEFAULT_APPEARANCE_RESOLVE_CONTEXT = {

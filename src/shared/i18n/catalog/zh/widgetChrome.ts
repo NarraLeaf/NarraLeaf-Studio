@@ -105,6 +105,7 @@ export const widgetChrome = {
         stretch: "拉伸",
         crop: "裁剪",
         tile: "平铺",
+        nineSlice: "九宫格",
         listGapHint: "列表项之间的间距",
         preview: "预览",
         previewHint: "编辑器中的预览项数量",

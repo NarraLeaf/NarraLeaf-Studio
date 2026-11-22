@@ -7,6 +7,7 @@ import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLo
 import { useAssetResolutionReport } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
+import { normalizeImageFillSlice } from "@shared/types/ui-editor/imageFill";
 import {
     FILL_LAYER_ROOT_STYLE,
     FillLayer,
@@ -514,6 +515,7 @@ export function RectangleChromeRenderer({
     const isCropEditing =
         Boolean(activeMode) &&
         activeMode !== "tile" &&
+        activeMode !== "nineSlice" &&
         displayUrl &&
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
@@ -636,6 +638,49 @@ export function RectangleChromeRenderer({
     const renderImage = () => {
         if (!shouldRenderImage || !displayUrl || !activeMode) {
             return null;
+        }
+        if (activeMode === "nineSlice") {
+            // CSS draws a nine-slice picture as a border image: the corners at the cut size, the
+            // edges stretched along one axis and the centre (`fill`) along both. The border widths
+            // are the cut itself, so one picture pixel is one design pixel, and the browser shrinks
+            // them evenly when the box is too small for both sides. Corner radii do not apply to a
+            // border image; the art carries its own corners.
+            const slice = normalizeImageFillSlice(activeFill?.slice);
+            const nineStyle: CSSProperties = {
+                position: "absolute",
+                inset: 0,
+                // Crop editing never runs on a nine-slice fill, so it always sits below the content.
+                zIndex: -1,
+                pointerEvents: "none",
+                boxSizing: "border-box",
+                borderStyle: "solid",
+                borderColor: "transparent",
+                borderWidth: `${slice.top}px ${slice.right}px ${slice.bottom}px ${slice.left}px`,
+                borderImageSource: `url(${JSON.stringify(displayUrl)})`,
+                borderImageSlice: `${slice.top} ${slice.right} ${slice.bottom} ${slice.left} fill`,
+                borderImageRepeat: "stretch",
+            };
+            const nineAnimate = { opacity: imageAnimate.opacity };
+            return imageMotionActive ? (
+                <motion.div
+                    aria-hidden="true"
+                    data-ui-image-fill="true"
+                    data-ui-image-fill-mode="nineSlice"
+                    data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
+                    style={nineStyle}
+                    initial={false}
+                    animate={nineAnimate}
+                    transition={imageTransition}
+                />
+            ) : (
+                <div
+                    aria-hidden="true"
+                    data-ui-image-fill="true"
+                    data-ui-image-fill-mode="nineSlice"
+                    data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
+                    style={{ ...nineStyle, ...nineAnimate }}
+                />
+            );
         }
         if (activeMode === "tile") {
             if (!tileNeedsLayer) {

@@ -117,7 +117,7 @@ import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/contai
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { buildImageFillPropsChange } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
-import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { IMAGE_FILL_MODES, type ImageFill, type ImageFillCropPlacement, type ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
 import type {
     TextAlign,
@@ -2366,7 +2366,6 @@ function normalizeNullableString(raw: unknown): string | null {
     return s.length > 0 ? s : null;
 }
 
-const IMAGE_FILL_MODES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
 
 function normalizeImageFillMode(raw: unknown, fallback: ImageFillMode): ImageFillMode {
     return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? raw as ImageFillMode : fallback;

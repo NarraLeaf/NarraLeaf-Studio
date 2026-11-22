@@ -1,5 +1,5 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import { isImageFillMode, type ImageFill } from "@shared/types/ui-editor/imageFill";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
 import { UI_PUPPET_ELEMENT_TYPE, isPuppetWidgetConfigured } from "@shared/types/ui-editor/puppet";
@@ -24,7 +24,7 @@ function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
         return true;
     }
     const mode = fill.mode;
-    if (mode === "crop" || mode === "cover" || mode === "contain" || mode === "stretch" || mode === "tile") {
+    if (isImageFillMode(mode)) {
         return !fill.assetId?.trim();
     }
     return false;

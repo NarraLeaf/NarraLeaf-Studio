@@ -104,6 +104,7 @@ export const widgetChrome = {
         stretch: "Stretch",
         crop: "Crop",
         tile: "Tile",
+        nineSlice: "Nine-slice",
         listGapHint: "Space between list items",
         preview: "Preview",
         previewHint: "Preview item count in editor",

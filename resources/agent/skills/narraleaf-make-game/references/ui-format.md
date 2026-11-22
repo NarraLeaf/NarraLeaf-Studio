@@ -91,6 +91,11 @@ surface Title id=narraleaf-studio:main-surface kind=appSurface size=1920x1080
   the whole game. Write raw colours only for one-off accents.
 - **Assets** are referenced by **id** (`assets_list` shows ids): `imageFill = {"mode":"cover","assetId":"<id>"}`
   on an image, `clickSound.assetId = <id>` on a button, `fontAssetId = <id>` on text.
+- **`imageFill.mode`** is `cover`, `contain`, `stretch`, `crop`, `tile` or `nineSlice`. Use `nineSlice`
+  for a framed panel or button picture that has to be a different size from the file: its corners keep
+  their size and its edges stretch. `slice` says where it is cut, in the picture's own pixels from each
+  edge (`imageFill = {"mode":"nineSlice","assetId":"<id>","slice":{"top":24,"right":24,"bottom":24,"left":24}}`);
+  left out, every edge is cut at 16. Corner radii do not round a nine-slice picture.
 - **Words**: a text's `text`, a button's `label`. An element with a `localizationKey` shows that key's
   text instead and holds no words of its own (writing `text`/`label` beside a key is refused as
   `ui.words_two_sources`). The skeleton's menu words (Start, Load, Config …) are keys, shipped in

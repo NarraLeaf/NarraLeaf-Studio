@@ -105,6 +105,7 @@ export const widgetChrome = {
         stretch: "引き伸ばし",
         crop: "切り抜き",
         tile: "タイル",
+        nineSlice: "9 スライス",
         listGapHint: "リスト項目どうしの間隔",
         preview: "プレビュー",
         previewHint: "エディタでプレビュー表示する項目数",
