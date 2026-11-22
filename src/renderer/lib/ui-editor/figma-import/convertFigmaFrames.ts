@@ -52,33 +52,19 @@ import {
     createInitialTextAppearance,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
-import type { FigmaEffect, FigmaExportFile, FigmaExportNode, FigmaMatrix, FigmaPaint } from "./figmaExportFormat";
+import type {
+    FigmaEffect,
+    FigmaExportFile,
+    FigmaExportNode,
+    FigmaImportNote,
+    FigmaImportNoteCode,
+    FigmaMatrix,
+    FigmaPaint,
+} from "./figmaExportFormat";
 import { figmaColorToCss, figmaGradientToFill, IDENTITY_MATRIX, placeInParent, round2 } from "./figmaGeometry";
 
-/** What the report counts. Each code has one sentence in the catalogue (`uiEditor.figmaImport.note.*`). */
-export const FIGMA_IMPORT_NOTE_CODES = [
-    "rasterized",
-    "multipleFills",
-    "missingFont",
-    "letterSpacing",
-    "mixedTextStyles",
-    "justifiedText",
-    "blendMode",
-    "paintSimplified",
-    "autoLayoutFlattened",
-    "missingImage",
-    "aspectMismatch",
-    "hiddenSkipped",
-] as const;
-
-export type FigmaImportNoteCode = (typeof FIGMA_IMPORT_NOTE_CODES)[number];
-
-export type FigmaImportNote = {
-    code: FigmaImportNoteCode;
-    count: number;
-    /** The first few layers it concerns, by name (for `missingFont`, the font families). */
-    examples: string[];
-};
+export { FIGMA_IMPORT_NOTE_CODES } from "./figmaExportFormat";
+export type { FigmaImportNote, FigmaImportNoteCode } from "./figmaExportFormat";
 
 export type FigmaFontResolver = (family: string, style: string) => string | null;
 
@@ -147,6 +133,12 @@ export function convertFigmaFrames(file: FigmaExportFile, options: ConvertFigmaF
     };
     if (file.skippedHidden && file.skippedHidden > 0) {
         notes.add("hiddenSkipped", undefined, file.skippedHidden);
+    }
+    for (const note of file.notes ?? []) {
+        notes.add(note.code, undefined, note.count);
+        for (const example of note.examples) {
+            notes.add(note.code, example, 0);
+        }
     }
 
     const target = {
@@ -226,7 +218,9 @@ function convertNode(ctx: Context, node: FigmaExportNode, parentId: string, box:
     };
 
     if (node.kind === "raster") {
-        ctx.notes.add("rasterized", name);
+        if (node.raster?.reason !== "layer") {
+            ctx.notes.add("rasterized", name);
+        }
         const ref = node.raster?.imageRef;
         if (!ref || !ctx.file.images[ref]) {
             ctx.notes.add("missingImage", name);

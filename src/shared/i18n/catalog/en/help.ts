@@ -913,23 +913,25 @@ export const help = {
                 + "- Snap to grid moves each selected element's top-left corner to the nearest grid point, with grid "
                 + "snapping on or off.",
         },
-        figmaImport: {
-            title: "Importing Figma designs",
+        designImport: {
+            title: "Importing designs",
             body:
-                "Frames exported from Figma with the NarraLeaf Studio Export plugin become pages in the UI editor.\n"
+                "A screen drawn in another tool becomes a page in the UI editor. "
+                + "In the Interfaces panel, choose Import design and pick a Figma export, a PSD, or one or more images.\n"
                 + "\n"
-                + "- In Figma, select the frames and run the plugin. It downloads one file holding the frames and their pictures.\n"
-                + "- In the Interfaces panel, choose Import Figma design and pick that file, then tick the frames to import.\n"
-                + "- Each frame becomes a page scaled to the project resolution. Its pictures go into a new folder in the image assets.\n"
+                + "- Figma: export frames with the NarraLeaf Studio Export plugin. Frames, groups and rectangles become containers, "
+                + "auto layout becomes a stack where a stack can express it, text becomes text, and vectors and masks arrive as pictures.\n"
+                + "- PSD: groups become containers and each layer becomes an image where Photoshop drew it. "
+                + "Clipped layers and layers with blend modes are merged into the layer they belong to, and hidden layers are left out.\n"
+                + "- Images: all the chosen images arrive on one page. Images the size of the largest one line up with it, "
+                + "and smaller ones are placed in the centre to be moved into place.\n"
                 + "\n"
-                + "Frames, groups and rectangles become containers, auto layout becomes a stack where a stack can express it, "
-                + "text becomes text, and rectangles filled with an image become images. "
-                + "Vectors, masked groups and layers with blend modes arrive as pictures.\n"
+                + "Each page is scaled to the project resolution, and its pictures go into a new folder in the image assets. "
+                + "Everything that was simplified is listed after the import, such as PSD layer styles, which are not imported.\n"
                 + "\n"
-                + "Fonts are matched to font assets by family name, so import the fonts before the design. "
-                + "Everything that was simplified is listed after the import.\n"
+                + "Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.\n"
                 + "\n"
-                + "The plugin is in the tools/figma-plugin folder of the NarraLeaf Studio source code. "
+                + "The Figma plugin is in the tools/figma-plugin folder of the NarraLeaf Studio source code. "
                 + "In Figma, add it with Plugins, Development, Import plugin from manifest.",
         },
         uiComponents: {

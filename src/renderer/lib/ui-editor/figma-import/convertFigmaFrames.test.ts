@@ -361,8 +361,8 @@ describe("the import report's sentences", () => {
         // The dialog builds these keys from the code, which the type checker cannot follow.
         const en = createTranslator("en");
         for (const code of FIGMA_IMPORT_NOTE_CODES) {
-            expect(en.has(`uiEditor.figmaImport.note.${code}.one`), code).toBe(true);
-            expect(en.has(`uiEditor.figmaImport.note.${code}.other`), code).toBe(true);
+            expect(en.has(`uiEditor.designImport.note.${code}.one`), code).toBe(true);
+            expect(en.has(`uiEditor.designImport.note.${code}.other`), code).toBe(true);
         }
     });
 });

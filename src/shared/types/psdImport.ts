@@ -26,6 +26,12 @@ export type PsdLayerNode = PsdLayerReference & {
     hidden: boolean;
     /** True when Photoshop clips this layer to the one below it. */
     clipping: boolean;
+    /**
+     * True when the layer carries a layer style that is switched on (a drop shadow, a stroke, a
+     * glow). The bake draws the layer's own pixels only, so whoever imports it says so. Absent in a
+     * tree read before it was recorded.
+     */
+    styled?: boolean;
     children?: PsdLayerNode[];
 };
 

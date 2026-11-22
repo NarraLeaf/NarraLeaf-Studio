@@ -334,10 +334,15 @@ export const uiEditor = {
         slotTaken: "{slot} 槽位已有一个游戏界面",
         surfaceNotAdded: "无法粘贴该界面",
     },
-    figmaImport: {
-        open: "导入 Figma 设计稿",
-        pickerTitle: "选择 Figma 导出文件",
+    designImport: {
+        open: "导入设计稿",
+        pickerTitle: "选择设计稿或图片",
         title: "导入 Figma 设计稿",
+        titlePsd: "导入 PSD",
+        titleImages: "导入图片",
+        documents: "文档",
+        images: "图片",
+        imagesPageName: "导入的图片",
         frames: "画框",
         size: "{width} × {height}",
         import: "导入",
@@ -354,6 +359,10 @@ export const uiEditor = {
             other: "有 {count} 张图片未能写入资产",
         },
         error: {
+            mixed: "请选择一个 Figma 导出文件、一个 PSD，或任意数量的图片",
+            psdRead: "无法读取该 PSD",
+            imageRead: "无法读取“{name}”",
+            bake: "无法绘制 PSD 图层",
             read: "无法读取该文件",
             notExport: "该文件不是 NarraLeaf Figma 导出文件",
             tooNew: "该文件由更新版本的插件导出，请先更新 Studio",
@@ -393,6 +402,18 @@ export const uiEditor = {
             },
             aspectMismatch: {
                 other: "{count} 个画框的宽高比与项目不同，已居中放置",
+            },
+            blendMerged: {
+                other: "{count} 个使用混合模式的图层已合并到下方图层",
+            },
+            clipBaseDropped: {
+                other: "{count} 个剪贴图层的基底图层已隐藏，未导入",
+            },
+            layerStyles: {
+                other: "{count} 个图层的图层样式（投影、描边等）未导入",
+            },
+            imageCentered: {
+                other: "{count} 张图片与画布尺寸不同，已居中放置",
             },
             hiddenSkipped: {
                 other: "{count} 个隐藏图层未导入",

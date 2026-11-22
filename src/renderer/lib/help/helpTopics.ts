@@ -86,7 +86,7 @@ export const HELP_TOPIC_IDS = [
     "focusNavigationSettings",
     "pageMusic",
     "uiComponents",
-    "figmaImport",
+    "designImport",
     "blueprints",
     "scripts",
     "uiBindings",
@@ -516,7 +516,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["uiSurfaces", "uiBindings"],
     },
     {
-        id: "figmaImport",
+        id: "designImport",
         section: "interface",
         related: ["uiSurfaces", "uiComponents", "brand"],
     },

@@ -340,10 +340,15 @@ export const uiEditor = {
         slotTaken: "{slot} スロットにはすでにゲーム UI がある",
         surfaceNotAdded: "このインターフェースを貼り付けられなかった",
     },
-    figmaImport: {
-        open: "Figma デザインを読み込む",
-        pickerTitle: "Figma の書き出しファイルを選択",
+    designImport: {
+        open: "デザインを読み込む",
+        pickerTitle: "デザインファイルまたは画像を選択",
         title: "Figma デザインの読み込み",
+        titlePsd: "PSD の読み込み",
+        titleImages: "画像の読み込み",
+        documents: "ドキュメント",
+        images: "画像",
+        imagesPageName: "読み込んだ画像",
         frames: "フレーム",
         size: "{width} × {height}",
         import: "読み込む",
@@ -360,6 +365,10 @@ export const uiEditor = {
             other: "{count} 枚の画像をアセットに追加できなかった",
         },
         error: {
+            mixed: "Figma の書き出しファイル 1 つ、PSD 1 つ、または任意の数の画像を選択する",
+            psdRead: "PSD を読み込めない",
+            imageRead: "「{name}」を読み込めない",
+            bake: "PSD のレイヤーを描画できない",
             read: "ファイルを読み込めない",
             notExport: "NarraLeaf の Figma 書き出しファイルではない",
             tooNew: "新しいバージョンのプラグインで書き出されたファイル。読み込むには Studio を更新する",
@@ -399,6 +408,18 @@ export const uiEditor = {
             },
             aspectMismatch: {
                 other: "{count} 個のフレームは縦横比がプロジェクトと異なるため、中央に配置した",
+            },
+            blendMerged: {
+                other: "描画モードを使う {count} 個のレイヤーを下のレイヤーに結合した",
+            },
+            clipBaseDropped: {
+                other: "クリッピングのベースレイヤーが非表示のため、{count} 個のレイヤーは読み込んでいない",
+            },
+            layerStyles: {
+                other: "{count} 個のレイヤーのレイヤースタイル（ドロップシャドウ、境界線など）は読み込んでいない",
+            },
+            imageCentered: {
+                other: "{count} 枚の画像はキャンバスと大きさが異なるため、中央に配置した",
             },
             hiddenSkipped: {
                 other: "{count} 個の非表示レイヤーは読み込んでいない",

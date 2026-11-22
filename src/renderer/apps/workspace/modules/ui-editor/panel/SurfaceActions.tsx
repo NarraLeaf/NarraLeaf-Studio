@@ -10,9 +10,9 @@ type SurfaceActionsProps = {
     onOpenTemplateStore: () => void;
     templateLabel: string;
     templateDisabled: boolean;
-    /** Pick a Figma export and import its frames as pages. */
-    onImportFigma: () => void;
-    importFigmaLabel: string;
+    /** Pick a design (a Figma export, a PSD, images) and import it as pages. */
+    onImportDesign: () => void;
+    importDesignLabel: string;
     /**
      * Add the interface on the machine's clipboard, or undefined when there is not one.
      *
@@ -37,13 +37,13 @@ export function SurfaceActions({
     onOpenTemplateStore,
     templateLabel,
     templateDisabled,
-    onImportFigma,
-    importFigmaLabel,
+    onImportDesign,
+    importDesignLabel,
     onPaste,
     pasteLabel,
 }: SurfaceActionsProps) {
     // All four write: one creates a surface, one opens the store whose Apply imports a template
-    // bundle into the interface document, one imports Figma frames as pages, and one adds a copied
+    // bundle into the interface document, one imports a design as pages, and one adds a copied
     // interface to it.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     return (
@@ -71,10 +71,10 @@ export function SurfaceActions({
                 </button>
                 <button
                     type="button"
-                    onClick={onImportFigma}
-                    {...freeze.writes(templateDisabled, importFigmaLabel)}
-                    aria-label={importFigmaLabel}
-                    data-surface-figma-import=""
+                    onClick={onImportDesign}
+                    {...freeze.writes(templateDisabled, importDesignLabel)}
+                    aria-label={importDesignLabel}
+                    data-surface-design-import=""
                     className={SECONDARY_CLASS}
                 >
                     <Import className="w-4 h-4 shrink-0" />

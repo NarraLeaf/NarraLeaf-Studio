@@ -11,6 +11,10 @@
  * Images travel inside the file as base64, keyed by the id the plugin gave them. One file is one
  * thing to pick and one thing to send, which a folder of pictures beside a JSON file is not.
  *
+ * A PSD and a set of plain images are imported through the same model (`psdDesign.ts`,
+ * `imageDesign.ts`): each becomes a frame of `raster` layers whose pictures carry their bytes
+ * directly, so all three sources share one converter, one import and one report.
+ *
  * Comments in English per project convention.
  */
 
@@ -20,6 +24,35 @@ export const FIGMA_EXPORT_FORMAT = "narraleaf.figma-export";
 export const FIGMA_EXPORT_VERSION = 1;
 
 /** A colour as Figma stores it: each channel 0..1. */
+/** What the report counts. Each code has one sentence in the catalogue (`uiEditor.designImport.note.*`). */
+export const FIGMA_IMPORT_NOTE_CODES = [
+    "rasterized",
+    "multipleFills",
+    "missingFont",
+    "letterSpacing",
+    "mixedTextStyles",
+    "justifiedText",
+    "blendMode",
+    "paintSimplified",
+    "autoLayoutFlattened",
+    "missingImage",
+    "aspectMismatch",
+    "hiddenSkipped",
+    "blendMerged",
+    "clipBaseDropped",
+    "layerStyles",
+    "imageCentered",
+] as const;
+
+export type FigmaImportNoteCode = (typeof FIGMA_IMPORT_NOTE_CODES)[number];
+
+export type FigmaImportNote = {
+    code: FigmaImportNoteCode;
+    count: number;
+    /** The first few layers it concerns, by name (for `missingFont`, the font families). */
+    examples: string[];
+};
+
 export type FigmaRGBA = { r: number; g: number; b: number; a: number };
 
 /** Figma's 2x3 affine matrix, `[[a, c, tx], [b, d, ty]]`. */
@@ -116,14 +149,21 @@ export type FigmaExportNode = {
     /** A non-normal blend mode Figma reported; kept for the report. */
     blendMode?: string;
     text?: FigmaTextStyle;
+    /**
+     * The picture this layer is. `reason` says why it is one: Figma's plugin names what it had to
+     * draw (`vector`, `mask` ...), which the report counts; `layer` is a layer that was a picture
+     * to begin with - a PSD layer, a plain image - which it does not.
+     */
     raster?: { imageRef: string; reason: string };
     children?: FigmaExportNode[];
 };
 
 export type FigmaExportImage = {
     mime: string;
-    /** The picture's bytes, base64. */
-    data: string;
+    /** The picture's bytes, base64, as the plugin writes them. */
+    data?: string;
+    /** The picture's bytes, for a source read in Studio itself. */
+    bytes?: Uint8Array;
     name?: string;
 };
 
@@ -135,6 +175,8 @@ export type FigmaExportFile = {
     images: Record<string, FigmaExportImage>;
     /** Layers left out because they were hidden; counted by the plugin. */
     skippedHidden?: number;
+    /** What the source's own reader already had to simplify, added to the converter's report. */
+    notes?: FigmaImportNote[];
 };
 
 export type FigmaExportParseResult =

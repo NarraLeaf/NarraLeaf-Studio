@@ -33,11 +33,15 @@ import { SectionStack, StackSection } from "../../components/ui/SectionStack";
 import { useRailSections } from "./panel/useRailSections";
 import { UI_RAIL_FILL_SECTION, UI_RAIL_SECTIONS, type UIRailSection } from "./panel/railSections";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
-import { FigmaImportModal } from "./panel/figma/FigmaImportModal";
-import { parseFigmaExport, type FigmaExportFile } from "@/lib/ui-editor/figma-import/figmaExportFormat";
+import { DesignImportModal } from "./panel/design-import/DesignImportModal";
+import {
+    DESIGN_IMPORT_EXTENSIONS,
+    DesignSourceError,
+    openDesignSource,
+    type DesignSource,
+} from "./panel/design-import/designSources";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
-import { basename } from "@shared/utils/path";
 import { useStarterTitlePage } from "./panel/templates/useStarterTitlePage";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard, type SurfaceListStarterTile } from "./panel/SurfaceList";
@@ -157,7 +161,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
     const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
-    const [figmaImport, setFigmaImport] = useState<{ file: FigmaExportFile; fileName: string } | null>(null);
+    const [designSource, setDesignSource] = useState<DesignSource | null>(null);
     const blueprintRevision = useBlueprintDocumentRevision();
     const starterTitlePage = useStarterTitlePage();
     const rail = useRailSections();
@@ -461,31 +465,31 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         handleSurfaceClick(pasted);
     }, [documentService, handleSurfaceClick]);
 
-    const handleImportFigma = useCallback(async () => {
+    const handleImportDesign = useCallback(async () => {
         if (!context) {
             return;
         }
-        const selection = await appPrivilegedFacade.fs.selectFile(["json"], false, t("uiEditor.figmaImport.pickerTitle"));
+        const selection = await appPrivilegedFacade.fs.selectFile(
+            DESIGN_IMPORT_EXTENSIONS,
+            true,
+            t("uiEditor.designImport.pickerTitle"),
+        );
         if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
             return;
         }
-        const filePath = selection.data.data[0];
         const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-        const content = await filesystem.read(filePath, "utf-8");
-        if (!content.ok) {
-            console.warn("[figma import] could not read the export", content.error);
-            uiService?.showNotification(t("uiEditor.figmaImport.error.read"), "warning");
-            return;
+        try {
+            const source = await openDesignSource(selection.data.data, filesystem);
+            // The design arrives as pages, so the list shows pages while the dialog is open and after.
+            setKind("appSurface");
+            setDesignSource(source);
+        } catch (error) {
+            console.warn("[design import] could not open the design", error);
+            uiService?.showNotification(
+                error instanceof DesignSourceError ? error.message : t("uiEditor.designImport.error.read"),
+                "warning",
+            );
         }
-        const parsed = parseFigmaExport(content.data);
-        if (!parsed.ok) {
-            const reason = parsed.reason === "notJson" ? "notExport" : parsed.reason;
-            uiService?.showNotification(t(`uiEditor.figmaImport.error.${reason}`), "warning");
-            return;
-        }
-        // The frames arrive as pages, so the list shows pages while the dialog is open and after.
-        setKind("appSurface");
-        setFigmaImport({ file: parsed.file, fileName: basename(filePath) });
     }, [context, t, uiService]);
 
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
@@ -799,8 +803,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                         onOpenTemplateStore={() => setTemplateStoreOpen(true)}
                         templateLabel={t("uiEditor.templateStore.open")}
                         templateDisabled={!documentService}
-                        onImportFigma={() => void handleImportFigma()}
-                        importFigmaLabel={t("uiEditor.figmaImport.open")}
+                        onImportDesign={() => void handleImportDesign()}
+                        importDesignLabel={t("uiEditor.designImport.open")}
                         onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
                         pasteLabel={t("uiEditor.panel.pasteSurface")}
                     />
@@ -837,10 +841,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 visible={menuState.visible}
                 onClose={hideMenu}
             />
-            <FigmaImportModal
-                file={figmaImport?.file ?? null}
-                fileName={figmaImport?.fileName ?? ""}
-                onClose={() => setFigmaImport(null)}
+            <DesignImportModal
+                source={designSource}
+                onClose={() => setDesignSource(null)}
                 documentService={documentService}
                 // As a pasted interface is opened: the import is a step on the project's stack.
                 onApplied={handleSurfaceClick}

@@ -12,7 +12,7 @@ import {
 } from "@/lib/ui-editor/figma-import/convertFigmaFrames";
 import type { FigmaExportFile } from "@/lib/ui-editor/figma-import/figmaExportFormat";
 
-export type ApplyFigmaImportResult = {
+export type ApplyDesignImportResult = {
     surfaces: UISurface[];
     notes: FigmaImportNote[];
     /** Pictures that could not be written into the asset library; the widgets showing them are empty. */
@@ -98,7 +98,8 @@ function safeFileStem(name: string | undefined, fallback: string): string {
 }
 
 /**
- * Put the chosen frames of an export into the project as pages.
+ * Put the chosen frames of a design (a Figma export, or a PSD or images expressed as one) into the
+ * project as pages.
  *
  * The pictures go into the image library first, in a folder of their own named after the Figma
  * file, because the import is what rewrites the document's picture references and needs the new
@@ -106,11 +107,11 @@ function safeFileStem(name: string | undefined, fallback: string): string {
  * be written is counted rather than fatal. The pages arrive through `importTemplateBundle`, which
  * makes them one step on the project's undo stack.
  */
-export async function applyFigmaImport(
+export async function applyDesignImport(
     file: FigmaExportFile,
     frameIds: readonly string[],
     documentService: UIDocumentService,
-): Promise<ApplyFigmaImportResult> {
+): Promise<ApplyDesignImportResult> {
     const assets = documentService.getContext().services.get<AssetsService>(Services.Assets);
     const fonts = assets.getOrderedAssets(AssetType.Font).map(asset => ({ id: asset.id, name: asset.name }));
     const converted = convertFigmaFrames(file, {
@@ -140,18 +141,18 @@ export async function applyFigmaImport(
                 const created = await assets.createLocalAssetFromBytes(
                     AssetType.Image,
                     `${safeFileStem(image.name, `image-${index}`)}.${extension}`,
-                    decodeBase64(image.data),
+                    image.bytes ?? decodeBase64(image.data ?? ""),
                     groupId,
                 );
                 if (created.success && created.data) {
                     assetIdMap[ref] = created.data.id;
                 } else {
                     imagesSkipped += 1;
-                    console.warn(`[figma import] could not write picture "${ref}": ${created.error}`);
+                    console.warn(`[design import] could not write picture "${ref}": ${created.error}`);
                 }
             } catch (error) {
                 imagesSkipped += 1;
-                console.warn(`[figma import] could not write picture "${ref}"`, error);
+                console.warn(`[design import] could not write picture "${ref}"`, error);
             }
         }
     }

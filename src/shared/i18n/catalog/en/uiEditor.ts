@@ -371,10 +371,15 @@ export const uiEditor = {
         slotTaken: "The {slot} slot already has a Game UI",
         surfaceNotAdded: "The interface could not be pasted",
     },
-    figmaImport: {
-        open: "Import Figma design",
-        pickerTitle: "Choose a Figma export",
+    designImport: {
+        open: "Import design",
+        pickerTitle: "Choose a design file or images",
         title: "Import Figma design",
+        titlePsd: "Import PSD",
+        titleImages: "Import images",
+        documents: "Document",
+        images: "Images",
+        imagesPageName: "Imported images",
         frames: "Frames",
         size: "{width} × {height}",
         import: "Import",
@@ -394,6 +399,10 @@ export const uiEditor = {
             other: "{count} pictures could not be added to the assets.",
         },
         error: {
+            mixed: "Choose one Figma export, one PSD, or any number of images.",
+            psdRead: "Could not read the PSD.",
+            imageRead: "Could not read “{name}”.",
+            bake: "Could not draw the PSD layers.",
             read: "Could not read the file.",
             notExport: "The file is not a NarraLeaf Figma export.",
             tooNew: "The file was exported by a newer version of the plugin. Update Studio to import it.",
@@ -444,6 +453,22 @@ export const uiEditor = {
             aspectMismatch: {
                 one: "{count} frame has a different aspect ratio from the project and is centred.",
                 other: "{count} frames have a different aspect ratio from the project and are centred.",
+            },
+            blendMerged: {
+                one: "{count} layer with a blend mode was merged into the layer below it.",
+                other: "{count} layers with blend modes were merged into the layers below them.",
+            },
+            clipBaseDropped: {
+                one: "{count} clipped layer was left out because the layer it clips to is hidden.",
+                other: "{count} clipped layers were left out because the layers they clip to are hidden.",
+            },
+            layerStyles: {
+                one: "The layer style of {count} layer, such as a shadow or stroke, was not imported.",
+                other: "The layer styles of {count} layers, such as shadows or strokes, were not imported.",
+            },
+            imageCentered: {
+                one: "{count} image is not the size of the canvas and was placed in the centre.",
+                other: "{count} images are not the size of the canvas and were placed in the centre.",
             },
             hiddenSkipped: {
                 one: "{count} hidden layer was left out.",

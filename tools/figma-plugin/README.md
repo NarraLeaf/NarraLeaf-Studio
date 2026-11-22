@@ -1,7 +1,7 @@
 # NarraLeaf Studio Export (Figma plugin)
 
 Exports Figma frames to a single `.narraleaf-figma.json` file that the interface editor in
-NarraLeaf Studio imports as pages (Interfaces panel, **Import Figma design** button).
+NarraLeaf Studio imports as pages (Interfaces panel, **Import design** button).
 
 ## Install
 
