@@ -4,6 +4,7 @@ import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
+import { NESTED_SECTION_CLASS } from "@/lib/components/elements/textLevels";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import type { IconButtonSelection } from "@/apps/workspace/modules/properties/framework/types";
@@ -207,7 +208,9 @@ function AnimationPhaseBlock({
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs text-fg-muted">{label}</span>
+                {/* The block's name is a heading over the fields in it, so it is drawn as one (the
+                    nested-section form), not in the fields' own label style. */}
+                <span className={NESTED_SECTION_CLASS.panel}>{label}</span>
                 {showExitBlocking ? (
                     <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
                         <span>{t("widgetChrome.pageAnimation.wait")}</span>
@@ -246,7 +249,7 @@ function AnimationPhaseBlock({
                     />
                 </label>
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <div className="min-w-0 space-y-1">
                     <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.direction")}</span>
                     <IconButtonSegGroup
@@ -276,25 +279,28 @@ function AnimationPhaseBlock({
                     />
                 </label>
             </div>
-            {/* Its own labelled row rather than a third column beside the seconds: the inspector is
-                narrow enough that a third column truncates the preset name to one character. */}
-            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs text-fg-muted">
-                    {t("widgetChrome.pageAnimation.delay")}
-                </span>
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatDurationSeconds(delaySeconds)}
-                    onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
-                    inputMode="decimal"
-                    type="number"
-                    min={MIN_DURATION_SECONDS}
-                    max={MAX_DURATION_SECONDS}
-                    step={DURATION_STEP_SECONDS}
-                    unit="s"
-                    className="w-full min-w-0"
-                    popoverThreshold={128}
-                />
-            </label>
+            {/* Its own row rather than a third column beside the seconds: the inspector is narrow
+                enough that a third column truncates the preset name to one character. Label above,
+                in the numbers' column, like Duration and Angle over it: a label beside the field
+                made it the one field in the block read the other way. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                <span aria-hidden="true" />
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.delay")}</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(delaySeconds)}
+                        onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
+                    />
+                </label>
+            </div>
         </div>
     );
 }
@@ -321,7 +327,7 @@ function ChildTimingBlock({
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs text-fg-muted">
+                <span className={NESTED_SECTION_CLASS.panel}>
                     {t("widgetChrome.pageAnimation.children")}
                 </span>
                 <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
@@ -333,23 +339,25 @@ function ChildTimingBlock({
                     />
                 </label>
             </div>
-            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs text-fg-muted">
-                    {t("widgetChrome.pageAnimation.stagger")}
-                </span>
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatDurationSeconds(staggerSeconds)}
-                    onFiniteNumber={value => onStaggerChange(normalizeDurationInput(value))}
-                    inputMode="decimal"
-                    type="number"
-                    min={MIN_DURATION_SECONDS}
-                    max={MAX_DURATION_SECONDS}
-                    step={DURATION_STEP_SECONDS}
-                    unit="s"
-                    className="w-full min-w-0"
-                    popoverThreshold={128}
-                />
-            </label>
+            {/* Label above, in the numbers' column, as in the phase blocks above. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                <span aria-hidden="true" />
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.stagger")}</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(staggerSeconds)}
+                        onFiniteNumber={value => onStaggerChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
+                    />
+                </label>
+            </div>
         </div>
     );
 }

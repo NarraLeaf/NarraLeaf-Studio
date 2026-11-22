@@ -7,8 +7,6 @@ import {
     Eye,
     EyeOff,
     Link,
-    MoveHorizontal,
-    MoveVertical,
     RotateCw,
 } from "lucide-react";
 import { PanelComponentProps } from "../types";
@@ -373,7 +371,7 @@ function createLayoutInspectorSchema(
                 {
                     id: "layout.x",
                     label: "X",
-                    icon: <MoveHorizontal className="w-4 h-4 text-fg-muted" />,
+                    icon: <span className="w-4 text-center text-2xs text-fg-muted">X</span>,
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {
@@ -392,7 +390,7 @@ function createLayoutInspectorSchema(
                 {
                     id: "layout.y",
                     label: "Y",
-                    icon: <MoveVertical className="w-4 h-4 text-fg-muted" />,
+                    icon: <span className="w-4 text-center text-2xs text-fg-muted">Y</span>,
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {

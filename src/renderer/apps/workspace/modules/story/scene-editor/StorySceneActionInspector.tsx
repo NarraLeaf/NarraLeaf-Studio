@@ -3318,7 +3318,7 @@ function ColorTextField(props: { label: string; value: string; onChange: (value:
                     allowOpacity={false}
                     onChange={next => props.onChange(colorValueToCss({ hex: next.hex, alpha: 1 }))}
                 />
-                <EnhancedInput value={props.value} onChange={props.onChange} />
+                <EnhancedInput className="min-w-0 flex-1" value={props.value} onChange={props.onChange} />
             </div>
         </div>
     );

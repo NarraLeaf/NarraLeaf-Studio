@@ -196,6 +196,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             min={8}
                                                             max={256}
                                                             unit="px"
+                                                            className="w-full min-w-0"
                                                             leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                                                         />
                                                     );
@@ -228,6 +229,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             min={0.8}
                                                             max={4}
                                                             step={0.05}
+                                                            className="w-full min-w-0"
                                                             leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
                                                             data-tip={t("widgets.typography.lineHeightHint")}
                                                         />

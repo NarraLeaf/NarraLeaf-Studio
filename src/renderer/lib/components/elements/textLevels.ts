@@ -40,6 +40,19 @@ export const TEXT_LEVEL_CLASS: Readonly<Record<TextDensity, Readonly<Record<Text
     },
 };
 
+/**
+ * A `section` inside another section: one size down, the same weight and colour, and no divider.
+ *
+ * Not a sixth level. It is the section level's nested form, for a widget that groups its own
+ * sections under one (a button's Text holds Content, Typography and Colour). Drawn at the full
+ * section size, the outer heading and the first inner one stacked into two identical headings.
+ * It still differs from `label` in weight and colour, so it never reads as a field's name.
+ */
+export const NESTED_SECTION_CLASS: Readonly<Record<TextDensity, string>> = {
+    panel: "text-2xs font-semibold text-fg",
+    page: "text-xs font-semibold text-fg",
+};
+
 /** The class for one level at one density. */
 export function textLevelClass(level: TextLevel, density: TextDensity = "panel"): string {
     return TEXT_LEVEL_CLASS[density][level];

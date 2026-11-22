@@ -290,6 +290,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           min={TEXT_FONT_SIZE_MIN}
                           max={TEXT_FONT_SIZE_MAX}
                           unit="px"
+                          className="w-full min-w-0"
                           leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                         />
                       );
@@ -320,6 +321,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           min={0.8}
                           max={4}
                           step={0.05}
+                          className="w-full min-w-0"
                           leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
                           data-tip={t("widgets.typography.lineHeightHint")}
                         />

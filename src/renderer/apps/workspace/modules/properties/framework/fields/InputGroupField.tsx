@@ -48,6 +48,12 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
         "items-stretch",
     ].join(" ");
 
+    // Rendered up front so an empty answer takes no slot: the wrapper and the gap before it used to
+    // stay when `trailing` returned nothing, and the inputs then ended 8px short of every other row.
+    const trailing = field.trailing
+        ? field.trailing({ data, onSaving, readOnly: Boolean(field.readOnly || field.disabled) })
+        : null;
+
     return (
         <FieldLayout field={field} className={field.className}>
             <div
@@ -67,7 +73,11 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
 
                     return (
                         <div key={item.id} className={itemClassNames}>
-                            {item.label && (
+                            {/* An item with an icon is named by the icon, and its label becomes the
+                                field's accessible name and tooltip. Showing both put a row of "X"
+                                and "Y" above inputs that already start with an axis glyph, and lifted
+                                that group a line below its neighbours. */}
+                            {item.label && !item.icon && (
                                 <span className="text-2xs text-fg-muted">
                                     {item.label}
                                 </span>
@@ -79,6 +89,8 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
                                 placeholder={item.placeholder}
                                 unit={item.unit}
                                 leftIcon={item.icon}
+                                aria-label={item.label}
+                                data-tip={item.icon ? item.label : undefined}
                                 type={item.type || "text"}
                                 inputMode={item.type === "number" ? "decimal" : undefined}
                                 disabled={field.disabled || item.disabled}
@@ -92,11 +104,11 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
                         </div>
                     );
                 })}
-                {field.trailing ? (
+                {trailing ? (
                     // Bottom-aligned: the inputs carry a label above them, and a control that belongs
                     // to the whole group has none, so stretching it would leave it a row too tall.
                     <div className="flex shrink-0 items-end">
-                        {field.trailing({ data, onSaving, readOnly: Boolean(field.readOnly || field.disabled) })}
+                        {trailing}
                     </div>
                 ) : null}
             </div>

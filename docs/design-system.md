@@ -148,6 +148,7 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 |---|---|---|---|---|
 | title | 面板标题栏、窗口与对话框标题 | 14 semibold | 16 semibold | `PanelHeader`、`Modal` |
 | section | 一组字段或设置的名字 | 12 semibold | 14 semibold | `SectionTitle`（`SectionField`、故事检查器 `Section` 都用它） |
+| ↳ 嵌套 section | section 里的子分区（按钮「文本」下的内容／排版／颜色）；不是第六级，不画分隔线 | 11 semibold | 12 semibold | `SectionTitle nested`（`SectionField` 嵌套时自动） |
 | item | 一条设置、一张卡片、列表主文字 | 12 regular | 14 regular | 列表行、`SectionCard` 标题 |
 | label | 控件上方或旁边的名字 | 11 regular | 12 regular | `FieldLabel` |
 | meta | 一句话预期、计数、尺寸、时间 | 11 | 12 | 纯文本 |

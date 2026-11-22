@@ -1,7 +1,7 @@
 import React from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../utils/cn";
-import { textLevelClass, type TextDensity } from "./textLevels";
+import { NESTED_SECTION_CLASS, textLevelClass, type TextDensity } from "./textLevels";
 
 export interface SectionTitleProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
     /** `panel` for side panels and the inspector, `page` for dialogs and the settings window. */
@@ -16,6 +16,8 @@ export interface SectionTitleProps extends Omit<React.HTMLAttributes<HTMLDivElem
      */
     collapsed?: boolean;
     onToggle?: () => void;
+    /** A section inside another section: drawn one size down (see `NESTED_SECTION_CLASS`). */
+    nested?: boolean;
     children: React.ReactNode;
 }
 
@@ -32,12 +34,13 @@ export function SectionTitle({
     actions,
     collapsed,
     onToggle,
+    nested = false,
     className,
     children,
     ...props
 }: SectionTitleProps) {
     const collapsible = onToggle !== undefined;
-    const title = <Tag className={cn("m-0 min-w-0 truncate", textLevelClass("section", density))}>{children}</Tag>;
+    const title = <Tag className={cn("m-0 min-w-0 truncate", nested ? NESTED_SECTION_CLASS[density] : textLevelClass("section", density))}>{children}</Tag>;
     return (
         <div className={cn("flex min-w-0 items-center gap-1.5", className)} {...props}>
             {collapsible ? (

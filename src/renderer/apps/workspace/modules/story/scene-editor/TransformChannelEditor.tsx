@@ -15,10 +15,10 @@ import {
     AnchoredPanel,
     CONTROL_HEIGHT_CLASS,
     FieldLabel,
-    IconButton,
     SearchInput,
     Select,
     Slider,
+    textLevelClass,
     useSliderDraft,
     type ContextMenuDef,
     type PanelAnchor,
@@ -69,12 +69,14 @@ import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLe
  *
  * **Rows are spaced, not ruled.** The properties panel separates fields with space; a hairline per
  * row turned a five-channel transform into a table, which is not what the rest of the inspector
- * looks like. Every control sits on the `sm` step of the shared scale (`docs/design-system.md` §3),
- * so the list lines up with the fields above it instead of setting its own height.
+ * looks like.
+ *
+ * **Rows are fields like the ones above them.** The label sits above the control and the control
+ * spans the column, at the `md` height every other inspector field uses. The rows used to put the
+ * label in an 80px column beside a shorter `sm` control: in a section whose Preset, Duration and
+ * Easing fields are label-above and full width, the channels started further right, ended further
+ * left and stood shorter than the fields they sit under, and read as a different panel pasted in.
  */
-
-/** The label column. `FieldLabel` is the sanctioned eyebrow; this only moves it beside the control. */
-const CHANNEL_LABEL_CLASS = "mb-0 w-20 shrink-0 truncate leading-7";
 
 /**
  * The CSS `mix-blend-mode` keywords, as CSS spells them.
@@ -115,45 +117,43 @@ function ChannelRow(props: {
 }) {
     return (
         <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            {/* The remove button rides on the label line, at its end, so it takes no width from
+                the control: every control in the section spans the same column. */}
+            <div className="mb-1 flex h-5 items-center gap-2">
                 <FieldLabel
                     as="span"
-                    className={cn(CHANNEL_LABEL_CLASS, props.muted && "text-fg-subtle")}
+                    className={cn("mb-0 min-w-0 flex-1 truncate", props.muted && "text-fg-subtle")}
                 >
                     {props.label}
                 </FieldLabel>
-                <div className="min-w-0 flex-1">{props.children}</div>
                 {props.onRemove ? (
-                    <IconButton
-                        size="sm"
-                        variant="ghost"
+                    // A plain square the label line's height: the shared `IconButton` starts at the
+                    // 28px `sm` step, which would make this line taller than every other label.
+                    <button
+                        type="button"
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-fg-subtle transition-colors duration-150 hover:bg-edge-subtle hover:text-fg"
                         aria-label={props.removeLabel}
                         data-tip={props.removeLabel}
                         onClick={props.onRemove}
                     >
-                        <X className="h-3.5 w-3.5" />
-                    </IconButton>
-                ) : (
-                    // The button's own footprint, kept so an inherited row's control ends where a
-                    // stated one's does instead of running under where the button would be.
-                    <span className="h-7 w-7 shrink-0" aria-hidden="true" />
-                )}
+                        <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                ) : null}
             </div>
-            {props.below ? (
-                // A second line, indented by an empty copy of the label column so it lines up with
-                // the control above rather than with a measured padding.
-                <div className="mt-1 flex items-start gap-2">
-                    <span className={cn(CHANNEL_LABEL_CLASS, "block")} aria-hidden="true" />
-                    {/* The right padding is the remove button plus the gap before it (`h-7` +
-                        `gap-2`), so the second line ends where the control above it ends. */}
-                    <div className="min-w-0 flex-1 pr-9">{props.below}</div>
-                </div>
-            ) : null}
+            <div className="min-w-0">{props.children}</div>
+            {props.below ? <div className="mt-1.5 min-w-0">{props.below}</div> : null}
         </div>
     );
 }
 
-function ChannelNumber(props: { value: number | undefined; onChange: (value: number) => void; fallback: number; label?: string }) {
+function ChannelNumber(props: {
+    value: number | undefined;
+    onChange: (value: number) => void;
+    fallback: number;
+    label?: string;
+    /** A one-letter axis drawn inside the field's leading edge, so the field itself starts where the control above it starts. */
+    prefix?: string;
+}) {
     return (
         <NumericDraftEnhancedInput
             committedDisplay={props.value === undefined ? "" : String(props.value)}
@@ -163,8 +163,8 @@ function ChannelNumber(props: { value: number | undefined; onChange: (value: num
             inputMode="decimal"
             aria-label={props.label}
             popoverWhenNarrow={false}
-            size="sm"
-            inputClassName="px-2"
+            leftIcon={props.prefix ? <span className="text-2xs text-fg-muted">{props.prefix}</span> : undefined}
+            inputClassName={props.prefix ? "pl-7" : undefined}
         />
     );
 }
@@ -175,7 +175,7 @@ function ChannelText(props: { value: string; onChange: (value: string) => void; 
             value={props.value}
             placeholder={props.placeholder}
             onChange={props.onChange}
-            size="sm"
+            className="min-w-0 flex-1"
         />
     );
 }
@@ -185,7 +185,6 @@ function ChannelSelect(props: { label: string; options: SelectOption[]; value: s
         <Select
             fullWidth
             portalMenu
-            size="sm"
             ariaLabel={props.label}
             options={props.options}
             value={props.value}
@@ -206,11 +205,26 @@ function ChannelSeconds(props: { value: number | undefined; onChange: (ms: numbe
     );
 }
 
-/** A labelled number sharing a line with its siblings - the shape every multi-value channel uses. */
-function AxisNumber(props: { label: string; value: number | undefined; fallback: number; onChange: (value: number) => void }) {
+/**
+ * A labelled number sharing a line with its siblings - the shape every multi-value channel uses.
+ *
+ * The label never sits beside the field: a label to the left pushed each field in by the label's
+ * own width, so the first field started short of the control above it and labels of different
+ * lengths ("Top %", "Radius X %") left a grid of fields with ragged edges. An axis letter (`axis`)
+ * goes inside the field's leading edge; a word goes above it. Either way every field's edges are
+ * the column's edges.
+ */
+function AxisNumber(props: { label: string; value: number | undefined; fallback: number; onChange: (value: number) => void; axis?: boolean }) {
+    if (props.axis) {
+        return (
+            <div className="min-w-0 flex-1">
+                <ChannelNumber label={props.label} prefix={props.label} value={props.value} onChange={props.onChange} fallback={props.fallback} />
+            </div>
+        );
+    }
     return (
-        <label className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="shrink-0 text-2xs text-fg-subtle">{props.label}</span>
+        <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className={cn("truncate", textLevelClass("label"))}>{props.label}</span>
             <ChannelNumber label={props.label} value={props.value} onChange={props.onChange} fallback={props.fallback} />
         </label>
     );
@@ -343,9 +357,9 @@ function MaskSettings(props: { to: StoryTransformProps; onChange: (patch: Partia
                     const label = props.t(setting.labelKey);
                     const current = props.to[setting.key];
                     return (
-                        <div key={setting.key} className="flex items-center gap-2">
-                            <FieldLabel as="span" className="mb-0 w-16 shrink-0 truncate leading-7">{label}</FieldLabel>
-                            <div className="min-w-0 flex-1">
+                        <div key={setting.key} className="min-w-0">
+                            <FieldLabel as="span" className="mb-1 block truncate">{label}</FieldLabel>
+                            <div className="min-w-0">
                                 <ChannelSelect
                                     label={label}
                                     options={[
@@ -458,12 +472,14 @@ function channelBody(
                         line would refuse - pixels typed where shares belong stop at the bound. */}
                     <AxisNumber
                         label={t("storyInspector.transformChannel.xAlign")}
+                        axis
                         value={to.position?.xalign}
                         fallback={0.5}
                         onChange={xalign => setProps({ position: { ...(to.position ?? {}), xalign: clampToAlignReach(xalign) } })}
                     />
                     <AxisNumber
                         label={t("storyInspector.transformChannel.yAlign")}
+                        axis
                         value={to.position?.yalign}
                         fallback={0.5}
                         onChange={yalign => setProps({ position: { ...(to.position ?? {}), yalign: clampToAlignReach(yalign) } })}
@@ -933,8 +949,10 @@ export function TransformChannelEditor(props: {
     const inheritedRef: StoryTransformRef = { mode: "props", to: props.inherited ?? {} };
     const inheritedChannels = props.inherited ? statedTransformChannels(inheritedRef) : [];
 
+    // Rows sit further apart than a row's own second line sits from its first (`gap-2.5` against
+    // `mt-1`), so the X/Y line under "Custom" reads as part of Position, not as a row of its own.
     return (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2.5">
             {stated.map(channel => {
                 const body = channelBody(channel, ref, props.onChange, t);
                 return (
@@ -950,7 +968,7 @@ export function TransformChannelEditor(props: {
                 );
             })}
             {inheritedChannels.length > 0 ? (
-                <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex flex-col gap-2.5 pt-1">
                     <FieldLabel as="span" className="text-fg-subtle">{props.inheritedLabel}</FieldLabel>
                     {inheritedChannels.map(channel => {
                         const body = channelBody(channel, inheritedRef, next => {

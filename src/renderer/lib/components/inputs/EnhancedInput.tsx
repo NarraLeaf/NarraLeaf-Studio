@@ -246,8 +246,11 @@ export function EnhancedInput({
         };
     }, [closePopover, isPopoverOpen]);
 
-    const paddingLeftClass = leftIcon ? "pl-10" : "pl-3";
-    const paddingRightClass = unit ? "pr-10" : "pr-3";
+    // The icon sits at `left-2` and is 16px wide, a unit at `right-2` is a short word ("px", "%",
+    // "°"): 32px clears either with 8px to spare. These were 40px a side, which in a half-width
+    // field with both left 32px for the number, and "300.00" showed as "30...".
+    const paddingLeftClass = leftIcon ? "pl-8" : "pl-3";
+    const paddingRightClass = unit ? "pr-8" : "pr-3";
     // Match width/layout of `type="number"` when callers use `type="text"` + inputMode for empty-safe controlled values.
     const useNumericChrome =
         rest.type === "number" ||
