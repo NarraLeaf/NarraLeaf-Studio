@@ -50,10 +50,10 @@ export function StatList({ children, columns = 2 }: { children: React.ReactNode;
     return (
         <dl
             className={[
-                // Columns are capped at 15rem: a value sits within reach of its label instead of at the
-                // far edge of a card as wide as the pane, and the card is only as wide as its rows.
-                "grid w-fit max-w-full grid-cols-[minmax(0,15rem)] gap-x-12 rounded-md border border-edge bg-fill-subtle px-3 py-2",
-                columns === 2 ? "sm:grid-cols-[repeat(2,15rem)]" : "",
+                // As wide as the section, like the localization bars and the activity chart below it, so
+                // every block on the page shares one right edge; two columns split that width evenly.
+                "grid w-full grid-cols-1 gap-x-12 rounded-md border border-edge bg-fill-subtle px-3 py-2",
+                columns === 2 ? "sm:grid-cols-2" : "",
             ]
                 .filter(Boolean)
                 .join(" ")}
