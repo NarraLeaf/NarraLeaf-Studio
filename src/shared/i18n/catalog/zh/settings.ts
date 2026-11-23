@@ -29,6 +29,17 @@ export const settings = {
         failed: "读取本机字体失败：{message}",
         notInstalled: "未安装",
     },
+    groups: {
+        update: "更新",
+        story: "故事编辑器",
+        spellcheck: "拼写检查",
+        snapshots: "场景快照",
+        textEditor: "文本编辑器",
+        blueprint: "蓝图",
+        editorTabs: "标签与窗口",
+        cacheAndLogs: "缓存与日志",
+        reset: "还原",
+    },
     categories: {
         general: {
             label: "常规",
@@ -155,7 +166,7 @@ export const settings = {
         },
         editorFontSize: {
             label: "故事编辑器字号",
-            description: "场景编辑器中故事文本的字号（px，{min}-{max}）",
+            description: "场景编辑器中故事文本的字号（{min}-{max}）",
         },
         editorFontFamily: {
             label: "故事编辑器字体",
@@ -184,7 +195,7 @@ export const settings = {
             description: "拖到空白画布后松开即可选择节点，该节点的输出连到此引脚",
         },
         slashAtAlias: {
-            label: "用“@”打开动作创建",
+            label: "用「@」打开动作创建",
             description: "以防中文输入法的「/」与「、」冲突",
         },
         localizedCommands: {
@@ -311,7 +322,7 @@ export const settings = {
         },
         projectDefaultAuthor: {
             label: "新建项目的默认作者",
-            description: "创建项目时预填作者，已有项目保持不变",
+            description: "创建项目时预填作者，为空时作者栏留空；已有项目保持不变",
         },
         versionControlAuthor: {
             label: "作者名",
@@ -441,7 +452,6 @@ export const settings = {
         installed: {
             title: "已安装",
             emptyTitle: "尚未安装词典",
-            emptyDescription: "下载词典后即可对正文进行拼写检查",
         },
         available: {
             title: "可下载",

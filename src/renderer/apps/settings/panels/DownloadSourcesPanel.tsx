@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, Input, Switch } from "@/lib/components/elements";
@@ -64,10 +64,17 @@ export function DownloadSourcesPanel() {
     return (
         <div className="flex flex-col gap-2">
             {failed && <SettingSaveFailure retry={retry} />}
-            <p className="text-xs text-fg-muted">{t("settings.network.rewrites.hint")}</p>
+            {/* The hint reads as a row's description and the add button sits where a row keeps its
+                control; under the list it was the one button in the pane that stood at the left. */}
+            <div className="flex items-start justify-between gap-4">
+                <p className="min-w-0 text-xs text-fg-subtle">{t("settings.network.rewrites.hint")}</p>
+                <Button size="sm" variant="secondary" className="h-7 shrink-0" onClick={addRule}>
+                    {t("settings.network.rewrites.add")}
+                </Button>
+            </div>
 
             {rules.length === 0 ? (
-                <p className="py-2 text-xs text-fg-subtle">{t("settings.network.rewrites.empty")}</p>
+                <p className="text-xs text-fg-subtle">{t("settings.network.rewrites.empty")}</p>
             ) : (
                 <div className="flex flex-col gap-1">
                     {rules.map((rule, index) => {
@@ -119,13 +126,7 @@ export function DownloadSourcesPanel() {
                 </div>
             )}
 
-            <div className="flex items-center gap-2">
-                <Button size="sm" variant="secondary" className="h-7" onClick={addRule}>
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    {t("settings.network.rewrites.add")}
-                </Button>
-                <ProbeSummary probes={probes} />
-            </div>
+            <ProbeSummary probes={probes} />
         </div>
     );
 }

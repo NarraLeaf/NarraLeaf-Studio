@@ -1512,14 +1512,14 @@ The Fetch node makes an HTTP request while the game runs, for an online notice b
 
 故事的原文会被检查拼写，译文不检查
 
-检查所用的语言跟随项目的原文语言，也可以在设置中改为其他语言或不检查。某种语言在其拼写词典下载之后才会被检查，下载入口在设置的「拼写词典」中；在此之前不会标出任何内容
+检查所用的语言跟随项目的原文语言，也可以在设置中改为其他语言或不检查。某种语言在其拼写词典下载之后才会被检查，下载入口在设置的「编辑器 › 拼写检查」中；在此之前不会标出任何内容
 
 - 红色波浪线标出拼写错误。右键点击给出替换建议，并可将该词加入项目词典
 - 中文与日语按词逐个对照该语言的词典读取。被标出的是切不出任何已知词的字串若拼写错误恰为另一个有效词，则不会被检出
 
 The source text of a story is checked for spelling. Translations are not.
 
-The language follows the project's source language, and can be set to another one, or to none, in Settings. A language is checked once its dictionary has been downloaded, under Spelling dictionaries in the same place. Until then nothing is marked.
+The language follows the project's source language, and can be set to another one, or to none, in Settings. A language is checked once its dictionary has been downloaded, under Editor › Spell checking in the same place. Until then nothing is marked.
 
 - A red wave marks a misspelling. Right-clicking it offers replacements, and offers to add the word to the project dictionary.
 - Chinese and Japanese are read a word at a time against the dictionary of the language. What is marked is a run of characters that spells no word in it. A mistyped character that spells another word is not found.

@@ -19,6 +19,12 @@ export interface BaseInputProps extends Omit<React.InputHTMLAttributes<HTMLInput
      * clickable.
      */
     rightIconLabel?: string;
+    /**
+     * A short unit drawn inside the field's right edge (`ms`, `%`, `px`). Text, not a control: it
+     * is not clickable and does not take focus. Inside rather than beside the field, so a field
+     * with a unit is as wide as one without and a column of them shares one right edge.
+     */
+    suffix?: React.ReactNode;
 }
 
 const variantStyles: Record<InputVariant, string> = {
@@ -71,6 +77,13 @@ const rightIconGutterStyles: Record<InputSize, string> = {
     lg: "pr-11",
 };
 
+/** Text gutter for a `suffix`: wide enough for a three-letter unit (`min`) at each size. */
+const suffixGutterStyles: Record<InputSize, string> = {
+    sm: "pr-9",
+    md: "pr-11",
+    lg: "pr-12",
+};
+
 const inputBase = "w-full bg-fill-subtle border rounded-md text-fg placeholder-fg-subtle "
     + "focus:outline-none transition-all duration-150 ease-out "
     + "disabled:opacity-50 disabled:cursor-not-allowed cursor-text";
@@ -87,6 +100,7 @@ export function Input({
     rightIcon,
     onRightIconClick,
     rightIconLabel,
+    suffix,
     onKeyDown,
     ...props
 }: BaseInputProps) {
@@ -108,6 +122,7 @@ export function Input({
                     // After sizeStyles on purpose - see the gutter maps above.
                     leftIcon && leftIconGutterStyles[size],
                     rightIcon && rightIconGutterStyles[size],
+                    suffix != null && !rightIcon && suffixGutterStyles[size],
                     className,
                 )}
                 {...props}
@@ -117,6 +132,18 @@ export function Input({
                 // conversion away, on the keystroke that was meant to finish the word.
                 onKeyDown={guardImeKeys(onKeyDown)}
             />
+            {suffix != null && !rightIcon && (
+                <span
+                    aria-hidden
+                    className={cn(
+                        "pointer-events-none absolute inset-y-0 right-0 flex items-center text-xs text-fg-subtle",
+                        rightIconInsetStyles[size],
+                        props.disabled && "opacity-50",
+                    )}
+                >
+                    {suffix}
+                </span>
+            )}
             {rightIcon && (
                 <div className={cn(
                     "absolute inset-y-0 right-0 flex items-center",

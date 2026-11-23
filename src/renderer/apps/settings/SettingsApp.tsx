@@ -59,6 +59,10 @@ export function SettingsApp() {
     const { values, loading } = useGlobalSettings(storedKeys);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
+    // What the navigation lights: the category scrolled to, which follows the list as the author
+    // scrolls. Apart from `selectedCategory`, which is where the list was last asked to jump - the
+    // two would otherwise feed each other, a scroll lighting a row and the lit row scrolling again.
+    const [activeCategory, setActiveCategory] = useState<string>(categories[0]?.key ?? "");
     const [selectedSettingId, setSelectedSettingId] = useState<string | undefined>(undefined);
     const [categoryScrollSignal, setCategoryScrollSignal] = useState(0);
 
@@ -186,6 +190,7 @@ export function SettingsApp() {
             skipConfirm: setting.skipConfirm,
             disabled: unavailable,
             panel: setting.panel,
+            group: setting.group ? { key: setting.group, label: t(`settings.groups.${setting.group}` as TranslationKey) } : undefined,
             };
         },
         [t, availability, spellcheckLanguages],
@@ -268,6 +273,7 @@ export function SettingsApp() {
 
     const handleCategoryClick = useCallback((categoryKey: string) => {
         setSelectedCategory(categoryKey);
+        setActiveCategory(categoryKey);
         setSelectedSettingId(undefined);
         setCategoryScrollSignal(value => value + 1);
     }, []);
@@ -285,6 +291,7 @@ export function SettingsApp() {
         if (setting) {
             setSearchQuery("");
             setSelectedCategory(setting.category);
+            setActiveCategory(setting.category);
             setSelectedSettingId(setting.key);
             setCategoryScrollSignal(value => value + 1);
             return true;
@@ -292,6 +299,7 @@ export function SettingsApp() {
         if (categories.some(category => category.key === highlight)) {
             setSearchQuery("");
             setSelectedCategory(highlight);
+            setActiveCategory(highlight);
             setSelectedSettingId(undefined);
             setCategoryScrollSignal(value => value + 1);
             return true;
@@ -346,34 +354,38 @@ export function SettingsApp() {
                 className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
                 data-help-topic="studioSettings"
             >
-                <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
-                    {/* No title of its own: the window's title bar already says Settings. The help `?`
-                        stays beside the search box, since this window is where an author asks whether
-                        a setting belongs to Studio or to their project, which nothing else here says. */}
-                    <div className="group/help flex items-center gap-1">
-                        {localizedCategories.length > 0 ? (
+                <aside className="group/help flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
+                    {/* No title of its own: the window's title bar already says Settings. The search
+                        box takes the whole row, ending where the navigation's rows do; `pr-1` is the
+                        gutter the tree keeps for its scrollbar. */}
+                    {localizedCategories.length > 0 && (
+                        <div className="pr-1">
                             <SearchBox
                                 value={searchQuery}
                                 onChange={setSearchQuery}
                                 placeholder={t("settings.searchPlaceholder")}
-                                className="min-w-0 flex-1"
+                                className="w-full"
                             />
-                        ) : (
-                            <span className="flex-1" />
-                        )}
-                        <HelpTrigger topic="studioSettings" />
-                    </div>
+                        </div>
+                    )}
                     {localizedCategories.length > 0 ? (
                         <SettingsNavTree
                             categories={navCategories}
-                            selectedCategory={selectedCategory}
+                            selectedCategory={activeCategory}
                             onSelectCategory={handleCategoryClick}
                         />
                     ) : (
-                        <p className="text-xs text-fg-subtle">
+                        <p className="flex-1 text-xs text-fg-subtle">
                             {t("settings.noneExposed")}
                         </p>
                     )}
+                    {/* The help `?` at the foot of the column, shown while the pointer is over it: this
+                        window is where an author asks whether a setting belongs to Studio or to their
+                        project, which nothing else here says. Beside the search box it held a slot that
+                        stood empty until hovered, and the box came out short of the rows below it. */}
+                    <div className="flex">
+                        <HelpTrigger topic="studioSettings" />
+                    </div>
                 </aside>
                 {/* `min-w-0` is load-bearing. A flex item's default `min-width: auto` floors it at its
                     content's min-content width, so this column refused to shrink past ~435px however
@@ -399,6 +411,7 @@ export function SettingsApp() {
                         selectedCategory={selectedCategory}
                         selectedSettingId={selectedSettingId}
                         selectedCategoryScrollSignal={categoryScrollSignal}
+                        onActiveCategoryChange={setActiveCategory}
                     />
                 </section>
             </div>

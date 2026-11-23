@@ -146,8 +146,8 @@ export function AgentAccessPanel() {
 
     if (!settings) {
         return error
-            ? <p className="px-2 text-xs text-danger">{error}</p>
-            : <p className="px-2 text-xs text-fg-subtle">{t("settings.agent.loading")}</p>;
+            ? <p className="text-xs text-danger">{error}</p>
+            : <p className="text-xs text-fg-subtle">{t("settings.agent.loading")}</p>;
     }
 
     const portProblem = (refusal: AgentPortRefusal) =>
@@ -289,10 +289,10 @@ export function AgentAccessPanel() {
                     ariaLabel={t("settings.agent.guide.app")}
                 />
             </Row>
-            <div className="px-2 pb-3 pt-1" data-agent-client-guide>
+            <div className="pb-3 pt-1" data-agent-client-guide>
                 <AgentClientGuide client={guideClient} enabled={settings.enabled} endpointKey={settings.url} />
             </div>
-            <div className="rounded-md px-2 py-2">
+            <div className="py-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 grow basis-64 flex-col gap-1">
                         <span className="text-sm text-fg">{t("settings.agent.importRoots")}</span>
@@ -313,7 +313,7 @@ export function AgentAccessPanel() {
                 ) : (
                     <div className="mt-2 flex flex-col">
                         {settings.allowedImportRoots.map(root => (
-                            <div key={root} className="group flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill">
+                            <div key={root} className="group -mx-2 flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill">
                                 <p className="min-w-0 flex-1 truncate text-sm text-fg-muted" data-tip={root}>{root}</p>
                                 <IconButton
                                     size="sm"
@@ -337,7 +337,7 @@ export function AgentAccessPanel() {
               * on as well; one it declares as reading is held only to not writing the plugin's own
               * storage - see `blockedPluginTools` in `@shared/agent/settings`.
               */}
-            <div className="rounded-md px-2 py-2">
+            <div className="py-2">
                 <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-sm text-fg">{t("settings.agent.pluginTools")}</span>
                     <span className="text-xs text-fg-subtle">{t("settings.agent.pluginToolsHint")}</span>
@@ -349,7 +349,7 @@ export function AgentAccessPanel() {
                         {settings.pluginTools.map(plugin => {
                             const name = pluginDisplayName(plugin, locale);
                             return (
-                                <div key={plugin.pluginId} className="flex h-11 items-center gap-3 rounded-md px-2 hover:bg-fill">
+                                <div key={plugin.pluginId} className="-mx-2 flex h-11 items-center gap-3 rounded-md px-2 hover:bg-fill">
                                     <div className="flex min-w-0 flex-1 flex-col">
                                         <span className="truncate text-sm text-fg" data-tip={name}>{name}</span>
                                         <span className="truncate text-xs text-fg-subtle">
@@ -369,8 +369,8 @@ export function AgentAccessPanel() {
                     </div>
                 )}
             </div>
-            {error && <p className="px-2 text-xs text-danger">{error}</p>}
-            {busy && <Loader2 className="mx-2 h-3 w-3 animate-spin text-primary" />}
+            {error && <p className="text-xs text-danger">{error}</p>}
+            {busy && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
         </div>
     );
 }
@@ -399,7 +399,9 @@ function Row({
     children: ReactNode;
 }) {
     return (
-        <div className="rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle">
+        // `-mx-2`: the panel already sits at a row's inset, so the row's own padding is pulled back out
+        // of it - its text lines up with the rows outside the panel, and its hover fill spans as wide.
+        <div className="-mx-2 rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 grow basis-64 flex-col gap-1">
                     <span className="text-sm text-fg">{label}</span>

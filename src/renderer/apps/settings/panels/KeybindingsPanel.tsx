@@ -199,7 +199,9 @@ export function KeybindingsPanel() {
                 )}
             </div>
 
-            <div className="max-h-[28rem] overflow-y-auto pr-1">
+            {/* No scroll box of its own: the pane already scrolls, and a second one inside it caught the
+                wheel halfway down the page and held it until this list ran out. */}
+            <div>
                 {filteredRows.length === 0 ? (
                     <div className="py-8 text-center text-sm text-fg-subtle">
                         {t("workspace.shell.keybindings.empty")}
@@ -207,7 +209,7 @@ export function KeybindingsPanel() {
                 ) : (
                     grouped.map(group => (
                         <div key={group.category}>
-                            <div className="px-2 pt-3 pb-1 text-2xs text-fg-muted">
+                            <div className="pt-3 pb-1 text-xs text-fg-muted">
                                 {group.category}
                             </div>
                             {group.items.map(row => {
@@ -216,7 +218,7 @@ export function KeybindingsPanel() {
                                 return (
                                     <div
                                         key={row.id}
-                                        className="group flex h-9 items-center gap-3 rounded-md px-2 transition-colors hover:bg-fill-subtle"
+                                        className="group -mx-2 flex h-9 items-center gap-3 rounded-md px-2 transition-colors hover:bg-fill-subtle"
                                     >
                                         <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" data-tip={row.id}>
                                             {row.name}

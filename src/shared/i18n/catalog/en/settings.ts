@@ -37,6 +37,17 @@ export const settings = {
         notInstalled: "not installed",
     },
     // Category chrome - keys mirror the category `key` in appSettings.ts.
+    groups: {
+        update: "Updates",
+        story: "Story editor",
+        spellcheck: "Spell checking",
+        snapshots: "Scene snapshots",
+        textEditor: "Text editor",
+        blueprint: "Blueprints",
+        editorTabs: "Tabs and windows",
+        cacheAndLogs: "Cache and logs",
+        reset: "Reset",
+    },
     categories: {
         general: {
             label: "General",
@@ -165,7 +176,7 @@ export const settings = {
         },
         editorFontSize: {
             label: "Story editor font size",
-            description: "Font size (px) for story text in the scene editor ({min}-{max}).",
+            description: "Font size for story text in the scene editor ({min}-{max}).",
         },
         editorFontFamily: {
             label: "Story editor font",
@@ -332,7 +343,7 @@ export const settings = {
         },
         projectDefaultAuthor: {
             label: "Default author for new projects",
-            description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+            description: "Fills the author field when a project is created; left empty, the field starts blank. Existing projects keep what they were given.",
         },
         versionControlAuthor: {
             label: "Author name",
@@ -479,7 +490,6 @@ export const settings = {
         installed: {
             title: "Installed",
             emptyTitle: "No dictionaries installed",
-            emptyDescription: "Download a dictionary to check spelling in the script.",
         },
         available: {
             title: "Available to download",

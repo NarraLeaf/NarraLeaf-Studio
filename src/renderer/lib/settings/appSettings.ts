@@ -410,6 +410,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // for Updates row still work, so this turns off the *asking*, not the feature.
         key: UPDATE_AUTO_CHECK_KEY,
         category: "general",
+        group: "update",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Check for updates automatically",
@@ -423,6 +424,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the two presses: the check announces the version, Download in the panel starts it.
         key: UPDATE_AUTO_DOWNLOAD_KEY,
         category: "general",
+        group: "update",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Download updates automatically",
@@ -440,6 +442,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // where Studio looks for a newer version and which release page it links to.
         key: UPDATE_SOURCE_KEY,
         category: "general",
+        group: "update",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
         label: "Update download source",
@@ -467,6 +470,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // and the tray's Check for Updates row both send it (`UPDATE_PANEL_SETTING_KEY`).
         key: UPDATE_PANEL_SETTING_KEY,
         category: "general",
+        group: "update",
         scope: SettingScope.Global,
         type: SettingValueType.Custom,
         panel: "softwareUpdate",
@@ -664,14 +668,16 @@ export const AppSettings: AppSettingDefinition[] = [
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
         key: "editor.fontSize",
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Integer,
         label: "Story editor font size",
         labelKey: "settings.items.editorFontSize.label",
-        description: `Font size (px) for story text in the scene editor (${EDITOR_FONT_SIZE_MIN}-${EDITOR_FONT_SIZE_MAX}).`,
+        description: `Font size for story text in the scene editor (${EDITOR_FONT_SIZE_MIN}-${EDITOR_FONT_SIZE_MAX}).`,
         descriptionKey: "settings.items.editorFontSize.description",
         descriptionParams: { min: EDITOR_FONT_SIZE_MIN, max: EDITOR_FONT_SIZE_MAX },
         defaultValue: EDITOR_FONT_SIZE_DEFAULT,
+        unit: "px",
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
@@ -682,6 +688,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // this list (see `editorFontCssFamily`, which is what actually has to accept it).
         key: "editor.fontFamily",
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Font,
         label: "Story editor font",
@@ -705,6 +712,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // settings change, which would take the undo stack with it.
         key: EDITOR_LINE_NUMBERS_KEY,
         category: "editor",
+        group: "textEditor",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Show line numbers",
@@ -718,6 +726,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // as the line-number gutter above.
         key: EDITOR_SOFT_WRAP_KEY,
         category: "editor",
+        group: "textEditor",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Wrap long lines",
@@ -730,6 +739,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // Applied by the workspace editor area (`EditorGroup` keep-alive logic).
         key: "editor.maxActiveEditors",
         category: "editor",
+        group: "editorTabs",
         scope: SettingScope.Global,
         type: SettingValueType.Integer,
         label: "Maximum active editors",
@@ -745,6 +755,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the chosen one automatically. Gates only the exec-output direction.
         key: "blueprint.dragConnect.execOutput",
         category: "editor",
+        group: "blueprint",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Drag from execution output pins to create nodes",
@@ -758,6 +769,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // direction: only nodes that accept the dragged pin's value type are offered.
         key: "blueprint.dragConnect.dataOutput",
         category: "editor",
+        group: "blueprint",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Drag from data output pins to create nodes",
@@ -771,6 +783,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // input pin: the new node's matching output is wired into that input.
         key: "blueprint.dragConnect.input",
         category: "editor",
+        group: "blueprint",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Drag from input pins to create nodes",
@@ -787,6 +800,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the editor's fallback, both come from `slashAtAliasDefault()`. See globalState.ts.
         key: SLASH_AT_ALIAS_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Use “@” to open the action creator",
@@ -807,6 +821,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // canonical English spellings parse in every locale regardless.
         key: LOCALIZED_COMMANDS_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Show story commands in the interface language",
@@ -825,6 +840,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the words that told them apart.
         key: HIDE_PARAM_NAMES_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Commands show only parameter values",
@@ -842,6 +858,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // writing, highlighting the directives suits staging.
         key: STORY_ROW_HIGHLIGHT_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
         label: "Highlight story rows",
@@ -864,6 +881,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // cast groups sees the same list under both.
         key: CHARACTER_LIST_GROUPING_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
         label: "Character lists",
@@ -885,6 +903,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the matches either way.
         key: GROUP_SUBMENUS_KEY,
         category: "editor",
+        group: "story",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Show groups as submenus",
@@ -907,6 +926,7 @@ export const AppSettings: AppSettingDefinition[] = [
          */
         key: SPELLCHECK_LANGUAGE_KEY,
         category: "editor",
+        group: "spellcheck",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
         label: "Spellcheck language",
@@ -949,6 +969,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // the row above can have nothing to offer.
         key: "editor.dictionaries",
         category: "editor",
+        group: "spellcheck",
         scope: SettingScope.Global,
         type: SettingValueType.Custom,
         panel: "dictionaries",
@@ -964,6 +985,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // closing that window hands the editor back to the workspace or ends it.
         key: DETACHED_EDITOR_ON_CLOSE_KEY,
         category: "editor",
+        group: "editorTabs",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
         label: "When a detached editor window closes",
@@ -1176,6 +1198,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // measures the buckets over IPC and clears them the same way.
         key: "data.cache",
         category: "data",
+        group: "cacheAndLogs",
         scope: SettingScope.Global,
         type: SettingValueType.Custom,
         panel: "cacheInventory",
@@ -1190,6 +1213,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // so this cannot become a way to open an arbitrary directory.
         key: "data.openLogsFolder",
         category: "data",
+        group: "cacheAndLogs",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
         label: "Studio's log files",
@@ -1229,6 +1253,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // reset below on purpose - see `resetSettings`.
         key: "data.resetWorkspaceLayout",
         category: "data",
+        group: "reset",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
         label: "Reset the workspace layout",
@@ -1246,6 +1271,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // statistics are refused by the main process, so this cannot take them with it.
         key: "data.resetAllPreferences",
         category: "data",
+        group: "reset",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
         label: "Reset all settings",
@@ -1265,6 +1291,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // its own window and has no current project; the per-project reset lives on the dashboard.
         key: "dashboard.clearAllStats",
         category: "data",
+        group: "reset",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
         label: "Clear all statistics data",
@@ -1592,6 +1619,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // frozen.
         key: "story.autoSnapshot.enabled",
         category: "editor",
+        group: "snapshots",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Automatic scene snapshots",
@@ -1603,6 +1631,7 @@ export const AppSettings: AppSettingDefinition[] = [
     {
         key: "story.autoSnapshot.intervalMinutes",
         category: "editor",
+        group: "snapshots",
         scope: SettingScope.Global,
         type: SettingValueType.Integer,
         label: "Automatic snapshot interval",
@@ -1618,6 +1647,7 @@ export const AppSettings: AppSettingDefinition[] = [
     {
         key: "story.autoSnapshot.keepRecent",
         category: "editor",
+        group: "snapshots",
         scope: SettingScope.Global,
         type: SettingValueType.Integer,
         label: "Recent automatic snapshots kept",

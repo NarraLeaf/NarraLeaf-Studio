@@ -71,6 +71,8 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     disabled?: boolean;
     /** Custom only: which panel to render in place of a control. */
     panel?: SettingPanelId;
+    /** The heading this row is drawn under within its category, already translated. */
+    group?: { key: string; label: string };
 }
 
 /**
@@ -79,6 +81,12 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
 export interface AppSettingDefinition<T extends SettingValueType = SettingValueType> {
     key: GlobalStateKeys;
     category: AppSettingCategoryKey;
+    /**
+     * The heading this row sits under inside its category. Rows of one group are drawn together
+     * under it, after the category's ungrouped rows, so a long category reads as a few short lists
+     * rather than one. A `Custom` panel inside a group drops its own heading - the group's says it.
+     */
+    group?: AppSettingGroupKey;
     scope: SettingScope;
     type: T;
     label: string;
@@ -198,6 +206,18 @@ export interface SettingCategory {
     descriptionKey?: TranslationKey;
     order: number;
 }
+
+/** The headings rows are grouped under inside a category (`settings.groups.*`). */
+export type AppSettingGroupKey =
+    | "update"
+    | "story"
+    | "spellcheck"
+    | "snapshots"
+    | "textEditor"
+    | "blueprint"
+    | "editorTabs"
+    | "cacheAndLogs"
+    | "reset";
 
 export type AppSettingCategoryKey =
     | "servers"
