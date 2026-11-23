@@ -457,6 +457,7 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
                 {visible.length === 0 ? (
                     <EmptyState
                         size="sm"
+                        className="h-full"
                         icon={<BookMarked className="h-5 w-5" />}
                         title={entries.length === 0 ? t("dictionary.empty") : t("dictionary.noMatches")}
                     />
