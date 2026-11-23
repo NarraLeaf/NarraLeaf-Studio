@@ -84,7 +84,7 @@ import {
     resolveDock,
     type DockEnv,
 } from "./dockLayoutModel";
-import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
+import { DEFAULT_COLLAPSED_PANEL_IDS, LATE_COLLAPSED_PANEL_IDS, seedLateCollapsedPanels } from "./sidebarPanelGroup";
 import { firstDrawablePanelId, resolveActivePanelId, type DockPanelAvailability } from "./dockActivePanel";
 import { VersionRail } from "./VersionRail";
 import { resolveVersionRailPresence, versionRailWidth } from "./versionRailModel";
@@ -108,6 +108,7 @@ const SETTINGS_KEYS = {
     LEFT_SIDEBAR_ACTIVE_PANEL: "ui.leftSidebar.activePanel",
     LEFT_SIDEBAR_ORDER: "ui.leftSidebar.order",
     LEFT_SIDEBAR_COLLAPSED: "ui.leftSidebar.collapsed",
+    LEFT_SIDEBAR_COLLAPSED_SEEDED: "ui.leftSidebar.collapsedSeeded",
     RIGHT_SIDEBAR_VISIBLE: "ui.rightSidebar.visible",
     RIGHT_SIDEBAR_WIDTH: "ui.rightSidebar.width",
     RIGHT_SIDEBAR_ACTIVE_PANEL: "ui.rightSidebar.activePanel",
@@ -427,9 +428,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 // The defaults apply only when nothing was ever stored, so a group the user has
                 // emptied stays empty instead of springing back on the next launch.
                 const savedCollapsed = await settingsService.get<string[]>(SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED);
-                const collapsed = Array.isArray(savedCollapsed)
-                    ? savedCollapsed
-                    : [...DEFAULT_COLLAPSED_PANEL_IDS];
+                const savedSeeded = await settingsService.get<string[]>(SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED_SEEDED);
+                const seeded = Array.isArray(savedSeeded) ? savedSeeded : [];
+                // A panel that joined the defaults later is folded into a stored group once.
+                const seeding = Array.isArray(savedCollapsed)
+                    ? seedLateCollapsedPanels(savedCollapsed, seeded)
+                    : { collapsed: [...DEFAULT_COLLAPSED_PANEL_IDS], seeded: [...LATE_COLLAPSED_PANEL_IDS] };
+                const collapsed = seeding.collapsed;
+                if (!recovery && seeding.seeded.length !== seeded.length) {
+                    void settingsService.setBatch({
+                        [SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED]: collapsed,
+                        [SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED_SEEDED]: seeding.seeded,
+                    });
+                }
                 store?.setCollapsedPanels(PanelPosition.Left, collapsed);
                 setCollapsedLeftPanels(collapsed);
 

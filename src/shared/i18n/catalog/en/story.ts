@@ -1426,6 +1426,7 @@ export const story = {
         name: "Name",
         description: "Description",
         descriptionPlaceholder: "Shown in the command menu",
+        noDescription: "No description",
         nameProblem: {
             empty: "The name cannot be empty",
             invalid: "The name cannot contain spaces, / @ # < > = or quotes, or start with a digit",
@@ -1447,7 +1448,6 @@ export const story = {
             unknown: "Unknown",
         },
         rows: "Commands",
-        addRow: "Add command",
         moveUp: "Move up",
         moveDown: "Move down",
         deleteRow: "Delete row",

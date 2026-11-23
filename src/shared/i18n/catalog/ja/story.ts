@@ -1322,6 +1322,7 @@ export const story = {
         name: "名前",
         description: "説明",
         descriptionPlaceholder: "コマンドメニューに表示",
+        noDescription: "説明なし",
         nameProblem: {
             empty: "名前を入力してください",
             invalid: "名前に空白、/ @ # < > =、引用符は使えず、数字で始めることもできない",
@@ -1343,7 +1344,6 @@ export const story = {
             unknown: "不明",
         },
         rows: "コマンド",
-        addRow: "コマンドを追加",
         moveUp: "上へ移動",
         moveDown: "下へ移動",
         deleteRow: "この行を削除",

@@ -249,7 +249,7 @@ export const help = {
             body:
                 "A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.\n"
                 + "\n"
-                + "- Create one on the Custom Commands page of the left sidebar, or select rows in the story editor and choose Save as custom command.\n"
+                + "- Create one on the Custom Commands page, under the … menu of the left sidebar, or select rows in the story editor and choose Save as custom command.\n"
                 + "- Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.\n"
                 + "- A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.\n"
                 + "- A parameter without a default is required; a row that leaves it out is shown as a draft.\n"

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Download, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Download, Plus, SquareFunction, X } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import type { StoryCustomCommand, StoryCustomCommandParam, StoryCustomCommandRow } from "@shared/types/story/customCommands";
-import { ContextMenu, EmptyState, FieldLabel, IconButton, Input, SectionTitle, useContextMenu, type ContextMenuDef } from "@/lib/components/elements";
+import { ContextMenu, EmptyState, FieldLabel, IconButton, Input, useContextMenu, type ContextMenuDef } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useTranslation } from "@/lib/i18n";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
@@ -21,6 +21,9 @@ import {
     useStoryCommandLineContext,
 } from "@/apps/workspace/modules/story/scene-editor/StoryCommandLineView";
 import { toDisplayedCommandLine } from "@/apps/workspace/modules/story/scene-editor/commandTrigger";
+import { StoryCommandGlyphMark, StoryGutterCell } from "@/apps/workspace/modules/story/scene-editor/StoryRowGutterMark";
+import { getBlockBadgeInfo } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+import { storyEditorRootStyle, useStoryEditorTextStyle } from "@/apps/workspace/modules/story/scene-editor/storyEditorTextStyle";
 import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import {
     CUSTOM_COMMAND_BODY_COMMAND_IDS,
@@ -71,19 +74,23 @@ export function StoryCommandEditorTab({ tabId, payload }: EditorTabComponentProp
 
     const update = (patch: Partial<Omit<StoryCustomCommand, "id">>) => service.updateCommand(command.id, patch);
 
+    // Laid out as the story editor is: the title bar, a card for what the command is, then its rows on
+    // the story editor's own grid, so a command reads as a short scene that takes arguments.
     return (
-        <div className="h-full min-h-0 overflow-y-auto bg-surface">
-            <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-                <div className="flex items-end gap-2">
-                    <NameField command={command} onRename={name => update({ name })} nameProblem={name => service.nameProblem(name, command.id)} />
-                    <div className="min-w-0 flex-[2]">
-                        <FieldLabel>{t("story.customCommands.description")}</FieldLabel>
-                        <DraftInput
-                            value={command.description ?? ""}
-                            placeholder={t("story.customCommands.descriptionPlaceholder")}
-                            onCommit={value => update({ description: value })}
-                        />
+        <div
+            data-help-topic="customStoryCommands"
+            className="flex h-full min-h-0 flex-col bg-surface text-fg"
+            style={storyEditorRootStyle("compact", Math.max(1, command.rows.length))}
+        >
+            <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <SquareFunction className="h-4 w-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-fg">{command.name}</div>
+                        <div className="truncate text-2xs text-fg-muted">{t("story.customCommands.title")}</div>
                     </div>
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-1">
                     <ToolbarButton
                         size="sm"
                         aria-label={t("story.customCommands.copyAsText")}
@@ -101,9 +108,74 @@ export function StoryCommandEditorTab({ tabId, payload }: EditorTabComponentProp
                         <Download className="h-4 w-4" />
                     </ToolbarButton>
                 </div>
-                <ParamSection command={command} onChange={params => update({ params })} />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-16 pt-3">
+                <CommandCard
+                    command={command}
+                    onUpdate={update}
+                    nameProblem={name => service.nameProblem(name, command.id)}
+                />
                 <RowSection command={command} onChange={(rows, fresh) => update({ rows, params: customCommandParamsOf(rows, command.params, fresh) })} />
             </div>
+        </div>
+    );
+}
+
+/**
+ * The command's card, as a scene's sits above its rows: collapsed it is the name and the description,
+ * open it is where both are edited, beside the parameters the rows declare.
+ */
+function CommandCard(props: {
+    command: StoryCustomCommand;
+    onUpdate: (patch: Partial<Omit<StoryCustomCommand, "id">>) => void;
+    nameProblem: (name: string) => string | null;
+}) {
+    const { t } = useTranslation();
+    const [collapsed, setCollapsed] = useState(false);
+    const description = props.command.description?.trim();
+    return (
+        <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-edge bg-fill-subtle">
+            <button
+                type="button"
+                onClick={() => setCollapsed(value => !value)}
+                aria-expanded={!collapsed}
+                data-tip={collapsed ? t("common.expand") : t("common.collapse")}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors hover:bg-fill focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/60"
+            >
+                {collapsed ? (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-fg-subtle" />
+                ) : (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-fg-subtle" />
+                )}
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-fg">{props.command.name}</span>
+                    <span className="block truncate text-2xs text-fg-subtle">{description || t("story.customCommands.noDescription")}</span>
+                </span>
+                {collapsed && props.command.params.length > 0 ? (
+                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">
+                        {props.command.params.map(param => param.name).join(" · ")}
+                    </span>
+                ) : null}
+            </button>
+            {collapsed ? null : (
+                <div
+                    className="grid items-start gap-3 border-t border-edge p-3"
+                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" }}
+                >
+                    <div className="grid min-w-0 gap-3">
+                        <NameField command={props.command} onRename={name => props.onUpdate({ name })} nameProblem={props.nameProblem} />
+                        <div className="min-w-0">
+                            <FieldLabel>{t("story.customCommands.description")}</FieldLabel>
+                            <DraftInput
+                                value={props.command.description ?? ""}
+                                placeholder={t("story.customCommands.descriptionPlaceholder")}
+                                onCommit={value => props.onUpdate({ description: value })}
+                            />
+                        </div>
+                    </div>
+                    <ParamSection command={props.command} onChange={params => props.onUpdate({ params })} />
+                </div>
+            )}
         </div>
     );
 }
@@ -112,7 +184,7 @@ function NameField(props: { command: StoryCustomCommand; onRename: (name: string
     const { t } = useTranslation();
     const [problem, setProblem] = useState<string | null>(null);
     return (
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
             <FieldLabel>{t("story.customCommands.name")}</FieldLabel>
             <DraftInput
                 value={props.command.name}
@@ -171,12 +243,12 @@ function ParamSection(props: { command: StoryCustomCommand; onChange: (params: S
     const { t } = useTranslation();
     const { commandContext } = useBehaviourCommandContext();
     return (
-        <section className="flex flex-col gap-2">
-            <SectionTitle>{t("story.customCommands.params")}</SectionTitle>
+        <section className="min-w-0">
+            <FieldLabel as="div">{t("story.customCommands.params")}</FieldLabel>
             {props.command.params.length === 0 ? (
                 <p className="text-xs text-fg-subtle">{t("story.customCommands.paramsEmpty")}</p>
             ) : (
-                <div className="divide-y divide-edge-subtle rounded-md border border-edge">
+                <div className="divide-y divide-edge-subtle rounded-md border border-edge bg-surface">
                     {props.command.params.map(param => (
                         <div key={param.name} className="flex min-h-8 items-center gap-3 px-3 py-1">
                             <span className="min-w-0 truncate text-xs text-fg">{param.name}</span>
@@ -319,15 +391,17 @@ function RowSection(props: { command: StoryCustomCommand; onChange: (rows: Story
         { id: "delete", label: t("story.customCommands.deleteRow"), onClick: () => props.onChange(props.command.rows.filter(row => row.block.id !== menuRowId), []) },
     ] : [];
 
+    const errorLine = error ? (
+        <p className="pl-[var(--nl-story-gutter)] pr-3 pb-1 text-2xs text-danger">{error}</p>
+    ) : null;
+
     return (
-        <section className="flex flex-col gap-2">
-            <SectionTitle>{t("story.customCommands.rows")}</SectionTitle>
+        <section aria-label={t("story.customCommands.rows")}>
             <StoryCommandLineProvider slashAtAlias={slashAtAlias} commandContext={commandContext}>
-                <div className="min-w-0 overflow-hidden rounded-md border border-edge [--nl-story-gutter:20px] [--nl-story-mark:0px]">
-                    {props.command.rows.map(row => (
-                        editing?.rowId === row.block.id ? (
+                {props.command.rows.map((row, index) => (
+                    editing?.rowId === row.block.id ? (
+                        <div key={row.block.id}>
                             <CommandLineInput
-                                key={row.block.id}
                                 editing={editing}
                                 characters={characters}
                                 commandContext={commandContext}
@@ -336,23 +410,28 @@ function RowSection(props: { command: StoryCustomCommand; onChange: (rows: Story
                                 onCommit={commitLine}
                                 onClose={close}
                             />
-                        ) : (
-                            <CommandRow
-                                key={row.block.id}
-                                row={row}
-                                characters={characters}
-                                trigger={trigger}
-                                readerRef={readerRef}
-                                onOpen={() => open(row.block.id, readerRef.current.get(row.block.id) ?? "")}
-                                onMenu={event => {
-                                    setMenuRowId(row.block.id);
-                                    rowMenu.showMenu(event);
-                                }}
-                                onDelete={() => props.onChange(props.command.rows.filter(entry => entry.block.id !== row.block.id), [])}
-                            />
-                        )
-                    ))}
-                    {editing && editing.rowId === null ? (
+                            {errorLine}
+                        </div>
+                    ) : (
+                        <CommandRow
+                            key={row.block.id}
+                            row={row}
+                            lineNumber={index + 1}
+                            characters={characters}
+                            trigger={trigger}
+                            readerRef={readerRef}
+                            menuOpen={rowMenu.menuState.visible && menuRowId === row.block.id}
+                            onOpen={() => open(row.block.id, readerRef.current.get(row.block.id) ?? "")}
+                            onMenu={event => {
+                                setMenuRowId(row.block.id);
+                                rowMenu.showMenu(event);
+                            }}
+                            onDelete={() => props.onChange(props.command.rows.filter(entry => entry.block.id !== row.block.id), [])}
+                        />
+                    )
+                ))}
+                {editing && editing.rowId === null ? (
+                    <>
                         <CommandLineInput
                             editing={editing}
                             characters={characters}
@@ -362,18 +441,27 @@ function RowSection(props: { command: StoryCustomCommand; onChange: (rows: Story
                             onCommit={commitLine}
                             onClose={close}
                         />
-                    ) : (
-                        <button
-                            type="button"
-                            className="flex min-h-[var(--nl-story-row-box)] w-full items-center gap-2 px-2 py-1 text-left text-sm text-fg-subtle hover:bg-fill"
-                            onClick={() => open(null, trigger)}
-                        >
-                            <Plus className="h-3.5 w-3.5 shrink-0" />
-                            {t("story.customCommands.addRow")}
-                        </button>
-                    )}
-                    {error && <p className="border-t border-edge-subtle px-2 py-1 text-2xs text-danger">{error}</p>}
-                </div>
+                        {errorLine}
+                    </>
+                ) : (
+                    <button
+                        type="button"
+                        className="mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted"
+                        onClick={() => open(null, trigger)}
+                        onKeyDown={event => {
+                            // Typing on the focused line starts the row with what was typed, as in the story editor.
+                            if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                                event.preventDefault();
+                                open(null, event.key === "/" || event.key === "@" ? trigger : `${trigger}${event.key}`);
+                            }
+                        }}
+                    >
+                        <span className="flex w-[var(--nl-story-mark,26px)] shrink-0 items-center justify-center">
+                            <Plus className="h-4 w-4 text-primary" />
+                        </span>
+                        {t("story.sceneEditor.addRow")}
+                    </button>
+                )}
             </StoryCommandLineProvider>
             <ContextMenu items={menuItems} position={rowMenu.menuState.position} visible={rowMenu.menuState.visible} onClose={rowMenu.hideMenu} />
         </section>
@@ -385,40 +473,80 @@ function rowProblemText(problem: CustomCommandRowProblem, t: Translate): string 
     return t(`story.customCommands.rowProblem.${problem.code}` as "story.customCommands.rowProblem.incomplete", { name });
 }
 
-/** One committed row, printed as the line that wrote it with its parameters in place. Click to rewrite. */
+/**
+ * One committed row on the story editor's grid: its number, the command's glyph, and the line that
+ * wrote it with its parameters in place. Click to rewrite.
+ */
 function CommandRow(props: {
     row: StoryCustomCommandRow;
+    lineNumber: number;
     characters: Character[];
     trigger: "/" | "@";
     readerRef: React.MutableRefObject<Map<string, string>>;
+    menuOpen: boolean;
     onOpen: () => void;
     onMenu: (event: React.MouseEvent) => void;
     onDelete: () => void;
 }) {
     const { t } = useTranslation();
     const { hideParamNames } = useStoryCommandLineContext();
-    const projection = useStoryCommandLine(props.row.block as StoryBlock, props.characters, undefined, undefined);
+    const textStyle = useStoryEditorTextStyle();
+    const [hovered, setHovered] = useState(false);
+    const block = props.row.block as StoryBlock;
+    const projection = useStoryCommandLine(block, props.characters, undefined, undefined);
     const source = customCommandRowLine(projection?.source ?? "", props.row.bindings);
+    const badge = getBlockBadgeInfo(block);
     useEffect(() => {
         props.readerRef.current.set(props.row.block.id, toDisplayedCommandLine(source, props.trigger));
     });
     return (
-        <div className="group flex min-w-0 items-center gap-1 border-b border-edge px-2 py-1 hover:bg-fill" onContextMenu={props.onMenu}>
-            <button type="button" className="min-w-0 flex-1 text-left" onClick={props.onOpen}>
-                <StoryCommandLineBox>
-                    <StoryCommandLineText source={source} trigger={props.trigger} hideParamNames={hideParamNames} />
-                </StoryCommandLineBox>
-            </button>
-            <IconButton
-                size="sm"
-                variant="ghost"
-                className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                aria-label={t("story.customCommands.deleteRow")}
-                data-tip={t("story.customCommands.deleteRow")}
-                onClick={props.onDelete}
-            >
-                <X className="h-3.5 w-3.5" />
-            </IconButton>
+        <div
+            role="button"
+            tabIndex={0}
+            data-story-command-row={props.row.block.id}
+            className={[
+                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] cursor-text grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 pr-3 outline-none focus-visible:border-primary",
+                props.menuOpen ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
+            ].join(" ")}
+            onClick={props.onOpen}
+            onKeyDown={event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    props.onOpen();
+                }
+            }}
+            onContextMenu={props.onMenu}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+        >
+            <div className="flex h-full items-start justify-end pr-2 pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
+                <span className="flex min-h-[var(--nl-story-row-box)] items-center">{props.lineNumber}</span>
+            </div>
+            <div className="min-w-0 py-1">
+                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-3">
+                    <StoryGutterCell active={hovered || props.menuOpen}>
+                        <StoryCommandGlyphMark icon={badge.icon} label={badge.label} color={badge.iconColor} />
+                    </StoryGutterCell>
+                    <StoryCommandLineBox style={textStyle}>
+                        <StoryCommandLineText source={source} trigger={props.trigger} hideParamNames={hideParamNames} />
+                    </StoryCommandLineBox>
+                    <span className="flex min-h-[var(--nl-story-row-box)] shrink-0 items-center">
+                        <IconButton
+                            size="sm"
+                            variant="ghost"
+                            className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                            aria-label={t("story.customCommands.deleteRow")}
+                            data-tip={t("story.customCommands.deleteRow")}
+                            onClick={event => {
+                                event.stopPropagation();
+                                props.onDelete();
+                            }}
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </IconButton>
+                    </span>
+                </div>
+            </div>
         </div>
     );
 }

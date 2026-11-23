@@ -323,7 +323,7 @@ gives trouble, leave it out: saves then show no place, nothing else breaks.
 
 ## A project's own commands
 
-A project can define story commands of its own (the Custom Commands page on the left sidebar; saved in
+A project can define story commands of its own (the Custom Commands page, under the … menu of the left sidebar; saved in
 `editor/story/commands.json`). A line calls one like any command: `/Shake Mei strength=10` plays
 that command's rows with the arguments written into them, exactly as if those rows stood there.
 `story_commands {category:"custom"}` lists them and `story_command {token}` shows their parameters;

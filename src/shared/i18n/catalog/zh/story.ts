@@ -1281,6 +1281,7 @@ export const story = {
         name: "名称",
         description: "说明",
         descriptionPlaceholder: "在命令菜单中显示",
+        noDescription: "暂无说明",
         nameProblem: {
             empty: "名称不能为空",
             invalid: "名称不能包含空格或 / @ # < > = 引号，也不能以数字开头",
@@ -1302,7 +1303,6 @@ export const story = {
             unknown: "未知",
         },
         rows: "命令",
-        addRow: "添加命令",
         moveUp: "上移",
         moveDown: "下移",
         deleteRow: "删除这一行",
