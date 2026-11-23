@@ -1070,6 +1070,27 @@ input[type="radio"]:focus {
     }
 
     /**
+     * The titlebar paints at z-[20000], above every overlay layer, so a modal's full-window
+     * backdrop slides underneath it and leaves the strip bright. While any `.nl-modal-backdrop` is
+     * mounted the titlebar lays the same dim over itself instead. `pointer-events: none` keeps the
+     * window controls clickable and the strip draggable; they read as dimmed, like the rest.
+     */
+    .nl-titlebar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: rgb(0 0 0 / 0.6);
+        opacity: 0;
+        transition: opacity 0.2s ease-out;
+    }
+
+    html:has(.nl-modal-backdrop) .nl-titlebar::after {
+        opacity: 1;
+        backdrop-filter: blur(4px);
+    }
+
+    /**
      * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
      * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
      *

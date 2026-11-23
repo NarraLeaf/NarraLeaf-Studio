@@ -108,7 +108,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                className="nl-modal-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={onClose}
             />
 

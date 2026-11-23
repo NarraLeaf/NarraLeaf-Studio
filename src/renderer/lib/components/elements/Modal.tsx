@@ -159,11 +159,12 @@ export function Modal({
                 `absolute inset-0` backdrop leaves the top 40px of its sidebar - logo included -
                 undimmed. That strip is bare content on Windows, where the sidebar gets no macOS
                 drag spacer, so the seam lands mid-logo. Everywhere else the window's own titlebar
-                already fills the strip and paints above this at `z-[20000]`, so nothing changes
-                there and its window controls stay bright and clickable. The panel keeps centering
-                inside the layer, below the titlebar, so the titlebar never crosses it. */}
+                fills the strip and paints above this at `z-[20000]`; the `nl-modal-backdrop`
+                class makes it lay the same dim over itself (styles.css), controls still clickable.
+                The panel keeps centering inside the layer, below the titlebar, so the titlebar
+                never crosses it. */}
             <div
-                className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
+                className="nl-modal-backdrop bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
                 onPointerDown={() => {
                     overlayPressClosesRef.current = isTopFloatingLayer(panelRef.current);
                 }}

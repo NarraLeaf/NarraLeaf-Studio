@@ -67,7 +67,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+                className="nl-modal-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
                 onPointerDown={() => {
                     backdropPressClosesRef.current = isTopFloatingLayer(dialogRef.current);
                 }}
