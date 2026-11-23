@@ -10,6 +10,9 @@ NarraLeaf Studio imports as pages (Interfaces panel, **Import design** button).
 
 The plugin requests no network access. Everything it writes goes into the downloaded file.
 
+The Figma Community listing (icon, cover, copy and the questionnaire answers) is in
+`listing/LISTING.md`. Publishing is only possible from the Figma desktop app.
+
 ## Use
 
 1. Select the frames to export, or select nothing to list every top-level frame on the page.
