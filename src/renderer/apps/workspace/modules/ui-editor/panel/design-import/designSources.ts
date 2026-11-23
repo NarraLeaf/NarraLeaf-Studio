@@ -1,7 +1,10 @@
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
-import { parseFigmaExport, type FigmaExportFile } from "@/lib/ui-editor/figma-import/figmaExportFormat";
+import { parseFigmaExport, type FigmaExportFile, type FigmaExportNode } from "@/lib/ui-editor/figma-import/figmaExportFormat";
+import { gameUiPartsOf } from "@/lib/ui-editor/figma-import/convertFigmaFrames";
+import type { GameUiSlot } from "@/lib/ui-editor/figma-import/gameUiRoles";
+import type { PsdLayerNode } from "@shared/types/psdImport";
 import { buildImageDesignFile, type DesignPicture } from "@/lib/ui-editor/figma-import/imageDesign";
 import { buildPsdDesignFile, planPsdDesign, type PsdBakedPicture, type PsdCropRect } from "@/lib/ui-editor/figma-import/psdDesign";
 import { psdLayerKey } from "@shared/utils/psdLayerPlan";
@@ -15,8 +18,28 @@ const IMAGE_MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg"
 
 export type DesignSourceKind = "figma" | "psd" | "images";
 
-/** One row the import dialog lists and the author ticks. */
-export type DesignSourceItem = { id: string; name: string; width: number; height: number };
+/**
+ * One row the import dialog lists and the author ticks. `gameUi` is the Game UI slots its layers are
+ * named for, read from the outline so the dialog can offer to import the row as Game UI before
+ * anything is loaded; empty for a row that can only be a page.
+ */
+export type DesignSourceItem = { id: string; name: string; width: number; height: number; gameUi: GameUiSlot[] };
+
+/** The slots a frame's parts fill, each once. */
+function slotsOf(frame: FigmaExportNode): GameUiSlot[] {
+    return [...new Set(gameUiPartsOf(frame).map(part => part.slot))];
+}
+
+/** A PSD layer tree as far as `gameUiPartsOf` reads one: names, and which layers are groups. */
+function psdOutline(name: string, layers: readonly PsdLayerNode[] | undefined): FigmaExportNode {
+    return {
+        id: name,
+        name,
+        kind: "group",
+        children: (layers ?? []).filter(layer => !layer.hidden).map(layer =>
+            layer.children ? psdOutline(layer.name, layer.children) : ({ id: layer.name, name: layer.name, kind: "raster" } as FigmaExportNode)),
+    } as FigmaExportNode;
+}
 
 /**
  * A design file read far enough to show what is in it.
@@ -91,7 +114,7 @@ async function openFigmaExport(path: string, filesystem: FileSystemService): Pro
         kind: "figma",
         label: basename(path),
         detail: file.source.pageName || undefined,
-        items: file.frames.map(frame => ({ id: frame.id, name: frame.name, width: frame.width, height: frame.height })),
+        items: file.frames.map(frame => ({ id: frame.id, name: frame.name, width: frame.width, height: frame.height, gameUi: slotsOf(frame) })),
         pagesFor: ticked => ticked,
         load: async ids => ({ file, frameIds: [...ids] }),
     };
@@ -108,7 +131,13 @@ async function openPsd(path: string, filesystem: FileSystemService): Promise<Des
     return {
         kind: "psd",
         label: basename(path),
-        items: [{ id: "psd-document", name: stem, width: document.width, height: document.height }],
+        items: [{
+            id: "psd-document",
+            name: stem,
+            width: document.width,
+            height: document.height,
+            gameUi: slotsOf(psdOutline(stem, document.layers)),
+        }],
         pagesFor: ticked => (ticked > 0 ? 1 : 0),
         load: async () => {
             const plan = planPsdDesign(document);
@@ -207,6 +236,7 @@ async function openImages(
             name: picture.name,
             width: picture.sourceWidth ?? picture.width,
             height: picture.sourceHeight ?? picture.height,
+            gameUi: [],
         })),
         pagesFor: ticked => (ticked > 0 ? 1 : 0),
         load: async ids => {

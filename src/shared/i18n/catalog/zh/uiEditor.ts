@@ -350,6 +350,22 @@ export const uiEditor = {
         willAdd: {
             other: "将添加 {count} 个页面",
         },
+        willAddGameUi: {
+            other: "将导入 {count} 个游戏界面",
+        },
+        willReplace: "将替换项目中现有的游戏界面：{names}",
+        target: {
+            label: "导入为",
+            gameUi: "游戏界面",
+            page: "页面",
+        },
+        gameUiReplaced: {
+            other: "{slot}游戏界面已替换「{name}」，{count} 处部件已接好功能",
+        },
+        gameUiAdded: {
+            other: "已添加{slot}游戏界面，{count} 处部件已接好功能",
+        },
+        historyReplace: "从设计稿导入游戏界面",
         added: {
             other: "已添加 {count} 个页面",
         },
@@ -420,6 +436,27 @@ export const uiEditor = {
             },
             buttonNotRecognized: {
                 other: "{count} 组按钮状态图层中含有其他图层，未合成按钮，已按原样导入",
+            },
+            gameUiArtSkipped: {
+                other: "{count} 个图层不属于任何游戏界面（如背景、立绘），未导入",
+            },
+            gameUiSlotTwice: {
+                other: "{count} 个编组对应的游戏界面槽位已由其他编组占用，未导入",
+            },
+            dialogLineGuessed: {
+                other: "{count} 个对话框中没有命名为台词的文本，已将最大的文本作为台词",
+            },
+            dialogNameGuessed: {
+                other: "没有命名为名字的文本，已将台词上方的 {count} 个文本作为说话人名字",
+            },
+            dialogNoLine: {
+                other: "{count} 个对话框中没有可作为台词的文本，请为其添加「句子」控件",
+            },
+            listNotRecognized: {
+                other: "{count} 个选项或通知编组中没有带文本的选项，已按原样导入",
+            },
+            quickMenuPageMissing: {
+                other: "{count} 个快捷菜单按钮要打开的页面在项目中不存在，未接功能",
             },
             hiddenSkipped: {
                 other: "{count} 个隐藏图层未导入",

@@ -31,7 +31,7 @@
 
 import type { FigmaExportFile, FigmaExportNode, FigmaImportNote, FigmaMatrix } from "./figmaExportFormat";
 import { FIGMA_EXPORT_FORMAT, FIGMA_EXPORT_VERSION } from "./figmaExportFormat";
-import { buttonBaseName, type ButtonState } from "./buttonStates";
+import { BUTTON_STATES, buttonBaseName, type ButtonState } from "./buttonStates";
 
 export type DesignPicture = {
     name: string;
@@ -160,7 +160,7 @@ export function buildImageDesignFile(
             return raster(first, first.name);
         }
         // The states, default first, each named by its state so the converter reads it as one.
-        const order: ButtonState[] = ["default", "hover", "pressed", "disabled"];
+        const order: readonly ButtonState[] = BUTTON_STATES;
         const states = [...entry.pictures].sort(
             (a, b) => order.indexOf(a.button!.state) - order.indexOf(b.button!.state),
         );

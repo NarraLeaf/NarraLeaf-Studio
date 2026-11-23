@@ -10,15 +10,20 @@
  * Comments in English per project convention.
  */
 
-export type ButtonState = "default" | "hover" | "pressed" | "disabled";
+/**
+ * `selected` is the look a button keeps while what it stands for is on - Auto or Skip running, the
+ * current tab - and becomes the button's `selected` variant rather than a condition.
+ */
+export type ButtonState = "default" | "hover" | "pressed" | "disabled" | "selected";
 
-export const BUTTON_STATES: readonly ButtonState[] = ["default", "hover", "pressed", "disabled"];
+export const BUTTON_STATES: readonly ButtonState[] = ["default", "hover", "pressed", "disabled", "selected"];
 
 const WORDS: Record<ButtonState, readonly string[]> = {
     default: ["normal", "default", "idle", "up", "rest", "base", "普通", "默认", "常态", "正常", "通常", "ノーマル", "デフォルト"],
     hover: ["hover", "hovered", "over", "mouseover", "highlight", "highlighted", "悬停", "悬浮", "高亮", "经过", "ホバー", "オーバー"],
     pressed: ["pressed", "press", "down", "active", "click", "clicked", "按下", "点击", "押下", "プレス"],
     disabled: ["disabled", "disable", "inactive", "禁用", "不可用", "置灰", "無効", "无效"],
+    selected: ["selected", "on", "checked", "toggled", "lit", "选中", "已选", "开启", "オン", "選択中"],
 };
 
 const SEPARATORS = /[\s_\-.@/\\()（）[\]【】=,，、:：]+/;
