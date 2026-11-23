@@ -170,6 +170,11 @@ export type FigmaExportNode = {
      */
     variantValue?: string;
     variants?: { value: string; node: FigmaExportNode }[];
+    /**
+     * The job the designer marked the layer with in the plugin (`DesignRole` in `gameUiRoles.ts`):
+     * `dialog`, `sentence`, `auto` ... A mark wins over whatever the name says.
+     */
+    role?: string;
     children?: FigmaExportNode[];
 };
 

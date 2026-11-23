@@ -6,6 +6,7 @@ import { assertValidBlueprintDocument } from "@/lib/workspace/services/ui-editor
 import { convertFigmaFrames, detectFrameTarget, gameUiPartsOf } from "./convertFigmaFrames";
 import { FIGMA_EXPORT_FORMAT, type FigmaExportFile, type FigmaExportNode, type FigmaMatrix } from "./figmaExportFormat";
 import { dialogPartOfName, gameUiSlotOfName, quickMenuActionOfName, quickMenuPageOfName } from "./gameUiRoles";
+import { checkFrame } from "./gameUiChecklist";
 
 const T = (x: number, y: number): FigmaMatrix => [[1, 0, x], [0, 1, y]];
 const solid = (r: number, g: number, b: number) => ({ type: "SOLID" as const, color: { r, g, b, a: 1 }, opacity: 1 });
@@ -318,5 +319,78 @@ describe("game-screen frames", () => {
         expect(asPage.document.surfaces.map(surface => surface.kind)).toEqual(["appSurface"]);
         expect(asPage.blueprints).toBeNull();
         expect(asPage.imageRefs).toContain("bg");
+    });
+
+    it("follows the plugin's marks over names, on layers Figma named", () => {
+        const plate = group("Frame 3", 300, 780, 320, 50, [text("Narra", "Narra", 320, 785, 280, 40)]);
+        const line = text("Name your cat", "Name your cat", 300, 850, 900, 60);
+        const caption = text("Caption", "A long caption drawn larger than the line", 300, 950, 1300, 120);
+        const auto = text("Text 4", "A", 1300, 1030, 60, 40);
+        const frame = frameOf("Mock", [
+            raster("Background", 0, 0, 1920, 1080, "bg"),
+            { ...group("Bottom panel", 0, 760, 1920, 320, [plate, line, caption, { ...auto, role: "auto" }]), role: "dialog" },
+        ]);
+        (frame.children![1].children![1] as FigmaExportNode).role = "sentence";
+        (frame.children![1].children![0].children![0] as FigmaExportNode).role = "name";
+        const quick = group("Group 9", 1300, 1030, 200, 40, [{ ...auto, id: "auto-2", role: "auto" }]);
+        quick.role = "onStage";
+        frame.children!.push(quick);
+
+        expect(gameUiPartsOf(frame).map(part => part.slot)).toEqual(["dialog", "onStage"]);
+        const result = convert(frame);
+        const elements = elementsOf(result, stage(result, "dialog"));
+        // Marked as the line although smaller than the caption and named after words that read "name".
+        expect(named(elements, "Name your cat").type).toBe("nl.dialog.sentence");
+        expect((named(elements, "Narra").valueBindings?.text as { kind: string }).kind).toBe("blueprintValue");
+        expect(result.notes.map(note => note.code)).not.toContain("dialogLineGuessed");
+        expect(result.notes.map(note => note.code)).not.toContain("dialogNameGuessed");
+        const toggles = blueprintsOf(result).filter(entry => entry.name === "Auto");
+        expect(toggles).toHaveLength(1);
+    });
+
+    it("lists for the plugin what the import does with each part", () => {
+        const frame = gameScreen();
+        frame.children![2].children![2] = { ...frame.children![2].children![2], role: "sentence" };
+        const checklist = checkFrame(frame);
+        expect(checklist.leftOut.map(layer => layer.name)).toEqual(["Background", "Sprite"]);
+        expect(checklist.parts.map(part => [part.slot, part.marked, part.duplicate])).toEqual([
+            ["dialog", false, false],
+            ["onStage", false, false],
+            ["choice", false, false],
+        ]);
+        const [dialog, quick, choice] = checklist.parts;
+        expect(dialog.entries.map(entry => [entry.kind, entry.status, "layer" in entry ? entry.layer?.name : null])).toEqual([
+            ["sentence", "marked", "台词"],
+            ["name", "named", "名字"],
+            ["avatar", "named", "头像"],
+        ]);
+        expect(quick.entries).toEqual([
+            expect.objectContaining({ kind: "button", action: "auto", lit: true }),
+            expect.objectContaining({ kind: "button", action: "save", status: "named" }),
+            expect.objectContaining({ kind: "button", action: "config" }),
+        ]);
+        expect(choice.entries).toEqual([{ kind: "rows", status: "named", count: 2, layer: { id: expect.any(String), name: "Option A" } }]);
+    });
+
+    it("tells the plugin what it had to guess and what is missing", () => {
+        const frame = frameOf("Screen", [
+            group("Dialog", 0, 760, 1920, 320, [
+                text("Narra", "Narra", 300, 780, 200, 40),
+                text("This is a sample line.", "This is a sample line.", 300, 840, 1300, 160),
+                group("Face", 80, 800, 200, 200, [rect("Ring", 80, 800, 200, 200), text("Label", "Label", 80, 980, 200, 20)]),
+            ]),
+            group("Quick menu", 1300, 1030, 400, 40, [rect("Plate", 1300, 1030, 400, 40)]),
+            group("Choices", 0, 0, 400, 200, [rect("Plate", 0, 0, 400, 200)]),
+            group("选项", 0, 300, 400, 200, [text("B", "B", 0, 300)]),
+        ]);
+        const [dialog, quick, choice, second] = checkFrame(frame).parts;
+        expect(dialog.entries).toEqual([
+            { kind: "sentence", status: "guessed", layer: expect.objectContaining({ name: "This is a sample line." }) },
+            { kind: "name", status: "guessed", layer: expect.objectContaining({ name: "Narra" }) },
+            { kind: "avatar", status: "unusable", layer: expect.objectContaining({ name: "Face" }) },
+        ]);
+        expect(quick.entries).toEqual([{ kind: "noButtons", status: "missing" }]);
+        expect(choice.entries).toEqual([{ kind: "rows", status: "missing", count: 0, layer: null }]);
+        expect(second).toMatchObject({ slot: "choice", duplicate: true, entries: [] });
     });
 });

@@ -67,6 +67,10 @@ as the game's Game UI instead of a page: the line, the speaker's name and avatar
 and the quick menu's Auto, Skip, Log, Save, Load and Config buttons arrive wired to do their jobs.
 The background and sprites are left out.
 
+Rather than renaming layers, right-click them and mark them: Mark as Game UI, Mark dialogue part,
+Mark quick-menu button. The panel then shows a checklist of what Studio will make of each frame,
+what it guessed and what is missing, and selects a layer when you click its line.
+
 **Good to know**
 
 - Hidden layers are left out.
@@ -123,6 +127,8 @@ https://github.com/NarraLeaf/NarraLeaf-Studio/issues
 
 将画框的顶层编组命名为对话框、选项、快捷菜单和通知，该画框会导入为游戏界面而不是页面：台词、说话人名字和头像、选项列表，以及快捷菜单的自动、跳过、日志、存档、读档、设置按钮都会接好对应功能。背景和立绘不导入
 
+也可以不改名：选中图层后右键，用插件的 Mark 命令标注（Mark as Game UI、Mark dialogue part、Mark quick-menu button）。插件面板会按画框列出 Studio 将如何识别，标出按位置推测和未找到的部分，点击一项即可选中对应图层
+
 **注意事项**
 
 - 隐藏图层不会导出
@@ -160,6 +166,8 @@ Figma でビジュアルノベルの画面をデザインし、NarraLeaf Studio 
 **ゲーム画面**
 
 フレームのトップレベルのグループにダイアログ、選択肢、クイックメニュー、通知と名前を付けると、そのフレームはページではなくゲーム UI として読み込まれる。セリフ、話者の名前とアバター、選択肢リスト、クイックメニューのオート、スキップ、ログ、セーブ、ロード、設定ボタンが機能をつないだ状態で取り込まれる。背景と立ち絵は読み込まない
+
+名前を変える代わりに、レイヤーを右クリックしてプラグインの Mark コマンド（Mark as Game UI、Mark dialogue part、Mark quick-menu button）でマークを付けることもできる。プラグインのパネルには、Studio がフレームをどう読み込むかがチェックリストとして表示され、推測した部分と見つからない部分が示される。項目をクリックするとそのレイヤーが選択される
 
 **注意点**
 

@@ -15,8 +15,10 @@ The Figma Community listing (icon, cover, copy and the questionnaire answers) is
 
 ## Use
 
-1. Select the frames to export, or select nothing to list every top-level frame on the page.
-2. Run **Plugins → Development → NarraLeaf Studio Export**, tick the frames and press **Export**.
+1. Select the frames to export (or any layer inside them), or select nothing to list every
+   top-level frame on the page.
+2. Run **Plugins → Development → NarraLeaf Studio Export → Export and check…**, tick the frames
+   and press **Export**.
 3. In Studio, open the interface editor and import the downloaded file.
 
 ## What arrives how
@@ -52,6 +54,47 @@ else in the frame, such as the background and sprites, is left out.
 | First message in the notification group | The row of the notification list |
 
 Studio replaces the project's Game UI in those slots, as one undo step, after showing which.
+
+### Marking layers
+
+Instead of renaming layers by hand, mark them. Select layers on the canvas, right-click, and pick
+one of the plugin's commands:
+
+- **Mark as Game UI** → Dialogue box, Choices, Quick menu, Notifications
+- **Mark dialogue part** → Line, Speaker name, Avatar
+- **Mark quick-menu button** → Auto, Skip, Log, Save, Load, Config, Hide
+- **Clear mark**
+
+The panel's **Mark as…** list does the same for the current selection without closing the panel.
+A mark is stored on the layer (shared plugin data, namespace `narraleaf`, so it survives the plugin
+being republished) and exported as the node's `role`; Studio follows it over the layer's name. A
+layer Figma named (`Group 12`, a text named after its words) is renamed for its job; a name you
+chose is kept with the job in front (`Dialogue box · Bottom panel`). Clearing a mark gives the old
+name back if nobody renamed the layer since. A frame holds one of each Game UI part and one line,
+name and avatar: marking a second layer takes the mark off the first. Marked layers get a
+**Check in NarraLeaf** button in the properties panel.
+
+### Checklist
+
+The panel shows, under each frame, what Studio will make of it: which part fills which slot, which
+text is the line and the name and whether that was marked, named or guessed by position, whether
+Auto and Skip have an `on` look, how many options a list found, which layers are left out. Click a
+line to select its layer. The checklist is Studio's own reading, bundled into the plugin, so it
+says what the import does. Whether the project has a Log, Save, Load or Config page is only known
+in Studio, which reports it after the import.
+
+## Building
+
+Figma runs `code.js`, which is generated: `src/main.js` bundled with Studio's design reading
+(`src/renderer/lib/ui-editor/figma-import/gameUiChecklist.ts` and what it imports). After changing
+either, regenerate it from the repository root:
+
+```bash
+node node_modules/vitest/vitest.mjs run src/renderer/lib/ui-editor/figma-import/figmaPlugin.test.ts -u
+```
+
+The same test runs the bundle against a stand-in for Figma's plugin API and fails while `code.js`
+is out of date.
 
 Frames are scaled to fit the project's resolution. Fonts are matched against the project's font
 assets by family name; a family with no match falls back to the default font and is listed in the

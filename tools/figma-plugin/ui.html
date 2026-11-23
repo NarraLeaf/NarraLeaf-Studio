@@ -11,6 +11,7 @@
     --edge: var(--figma-color-border, #e6e6e6);
     --primary: #40a8c4;
     --danger: var(--figma-color-text-danger, #d93f3f);
+    --warning: var(--figma-color-text-warning, #b86200);
   }
   * { box-sizing: border-box; }
   body {
@@ -27,7 +28,9 @@
   .hint { color: var(--fg-muted); margin: 0 0 10px; }
   .list {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     border: 1px solid var(--edge);
     border-radius: 6px;
     padding: 4px 0;
@@ -58,10 +61,70 @@
   }
   button.primary { background: var(--primary); border-color: var(--primary); color: #ffffff; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .mark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+  }
+  .mark .selection { flex: 1; min-width: 0; color: var(--fg-muted); }
+  .mark select { flex: none; max-width: 50%; }
+  select {
+    font: inherit;
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid var(--edge);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  select:disabled { opacity: 0.5; }
+  .tag {
+    flex: none;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--fg-muted);
+    border: 1px solid var(--edge);
+  }
+  .tag.game { color: var(--primary); border-color: var(--primary); }
+  .checklist { padding: 0 10px 6px 34px; }
+  .part { font-weight: 600; margin: 6px 0 2px; overflow-wrap: anywhere; }
+  .part .marked { font-weight: 400; color: var(--fg-muted); }
+  .entry {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    height: auto;
+    padding: 2px 4px;
+    margin: 0 -4px;
+    border: 0;
+    border-radius: 4px;
+    text-align: left;
+    line-height: 1.5;
+    color: var(--fg);
+    cursor: default;
+  }
+  .entry[data-id] { cursor: pointer; }
+  .entry[data-id]:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .entry .glyph { flex: none; width: 12px; text-align: center; font-weight: 600; }
+  .entry .words { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+  .entry.ok .glyph { color: var(--primary); }
+  .entry.guess .glyph { color: var(--warning); }
+  .entry.bad .glyph { color: var(--danger); }
+  .entry.note .glyph, .entry.note { color: var(--fg-muted); }
+  .entry.leftout { margin-top: 6px; }
 </style>
 </head>
 <body>
   <h1 id="title"></h1>
+  <div class="mark">
+    <span class="selection" id="selection"></span>
+    <select id="role"></select>
+  </div>
   <p class="hint" id="hint"></p>
   <div class="list" id="list"></div>
   <div class="status" id="status"></div>
@@ -74,8 +137,8 @@
   var copy = zh
     ? {
         title: "导出到 NarraLeaf Studio",
-        hintSelection: "已选中的画框",
-        hintPage: "当前页面的顶层画框，在画布上选中画框可只导出所选内容",
+        hintSelection: "所选图层所在的画框",
+        hintPage: "当前页面的顶层画框，在画布上选中画框或其中的图层可只导出所在画框",
         empty: "当前页面没有画框",
         exportOne: "导出 1 个画框",
         exportMany: "导出 {n} 个画框",
@@ -83,11 +146,46 @@
         progress: "正在导出“{name}”（{i}/{n}）",
         done: "已导出，在 Studio 的界面编辑器中选择「导入设计稿」打开该文件",
         error: "导出失败：{message}",
+        selectionNone: "在画布上选中图层后可以标注",
+        selectionCount: "已选中 {n} 个图层",
+        selectionRole: "，当前标为{role}",
+        selectionMixed: "，标注各不相同",
+        markAs: "标为…",
+        groupGameUi: "游戏界面",
+        groupParts: "对话框部件",
+        groupButtons: "快捷菜单按钮",
+        clear: "清除标注",
+        roles: { dialog: "对话框", choice: "选项", onStage: "快捷菜单", notification: "通知", sentence: "台词", name: "名字", avatar: "头像" },
+        tagGameUi: "游戏界面",
+        tagPage: "页面",
+        part: "{slot}「{name}」",
+        partMarked: " · 已标注",
+        duplicate: "画框里已有{slot}，这一个不会导入",
+        sentenceFound: "台词：「{layer}」",
+        sentenceGuessed: "台词：按位置取了最大的文本「{layer}」",
+        sentenceMissing: "台词：未找到，对话框不会显示台词",
+        nameFound: "名字：「{layer}」",
+        nameGuessed: "名字：按位置取了台词上方的文本「{layer}」",
+        nameMissing: "名字：未找到，不会显示说话人名字",
+        avatarFound: "头像：「{layer}」",
+        avatarMissing: "头像：未找到，不会显示头像",
+        avatarUnusable: "头像：「{layer}」不是图片或形状，无法显示头像",
+        choiceRows: "{n} 个选项，以第一个「{layer}」作为列表行",
+        choiceMissing: "未找到含文字的选项",
+        notificationRows: "{n} 条通知，以第一条「{layer}」作为列表行",
+        notificationMissing: "未找到含文字的通知",
+        button: "{action}：「{layer}」",
+        buttonLit: "，开启时切换外观",
+        buttonUnlit: "，没有开启状态，开启后外观不变",
+        buttonPage: "，导入时在项目里查找对应页面",
+        noButtons: "未识别出按钮，可把按钮标为 Auto、Skip、Log 等",
+        mixedButton: "「{layer}」有状态图层但夹着其他图层，不会合成按钮",
+        leftOut: "{n} 个图层不属于游戏界面，不会导入：{names}",
       }
     : {
         title: "Export to NarraLeaf Studio",
-        hintSelection: "Selected frames",
-        hintPage: "Top-level frames on this page. Select frames on the canvas to export only those",
+        hintSelection: "Frames the selection is in",
+        hintPage: "Top-level frames on this page. Select frames or layers on the canvas to export only the frames they are in",
         empty: "This page has no frames",
         exportOne: "Export 1 frame",
         exportMany: "Export {n} frames",
@@ -95,16 +193,66 @@
         progress: "Exporting “{name}” ({i} of {n})",
         done: "Exported. Open the file with Import design in the Studio interface editor",
         error: "Export failed: {message}",
+        selectionNone: "Select layers on the canvas to mark them",
+        selectionCount: "{n} selected",
+        selectionRole: ", marked as {role}",
+        selectionMixed: ", marked differently",
+        markAs: "Mark as…",
+        groupGameUi: "Game UI",
+        groupParts: "Dialogue part",
+        groupButtons: "Quick-menu button",
+        clear: "Clear mark",
+        roles: { dialog: "Dialogue box", choice: "Choices", onStage: "Quick menu", notification: "Notifications", sentence: "Line", name: "Speaker name", avatar: "Avatar" },
+        tagGameUi: "Game UI",
+        tagPage: "Page",
+        part: "{slot} “{name}”",
+        partMarked: " · marked",
+        duplicate: "The frame already has a {slot}, so this one is left out",
+        sentenceFound: "Line: “{layer}”",
+        sentenceGuessed: "Line: taken to be the largest text, “{layer}”",
+        sentenceMissing: "Line: not found, so the box shows no line",
+        nameFound: "Name: “{layer}”",
+        nameGuessed: "Name: taken to be the text above the line, “{layer}”",
+        nameMissing: "Name: not found, so the speaker's name is not shown",
+        avatarFound: "Avatar: “{layer}”",
+        avatarMissing: "Avatar: not found, so no face is shown",
+        avatarUnusable: "Avatar: “{layer}” is not a picture or a shape, so it cannot show a face",
+        choiceRows: "{n} options. The first, “{layer}”, is the row every option is drawn from",
+        choiceMissing: "No option with text found",
+        notificationRows: "{n} messages. The first, “{layer}”, is the row every message is drawn from",
+        notificationMissing: "No message with text found",
+        button: "{action}: “{layer}”",
+        buttonLit: ", changes look while on",
+        buttonUnlit: ", has no look for while it is on",
+        buttonPage: ", its page is looked up in the project on import",
+        noButtons: "No button recognised. Mark buttons as Auto, Skip, Log …",
+        mixedButton: "“{layer}” has state layers mixed with others, so it is not made a button",
+        leftOut: "{n} layers belong to no Game UI and are left out: {names}",
       };
+
+  var ROLE_GROUPS = [
+    { label: "groupGameUi", roles: ["dialog", "choice", "onStage", "notification"] },
+    { label: "groupParts", roles: ["sentence", "name", "avatar"] },
+    { label: "groupButtons", roles: ["auto", "skip", "log", "save", "load", "config", "hide"] },
+  ];
+  var ACTION_NAMES = { auto: "Auto", skip: "Skip", log: "Log", save: "Save", load: "Load", config: "Config", hide: "Hide" };
+  var PAGE_ACTIONS = { log: true, save: true, load: true, config: true };
+
+  function roleName(role) {
+    return copy.roles[role] || ACTION_NAMES[role] || role;
+  }
 
   function format(text, params) {
     return text.replace(/\{(\w+)\}/g, function (_, key) { return params[key] === undefined ? "" : String(params[key]); });
   }
 
   var list = document.getElementById("list");
+  var roleSelect = document.getElementById("role");
   var status = document.getElementById("status");
   var exportButton = document.getElementById("export");
   var busy = false;
+  /** Frames the designer unticked, kept unticked when the list is drawn again. */
+  var unticked = {};
   document.getElementById("title").textContent = copy.title;
   document.getElementById("close").textContent = copy.close;
 
@@ -123,7 +271,144 @@
     status.className = isError ? "status error" : "status";
   }
 
+  function buildRoleSelect() {
+    var placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = copy.markAs;
+    roleSelect.appendChild(placeholder);
+    ROLE_GROUPS.forEach(function (group) {
+      var optgroup = document.createElement("optgroup");
+      optgroup.label = copy[group.label];
+      group.roles.forEach(function (role) {
+        var option = document.createElement("option");
+        option.value = role;
+        option.textContent = roleName(role);
+        optgroup.appendChild(option);
+      });
+      roleSelect.appendChild(optgroup);
+    });
+    var clear = document.createElement("option");
+    clear.value = "clear";
+    clear.textContent = copy.clear;
+    roleSelect.appendChild(clear);
+    roleSelect.addEventListener("change", function () {
+      var role = roleSelect.value;
+      roleSelect.value = "";
+      if (role) parent.postMessage({ pluginMessage: { type: "mark", role: role } }, "*");
+    });
+  }
+
+  function renderSelection(selection) {
+    var text = copy.selectionNone;
+    if (selection && selection.count > 0) {
+      text = format(copy.selectionCount, { n: selection.count });
+      if (selection.role === "mixed") text += copy.selectionMixed;
+      else if (selection.role) text += format(copy.selectionRole, { role: roleName(selection.role) });
+    }
+    document.getElementById("selection").textContent = text;
+    roleSelect.disabled = !selection || selection.count === 0;
+  }
+
+  /** One line of the checklist; clicking it selects the layer it names. */
+  function entryRow(container, tone, glyph, text, layerId) {
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "entry " + tone;
+    if (layerId) {
+      row.setAttribute("data-id", layerId);
+      row.addEventListener("click", function () {
+        parent.postMessage({ pluginMessage: { type: "select", id: layerId } }, "*");
+      });
+    }
+    var mark = document.createElement("span");
+    mark.className = "glyph";
+    mark.textContent = glyph;
+    var words = document.createElement("span");
+    words.className = "words";
+    words.textContent = text;
+    row.appendChild(mark);
+    row.appendChild(words);
+    container.appendChild(row);
+  }
+
+  var GLYPHS = { ok: "✓", guess: "?", bad: "!", note: "–" };
+
+  function toneOf(status) {
+    if (status === "marked" || status === "named") return "ok";
+    if (status === "guessed") return "guess";
+    return "bad";
+  }
+
+  function renderEntry(container, slot, entry) {
+    var layer = entry.layer ? entry.layer.name : "";
+    var id = entry.layer ? entry.layer.id : null;
+    var tone = toneOf(entry.status);
+    var text;
+    if (entry.kind === "sentence" || entry.kind === "name") {
+      var key = entry.status === "guessed" ? "Guessed" : entry.status === "missing" ? "Missing" : "Found";
+      text = format(copy[entry.kind + key], { layer: layer });
+    } else if (entry.kind === "avatar") {
+      if (entry.status === "missing") {
+        tone = "note";
+        text = copy.avatarMissing;
+      } else if (entry.status === "unusable") {
+        tone = "bad";
+        text = format(copy.avatarUnusable, { layer: layer });
+      } else {
+        text = format(copy.avatarFound, { layer: layer });
+      }
+    } else if (entry.kind === "rows") {
+      text = entry.status === "missing" ? copy[slot + "Missing"] : format(copy[slot + "Rows"], { n: entry.count, layer: layer });
+    } else if (entry.kind === "button") {
+      text = format(copy.button, { action: ACTION_NAMES[entry.action], layer: layer });
+      if (entry.lit === true) text += copy.buttonLit;
+      if (entry.lit === false) {
+        text += copy.buttonUnlit;
+        tone = "guess";
+      }
+      if (PAGE_ACTIONS[entry.action]) text += copy.buttonPage;
+    } else if (entry.kind === "noButtons") {
+      text = copy.noButtons;
+    } else if (entry.kind === "mixedButton") {
+      text = format(copy.mixedButton, { layer: layer });
+    } else {
+      return;
+    }
+    entryRow(container, tone, GLYPHS[tone], text, id);
+  }
+
+  function renderChecklist(checklist) {
+    var box = document.createElement("div");
+    box.className = "checklist";
+    checklist.parts.forEach(function (part) {
+      var head = document.createElement("div");
+      head.className = "part";
+      var slotName = roleName(part.slot);
+      head.textContent = part.layer.name === slotName ? slotName : format(copy.part, { slot: slotName, name: part.layer.name });
+      if (part.marked) {
+        var marked = document.createElement("span");
+        marked.className = "marked";
+        marked.textContent = copy.partMarked;
+        head.appendChild(marked);
+      }
+      box.appendChild(head);
+      if (part.duplicate) {
+        entryRow(box, "bad", GLYPHS.bad, format(copy.duplicate, { slot: roleName(part.slot) }), part.layer.id);
+      }
+      part.entries.forEach(function (entry) {
+        renderEntry(box, part.slot, entry);
+      });
+    });
+    if (checklist.leftOut.length > 0) {
+      var names = checklist.leftOut.slice(0, 3).map(function (layer) { return layer.name; }).join(", ");
+      if (checklist.leftOut.length > 3) names += " …";
+      entryRow(box, "note leftout", GLYPHS.note, format(copy.leftOut, { n: checklist.leftOut.length, names: names }), null);
+    }
+    return box;
+  }
+
   function render(message) {
+    renderSelection(message.selection);
     document.getElementById("hint").textContent = message.fromSelection ? copy.hintSelection : copy.hintPage;
     list.textContent = "";
     if (message.frames.length === 0) {
@@ -138,18 +423,27 @@
       var box = document.createElement("input");
       box.type = "checkbox";
       box.value = frame.id;
-      box.checked = true;
-      box.addEventListener("change", refreshButton);
+      box.checked = !unticked[frame.id];
+      box.addEventListener("change", function () {
+        unticked[frame.id] = !box.checked;
+        refreshButton();
+      });
       var name = document.createElement("span");
       name.className = "name";
       name.textContent = frame.name;
       var size = document.createElement("span");
       size.className = "size";
       size.textContent = frame.width + " × " + frame.height;
+      var isGameUi = Boolean(frame.checklist && frame.checklist.parts.length > 0);
+      var tag = document.createElement("span");
+      tag.className = isGameUi ? "tag game" : "tag";
+      tag.textContent = isGameUi ? copy.tagGameUi : copy.tagPage;
       row.appendChild(box);
       row.appendChild(name);
+      row.appendChild(tag);
       row.appendChild(size);
       list.appendChild(row);
+      if (isGameUi) list.appendChild(renderChecklist(frame.checklist));
     });
     refreshButton();
   }
@@ -182,6 +476,8 @@
     if (!message) return;
     if (message.type === "frames") {
       if (!busy) render(message);
+    } else if (message.type === "selection") {
+      renderSelection(message.selection);
     } else if (message.type === "progress") {
       setStatus(format(copy.progress, { name: message.name, i: message.index, n: message.total }), false);
     } else if (message.type === "result") {
@@ -196,7 +492,9 @@
     }
   };
 
-  parent.postMessage({ pluginMessage: { type: "ready" } }, "*");
+  buildRoleSelect();
+  renderSelection(null);
+  parent.postMessage({ pluginMessage: { type: "ready", language: zh ? "zh" : "en" } }, "*");
 </script>
 </body>
 </html>

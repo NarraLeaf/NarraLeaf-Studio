@@ -63,14 +63,23 @@ import {
 import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import type { AppearanceSystemCondition } from "@shared/types/ui-editor/appearance";
-import { buttonStateOfName, type ButtonState } from "./buttonStates";
+import type { ButtonState } from "./buttonStates";
+import type { GameUiSlot, QuickMenuPage } from "./gameUiRoles";
 import {
-    dialogPartOfName,
-    gameUiSlotOfName,
-    quickMenuActionOfName,
-    type GameUiSlot,
-    type QuickMenuPage,
-} from "./gameUiRoles";
+    childrenOf,
+    detectFrameTarget,
+    gameUiPartsOf,
+    layerName as cleanName,
+    listOptionsOf,
+    matrixOf,
+    num,
+    readButton,
+    readDialog,
+    readQuickMenu,
+    wordsOf,
+    type ButtonShape,
+    type DesignFrameTarget,
+} from "./gameUiReading";
 import { DIALOG_INPUT_ACTIONS, GameUiBlueprints } from "./gameUiBlueprints";
 import type {
     FigmaEffect,
@@ -78,18 +87,17 @@ import type {
     FigmaExportNode,
     FigmaImportNote,
     FigmaImportNoteCode,
-    FigmaMatrix,
     FigmaPaint,
 } from "./figmaExportFormat";
-import { figmaColorToCss, figmaGradientToFill, IDENTITY_MATRIX, placeInParent, round2 } from "./figmaGeometry";
+import { figmaColorToCss, figmaGradientToFill, placeInParent, round2 } from "./figmaGeometry";
 
 export { FIGMA_IMPORT_NOTE_CODES } from "./figmaExportFormat";
 export type { FigmaImportNote, FigmaImportNoteCode } from "./figmaExportFormat";
 
 export type FigmaFontResolver = (family: string, style: string) => string | null;
 
-/** What a frame becomes: a page, or the Game UI its top-level groups are named for. */
-export type DesignFrameTarget = "page" | "gameUi";
+export { detectFrameTarget, gameUiPartsOf } from "./gameUiReading";
+export type { DesignFrameTarget, GameUiPart } from "./gameUiReading";
 
 export type ConvertFigmaFramesOptions = {
     /** The frames to import, by node id; all of them when absent. */
@@ -126,7 +134,6 @@ export type ConvertFigmaFramesResult = {
 };
 
 const MAX_EXAMPLES = 3;
-const MAX_NAME_LENGTH = 80;
 
 class NoteCollector {
     private readonly byCode = new Map<FigmaImportNoteCode, FigmaImportNote>();
@@ -506,86 +513,16 @@ function chromeProps(ctx: Context, node: FigmaExportNode, fill: FigmaPaint | nul
     };
 }
 
-type RecognizedButton = {
-    /** The look of each state the source has. `default` is always present. */
-    states: Partial<Record<ButtonState, FigmaExportNode>>;
-    /** The text that becomes the button's label, taken from the placed button. */
-    label: FigmaExportNode | null;
-    /** Each state's own text, when the states are variants that restyle it. */
-    labels: Partial<Record<ButtonState, FigmaExportNode>>;
-};
+type RecognizedButton = ButtonShape;
 
-const childrenOf = (node: FigmaExportNode): FigmaExportNode[] => (Array.isArray(node.children) ? node.children : []);
-
-/** A look a state can be: a picture, a shape, or a frame drawn by its own fill and stroke. */
-function isStateLook(node: FigmaExportNode): boolean {
-    return node.kind === "raster" || node.kind === "shape" || node.kind === "ellipse"
-        || ((node.kind === "frame" || node.kind === "group") && childrenOf(node).length === 0);
-}
-
-/**
- * Whether a node is a button drawn in states, and its states if so.
- *
- * Two shapes are read. An instance of a Figma component set whose variants differ in a state
- * property; each variant may hold at most one text, the label. Or a group or frame whose children are
- * named for states (`normal`, `hover` ... in any language `buttonStates.ts` reads), with at most one
- * text beside them. Either needs a default look and at least one other. A group that has states but
- * also other layers is left as it is and reported, so the author knows which name to change.
- */
+/** Whether a node is a button drawn in states (`gameUiReading.readButton`); a mixed one is reported by name. */
 function recognizeButton(ctx: Context, node: FigmaExportNode): RecognizedButton | null {
-    if (node.variantValue && Array.isArray(node.variants) && node.variants.length > 0) {
-        const own = buttonStateOfName(node.variantValue);
-        if (!own) {
-            return null;
-        }
-        const states: RecognizedButton["states"] = { [own]: node };
-        for (const variant of node.variants) {
-            const state = buttonStateOfName(variant.value);
-            if (state && !states[state]) {
-                states[state] = variant.node;
-            }
-        }
-        if (!states.default || Object.keys(states).length < 2) {
-            return null;
-        }
-        const looks = Object.values(states) as FigmaExportNode[];
-        if (looks.some(look => childrenOf(look).some(child => child.kind !== "text") || childrenOf(look).length > 1)) {
-            ctx.notes.add("buttonNotRecognized", cleanName(node.name));
-            return null;
-        }
-        const labels: RecognizedButton["labels"] = {};
-        for (const [state, look] of Object.entries(states) as [ButtonState, FigmaExportNode][]) {
-            const text = childrenOf(look)[0];
-            if (text) labels[state] = text;
-        }
-        return { states, label: childrenOf(node)[0] ?? null, labels };
-    }
-
-    if (node.kind !== "group" && node.kind !== "frame") {
-        return null;
-    }
-    const children = childrenOf(node);
-    const states: RecognizedButton["states"] = {};
-    let label: FigmaExportNode | null = null;
-    let others = 0;
-    for (const child of children) {
-        const state = buttonStateOfName(child.name);
-        if (state && !states[state] && isStateLook(child)) {
-            states[state] = child;
-        } else if (child.kind === "text" && !label) {
-            label = child;
-        } else {
-            others += 1;
-        }
-    }
-    if (!states.default || Object.keys(states).length < 2) {
-        return null;
-    }
-    if (others > 0) {
+    const button = readButton(node);
+    if (button === "mixed") {
         ctx.notes.add("buttonNotRecognized", cleanName(node.name));
         return null;
     }
-    return { states, label, labels: {} };
+    return button;
 }
 
 /** A state's look as button props: its fill, stroke, corner and shadows. */
@@ -955,26 +892,6 @@ function withEffectRows(model: AppearanceModel, effects: ElementEffectValues): A
     };
 }
 
-function matrixOf(raw: unknown): FigmaMatrix {
-    if (
-        Array.isArray(raw)
-        && raw.length === 2
-        && raw.every(row => Array.isArray(row) && row.length === 3 && row.every(value => typeof value === "number" && Number.isFinite(value)))
-    ) {
-        return raw as FigmaMatrix;
-    }
-    return IDENTITY_MATRIX;
-}
-
-function cleanName(raw: unknown): string {
-    const text = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : "";
-    return text.length > MAX_NAME_LENGTH ? text.slice(0, MAX_NAME_LENGTH) : text;
-}
-
-function num(value: unknown, fallback: number): number {
-    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
 function clamp01(value: number): number {
     return Math.max(0, Math.min(1, value));
 }
@@ -982,41 +899,6 @@ function clamp01(value: number): number {
 // ---------------------------------------------------------------------------
 // Game UI
 // ---------------------------------------------------------------------------
-
-/** One part of a game-screen design that becomes the Game UI of a slot. */
-export type GameUiPart = {
-    slot: GameUiSlot;
-    node: FigmaExportNode;
-    /** The frame itself is the part: its layers go straight onto the Game UI, its own fill does not. */
-    whole: boolean;
-};
-
-/**
- * The parts of a frame that fill Game UI slots, in the order they are drawn.
- *
- * A frame named for a slot is that slot's Game UI on its own. Otherwise each top-level group named
- * for a slot is one, and so is a group named for another slot directly inside one of those - the
- * quick menu drawn on the dialogue band is the quick menu, not a part of the box. The first part of
- * a slot is the one that counts; the converter reports the rest.
- */
-export function gameUiPartsOf(frame: FigmaExportNode): GameUiPart[] {
-    const own = gameUiSlotOfName(cleanName(frame.name));
-    const named = (node: FigmaExportNode, except: GameUiSlot | null): GameUiPart[] =>
-        childrenOf(node).flatMap(child => {
-            if (child.kind === "text") return [];
-            const slot = gameUiSlotOfName(cleanName(child.name));
-            return slot && slot !== except ? [{ slot, node: child, whole: false }] : [];
-        });
-    if (own) {
-        return [{ slot: own, node: frame, whole: true }, ...named(frame, own)];
-    }
-    return named(frame, null).flatMap(part => [part, ...named(part.node, part.slot)]);
-}
-
-/** What a frame becomes when the author has not said: Game UI when any of it is named for a slot. */
-export function detectFrameTarget(frame: FigmaExportNode): DesignFrameTarget {
-    return gameUiPartsOf(frame).length > 0 ? "gameUi" : "page";
-}
 
 type GameUiOutput = {
     surfaces: UISurface[];
@@ -1122,21 +1004,6 @@ function convertGameUiFrame(ctx: Context, frame: FigmaExportNode, frameBox: Box,
     }
 }
 
-/** Every layer under `nodes`, depth first, with the layer each sits in. */
-function walkLayers(nodes: readonly FigmaExportNode[], parent: FigmaExportNode | null, visit: (node: FigmaExportNode, parent: FigmaExportNode | null) => void): void {
-    for (const node of nodes) {
-        visit(node, parent);
-        walkLayers(childrenOf(node), node, visit);
-    }
-}
-
-/** A layer's box on the page, before scaling. */
-function absoluteBox(node: FigmaExportNode): { x: number; y: number; width: number; height: number } {
-    return placeInParent({ transform: matrixOf(node.transform), width: num(node.width, 0), height: num(node.height, 0) }, IDENTITY_MATRIX);
-}
-
-const areaOf = (node: FigmaExportNode): number => num(node.width, 0) * num(node.height, 0);
-
 /**
  * Gives the dialogue box's parts their jobs: the line becomes the box's sentence, the name follows
  * the speaker (and the plate it sits on shows only while someone speaks), the avatar shows the
@@ -1148,36 +1015,14 @@ const areaOf = (node: FigmaExportNode): number => num(node.width, 0) * num(node.
  */
 function wireDialog(ctx: Context, surfaceId: string, hostId: string | null, partNode: FigmaExportNode, children: readonly FigmaExportNode[]): number {
     const partName = cleanName(partNode.name);
-    const texts: FigmaExportNode[] = [];
-    const parents = new Map<FigmaExportNode, FigmaExportNode | null>();
-    let avatar: FigmaExportNode | null = null;
-    walkLayers(children, null, (node, parent) => {
-        parents.set(node, parent);
+    const reading = readDialog(children, node => {
         const id = ctx.nodeElements.get(node.id);
-        if (!id) return;
-        const element = ctx.elements[id];
-        if (node.kind === "text" && element.type === "nl.text") {
-            texts.push(node);
-        } else if (!avatar && node.kind !== "text" && dialogPartOfName(cleanName(node.name)) === "avatar") {
-            avatar = node;
-        }
+        return Boolean(id) && (node.kind !== "text" || ctx.elements[id!].type === "nl.text");
     });
-    const largest = (list: readonly FigmaExportNode[]): FigmaExportNode | null =>
-        list.reduce<FigmaExportNode | null>((best, node) => (!best || areaOf(node) > areaOf(best) ? node : best), null);
-    // A text Figma still names after its own words was never named by the designer, and its words
-    // say nothing about its job: a line that reads "Name your cat" is not the speaker's name.
-    const roleOf = (node: FigmaExportNode) => {
-        const name = cleanName(node.name);
-        const words = typeof node.text?.characters === "string" ? cleanName(node.text.characters) : "";
-        return name && name === words ? null : dialogPartOfName(name);
-    };
 
     let wired = 0;
-    let sentence = largest(texts.filter(node => roleOf(node) === "sentence"));
-    if (!sentence) {
-        sentence = largest(texts.filter(node => roleOf(node) !== "name"));
-        if (sentence) ctx.notes.add("dialogLineGuessed", partName);
-    }
+    const sentence = reading.sentence;
+    if (sentence && reading.sentenceGuessed) ctx.notes.add("dialogLineGuessed", partName);
     let sentenceId: string | null = null;
     if (sentence) {
         sentenceId = ctx.nodeElements.get(sentence.id)!;
@@ -1187,20 +1032,8 @@ function wireDialog(ctx: Context, surfaceId: string, hostId: string | null, part
         ctx.notes.add("dialogNoLine", partName);
     }
 
-    let nameNode = texts.find(node => node !== sentence && roleOf(node) === "name") ?? null;
-    if (!nameNode && sentence) {
-        const line = absoluteBox(sentence);
-        const above = texts.filter(node => {
-            if (node === sentence) return false;
-            const box = absoluteBox(node);
-            return box.y + box.height <= line.y + 4 && areaOf(node) < areaOf(sentence!);
-        });
-        nameNode = above.reduce<FigmaExportNode | null>((best, node) => {
-            const box = absoluteBox(node);
-            return !best || box.y + box.height > absoluteBox(best).y + absoluteBox(best).height ? node : best;
-        }, null);
-        if (nameNode) ctx.notes.add("dialogNameGuessed", cleanName(nameNode.name));
-    }
+    const nameNode = reading.name;
+    if (nameNode && reading.nameGuessed) ctx.notes.add("dialogNameGuessed", cleanName(nameNode.name));
     if (nameNode) {
         const nameId = ctx.nodeElements.get(nameNode.id)!;
         const blueprintId = ctx.blueprints.nametagValue(surfaceId, nameId, "text");
@@ -1208,7 +1041,7 @@ function wireDialog(ctx: Context, surfaceId: string, hostId: string | null, part
         element.valueBindings = { ...(element.valueBindings ?? {}), text: { kind: "blueprintValue", blueprintId, valueType: "string" } };
         wired += 1;
         // The plate is the layer the name sits in, when that is a layer of its own inside the box.
-        const plate = parents.get(nameNode) ?? null;
+        const plate = reading.plate;
         const plateId = plate ? ctx.nodeElements.get(plate.id) : undefined;
         const owner = hostId ?? sentenceId;
         if (plate && plateId && owner) {
@@ -1216,7 +1049,7 @@ function wireDialog(ctx: Context, surfaceId: string, hostId: string | null, part
         }
     }
 
-    const face = avatar as FigmaExportNode | null;
+    const face = reading.avatar;
     if (face) {
         const id = ctx.nodeElements.get(face.id)!;
         const element = ctx.elements[id];
@@ -1233,18 +1066,6 @@ function wireDialog(ctx: Context, surfaceId: string, hostId: string | null, part
     return wired;
 }
 
-/** The words a layer shows: its own, or the first text inside it. */
-function wordsOf(node: FigmaExportNode): string {
-    if (node.kind === "text") {
-        return typeof node.text?.characters === "string" ? node.text.characters : "";
-    }
-    for (const child of childrenOf(node)) {
-        const words = wordsOf(child);
-        if (words) return words;
-    }
-    return "";
-}
-
 /**
  * The choice menu or the notifications as the list the slot needs. The options drawn (a text, or a
  * group or button holding one) are rows: the first becomes the row every item is drawn from, its
@@ -1259,10 +1080,7 @@ function convertListPart(
     children: readonly FigmaExportNode[],
     place: (child: FigmaExportNode) => Box,
 ): number {
-    const hasText = (node: FigmaExportNode): boolean => node.kind === "text" || childrenOf(node).some(hasText);
-    const options = children
-        .filter(child => child.kind === "text" || ((child.kind === "group" || child.kind === "frame") && hasText(child)))
-        .sort((a, b) => place(a).y - place(b).y);
+    const options = listOptionsOf(children, child => place(child).y);
     const host = ctx.elements[hostId];
     if (options.length === 0) {
         ctx.notes.add("listNotRecognized", host.name);
@@ -1360,13 +1178,8 @@ const PAGE_BLUEPRINT_NAMES: Record<QuickMenuPage, string> = { log: "Log", save: 
 function wireQuickMenu(ctx: Context, surfaceId: string, children: readonly FigmaExportNode[]): number {
     let wired = 0;
     const lit: { kind: "auto" | "skip"; elementId: string; elementType: string }[] = [];
-    const visit = (node: FigmaExportNode): void => {
-        const action = quickMenuActionOfName(cleanName(node.name));
-        const id = ctx.nodeElements.get(node.id);
-        if (!action || !id) {
-            childrenOf(node).forEach(visit);
-            return;
-        }
+    for (const { action, node } of readQuickMenu(children, node => ctx.nodeElements.has(node.id))) {
+        const id = ctx.nodeElements.get(node.id)!;
         const element = ctx.elements[id];
         if (action === "auto" || action === "skip") {
             const variants = (element.props?.appearance as AppearanceModel | undefined)?.variants ?? [];
@@ -1386,8 +1199,7 @@ function wireQuickMenu(ctx: Context, surfaceId: string, children: readonly Figma
                 ctx.notes.add("quickMenuPageMissing", cleanName(node.name));
             }
         }
-    };
-    children.forEach(visit);
+    }
     ctx.blueprints.quickMenuSurface(surfaceId, lit);
     return wired;
 }

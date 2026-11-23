@@ -1352,6 +1352,8 @@ Widgets that belong together can be saved as a component and placed on any scree
 - 快捷菜单：命名为自动、跳过、日志、存档、读档、设置、隐藏（或 auto、skip、log、save、load、config、hide）的按钮执行对应功能；日志、存档、读档、设置打开项目中同名的页面。命名为「开启」（或 on）的状态是自动和跳过运行期间保持的外观
 - 通知：画出的第一条消息成为通知列表的行
 
+在 Figma 中也可以不改名，直接用插件标注：选中图层后在右键菜单的「插件 › NarraLeaf Studio Export」中选择 Mark 命令，或在插件面板中选择「标为…」。标注优先于图层名称；Figma 自动命名的图层会改为对应名称，自己命名的图层保留原名并加上前缀。插件面板按画框列出导入时的识别结果，标出按位置推测和未找到的部分，点击一项即可在画布上选中对应图层
+
 画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方
 
 Figma 插件位于 NarraLeaf Studio 源代码的 tools/figma-plugin 文件夹，在 Figma 中通过「插件 › 开发 › 从清单导入插件」添加
@@ -1372,6 +1374,8 @@ A design of the running game can come in as Game UI instead of a page. Name its 
 - Choice: the first option drawn becomes the row of the choice list, its text the option's words, and the gap to the second option the spacing.
 - Quick menu: buttons named auto, skip, log, save, load, config and hide do those jobs; Log, Save, Load and Config open the project's page of that name. A state named on is the look Auto and Skip keep while they run.
 - Notification: the first message drawn becomes the row of the notification list.
+
+In Figma, the plugin can mark layers instead of renaming them by hand: select layers and choose a Mark command under Plugins, NarraLeaf Studio Export in the right-click menu, or use Mark as in the plugin panel. A mark wins over the layer's name. A layer Figma named is renamed for its job; a name you chose is kept, with the job in front. The panel lists what the import will make of each frame, flags what it guessed by position and what is missing, and selects a layer on the canvas when you click its line.
 
 Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.
 

@@ -124,3 +124,69 @@ export function quickMenuPageOfName(name: string): QuickMenuPage | null {
     const action = quickMenuActionOfName(name);
     return action && (QUICK_MENU_PAGES as readonly string[]).includes(action) ? (action as QuickMenuPage) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Marked roles
+// ---------------------------------------------------------------------------
+
+/**
+ * A job the Figma plugin can mark a layer with. A mark says outright what a name only suggests, so
+ * it wins over the name - a layer marked as the line is the line whatever it is called, and a layer
+ * marked for one job is never read as another by its name.
+ */
+export type DesignRole = GameUiSlot | DialogPart | QuickMenuAction;
+
+export const DESIGN_ROLES: readonly DesignRole[] = [...GAME_UI_SLOTS, "sentence", "name", "avatar", ...QUICK_MENU_ACTIONS];
+
+export function isDesignRole(value: unknown): value is DesignRole {
+    return typeof value === "string" && (DESIGN_ROLES as readonly string[]).includes(value);
+}
+
+/** A layer as far as reading its job goes: its name, the mark the plugin left on it, and for a text its words. */
+export type RoleSource = { name?: unknown; role?: unknown; kind?: unknown; text?: { characters?: unknown } };
+
+function nameOf(node: RoleSource): string {
+    return typeof node.name === "string" ? node.name.trim() : "";
+}
+
+/**
+ * A text Figma still names after its own words was never named by the designer, and its words say
+ * nothing about its job: a line that reads "Name your cat" is not the speaker's name.
+ */
+function hasOwnName(node: RoleSource): boolean {
+    if (node.kind !== "text") return true;
+    const words = typeof node.text?.characters === "string" ? node.text.characters.trim() : "";
+    return nameOf(node) !== words;
+}
+
+/** The Game UI slot a layer is marked or named for, or null. */
+export function gameUiSlotOf(node: RoleSource): GameUiSlot | null {
+    if (isDesignRole(node.role)) {
+        return (GAME_UI_SLOTS as readonly string[]).includes(node.role) ? (node.role as GameUiSlot) : null;
+    }
+    return gameUiSlotOfName(nameOf(node));
+}
+
+/** The job a layer inside the dialogue box is marked or named for, or null. */
+export function dialogPartOf(node: RoleSource): DialogPart | null {
+    if (isDesignRole(node.role)) {
+        return node.role === "sentence" || node.role === "name" || node.role === "avatar" ? node.role : null;
+    }
+    return hasOwnName(node) ? dialogPartOfName(nameOf(node)) : null;
+}
+
+/**
+ * The job a quick-menu button is marked or named for, or null. A text still named after its words
+ * counts here: a quick-menu text that reads "Save" is the Save button.
+ */
+export function quickMenuActionOf(node: RoleSource): QuickMenuAction | null {
+    if (isDesignRole(node.role)) {
+        return (QUICK_MENU_ACTIONS as readonly string[]).includes(node.role) ? (node.role as QuickMenuAction) : null;
+    }
+    return quickMenuActionOfName(nameOf(node));
+}
+
+/** Whether the job came from a mark rather than from the name. */
+export function isMarked(node: RoleSource): boolean {
+    return isDesignRole(node.role);
+}

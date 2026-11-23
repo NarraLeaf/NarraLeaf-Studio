@@ -8,5 +8,43 @@
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": ["none"]
-  }
+  },
+  "menu": [
+    { "name": "Export and check…", "command": "open" },
+    { "separator": true },
+    {
+      "name": "Mark as Game UI",
+      "menu": [
+        { "name": "Dialogue box", "command": "mark:dialog" },
+        { "name": "Choices", "command": "mark:choice" },
+        { "name": "Quick menu", "command": "mark:onStage" },
+        { "name": "Notifications", "command": "mark:notification" }
+      ]
+    },
+    {
+      "name": "Mark dialogue part",
+      "menu": [
+        { "name": "Line", "command": "mark:sentence" },
+        { "name": "Speaker name", "command": "mark:name" },
+        { "name": "Avatar", "command": "mark:avatar" }
+      ]
+    },
+    {
+      "name": "Mark quick-menu button",
+      "menu": [
+        { "name": "Auto", "command": "mark:auto" },
+        { "name": "Skip", "command": "mark:skip" },
+        { "name": "Log", "command": "mark:log" },
+        { "name": "Save", "command": "mark:save" },
+        { "name": "Load", "command": "mark:load" },
+        { "name": "Config", "command": "mark:config" },
+        { "name": "Hide", "command": "mark:hide" }
+      ]
+    },
+    { "separator": true },
+    { "name": "Clear mark", "command": "mark:clear" }
+  ],
+  "relaunchButtons": [
+    { "command": "check", "name": "Check in NarraLeaf" }
+  ]
 }
