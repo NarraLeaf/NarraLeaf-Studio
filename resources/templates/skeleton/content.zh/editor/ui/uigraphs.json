@@ -23590,7 +23590,9 @@
         },
         "graphs": {
           "eventIds": [
-            "5107c0a1-0000-4000-8000-000000000511"
+            "5107c0a1-0000-4000-8000-000000000511",
+            "5107c0a1-0000-4000-8000-000000000512",
+            "5107c0a1-0000-4000-8000-000000000513"
           ],
           "events": {
             "5107c0a1-0000-4000-8000-000000000511": {
@@ -23602,9 +23604,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "打开页面时运行。「标志」随页面淡入，由第一个较长的「延迟」保持，随后隐藏；接着显示「免责声明」，由第二个较长的「延迟」保持，隐藏后打开标题页。较长的等待从开始淡入时算起（淡入在各元素的「动画」分区中设置），较短的等待留给淡出。「推进」意图（单击、空格键或回车键）与「关闭」意图（Esc 键）会结束正在进行的较长等待，屏幕上的元素随即淡出。「跳过延迟」通过「令牌」引脚找到对应的「延迟」，因此按键也在本图层中处理。「替换页面」在打开标题页的同时关闭本页面，因此「返回上一页」与页面为「无」的「前往页面」都回到标题页，而不是这里。「免责声明」默认隐藏：编辑时在「UI 大纲」中显示它，编辑后再隐藏。若要使用图片标志，在「标志」中用「图片」元素替换「文字标志」。",
+                      "text": "打开页面时运行。「标志」随页面淡入，由第一个较长的「延迟」保持，随后隐藏；接着显示「免责声明」，由第二个较长的「延迟」保持，隐藏后运行「打开标题页」。较长的等待从开始淡入时算起（淡入在各元素的「动画」分区中设置），较短的等待留给淡出。「免责声明」默认隐藏：编辑时在「UI 大纲」中显示它，编辑后再隐藏。若要使用图片标志，在「标志」中用「图片」元素替换「文字标志」。",
                       "width": 1400,
-                      "height": 180
+                      "height": 160
                     },
                     "meta": {
                       "editorLayout": {
@@ -23620,7 +23622,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23636,7 +23638,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23650,7 +23652,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 900,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23665,7 +23667,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 630,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23681,7 +23683,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1190,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23695,7 +23697,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1800,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23710,7 +23712,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1530,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23726,7 +23728,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2090,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23740,7 +23742,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2700,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23755,7 +23757,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2430,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23771,68 +23773,25 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2990,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
                   "toTitle": {
                     "id": "toTitle",
-                    "type": "blueprint.page.replace",
+                    "type": "blueprint.fn.call",
                     "params": {
-                      "surfaceId": "narraleaf-studio:main-surface"
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "打开标题页",
+                        "params": [],
+                        "returns": []
+                      }
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 3360,
-                        "y": 272
-                      }
-                    }
-                  },
-                  "advance": {
-                    "id": "advance",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "advance"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 722
-                      }
-                    }
-                  },
-                  "dismiss": {
-                    "id": "dismiss",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "dismiss"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 1015
-                      }
-                    }
-                  },
-                  "skipLogo": {
-                    "id": "skipLogo",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 630,
-                        "y": 781
-                      }
-                    }
-                  },
-                  "skipDisclaimer": {
-                    "id": "skipDisclaimer",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 2430,
-                        "y": 781
+                        "y": 252
                       }
                     }
                   }
@@ -23947,14 +23906,86 @@
                       "nodeId": "toTitle",
                       "port": "in"
                     }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000512": {
+              "id": "5107c0a1-0000-4000-8000-000000000512",
+              "name": "按下时打开标题页",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「推进」意图（单击、空格键或回车键）与「关闭」意图（Esc 键）会跳过本页面余下的部分并打开标题页，无论屏幕上正显示哪一部分。",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
                   },
+                  "advance": {
+                    "id": "advance",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "advance"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 462
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "打开标题页",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
                   {
                     "from": {
                       "nodeId": "advance",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
                       "port": "in"
                     }
                   },
@@ -23964,38 +23995,162 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000513": {
+              "id": "5107c0a1-0000-4000-8000-000000000513",
+              "name": "只打开一次标题页",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "在计时流程结束时和按下时调用。「替换页面」在打开标题页的同时关闭本页面，因此「返回上一页」与页面为「无」的「前往页面」都回到标题页，而不是这里。「已打开标题页」记录它已经运行过，否则在流程结束的同时按下会再打开一次标题页。",
+                      "width": 1000,
+                      "height": 170
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "openTitleHead": {
+                    "id": "openTitleHead",
+                    "type": "blueprint.fn.head",
+                    "params": {
+                      "name": "打开标题页"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "alreadyOpened": {
+                    "id": "alreadyOpened",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "once": {
+                    "id": "once",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": 269
+                      }
+                    }
+                  },
+                  "yes": {
+                    "id": "yes",
+                    "type": "blueprint.data.booleanLiteral",
+                    "params": {
+                      "value": "true"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 780,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "remember": {
+                    "id": "remember",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1040,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "replace": {
+                    "id": "replace",
+                    "type": "blueprint.page.replace",
+                    "params": {
+                      "surfaceId": "narraleaf-studio:main-surface"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1330,
+                        "y": 210
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "openTitleHead",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "once",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "holdLogo",
-                      "port": "token"
+                      "nodeId": "alreadyOpened",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
-                      "port": "timer"
+                      "nodeId": "once",
+                      "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "once",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "yes",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "remember",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "skipDisclaimer",
+                      "nodeId": "replace",
                       "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "holdDisclaimer",
-                      "port": "token"
-                    },
-                    "to": {
-                      "nodeId": "skipDisclaimer",
-                      "port": "timer"
                     }
                   }
                 ],
@@ -24009,7 +24164,13 @@
           "functions": {}
         },
         "members": {
-          "variables": {},
+          "variables": {
+            "5107c0a1-0000-4000-8000-000000000515": {
+              "id": "5107c0a1-0000-4000-8000-000000000515",
+              "name": "已打开标题页",
+              "valueType": "boolean"
+            }
+          },
           "fields": {},
           "functions": {}
         },
@@ -24971,6 +25132,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-15T20:09:47.109Z"
+    "updatedAt": "2026-11-23T23:48:24.970Z"
   }
 }
