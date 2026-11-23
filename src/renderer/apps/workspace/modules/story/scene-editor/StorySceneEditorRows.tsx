@@ -48,6 +48,8 @@ import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { useStarredStoryCommands } from "./useStarredStoryCommands";
 import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
+import { paramHintText } from "./commands/customCommandState";
+import { useCustomStoryCommandsVersion } from "./commands/customCommands";
 import { expandCommandAbbreviation, localizeCommandVerb } from "./storyCommandSpelling";
 import { abbreviationsOf, NO_ABBREVIATIONS, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
 import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
@@ -2127,7 +2129,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
             ) : (
-                <span className="text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+                <span className="text-fg-subtle">{`<${paramHintText(ghost!.hintKey, ct as (key: never) => string)}>`}</span>
             )}
         </span>
     );
@@ -2253,6 +2255,8 @@ export function InsertRow(props: {
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
+    // The project's own commands join the lists the moment the command file changes.
+    const customCommandsVersion = useCustomStoryCommandsVersion();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => {
             const all = [
@@ -2271,7 +2275,7 @@ export function InsertRow(props: {
                 abbreviations,
             );
         },
-        [abbreviations, chooserQuery, commandIds, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [abbreviations, chooserQuery, commandIds, ct, customCommandsVersion, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2291,7 +2295,7 @@ export function InsertRow(props: {
                 : available;
             return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [commandIds, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [commandIds, ct, customCommandsVersion, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the
@@ -2345,7 +2349,7 @@ export function InsertRow(props: {
                 // answers to in the footnote. It was the other way round, so a zh author read a column
                 // of `t` `d` `at` with the words that explain them pushed to the margin.
                 label: candidate.hintKey
-                    ? ct(`story.paramHint.${candidate.hintKey}` as TranslationKey)
+                    ? paramHintText(candidate.hintKey, ct as (key: never) => string)
                     : candidate.label,
                 // The kind a name belongs to is carried untranslated; it shares the subject vocabulary
                 // the category strip already names, so it reads in the author's own language.
@@ -3410,7 +3414,8 @@ function ActionCommandMenu(props: {
                         empty={!props.reachable.has(ALL_MENU_CATEGORY)}
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
                     />
-                    {STORY_COMMAND_CATEGORIES.map(category => (
+                    {/* 自定义 only once the project has a command to file there. */}
+                    {STORY_COMMAND_CATEGORIES.filter(category => category.id !== "custom" || props.reachable.has(category.id)).map(category => (
                         <ActionCommandCategoryRow
                             key={category.id}
                             icon={category.icon}

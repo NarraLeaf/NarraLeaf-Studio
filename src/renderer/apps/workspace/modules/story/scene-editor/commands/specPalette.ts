@@ -2,6 +2,7 @@ import type { TranslationKey } from "@shared/i18n";
 import type { PaletteActionCommand } from "../storyActionCommands";
 import type { StoryCommandContext } from "../storyCommandValues";
 import { commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } from "./registry";
+import { customCommandLayer, customCommandOfSpecId } from "./customCommandState";
 
 /**
  * The command specs projected onto the palette-command shape every menu renders.
@@ -13,19 +14,30 @@ import { commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } f
 
 type SpecCommandTranslate = (key: TranslationKey) => string;
 
-const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map(spec => ({
-    id: spec.id,
-    group: spec.category,
-    label: spec.id,
-    detail: "",
-    // The spec's own glyph, not its group's: the icon says the verb while the group's colour still
-    // says the subject (see `StoryCommandSpec.icon`).
-    icon: spec.icon,
-    aliases: [spec.token, ...(spec.aliases ?? [])].map(alias => `/${alias}`),
-}));
+let palette: { version: number; commands: readonly PaletteActionCommand[] } | null = null;
 
+/**
+ * Rebuilt when the project's own commands change (`customCommandLayer().version`), and otherwise the
+ * same array every call, so the menus that memoize on it keep doing so.
+ */
 export function specPaletteCommands(): readonly PaletteActionCommand[] {
-    return SPEC_PALETTE;
+    const version = customCommandLayer().version;
+    if (palette?.version !== version) {
+        palette = {
+            version,
+            commands: listCommandSpecs().map(spec => ({
+                id: spec.id,
+                group: spec.category,
+                label: spec.id,
+                detail: "",
+                // The spec's own glyph, not its group's: the icon says the verb while the group's colour
+                // still says the subject (see `StoryCommandSpec.icon`).
+                icon: spec.icon,
+                aliases: [spec.token, ...(spec.aliases ?? [])].map(alias => `/${alias}`),
+            })),
+        };
+    }
+    return palette.commands;
 }
 
 /**
@@ -58,6 +70,11 @@ export function availableSpecCommands(
  * is keyed on that same locale.
  */
 export function localizeSpecCommand(command: PaletteActionCommand, t: SpecCommandTranslate): PaletteActionCommand {
+    // A project's own command is named by its author, and described by them or not at all.
+    const custom = customCommandOfSpecId(command.id);
+    if (custom) {
+        return { ...command, label: custom.name, detail: custom.description ?? t("story.customCommandFallbackDetail" as TranslationKey) };
+    }
     return {
         ...command,
         label: t(commandLabelKey(command.id)),

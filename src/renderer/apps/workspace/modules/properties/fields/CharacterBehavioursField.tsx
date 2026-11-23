@@ -469,7 +469,7 @@ function BehaviourLineInput(props: {
  * the audio buses. No scene: a behaviour runs in every scene, so a name only one scene declares is
  * not one it can count on, and a command that needs one reports it as unknown.
  */
-function useBehaviourCommandContext(): { characters: Character[]; commandContext: StoryCommandContext; characterService: CharacterService | null } {
+export function useBehaviourCommandContext(): { characters: Character[]; commandContext: StoryCommandContext; characterService: CharacterService | null } {
     const { context, isInitialized } = useWorkspace();
     const services = context && isInitialized ? context.services : null;
     const characterService = useMemo(() => services?.get<CharacterService>(Services.Character) ?? null, [services]);

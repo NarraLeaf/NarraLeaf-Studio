@@ -2,6 +2,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
 import { paramHintKey, paramTypes } from "./storyCommandGrammar";
+import { customParamNameOfHint } from "./commands/customCommandState";
 import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 import { ownerCharacterId, resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
@@ -167,6 +168,10 @@ export function getCommandLineDraftReason(source: string, context: StoryCommandC
         return null;
     }
     const hint = paramHintKey(missing[0]);
+    const custom = customParamNameOfHint(hint);
+    if (custom !== null) {
+        return { key: "storyExpr.reason.missingCore" as TranslationKey, params: { token: line.token ?? "", slot: custom } };
+    }
     return {
         key: "storyExpr.reason.missingCore" as TranslationKey,
         params: { token: line.token ?? "", slot: hint },

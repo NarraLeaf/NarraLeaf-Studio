@@ -48,6 +48,8 @@ export type DocumentKind =
     | "story-comments"
     /** The transforms the project saved to reuse, at `editor/transform-presets.json`. */
     | "transform-presets"
+    /** The project's own story commands, at `editor/story/commands.json`. */
+    | "story-commands"
     /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
     | "save-schema"
     /** The asset sets the project declares, at `editor/asset-sets.json`. */

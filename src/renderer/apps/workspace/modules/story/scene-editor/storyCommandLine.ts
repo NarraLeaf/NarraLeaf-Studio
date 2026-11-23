@@ -3,6 +3,7 @@ import type {
     StoryActionableTargetRef,
     StoryActionPayload,
     StoryBlock,
+    StoryCustomCommandArg,
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
@@ -51,6 +52,7 @@ import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
 import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
+import { customCommandOfSpecId } from "./commands/customCommandState";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
     parsePositionValue,
@@ -1734,6 +1736,75 @@ function displayableTargetWord(
     return resolved.label || undefined;
 }
 
+/**
+ * A call to one of the project's own commands: its name, then each argument it passes, printed the
+ * way the line would type it - so the row reads back through the same parser that wrote it.
+ *
+ * A number, a switch and an option are click-to-edit, like the slot they borrow their type from; a
+ * character is not (retype the line), since the value a call stores for one is the whole resolved
+ * reference rather than an id the row could swap on its own.
+ */
+function customCommandSentence(
+    payload: Extract<StoryActionPayload, { action: "customCommand" }>,
+    lookups: StoryCommandLineLookups,
+    commandId: string,
+): Sentence | null {
+    const command = customCommandOfSpecId(commandId);
+    const def = getDefById(commandId);
+    if (!command || !def) {
+        return null;
+    }
+    const args: (Arg | null)[] = [];
+    for (const param of def.params) {
+        const value = payload.args[param.name] as Record<string, unknown> | undefined;
+        if (!value) {
+            continue;
+        }
+        const write = (next: StoryCustomCommandArg) => ({ ...payload, args: { ...payload.args, [param.name]: next } });
+        const extra = param.positional ? { positional: true } : {};
+        switch (value.kind) {
+            case "number": {
+                args.push(arg(param.name, numberValue(value.value as number), {
+                    ...extra,
+                    apply: next => write({ kind: "number", value: Number(next) }),
+                }));
+                break;
+            }
+            case "boolean": {
+                args.push(arg(param.name, booleanValue(value.value as boolean), {
+                    ...extra,
+                    apply: next => write({ kind: "boolean", value: next === "true" }),
+                }));
+                break;
+            }
+            case "enum": {
+                args.push(arg(param.name, String(value.value), {
+                    ...extra,
+                    enum: true,
+                    apply: next => write({ kind: "enum", value: next }),
+                }));
+                break;
+            }
+            case "target":
+            case "character": {
+                const target = (value.kind === "target" ? value.target : value) as { characterId?: string; name?: string } | undefined;
+                const characterId = target?.characterId;
+                const name = (characterId ? lookups.commandContext?.characters?.find(entry => entry.id === characterId)?.name : undefined)
+                    ?? target?.name;
+                args.push(arg(param.name, name, { ...extra, ...characterLink(lookups, characterId) }));
+                break;
+            }
+            case "text": {
+                args.push(arg(param.name, String(value.value ?? ""), extra));
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return { commandId, args };
+}
+
 function actionSentence(
     payload: StoryActionPayload,
     lookups: StoryCommandLineLookups,
@@ -1862,6 +1933,8 @@ function actionSentence(
             };
         }
 
+        case "customCommand":
+            return customCommandSentence(payload, lookups, commandId);
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.

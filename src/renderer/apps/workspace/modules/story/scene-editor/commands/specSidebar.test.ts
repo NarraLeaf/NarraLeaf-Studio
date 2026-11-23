@@ -144,7 +144,7 @@ describe("browse walk stops (§4.2, interaction rule 2)", () => {
 describe("the eight categories (§4.1, §12.3)", () => {
     it("cuts by exactly one criterion and keeps 舞台 as the only two-level category", () => {
         expect(STORY_COMMAND_CATEGORIES.map(category => category.id)).toEqual([
-            "character", "stage", "camera", "scene", "sound", "data", "flow", "utils",
+            "character", "stage", "camera", "scene", "sound", "data", "flow", "utils", "custom",
         ]);
         const multiLevel = STORY_COMMAND_CATEGORIES
             .filter(category => STORY_COMMAND_GROUPS.filter(group => group.category === category.id).length > 1)
@@ -160,7 +160,8 @@ describe("the eight categories (§4.1, §12.3)", () => {
     });
 
     it("keeps every category populated, so no chip opens onto an empty list", () => {
-        for (const category of STORY_COMMAND_CATEGORIES) {
+        // 自定义 holds the project's own commands and is hidden while it has none (see the menus).
+        for (const category of STORY_COMMAND_CATEGORIES.filter(entry => entry.id !== "custom")) {
             expect(filterSidebarGroups(sidebar(), category.id).length).toBeGreaterThan(0);
         }
     });
@@ -196,6 +197,8 @@ const CATEGORY_COLORS: Record<StoryCommandCategoryId, string> = {
     data: "#b8aa86",
     flow: "#b2a6c9",
     utils: "#a8adb5",
+    // The project's own commands: a muted green no other group wears.
+    custom: "#a3b39a",
 };
 
 const GROUP_COLORS: Record<StoryCommandGroupId, string> = {
@@ -212,6 +215,8 @@ const GROUP_COLORS: Record<StoryCommandGroupId, string> = {
     data: "#b8aa86",
     flow: "#b2a6c9",
     utils: "#a8adb5",
+    // The project's own commands: a muted green no other group wears.
+    custom: "#a3b39a",
 };
 
 describe("pinned colours (§12.3)", () => {

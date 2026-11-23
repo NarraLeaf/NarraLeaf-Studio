@@ -321,6 +321,19 @@ fresh UUID (its first 8 characters become the anchor and the `#data` key, the wh
 entry's `"id"`), and set `"value"` to `"scene:<your scene id>"`. Check it with `dryRun: true`. If it
 gives trouble, leave it out: saves then show no place, nothing else breaks.
 
+## A project's own commands
+
+A project can define story commands of its own (Story panel, Custom commands; saved in
+`editor/story/commands.json`). A line calls one like any command: `/Shake Mei strength=10` plays
+that command's rows with the arguments written into them, exactly as if those rows stood there.
+`story_commands {category:"custom"}` lists them and `story_command {token}` shows their parameters;
+a parameter without a default is required, and a line that leaves it out is not committed.
+Editing a command changes every row that calls it.
+
+The tools cannot create or edit a custom command. Use the ones the project has where they fit, and
+write the rows out otherwise. A row calling a command that is gone, or missing a required
+parameter, plays nothing and `lint` reports it (`story/custom-command-broken`).
+
 ## A row that runs a blueprint
 
 A `/blueprint` row runs a blueprint of its own when play reaches it - the way to grant an

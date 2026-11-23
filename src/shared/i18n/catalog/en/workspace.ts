@@ -1273,6 +1273,7 @@ export const workspace = {
                 dictionary: "project dictionary",
                 storyComments: "story comments",
                 transformPresets: "transform presets",
+                storyCommands: "story commands",
                 saveSchema: "save fields",
                 characters: "characters",
                 project: "project settings",

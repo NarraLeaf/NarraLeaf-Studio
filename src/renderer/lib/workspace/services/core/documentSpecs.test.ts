@@ -13,6 +13,7 @@ import {
     storyDocumentSpec,
     storyIndexSpec,
     transformPresetsSpec,
+    storyCommandsSpec,
     uiDocumentSpec,
     uiGraphsSpec,
     variableRegistrySpec,
@@ -41,6 +42,7 @@ describe("document specs agree with ProjectNameConvention", () => {
         expect(brandSpec.pathFor()).toBe(of(ProjectNameConvention.EditorBrand));
         expect(dictionarySpec.pathFor()).toBe(of(ProjectNameConvention.EditorDictionary));
         expect(transformPresetsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorTransformPresets));
+        expect(storyCommandsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorStoryCommands));
         expect(dlcSpec.pathFor()).toBe(of(ProjectNameConvention.EditorDlc));
         expect(voiceDocumentSpec.pathFor({ locale: "ja" })).toBe(of(ProjectNameConvention.EditorVoiceDocument("ja")));
         expect(localizationDocumentSpec.pathFor({ locale: "zh-CN" }))

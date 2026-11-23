@@ -183,6 +183,7 @@ export const DOCUMENT_KIND_NAME_KEY: Record<DocumentKind, TranslationKey> = {
     dictionary: "documentDiff.name.dictionary",
     "story-comments": "documentDiff.name.storyComments",
     "transform-presets": "documentDiff.name.transformPresets",
+    "story-commands": "documentDiff.name.storyCommands",
     "save-schema": "documentDiff.name.saveSchema",
     "asset-sets": "documentDiff.name.assetSets",
     localization: "documentDiff.name.localization",

@@ -1,3 +1,4 @@
+import type { StoryCustomCommandLibrary } from "@shared/story/customCommands";
 import type { CharacterBehaviours } from "@shared/story/characterBehaviours";
 import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 import type { ProjectAppTag } from "@shared/types/appTag";
@@ -251,6 +252,11 @@ export type LintContext = {
      * the release variant is synthesized and stores nothing, so `appTags` cannot carry it.
      */
     projectEndingSurfaceId: string;
+    /**
+     * The project's own story commands, by id (`editor/story/commands.json`). What a call row plays
+     * is decided here, so whether a call can play at all is a question about this list.
+     */
+    customCommands: StoryCustomCommandLibrary;
     /**
      * The DLC this project ships, as the registry holds them.
      *

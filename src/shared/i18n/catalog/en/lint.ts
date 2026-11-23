@@ -459,6 +459,21 @@ export const lint = {
                 + "- Pick a page on the row\n"
                 + "- Delete the row if the page is gone for good",
         },
+        storyCustomCommandBroken: {
+            title: "Custom command that cannot play",
+            description: "A call to a custom command that was deleted, misses a required parameter, or calls itself",
+            message: "The command this row calls is no longer in the project, so the row plays nothing",
+            missingArgs: "This row leaves out {params}, which has no default, so the row plays nothing",
+            recursion: "The command {name} ends up calling itself, so the row plays nothing",
+            help:
+                "A row that calls one of the project's own story commands, where the call cannot be played.\n"
+                + "\n"
+                + "The row compiles to nothing, so the staging it stands for does not happen.\n"
+                + "\n"
+                + "- Recreate the command, or delete the row\n"
+                + "- Give the missing parameter a value on the row, or a default in the command\n"
+                + "- Remove the call that loops back from the command's rows",
+        },
         storyQuitPageMissing: {
             title: "Quit with no page",
             description: "A /quit row that names no page, or one the project no longer has",

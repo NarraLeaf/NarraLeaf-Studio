@@ -1,3 +1,4 @@
+import { customCommandCallProblem } from "@shared/story/customCommands";
 import { findCharacterBehaviourConflicts } from "@shared/story/characterBehaviours";
 import { collectCutPoints } from "@shared/story/appTagFold";
 import { createLintBreather } from "../breather";
@@ -1161,6 +1162,43 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     location: storyLocation(entry, scene, block.id),
                     target: blockTarget(entry, scene, block.id),
                 });
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A call to one of the project's own commands that cannot play: the command was deleted, the
+         * call leaves out a parameter that has no default, or the command ends up calling itself.
+         *
+         * The call compiles to nothing, so whatever staging it stood for silently does not happen.
+         * An error, like a /page row with no page: the scene runs, but not the way it was written.
+         */
+        id: "story/custom-command-broken",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyCustomCommandBroken",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const cursor of eachScene(ctx)) {
+                for (const block of liveBlocks(cursor.scene)) {
+                    const problem = customCommandCallProblem(block, ctx.customCommands);
+                    if (!problem) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/custom-command-broken",
+                        messageKey: problem.code === "unknownCommand"
+                            ? "lint.rule.storyCustomCommandBroken.message"
+                            : problem.code === "missingArgs"
+                                ? "lint.rule.storyCustomCommandBroken.missingArgs"
+                                : "lint.rule.storyCustomCommandBroken.recursion",
+                        ...(problem.code === "missingArgs" ? { params: { params: problem.params.join(", ") } } : {}),
+                        ...(problem.code === "recursion" ? { params: { name: problem.commandName } } : {}),
+                        location: storyLocation(cursor.entry, cursor.scene, block.id),
+                        target: blockTarget(cursor.entry, cursor.scene, block.id),
+                    });
+                }
             }
             return findings;
         },

@@ -167,6 +167,9 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "setVariable": return storyAssignmentShorthand(payload)?.commandId ?? "set";
         case "input": return INPUT[payload.operation] ?? null;
         case "page": return "page";
+        // A project's own command is served under `custom:<id>` (the scene editor's
+        // `customCommandSpecId`), and is in the registry only while the project has it.
+        case "customCommand": return `custom:${payload.commandId}`;
         default: return null;
     }
 }

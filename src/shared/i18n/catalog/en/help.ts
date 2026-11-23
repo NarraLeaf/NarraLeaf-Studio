@@ -244,6 +244,22 @@ export const help = {
                 + "space is replaced with the command, so rows never contain it.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
+        customStoryCommands: {
+            title: "Custom commands",
+            body:
+                "A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.\n"
+                + "\n"
+                + "- Create one in the Custom commands group of the Story panel, or select rows in the story editor and choose Save as custom command.\n"
+                + "- Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.\n"
+                + "- A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.\n"
+                + "- A parameter without a default is required; a row that leaves it out is shown as a draft.\n"
+                + "- Editing a command changes every row that calls it; renaming it leaves those rows working.\n"
+                + "- A command can hold stage, sound, wait and variable commands and call other custom commands; dialogue, jumps and flow commands are not allowed.\n"
+                + "\n"
+                + "Copy as text and Export to file carry the commands it calls as well. Import them in another project from the clipboard or a file; a name that is taken gets a number.\n"
+                + "\n"
+                + "A row whose command is deleted, misses a required parameter or calls itself plays nothing, and the project check reports it.",
+        },
         storyVariables: {
             title: "Variables",
             body:

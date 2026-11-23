@@ -10,6 +10,13 @@
  * Comments in English per project convention.
  */
 
+import {
+    customCommandCallIdOf,
+    EMPTY_CUSTOM_COMMAND_LIBRARY,
+    expandStoryCustomCommandsInDocument,
+    type StoryCustomCommandLibrary,
+} from "@shared/story/customCommands";
+import type { StoryCustomCommandService } from "@/lib/workspace/services/story/StoryCustomCommandService";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
@@ -26,7 +33,7 @@ import type { StoryAnimationAsset, StoryBlockId, StoryScene } from "@shared/type
 import { buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
-import { walkStoryStageTimeline } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { walkStoryStageTimeline, type StageTimelineWalk } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { getStoryPreviewHub, useStoryPreviewHubValue, type StoryPreviewHub } from "../story/scene-editor/preview/storyPreviewHub";
 import { useStoryDocument } from "../story/scene-editor/preview/StoryScenePreviewFloatHost";
 import { characterIdentity } from "../story/scene-editor/StoryRowGutter";
@@ -97,20 +104,21 @@ export function StageTimelinePanel(_props: PanelComponentProps) {
         [registryRevision, registryService],
     );
 
+    const customCommands = useStoryCustomCommandLibrary(context, ready);
     const throughKey = scene ? stageTimelineThrough(scene, cursor, scenePicks).join("\n") : "";
     const model = useMemo(() => {
         if (!document || !scene || !sceneId) {
             return null;
         }
-        const walk = walkStoryStageTimeline({
-            document,
+        const walk = foldCustomCommandFrames(walkStoryStageTimeline({
+            document: expandStoryCustomCommandsInDocument(document, customCommands),
             sceneId,
             through: throughKey ? throughKey.split("\n") : [],
             savedVariables,
             animations,
-        });
+        }));
         return buildStageTimelineModel({ walk, scene, names: names.names });
-    }, [animations, document, names, savedVariables, scene, sceneId, throughKey]);
+    }, [animations, customCommands, document, names, savedVariables, scene, sceneId, throughKey]);
 
     const order = useMemo(() => (scene ? sceneBlockOrder(scene) : new Map<StoryBlockId, number>()), [scene]);
     const textWidths = useMemo(() => (model ? model.lines.map(line => (line === null ? null : measureLine(line))) : []), [model]);
@@ -291,4 +299,43 @@ function useTimelineNames(context: ReturnType<typeof useWorkspace>["context"], r
         };
         return { names, characters };
     }, [assetRevision, characters, context, ready, voice]);
+}
+
+/**
+ * The project's own commands, by id, kept current: the timeline walks calls as the rows they stand
+ * for, like the game does.
+ */
+function useStoryCustomCommandLibrary(context: ReturnType<typeof useWorkspace>["context"], ready: boolean): StoryCustomCommandLibrary {
+    const service = useMemo(
+        () => (context && ready ? context.services.get<StoryCustomCommandService>(Services.StoryCustomCommands) : null),
+        [context, ready],
+    );
+    const [library, setLibrary] = useState<StoryCustomCommandLibrary>(() => service?.library() ?? EMPTY_CUSTOM_COMMAND_LIBRARY);
+    useEffect(() => {
+        if (!service) {
+            return undefined;
+        }
+        setLibrary(service.library());
+        return service.onCommandsChanged(() => setLibrary(service.library()));
+    }, [service]);
+    return library;
+}
+
+/**
+ * A call is one row of the scene, so it is one column of the timeline: the frames its rows recorded
+ * fold into a single frame on the call, holding the stage as the last of them left it.
+ */
+function foldCustomCommandFrames(walk: StageTimelineWalk): StageTimelineWalk {
+    const frames: StageTimelineWalk["frames"] = [];
+    for (const frame of walk.frames) {
+        const callId = customCommandCallIdOf(frame.blockId);
+        const blockId = callId ?? frame.blockId;
+        const previous = frames[frames.length - 1];
+        if (callId && previous?.blockId === blockId) {
+            frames[frames.length - 1] = { ...frame, blockId };
+        } else {
+            frames.push(callId ? { ...frame, blockId } : frame);
+        }
+    }
+    return { ...walk, frames };
 }

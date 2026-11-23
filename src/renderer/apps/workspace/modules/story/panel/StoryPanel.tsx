@@ -1,3 +1,4 @@
+import { useStoryCommandsSection } from "../../story-commands/StoryCommandsSection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Rows3, Star, Waypoints } from "lucide-react";
 import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
@@ -70,7 +71,7 @@ interface StoryPanelState {
     outlineCastAvatars?: boolean;
 }
 
-const DEFAULT_STORY_ROOT_OPEN_ITEMS = ["stories", "outline"];
+const DEFAULT_STORY_ROOT_OPEN_ITEMS = ["stories", "commands", "outline"];
 const STORY_ROOT_ITEM_IDS = new Set(DEFAULT_STORY_ROOT_OPEN_ITEMS);
 
 function filterStoryRootOpenItems(ids: string[] | undefined): string[] {
@@ -104,6 +105,7 @@ function TitleWithCount(props: { title: string; count: number }) {
 
 export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
+    const commandsSection = useStoryCommandsSection();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     // Opening a scene, opening the flow, exporting a script and picking which story is selected write
@@ -1207,6 +1209,16 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 })}
                             </div>
                         )}
+                    </AccordionItem>
+
+                    {/* The project's own commands: project-wide, so beside the story list rather than in a story. */}
+                    <AccordionItem
+                        id="commands"
+                        title={<TitleWithCount title={t("story.customCommands.title")} count={commandsSection.count} />}
+                        className="!border-b-0"
+                        actions={commandsSection.actions}
+                    >
+                        {commandsSection.body}
                     </AccordionItem>
 
                     {selectedEntry ? (

@@ -1155,6 +1155,7 @@ export const workspace = {
                 dictionary: "项目词典",
                 storyComments: "故事批注",
                 transformPresets: "变换预设",
+                storyCommands: "自定义指令",
                 saveSchema: "存档字段",
                 characters: "角色",
                 project: "项目设置",

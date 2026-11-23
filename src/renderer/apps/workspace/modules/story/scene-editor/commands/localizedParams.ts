@@ -1,6 +1,7 @@
 import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
 import { commandI18nStore, translateCommand } from "@/lib/i18n";
 import { findParam, paramHintKey, type StoryCommandDef, type StoryCommandParam } from "../storyCommandGrammar";
+import { customParamNameOfHint } from "./customCommandState";
 
 /**
  * The localized spelling of a parameter key: the "translated name → param" table that lets an author
@@ -54,6 +55,10 @@ function buildMap(def: StoryCommandDef): ReadonlyMap<string, StoryCommandParam> 
     const canonical = canonicalKeys(def);
     const map = new Map<string, StoryCommandParam>();
     for (const param of def.params) {
+        // A custom parameter's name is already the author's own word; there is nothing to translate.
+        if (customParamNameOfHint(paramHintKey(param)) !== null) {
+            continue;
+        }
         const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;
         const raw = translateCommand(key);
         const label = raw.trim().toLowerCase();
@@ -107,7 +112,7 @@ export function localizedParamKey(def: StoryCommandDef, param: StoryCommandParam
     // ("Position", "Seconds") is a DESCRIPTION of the slot, not a second name for it, and it only
     // doubles as a name in a locale that has no other word to offer. Inserting `Seconds=1` for an
     // English author would be replacing their key with its own caption.
-    if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
+    if (commandI18nStore.getLocale() === SOURCE_LOCALE || customParamNameOfHint(paramHintKey(param)) !== null) {
         return param.name;
     }
     const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;

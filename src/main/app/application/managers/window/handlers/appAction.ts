@@ -1049,6 +1049,11 @@ const LIBRARY_DIALOG_TITLE: Record<LibraryExchangeKind, { export: string; import
         import: "Import Story Motions",
         fallbackName: "story-motions.json",
     },
+    "story-command": {
+        export: "Export Story Commands",
+        import: "Import Story Commands",
+        fallbackName: "story-commands.json",
+    },
 };
 
 /**

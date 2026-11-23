@@ -11,6 +11,7 @@ export const documents = {
             blueprints: "蓝图",
             variables: "变量",
             saveSchema: "存档结构",
+            storyCommands: "自定义指令",
             localization: "翻译",
             localizationKeys: "翻译键",
             voice: "配音",

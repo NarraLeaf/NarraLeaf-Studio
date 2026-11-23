@@ -46,6 +46,7 @@ export const HELP_TOPIC_IDS = [
     "agents",
     "storyScene",
     "storyCommands",
+    "customStoryCommands",
     "storyVariables",
     "renameRefactor",
     "storyExpressions",
@@ -255,7 +256,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "storyCommands",
         section: "story",
         clip: true,
-        related: ["storyScene", "storyVariables", "storyExpressions"],
+        related: ["storyScene", "storyVariables", "storyExpressions", "customStoryCommands"],
+    },
+    {
+        id: "customStoryCommands",
+        section: "story",
+        related: ["storyCommands", "characterBehaviours", "lint"],
     },
     {
         id: "storyVariables",

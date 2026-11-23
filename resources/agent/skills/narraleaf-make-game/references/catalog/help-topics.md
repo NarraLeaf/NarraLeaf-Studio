@@ -302,7 +302,37 @@ The Actions panel beside the editor lists every command, the values each one acc
 - Abbreviations of your own are set on a command's page in the panel. An abbreviation followed by a space is replaced with the command, so rows never contain it.
 - A row with a required value missing cannot be committed.
 
-相关主题 · Related：场景与行 · Scenes and rows、变量 · Variables、表达式 · Expressions
+相关主题 · Related：场景与行 · Scenes and rows、变量 · Variables、表达式 · Expressions、自定义指令 · Custom commands
+
+### 自定义指令 · Custom commands
+
+自定义指令把几行命令保存为一条带名字的命令，在故事编辑器中像内置命令一样输入，例如 @左右摇晃 Anyo 力度=10
+
+- 在故事面板的「自定义指令」中新建，或在故事编辑器中选中几行，右键选择「保存为自定义指令」
+- 在命令的值的位置写 <参数名> 声明参数，例如 xoffset=<力度>；写 -<力度> 使用相反数，写 <力度=5> 设置默认值
+- 参数的类型与所在位置相同：数字带同样的单位和范围，选项提供同样的候选，角色位置只接受角色
+- 没有默认值的参数必须填写，漏写时该行显示为草稿
+- 修改指令后，所有调用它的行都按新内容播放；重命名不影响已有的行
+- 指令中可以使用舞台、声音、等待和变量类命令，也可以调用其他自定义指令；不能使用对白、跳转和流程命令
+
+「复制为文本」和「导出到文件」会连同它调用的其他指令一起导出；在另一个项目中从剪贴板或文件导入，重名时自动编号
+
+指令被删除、缺少必填参数或调用自身时，调用它的行不播放任何内容，项目检查在该行报错
+
+A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.
+
+- Create one in the Custom commands group of the Story panel, or select rows in the story editor and choose Save as custom command.
+- Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.
+- A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.
+- A parameter without a default is required; a row that leaves it out is shown as a draft.
+- Editing a command changes every row that calls it; renaming it leaves those rows working.
+- A command can hold stage, sound, wait and variable commands and call other custom commands; dialogue, jumps and flow commands are not allowed.
+
+Copy as text and Export to file carry the commands it calls as well. Import them in another project from the clipboard or a file; a name that is taken gets a number.
+
+A row whose command is deleted, misses a required parameter or calls itself plays nothing, and the project check reports it.
+
+相关主题 · Related：指令 · Commands、角色行为 · Character behaviours、项目检查 · Project checks
 
 ### 变量 · Variables
 
@@ -2495,6 +2525,26 @@ The row opens nothing and the story does not wait, so its variable is never writ
 
 - Pick a page on the row
 - Delete the row if the page is gone for good
+
+相关主题 · Related：项目检查 · Project checks
+
+### 无法播放的自定义指令 · Custom command that cannot play
+
+调用项目自定义指令的行，但这次调用无法播放
+
+该行编译后为空，它代表的演出不会发生
+
+- 重新创建该指令，或删除这一行
+- 在行上为缺少的参数填值，或在指令里给它默认值
+- 从指令的行里删掉绕回自身的调用
+
+A row that calls one of the project's own story commands, where the call cannot be played.
+
+The row compiles to nothing, so the staging it stands for does not happen.
+
+- Recreate the command, or delete the row
+- Give the missing parameter a value on the row, or a default in the command
+- Remove the call that loops back from the command's rows
 
 相关主题 · Related：项目检查 · Project checks
 

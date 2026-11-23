@@ -546,6 +546,11 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
         }),
     }],
+    "story/custom-command-broken": [{
+        context: () => createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Hub", [action("c1", { action: "customCommand", commandId: "gone", args: {} })])])],
+        }),
+    }],
     "story/input-action-missing": [{
         context: () => createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Chase", [action("w1", { action: "input", operation: "wait", actionId: "gone" })])])],

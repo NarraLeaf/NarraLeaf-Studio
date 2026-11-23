@@ -110,6 +110,8 @@ import type {
     ProjectTransformPreset,
     ProjectTransformPresetDocument,
 } from "@shared/types/transformPreset";
+import type { StoryCustomCommand, StoryCustomCommandDocument } from "@shared/types/story/customCommands";
+import type { StoryCustomCommandLibrary } from "@shared/story/customCommands";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
 import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
@@ -264,6 +266,8 @@ enum Services {
     StoryComments = "storyComments",
     /** The transforms the project saved to reuse, offered beside the ones Studio ships */
     TransformPreset = "transformPreset",
+    /** The project's own story commands, at `editor/story/commands.json`; a call row plays one */
+    StoryCustomCommands = "storyCustomCommands",
     /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
     SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
@@ -740,6 +744,27 @@ interface IDictionaryService extends IService {
  * A preset seeds a row and is never referred to by one, so every mutator here is safe against open
  * documents: nothing on any stage changes when a preset is renamed or deleted.
  */
+/**
+ * The project's own story commands. See `@shared/story/customCommands` for the model and how a call
+ * becomes rows.
+ */
+interface IStoryCustomCommandService extends IService {
+    load(): Promise<void>;
+    getDocument(): StoryCustomCommandDocument;
+    listCommands(): StoryCustomCommand[];
+    getCommand(id: string): StoryCustomCommand | null;
+    library(): StoryCustomCommandLibrary;
+    nameProblem(name: string, selfId?: string): "empty" | "invalid" | "taken" | null;
+    createCommand(name: string, seed?: Partial<Pick<StoryCustomCommand, "rows" | "params" | "description">>): StoryCustomCommand | null;
+    updateCommand(id: string, patch: Partial<Omit<StoryCustomCommand, "id">>): boolean;
+    removeCommand(id: string): boolean;
+    importCommands(items: readonly StoryCustomCommand[]): StoryCustomCommand[];
+    onCommandsChanged(handler: (commands: StoryCustomCommand[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+}
+
 interface ITransformPresetService extends IService {
     load(): Promise<void>;
     save(document: ProjectTransformPresetDocument): Promise<void>;
@@ -1676,6 +1701,7 @@ export {
     IBrandService,
     IDictionaryService,
     ITransformPresetService,
+    IStoryCustomCommandService,
     ISaveSchemaService,
     IPuppetDescriptionService,
     IMediaSupportService,

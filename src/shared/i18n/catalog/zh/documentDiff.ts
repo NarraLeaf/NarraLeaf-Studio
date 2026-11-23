@@ -75,6 +75,7 @@ export const documentDiff = {
         dictionaryTerms: "词典词条",
         storyCommentThreads: "故事批注线程",
         transformPresets: "变换预设",
+        storyCommands: "自定义指令",
         localizationKeys: "翻译键",
         projectLanguages: "语言",
         projectPlugins: "插件",
@@ -422,6 +423,12 @@ export const documentDiff = {
         renamed: "预设重命名",
         transform: "预设的变换已修改",
     },
+    storyCommands: {
+        added: "新增指令",
+        removed: "删除指令",
+        renamed: "指令重命名",
+        changed: "指令内容已修改",
+    },
     dictionary: {
         added: "新增词条",
         removed: "删除词条",
@@ -644,6 +651,7 @@ export const documentDiff = {
         dictionary: "词典",
         storyComments: "故事批注",
         transformPresets: "变换预设",
+        storyCommands: "自定义指令",
         saveSchema: "存档字段",
         assetSets: "资产集",
         localization: "译文",

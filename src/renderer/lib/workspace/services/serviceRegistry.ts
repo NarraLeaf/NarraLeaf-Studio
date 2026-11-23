@@ -43,6 +43,7 @@ import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
 import { StoryCommentsService } from "./storyComments/StoryCommentsService";
 import { TransformPresetService } from "./transformPreset/TransformPresetService";
+import { StoryCustomCommandService } from "./story/StoryCustomCommandService";
 import { SaveSchemaService } from "./saves/SaveSchemaService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
@@ -104,6 +105,7 @@ export type WorkspaceServiceMap = {
     [Services.Dictionary]: DictionaryService;
     [Services.StoryComments]: StoryCommentsService;
     [Services.TransformPreset]: TransformPresetService;
+    [Services.StoryCustomCommands]: StoryCustomCommandService;
     [Services.SaveSchema]: SaveSchemaService;
     [Services.SaveStatus]: SaveStatusService;
     [Services.VersionControl]: VersionControlService;
@@ -168,6 +170,7 @@ export class ServiceRegistry {
         [Services.Dictionary]: DictionaryService.getInstance(),
         [Services.StoryComments]: StoryCommentsService.getInstance(),
         [Services.TransformPreset]: TransformPresetService.getInstance(),
+        [Services.StoryCustomCommands]: StoryCustomCommandService.getInstance(),
         [Services.SaveSchema]: SaveSchemaService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),

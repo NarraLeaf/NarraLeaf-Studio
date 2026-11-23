@@ -168,6 +168,7 @@ import {
     type CharacterBehaviourEvent,
     type CharacterBehaviours,
 } from "@shared/story/characterBehaviours";
+import { CUSTOM_COMMAND_ROW_SEPARATOR } from "@shared/story/customCommands";
 import {
     boolProp,
     characterStageName,
@@ -3258,6 +3259,29 @@ async function compileBehaviourRun(
     return Control.allAsync(parallel as any) as unknown as NlrStatement;
 }
 
+/**
+ * A call to one of the project's own commands: the rows hung beneath it, compiled in place. What they
+ * report, and the play head's bindings, belong to the call - the row an author can open - not to an
+ * expanded row (`<call id>~<row id>`) that exists nowhere in the editor's scene.
+ */
+async function compileCustomCommandCall(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "action" }>): Promise<NlrStatement[]> {
+    const prefix = `${block.id}${CUSTOM_COMMAND_ROW_SEPARATOR}`;
+    const diagnosticsFrom = ctx.diagnostics.length;
+    const bindingsFrom = ctx.actionIdBindings.length;
+    const statements = [...await compileStoryAction(ctx, block), ...await compileBlockList(ctx, block.childrenIds)];
+    for (let index = diagnosticsFrom; index < ctx.diagnostics.length; index += 1) {
+        if (ctx.diagnostics[index].blockId?.startsWith(prefix)) {
+            ctx.diagnostics[index].blockId = block.id;
+        }
+    }
+    for (let index = bindingsFrom; index < ctx.actionIdBindings.length; index += 1) {
+        if (ctx.actionIdBindings[index].blockId.startsWith(prefix)) {
+            ctx.actionIdBindings[index].blockId = block.id;
+        }
+    }
+    return statements;
+}
+
 async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
     const block = ctx.scene.blocks[blockId];
     if (!block) {
@@ -3292,6 +3316,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
     if (block.kind === "action") {
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
+        }
+        if (block.payload.action === "customCommand") {
+            return compileCustomCommandCall(ctx, block);
         }
         const own = await compileStoryAction(ctx, block);
         return [...own, ...await compileBlockList(ctx, block.childrenIds)];
@@ -3414,6 +3441,10 @@ async function compilePreviewTargetOwnStatements(
     if (block.kind === "action") {
         if (block.payload.action === "nvl") {
             return compileNvl(ctx, block);
+        }
+        if (block.payload.action === "customCommand") {
+            // The call's own statements ARE its rows: previewing the call plays what it stands for.
+            return compileCustomCommandCall(ctx, block);
         }
         if (block.payload.action === "vfx") {
             // The preview draws no overlay (the walk that poses its stage says the same), so it has
@@ -3891,6 +3922,16 @@ function buildWord(text: string, marks: StoryTextMarks | undefined): string | Wo
 
 async function compileStoryAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "action" }>): Promise<NlrStatement[]> {
     const payload = block.payload;
+    if (payload.action === "customCommand") {
+        // A call compiles to nothing of its own: the rows it stands for were hung beneath it before
+        // the compile (`expandStoryCustomCommandsInScene`) and compile as its children. A call with
+        // no rows beneath it is one that cannot play - its command is gone, an argument is missing,
+        // or it calls itself - and the `story/custom-command-*` lint rules say which.
+        if (block.childrenIds.length === 0) {
+            diagnostic(ctx, "warning", block.id, say("story.compile.flow.customCommandNotExpanded"));
+        }
+        return [];
+    }
     if (payload.action === "setBackground") {
         const src = payload.assetId
             ? await resolveAsset(ctx, payload.assetId, "image", block.id)

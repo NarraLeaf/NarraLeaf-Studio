@@ -11,6 +11,7 @@ export const documents = {
             blueprints: "ブループリント",
             variables: "変数",
             saveSchema: "セーブ構造",
+            storyCommands: "カスタムコマンド",
             localization: "翻訳",
             localizationKeys: "翻訳キー",
             voice: "ボイス",

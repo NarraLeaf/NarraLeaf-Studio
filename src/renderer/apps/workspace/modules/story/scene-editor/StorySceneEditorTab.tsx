@@ -1,3 +1,5 @@
+import { createCustomCommandFromSceneRows } from "../../story-commands/extractStoryCommand";
+import { openStoryCommandTab } from "../../story-commands/storyCommandTab";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
@@ -2322,6 +2324,35 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-insert", separator: true },
         { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
         { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
+        // The selected rows, written once as a command of the project's own. The rows stay where they
+        // are; the author replaces them with a call when the command reads right.
+        {
+            id: "save-as-command",
+            label: t("story.rowMenu.saveAsCommand"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                const context = editor.context;
+                if (!context) {
+                    return;
+                }
+                const { command, skipped } = createCustomCommandFromSceneRows(
+                    context,
+                    document,
+                    scene,
+                    menuSelectionIds,
+                    t("story.customCommands.newName"),
+                );
+                const notifications = context.services.get<UIService>(Services.UI).notifications;
+                if (!command) {
+                    notifications.warning(t("story.customCommands.extractNothing"), t("story.customCommands.extractNothingDetail"));
+                    return;
+                }
+                if (skipped > 0) {
+                    notifications.info(tn("story.customCommands.extractSkipped", skipped));
+                }
+                openStoryCommandTab(context, command.id, command.name);
+            },
+        },
         // Absent rather than greyed when there is nothing to repair or no character to repair it to:
         // this is a rung the author reaches for after a paste, not a standing property of a row.
         ...(menuSpeakerTargets.length > 0 ? [{
