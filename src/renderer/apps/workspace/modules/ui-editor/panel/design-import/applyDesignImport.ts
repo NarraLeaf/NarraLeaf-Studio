@@ -3,23 +3,89 @@ import type { UISurface, UISurfaceDesignSize } from "@shared/types/ui-editor/doc
 import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
-import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { IMPORT_PLACEMENT_FROM_SOURCE, type UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { TranslationKey } from "@shared/i18n";
 import {
     convertFigmaFrames,
+    detectFrameTarget,
+    gameUiPartsOf,
+    type DesignFrameTarget,
     type FigmaFontResolver,
     type FigmaImportNote,
 } from "@/lib/ui-editor/figma-import/convertFigmaFrames";
 import type { FigmaExportFile } from "@/lib/ui-editor/figma-import/figmaExportFormat";
+import {
+    quickMenuPageOfName,
+    type GameUiSlot,
+    type QuickMenuPage,
+} from "@/lib/ui-editor/figma-import/gameUiRoles";
+
+/** One Game UI the import put in place. */
+export type ImportedGameUi = {
+    slot: GameUiSlot;
+    name: string;
+    /** Parts given their job. */
+    wired: number;
+    /** The Game UI it took the place of, by name; null when the slot was empty. */
+    replaced: string | null;
+};
 
 export type ApplyDesignImportResult = {
     surfaces: UISurface[];
+    /** The pages among `surfaces`. */
+    pages: UISurface[];
+    gameUi: ImportedGameUi[];
     notes: FigmaImportNote[];
     /** Pictures that could not be written into the asset library; the widgets showing them are empty. */
     imagesSkipped: number;
     /** Buttons made out of state layers or variants. */
     buttons: number;
 };
+
+/** What each frame becomes, for the frames chosen; the author's choice where given, else the guess. */
+export function resolveFrameTargets(
+    file: FigmaExportFile,
+    frameIds: readonly string[],
+    chosen: Readonly<Record<string, DesignFrameTarget>>,
+): Record<string, DesignFrameTarget> {
+    const out: Record<string, DesignFrameTarget> = {};
+    for (const frame of file.frames) {
+        if (frameIds.includes(frame.id)) {
+            out[frame.id] = chosen[frame.id] ?? detectFrameTarget(frame);
+        }
+    }
+    return out;
+}
+
+/** The Game UI slots the chosen frames fill, each once, in the order they are drawn. */
+export function gameUiSlotsOf(file: FigmaExportFile, targets: Readonly<Record<string, DesignFrameTarget>>): GameUiSlot[] {
+    const slots: GameUiSlot[] = [];
+    for (const frame of file.frames) {
+        if (targets[frame.id] !== "gameUi") continue;
+        for (const part of gameUiPartsOf(frame)) {
+            if (!slots.includes(part.slot)) slots.push(part.slot);
+        }
+    }
+    return slots;
+}
+
+/** The project's Game UI now in each of `slots`, which the import will take the place of. */
+export function occupiedGameUi(documentService: UIDocumentService, slots: readonly GameUiSlot[]): UISurface[] {
+    return documentService.getDocument().surfaces.filter(surface =>
+        surface.kind === "stageSurface" && (slots as readonly string[]).includes(surface.mount.slotId));
+}
+
+/** The project's pages the quick menu and the dialogue box can open, found by name. */
+export function findQuickMenuPages(documentService: UIDocumentService): Partial<Record<QuickMenuPage, string>> {
+    const pages: Partial<Record<QuickMenuPage, string>> = {};
+    for (const surface of documentService.getDocument().surfaces) {
+        if (surface.kind !== "appSurface") continue;
+        const page = quickMenuPageOfName(surface.name);
+        if (page && !pages[page]) pages[page] = surface.id;
+    }
+    return pages;
+}
 
 /** The resolution every imported page is fitted to: the project's, as a new page gets. */
 export function projectDesignSize(documentService: UIDocumentService): UISurfaceDesignSize {
@@ -101,7 +167,11 @@ function safeFileStem(name: string | undefined, fallback: string): string {
 
 /**
  * Put the chosen frames of a design (a Figma export, or a PSD or images expressed as one) into the
- * project as pages.
+ * project as pages, or as the Game UI a game-screen design holds.
+ *
+ * A Game UI goes into its slot in place of the one there, which the author was shown before choosing
+ * to import: the removal and the arrival are one step on the project's undo stack (`installBundle`),
+ * so one Ctrl+Z puts the old dialogue box back with its blueprints.
  *
  * The pictures go into the image library first, in a folder of their own named after the Figma
  * file, because the import is what rewrites the document's picture references and needs the new
@@ -113,6 +183,7 @@ export async function applyDesignImport(
     file: FigmaExportFile,
     frameIds: readonly string[],
     documentService: UIDocumentService,
+    frameTargets: Readonly<Record<string, DesignFrameTarget>> = {},
 ): Promise<ApplyDesignImportResult> {
     const assets = documentService.getContext().services.get<AssetsService>(Services.Assets);
     const fonts = assets.getOrderedAssets(AssetType.Font).map(asset => ({ id: asset.id, name: asset.name }));
@@ -120,6 +191,8 @@ export async function applyDesignImport(
         frameIds,
         targetSize: projectDesignSize(documentService),
         resolveFont: createFontResolver(fonts),
+        frameTargets: resolveFrameTargets(file, frameIds, frameTargets),
+        pageTargets: findQuickMenuPages(documentService),
     });
 
     const assetIdMap: Record<string, string> = {};
@@ -162,12 +235,37 @@ export async function applyDesignImport(
     // A picture that did not make it into the library leaves its widget empty rather than pointing at
     // an id the project has never had.
     clearUnwrittenPictures(converted.document, new Set(converted.imageRefs.filter(ref => !assetIdMap[ref])));
-    const imported = documentService.importTemplateBundle({
+    const replacing = occupiedGameUi(documentService, converted.gameUi.map(entry => entry.slot));
+    const bundle = {
         document: converted.document,
-        graphs: null,
-        placement: { kind: "appSurface" },
+        graphs: converted.blueprints ? { blueprintDocument: converted.blueprints } : null,
+        placement: IMPORT_PLACEMENT_FROM_SOURCE,
         assetIdMap,
-    });
+    };
+    const imported = replacing.length > 0
+        ? documentService.installBundle({
+            ...bundle,
+            removeSurfaceIds: replacing.map(surface => surface.id),
+            label: { key: "uiEditor.designImport.historyReplace" as TranslationKey },
+        })
+        : documentService.importTemplateBundle(bundle);
     await documentService.save(documentService.getDocument());
-    return { surfaces: imported.importedSurfaces, notes: converted.notes, imagesSkipped, buttons: converted.buttons };
+
+    const arrived = new Set(Object.values(imported.surfaceIdMap));
+    const gameUi: ImportedGameUi[] = converted.gameUi
+        .filter(entry => arrived.has(imported.surfaceIdMap[entry.surfaceId]))
+        .map(entry => ({
+            slot: entry.slot,
+            name: entry.name,
+            wired: entry.wired,
+            replaced: replacing.find(surface => surface.kind === "stageSurface" && surface.mount.slotId === entry.slot)?.name ?? null,
+        }));
+    return {
+        surfaces: imported.importedSurfaces,
+        pages: imported.importedSurfaces.filter(surface => surface.kind === "appSurface"),
+        gameUi,
+        notes: converted.notes,
+        imagesSkipped,
+        buttons: converted.buttons,
+    };
 }

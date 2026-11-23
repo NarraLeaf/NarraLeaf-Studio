@@ -388,6 +388,25 @@ export const uiEditor = {
             one: "Adds {count} page.",
             other: "Adds {count} pages.",
         },
+        willAddGameUi: {
+            one: "Imports {count} Game UI.",
+            other: "Imports {count} Game UI.",
+        },
+        willReplace: "Replaces the project's Game UI: {names}.",
+        target: {
+            label: "Import as",
+            gameUi: "Game UI",
+            page: "Page",
+        },
+        gameUiReplaced: {
+            one: "{slot} Game UI replaced “{name}”, with {count} part wired to do its job.",
+            other: "{slot} Game UI replaced “{name}”, with {count} parts wired to do their jobs.",
+        },
+        gameUiAdded: {
+            one: "Added the {slot} Game UI, with {count} part wired to do its job.",
+            other: "Added the {slot} Game UI, with {count} parts wired to do their jobs.",
+        },
+        historyReplace: "Import Game UI from a design",
         added: {
             one: "Added {count} page.",
             other: "Added {count} pages.",
@@ -477,6 +496,34 @@ export const uiEditor = {
             buttonNotRecognized: {
                 one: "{count} group of button states has other layers beside the states and was imported as it is.",
                 other: "{count} groups of button states have other layers beside the states and were imported as they are.",
+            },
+            gameUiArtSkipped: {
+                one: "{count} layer belongs to no Game UI, such as a background or sprite, and was left out.",
+                other: "{count} layers belong to no Game UI, such as backgrounds or sprites, and were left out.",
+            },
+            gameUiSlotTwice: {
+                one: "{count} group is named for a Game UI slot another group already fills and was left out.",
+                other: "{count} groups are named for Game UI slots other groups already fill and were left out.",
+            },
+            dialogLineGuessed: {
+                one: "In {count} dialogue box no text is named as the line, so the largest text became the line.",
+                other: "In {count} dialogue boxes no text is named as the line, so the largest text became the line.",
+            },
+            dialogNameGuessed: {
+                one: "{count} text above the line became the speaker's name because no text is named as the name.",
+                other: "{count} texts above the line became the speaker's name because no text is named as the name.",
+            },
+            dialogNoLine: {
+                one: "{count} dialogue box has no text for the line. Add a Sentence to it.",
+                other: "{count} dialogue boxes have no text for the line. Add a Sentence to each.",
+            },
+            listNotRecognized: {
+                one: "{count} choice or notification group has no option with text and was imported as it is.",
+                other: "{count} choice or notification groups have no option with text and were imported as they are.",
+            },
+            quickMenuPageMissing: {
+                one: "{count} quick menu button opens a page the project does not have and was left unwired.",
+                other: "{count} quick menu buttons open pages the project does not have and were left unwired.",
             },
             hiddenSkipped: {
                 one: "{count} hidden layer was left out.",

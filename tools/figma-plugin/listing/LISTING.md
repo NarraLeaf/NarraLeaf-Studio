@@ -60,6 +60,13 @@ Draw a button once per state and it arrives as one interactive button:
 - a group whose layers are named `normal`, `hover`, `pressed` and `disabled`, with at most one
   text layer as the label.
 
+**Game screens**
+
+Name a frame's top-level groups dialog, choice, quick menu and notification, and the frame imports
+as the game's Game UI instead of a page: the line, the speaker's name and avatar, the choice list
+and the quick menu's Auto, Skip, Log, Save, Load and Config buttons arrive wired to do their jobs.
+The background and sprites are left out.
+
 **Good to know**
 
 - Hidden layers are left out.
@@ -112,6 +119,10 @@ https://github.com/NarraLeaf/NarraLeaf-Studio/issues
 - 带「状态」属性的组件集实例（`State = Default / Hover / Pressed / Disabled`）
 - 或者一个编组，其中的图层分别命名为 `normal`、`hover`、`pressed`、`disabled`（也可以用普通、悬停、按下、禁用），可再带一个文本图层作为按钮文字
 
+**游戏画面**
+
+将画框的顶层编组命名为对话框、选项、快捷菜单和通知，该画框会导入为游戏界面而不是页面：台词、说话人名字和头像、选项列表，以及快捷菜单的自动、跳过、日志、存档、读档、设置按钮都会接好对应功能。背景和立绘不导入
+
 **注意事项**
 
 - 隐藏图层不会导出
@@ -145,6 +156,10 @@ Figma でビジュアルノベルの画面をデザインし、NarraLeaf Studio 
 
 - 状態プロパティを持つコンポーネントセットのインスタンス（`State = Default / Hover / Pressed / Disabled`）
 - または、レイヤー名が `normal`、`hover`、`pressed`、`disabled`（通常、ホバー、押下、無効でも可）のグループ。ラベルとしてテキストレイヤーを 1 つまで含められる
+
+**ゲーム画面**
+
+フレームのトップレベルのグループにダイアログ、選択肢、クイックメニュー、通知と名前を付けると、そのフレームはページではなくゲーム UI として読み込まれる。セリフ、話者の名前とアバター、選択肢リスト、クイックメニューのオート、スキップ、ログ、セーブ、ロード、設定ボタンが機能をつないだ状態で取り込まれる。背景と立ち絵は読み込まない
 
 **注意点**
 

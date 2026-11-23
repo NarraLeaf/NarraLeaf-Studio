@@ -1315,7 +1315,12 @@ Widgets that belong together can be saved as a component and placed on any scree
 
 按状态绘制的按钮会导入为可交互的按钮：在 PSD 或 Figma 中将各状态放在同一个编组里，分别命名为 normal、hover、pressed、disabled（或普通、悬停、按下、禁用），同组中的一个文本图层作为按钮文字；名为 start.png、start_hover.png、start_pressed.png 的图片文件合成为一个按钮；带「状态」属性的 Figma 组件同样导入为按钮
 
-带边框的面板或按钮图片改变尺寸时，可将图片填充设为「九宫格」并设置切分位置，边框和四角不会变形
+游戏运行时的画面设计可导入为游戏界面：将顶层编组按所属的游戏界面命名为对话框、选项、快捷菜单或通知，导入对话框会为该画框选择「游戏界面」，并列出将被替换的现有游戏界面，撤销一次即可恢复；编组之外的图层（例如背景、立绘）不导入
+
+- 对话框：命名为「台词」的文本成为句子，命名为「名字」的文本显示说话人名字，命名为「头像」的图层显示说话人头像；名字单独放在一个编组中时，该编组只在有角色说话时显示。未按上述命名时，最大的文本作为台词，其上方的文本作为名字
+- 选项：画出的第一个选项成为选项列表的行，其中的文本显示选项文字，与第二个选项的间距决定行距
+- 快捷菜单：命名为自动、跳过、日志、存档、读档、设置、隐藏（或 auto、skip、log、save、load、config、hide）的按钮执行对应功能；日志、存档、读档、设置打开项目中同名的页面。命名为「开启」（或 on）的状态是自动和跳过运行期间保持的外观
+- 通知：画出的第一条消息成为通知列表的行
 
 画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方
 
@@ -1331,7 +1336,12 @@ Each page is scaled to the project resolution, and its pictures go into a new fo
 
 Buttons drawn in states become working buttons. In a PSD or a Figma design, put the states in one group and name them normal, hover, pressed and disabled; a text layer beside them becomes the label. Image files named start.png, start_hover.png and start_pressed.png become one button. A Figma component with a State property becomes a button as well.
 
-A framed panel or button picture can be resized without distorting its border: set its image fill to Nine-slice and set where it is cut.
+A design of the running game can come in as Game UI instead of a page. Name its top-level groups for the Game UI they are: dialog, choice, quick menu or notification. The import dialog then offers Game UI for that frame and names the project's Game UI it replaces; one undo puts them back. Layers outside those groups, such as the background and sprites, are left out.
+
+- Dialogue box: a text named line becomes the sentence, a text named name shows the speaker's name, and a layer named avatar shows the speaker's avatar. When the name sits in a group of its own, the group is shown only while a character speaks. Without these names, the largest text becomes the line and the text above it the name.
+- Choice: the first option drawn becomes the row of the choice list, its text the option's words, and the gap to the second option the spacing.
+- Quick menu: buttons named auto, skip, log, save, load, config and hide do those jobs; Log, Save, Load and Config open the project's page of that name. A state named on is the look Auto and Skip keep while they run.
+- Notification: the first message drawn becomes the row of the notification list.
 
 Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.
 

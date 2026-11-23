@@ -35,6 +35,24 @@ The Figma Community listing (icon, cover, copy and the questionnaire answers) is
 
 Add `[raster]` to a layer's name to export it as a picture regardless.
 
+## Game screens
+
+A frame drawn as the running game imports as Game UI rather than a page when its top-level groups
+are named for the Game UI they are: `dialog`, `choice`, `quick menu`, `notification` (or 对话框,
+选项, 快捷菜单, 通知). A quick menu group inside the dialogue group is the quick menu. Everything
+else in the frame, such as the background and sprites, is left out.
+
+| Layer | Becomes |
+|---|---|
+| Text named `line` / 台词 in the dialogue group | The dialogue sentence |
+| Text named `name` / 名字 | The speaker's name; a group it sits in shows only while someone speaks |
+| Layer named `avatar` / 头像 | The speaker's avatar |
+| First option in the choice group | The row of the choice list, its text bound to the option |
+| Buttons named `auto`, `skip`, `log`, `save`, `load`, `config`, `hide` | Wired to those jobs; a state named `on` is Auto's and Skip's lit look |
+| First message in the notification group | The row of the notification list |
+
+Studio replaces the project's Game UI in those slots, as one undo step, after showing which.
+
 Frames are scaled to fit the project's resolution. Fonts are matched against the project's font
 assets by family name; a family with no match falls back to the default font and is listed in the
 import report.

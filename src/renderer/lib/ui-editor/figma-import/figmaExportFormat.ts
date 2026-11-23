@@ -43,6 +43,13 @@ export const FIGMA_IMPORT_NOTE_CODES = [
     "layerStyles",
     "imageCentered",
     "buttonNotRecognized",
+    "gameUiArtSkipped",
+    "gameUiSlotTwice",
+    "dialogLineGuessed",
+    "dialogNameGuessed",
+    "dialogNoLine",
+    "listNotRecognized",
+    "quickMenuPageMissing",
 ] as const;
 
 export type FigmaImportNoteCode = (typeof FIGMA_IMPORT_NOTE_CODES)[number];

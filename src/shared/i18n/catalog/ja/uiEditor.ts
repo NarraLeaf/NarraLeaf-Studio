@@ -356,6 +356,22 @@ export const uiEditor = {
         willAdd: {
             other: "{count} ページを追加する",
         },
+        willAddGameUi: {
+            other: "{count} 個のゲーム UI を読み込む",
+        },
+        willReplace: "プロジェクトの既存のゲーム UI を置き換える：{names}",
+        target: {
+            label: "読み込み先",
+            gameUi: "ゲーム UI",
+            page: "ページ",
+        },
+        gameUiReplaced: {
+            other: "{slot}のゲーム UI で「{name}」を置き換え、{count} 個の部品に機能をつないだ",
+        },
+        gameUiAdded: {
+            other: "{slot}のゲーム UI を追加し、{count} 個の部品に機能をつないだ",
+        },
+        historyReplace: "デザインからゲーム UI を読み込む",
         added: {
             other: "{count} ページを追加した",
         },
@@ -426,6 +442,27 @@ export const uiEditor = {
             },
             buttonNotRecognized: {
                 other: "{count} 組のボタン状態レイヤーにほかのレイヤーが含まれるため、ボタンにせずそのまま読み込んだ",
+            },
+            gameUiArtSkipped: {
+                other: "{count} 個のレイヤーはどのゲーム UI にも属さない（背景や立ち絵など）ため読み込んでいない",
+            },
+            gameUiSlotTwice: {
+                other: "{count} 個のグループが対応するゲーム UI のスロットはほかのグループが使っているため読み込んでいない",
+            },
+            dialogLineGuessed: {
+                other: "{count} 個のダイアログにセリフと名付けたテキストがないため、最も大きいテキストをセリフにした",
+            },
+            dialogNameGuessed: {
+                other: "名前と名付けたテキストがないため、セリフの上にある {count} 個のテキストを話者の名前にした",
+            },
+            dialogNoLine: {
+                other: "{count} 個のダイアログにセリフにできるテキストがない。「本文」を追加する",
+            },
+            listNotRecognized: {
+                other: "{count} 個の選択肢または通知のグループにテキストを含む項目がないため、そのまま読み込んだ",
+            },
+            quickMenuPageMissing: {
+                other: "{count} 個のクイックメニューのボタンが開くページがプロジェクトにないため、機能をつないでいない",
             },
             hiddenSkipped: {
                 other: "{count} 個の非表示レイヤーは読み込んでいない",
