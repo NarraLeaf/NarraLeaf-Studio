@@ -5,7 +5,7 @@
         "appearance": {
           "avatars": {
             "p1oh": {
-              "baked": "fe5f2877"
+              "baked": "3b7e5086"
             }
           },
           "defaultPoseId": "p1oh",
@@ -14,7 +14,13 @@
             {
               "assetId": "926860bf-6a08-4837-856f-4bf8f157f2ba",
               "id": "p1oh",
-              "name": "Default"
+              "name": "Default",
+              "portrait": {
+                "h": 0.3981330708026285,
+                "w": 0.3946494064331055,
+                "x": 0.414840747833252,
+                "y": 0
+              }
             }
           ]
         },

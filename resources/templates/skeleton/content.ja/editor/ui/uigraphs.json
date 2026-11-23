@@ -23590,7 +23590,9 @@
         },
         "graphs": {
           "eventIds": [
-            "5107c0a1-0000-4000-8000-000000000511"
+            "5107c0a1-0000-4000-8000-000000000511",
+            "5107c0a1-0000-4000-8000-000000000512",
+            "5107c0a1-0000-4000-8000-000000000513"
           ],
           "events": {
             "5107c0a1-0000-4000-8000-000000000511": {
@@ -23602,9 +23604,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "ページを開いたときに動く。「ロゴ」はページと一緒にフェードインし、一つ目の長い「待つ」の間表示されてから隠れる。続いて「注意書き」を表示し、二つ目の長い「待つ」の後に隠してからタイトルを開く。長い待ちはフェードインの開始から数える（フェードインは各要素の「アニメーション」セクションで設定）。短い待ちはフェードアウトのための時間。「送る」アクション（クリック、Space、Enter）と「閉じる」アクション（Esc）は進行中の長い待ちを終わらせ、画面上の要素はすぐにフェードアウトする。「待ちを打ち切る」は「トークン」ピンで「待つ」を見つけるので、キー操作もこのレイヤーで扱う。「ページを置き換える」はタイトルを開くと同時にこのページを閉じるため、「前のページに戻る」とページが「なし」の「ページへ移動」はここではなくタイトルに戻る。「注意書き」は最初は非表示：編集するときは「UI のアウトライン」で表示し、編集後に非表示に戻す。画像のロゴにするには、「ロゴ」の中の「文字ロゴ」を「画像」要素に置き換える。",
+                      "text": "ページを開いたときに動く。「ロゴ」はページと一緒にフェードインし、一つ目の長い「待つ」の間表示されてから隠れる。続いて「注意書き」を表示し、二つ目の長い「待つ」の後に隠してから「タイトルを開く」を実行する。長い待ちはフェードインの開始から数える（フェードインは各要素の「アニメーション」セクションで設定）。短い待ちはフェードアウトのための時間。「注意書き」は最初は非表示：編集するときは「UI のアウトライン」で表示し、編集後に非表示に戻す。画像のロゴにするには、「ロゴ」の中の「文字ロゴ」を「画像」要素に置き換える。",
                       "width": 1400,
-                      "height": 180
+                      "height": 160
                     },
                     "meta": {
                       "editorLayout": {
@@ -23620,7 +23622,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23636,7 +23638,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23650,7 +23652,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 900,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23665,7 +23667,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 630,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23681,7 +23683,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1190,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23695,7 +23697,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1800,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23710,7 +23712,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1530,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23726,7 +23728,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2090,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23740,7 +23742,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2700,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23755,7 +23757,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2430,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23771,68 +23773,25 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2990,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
                   "toTitle": {
                     "id": "toTitle",
-                    "type": "blueprint.page.replace",
+                    "type": "blueprint.fn.call",
                     "params": {
-                      "surfaceId": "narraleaf-studio:main-surface"
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "タイトルを開く",
+                        "params": [],
+                        "returns": []
+                      }
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 3360,
-                        "y": 272
-                      }
-                    }
-                  },
-                  "advance": {
-                    "id": "advance",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "advance"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 722
-                      }
-                    }
-                  },
-                  "dismiss": {
-                    "id": "dismiss",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "dismiss"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 1015
-                      }
-                    }
-                  },
-                  "skipLogo": {
-                    "id": "skipLogo",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 630,
-                        "y": 781
-                      }
-                    }
-                  },
-                  "skipDisclaimer": {
-                    "id": "skipDisclaimer",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 2430,
-                        "y": 781
+                        "y": 252
                       }
                     }
                   }
@@ -23947,14 +23906,86 @@
                       "nodeId": "toTitle",
                       "port": "in"
                     }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000512": {
+              "id": "5107c0a1-0000-4000-8000-000000000512",
+              "name": "押されたらタイトルを開く",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「送る」アクション（クリック、Space、Enter）と「閉じる」アクション（Esc）は、画面にどの部分が出ていても、このページの残りを飛ばしてタイトルを開く。",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
                   },
+                  "advance": {
+                    "id": "advance",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "advance"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 462
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "タイトルを開く",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
                   {
                     "from": {
                       "nodeId": "advance",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
                       "port": "in"
                     }
                   },
@@ -23964,38 +23995,162 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000513": {
+              "id": "5107c0a1-0000-4000-8000-000000000513",
+              "name": "タイトルを一度だけ開く",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "時間どおりの流れの終わりと、押されたときに呼ばれる。「ページを置き換える」はタイトルを開くと同時にこのページを閉じるため、「前のページに戻る」とページが「なし」の「ページへ移動」はここではなくタイトルに戻る。「タイトルを開いた」は実行済みであることを記録する。これがないと、流れが終わる瞬間に押したときにタイトルが二度開く。",
+                      "width": 1000,
+                      "height": 170
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "openTitleHead": {
+                    "id": "openTitleHead",
+                    "type": "blueprint.fn.head",
+                    "params": {
+                      "name": "タイトルを開く"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "alreadyOpened": {
+                    "id": "alreadyOpened",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "once": {
+                    "id": "once",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": 269
+                      }
+                    }
+                  },
+                  "yes": {
+                    "id": "yes",
+                    "type": "blueprint.data.booleanLiteral",
+                    "params": {
+                      "value": "true"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 780,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "remember": {
+                    "id": "remember",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1040,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "replace": {
+                    "id": "replace",
+                    "type": "blueprint.page.replace",
+                    "params": {
+                      "surfaceId": "narraleaf-studio:main-surface"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1330,
+                        "y": 210
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "openTitleHead",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "once",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "holdLogo",
-                      "port": "token"
+                      "nodeId": "alreadyOpened",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
-                      "port": "timer"
+                      "nodeId": "once",
+                      "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "once",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "yes",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "remember",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "skipDisclaimer",
+                      "nodeId": "replace",
                       "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "holdDisclaimer",
-                      "port": "token"
-                    },
-                    "to": {
-                      "nodeId": "skipDisclaimer",
-                      "port": "timer"
                     }
                   }
                 ],
@@ -24009,7 +24164,13 @@
           "functions": {}
         },
         "members": {
-          "variables": {},
+          "variables": {
+            "5107c0a1-0000-4000-8000-000000000515": {
+              "id": "5107c0a1-0000-4000-8000-000000000515",
+              "name": "タイトルを開いた",
+              "valueType": "boolean"
+            }
+          },
           "fields": {},
           "functions": {}
         },
@@ -24971,6 +25132,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-15T20:09:47.109Z"
+    "updatedAt": "2026-11-23T23:48:24.970Z"
   }
 }

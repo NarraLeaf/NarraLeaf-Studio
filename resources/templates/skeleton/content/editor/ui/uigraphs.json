@@ -23590,7 +23590,9 @@
         },
         "graphs": {
           "eventIds": [
-            "5107c0a1-0000-4000-8000-000000000511"
+            "5107c0a1-0000-4000-8000-000000000511",
+            "5107c0a1-0000-4000-8000-000000000512",
+            "5107c0a1-0000-4000-8000-000000000513"
           ],
           "events": {
             "5107c0a1-0000-4000-8000-000000000511": {
@@ -23602,9 +23604,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs when the page opens. Logo fades in with the page and the first long Delay holds it; it is hidden, Disclaimer is shown and held by the second, and Title opens once Disclaimer is hidden. A long wait counts from the start of the fade in (set in each element's Animation section); the short ones let the fade out finish. Advance (a click, Space or Enter) and Dismiss (Escape) end the long wait that is running, so the element on screen fades out at once. Skip Delay reaches a Delay through its Token pin, which is why the presses are handled in this layer. Replace Page closes this page as it opens Title, so Go back and Go Page set to None return to Title, not here. Disclaimer starts hidden: show it in the UI Outline to edit it, then hide it again. For an image logo, put an Image element in Logo in place of Wordmark.",
+                      "text": "Runs when the page opens. Logo fades in with the page and the first long Delay holds it; it is hidden, Disclaimer is shown and held by the second, and Open Title runs once Disclaimer is hidden. A long wait counts from the start of the fade in (set in each element's Animation section); the short ones let the fade out finish. Disclaimer starts hidden: show it in the UI Outline to edit it, then hide it again. For an image logo, put an Image element in Logo in place of Wordmark.",
                       "width": 1400,
-                      "height": 180
+                      "height": 160
                     },
                     "meta": {
                       "editorLayout": {
@@ -23620,7 +23622,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23636,7 +23638,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23650,7 +23652,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 900,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23665,7 +23667,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 630,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23681,7 +23683,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1190,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23695,7 +23697,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1800,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23710,7 +23712,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1530,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23726,7 +23728,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2090,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
@@ -23740,7 +23742,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2700,
-                        "y": 220
+                        "y": 200
                       }
                     }
                   },
@@ -23755,7 +23757,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2430,
-                        "y": 421
+                        "y": 401
                       }
                     }
                   },
@@ -23771,68 +23773,25 @@
                     "meta": {
                       "editorLayout": {
                         "x": 2990,
-                        "y": 331
+                        "y": 311
                       }
                     }
                   },
                   "toTitle": {
                     "id": "toTitle",
-                    "type": "blueprint.page.replace",
+                    "type": "blueprint.fn.call",
                     "params": {
-                      "surfaceId": "narraleaf-studio:main-surface"
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "Open Title",
+                        "params": [],
+                        "returns": []
+                      }
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 3360,
-                        "y": 272
-                      }
-                    }
-                  },
-                  "advance": {
-                    "id": "advance",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "advance"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 722
-                      }
-                    }
-                  },
-                  "dismiss": {
-                    "id": "dismiss",
-                    "type": "blueprint.event.head.action",
-                    "params": {
-                      "actionId": "dismiss"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 1015
-                      }
-                    }
-                  },
-                  "skipLogo": {
-                    "id": "skipLogo",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 630,
-                        "y": 781
-                      }
-                    }
-                  },
-                  "skipDisclaimer": {
-                    "id": "skipDisclaimer",
-                    "type": "blueprint.flow.skipDelay",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 2430,
-                        "y": 781
+                        "y": 252
                       }
                     }
                   }
@@ -23947,14 +23906,86 @@
                       "nodeId": "toTitle",
                       "port": "in"
                     }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000512": {
+              "id": "5107c0a1-0000-4000-8000-000000000512",
+              "name": "Open Title on a press",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Advance (a click, Space or Enter) and Dismiss (Escape) skip the rest of the page and open Title, whichever part of it is on screen.",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
                   },
+                  "advance": {
+                    "id": "advance",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "advance"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 462
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:5107c0a1-0000-4000-8000-000000000510:openTitleHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "Open Title",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
                   {
                     "from": {
                       "nodeId": "advance",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
                       "port": "in"
                     }
                   },
@@ -23964,38 +23995,162 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "pressed",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "5107c0a1-0000-4000-8000-000000000513": {
+              "id": "5107c0a1-0000-4000-8000-000000000513",
+              "name": "Open Title once",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Called at the end of the timed sequence and on a press. Replace Page closes this page as it opens Title, so Go back and Go Page set to None return to Title, not here. Title opened records that it has run, because a press made as the sequence ends would otherwise open Title a second time.",
+                      "width": 1000,
+                      "height": 170
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "openTitleHead": {
+                    "id": "openTitleHead",
+                    "type": "blueprint.fn.head",
+                    "params": {
+                      "name": "Open Title"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "alreadyOpened": {
+                    "id": "alreadyOpened",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "once": {
+                    "id": "once",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": 269
+                      }
+                    }
+                  },
+                  "yes": {
+                    "id": "yes",
+                    "type": "blueprint.data.booleanLiteral",
+                    "params": {
+                      "value": "true"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 780,
+                        "y": 359
+                      }
+                    }
+                  },
+                  "remember": {
+                    "id": "remember",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000515"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1040,
+                        "y": 210
+                      }
+                    }
+                  },
+                  "replace": {
+                    "id": "replace",
+                    "type": "blueprint.page.replace",
+                    "params": {
+                      "surfaceId": "narraleaf-studio:main-surface"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1330,
+                        "y": 210
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "openTitleHead",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "once",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "holdLogo",
-                      "port": "token"
+                      "nodeId": "alreadyOpened",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "skipLogo",
-                      "port": "timer"
+                      "nodeId": "once",
+                      "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skipLogo",
+                      "nodeId": "once",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "yes",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "remember",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "remember",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "skipDisclaimer",
+                      "nodeId": "replace",
                       "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "holdDisclaimer",
-                      "port": "token"
-                    },
-                    "to": {
-                      "nodeId": "skipDisclaimer",
-                      "port": "timer"
                     }
                   }
                 ],
@@ -24009,7 +24164,13 @@
           "functions": {}
         },
         "members": {
-          "variables": {},
+          "variables": {
+            "5107c0a1-0000-4000-8000-000000000515": {
+              "id": "5107c0a1-0000-4000-8000-000000000515",
+              "name": "Title opened",
+              "valueType": "boolean"
+            }
+          },
           "fields": {},
           "functions": {}
         },
@@ -24971,6 +25132,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-15T20:09:47.109Z"
+    "updatedAt": "2026-11-23T23:48:24.970Z"
   }
 }
