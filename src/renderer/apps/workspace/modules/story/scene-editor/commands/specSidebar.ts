@@ -126,6 +126,11 @@ export function specTargetKinds(spec: AnyStoryCommandSpec): readonly string[] {
 
 /** The groups a spec appears under - its subjects when it has a target, otherwise its own category. */
 export function specGroupIds(spec: AnyStoryCommandSpec): readonly StoryCommandGroupId[] {
+    // A project's own command files under 自定义 alone. Its subject slot takes a character, which
+    // would otherwise file it under 角色 and leave the 自定义 entry of the menu with nothing to show.
+    if (spec.category === "custom") {
+        return ["custom"];
+    }
     const kinds = specTargetKinds(spec);
     if (kinds.length === 0) {
         return [spec.category];

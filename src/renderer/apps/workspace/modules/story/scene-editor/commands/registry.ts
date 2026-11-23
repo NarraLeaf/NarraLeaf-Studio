@@ -338,6 +338,9 @@ export function getCommandDef(token: string): StoryCommandDef | null {
         ?? localizedTokenMap().get(normalized)
         ?? DEFS.find(def => def.commandId.toLowerCase() === normalized)
         ?? customCommandLayer().defByToken.get(normalized)
+        // By id as well, like the built-ins one line up: the command menu hands back the spec id
+        // (`custom:<uuid>`), and a pick that resolved to nothing committed nothing.
+        ?? customCommandLayer().defById.get(token.trim())
         ?? null;
 }
 

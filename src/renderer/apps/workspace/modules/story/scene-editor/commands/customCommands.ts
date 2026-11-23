@@ -74,7 +74,9 @@ export function customCommandParamType(param: StoryCustomCommandParam): StoryCom
     const usable: StoryCommandParamType[] = branches
         .filter(type => dependsOnParam(type) === null)
         .map((type): StoryCommandParamType => (type.kind === "target"
-            ? { ...type, accepts: type.accepts.filter((kind: StoryCommandTargetKind) => kind === "character") }
+            // The reserved words go too: `camera` and the layers are stage singletons, not characters,
+            // and offering them as candidates invited a call the binding cannot play.
+            ? { ...type, accepts: type.accepts.filter((kind: StoryCommandTargetKind) => kind === "character"), reserved: [] }
             : type))
         .filter(type => type.kind !== "target" || type.accepts.length > 0);
     if (usable.length === 0) {

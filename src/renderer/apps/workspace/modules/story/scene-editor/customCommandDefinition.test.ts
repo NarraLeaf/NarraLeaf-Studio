@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { customCommandLibrary, expandCustomCommandCall } from "@shared/story/customCommands";
 import { buildCustomCommandRow, findCustomCommandPlaceholders } from "./customCommandDefinition";
-import { CUSTOM_COMMAND_BODY_COMMAND_IDS, publishCustomStoryCommands } from "./commands/customCommands";
-import { getCommandSpec } from "./commands/registry";
+import { CUSTOM_COMMAND_BODY_COMMAND_IDS, customCommandParamType, publishCustomStoryCommands } from "./commands/customCommands";
+import { getCommandDef, getCommandSpec } from "./commands/registry";
+import { specGroupIds } from "./commands/specSidebar";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCommandValues";
@@ -70,6 +71,13 @@ describe("reading a custom command's line", () => {
         const command = { id: "cmd", name: "左右摇晃", params, rows: [first.row, second.row] };
         publishCustomStoryCommands([command]);
         try {
+            // The command menu hands back the spec id; the pick resolves it like any built-in's.
+            expect(getCommandDef("custom:cmd")?.params.map(param => param.name)).toEqual(["角色", "力度", "时长"]);
+            expect(getCommandDef("左右摇晃")?.commandId).toBe("custom:cmd");
+            // Filed under 自定义 in the menu, not under the 角色 its subject slot takes.
+            expect(specGroupIds(getCommandSpec("custom:cmd")!)).toEqual(["custom"]);
+            // The subject takes characters alone: no stage singleton is offered for it.
+            expect(customCommandParamType(params[0])).toMatchObject({ kind: "target", accepts: ["character"], reserved: [] });
             const call = callBlock("/左右摇晃 Anyo 力度=10");
             expect(call.payload).toMatchObject({ action: "customCommand", commandId: "cmd" });
             const { blocks } = expandCustomCommandCall(call, customCommandLibrary([command]));

@@ -33,6 +33,7 @@ import {
     buildCustomCommandRow,
     customCommandParamsOf,
     customCommandRowLine,
+    findCustomCommandPlaceholders,
     type CustomCommandRowProblem,
 } from "@/apps/workspace/modules/story/scene-editor/customCommandDefinition";
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
@@ -422,6 +423,11 @@ function CommandRow(props: {
     );
 }
 
+/** A line with a `<参数>` in it is checked on commit, by `buildCustomCommandRow`, not by the story grammar. */
+function holdsPlaceholders(source: string): boolean {
+    return findCustomCommandPlaceholders(source).length > 0;
+}
+
 /** The story editor's command line, hosted in the command editor: Enter writes one command row. */
 function CommandLineInput(props: {
     editing: { rowId: string | null; initial: string; token: number };
@@ -491,6 +497,7 @@ function CommandLineInput(props: {
             onBackspaceEmpty={() => props.onClose()}
             slashAtAlias={props.slashAtAlias}
             commandScope={props.scope}
+            holdsReason={holdsPlaceholders}
         />
     );
 }

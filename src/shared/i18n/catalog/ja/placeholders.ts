@@ -8,6 +8,7 @@ export const placeholders = {
         properties: "プロパティ",
         characters: "キャラクター",
         story: "ストーリー",
+        storyCommands: "カスタムコマンド",
         localization: "ローカライズ",
         voice: "ボイス",
         assets: "アセット",

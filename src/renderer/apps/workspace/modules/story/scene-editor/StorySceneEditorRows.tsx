@@ -2091,7 +2091,7 @@ function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textS
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string; holdsReason?: (source: string) => boolean }) {
     const { t } = useTranslation();
     // The slot's NAME is vocabulary — the word the author may type as `位置=` — so it follows the
     // command language. The failure sentence around it is prose and stays in the interface language.
@@ -2107,8 +2107,8 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
-        [ct, props.commandContext, props.source],
+        () => (props.holdsReason?.(props.source) ? null : getCommandLineReason(props.source, props.commandContext, { typing: true })),
+        [ct, props.commandContext, props.holdsReason, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
         return null;
@@ -2176,6 +2176,12 @@ export function InsertRow(props: {
      * command: `#` opens no speaker picker, since there is no line of dialogue for it to start.
      */
     commandScope?: { commandIds: ReadonlySet<string> };
+    /**
+     * True for a line whose live reason the host answers itself on commit. The custom command editor
+     * passes it for a line holding `<参数>` placeholders: the story grammar reads `-<力度>` as a bad
+     * value, which is exactly what it is not there.
+     */
+    holdsReason?: (source: string) => boolean;
 }) {
     const { t } = useTranslation();
     // The action creator is command vocabulary end to end — command names, their categories, the
@@ -2491,7 +2497,7 @@ export function InsertRow(props: {
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
                 {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
-                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
+                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} holdsReason={props.holdsReason} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -2726,6 +2732,7 @@ export function InsertRow(props: {
                         stops={actionMenu.stops}
                         category={actionMenu.category}
                         reachable={actionMenu.reachable}
+                        hasCustom={actionMenu.hasCustom}
                         onCategory={actionMenu.chooseCategory}
                         activeKey={actionMenu.activeStop?.key ?? null}
                         onHighlight={actionMenu.selectKey}
@@ -3075,11 +3082,16 @@ function useActionCommandMenuState(
         setActiveKey(stops[nextIndex].key);
     };
 
+    // Whether the project has a command of its own at all. Asked of the groups, not of the query, so the
+    // 自定义 entry stays put while the author types - dimmed when the query misses it, like the rest.
+    const hasCustom = useMemo(() => allGroups.some(entry => entry.group.category === "custom"), [allGroups]);
+
     return {
         ranked,
         sections,
         starred,
         reachable,
+        hasCustom,
         category,
         chooseCategory,
         stops,
@@ -3212,6 +3224,8 @@ function ActionCommandMenu(props: {
     category: MenuCategory;
     reachable: ReadonlySet<MenuCategory>;
     onCategory: (category: MenuCategory) => void;
+    /** The project has commands of its own, so the column carries a 自定义 entry and grows by one row. */
+    hasCustom?: boolean;
     activeKey: string | null;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
@@ -3400,8 +3414,9 @@ function ActionCommandMenu(props: {
                 not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and
                 grew it back on the way out. Switching category is the one thing this column exists
                 for, and it flinched every time. Same size whatever is open; only the right column
-                scrolls. */
-            <div className="flex h-72">
+                scrolls. The 自定义 entry adds one row (28px and the 2px gap) to the column, so the menu
+                is that much taller in a project that has one; still fixed, whatever category is open. */
+            <div className={props.hasCustom ? "flex h-[19.75rem]" : "flex h-72"}>
                 {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
                     So the chosen category wears a plain fill and the accent stays on the command row —
                     one live highlight, and it is always the one Enter will take. */}
@@ -3415,7 +3430,7 @@ function ActionCommandMenu(props: {
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
                     />
                     {/* 自定义 only once the project has a command to file there. */}
-                    {STORY_COMMAND_CATEGORIES.filter(category => category.id !== "custom" || props.reachable.has(category.id)).map(category => (
+                    {STORY_COMMAND_CATEGORIES.filter(category => category.id !== "custom" || props.hasCustom).map(category => (
                         <ActionCommandCategoryRow
                             key={category.id}
                             icon={category.icon}

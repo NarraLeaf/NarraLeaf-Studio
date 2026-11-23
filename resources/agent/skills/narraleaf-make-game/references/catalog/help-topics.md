@@ -308,7 +308,7 @@ The Actions panel beside the editor lists every command, the values each one acc
 
 自定义指令把几行命令保存为一条带名字的命令，在故事编辑器中像内置命令一样输入，例如 @左右摇晃 Anyo 力度=10
 
-- 在故事面板的「自定义指令」中新建，或在故事编辑器中选中几行，右键选择「保存为自定义指令」
+- 在左侧栏的「自定义指令」页中新建，或在故事编辑器中选中几行，右键选择「保存为自定义指令」
 - 在命令的值的位置写 <参数名> 声明参数，例如 xoffset=<力度>；写 -<力度> 使用相反数，写 <力度=5> 设置默认值
 - 参数的类型与所在位置相同：数字带同样的单位和范围，选项提供同样的候选，角色位置只接受角色
 - 没有默认值的参数必须填写，漏写时该行显示为草稿
@@ -321,7 +321,7 @@ The Actions panel beside the editor lists every command, the values each one acc
 
 A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.
 
-- Create one in the Custom commands group of the Story panel, or select rows in the story editor and choose Save as custom command.
+- Create one on the Custom Commands page of the left sidebar, or select rows in the story editor and choose Save as custom command.
 - Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.
 - A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.
 - A parameter without a default is required; a row that leaves it out is shown as a draft.
