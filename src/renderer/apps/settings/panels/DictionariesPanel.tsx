@@ -93,7 +93,7 @@ export function DictionariesPanel() {
     return (
         <div className="flex flex-col gap-4" data-help-topic="spellcheck">
             <div className="flex flex-col gap-1">
-                <p className="text-xs text-fg-muted">{t("settings.dictionaries.installed.title")}</p>
+                <p className="flex min-h-7 items-center text-xs text-fg-muted">{t("settings.dictionaries.installed.title")}</p>
                 {installed === null ? (
                     <p className="text-xs text-fg-subtle">{t("settings.dictionaries.loading")}</p>
                 ) : installed.length === 0 ? (
@@ -120,7 +120,7 @@ export function DictionariesPanel() {
             </div>
 
             <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex min-h-7 items-center justify-between gap-4">
                     <p className="text-xs text-fg-muted">{t("settings.dictionaries.available.title")}</p>
                     <Button size="sm" variant="secondary" disabled={browsing || busy !== null} onClick={() => void browse()}>
                         {t(available === null ? "settings.dictionaries.browse" : "settings.dictionaries.refresh")}

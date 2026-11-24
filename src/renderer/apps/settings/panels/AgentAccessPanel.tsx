@@ -206,6 +206,7 @@ export function AgentAccessPanel() {
             <Row label={t("settings.agent.port")} description={portDescription} descriptionTone={portValid && !portRefused ? "muted" : "danger"}>
                 <Input
                     size="sm"
+                    fullWidth
                     inputMode="numeric"
                     value={portDraft}
                     variant={portValid ? "default" : "error"}

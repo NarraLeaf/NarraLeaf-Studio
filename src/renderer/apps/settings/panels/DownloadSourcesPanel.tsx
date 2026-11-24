@@ -66,7 +66,7 @@ export function DownloadSourcesPanel() {
             {failed && <SettingSaveFailure retry={retry} />}
             {/* The hint reads as a row's description and the add button sits where a row keeps its
                 control; under the list it was the one button in the pane that stood at the left. */}
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center justify-between gap-4">
                 <p className="min-w-0 text-xs text-fg-subtle">{t("settings.network.rewrites.hint")}</p>
                 <Button size="sm" variant="secondary" className="h-7 shrink-0" onClick={addRule}>
                     {t("settings.network.rewrites.add")}
