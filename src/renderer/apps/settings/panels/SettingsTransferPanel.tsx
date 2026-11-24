@@ -149,7 +149,7 @@ export function SettingsTransferPanel() {
         <div className="flex flex-col gap-3">
             {/* Two rows in the pane's own layout: what happens on the left, the presses on the right.
                 Export and import are one pair of equal weight, so they share one look. */}
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
                 <p className="min-w-0 grow basis-64 text-xs text-fg-subtle">{t("settings.transfer.exportHint")}</p>
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                     <Button size="sm" variant="secondary" className="h-7" disabled={busy} onClick={() => void runExport()}>
@@ -162,7 +162,7 @@ export function SettingsTransferPanel() {
             </div>
 
             {servers.length > 0 && (
-                <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                     <p className="min-w-0 grow basis-64 text-xs text-fg-subtle">{t("settings.transfer.team.hint")}</p>
                     <div className="ml-auto flex shrink-0 items-center gap-2">
                         {servers.length > 1 && (
