@@ -17,7 +17,7 @@ The Figma Community listing (icon, cover, copy and the questionnaire answers) is
 
 1. Select the frames to export (or any layer inside them), or select nothing to list every
    top-level frame on the page.
-2. Run **Plugins → Development → NarraLeaf Studio Export → Export and check…**, tick the frames
+2. Run **Plugins → Development → NarraLeaf Studio Export → 导出并检查… / Export and check…**, tick the frames
    and press **Export**.
 3. In Studio, open the interface editor and import the downloaded file.
 
@@ -64,6 +64,9 @@ one of the plugin's commands:
 - **Mark dialogue part** → Line, Speaker name, Avatar
 - **Mark quick-menu button** → Auto, Skip, Log, Save, Load, Config, Hide
 - **Clear mark**
+
+A manifest can't be localized, so each menu entry reads in Chinese and English
+(`标为游戏界面 / Mark as Game UI`).
 
 The panel's **Mark as…** list does the same for the current selection without closing the panel.
 A mark is stored on the layer (shared plugin data, namespace `narraleaf`, so it survives the plugin
