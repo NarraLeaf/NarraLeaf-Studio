@@ -877,7 +877,7 @@ export const help = {
                 + "\n"
                 + "画像に描き込んだ文字は翻訳できない。ボタンの文字は画像の上にテキストとして置く\n"
                 + "\n"
-                + "Figma プラグインは NarraLeaf Studio のソースコードの tools/figma-plugin フォルダにある。Figma では「プラグイン › 開発 › マニフェストからプラグインをインポート」で追加する",
+                + "Figma プラグインは Figma コミュニティからインストールする。NarraLeaf Studio Export で検索するか、figma.com/community/plugin/1707010640966969953 を開く",
         },
         uiComponents: {
             title: "再利用できる部品",

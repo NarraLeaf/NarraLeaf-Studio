@@ -5,10 +5,15 @@ NarraLeaf Studio imports as pages (Interfaces panel, **Import design** button).
 
 ## Install
 
-1. In the Figma desktop app: **Plugins → Development → Import plugin from manifest…**
-2. Choose `tools/figma-plugin/manifest.json` from this repository.
+Install it from the Figma Community:
+https://www.figma.com/community/plugin/1707010640966969953
 
 The plugin requests no network access. Everything it writes goes into the downloaded file.
+
+To run a local copy while working on it, use the Figma desktop app: **Plugins → Development →
+Import plugin from manifest…** and choose `tools/figma-plugin/manifest.json` from this repository.
+The manifest carries the Community id, so publishing a new version from that copy updates the
+listing.
 
 The Figma Community listing (icon, cover, copy and the questionnaire answers) is in
 `listing/LISTING.md`. Publishing is only possible from the Figma desktop app.
@@ -17,7 +22,7 @@ The Figma Community listing (icon, cover, copy and the questionnaire answers) is
 
 1. Select the frames to export (or any layer inside them), or select nothing to list every
    top-level frame on the page.
-2. Run **Plugins → Development → NarraLeaf Studio Export → 导出并检查… / Export and check…**, tick the frames
+2. Right-click and run **Plugins → NarraLeaf Studio Export → 导出并检查… / Export and check…**, tick the frames
    and press **Export**.
 3. In Studio, open the interface editor and import the downloaded file.
 

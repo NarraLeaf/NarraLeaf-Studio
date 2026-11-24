@@ -777,7 +777,7 @@ export const help = {
                 + "\n"
                 + "画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方\n"
                 + "\n"
-                + "Figma 插件位于 NarraLeaf Studio 源代码的 tools/figma-plugin 文件夹，在 Figma 中通过「插件 › 开发 › 从清单导入插件」添加",
+                + "Figma 插件从 Figma 社区安装：搜索 NarraLeaf Studio Export，或打开 figma.com/community/plugin/1707010640966969953",
         },
         uiComponents: {
             title: "可复用的部件",

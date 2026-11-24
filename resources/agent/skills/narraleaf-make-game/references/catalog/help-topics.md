@@ -1356,7 +1356,7 @@ Widgets that belong together can be saved as a component and placed on any scree
 
 画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方
 
-Figma 插件位于 NarraLeaf Studio 源代码的 tools/figma-plugin 文件夹，在 Figma 中通过「插件 › 开发 › 从清单导入插件」添加
+Figma 插件从 Figma 社区安装：搜索 NarraLeaf Studio Export，或打开 figma.com/community/plugin/1707010640966969953
 
 A screen drawn in another tool becomes a page in the UI editor. In the Interfaces panel, choose Import design and pick a Figma export, a PSD, or one or more images.
 
@@ -1379,7 +1379,7 @@ In Figma, the plugin can mark layers instead of renaming them by hand: select la
 
 Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.
 
-The Figma plugin is in the tools/figma-plugin folder of the NarraLeaf Studio source code. In Figma, add it with Plugins, Development, Import plugin from manifest.
+Install the Figma plugin from the Figma Community: search for NarraLeaf Studio Export, or open figma.com/community/plugin/1707010640966969953.
 
 相关主题 · Related：游戏界面 · Game screens、可复用的部件 · Reusable parts、配色与字体 · Colors and fonts
 

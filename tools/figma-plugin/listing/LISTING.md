@@ -3,6 +3,8 @@
 Everything the publish form asks for, ready to paste. The listing itself is in English; the
 Chinese and Japanese descriptions below are for the NarraLeaf docs and for sharing elsewhere.
 
+Published at https://www.figma.com/community/plugin/1707010640966969953
+
 ## Images
 
 | File | Size | Field |

@@ -967,8 +967,8 @@ export const help = {
                 + "\n"
                 + "Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.\n"
                 + "\n"
-                + "The Figma plugin is in the tools/figma-plugin folder of the NarraLeaf Studio source code. "
-                + "In Figma, add it with Plugins, Development, Import plugin from manifest.",
+                + "Install the Figma plugin from the Figma Community: search for NarraLeaf Studio Export, "
+                + "or open figma.com/community/plugin/1707010640966969953.",
         },
         uiComponents: {
             title: "Reusable parts",
