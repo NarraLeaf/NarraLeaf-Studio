@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { FLOATING_OWN_KEYS_ATTRIBUTE, useFloatingLayer, useHostDocument } from "@/lib/components/layout";
-import type { StoryBlock } from "@shared/types/story";
+import { parseStoryBooleanWord, type StoryBlock } from "@shared/types/story";
 import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import { useCommandTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -68,7 +68,7 @@ export function StoryLineValueToken(props: {
         }
         // A boolean flips in place — a popover for two states is friction, not affordance.
         if (edit.control.kind === "boolean") {
-            props.onApply(edit.apply(edit.value === "true" ? "false" : "true"));
+            props.onApply(edit.apply(parseStoryBooleanWord(edit.value) ? "false" : "true"));
             return;
         }
         // The token toggles its popover: it is the popover's owner, so the press that closes it is

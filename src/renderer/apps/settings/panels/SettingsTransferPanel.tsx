@@ -147,22 +147,24 @@ export function SettingsTransferPanel() {
 
     return (
         <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2">
-                <p className="text-xs text-fg-muted">{t("settings.transfer.exportHint")}</p>
-                <div className="flex items-center gap-2">
+            {/* Two rows in the pane's own layout: what happens on the left, the presses on the right.
+                Export and import are one pair of equal weight, so they share one look. */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="min-w-0 grow basis-64 text-xs text-fg-subtle">{t("settings.transfer.exportHint")}</p>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
                     <Button size="sm" variant="secondary" className="h-7" disabled={busy} onClick={() => void runExport()}>
                         {t("settings.transfer.export")}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void runPlan()}>
+                    <Button size="sm" variant="secondary" className="h-7" disabled={busy} onClick={() => void runPlan()}>
                         {t("settings.transfer.import")}
                     </Button>
                 </div>
             </div>
 
             {servers.length > 0 && (
-                <div className="flex flex-col gap-2">
-                    <p className="text-xs text-fg-muted">{t("settings.transfer.team.hint")}</p>
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <p className="min-w-0 grow basis-64 text-xs text-fg-subtle">{t("settings.transfer.team.hint")}</p>
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
                         {servers.length > 1 && (
                             <Select
                                 size="sm"
@@ -176,7 +178,7 @@ export function SettingsTransferPanel() {
                         <Button size="sm" variant="secondary" className="h-7" disabled={busy || server === null} onClick={() => void runBackup()}>
                             {t("settings.transfer.team.backup")}
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7" disabled={busy || server === null} onClick={() => void runRestore()}>
+                        <Button size="sm" variant="secondary" className="h-7" disabled={busy || server === null} onClick={() => void runRestore()}>
                             {t("settings.transfer.team.restore")}
                         </Button>
                     </div>

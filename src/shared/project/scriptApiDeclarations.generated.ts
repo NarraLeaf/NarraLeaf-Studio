@@ -270,6 +270,39 @@ declare module "@narraleaf/script" {
     	/** The character's default dialog avatar, or null when it has none. */
     	avatar: BlueprintImageAsset | null;
     };
+    type StoryId = string;
+    type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
+    	[key: string]: StoryLiteralValue;
+    };
+    type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
+    type StoryTextMarks = {
+    	bold?: boolean;
+    	italic?: boolean;
+    	color?: string;
+    	ruby?: string;
+    	cps?: number;
+    	/**
+    	 * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
+    	 * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
+    	 * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
+    	 * box; \`fontSizeStep\` is what the size control writes.
+    	 */
+    	fontSize?: number;
+    	/**
+    	 * The run's size as a number of steps away from the line's, positive for larger. A step is
+    	 * \`STORY_FONT_SIZE_STEP_RATIO\`. Relative rather than absolute, so the run keeps its weight
+    	 * against the rest of the line at whatever size the line is set.
+    	 */
+    	fontSizeStep?: number;
+    	emphasis?: StoryTextEmphasis;
+    	/** An inline effect a plugin contributes, such as shaking text. */
+    	effect?: StoryTextEffect;
+    };
+    type StoryTextEffectParamValue = number | string | boolean;
+    type StoryTextEffect = {
+    	id: string;
+    	params?: Record<string, StoryTextEffectParamValue>;
+    };
     type LocaleCode = string;
     type LocalizationLocaleEntry = {
     	code: LocaleCode;
@@ -312,39 +345,6 @@ declare module "@narraleaf/script" {
     	 * carries.
     	 */
     	renames?: Record<string, string>;
-    };
-    type StoryId = string;
-    type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
-    	[key: string]: StoryLiteralValue;
-    };
-    type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
-    type StoryTextMarks = {
-    	bold?: boolean;
-    	italic?: boolean;
-    	color?: string;
-    	ruby?: string;
-    	cps?: number;
-    	/**
-    	 * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
-    	 * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
-    	 * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
-    	 * box; \`fontSizeStep\` is what the size control writes.
-    	 */
-    	fontSize?: number;
-    	/**
-    	 * The run's size as a number of steps away from the line's, positive for larger. A step is
-    	 * \`STORY_FONT_SIZE_STEP_RATIO\`. Relative rather than absolute, so the run keeps its weight
-    	 * against the rest of the line at whatever size the line is set.
-    	 */
-    	fontSizeStep?: number;
-    	emphasis?: StoryTextEmphasis;
-    	/** An inline effect a plugin contributes, such as shaking text. */
-    	effect?: StoryTextEffect;
-    };
-    type StoryTextEffectParamValue = number | string | boolean;
-    type StoryTextEffect = {
-    	id: string;
-    	params?: Record<string, StoryTextEffectParamValue>;
     };
     type SaveRecordTimes = {
     	/** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
@@ -506,17 +506,25 @@ declare module "@narraleaf/script" {
     		y: number;
     	};
     }
-    type ImageFillMode = "cover" | "contain" | "stretch" | "crop" | "tile";
+    type ImageFillMode = "cover" | "contain" | "stretch" | "crop" | "tile" | "nineSlice";
     interface ImageFillCropPlacement {
     	leftPct: number;
     	topPct: number;
     	widthPct: number;
     	heightPct: number;
     }
+    interface ImageFillSlice {
+    	top: number;
+    	right: number;
+    	bottom: number;
+    	left: number;
+    }
     interface ImageFill {
     	mode: ImageFillMode;
     	assetId?: string | null;
     	cropPlacement?: ImageFillCropPlacement;
+    	/** Read only in \`nineSlice\` mode. Absent there reads as {@link DEFAULT_NINE_SLICE}. */
+    	slice?: ImageFillSlice;
     }
     type UIListItemScope = {
     	item: unknown;

@@ -37,6 +37,8 @@ export class WindowInstance {
         return {
             contextIsolation: config.isolated,
             preload: config.preload ?? undefined,
+            // Studio checks spelling itself; Chromium's checker stays off (see chromiumSpellcheck.ts).
+            spellcheck: false,
         };
     }
 

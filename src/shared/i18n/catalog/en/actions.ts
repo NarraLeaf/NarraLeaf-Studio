@@ -25,6 +25,8 @@ export const actions = {
         // Beside Production Build because it is the same kind of thing: it produces a file
         // rather than launching anything.
         exportPatch: "Export Patch…",
+        // Opens the clean-up dialog: Studio's per-item tidying, run over the whole project.
+        cleanup: "Clean Up Project…",
         // Which build variant Dev Mode, Preview and Test assemble as. The row is only there when
         // the project has a variant to pick, so most projects never see it.
         runAs: "Run as",
@@ -62,6 +64,45 @@ export const actions = {
         resetDetail: "Every save slot and all persistent data for this project are removed.",
         resetDone: "Player data reset.",
         resetFailed: "Could not reset player data.",
+    },
+    // The clean-up dialog. Each task re-runs something Studio already does one item at a time.
+    cleanup: {
+        title: "Clean up project",
+        scanning: "Checking the project",
+        scanFailed: "Could not check the project: {message}",
+        task: {
+            avatars: "Auto-frame dialog avatars",
+            projectCache: "Clear project cache",
+            blueprintLayout: "Format all blueprints",
+            danglingNodes: "Delete unwired blueprint nodes",
+            orphanComments: "Delete orphaned comments",
+            orphanTranslations: "Delete orphaned translations",
+        },
+        // Under the avatar row: whether differentials that already have a framing are framed again.
+        avatarsOverwrite: "Replace existing framings",
+        amount: {
+            differentials: { one: "{count} differential", other: "{count} differentials" },
+            blueprints: { one: "{count} blueprint", other: "{count} blueprints" },
+            nodes: { one: "{count} node", other: "{count} nodes" },
+            comments: { one: "{count} comment", other: "{count} comments" },
+            translations: { one: "{count} translation", other: "{count} translations" },
+        },
+        nothing: "Nothing to do",
+        cacheBusy: "In use by a build or preview",
+        noUndo: "Cannot be undone",
+        run: "Clean Up",
+        failed: "Clean-up stopped: {message}",
+        done: {
+            title: "Project cleaned up: {summary}.",
+            nothing: "Project cleaned up. Nothing needed changing.",
+            separator: ", ",
+            avatars: "{count} avatars framed",
+            projectCache: "{size} of cache cleared",
+            blueprintLayout: "{count} blueprints formatted",
+            danglingNodes: "{count} nodes deleted",
+            orphanComments: "{count} comments deleted",
+            orphanTranslations: "{count} translations deleted",
+        },
     },
     file: {
         label: "File",

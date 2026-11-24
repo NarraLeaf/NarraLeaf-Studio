@@ -123,6 +123,6 @@ export const dashboard = {
         clear: "清空本项目统计数据",
         clearConfirm: "清空本项目的统计数据",
         clearDetail:
-            "将清除写作曲线、活跃时长、编辑次数与构建记录。从项目内容统计得出的数字不受影响。此操作无法撤销。",
+            "将清除写作曲线、活跃时长、编辑次数与构建记录。从项目内容统计得出的数字不受影响。此操作无法撤销",
     },
 } satisfies LocaleNamespace<"dashboard">;

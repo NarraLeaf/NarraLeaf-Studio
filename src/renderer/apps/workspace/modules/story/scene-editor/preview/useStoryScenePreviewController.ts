@@ -1,3 +1,5 @@
+import { expandStoryCustomCommandsInDocument } from "@shared/story/customCommands";
+import type { StoryCustomCommandService } from "@/lib/workspace/services/story/StoryCustomCommandService";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
@@ -564,8 +566,14 @@ export function useStoryScenePreviewController(input: {
                 return;
             }
             const targetBlockId = resolvedTargetId;
-            const snapshot = computeStoryStageSnapshot({
+            // Calls to the project's own commands become their rows, exactly as the bundle does it,
+            // so the preview poses and plays what the game will.
+            const playable = expandStoryCustomCommandsInDocument(
                 document,
+                context.services.get<StoryCustomCommandService>(Services.StoryCustomCommands).library(),
+            );
+            const snapshot = computeStoryStageSnapshot({
+                document: playable,
                 sceneId,
                 targetBlockId,
                 animations,
@@ -582,7 +590,7 @@ export function useStoryScenePreviewController(input: {
                 resolveReveal = resolve;
             });
             const compiled = await compileStagePreviewToNlr({
-                document,
+                document: playable,
                 sceneId,
                 snapshot,
                 targetBlockId,

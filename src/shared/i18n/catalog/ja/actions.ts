@@ -20,6 +20,8 @@ export const actions = {
         productionBuild: "製品ビルド…",
         // 「製品ビルド」の隣。どちらも何かを起動するのではなくファイルを作る、同じ種類のもの。
         exportPatch: "パッチを書き出す…",
+        // 整理ダイアログを開く。Studio が項目ごとに行う整理をプロジェクト全体に一度で行う。
+        cleanup: "プロジェクトを整理…",
         runAs: "実行するバリアント",
             runWithDlc: "DLC 付きで実行",
             dlcCount: "{active} / {total}",
@@ -47,6 +49,45 @@ export const actions = {
         resetDetail: "このプロジェクトのすべてのセーブと永続データが削除される",
         resetDone: "プレイヤーデータをリセットした",
         resetFailed: "プレイヤーデータをリセットできなかった",
+    },
+    // 整理ダイアログ。各項目は Studio が項目ごとに行う操作を、プロジェクト全体に対して一度行う。
+    cleanup: {
+        title: "プロジェクトを整理",
+        scanning: "プロジェクトを確認中",
+        scanFailed: "プロジェクトを確認できなかった：{message}",
+        task: {
+            avatars: "アバターを自動で切り抜く",
+            projectCache: "プロジェクトのキャッシュを消去",
+            blueprintLayout: "すべてのブループリントを整列",
+            danglingNodes: "未接続のブループリントノードを削除",
+            orphanComments: "対象行のないコメントを削除",
+            orphanTranslations: "対応する行のない翻訳を削除",
+        },
+        // アバターの行の下。切り抜き範囲が設定済みの差分も切り抜き直すかどうか。
+        avatarsOverwrite: "既存の切り抜き範囲を置き換える",
+        amount: {
+            differentials: { other: "差分 {count} 件" },
+            blueprints: { other: "ブループリント {count} 件" },
+            nodes: { other: "ノード {count} 件" },
+            comments: { other: "コメント {count} 件" },
+            translations: { other: "翻訳 {count} 件" },
+        },
+        nothing: "対象なし",
+        cacheBusy: "ビルドまたはプレビューで使用中",
+        noUndo: "元に戻せない",
+        run: "整理",
+        failed: "整理を完了できなかった：{message}",
+        done: {
+            title: "プロジェクトを整理した：{summary}",
+            nothing: "プロジェクトを整理した。変更が必要な項目はなかった",
+            separator: "、",
+            avatars: "アバター {count} 件を切り抜き",
+            projectCache: "キャッシュ {size} を消去",
+            blueprintLayout: "ブループリント {count} 件を整列",
+            danglingNodes: "ノード {count} 件を削除",
+            orphanComments: "コメント {count} 件を削除",
+            orphanTranslations: "翻訳 {count} 件を削除",
+        },
     },
     file: {
         label: "ファイル",

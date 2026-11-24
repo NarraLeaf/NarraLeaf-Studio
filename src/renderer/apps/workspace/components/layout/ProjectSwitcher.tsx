@@ -209,7 +209,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                     role="menu"
                     aria-label={t("workspace.shell.projectSwitcher.openAnother")}
                 >
-                    <div className="px-3 pt-1.5 pb-1 text-2xs tracking-wide text-fg-subtle">
+                    <div className="px-3 pt-1.5 pb-1 text-2xs text-fg-muted">
                         {t("workspace.shell.projectSwitcher.recentProjects")}
                     </div>
 
@@ -390,7 +390,7 @@ function VersionSection({ surface, onAct }: { surface: VersionSurface; onAct: ()
         <>
             <MenuSeparator />
 
-            <div className="px-3 pt-1.5 pb-1 text-2xs tracking-wide text-fg-subtle">
+            <div className="px-3 pt-1.5 pb-1 text-2xs text-fg-muted">
                 {t("workspace.shell.versionControl.title")}
             </div>
 

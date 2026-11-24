@@ -621,7 +621,7 @@ function VariablesTab(props: {
                 return (
                     <div key={scope}>
                         {/* The scope's name as a declaration row and the scene flow's variable picker give it. */}
-                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t(`story.badge.declare.${scope}`)}</h3>
+                        <h3 className="mb-1 text-2xs text-fg-muted">{t(`story.badge.declare.${scope}`)}</h3>
                         <ul className="space-y-1">
                             {scopeRows.map(row => (
                                 <li key={`${scope}:${row.variable.id}`} className="flex items-center gap-2">
@@ -831,13 +831,13 @@ function ExecutionContextTab(props: {
     return (
         <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
             <div>
-                <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextScene")}</h3>
+                <h3 className="mb-1 text-2xs text-fg-muted">{t("devMode.runtime.contextScene")}</h3>
                 <p className="truncate text-fg" data-tip={view.sceneName}>{view.sceneName}</p>
             </div>
 
             {view.chain.length > 0 || view.orphanRound ? (
                 <div>
-                    <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextInside")}</h3>
+                    <h3 className="mb-1 text-2xs text-fg-muted">{t("devMode.runtime.contextInside")}</h3>
                     <ul className="space-y-0.5">
                         {view.chain.map((rung, index) => (
                             <li key={rung.blockId} className="flex items-baseline gap-1.5" style={{ paddingLeft: index * 10 }}>
@@ -856,7 +856,7 @@ function ExecutionContextTab(props: {
 
             {view.branches.length > 0 ? (
                 <div>
-                    <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextRunning")}</h3>
+                    <h3 className="mb-1 text-2xs text-fg-muted">{t("devMode.runtime.contextRunning")}</h3>
                     <ul className="space-y-0.5">
                         {view.branches.map(branch => (
                             <li key={branch.index} className="flex items-baseline gap-1.5">

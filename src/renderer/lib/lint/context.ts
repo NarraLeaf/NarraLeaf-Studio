@@ -1,3 +1,5 @@
+import type { StoryCustomCommandLibrary } from "@shared/story/customCommands";
+import type { CharacterBehaviours } from "@shared/story/characterBehaviours";
 import type { PngAnimation } from "@shared/utils/assetImageOptimization";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
@@ -75,6 +77,8 @@ export type LintCharacterEntry = {
      * can name a look by. Absent for every other kind, and where nothing read the appearance.
      */
     axes?: readonly { name: string; tags: readonly string[] }[];
+    /** The rows the character runs when it starts or stops speaking; absent when it has none. */
+    behaviours?: CharacterBehaviours;
 };
 
 /** A display name declared in both the project registry and a story declaration row. */
@@ -248,6 +252,11 @@ export type LintContext = {
      * the release variant is synthesized and stores nothing, so `appTags` cannot carry it.
      */
     projectEndingSurfaceId: string;
+    /**
+     * The project's own story commands, by id (`editor/story/commands.json`). What a call row plays
+     * is decided here, so whether a call can play at all is a question about this list.
+     */
+    customCommands: StoryCustomCommandLibrary;
     /**
      * The DLC this project ships, as the registry holds them.
      *

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Languages, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
+import { Brush, Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Languages, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { AgentStopIcon } from "../agent/AgentStopIcon";
 import { useDevModeAgentHeld } from "../agent/useDevModeAgentHeld";
@@ -31,6 +31,7 @@ import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { openPatchDialog } from "./PatchDialog";
+import { openProjectCleanupDialog } from "./ProjectCleanupDialog";
 import { openBuildReportTab } from "../build-report";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
@@ -1511,6 +1512,38 @@ export function RunControl() {
                                 <FileDiff className="h-4 w-4" />
                             </span>
                             <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.exportPatch")}</span>
+                            <span className="w-3" />
+                        </button>
+
+                        {/* Clean up project. Above Test because both act on the project rather
+                            than launch it, and a clean-up is what an author runs before testing.
+                            Gated by the freeze alone: every task but the cache writes project data,
+                            which a frozen workspace refuses. Not by trust, which is about running
+                            the project's own code - nothing here runs it, and an untrusted project
+                            is still edited normally. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={frozen || undefined}
+                            disabled={frozen}
+                            data-tip={frozen ? frozenTitle : undefined}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    openProjectCleanupDialog(workspace);
+                                }
+                            }}
+                            className={cn(
+                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                frozen
+                                    ? "cursor-not-allowed text-fg-subtle"
+                                    : "text-fg-muted hover:bg-fill hover:text-fg",
+                            )}
+                        >
+                            <span className="flex h-4 w-4 items-center justify-center">
+                                <Brush className="h-4 w-4" />
+                            </span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.cleanup")}</span>
                             <span className="w-3" />
                         </button>
 

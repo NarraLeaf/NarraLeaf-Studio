@@ -6,7 +6,7 @@
  * Comments in English per project convention.
  */
 
-import { commandDetailKey, commandLabelKey, listCommandSpecs } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
+import { commandDetailKey, commandLabelKey, listBuiltinCommandSpecs } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import type { StoryCommandParamSpec } from "@/apps/workspace/modules/story/scene-editor/commands/spec";
 import { STORY_COMMAND_GROUPS, commandCategoryLabelKey } from "@/apps/workspace/modules/story/scene-editor/storyCommandCategories";
 import { bilingual, generatedHeader, joinLines, oneLine, textOf } from "./catalogText";
@@ -49,7 +49,7 @@ function describeParam(name: string, param: StoryCommandParamSpec): string {
 }
 
 export function renderStoryCommandsPage(): string {
-    const specs = listCommandSpecs();
+    const specs = listBuiltinCommandSpecs();
     const lines = generatedHeader("故事命令 · Story commands", [
         `故事编辑器里输入 \`/\` 能用的 ${specs.length} 条命令，按命令菜单的分组排列。每条给出界面上的名称、说明、可输入的写法和参数。`,
         "",

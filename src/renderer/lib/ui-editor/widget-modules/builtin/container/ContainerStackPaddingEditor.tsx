@@ -210,7 +210,7 @@ export function ContainerStackPaddingEditor({
                       }}
                       onMouseDown={e => e.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
+                      <p className="mb-2 text-2xs text-fg-muted">{t("widgets.perSidePx")}</p>
                       {/* The popover's own clamp, because it is a portal into `document.body` and so
                           escapes the `<fieldset disabled>` the inspector wraps this field in. The
                           four boxes all write, and there is nothing in here to exempt. */}
@@ -223,7 +223,7 @@ export function ContainerStackPaddingEditor({
                           <div className="grid grid-cols-2 gap-2 min-w-0">
                               {sideKeys.map(({ key, label }) => (
                                   <div key={key} className="flex min-w-0 flex-col gap-1">
-                                      <span className="text-2xs font-medium text-fg-subtle">{label}</span>
+                                      <span className="text-2xs text-fg-muted">{label}</span>
                                       <NumericDraftEnhancedInput
                                           committedDisplay={String(current[key])}
                                           draftResetKey={`${draftResetKey}-pad-${key}`}
@@ -250,7 +250,7 @@ export function ContainerStackPaddingEditor({
     return (
         <>
             <div ref={anchorRef} className="flex min-w-0 w-full flex-col gap-1 self-start">
-                <span className="text-xs font-medium text-fg-muted">{t("widgets.container.padding")}</span>
+                <span className="text-2xs text-fg-muted">{t("widgets.container.padding")}</span>
                 <div className="flex min-w-0 flex-nowrap items-stretch gap-2">
                     <div className="min-w-0 flex-1">
                         <NumericDraftEnhancedInput

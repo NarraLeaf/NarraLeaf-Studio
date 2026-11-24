@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { Select } from "@/lib/components/elements/Select";
+import { Input } from "@/lib/components/elements/Input";
 import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -12,7 +13,13 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FieldLayout } from "./FieldLayout";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import {
+    normalizeImageFillSlice,
+    suggestNineSlice,
+    type ImageFill,
+    type ImageFillMode,
+    type ImageFillSlice,
+} from "@shared/types/ui-editor/imageFill";
 import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
@@ -24,6 +31,17 @@ const PANEL_WIDTH = 360;
 const PANEL_SPACING = 12;
 const PANEL_MIN_MARGIN = 12;
 const DEFAULT_FILL_MODE: ImageFillMode = "cover";
+
+/**
+ * The picture's size inside the panel preview (a 4:3 box the panel's width, less its padding and an
+ * 8px inset), fitted whole so the cut lines drawn over it land where the cut is.
+ */
+function nineSlicePreviewSize(width: number, height: number): { width: number; height: number } {
+    const boxWidth = PANEL_WIDTH - 32 - 16;
+    const boxHeight = ((PANEL_WIDTH - 32) * 3) / 4 - 16;
+    const scale = Math.min(boxWidth / width, boxHeight / height);
+    return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
 
 interface PanelPosition {
     top: number;
@@ -51,6 +69,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             { value: "stretch", label: t("properties.imageFill.mode.stretch") },
             { value: "crop", label: t("properties.imageFill.mode.crop") },
             { value: "tile", label: t("properties.imageFill.mode.tile") },
+            { value: "nineSlice", label: t("properties.imageFill.mode.nineSlice") },
         ],
         [t],
     );
@@ -68,6 +87,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             mode: rawFill?.mode ?? DEFAULT_FILL_MODE,
             assetId: rawFill?.assetId ?? null,
             cropPlacement: rawFill?.cropPlacement,
+            ...(rawFill?.slice ? { slice: rawFill.slice } : {}),
         };
         if (allowedModes?.length && !allowedModes.includes(base.mode)) {
             return { ...base, mode: allowedModes[0] };
@@ -130,13 +150,36 @@ export function ImageFillField<TData extends UIInspectorData>({
             ) {
                 stateService?.setInteractionOverride(null);
             }
+            // A nine-slice fill starts from a cut that fits the picture, rather than a fixed number
+            // that is a sliver on a large frame and swallows a small one.
+            const slice = nextMode === "nineSlice" && !normalizedFill.slice
+                ? suggestNineSlice(metadata?.metadata.width ?? 0, metadata?.metadata.height ?? 0)
+                : normalizedFill.slice;
             void applyValue({
                 ...normalizedFill,
                 mode: nextMode,
+                ...(slice ? { slice } : {}),
             });
         },
-        [applyValue, element.id, normalizedFill, stateService, surfaceId],
+        [applyValue, element.id, metadata, normalizedFill, stateService, surfaceId],
     );
+
+    const slice = normalizeImageFillSlice(normalizedFill.slice);
+    const handleSliceChange = useCallback(
+        (edge: keyof ImageFillSlice, raw: string) => {
+            const value = Number(raw);
+            if (!Number.isFinite(value) || value < 0) {
+                return;
+            }
+            void applyValue({
+                ...normalizedFill,
+                slice: { ...normalizeImageFillSlice(normalizedFill.slice), [edge]: Math.round(value) },
+            });
+        },
+        [applyValue, normalizedFill],
+    );
+    const imageWidth = metadata?.metadata.width ?? 0;
+    const imageHeight = metadata?.metadata.height ?? 0;
 
     const computeCropPlacement = useCallback(() => {
         const imageWidth = metadata?.metadata.width ?? 0;
@@ -382,7 +425,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 
                       <div className="space-y-3">
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.imageFill.modeLabel")}</span>
+                              <span className="text-xs text-fg-muted">{t("properties.imageFill.modeLabel")}</span>
                               <Select
                                   options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
@@ -394,15 +437,53 @@ export function ImageFillField<TData extends UIInspectorData>({
                               />
                           </div>
 
+                          {normalizedFill.mode === "nineSlice" && (
+                              <div data-image-fill-nine-slice="">
+                                  <span className="text-xs text-fg-muted">{t("properties.imageFill.slice.label")}</span>
+                                  <div className="mt-1 grid grid-cols-4 gap-2">
+                                      {(["top", "right", "bottom", "left"] as const).map(edge => (
+                                          <label key={edge} className="min-w-0">
+                                              <span className="block text-2xs text-fg-subtle">{t(`properties.imageFill.slice.${edge}`)}</span>
+                                              <Input
+                                                  type="number"
+                                                  min={0}
+                                                  step={1}
+                                                  size="sm"
+                                                  value={String(slice[edge])}
+                                                  onChange={event => handleSliceChange(edge, event.target.value)}
+                                                  aria-label={t(`properties.imageFill.slice.${edge}`)}
+                                              />
+                                          </label>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.preview")}</span>
+                              <span className="text-xs text-fg-muted">{t("properties.preview")}</span>
                               <button
                                   ref={previewRef}
                                   type="button"
                                   onClick={() => setSelectorOpen(true)}
                                   className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-surface overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
                               >
-                                  {url ? (
+                                  {url && normalizedFill.mode === "nineSlice" && imageWidth > 0 && imageHeight > 0 ? (
+                                      <div className="absolute inset-2 flex items-center justify-center">
+                                          <div className="relative" style={nineSlicePreviewSize(imageWidth, imageHeight)}>
+                                              <img
+                                                  src={url}
+                                                  alt={t("properties.imageFill.previewAlt")}
+                                                  className="absolute inset-0 h-full w-full"
+                                                  draggable={false}
+                                              />
+                                              {/* The cut lines, where the corners end and the stretched parts begin. */}
+                                              <span className="absolute inset-x-0 border-t border-dashed border-primary" style={{ top: `${(slice.top / imageHeight) * 100}%` }} />
+                                              <span className="absolute inset-x-0 border-t border-dashed border-primary" style={{ bottom: `${(slice.bottom / imageHeight) * 100}%` }} />
+                                              <span className="absolute inset-y-0 border-l border-dashed border-primary" style={{ left: `${(slice.left / imageWidth) * 100}%` }} />
+                                              <span className="absolute inset-y-0 border-l border-dashed border-primary" style={{ right: `${(slice.right / imageWidth) * 100}%` }} />
+                                          </div>
+                                      </div>
+                                  ) : url ? (
                                       <img
                                           src={url}
                                           alt={t("properties.imageFill.previewAlt")}

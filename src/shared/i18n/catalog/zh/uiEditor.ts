@@ -3,7 +3,7 @@ import type { LocaleNamespace } from "../types";
 export const uiEditor = {
     surfaceKind: {
         page: "页面",
-        gameUi: "游戏 UI",
+        gameUi: "游戏界面",
         mainPage: "入口页面",
         pageDescription: "页面是完整的屏幕，例如标题、设置、存档、记录或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
@@ -34,7 +34,7 @@ export const uiEditor = {
         interfaces: "界面",
         interfaceType: "界面类型",
         createPage: "新建页面",
-        createGameUi: "新建游戏 UI",
+        createGameUi: "新建游戏界面",
         globalSubtitle: "全局",
         blueprintType: "蓝图",
         openGlobalBlueprint: "打开应用逻辑",
@@ -51,8 +51,8 @@ export const uiEditor = {
         deleteDetail: "此 {label} 中的所有元素将被移除",
         duplicateFailed: "无法复制页面",
         pageValidationHint: "创建前检查页面名称和尺寸",
-        gameUiSlotHint: "创建前选择可用的游戏 UI 位置",
-        allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
+        gameUiSlotHint: "创建前选择可用的游戏界面位置",
+        allSlotsUsed: "所有游戏界面位置均已有界面。从列表中打开已有的游戏界面",
         starterTitlePage: {
             title: "新建标题页",
             description: "带有可用的「开始」「继续」按钮，替换空白的入口页面",
@@ -159,9 +159,9 @@ export const uiEditor = {
         },
     },
     createDialog: {
-        slotIntro: "选择该游戏 UI 在游玩期间所属的位置",
-        slotAlreadyCreated: "已创建，从列表中打开现有的游戏 UI",
-        resolutionNote: "游戏 UI 使用项目分辨率：{width}×{height}",
+        slotIntro: "选择该游戏界面在游玩期间所属的位置",
+        slotAlreadyCreated: "已创建，从列表中打开现有的游戏界面",
+        resolutionNote: "游戏界面使用项目分辨率：{width}×{height}",
         nameRequired: "名称不能为空",
         width: "宽度",
         height: "高度",
@@ -301,9 +301,9 @@ export const uiEditor = {
         },
     },
     reference: {
-        label: "游戏 UI 参考",
-        heading: "其他游戏 UI",
-        none: "本项目没有其他游戏 UI",
+        label: "游戏界面参考",
+        heading: "其他游戏界面",
+        none: "本项目没有其他游戏界面",
         sizeDiffers: "尺寸不同：{name} {width}×{height}",
     },
     crossProject: {
@@ -333,6 +333,135 @@ export const uiEditor = {
         },
         slotTaken: "{slot} 槽位已有一个游戏界面",
         surfaceNotAdded: "无法粘贴该界面",
+    },
+    designImport: {
+        open: "导入设计稿",
+        pickerTitle: "选择设计稿或图片",
+        title: "导入 Figma 设计稿",
+        titlePsd: "导入 PSD",
+        titleImages: "导入图片",
+        documents: "文档",
+        images: "图片",
+        imagesPageName: "导入的图片",
+        frames: "画框",
+        size: "{width} × {height}",
+        import: "导入",
+        importing: "正在导入…",
+        willAdd: {
+            other: "将添加 {count} 个页面",
+        },
+        willAddGameUi: {
+            other: "将导入 {count} 个游戏界面",
+        },
+        willReplace: "将替换项目中现有的游戏界面：{names}",
+        target: {
+            label: "导入为",
+            gameUi: "游戏界面",
+            page: "页面",
+        },
+        gameUiReplaced: {
+            other: "{slot}游戏界面已替换「{name}」，{count} 处部件已接好功能",
+        },
+        gameUiAdded: {
+            other: "已添加{slot}游戏界面，{count} 处部件已接好功能",
+        },
+        historyReplace: "从设计稿导入游戏界面",
+        added: {
+            other: "已添加 {count} 个页面",
+        },
+        buttons: {
+            other: "已将 {count} 组状态图层合成为按钮",
+        },
+        reportTitle: "导入时的简化",
+        noNotes: "所有图层均按设计导入",
+        imagesSkipped: {
+            other: "有 {count} 张图片未能写入资产",
+        },
+        error: {
+            mixed: "请选择一个 Figma 导出文件、一个 PSD，或任意数量的图片",
+            psdRead: "无法读取该 PSD",
+            imageRead: "无法读取“{name}”",
+            bake: "无法绘制 PSD 图层",
+            read: "无法读取该文件",
+            notExport: "该文件不是 NarraLeaf Figma 导出文件",
+            tooNew: "该文件由更新版本的插件导出，请先更新 Studio",
+            noFrames: "该文件不包含画框",
+            apply: "无法导入该设计稿",
+        },
+        note: {
+            rasterized: {
+                other: "{count} 个图层已转为图片",
+            },
+            multipleFills: {
+                other: "{count} 个图层有多层填充，仅保留最上层",
+            },
+            missingFont: {
+                other: "{count} 种字体没有对应的字体资产，已使用默认字体",
+            },
+            letterSpacing: {
+                other: "{count} 个文本图层的字间距未导入",
+            },
+            mixedTextStyles: {
+                other: "{count} 个文本图层含多种样式，已统一为首段样式",
+            },
+            justifiedText: {
+                other: "{count} 个两端对齐的文本图层已改为左对齐",
+            },
+            blendMode: {
+                other: "{count} 个图层的混合模式未导入",
+            },
+            paintSimplified: {
+                other: "{count} 处描边或文字的渐变、图片填充已改为纯色",
+            },
+            autoLayoutFlattened: {
+                other: "{count} 个自动布局画框已改为固定位置",
+            },
+            missingImage: {
+                other: "文件中缺少 {count} 张图片",
+            },
+            aspectMismatch: {
+                other: "{count} 个画框的宽高比与项目不同，已居中放置",
+            },
+            blendMerged: {
+                other: "{count} 个使用混合模式的图层已合并到下方图层",
+            },
+            clipBaseDropped: {
+                other: "{count} 个剪贴图层的基底图层已隐藏，未导入",
+            },
+            layerStyles: {
+                other: "{count} 个图层的图层样式（投影、描边等）未导入",
+            },
+            imageCentered: {
+                other: "{count} 张图片与画布尺寸不同，已居中放置",
+            },
+            buttonNotRecognized: {
+                other: "{count} 组按钮状态图层中含有其他图层，未合成按钮，已按原样导入",
+            },
+            gameUiArtSkipped: {
+                other: "{count} 个图层不属于任何游戏界面（如背景、立绘），未导入",
+            },
+            gameUiSlotTwice: {
+                other: "{count} 个编组对应的游戏界面槽位已由其他编组占用，未导入",
+            },
+            dialogLineGuessed: {
+                other: "{count} 个对话框中没有命名为台词的文本，已将最大的文本作为台词",
+            },
+            dialogNameGuessed: {
+                other: "没有命名为名字的文本，已将台词上方的 {count} 个文本作为说话人名字",
+            },
+            dialogNoLine: {
+                other: "{count} 个对话框中没有可作为台词的文本，请为其添加「句子」控件",
+            },
+            listNotRecognized: {
+                other: "{count} 个选项或通知编组中没有带文本的选项，已按原样导入",
+            },
+            quickMenuPageMissing: {
+                other: "{count} 个快捷菜单按钮要打开的页面在项目中不存在，未接功能",
+            },
+            hiddenSkipped: {
+                other: "{count} 个隐藏图层未导入",
+            },
+        },
     },
     templateStore: {
         open: "从模板开始",
@@ -369,7 +498,7 @@ export const uiEditor = {
         },
         placement: {
             page: "一个新页面",
-            gameUi: "游戏界面 · {slot}",
+            gameUi: "游戏界面· {slot}",
         },
         error: {
             load: "无法加载模板商店",

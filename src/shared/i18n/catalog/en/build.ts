@@ -1,5 +1,9 @@
 /** `build` - production build dialog, platform/format labels, and status toasts. */
 export const build = {
+    railAttention: {
+        warning: "Something in this section needs a look",
+        error: "Something in this section stops the build",
+    },
     dialog: {
         title: "Build for distribution",
         start: "Build",

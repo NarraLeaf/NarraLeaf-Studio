@@ -68,10 +68,16 @@ export function Switch({
                 // only an important utility draws the keyboard's ring. `:focus-visible`, so a click
                 // with the mouse does not light it.
                 "focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-primary",
-                disabled && !loading && "opacity-50 cursor-not-allowed",
-                checked
-                    ? "bg-primary/70 border-transparent"
-                    : "bg-fill border-edge-strong hover:bg-fill-strong",
+                // Disabled keeps the two states apart instead of fading them both to the same pale
+                // shape: on stays a filled accent track with a solid knob, off an empty track with a
+                // faint one. A switch that is closed still says which way it is set.
+                disabled && !loading
+                    ? checked
+                        ? "cursor-not-allowed bg-primary/45 border-transparent"
+                        : "cursor-not-allowed bg-transparent border-edge"
+                    : checked
+                        ? "bg-primary/70 border-transparent"
+                        : "bg-fill border-edge-strong hover:bg-fill-strong",
                 currentSize.track,
                 className,
             )}
@@ -79,7 +85,8 @@ export function Switch({
         >
             <span
                 className={cn(
-                    "pointer-events-none absolute left-1 top-1/2 block -translate-y-1/2 rounded-full bg-fg shadow-sm transition-transform duration-200",
+                    "pointer-events-none absolute left-1 top-1/2 block -translate-y-1/2 rounded-full shadow-sm transition-transform duration-200",
+                    disabled && !loading ? (checked ? "bg-fg/70" : "bg-fg/25") : "bg-fg",
                     currentSize.thumb,
                     currentSize.thumbOffset,
                 )}

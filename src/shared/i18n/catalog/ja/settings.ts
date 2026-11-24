@@ -36,6 +36,17 @@ export const settings = {
         notInstalled: "未インストール",
     },
     // カテゴリの見出し。キーは appSettings.ts のカテゴリ `key` と対応する。
+    groups: {
+        update: "アップデート",
+        story: "ストーリーエディタ",
+        spellcheck: "スペルチェック",
+        snapshots: "シーンのスナップショット",
+        textEditor: "テキストエディタ",
+        blueprint: "ブループリント",
+        editorTabs: "タブとウィンドウ",
+        cacheAndLogs: "キャッシュとログ",
+        reset: "リセット",
+    },
     categories: {
         general: {
             label: "一般",
@@ -163,7 +174,7 @@ export const settings = {
         },
         editorFontSize: {
             label: "ストーリーエディタの文字サイズ",
-            description: "シーンエディタのストーリー文の文字サイズ（px、{min}〜{max}）",
+            description: "シーンエディタのストーリー文の文字サイズ（{min}〜{max}）",
         },
         editorFontFamily: {
             label: "ストーリーエディタのフォント",
@@ -326,7 +337,7 @@ export const settings = {
         },
         projectDefaultAuthor: {
             label: "新規プロジェクトの既定の作者",
-            description: "プロジェクト作成時に作者欄へ入る。既存のプロジェクトはそのまま",
+            description: "プロジェクト作成時に作者欄へ入る。空欄なら作者欄も空のまま。既存のプロジェクトはそのまま",
         },
         versionControlAuthor: {
             label: "作者名",
@@ -339,6 +350,10 @@ export const settings = {
         confirmBeforeClose: {
             label: "ワークスペースを閉じる前に確認",
             description: "ワークスペースのウィンドウを閉じるときに確認する",
+        },
+        closeShowsLauncher: {
+            label: "ワークスペースを閉じた後にランチャーを表示",
+            description: "オフにすると、ウィンドウを閉じても NarraLeaf Studio はバックグラウンドで動作を続ける",
         },
         reopenLastProject: {
             label: "起動時に前回のプロジェクトを開く",
@@ -456,7 +471,6 @@ export const settings = {
         installed: {
             title: "インストール済み",
             emptyTitle: "辞書がインストールされていません",
-            emptyDescription: "辞書をダウンロードすると本文のスペルチェックが行えます。",
         },
         available: {
             title: "ダウンロードできるもの",

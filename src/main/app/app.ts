@@ -1684,11 +1684,11 @@ export class App extends BaseApp {
             return;
         }
 
-        // The home screen comes up only for the exit that asked for it. A plain close is now
-        // allowed to be a plain close: it hands the decision back to the last-window handling
-        // (tray residency on Windows, staying alive on macOS), which is what the author expects
-        // from a window's close box and from Cmd+W.
-        if (intent === "launcher") {
+        // Back to Launcher always goes home. A plain close (the close box, the macOS red light,
+        // Cmd+W) goes home too when `workspace.closeShowsLauncher` is on and this was the last
+        // workspace on screen; otherwise it stands on its own and the last-window handling takes
+        // over (staying resident in the Dock on macOS, in the tray elsewhere).
+        if (this.exitShowsLauncher(window, intent)) {
             this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
@@ -1705,6 +1705,23 @@ export class App extends BaseApp {
         }
 
         window.forceClose();
+    }
+
+    /**
+     * Whether this exit brings the home screen up before the window goes.
+     *
+     * With another workspace still open the close does not consult the setting: the author already
+     * has somewhere to work, and a launcher appearing beside it is a window they did not ask for -
+     * the second window a project switcher opened alongside would otherwise leave one behind.
+     */
+    private exitShowsLauncher(window: AppWindow<WindowAppType.Workspace>, intent: WorkspaceExitIntent): boolean {
+        if (intent === "launcher") {
+            return true;
+        }
+        if (this.globalState.get("workspace.closeShowsLauncher") !== true) {
+            return false;
+        }
+        return !this.liveWorkspaceWindows().some(other => other !== window);
     }
 
     /**
@@ -2010,9 +2027,9 @@ export class App extends BaseApp {
         // to await a confirmation sheet and the launcher's window, so always take the close over
         // and re-issue it via forceClose() once settled.
         //
-        // The close box, Cmd+W and Quit all arrive here, and all of them mean "close this window" -
-        // not "take me home". Leaving for the launcher is its own gesture and its own channel; see
-        // `requestWorkspaceExit`.
+        // The close box, the macOS red light and Cmd+W arrive here (a quit bypasses close guards).
+        // Whether the home screen follows is `workspace.closeShowsLauncher`'s call; File ▸ Back to
+        // Launcher is its own channel and always goes home. See `handleWorkspaceExitRequest`.
         window.setCloseGuard(() => {
             this.requestWorkspaceExit(window, "close");
             return true;

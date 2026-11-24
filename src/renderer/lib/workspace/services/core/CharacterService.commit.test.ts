@@ -118,3 +118,35 @@ describe("CharacterService.commitCharacterRecord", () => {
         expect(service.getCharacter(draft.profile.getId())?.profile.appearance.getKind()).toBe("layered");
     });
 });
+
+describe("CharacterService.commitCharacterRecords", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("lands several characters as one step, leaves unchanged ones out, and undo puts every one back", async () => {
+        const { service, history } = createHarness();
+        const mei = service.createCharacter("Mei");
+        const ren = service.createCharacter("Ren");
+        const kai = service.createCharacter("Kai");
+        const withColor = (character: Character, color: string) => {
+            const draft = Character.fromJSON(character.toJSON());
+            draft.profile.setColor(color);
+            return draft.toJSON() as StoredCharacter;
+        };
+        const undoDepth = () => history.describe().find(entry => entry.scopeId === projectHistoryScope())?.undo ?? 0;
+        const depthBefore = undoDepth();
+
+        expect(service.commitCharacterRecords([withColor(mei, "#111111"), withColor(ren, "#222222"), kai.toJSON() as StoredCharacter], LABEL)).toBe(2);
+        expect(mei.profile.getColor()).toBe("#111111");
+        expect(ren.profile.getColor()).toBe("#222222");
+        expect(undoDepth()).toBe(depthBefore + 1);
+
+        await history.undo(projectHistoryScope());
+        expect(mei.profile.getColor()).toBeUndefined();
+        expect(ren.profile.getColor()).toBeUndefined();
+    });
+});

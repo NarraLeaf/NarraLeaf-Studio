@@ -38,6 +38,7 @@ export const characters = {
         renameCharacter: "重命名角色 {name}",
         createCharacter: "新建角色 {name}",
         editCharacter: "编辑角色 {name}",
+        applyBehaviourPresetAll: "为所有角色应用预设「{preset}」",
         deleteGroup: "删除分组 {name}",
         autoFrameAvatars: "自动截取 {name} 的对白头像",
     },
@@ -269,9 +270,36 @@ export const characters = {
         voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条音轨，即可为该角色单独控制音量",
         // 登场行未写明的每一项都回落到这里。用的是行上那个动词（`charOp.enter`）的说法
         entrance: "登场默认值",
-        entranceEmpty: "未设置时，登场行使用舞台的默认值",
         entranceDrag: "拖动放置",
         entranceZoom: "拖动缩放",
+        // 按 GalGame 常见构图摆放：测量立绘里人物的实际位置与头身比，头顶贴近上沿，全身立绘露出自头往下约八成
+        entranceApplyFramed: "应用标准取景",
+        // 与画布同尺寸的另一角色共用缩放与基线，保留两人的身高差
+        entranceMatch: "与“{name}”一致",
+        // 角色行为：角色开始或停止说话时自动执行的命令行
+        behaviours: "角色行为",
+        behaviourAdd: "添加行为",
+        // 预设写入的是普通命令行，可在列表中查看和修改；数值以登场默认值为基准
+        behaviourPresets: "应用预设",
+        behaviourPresetAll: "应用到所有角色",
+        behaviourPreset: {
+            dimWhenSilent: "不说话时变暗",
+            fadeWhenSilent: "不说话时淡化",
+            growWhenSpeaking: "说话时放大",
+            shrinkWhenSilent: "不说话时缩小",
+            frontWhenSpeaking: "说话时置于最前",
+        },
+        behaviourEvent: {
+            startSpeaking: "开始说话时",
+            stopSpeaking: "停止说话时",
+        },
+        behaviourRemove: "移除行为",
+        behaviourMore: "更多操作",
+        behaviourAddRow: "添加命令…",
+        behaviourRowDelete: "删除命令",
+        behaviourRowIncomplete: "命令不完整",
+        // 只有舞台类命令可以随对白执行：变换、表情、音效、镜头
+        behaviourRowNotAllowed: "该命令不能用于角色行为",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

@@ -141,7 +141,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
         <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
                 <span
-                    className={`rounded-md border px-2 py-0.5 text-2xs font-medium capitalize tracking-wide ${statusBadgeClass(bp.status)}`}
+                    className={`rounded-md border px-2 py-0.5 text-2xs font-medium capitalize${statusBadgeClass(bp.status)}`}
                 >
                     {bp.status}
                 </span>
@@ -224,7 +224,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                     )}
                                 </div>
                                 <div className="border-t border-edge pt-2">
-                                    <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("properties.binding.newField")}</p>
+                                    <p className="mb-1 text-2xs text-fg-muted">{t("properties.binding.newField")}</p>
                                     <div className="mb-1.5 flex gap-1">
                                         {(["surface", "global", "item"] as const).map(scope => (
                                             <button

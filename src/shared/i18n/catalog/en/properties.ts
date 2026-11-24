@@ -241,6 +241,14 @@ export const properties = {
             stretch: "Stretch",
             crop: "Crop",
             tile: "Tile",
+            nineSlice: "Nine-slice",
+        },
+        slice: {
+            label: "Slice",
+            top: "Top",
+            right: "Right",
+            bottom: "Bottom",
+            left: "Left",
         },
     },
     menu: {

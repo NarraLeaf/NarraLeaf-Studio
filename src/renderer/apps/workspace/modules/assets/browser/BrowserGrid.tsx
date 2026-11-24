@@ -375,7 +375,7 @@ function FileTile({ item, measures, gestures }: {
                 dataAttributes={{ "data-asset-browser-item": item.key }}
                 square={square}
                 name={item.caption}
-                nameClassName="italic text-fg-muted"
+                nameClassName="text-fg-muted"
                 meta={`${asset.name} · ${t("assets.sets.inspector.variantInherited")}`}
                 onContextMenu={event => gestures.onContextMenu(item, event)}
             />

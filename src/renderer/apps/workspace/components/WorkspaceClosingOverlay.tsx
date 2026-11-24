@@ -54,7 +54,7 @@ export function WorkspaceClosingOverlay() {
         <div className="nl-window-content-layer z-[60] flex items-center justify-center p-4">
             {/* Swallows clicks as well as covering the window: every edit from here on would land
                 after the flush that was supposed to persist it. */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
+            <div className="nl-modal-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
 
             <WorkspaceProgressCard
                 title={t(STAGE_TITLE[stage] ?? "workspace.shell.closing.title")}

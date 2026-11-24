@@ -33,7 +33,7 @@ import {
     type StoryCommandLineLookups,
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandLine";
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
-import { buildLineBlock } from "./compile";
+import { buildLineBlock, withInlineEvents } from "./compile";
 import { conditionSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
 import { spellOptionClauses } from "./optionConditions";
@@ -91,7 +91,17 @@ function anchorLengths(scene: StoryScene): Map<StoryBlockId, string> {
     return anchors;
 }
 
-export function printStoryScene(input: PrintInput): PrintResult {
+export function printStoryScene(printInput: PrintInput): PrintResult {
+    // Inline events name looks and sounds, so the prose lines spell them with the command lookups -
+    // and the echo check reads them back with the same context.
+    const input: PrintInput = {
+        ...printInput,
+        prose: withInlineEvents(printInput.prose, {
+            context: printInput.context,
+            conditions: printInput.conditions,
+            rowLookups: printInput.rowLookups,
+        }),
+    };
     const { scene } = input;
     const anchors = anchorLengths(scene);
     const data: Record<string, StoryBlock> = {};

@@ -214,11 +214,15 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   `sad`, `angry`, `surprised`).
 - Reuse the skeleton's characters for your first two: `characters_list`, then `character_upsert`
   with their `id` and your name and poses. A reused character that already has an entrance (the
-  skeleton's sprite character, tuned for the demo art) keeps it: pass `entranceTransform: "standing"`
-  with the new poses. A new character
-  given poses gets a standing entrance by itself - feet on the bottom edge, at its own pixel size
-  (art taller than the stage is scaled to fit). `characters_list` shows each one's `drawnAtCenter`
-  box; the lower third of a full-height sprite behind the dialogue band is normal VN framing.
+  skeleton's sprite character, tuned for the demo art) keeps it: pass `entranceTransform: "framed"`
+  with the new poses. A new character given poses gets an entrance by itself: the one of a cast
+  member whose default sprite is the same pixel size (art exported at one size is drawn to one
+  scale, so their heights stay comparable), or else the framed one, measured on the figure in the
+  picture: head just under the top edge; a figure with transparent space under it shows its top 80%,
+  the rest below the bottom edge; a figure that reaches the picture's bottom edge (cut there by the
+  artist) stands on the stage's bottom edge. `"framed"` always frames the character on its own
+  figure; `"standing"` stands the whole picture on the bottom edge. `characters_list` shows each one's `drawnAtCenter` box; a figure running past the bottom edge
+  behind the dialogue band is normal VN framing.
 - **Art in parts** (a PSD, or files like `mei_body.png`, `mei_eyes_smile.png`, `mei_outfit_casual.png`)
   makes a **layered** character instead: read `layered-sprites`, import the parts named
   `<character>_<layer>_<tag>`, then `character_layers_import` (with the stacking `order` and which
@@ -243,6 +247,16 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   every row. `scaleX: -1` in the entrance mirrors a sprite drawn facing the wrong way. A `zoom=` on a
   character's `/transform` **replaces** the entrance zoom, as `yoffset=` does: to show a sprite at
   1.5x its usual size write the entrance zoom times 1.5, not 1.5.
+- **Staging that follows the speaker belongs on the character, not on every line.** Brightening the
+  speaker and dimming the rest, a slight zoom on whoever talks, a speaking expression: give the
+  character `behaviours` in `character_upsert` (`startSpeaking` / `stopSpeaking`, each a list of
+  `.story` command lines such as `/transform Mei zoom=1.05 d=0.3`) instead of writing those rows
+  around every change of speaker. They run only while the character is on stage, with the line and
+  without delaying it; same speaker twice in a row runs nothing; narration ends the last speaker's
+  turn. Only stage commands are accepted. A row you write right above a line that sets the same thing
+  for the same character overrides the behaviour at that line, and `lint` reports it
+  (`story/behaviour-conflict`). `characters_list` shows each character's `behaviours`; read them
+  before staging dialogue so you do not write rows a behaviour already does.
 - A speaker with no sprite still deserves a character (name colour, backlog, its own voice volume
   and voice actor later). Truly one-off speakers may stay plain `Name: text` lines: their
   lines can still be voiced, and the voice table and recording script name them by that name.

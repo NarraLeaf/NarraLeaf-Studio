@@ -1,3 +1,4 @@
+import { EMPTY_CUSTOM_COMMAND_LIBRARY } from "@shared/story/customCommands";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { DEFAULT_LINTING_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "../workspace/project/configuration";
 import type { LintContext } from "./context";
@@ -44,6 +45,7 @@ export function createTestLintContext(
         // be reading a state no project can be in.
         appTags: [RELEASE_APP_TAG],
         projectEndingSurfaceId: "",
+        customCommands: EMPTY_CUSTOM_COMMAND_LIBRARY,
         dlcs: [],
         variableRegistry: [],
         persistentNameCollisions: [],

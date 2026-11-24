@@ -219,6 +219,8 @@ export enum IPCEventType {
     appExportLogArchive = "app.exportLogArchive",
     appOpenLogsFolder = "app.openLogsFolder",
     appOpenThirdPartyNotices = "app.openThirdPartyNotices",
+    appOpenPrivacyNotice = "app.openPrivacyNotice",
+    appOpenLicensingNotice = "app.openLicensingNotice",
     appProbeDownloadSource = "app.probeDownloadSource",
     appCacheInventory = "app.cacheInventory",
     appCacheClear = "app.cacheClear",
@@ -1261,6 +1263,23 @@ export type IPCEvents = {
      * this cannot be used to open anything else.
      */
     [IPCEventType.appOpenThirdPartyNotices]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /**
+     * Open Studio's privacy notice (`PRIVACY.md` / `PRIVACY.zh-CN.md` at the repository root) in the
+     * system's text editor, in the interface language. Takes no path, like the notice above.
+     */
+    [IPCEventType.appOpenPrivacyNotice]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /** Open Studio's licensing notice (`LICENSING.md` / `LICENSING.zh-CN.md`), like the privacy notice. */
+    [IPCEventType.appOpenLicensingNotice]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;

@@ -41,7 +41,7 @@ import {
     BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y,
 } from "@shared/types/blueprint/graph";
 import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
-import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { IMAGE_FILL_MODES, type ImageFillCropPlacement, type ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import { widgetKindName } from "../widgetKindName";
@@ -431,7 +431,6 @@ function containerNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDe
     ];
 }
 
-const IMAGE_FILL_MODES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
 
 function toImageFillMode(raw: unknown, fallback: ImageFillMode): ImageFillMode {
     return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? raw as ImageFillMode : fallback;
@@ -538,7 +537,7 @@ function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
         readNode({
             type: types.getFitMode,
             displayName: "Get Image Fit Mode",
-            keywords: ["image", "fit", "mode", "cover", "contain", "stretch", "crop", "tile"],
+            keywords: ["image", "fit", "mode", "cover", "contain", "stretch", "crop", "tile", "nine-slice", "9-slice"],
             output: out("fitMode", "Fit Mode", "string"),
             target,
             mode,

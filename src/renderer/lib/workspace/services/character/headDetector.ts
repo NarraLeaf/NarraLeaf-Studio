@@ -5,8 +5,8 @@ import { bestHead, headFrame, HEAD_DETECT_INPUT_PX, LETTERBOX_FILL, letterbox, t
 /**
  * The head detector, run in the workspace window on onnxruntime-web's WebAssembly backend.
  *
- * Only ever on an author's or an agent's request - the Auto-frame buttons and
- * `character_avatars_autoframe`. The avatar bake that runs by itself keeps the silhouette heuristic
+ * Only ever on an author's or an agent's action - the Auto-frame buttons, adding or replacing art in
+ * the character editor, Apply standard framing, and `character_avatars_autoframe`. The avatar bake that runs by itself keeps the silhouette heuristic
  * (`lib/utils/headCrop.ts`), so opening a project never loads a model.
  *
  * The model and the runtime come from `app://windows/ml/`, which the main process answers from

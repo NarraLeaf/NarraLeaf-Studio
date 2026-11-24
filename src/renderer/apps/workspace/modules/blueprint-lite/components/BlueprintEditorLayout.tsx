@@ -139,7 +139,7 @@ export function BlueprintEditorLayout({
             >
                 <aside className={leftPanelClasses} style={{ width: panelWidth }}>
                     <div className="nl-frame-surface flex shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-2 py-1.5">
-                        <span className="text-2xs font-medium text-fg-subtle">
+                        <span className="text-2xs text-fg-muted">
                             {t("blueprint.panelLabel")}
                         </span>
                         <button

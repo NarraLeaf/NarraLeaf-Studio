@@ -141,7 +141,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                 </div>
 
                 <div className="mt-8">
-                    <div className="text-2xs text-fg-subtle">{t(helpSectionKey("start"))}</div>
+                    <h2 className="m-0 text-sm font-semibold text-fg">{t(helpSectionKey("start"))}</h2>
                     <div className="mt-1">
                         {FIRST_TOPICS.map(topicId => (
                             <button

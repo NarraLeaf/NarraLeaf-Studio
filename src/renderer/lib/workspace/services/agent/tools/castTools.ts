@@ -15,12 +15,13 @@
  * How big a sprite is drawn and where its feet land is the character's `entranceTransform` - the
  * transform every entrance row falls back to, channel by channel, and the "Entrance" section of
  * Studio's character panel. `spriteStage.ts` states the runtime's rule; this file exposes the field,
- * gives a character that has none a standing default the first time it gets art, and reports the
+ * gives a character that has none the framed default the first time it gets art, and reports the
  * box a sprite lands in so an agent need not take a screenshot to learn it.
  *
  * Comments in English per project convention.
  */
 
+import { behaviourLinesOf, readBehaviourLines, type CharacterBehaviourLines } from "./characterBehaviourText";
 import type { StoryLiteralValue, StoryTransformProps } from "@shared/types/story";
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
@@ -46,8 +47,8 @@ import { assetsService, resolveAsset } from "../agentLookups";
 import { assertAgentMayStillWrite } from "../agentCommitGate";
 import { blueprintReferencesTo, formatReferrers, storyReferencesTo, storyUsesNotFitting, uiReferencesTo } from "../agentReferences";
 import { opaqueImageWarning } from "../imageAlpha";
-import { drawnBoxAtCenter, standingEntrance, type PixelSize } from "../spriteStage";
-import { defaultSpriteSize, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
+import { drawnBoxAtCenter, framedEntrance, standingEntrance, type EntranceMatch, type PixelSize, type SpriteMeasure } from "../spriteStage";
+import { castEntranceMatches, defaultSpriteSize, measureCharacterSprite, readImageFacts, stageSize, type ImageFacts } from "../spriteFacts";
 import { describeLayered } from "../layeredSpec";
 import { storyRowsChoosingLook } from "../characterLooks";
 import { applyAvatarRequest, asksForAvatars, carryPresetAvatars, describeAvatars, presetAvatarsByPoseName, readAvatarArgs, type AvatarRequest } from "../characterAvatars";
@@ -68,6 +69,7 @@ export function describeCharacter(
     stage: PixelSize,
     sprite: PixelSize | null,
     cast?: Pick<CharacterService, "getGroup">,
+    behaviourLines?: CharacterBehaviourLines | null,
 ) {
     const profile = character.profile;
     const groupId = profile.getGroupId();
@@ -112,6 +114,9 @@ export function describeCharacter(
         ...looks,
         ...describeAvatars(appearance, profile.getDefaultAvatarAssetId(), assetId => images[assetId]?.name ?? null),
         entranceTransform: entranceTransform ?? null,
+        // Command lines the character runs on its own when it starts or stops speaking, in the words
+        // `character_upsert`'s `behaviours` takes back. Null when it has none.
+        behaviours: behaviourLines ?? null,
         // The default look's own pixels (a layered character's canvas), and the box it lands in on a
         // `pos=center` row - the numbers an agent needs to judge size and baseline without a
         // playtest screenshot.
@@ -193,7 +198,7 @@ export const charactersList: AgentToolHandler = async (_args, { ctx }) => {
     const stage = stageSize(ctx);
     const characters = [];
     for (const character of cast.listCharacter()) {
-        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast));
+        characters.push(describeCharacter(character, assets, stage, await defaultSpriteSize(ctx, character), cast, behaviourLinesOf(ctx, character.profile.getBehaviours())));
     }
     // In the Characters panel's order; every character names its group by `group` / `groupId`.
     const groups = cast.listGroups().map(group => ({
@@ -246,8 +251,11 @@ function readPoses(raw: unknown): PoseInput[] | undefined {
     });
 }
 
-/** What `entranceTransform` asks for: leave it, clear it, fit it to the art, or state it. */
-export type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
+/**
+ * What `entranceTransform` asks for: leave it, clear it, fit it to the art (`framed`: the visual-novel
+ * framing a new character gets; `standing`: the whole figure on the bottom edge), or state it.
+ */
+export type EntranceInput = { kind: "keep" } | { kind: "clear" } | { kind: "framed" } | { kind: "standing" } | { kind: "set"; props: StoryTransformProps };
 
 const ENTRANCE_KEYS = ["zoom", "scaleX", "scaleY", "position"] as const;
 const POSITION_KEYS = ["xalign", "yalign", "xoffset", "yoffset"] as const;
@@ -260,11 +268,11 @@ export function readEntrance(args: Record<string, unknown>): EntranceInput {
     if (raw === null) {
         return { kind: "clear" };
     }
-    if (raw === "standing") {
-        return { kind: "standing" };
+    if (raw === "standing" || raw === "framed") {
+        return { kind: raw };
     }
     if (typeof raw !== "object" || Array.isArray(raw)) {
-        throw refuse("invalid_args", "`entranceTransform` must be \"standing\", null, or { zoom, scaleX, scaleY, position }.");
+        throw refuse("invalid_args", "`entranceTransform` must be \"framed\", \"standing\", null, or { zoom, scaleX, scaleY, position }.");
     }
     const record = raw as Record<string, unknown>;
     const props: StoryTransformProps = {};
@@ -301,12 +309,30 @@ export function readEntrance(args: Record<string, unknown>): EntranceInput {
 }
 
 /**
+ * What the framing is computed from besides the picture's size: where the figure sits in it, and a
+ * cast member whose art is the same size, whose defaults a newly fitted character shares.
+ */
+export type EntranceFit = { measure?: SpriteMeasure | null; match?: EntranceMatch | null };
+
+/** Whether `applyEntrance` will fit the defaults to the art, and so needs an {@link EntranceFit}. */
+export function entranceNeedsFit(profile: Character["profile"], entrance: EntranceInput, gotArt: boolean): boolean {
+    return entrance.kind === "framed" || (gotArt && entrance.kind === "keep" && profile.getEntranceTransform() === undefined);
+}
+
+/** Measure the draft's figure and find a same-sized cast member, for `applyEntrance`. */
+export async function readEntranceFit(ctx: WorkspaceContext, draft: Character, sprite: PixelSize | null, entrance: EntranceInput): Promise<EntranceFit> {
+    // An explicit "framed" frames her on her own figure; only the automatic first fit follows the cast.
+    const [match] = entrance.kind === "framed" ? [] : await castEntranceMatches(ctx, draft, sprite);
+    return { match: match ?? null, measure: match ? null : await measureCharacterSprite(ctx, draft) };
+}
+
+/**
  * Set a character's entrance defaults on `profile` as `entrance` asks, given the default look's
  * pixel size. Returns a sentence for the answer when a default was chosen without being asked for.
  *
- * A character that gets art and has none stands on the bottom edge at its own pixels: the stage's
- * neutral would centre it vertically, which no visual novel wants, and an agent cannot see the stage
- * to notice. A character that already has defaults keeps them - they are an author's decision - but
+ * A character that gets art and has none is fitted: the stage's neutral would centre it vertically,
+ * which no visual novel wants, and an agent cannot see the stage to notice. She shares the defaults
+ * of a cast member whose art is the same size (`fitting.match`), or is framed on her measured figure. A character that already has defaults keeps them - they are an author's decision - but
  * when its art was just replaced the numbers were chosen for other pixels (the skeleton's demo cast
  * is tuned for its demo sprite), so a warning says so.
  */
@@ -317,6 +343,7 @@ export function applyEntrance(
     stage: PixelSize,
     gotArt: boolean,
     warnings: string[],
+    fitting: EntranceFit = {},
 ): string {
     if (entrance.kind === "set") {
         profile.setEntranceTransform(entrance.props);
@@ -326,20 +353,27 @@ export function applyEntrance(
         profile.setEntranceTransform(undefined);
         return "";
     }
-    if (entrance.kind === "standing" || (gotArt && profile.getEntranceTransform() === undefined)) {
+    const fit = entrance.kind === "framed" || entrance.kind === "standing";
+    if (fit || (gotArt && profile.getEntranceTransform() === undefined)) {
         if (!sprite) {
-            if (entrance.kind === "standing") {
+            if (fit) {
                 throw refuse("unavailable", `"${profile.getName()}" has no readable picture to fit.`, "Give it art first, or state `entranceTransform` as numbers.");
             }
             return "";
         }
-        profile.setEntranceTransform(standingEntrance(sprite, stage));
-        return entrance.kind === "standing" ? "" : " Entrance set to a standing sprite (feet on the bottom edge, own pixel size).";
+        if (!fit && fitting.match) {
+            profile.setEntranceTransform(structuredClone(fitting.match.props));
+            return ` Entrance shared with "${fitting.match.name}", whose art is the same size, so their heights compare as drawn.`;
+        }
+        profile.setEntranceTransform(entrance.kind === "standing"
+            ? standingEntrance(sprite, stage)
+            : framedEntrance(sprite, stage, fitting.measure ?? undefined));
+        return fit ? "" : " Entrance set to the framed default, measured on the figure (head under the top edge; a full-length figure shows its top 80%).";
     }
     if (gotArt && profile.getEntranceTransform() !== undefined) {
         warnings.push(
             `"${profile.getName()}" keeps its entrance defaults ${JSON.stringify(profile.getEntranceTransform())}, chosen for its previous art. `
-            + "Check drawnAtCenter below; pass `entranceTransform: \"standing\"` to refit them to the new art, or state them.",
+            + "Check drawnAtCenter below; pass `entranceTransform: \"framed\"` (or \"standing\") to refit them to the new art, or state them.",
         );
     }
     return "";
@@ -355,6 +389,9 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     const entrance = readEntrance(args);
     const confirmSwitch = args.confirmSwitch === true;
     const avatarArgs = readAvatarArgs(args);
+    if (args.behaviours !== undefined && args.behaviours !== null && (typeof args.behaviours !== "object" || Array.isArray(args.behaviours))) {
+        throw refuse("invalid_args", "`behaviours` must be { startSpeaking?: string[], stopSpeaking?: string[] } or null.");
+    }
     if (args.group !== undefined && args.group !== null && typeof args.group !== "string") {
         throw refuse("invalid_args", "`group` must be a group's name or id, or null to take the character out of its group.");
     }
@@ -403,7 +440,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
             warnings.push(...await coldSwitchCheck(ctx, character, "preset", confirmSwitch));
         } else if (defaultPose) {
             throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no poses.`, kind === "layered" ? "Its looks are axes and tags: character_layered_set." : undefined);
-        } else if (entrance.kind === "standing" && kind !== "layered") {
+        } else if ((entrance.kind === "standing" || entrance.kind === "framed") && kind !== "layered") {
             throw refuse("unavailable", `"${character.profile.getName()}" is a ${kind} character, which has no single picture to fit; state \`entranceTransform\` as numbers instead.`);
         }
     }
@@ -471,13 +508,21 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     if (asksForAvatars(avatarArgs)) {
         applyAvatarRequest(appearance, assetId => profile.setDefaultAvatarAssetId(assetId), profile.getName(), avatarRequest);
     }
+    // Read against the live cast, so a line may name this character by the name the call just gave it
+    // only once it is saved; lines name characters by their current names.
+    const behaviours = readBehaviourLines(ctx, args.behaviours, profile.getBehaviours());
+    if (behaviours !== undefined) {
+        profile.setBehaviours(behaviours ?? undefined);
+    }
 
     const stage = stageSize(ctx);
     const defaultAssetId = appearance.getKind() === "preset" ? appearance.resolvePoseAssetId(undefined) : null;
     const defaultSprite = defaultAssetId
         ? (poseFacts.get(defaultAssetId) ?? await readImageFacts(ctx, defaultAssetId))?.size ?? null
         : await defaultSpriteSize(ctx, draft);
-    const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, Boolean(poses && poses.length > 0), warnings);
+    const gotArt = Boolean(poses && poses.length > 0);
+    const fitting = entranceNeedsFit(profile, entrance, gotArt) ? await readEntranceFit(ctx, draft, defaultSprite, entrance) : {};
+    const entranceNote = applyEntrance(profile, entrance, defaultSprite, stage, gotArt, warnings, fitting);
 
     // Reading the stories and measuring the poses took a while; the author may have paused meanwhile.
     assertAgentMayStillWrite({ ctx, request, follow });
@@ -498,7 +543,7 @@ export const characterUpsert: AgentToolHandler = async (args, { ctx, request, fo
     return answerJson(
         {
             created,
-            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast),
+            character: describeCharacter(current, assetsService(ctx), stage, defaultSprite, cast, behaviourLinesOf(ctx, current.profile.getBehaviours())),
             ...(groupTarget?.kind === "create" ? { createdGroup: groupTarget.name } : {}),
             ...(warnings.length > 0 ? { warnings } : {}),
         },

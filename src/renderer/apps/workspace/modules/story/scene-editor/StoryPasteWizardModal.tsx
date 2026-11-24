@@ -412,7 +412,7 @@ function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, stri
         return (
             <div className="flex items-baseline gap-2 text-xs">
                 <span className="w-[104px] shrink-0" aria-hidden />
-                <span className="min-w-0 flex-1 truncate italic text-fg-muted">{row.text}</span>
+                <span className="min-w-0 flex-1 truncate text-fg-muted">{row.text}</span>
             </div>
         );
     }

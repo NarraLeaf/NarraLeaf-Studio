@@ -83,7 +83,7 @@ export function TitleBar({
         : undefined;
 
     return (
-        <div className={cn("titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
+        <div className={cn("nl-titlebar titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
             {/* Left side - App Icon and Action Bar */}
             <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
                 {!usesInlineMacControls && resolvedIconSrc && (

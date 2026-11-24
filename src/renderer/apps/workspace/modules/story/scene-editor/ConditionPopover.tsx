@@ -71,7 +71,7 @@ export function ConditionPopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.condition.title")}</div>
+            <div className="mb-1.5 text-2xs text-fg-muted">{t("story.condition.title")}</div>
             <ConditionEditor
                 document={props.document}
                 sceneId={props.sceneId}

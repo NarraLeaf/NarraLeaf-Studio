@@ -1180,6 +1180,7 @@ export const workspace = {
                 dictionary: "プロジェクト辞書",
                 storyComments: "ストーリーのコメント",
                 transformPresets: "変換プリセット",
+                storyCommands: "カスタムコマンド",
                 saveSchema: "セーブ項目",
                 characters: "キャラクター",
                 project: "プロジェクトの設定",

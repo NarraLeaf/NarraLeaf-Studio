@@ -22,6 +22,7 @@ import {
     type StoryCommandGroupId,
 } from "./storyCommandCategories";
 import { localizeSpecCommand } from "./commands/specPalette";
+import { useCustomStoryCommandsVersion } from "./commands/customCommands";
 import { getCommandDef, getCommandSpec, listCommandSpecs, localizedCommandToken } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
 import { availableSidebarGroups, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, pickStarredCommands, type StoryCommandSidebarGroup } from "./commands/specSidebar";
@@ -140,9 +141,10 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
      * command hidden by {@link StoryCommandSpec.available} is therefore not listable, not starrable
      * from the list, and not shown as a stale favourite.
      */
+    const customCommandsVersion = useCustomStoryCommandsVersion();
     const sidebarGroups = useMemo(
         () => availableSidebarGroups(buildSpecSidebarGroups(pluginCommands, localize), commandContext),
-        [commandContext, localize, pluginCommands],
+        [commandContext, customCommandsVersion, localize, pluginCommands],
     );
 
     /**
@@ -159,7 +161,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             map.set(entry.id, entry);
         }
         return map;
-    }, [ct]);
+    }, [ct, customCommandsVersion]);
 
     /** Every subject a spec reaches, so the detail can name the ones its own section does not. */
     const filedUnderById = useMemo(() => {
@@ -168,7 +170,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             map.set(spec.id, specGroupIds(spec));
         }
         return map;
-    }, []);
+    }, [customCommandsVersion]);
 
     /**
      * The starred tab is a flat set - a command filed under three subjects is still ONE favourite, so
@@ -280,7 +282,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                         active={activeTab === ALL_CATEGORY_ID}
                         onClick={() => setActiveTab(ALL_CATEGORY_ID)}
                     />
-                    {STORY_COMMAND_CATEGORIES.map(category => (
+                    {STORY_COMMAND_CATEGORIES.filter(category => category.id !== "custom" || sidebarGroups.some(entry => entry.group.category === "custom")).map(category => (
                         <CategoryChip
                             key={category.id}
                             icon={category.icon}
@@ -321,7 +323,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                     const Icon = entry.group.icon;
                     return (
                         <div key={entry.group.id}>
-                            <div className="flex items-center gap-1.5 px-1.5 pb-1 pt-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                            <div className="flex items-center gap-1.5 px-1.5 pb-1 pt-2 text-2xs text-fg-muted">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                 <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>

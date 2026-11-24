@@ -48,7 +48,7 @@ function patchSlider(data: UIInspectorData, partial: Partial<UISliderWidgetProps
 }
 
 function FieldLabel({ children }: { children: string }) {
-    return <span className="text-xs font-medium text-fg-muted">{children}</span>;
+    return <span className="text-2xs text-fg-muted">{children}</span>;
 }
 
 function SliderNumberControl({

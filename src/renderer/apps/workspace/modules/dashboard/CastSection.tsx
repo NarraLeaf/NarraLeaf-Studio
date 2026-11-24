@@ -89,7 +89,7 @@ export function CastSection({ cast }: { cast: CastStats }) {
                 ) : undefined
             }
         >
-            <div className="rounded-md border border-edge bg-fill-subtle px-3 py-2">
+            <div className="w-full rounded-md border border-edge bg-fill-subtle px-3 py-2">
                 <div className="flex items-baseline justify-between gap-3 border-b border-edge-subtle pb-1.5 text-2xs text-fg-subtle">
                     <span className="min-w-0 truncate">{t("dashboard.cast.speaker")}</span>
                     <span className="flex shrink-0 gap-4">

@@ -3,10 +3,10 @@ import { commandI18nStore, translateCommand } from "@/lib/i18n";
 import { numberValueOf, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "../storyCommandGrammar";
 
 /**
- * The localized spelling of a unit: the table that lets an author who reads `持续时间=1秒` type it.
+ * The localized spelling of a unit: the table that lets an author who reads `动画持续时间=1秒` type it.
  *
  * The fourth of four, after commands, param keys and enum values — and it exists for the same reason
- * they do. The committed row prints the unit (it is what makes `持续时间=1` read as a time rather than
+ * they do. The committed row prints the unit (it is what makes `动画持续时间=1` read as a time rather than
  * as a count), and a row may only show a line the author could have typed. Showing `秒` while the
  * parser took only `s` would be the same broken promise the other three tables were built to end.
  *

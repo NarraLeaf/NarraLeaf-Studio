@@ -33,6 +33,16 @@ import { SectionStack, StackSection } from "../../components/ui/SectionStack";
 import { useRailSections } from "./panel/useRailSections";
 import { UI_RAIL_FILL_SECTION, UI_RAIL_SECTIONS, type UIRailSection } from "./panel/railSections";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
+import { DesignImportModal } from "./panel/design-import/DesignImportModal";
+import { projectDesignSize } from "./panel/design-import/applyDesignImport";
+import {
+    DESIGN_IMPORT_EXTENSIONS,
+    DesignSourceError,
+    openDesignSource,
+    type DesignSource,
+} from "./panel/design-import/designSources";
+import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { useStarterTitlePage } from "./panel/templates/useStarterTitlePage";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard, type SurfaceListStarterTile } from "./panel/SurfaceList";
@@ -152,6 +162,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
     const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
+    const [designSource, setDesignSource] = useState<DesignSource | null>(null);
     const blueprintRevision = useBlueprintDocumentRevision();
     const starterTitlePage = useStarterTitlePage();
     const rail = useRailSections();
@@ -454,6 +465,37 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         // Focus in the new page's editor would point both at the page's own stack, which is empty.
         handleSurfaceClick(pasted);
     }, [documentService, handleSurfaceClick]);
+
+    const handleImportDesign = useCallback(async () => {
+        if (!context) {
+            return;
+        }
+        const selection = await appPrivilegedFacade.fs.selectFile(
+            DESIGN_IMPORT_EXTENSIONS,
+            true,
+            t("uiEditor.designImport.pickerTitle"),
+        );
+        if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
+            return;
+        }
+        const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
+        try {
+            const source = await openDesignSource(
+                selection.data.data,
+                filesystem,
+                documentService ? projectDesignSize(documentService) : { ...DEFAULT_UI_SURFACE_SIZE },
+            );
+            // The design arrives as pages, so the list shows pages while the dialog is open and after.
+            setKind("appSurface");
+            setDesignSource(source);
+        } catch (error) {
+            console.warn("[design import] could not open the design", error);
+            uiService?.showNotification(
+                error instanceof DesignSourceError ? error.message : t("uiEditor.designImport.error.read"),
+                "warning",
+            );
+        }
+    }, [context, documentService, t, uiService]);
 
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
         if (!documentService || surface.kind !== "appSurface") {
@@ -766,6 +808,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                         onOpenTemplateStore={() => setTemplateStoreOpen(true)}
                         templateLabel={t("uiEditor.templateStore.open")}
                         templateDisabled={!documentService}
+                        onImportDesign={() => void handleImportDesign()}
+                        importDesignLabel={t("uiEditor.designImport.open")}
                         onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
                         pasteLabel={t("uiEditor.panel.pasteSurface")}
                     />
@@ -801,6 +845,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
+            />
+            <DesignImportModal
+                source={designSource}
+                onClose={() => setDesignSource(null)}
+                documentService={documentService}
+                // As a pasted interface is opened: the import is a step on the project's stack.
+                onApplied={handleSurfaceClick}
             />
             <UITemplateStoreModal
                 isOpen={templateStoreOpen}

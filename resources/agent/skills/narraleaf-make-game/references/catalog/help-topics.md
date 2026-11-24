@@ -67,6 +67,8 @@ The rail on the left switches the side panel, among them story, characters, sear
 - 位置必须是空文件夹；尚不存在的文件夹在创建项目时一并创建
 - 从服务器克隆的项目保持与该服务器的连接，本地副本可正常编辑
 - 模板「空白」只有项目结构；模板「骨架」是一个可直接运行的短故事，包含三个场景、一次分支选择，以及启动画面、标题、鉴赏、存档、读档、设置、记录七个界面，蓝图均已配置
+- 带示例的模板在「示例内容」中列出示例的各部分；未勾选的部分不会放进新项目，界面始终保留
+- 启动器也列出已登录 Team 服务器上的团队项目，按设置显示在项目列表或 Team 页中；尚未在本机的项目从其所在行克隆
 
 The launcher adds a project three ways: New project, Import .nlspkg, and Clone from a server.
 
@@ -74,6 +76,8 @@ The launcher adds a project three ways: New project, Import .nlspkg, and Clone f
 - The location must be an empty folder. A folder that does not exist yet is created with the project.
 - A project cloned from a server stays connected to it, and the local copy is editable.
 - The Empty template holds the project structure only. The Skeleton template is a short story that runs as delivered: three scenes, one choice, and splash, title, extra, save, load, config and backlog screens with their blueprints already wired.
+- A template with a sample lists it under Sample content. Unticked parts are left out of the new project; the screens always come in.
+- The launcher also lists the team projects on a signed-in Team server, in the project list or on the Team page as set in Settings. One that is not on this machine yet is cloned from its row.
 
 相关主题 · Related：工作区布局 · Workspace layout、与服务器协作 · Working with a server
 
@@ -195,16 +199,40 @@ Undo reverses the last change, in the editor that made it. The editor with focus
 - 界面语言、主题、编辑器文字和全部快捷键都在这里设置
 - 还原将单项或全部设置恢复为默认值
 - 缓存文件可以列出并清除，清除的部分在下次需要时重新生成
-- 设置可以导出为文件，并在其他设备上导入
+- 设置可以导出为文件，并在其他设备上导入；登录 Team 后，也可以备份到服务器，在其他电脑上恢复
 
 Settings belong to Studio on this machine, not to a project. Opening another project leaves them unchanged, and a project given to someone else does not carry them.
 
 - Language, theme, editor text and every shortcut are set here.
 - Reset returns one setting, or all of them, to its default value.
 - Cached files can be listed and cleared. Cleared files are rebuilt when they are next needed.
-- Settings can be exported to a file and imported on another machine.
+- Settings can be exported to a file and imported on another machine. Signed in to Team, they can also be backed up to the server and restored on another computer.
 
-相关主题 · Related：键盘与鼠标 · Keyboard and Mouse、插件 · Plugins
+相关主题 · Related：键盘与鼠标 · Keyboard and Mouse、插件 · Plugins、AI Agent · AI agents
+
+### AI Agent · AI agents
+
+Studio 可以在本机提供 MCP 端点，让 Claude Code、opencode 等 AI Agent 直接修改打开的项目，修改即时显示在编辑器中；该功能默认关闭，在设置的「Agent 接入」中打开「允许 Agent 连接」后启用
+
+- 「允许 Agent 修改项目」关闭时，Agent 只能读取项目，尝试的修改一律被拒绝
+- Agent 的每次修改是一步撤销
+- Agent 编辑故事或界面时，该编辑器对作者只读；编辑器顶部提示中的「改为读写」可恢复读写；Agent 五分钟没有调用后锁定自动解除
+- Agent 可以导入项目内的文件；其他文件夹需要批准，允许完全访问时除外
+- Agent 可以在开发模式中试玩；此时运行游戏会把开发模式交还给作者，并暂停 Agent
+- 「Agent」菜单可暂停和恢复 Agent，「Agent 日志」列出它的调用
+- Agent Skill 向 Agent 说明 NarraLeaf 项目，在同一设置页中安装或导出
+
+Studio can serve an MCP endpoint on this computer so that an AI agent, such as Claude Code or opencode, edits the open project directly and its changes appear in the editors at once. It is off until Allow agents to connect is switched on under Agent access in Settings.
+
+- With Allow agents to change projects off, an agent can read projects and every change it tries is refused.
+- Each change an agent makes is one undo step.
+- While an agent edits the story or the interface, that editor is read-only for the author. Read-write, on the notice at the top of the editor, switches it back. The lock lifts after five minutes without a call from the agent.
+- An agent imports files from inside the project. Another folder needs approval, unless full access is allowed.
+- An agent can play-test in Dev Mode. Running the game meanwhile hands Dev Mode back to the author and pauses the agent.
+- The Agent menu pauses and resumes the agent, and Agent log lists its calls.
+- The Agent Skill describes NarraLeaf projects to an agent. It is installed or exported on the same settings page.
+
+相关主题 · Related：Studio 设置 · Studio settings、撤销 · Undo and redo、运行游戏 · Running the game
 
 ## 故事 · Story
 
@@ -221,8 +249,8 @@ Settings belong to Studio on this machine, not to a project. Opening another pro
 - 实时预览显示选中行处的舞台；点击预览选中游戏下一处等待玩家的行，即一句对白、一段旁白或一个菜单；在菜单上点击某个选项，选中该选项下的第一句
 - 实时预览中的句子仍在逐字显示时，点击先显示整句；在实时预览顶部开启「跳过打字动画」后，每句直接完整显示
 - 画中画模式下，实时预览在其他编辑器上方保持显示，显示最近使用的场景编辑器中的场景
-- 对游戏 UI 的修改随即显示在实时预览中
-- 实时预览顶部切换到「图层」，显示本场景的图层：左侧列表从前到后排列，距离相同的图层合为一个层级。距离以基准图层为 1（未指定图层的内容都在基准图层上），数值越大越远，镜头移动时位移越小，∞ 时保持不动；点击层级的数值可直接输入。拖动一行可并入其他层级，或放在两个层级之间成为新的层级；拖动图层上的名称可调整距离，靠近其他层级时并入该层级；右下角的小画面演示镜头移动时的效果。场景标题栏的「图层」按钮也会打开这一视图；用 /layer 名称 可直接为本场景添加图层
+- 对游戏界面的修改随即显示在实时预览中
+- 实时预览顶部切换到「图层」，显示本场景的图层：左侧列表从前到后排列，距离相同的图层合为一个层级距离以基准图层为 1（未指定图层的内容都在基准图层上），数值越大越远，镜头移动时位移越小，∞ 时保持不动；点击层级的数值可直接输入拖动一行可并入其他层级，或放在两个层级之间成为新的层级；拖动图层上的名称可调整距离，靠近其他层级时并入该层级；右下角的小画面演示镜头移动时的效果场景标题栏的「图层」按钮也会打开这一视图；用 /layer 名称 可直接为本场景添加图层
 - 「图层」视图右下角的小画面在鼠标移上去时放大，镜头跟随鼠标移动、滚轮推拉，鼠标移开后复位；选中设置镜头位置的镜头行时，它以该行的镜头为准
 - 行上的 ▶（从这一行开始播放）在开发模式中从该行开始运行场景
 
@@ -274,7 +302,37 @@ The Actions panel beside the editor lists every command, the values each one acc
 - Abbreviations of your own are set on a command's page in the panel. An abbreviation followed by a space is replaced with the command, so rows never contain it.
 - A row with a required value missing cannot be committed.
 
-相关主题 · Related：场景与行 · Scenes and rows、变量 · Variables、表达式 · Expressions
+相关主题 · Related：场景与行 · Scenes and rows、变量 · Variables、表达式 · Expressions、自定义指令 · Custom commands
+
+### 自定义指令 · Custom commands
+
+自定义指令把几行命令保存为一条带名字的命令，在故事编辑器中像内置命令一样输入，例如 @左右摇晃 Anyo 力度=10
+
+- 在左侧栏「…」菜单的「自定义指令」页中新建，或在故事编辑器中选中几行，右键选择「保存为自定义指令」
+- 在命令的值的位置写 <参数名> 声明参数，例如 xoffset=<力度>；写 -<力度> 使用相反数，写 <力度=5> 设置默认值
+- 参数的类型与所在位置相同：数字带同样的单位和范围，选项提供同样的候选，角色位置只接受角色
+- 没有默认值的参数必须填写，漏写时该行显示为草稿
+- 修改指令后，所有调用它的行都按新内容播放；重命名不影响已有的行
+- 指令中可以使用舞台、声音、等待和变量类命令，也可以调用其他自定义指令；不能使用对白、跳转和流程命令
+
+「复制为文本」和「导出到文件」会连同它调用的其他指令一起导出；在另一个项目中从剪贴板或文件导入，重名时自动编号
+
+指令被删除、缺少必填参数或调用自身时，调用它的行不播放任何内容，项目检查在该行报错
+
+A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.
+
+- Create one on the Custom Commands page, under the … menu of the left sidebar, or select rows in the story editor and choose Save as custom command.
+- Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.
+- A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.
+- A parameter without a default is required; a row that leaves it out is shown as a draft.
+- Editing a command changes every row that calls it; renaming it leaves those rows working.
+- A command can hold stage, sound, wait and variable commands and call other custom commands; dialogue, jumps and flow commands are not allowed.
+
+Copy as text and Export to file carry the commands it calls as well. Import them in another project from the clipboard or a file; a name that is taken gets a number.
+
+A row whose command is deleted, misses a required parameter or calls itself plays nothing, and the project check reports it.
+
+相关主题 · Related：指令 · Commands、角色行为 · Character behaviours、项目检查 · Project checks
 
 ### 变量 · Variables
 
@@ -298,9 +356,9 @@ A scene variable is declared in the scene it belongs to, as a row like any other
 
 ### 重命名与查找引用 · Rename and find references
 
-为变量、标签、场景或角色更名，并同时更新所有引用该名称的位置。可从变量面板的行、故事行、故事面板中的场景或角色面板中的角色的右键菜单打开
+为变量、标签、场景或角色更名，并同时更新所有引用该名称的位置可从变量面板的行、故事行、故事面板中的场景或角色面板中的角色的右键菜单打开
 
-预览按场景列出每处修改及修改前后的文本，取消勾选的位置保持不变。确认后所有勾选的修改一次写入，一次撤销即可全部还原
+预览按场景列出每处修改及修改前后的文本，取消勾选的位置保持不变确认后所有勾选的修改一次写入，一次撤销即可全部还原
 
 改写的内容：
 
@@ -309,7 +367,7 @@ A scene variable is declared in the scene it belongs to, as a row like any other
 - 跳转到被重命名标签的跳转行
 - 角色重命名时，以旧名称作为说话人且未关联角色的对白行
 
-按标识指向变量、场景或角色的行以及蓝图节点会自动跟随，不需要改写，预览中单独列出。翻译无需修改。已被使用的名称和表达式语言的保留字不可选用
+按标识指向变量、场景或角色的行以及蓝图节点会自动跟随，不需要改写，预览中单独列出翻译无需修改。已被使用的名称和表达式语言的保留字不可选用
 
 变量面板中变量左侧的箭头可展开其读取位置与写入位置，点击条目即可跳转
 
@@ -528,6 +586,34 @@ A thread follows its row when the row is moved. When the row is deleted, the thr
 
 相关主题 · Related：场景与行 · Scenes and rows、版本控制 · Version control
 
+### 行内表情切换 · Expression changes inside a line
+
+对白中插入的表情切换在打字机显示到该位置时更换说话角色的立绘，同一行可以插入多个
+
+- 编辑对白行时，在文字工具栏选择「插入表情切换」，在光标处插入并打开设置
+- 设置中选择立绘或差分，可附加一个音效
+- 过渡时长大于 0 时新表情以淡入方式出现，为 0 时瞬间切换
+- 未单独设置过渡时长的表情切换沿用本场景中前一个表情切换的设置；修改某一个，之后沿用它的表情切换随之改变，之前的不受影响
+- 清空输入框或选择「改为沿用前一个」，恢复沿用
+
+跳过对白或整句直接显示时，各处切换立即生效，不播放过渡，立绘停在最后一个表情
+
+只作用于该行的说话角色，且该角色需已通过 /show 上场；未上场时构建会给出警告
+
+An expression change inserted in a line of dialogue changes the speaking character's portrait when the typewriter reaches it. One line can hold several.
+
+- While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.
+- In the settings, choose the portrait or variant. A sound effect can play at the same point.
+- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly.
+- A change with no cross-fade of its own uses the one set on the previous change in the scene. Changing one changes every later change that uses it, and leaves earlier changes as they are.
+- Clear the field, or choose Use the previous change's, to use the previous change's cross-fade again.
+
+When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.
+
+Only the speaking character of the row changes, and that character must already be on stage through /show. A build reports a warning otherwise.
+
+相关主题 · Related：场景与行 · Scenes and rows、角色 · Characters、角色外观 · Character appearances
+
 ### 词典标记 · Dictionary marks
 
 检查原文拼写时，词典中的每一种拼写都会被接受，词条与异体写法一样
@@ -670,14 +756,14 @@ A build and a fresh clone of the project use the stored copy. Neither needs the 
 
 ### 资产集 · Asset sets
 
-资产集是资产库里的一个条目，代表一组随语言或构建变体变化的文件。字段可以填写该条目而不是某个文件，游戏使用与之相符的文件
+资产集是资产库里的一个条目，代表一组随语言或构建变体变化的文件字段可以填写该条目而不是某个文件，游戏使用与之相符的文件
 
 资产集留在建立它的文件夹内，其成员在集合内部列出，不再与其它文件并列
 
-- 选中两个及以上同一类型的文件，选择「用所选文件新建资产集」。文件夹菜单里的「新建资产集」则在对话框中逐个挑选文件
+- 选中两个及以上同一类型的文件，选择「用所选文件新建资产集」文件夹菜单里的「新建资产集」则在对话框中逐个挑选文件
 - 对话框先问按什么变化，再问每个取值使用哪个文件
 - 在「取值」清单中为某一项选择文件，该文件即成为集合的成员
-- 「解散资产集」只移除集合，文件留在集合原先所在的位置；「删除」连同集合内的文件一并删除。两者都会先列出引用该集合的位置
+- 「解散资产集」只移除集合，文件留在集合原先所在的位置；「删除」连同集合内的文件一并删除两者都会先列出引用该集合的位置
 - 故事行、角色外观与对白头像、界面中的图片、背景与视频，以及蓝图中的图片与声音字段都接受资产集，其选择器中有「资产集」一节；字体字段只接受文件
 
 An asset set is one library entry standing for several files that differ by language or by build variant. A field can name the set instead of a file, and the game uses the file that matches.
@@ -703,7 +789,7 @@ A set stays in the folder it was created in, and its files are listed inside it 
 
 需要同时按两者变化时，在某个取值下再建一个资产集：选中相应文件，右键该取值，选择「用所选文件在此新建资产集」
 
-没有文件的取值，以及对应到多个文件的取值，都由项目检查报出。各变体在「变体」页声明自己对应哪个取值；正在构建的变体没有声明时，构建会中止
+没有文件的取值，以及对应到多个文件的取值，都由项目检查报出各变体在「变体」页声明自己对应哪个取值；正在构建的变体没有声明时，构建会中止
 
 A set varies by one of two things, chosen when it is created:
 
@@ -749,14 +835,48 @@ A build stops while any such file remains in the project, and lists them in the 
 角色包含名称、颜色和一组外观；外观是角色在舞台上的形象，故事行按名称在外观之间切换
 
 - 对白旁的头像由立绘生成；由运行时绘制的角色显示角色属性中的「默认对白头像」
+- 面板中的「自动截取全部对白头像」按检测模型找到的头部放置每个头像的取景；头像取景旁的「自动截取头像」只处理该头像；在角色编辑器中添加或更换立绘后，画面变化的头像自动截取，手动调整过的取景保持不变；取景之后仍可调整
 - 角色不在舞台上时也可以发言
 
 A character has a name, a color and a set of appearances. An appearance is the character's form on stage, and story rows switch between appearances by name.
 
 - The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.
+- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one portrait. Adding or replacing art in the character editor frames the avatars whose pictures changed; a framing adjusted by hand is kept. The framing stays adjustable.
 - A character can speak without being on stage.
 
 相关主题 · Related：角色外观 · Character appearances、资产 · Assets、场景与行 · Scenes and rows
+
+### 角色行为 · Character behaviours
+
+角色行为是角色在开始说话或停止说话时自动执行的命令，在角色属性的「角色行为」中设置，写法与故事编辑器的命令相同
+
+- 说话人换人时，上一位说话人执行「停止说话时」，新说话人执行「开始说话时」；同一角色连续说话只在第一句执行一次
+- 旁白视为无人说话，上一位说话人执行「停止说话时」
+- 只有在舞台上的角色执行行为；角色登场前和退场后不执行
+- 行为中的命令与对白同时开始，不延迟文字显示；作用于同一对象的命令依次执行
+- 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和音效；不能登场、退场、更换音乐或跳转
+
+「应用预设」写入常用的成对命令，例如不说话时变暗、说话时放大；数值以该角色的登场默认值为基准，写入后可以像普通命令一样修改，再次应用同类预设会替换原有命令；「应用到所有角色」为每个角色按各自的登场默认值写入，可一次撤销
+
+在对白或旁白的属性中关闭「触发角色行为」后，该句不执行任何行为，说话人视为未变化
+
+对白上方手写的命令与行为设置同一角色的同一属性时，以手写的命令为准，项目检查在该行显示警告
+
+Behaviours are commands a character runs automatically when it starts or stops speaking. They are set under Behaviours in the character's properties and written like commands in the story editor.
+
+- When the speaker changes, the previous speaker runs "When stopping speaking" and the new speaker runs "When starting to speak". Consecutive lines by one character run it once, on the first line
+- Narration counts as nobody speaking: the previous speaker runs "When stopping speaking"
+- Only characters on stage run behaviours. Nothing runs before a character enters or after it exits
+- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order
+- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump
+
+Apply preset writes a common pair of commands, such as dimming when not speaking or enlarging when speaking. The numbers are relative to the character's entrance defaults, the commands can be edited like any other, and applying a preset for the same property again replaces them. Apply to all characters writes it for every character from their own entrance defaults, as one step of undo
+
+With "Trigger character behaviours" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged
+
+When a command written above a line sets the same property of the same character as a behaviour, the written command is used and project checks show a warning on that row
+
+相关主题 · Related：角色 · Characters、指令 · Commands、项目检查 · Project checks
 
 ### 角色外观 · Character appearances
 
@@ -959,8 +1079,8 @@ A color or a font decided here can be used anywhere in the project. A field set 
 
 - 画布按游戏实际绘制的尺寸显示，编辑结果与玩家所见一致
 - 画布上的内容属于游戏，修改画布即修改发布的游戏，而非 Studio 本身
-- 编辑游戏 UI 时，画布工具栏的「游戏 UI 参考」可淡显其他游戏 UI，位置与叠放顺序与游戏一致；参考内容不可选中或编辑
-- 编辑游戏 UI 时，画布工具栏的「在实时预览中查看此界面」在显示该界面的故事行处打开实时预览，对话框对应一句对白，选项对应一个菜单；画布上的修改随即显示在预览中
+- 编辑游戏界面时，画布工具栏的「游戏界面参考」可淡显其他游戏界面，位置与叠放顺序与游戏一致；参考内容不可选中或编辑
+- 编辑游戏界面时，画布工具栏的「在实时预览中查看此界面」在显示该界面的故事行处打开实时预览，对话框对应一句对白，选项对应一个菜单；画布上的修改随即显示在预览中
 - 吸附设置中开启「网格」后，移动元素时其左上角、缩放时被拖动的边落在网格上；网格从画布左上角起算，间距在同一菜单中设置，按项目保存
 - 「吸附到网格」将每个选中元素的左上角移到最近的网格点，与是否开启网格吸附无关
 
@@ -1094,7 +1214,7 @@ A widget that reacts to being clicked uses its own Mouse Click head instead. An 
 - 「下一个控件」「上一个控件」逐个经过各控件，越过最后一个后从另一端继续；列表算作一个控件
 - 「确认」按下持有焦点的控件；剧情中没有控件持有焦点时，推进对白
 - 「返回」在最上层的模态叠层可关闭时将其关闭，否则返回上一个页面
-- 「快捷菜单」在剧情中将焦点移到舞台上游戏 UI 的按钮上，再按「快捷菜单」或「返回」离开
+- 「快捷菜单」在剧情中将焦点移到舞台上游戏界面的按钮上，再按「快捷菜单」或「返回」离开
 
 焦点在最上层的模态叠层或页面内移动，剧情中则在选项菜单内移动。该界面通过「输入」一节中的意图，或通过其蓝图、应用逻辑蓝图中针对该按键或手柄按键的事件头响应按键时，焦点不移动
 
@@ -1124,7 +1244,7 @@ A control whose appearance has a Focused state is drawn in that state while it h
 
 属性面板的「导航」一节设置焦点在界面上的起始位置与各方向的去处。未作设置时，所有控件均可获得焦点，各方向移到屏幕上该方向最近的控件
 
-页面以及「选项」游戏 UI 有以下三项设置
+页面以及「选项」游戏界面有以下三项设置
 
 - 「起始焦点」指定焦点开始时所在的元素；为「自动」时从开启「设为起始焦点」的元素开始，没有该元素时从左上方的第一个控件开始
 - 「打开时聚焦」决定界面打开时是否将焦点放在控件上；默认的「使用键盘或手柄时」仅在玩家最近使用键盘或手柄时聚焦，「始终」每次都聚焦，其余情况下焦点在第一次按下方向时出现
@@ -1213,6 +1333,56 @@ Widgets that belong together can be saved as a component and placed on any scree
 
 相关主题 · Related：游戏界面 · Game screens、界面上的值 · Values on a screen
 
+### 导入设计稿 · Importing designs
+
+在其他工具中绘制的画面可导入为界面编辑器中的页面；在「界面」面板中选择「导入设计稿」，再选取 Figma 导出文件、PSD 或一张及以上的图片
+
+- Figma：使用 NarraLeaf Studio Export 插件导出画框；画框、编组和矩形导入为容器，自动布局在可表达时导入为堆叠容器，文本导入为文本，矢量和蒙版导入为图片
+- PSD：编组导入为容器，每个图层按 Photoshop 中的位置导入为图片；剪贴图层和使用混合模式的图层合并到所属图层，隐藏图层不导入
+- 图片：所选图片导入到同一个页面；与最大图片尺寸相同的图片与其对齐，较小的图片居中放置，需手动调整位置
+
+每个页面按项目分辨率缩放，其中的图片存入图片资产中新建的文件夹；导入完成后会列出所有经过简化的内容，例如未导入的 PSD 图层样式
+
+按状态绘制的按钮会导入为可交互的按钮：在 PSD 或 Figma 中将各状态放在同一个编组里，分别命名为 normal、hover、pressed、disabled（或普通、悬停、按下、禁用），同组中的一个文本图层作为按钮文字；名为 start.png、start_hover.png、start_pressed.png 的图片文件合成为一个按钮；带「状态」属性的 Figma 组件同样导入为按钮
+
+游戏运行时的画面设计可导入为游戏界面：将顶层编组按所属的游戏界面命名为对话框、选项、快捷菜单或通知，导入对话框会为该画框选择「游戏界面」，并列出将被替换的现有游戏界面，撤销一次即可恢复；编组之外的图层（例如背景、立绘）不导入
+
+- 对话框：命名为「台词」的文本成为句子，命名为「名字」的文本显示说话人名字，命名为「头像」的图层显示说话人头像；名字单独放在一个编组中时，该编组只在有角色说话时显示。未按上述命名时，最大的文本作为台词，其上方的文本作为名字
+- 选项：画出的第一个选项成为选项列表的行，其中的文本显示选项文字，与第二个选项的间距决定行距
+- 快捷菜单：命名为自动、跳过、日志、存档、读档、设置、隐藏（或 auto、skip、log、save、load、config、hide）的按钮执行对应功能；日志、存档、读档、设置打开项目中同名的页面。命名为「开启」（或 on）的状态是自动和跳过运行期间保持的外观
+- 通知：画出的第一条消息成为通知列表的行
+
+在 Figma 中也可以不改名，直接用插件标注：选中图层后在右键菜单的「插件 › NarraLeaf Studio Export」中选择「标为游戏界面」「标为对话框部件」或「标为快捷菜单按钮」，或在插件面板中选择「标为…」。标注优先于图层名称；Figma 自动命名的图层会改为对应名称，自己命名的图层保留原名并加上前缀。插件面板按画框列出导入时的识别结果，标出按位置推测和未找到的部分，点击一项即可在画布上选中对应图层
+
+画在图片里的文字无法翻译，按钮文字应作为文本放在图片上方
+
+Figma 插件从 Figma 社区安装：搜索 NarraLeaf Studio Export，或打开 figma.com/community/plugin/1707010640966969953
+
+A screen drawn in another tool becomes a page in the UI editor. In the Interfaces panel, choose Import design and pick a Figma export, a PSD, or one or more images.
+
+- Figma: export frames with the NarraLeaf Studio Export plugin. Frames, groups and rectangles become containers, auto layout becomes a stack where a stack can express it, text becomes text, and vectors and masks arrive as pictures.
+- PSD: groups become containers and each layer becomes an image where Photoshop drew it. Clipped layers and layers with blend modes are merged into the layer they belong to, and hidden layers are left out.
+- Images: all the chosen images arrive on one page. Images the size of the largest one line up with it, and smaller ones are placed in the centre to be moved into place.
+
+Each page is scaled to the project resolution, and its pictures go into a new folder in the image assets. Everything that was simplified is listed after the import, such as PSD layer styles, which are not imported.
+
+Buttons drawn in states become working buttons. In a PSD or a Figma design, put the states in one group and name them normal, hover, pressed and disabled; a text layer beside them becomes the label. Image files named start.png, start_hover.png and start_pressed.png become one button. A Figma component with a State property becomes a button as well.
+
+A design of the running game can come in as Game UI instead of a page. Name its top-level groups for the Game UI they are: dialog, choice, quick menu or notification. The import dialog then offers Game UI for that frame and names the project's Game UI it replaces; one undo puts them back. Layers outside those groups, such as the background and sprites, are left out.
+
+- Dialogue box: a text named line becomes the sentence, a text named name shows the speaker's name, and a layer named avatar shows the speaker's avatar. When the name sits in a group of its own, the group is shown only while a character speaks. Without these names, the largest text becomes the line and the text above it the name.
+- Choice: the first option drawn becomes the row of the choice list, its text the option's words, and the gap to the second option the spacing.
+- Quick menu: buttons named auto, skip, log, save, load, config and hide do those jobs; Log, Save, Load and Config open the project's page of that name. A state named on is the look Auto and Skip keep while they run.
+- Notification: the first message drawn becomes the row of the notification list.
+
+In Figma, the plugin can mark layers instead of renaming them by hand: select layers and choose a Mark command under Plugins, NarraLeaf Studio Export in the right-click menu, or use Mark as in the plugin panel. A mark wins over the layer's name. A layer Figma named is renamed for its job; a name you chose is kept, with the job in front. The panel lists what the import will make of each frame, flags what it guessed by position and what is missing, and selects a layer on the canvas when you click its line.
+
+Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.
+
+Install the Figma plugin from the Figma Community: search for NarraLeaf Studio Export, or open figma.com/community/plugin/1707010640966969953.
+
+相关主题 · Related：游戏界面 · Game screens、可复用的部件 · Reusable parts、配色与字体 · Colors and fonts
+
 ### 蓝图 · Blueprints
 
 蓝图定义一个界面的行为：按钮被按下时执行什么、界面打开时执行什么；每张图从一个事件开始
@@ -1264,9 +1434,9 @@ Execution follows the wires between the nodes. One kind of wire sets the order o
 
 ### 脚本 · Scripts
 
-页面、控件或故事行的逻辑是一份图层列表，每一层要么是蓝图，要么是脚本。蓝图是画布上的一张图；脚本是项目 scripts 目录下的一个 TypeScript 文件，在外部编辑器中编写。Studio 只在创建时写入该文件一次，此后不再改写
+页面、控件或故事行的逻辑是一份图层列表，每一层要么是蓝图，要么是脚本。蓝图是画布上的一张图；脚本是项目 scripts 目录下的一个 TypeScript 文件，在外部编辑器中编写Studio 只在创建时写入该文件一次，此后不再改写
 
-列表中的每一层都会运行，同一位置上脚本可以与蓝图并存，两者都会响应。「添加图层」时选择图层类型，列表的每一行标明该层的类型
+列表中的每一层都会运行，同一位置上脚本可以与蓝图并存，两者都会响应「添加图层」时选择图层类型，列表的每一行标明该层的类型
 
 - 脚本通过导出的函数进入。当前位置会调用哪些名称由它所处的位置决定，新文件开头列出了这些名称；故事行使用默认导出
 - 「在编辑器中打开」打开整个 scripts 目录。脚本的类型来自它旁边的文件，只打开单个文件无法解析类型
@@ -1342,14 +1512,14 @@ The Fetch node makes an HTTP request while the game runs, for an online notice b
 
 故事的原文会被检查拼写，译文不检查
 
-检查所用的语言跟随项目的原文语言，也可以在设置中改为其他语言或不检查。某种语言在其拼写词典下载之后才会被检查，下载入口在设置的「拼写词典」中；在此之前不会标出任何内容
+检查所用的语言跟随项目的原文语言，也可以在设置中改为其他语言或不检查。某种语言在其拼写词典下载之后才会被检查，下载入口在设置的「编辑器 › 拼写检查」中；在此之前不会标出任何内容
 
 - 红色波浪线标出拼写错误。右键点击给出替换建议，并可将该词加入项目词典
-- 中文与日语按词逐个对照该语言的词典读取。被标出的是切不出任何已知词的字串。若拼写错误恰为另一个有效词，则不会被检出
+- 中文与日语按词逐个对照该语言的词典读取。被标出的是切不出任何已知词的字串若拼写错误恰为另一个有效词，则不会被检出
 
 The source text of a story is checked for spelling. Translations are not.
 
-The language follows the project's source language, and can be set to another one, or to none, in Settings. A language is checked once its dictionary has been downloaded, under Spelling dictionaries in the same place. Until then nothing is marked.
+The language follows the project's source language, and can be set to another one, or to none, in Settings. A language is checked once its dictionary has been downloaded, under Editor › Spell checking in the same place. Until then nothing is marked.
 
 - A red wave marks a misspelling. Right-clicking it offers replacements, and offers to add the word to the project dictionary.
 - Chinese and Japanese are read a word at a time against the dictionary of the language. What is marked is a run of characters that spells no word in it. A mistyped character that spells another word is not found.
@@ -1400,6 +1570,32 @@ A test runs the game and reports whether a condition held: that an ending can be
 
 相关主题 · Related：项目检查 · Project checks、运行游戏 · Running the game、构建 · Builds
 
+### 整理项目 · Cleaning up a project
+
+运行菜单中的「整理项目」一次对整个项目执行多项整理。每一项右侧显示将处理的数量，无需处理的项不可勾选
+
+- 自动截取对白头像：按检测到的头部截取头像，与角色面板中「自动截取全部对白头像」相同。已有取景的差分保持不变，勾选「覆盖已有取景」后一并重新截取
+- 清除项目缓存：删除资源缩略图以及构建、预览留在项目中的文件，需要时重新生成。预览的存档保留
+- 格式化全部蓝图：按画布上「格式化蓝图」的方式排列每张图
+- 删除未连线的蓝图节点：删除没有任何连线且无法单独运行的节点。事件、函数入口与注释保留
+- 删除失效批注：删除对应的行已不在任何故事中的批注线程
+- 删除孤立译文：删除对应的行已不在任何故事中的译文。已停用的行的译文保留
+
+蓝图的改动在各自的蓝图编辑器中撤销，删除的批注可一步撤销。删除的译文无法恢复
+
+Clean Up Project in the Run menu runs several tidying tasks over the whole project at once. Each row shows how much it would change; a row with nothing to change is greyed
+
+- Auto-frame dialog avatars frames avatars on the head the detector finds, as Auto-frame all in the Characters panel does. Differentials that already have a framing keep it unless Replace existing framings is ticked
+- Clear project cache deletes asset thumbnails and the files builds and previews leave in the project. They are made again when needed. Preview saves are kept
+- Format all blueprints arranges every graph as Format graph does on the canvas
+- Delete unwired blueprint nodes removes nodes with no wire in or out that cannot run on their own. Event heads, function entries and comments stay
+- Delete orphaned comments removes comment threads whose row is in no story
+- Delete orphaned translations removes translations of lines that are in no story. Translations of disabled lines stay
+
+Blueprint changes undo in each blueprint's editor, and deleted comments return with one undo. Deleted translations cannot be restored
+
+相关主题 · Related：蓝图 · Blueprints、故事行批注 · Comments on story rows、语言 · Languages、项目检查 · Project checks
+
 ### 项目统计 · Project statistics
 
 仪表盘统计项目的内容量和近期增量：场景、对白行、字数、角色、资产，以及写作天数
@@ -1440,13 +1636,15 @@ When part of a project cannot be read, Studio offers to open the window read-onl
 
 - 提交版本只向列表追加，不替换也不删除已有版本
 - 变更不会自动检测，执行一次检查即可列出
+- 团队项目的历史由 Team 服务器保存，以上内容不适用于团队项目
 
 A version is a point that can be returned to, and history is kept inside the project folder. Submitting creates a version, and Studio also records checkpoints of its own: at the interval set in Settings, every 15 minutes by default and only when something changed, and before the workspace closes, before a build and before a restore.
 
 - Submitting a version appends to the list. It never replaces or removes an existing version.
 - Changes are not detected automatically. Run a check to list them.
+- A team project keeps its history on the Team server instead, and none of this applies to it.
 
-相关主题 · Related：改动内容 · Changes since the last version、查看历史版本 · Viewing an old version、恢复到某个版本 · Restoring a version、与服务器协作 · Working with a server
+相关主题 · Related：改动内容 · Changes since the last version、查看历史版本 · Viewing an old version、恢复到某个版本 · Restoring a version、与服务器协作 · Working with a server、团队项目 · Team projects
 
 ### 改动内容 · Changes since the last version
 
@@ -1499,38 +1697,62 @@ Restoring replaces the files in the project with that version's contents. It is 
 - 两边并排显示，逐条选择保留其中一边
 - 可以自动合并的部分已经就位，只有无法自动合并的部分需要选择
 - 完成合并会提交一个版本，结果与其他版本一样保存在历史中
+- 团队项目没有合并；服务器未能应用的离线修改改为列在该项目的历史版本中
 
 When the same part of a file changed locally and on the server, the merge stops and asks which side to keep. The project stays frozen until every conflict has an answer.
 
 - Both sides are shown side by side, and one side is kept per item.
 - Everything that merged automatically is already in place. Only the parts that could not be merged require an answer.
 - Finishing the merge submits a version, and the result is stored in the history like any other.
+- A team project has no merge. Offline edits the server could not apply are listed in its version history instead.
 
-相关主题 · Related：与服务器协作 · Working with a server、改动内容 · Changes since the last version、冻结的项目 · Frozen projects
+相关主题 · Related：与服务器协作 · Working with a server、改动内容 · Changes since the last version、冻结的项目 · Frozen projects、团队项目 · Team projects
 
 ### 与服务器协作 · Working with a server
 
-项目可以连接到版本控制服务器，供多人协作；数据的发送和获取都由手动操作触发
+项目可以连接到版本控制服务器，与之交换版本；数据的发送和获取都由手动操作触发
 
 - 发送把已提交的版本上传到服务器
 - 获取把服务器上的版本下载下来，并合并到本地
 - 两边都有新版本时，先获取，再发送
-- 检查当前状态需要访问服务器
-- 服务器与版本记录使用的账号，在窗口左下角的 NarraLeaf Team 中设置
-- 已连接服务器的团队项目打开时，不能更换服务器或退出登录；关闭项目后，可在启动器中将其转为个人项目，或在设置中退出该服务器的登录
+- 服务器与版本记录使用的账号在 NarraLeaf Team 中设置，从窗口左下角或标题栏账号菜单中的「管理 Team」打开
+- 在支持实时协作的 Team 服务器上，项目在编辑时即同步，没有发送和获取
+- 团队项目打开时，不能更换服务器或退出登录；关闭项目后，可在启动器中将其转为个人项目，或在设置中退出该服务器的登录
 - 退出某服务器的登录后，使用它的团队项目无法打开，只能删除或转为个人项目
 
-A project can be connected to a version control server so that several people can work on it. Nothing is sent or fetched except by an explicit action.
+A project can be connected to a version control server and exchange versions with it. Nothing is sent or fetched except by an explicit action.
 
 - Send uploads submitted versions to the server.
 - Get downloads the versions on the server and merges them into the local project.
 - When both sides have new versions, Get first and Send afterwards.
-- Checking the current state contacts the server.
-- The server, and the account versions are recorded under, are set from NarraLeaf Team in the bottom-left corner of the window.
+- The server, and the account versions are recorded under, are set in NarraLeaf Team, opened from the bottom-left corner of the window or from Manage Team in the title bar's account menu.
+- On a Team server that supports realtime collaboration, a project is synced while it is edited and has no Send or Get.
 - While a team project is open, its server cannot be changed or signed out of. Once it is closed, convert it to a personal project from the launcher, or sign out of the server in Settings.
 - After signing out of a server, the team projects that use it cannot be opened; they can only be deleted or converted to personal projects.
 
-相关主题 · Related：版本控制 · Version control、合并冲突 · Merge conflicts、添加项目 · Adding a project
+相关主题 · Related：版本控制 · Version control、合并冲突 · Merge conflicts、添加项目 · Adding a project、团队项目 · Team projects
+
+### 团队项目 · Team projects
+
+连接到支持实时协作的 Team 服务器的项目是团队项目；每次编辑都即时发送到服务器，打开该项目的所有人都能看到
+
+- 「历史版本」在标题栏的账号菜单中；项目空闲时服务器自动保存版本，「保存版本」可手动标记一个节点
+- 「查看」打开已保存的版本，不做任何修改；「与当前对比」列出此后的变更
+- 「恢复」为所有人恢复到较早的版本；恢复本身保存为新版本，可用同样的方式撤回
+- 离线时，修改保存在本机，重新连接后发送；未能应用的修改列在历史版本中，可逐条选择应用
+- 项目所有者决定每位成员可以编辑的部分；只读角色不能编辑
+- 启动器中的「转为个人项目」保留一份与服务器一致的副本；之后「重新连接到团队项目」把修改发回，团队同时改动的部分列出供选择
+
+A project on a Team server that supports realtime collaboration is a team project. Each edit is sent to the server as it is made, and everyone with the project open sees it.
+
+- Version history is in the account menu in the title bar. The server saves a version when the project is idle, and Save version marks a point by hand.
+- View opens a saved version without changing anything. Compare with now lists what changed since it.
+- Restore applies an earlier version for everyone. It is saved as a new version and can be undone the same way.
+- Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be applied are listed in the version history, and each one can be applied by choice.
+- The project's owners decide which parts each member may edit. A read-only role edits nothing.
+- Convert to personal project, in the launcher, keeps a copy consistent with the server. Reconnect to the team project later sends the changes back and lists anything the team also changed to choose from.
+
+相关主题 · Related：与服务器协作 · Working with a server、版本控制 · Version control、添加项目 · Adding a project
 
 ### 冻结的项目 · Frozen projects
 
@@ -1632,14 +1854,14 @@ The story was edited after the save was written. The line the save records may n
 
 ### 补丁 · Patches
 
-补丁向已安装的游戏交付后续改动：剧情、页面、译文、配音与资产。应用程序文件与引擎版本保持安装时那次构建产出的状态
+补丁向已安装的游戏交付后续改动：剧情、页面、译文、配音与资产应用程序文件与引擎版本保持安装时那次构建产出的状态
 
 - 补丁只能在所针对变体的构建中打开，且该构建须在项目创建分发密钥之后产出
-- 所更新的构建可以在本次导出中构建，也可以指定此前构建产出的目录。前者比较项目当前状态下的两个变体，版本升级与 DLC 由此产出；后者比较该构建，已发布内容的修正由此产出
-- 内容取自构建下方选定的变体，它不必与所更新的构建同一个变体。安装到试玩版、内容取自正式版的补丁，会将该试玩版变成正式版
+- 所更新的构建可以在本次导出中构建，也可以指定此前构建产出的目录前者比较项目当前状态下的两个变体，版本升级与 DLC 由此产出；后者比较该构建，已发布内容的修正由此产出
+- 内容取自构建下方选定的变体，它不必与所更新的构建同一个变体安装到试玩版、内容取自正式版的补丁，会将该试玩版变成正式版
 - 补丁只包含与所更新的构建不同的文件，以及它对该构建内容所作的改动；既未指定也未构建时，补丁包含整份游戏，并覆盖层级低于它的补丁所改动的内容
 - 同时安装的多个补丁各自生效。两个补丁改动同一个场景、页面、条目或文件时，层级更高的一方生效
-- 导出产出一个名为 patch 的文件夹。将该文件夹放入游戏所在目录即安装补丁，删除该文件夹即恢复为安装时的构建。DLC 则写入名为 DLC 的文件夹，文件名取自它自己的记录
+- 导出产出一个名为 patch 的文件夹。将该文件夹放入游戏所在目录即安装补丁，删除该文件夹即恢复为安装时的构建DLC 则写入名为 DLC 的文件夹，文件名取自它自己的记录
 - 构建之前运行的检查，在导出之前同样运行，两者的结果都写入构建控制台
 - 存在可比较的构建时，导出还会报告哪些存档在安装本补丁后无法读取。该报告为警告，不会中止导出
 
@@ -1695,7 +1917,7 @@ A variant is one edition of the project, such as a demo. Every project has the v
 截断点让指定变体的剧情在该行结束。该变体的构建不含这一行之后的内容，随之无法到达的场景整个不进包。其他变体的构建照原样保留这一行
 
 - 截断点位于场景顶层。位于条件或分组内部的截断点会中止构建
-- 比较 AppTag 的表达式在构建前判定，因此只有会执行的那一支进入构建。无法判定的比较会中止构建，并指出所在行
+- 比较 AppTag 的表达式在构建前判定，因此只有会执行的那一支进入构建无法判定的比较会中止构建，并指出所在行
 - 只被删去的行使用的文本、配音与图片一并不进包
 - 变体可以指定剧情结束后显示的页面。未指定时，最后一帧留在屏幕上
 
@@ -1750,13 +1972,13 @@ A signature states where a build came from. An unsigned build runs, but the firs
 
 - Web、Android 与 iOS 构建始终不启用资产保护
 - 资产保护阻止用常规工具打开文件；从运行中的游戏读取仍然可行
-- 本页的另一个开关决定游戏是否可以使用网络
+- 游戏能否使用网络由同一组项目设置中的「网络策略」决定
 
 With asset protection enabled, the images, audio, story text and plugin code inside a packaged game are encrypted. The player's saves are not. Dev Mode is unaffected.
 
 - Web, Android and iOS builds always ship without it.
 - It prevents the files from being opened with ordinary tools. Reading them from the running game is still possible.
-- The other switch on this page decides whether the game may use the network.
+- Whether the game may use the network is set by Network policy, in the same group of project settings.
 
 相关主题 · Related：构建 · Builds、减小下载体积 · Reducing download size、插件 · Plugins、网络请求 · Network requests
 
@@ -1856,7 +2078,7 @@ A plugin adds capabilities to Studio: story commands, blueprint nodes, widgets, 
 
 项目中没有任何故事中的行、页面、蓝图、角色、配音、字体列表或插件引用该资产
 
-项目的某一部分无法读出所用的资产时，它可能用到的资产不会被列为未使用，问题改为指出该部分，包括：图片取自之前会话中粘贴的地址的控件、所属插件未加载的蓝图节点、无法打开的文档，以及带有脚本图层的蓝图。整个项目无法扫描时，重新运行检查
+项目的某一部分无法读出所用的资产时，它可能用到的资产不会被列为未使用，问题改为指出该部分，包括：图片取自之前会话中粘贴的地址的控件、所属插件未加载的蓝图节点、无法打开的文档，以及带有脚本图层的蓝图整个项目无法扫描时，重新运行检查
 
 游戏不受影响，构建不会带上没有任何地方使用的文件；该文件仍占用项目的空间
 
@@ -1878,7 +2100,7 @@ Builds leave out files nothing uses, and the game is unaffected. The file still 
 
 ### 资产缺失 · Missing asset
 
-项目中的某个位置引用了资产库中已不存在的资产，最常见的原因是该位置选定资产之后资产被删除。每个位置各报告一次，问题中写明该位置
+项目中的某个位置引用了资产库中已不存在的资产，最常见的原因是该位置选定资产之后资产被删除每个位置各报告一次，问题中写明该位置
 
 游戏中该位置缺少该资产：图片不会绘制，声音不会播放
 
@@ -1936,7 +2158,7 @@ Nothing breaks. The cost is a larger package and a longer download for the playe
 
 ### 播放后停止的立绘动画 · Sprite animation that stops
 
-角色外观中使用的图片为动态 PNG（APNG），且声明了固定的播放次数。无限循环的动画（如眨眼、呼吸）不会被报告
+角色外观中使用的图片为动态 PNG（APNG），且声明了固定的播放次数无限循环的动画（如眨眼、呼吸）不会被报告
 
 舞台按浏览器播放图片的方式播放立绘动画，与剧情进度无关：立绘首次绘制时开始播放；立绘隐藏后再次显示时可能停在末帧而不重新播放
 
@@ -1978,7 +2200,7 @@ A build that ships something using the set stops when a value it needs has no si
 
 ### 无法播放的格式 · Unplayable format
 
-Ogg 格式的音频或视频资产，按扩展名判断，并对照最近一次构建时在「构建发行包」中选择的平台检查。Ogg 音频（.ogg、.oga、.opus）针对 iOS 与 Web 报告，Ogg 视频（.ogv、.ogm、.ogx）针对所有平台报告。从未构建过的项目不做该检查
+Ogg 格式的音频或视频资产，按扩展名判断，并对照最近一次构建时在「构建发行包」中选择的平台检查Ogg 音频（.ogg、.oga、.opus）针对 iOS 与 Web 报告，Ogg 视频（.ogv、.ogm、.ogx）针对所有平台报告。从未构建过的项目不做该检查
 
 部分版本的 Safari 不播放 Ogg 音频，因此 iOS 构建、以及用 Safari 打开的 Web 构建中没有声音。Ogg 视频在所有平台上都只有声音，画面全黑
 
@@ -1996,9 +2218,9 @@ Some versions of Safari do not play Ogg audio, so the sound is silent in the iOS
 
 ### 带透明通道的叠层素材 · Transparent overlay clip
 
-氛围特效行（/vfx）所用的素材带有透明通道，且「混合模式」为「正常（不透明素材）」；仅在最近一次构建时于「构建发行包」中选择的平台包含 iOS 或 Web 时检查。设为其他混合模式的行不报告，本机无法检查的素材也不报告
+氛围特效行（/vfx）所用的素材带有透明通道，且「混合模式」为「正常（不透明素材）」；仅在最近一次构建时于「构建发行包」中选择的平台包含 iOS 或 Web 时检查设为其他混合模式的行不报告，本机无法检查的素材也不报告
 
-iOS 以及 Web 构建中的 Safari 会忽略素材的透明度，素材的整个画面会盖住舞台。Studio、开发模式和其他平台都会显示透明效果，因此在电脑上测试时不会出现该问题
+iOS 以及 Web 构建中的 Safari 会忽略素材的透明度，素材的整个画面会盖住舞台Studio、开发模式和其他平台都会显示透明效果，因此在电脑上测试时不会出现该问题
 
 - 将素材在黑色背景上导出，并把该行的「混合模式」设为「滤色（黑底辉光素材）」；或在白色背景上导出，设为「正片叠底（白底阴影素材）」
 - 所有像素都不透明的素材，可以不带透明通道重新导出；画面不变，该问题随之消失
@@ -2092,7 +2314,7 @@ Preview and Dev Mode skip the row. A build stops before packaging while any such
 
 ### 标签缺失 · Missing label
 
-/goto 行指向的标签，在同一场景中没有任何 /label 行声明。名称须完全一致，区分大小写。其他场景中的标签不计入，已禁用或位于已禁用行之内的 /label 行也不计入。未选择标签的 /goto 行同样会被报告
+/goto 行指向的标签，在同一场景中没有任何 /label 行声明。名称须完全一致，区分大小写其他场景中的标签不计入，已禁用或位于已禁用行之内的 /label 行也不计入未选择标签的 /goto 行同样会被报告
 
 游戏中该 /goto 行被跳过，从下一行继续播放
 
@@ -2150,7 +2372,7 @@ Nothing changes in the game. The row stays in the scene and has no effect.
 
 ### 场景缺失 · Missing scene
 
-/jump 行的「目标场景」未设置，或指向本故事中不存在的场景：已删除的场景，或其他故事中的场景。跳转只能到达所在故事中的场景
+/jump 行的「目标场景」未设置，或指向本故事中不存在的场景：已删除的场景，或其他故事中的场景跳转只能到达所在故事中的场景
 
 游戏中该跳转被跳过，从下一行继续播放
 
@@ -2188,7 +2410,7 @@ In the game a menu with no option is skipped without being shown. An option with
 
 ### 无子节点 · Dead end
 
-该场景的最后一行不会离开场景，播放可能越过场景末尾。离开场景的行包括：不带「返回」的 /jump、/goto、/ending、/quit，以及所运行蓝图中含有「开始游戏」或「退出游戏」节点的 /blueprint 行；带「否则」的 /if 和 /menu，须每个分支都以这类行结束。被带「返回」的跳转调用的场景不报告；整个故事没有 /ending 行时，不含任何跳转的场景也不报告
+该场景的最后一行不会离开场景，播放可能越过场景末尾。离开场景的行包括：不带「返回」的 /jump、/goto、/ending、/quit，以及所运行蓝图中含有「开始游戏」或「退出游戏」节点的 /blueprint 行；带「否则」的 /if 和 /menu，须每个分支都以这类行结束被带「返回」的跳转调用的场景不报告；整个故事没有 /ending 行时，不含任何跳转的场景也不报告
 
 播放越过末尾时故事结束，不记录结局。画面停在最后一帧，或打开「剧本结束后显示的页面」中选择的页面
 
@@ -2208,7 +2430,7 @@ Where play runs off, the story ends and no ending is recorded. The last frame st
 
 ### 循环的调用 · Circular call
 
-该 /jump 带「返回」，而它的目标场景能通过自身带「返回」的跳转，直接或经由其他场景再次调用本场景。场景调用自身同样计入。只报告闭合该循环的那一处跳转
+该 /jump 带「返回」，而它的目标场景能通过自身带「返回」的跳转，直接或经由其他场景再次调用本场景场景调用自身同样计入。只报告闭合该循环的那一处跳转
 
 正在等待调用返回的场景不能再次被调用，播放到该行时游戏会报错并停止
 
@@ -2320,6 +2542,26 @@ The row opens nothing and the story does not wait, so its variable is never writ
 
 相关主题 · Related：项目检查 · Project checks
 
+### 无法播放的自定义指令 · Custom command that cannot play
+
+调用项目自定义指令的行，但这次调用无法播放
+
+该行编译后为空，它代表的演出不会发生
+
+- 重新创建该指令，或删除这一行
+- 在行上为缺少的参数填值，或在指令里给它默认值
+- 从指令的行里删掉绕回自身的调用
+
+A row that calls one of the project's own story commands, where the call cannot be played.
+
+The row compiles to nothing, so the staging it stands for does not happen.
+
+- Recreate the command, or delete the row
+- Give the missing parameter a value on the row, or a default in the command
+- Remove the call that loops back from the command's rows
+
+相关主题 · Related：项目检查 · Project checks
+
 ### 没有页面的退出行 · Quit with no page
 
 /quit 行（退出到页面）的「结束后显示的页面」未设置，或指向本项目中已不存在的页面
@@ -2394,7 +2636,7 @@ The game keeps the two endings apart and records each on its own. Only the name 
 
 ### 没有对应变体的截断点 · Cut point with no variant
 
-项目中没有任何变体，却存在截断点行。截断点只结束其所指变体的构建，因此该行没有可结束的构建。删除最后一个变体后，已有的截断点行即处于这种状态
+项目中没有任何变体，却存在截断点行。截断点只结束其所指变体的构建，因此该行没有可结束的构建删除最后一个变体后，已有的截断点行即处于这种状态
 
 该行不起作用，所有构建都包含它之后的行
 
@@ -2454,7 +2696,7 @@ In the game the row has nothing to act on and does nothing.
 
 ### 未显示的舞台对象 · Unshown stage object
 
-/image、/text 或 /vfx 行声明了一个对象，而本场景中没有任何 /show 行显示它。声明的对象保持隐藏，直到同一场景中的 /show 指定它。指定资产的 /show 与 /play 在同一行内声明并显示，不报告
+/image、/text 或 /vfx 行声明了一个对象，而本场景中没有任何 /show 行显示它声明的对象保持隐藏，直到同一场景中的 /show 指定它指定资产的 /show 与 /play 在同一行内声明并显示，不报告
 
 玩家看不到该对象，该行没有可见的效果
 
@@ -2532,7 +2774,7 @@ In the game the row reaches no character, so nothing appears or changes.
 
 ### 转场不可用 · Unavailable transition
 
-该行指定的转场在当前版本的 Studio 中无法播放，消息中显示的是保存时的名称。这类行由更新版本的 Studio 保存，或指定了已移除的转场，或使用自定义转场
+该行指定的转场在当前版本的 Studio 中无法播放，消息中显示的是保存时的名称这类行由更新版本的 Studio 保存，或指定了已移除的转场，或使用自定义转场
 
 游戏中该处变化直接切换，不播放转场
 
@@ -2579,6 +2821,30 @@ A character with layered sprites has a tag of the same name on two of its axes, 
 A typed row such as /char names a look by its tag alone, so the name reaches only the tag on the earlier axis. The other tag can be chosen only in the row's Properties.
 
 - Rename one of the two tags in the character editor.
+
+相关主题 · Related：项目检查 · Project checks
+
+### 该行覆盖角色行为 · Row overrides a character behaviour
+
+该行下方的对白会触发角色行为，而该行为设置的属性与该行相同，例如同一角色的缩放或表情
+
+剧本中手写的行优先：在这句对白处，角色行为不执行这项修改
+
+可按以下方式处理
+
+- 角色行为已满足需求时，删除该行
+- 这句对白需要手动安排舞台时，在该对白的属性中关闭「触发角色行为」
+- 在角色属性中修改角色行为
+
+The line below this row sets off a character behaviour, and that behaviour sets the same thing this row does, such as the same character's zoom or expression.
+
+The row written in the script wins: at this line the behaviour leaves that change out
+
+To resolve it, do one of the following:
+
+- Remove the row if the behaviour already does what you want
+- Turn off "Trigger character behaviours" on the line if this line should be staged by hand
+- Change the behaviour in the character's properties
 
 相关主题 · Related：项目检查 · Project checks
 
@@ -2638,7 +2904,7 @@ The binding does nothing in the game: Element Click and Element Flush never run,
 
 ### 函数缺失 · Missing function
 
-「调用函数」节点调用的函数在该蓝图中无法访问：函数已被删除，或该调用是从能访问它的蓝图复制过来的。应用逻辑上的函数可被所有蓝图调用；页面或该页面控件上的函数只能在该页面内调用；组件内的函数只能在该组件内调用。未选择函数的「调用函数」节点不报告
+「调用函数」节点调用的函数在该蓝图中无法访问：函数已被删除，或该调用是从能访问它的蓝图复制过来的应用逻辑上的函数可被所有蓝图调用；页面或该页面控件上的函数只能在该页面内调用；组件内的函数只能在该组件内调用。未选择函数的「调用函数」节点不报告
 
 执行到该调用时，整条链在此中止，其后连接的节点都不会执行
 
@@ -2658,7 +2924,7 @@ When a chain reaches the call, it stops there, and nothing wired after it runs.
 
 ### 无法到达的节点 · Unreachable node
 
-该节点带有执行输入，但所在图层中没有任何事件头或「函数」节点沿决定执行顺序的连线通向它。同一条链只报告第一个节点；只产出值的节点，以及完全没有事件头或「函数」节点的图层，不报告
+该节点带有执行输入，但所在图层中没有任何事件头或「函数」节点沿决定执行顺序的连线通向它同一条链只报告第一个节点；只产出值的节点，以及完全没有事件头或「函数」节点的图层，不报告
 
 该节点及其后连接的节点都不会执行
 
@@ -2694,7 +2960,7 @@ Dev Mode carries every story, so the control works there. In a released game wit
 
 ### 空事件 · Empty event
 
-图层不会执行任何内容：图层中没有节点，或所有事件头之后都没有连接任何节点。有节点但没有事件头的图层由蓝图编辑器报告，不在此列
+图层不会执行任何内容：图层中没有节点，或所有事件头之后都没有连接任何节点有节点但没有事件头的图层由蓝图编辑器报告，不在此列
 
 事件发生时不执行任何内容；「鼠标点击」图层为空的按钮，按下后没有任何反应
 
@@ -2712,7 +2978,7 @@ When the event happens, nothing runs. A button whose Mouse Click layer is empty 
 
 ### 未知的节点类型 · Unknown node type
 
-节点的类型来自本项目未加载的插件：插件未安装、已禁用、已为本项目停用或加载失败。画布将该节点显示为「未知节点」，并保留其设置与连线
+节点的类型来自本项目未加载的插件：插件未安装、已禁用、已为本项目停用或加载失败画布将该节点显示为「未知节点」，并保留其设置与连线
 
 该节点不会在游戏中运行，执行到它的链在此中止
 
@@ -2730,9 +2996,9 @@ The node does not run in the game, and a chain that reaches it stops there.
 
 ### 运行时生成的资产名称 · Asset name assembled at run time
 
-资产输入（节点上的引脚，或绑定到蓝图值的控件属性）收到的资产名称在游戏运行时生成：由「拼接」或「格式化」组成、由玩家输入或从服务器收到的文字，直接传入，或经由变量、列表行、函数、页面属性传入。名称来自所属插件未加载的节点时也会报告
+资产输入（节点上的引脚，或绑定到蓝图值的控件属性）收到的资产名称在游戏运行时生成：由「拼接」或「格式化」组成、由玩家输入或从服务器收到的文字，直接传入，或经由变量、列表行、函数、页面属性传入名称来自所属插件未加载的节点时也会报告
 
-游戏包只带项目中写明名称的资产，发布后的游戏中缺少该资产；开发模式包含全部资产，在开发模式中可以看到它。存在该问题时构建会被拒绝，与该规则的级别无关
+游戏包只带项目中写明名称的资产，发布后的游戏中缺少该资产；开发模式包含全部资产，在开发模式中可以看到它存在该问题时构建会被拒绝，与该规则的级别无关
 
 - 在资产选择器中选择资产
 - 资产需要变化时，把在资产选择器中选好的资产放进列表行或变量，再从那里读取
@@ -2750,7 +3016,7 @@ A game package carries only the assets whose names are written in the project, s
 
 ### 无法到达的页面 · Unreachable page
 
-没有任何位置打开该页面：它不是入口页面，没有蓝图节点选定它（例如「前往页面」「叠加页面」「退出游戏」），没有页面控件显示它，没有 /quit 或 /ending 行指定它，项目与各构建变体也未将它设为剧本结束后显示的页面。游戏 UI 不在检查范围内
+没有任何位置打开该页面：它不是入口页面，没有蓝图节点选定它（例如「前往页面」「叠加页面」「退出游戏」），没有页面控件显示它，没有 /quit 或 /ending 行指定它，项目与各构建变体也未将它设为剧本结束后显示的页面游戏界面不在检查范围内
 
 玩家无法打开该页面
 
@@ -2790,7 +3056,7 @@ The player can press the button and nothing happens.
 
 ### 未知的控件类型 · Unknown widget type
 
-控件的类型来自本项目未加载的插件：插件未安装、已禁用、已为本项目停用或加载失败。画布将其显示为「未知控件」，并保留其设置
+控件的类型来自本项目未加载的插件：插件未安装、已禁用、已为本项目停用或加载失败画布将其显示为「未知控件」，并保留其设置
 
 游戏中不绘制该控件，而是在其位置显示一个标明类型的警告框；其中的子控件仍会绘制
 
@@ -2826,7 +3092,7 @@ The placement draws a placeholder box instead of the component, on the canvas an
 
 ### 缺失的嵌入页面 · Missing embedded page
 
-页面控件的「页面」指向项目中不存在的页面：删除页面时该控件仍在显示它，或该控件是从另一个项目粘贴而来。未选择页面的页面控件不报告；组件内的页面控件在该组件下报告一次
+页面控件的「页面」指向项目中不存在的页面：删除页面时该控件仍在显示它，或该控件是从另一个项目粘贴而来未选择页面的页面控件不报告；组件内的页面控件在该组件下报告一次
 
 该页面控件在画布和游戏中都显示占位框，而不是页面
 
@@ -2844,7 +3110,7 @@ The Page widget draws a placeholder box instead of a page, on the canvas and in 
 
 ### 循环的嵌入页面 · Circular embedded page
 
-页面控件显示的页面，经由其中的页面控件或放置的组件，又会绘制该页面控件。环路上的每个页面控件都在各自所在处报告
+页面控件显示的页面，经由其中的页面控件或放置的组件，又会绘制该页面控件环路上的每个页面控件都在各自所在处报告
 
 游戏在环路闭合处显示占位框；出现在哪个页面控件上，取决于玩家先打开哪个页面
 
@@ -2896,7 +3162,7 @@ A list whose runtime items come from a page prop names a prop the page does not 
 
 ### 未知的页面参数 · Unknown page param
 
-该控件显示的页面声明了参数，而控件传入的值所用的名称不在其中，通常是页面上的参数改了名或被移除。这个值不会被读取，原本要传给的参数取默认值
+该控件显示的页面声明了参数，而控件传入的值所用的名称不在其中，通常是页面上的参数改了名或被移除这个值不会被读取，原本要传给的参数取默认值
 
 - 在控件的「参数」中按参数的当前名称重新填写
 - 或从控件的属性中移除这个值
@@ -2910,7 +3176,7 @@ The page this widget shows declares its params, and the widget gives a value und
 
 ### 不存在的页面文字参数 · Missing page text param
 
-文本或按钮在「页面参数」中选择的参数，页面没有声明为「文字」参数：该参数已删除或改为其他类型，或控件是从另一个页面复制过来的。不在页面上的控件（组件内、游戏 UI 上）没有页面参数可显示
+文本或按钮在「页面参数」中选择的参数，页面没有声明为「文字」参数：该参数已删除或改为其他类型，或控件是从另一个页面复制过来的。不在页面上的控件（组件内、游戏界面上）没有页面参数可显示
 
 游戏中此处不显示文字，页面的编辑画布中仍绘制其示例文字
 
@@ -2984,7 +3250,7 @@ The rows show the words as written, in every language.
 
 ### 不存在的翻译键 · Missing translation key
 
-控件的文字来源为「翻译键」，而它指定的键不在项目中。在 Studio 中删除键时，使用该键的控件会改为持有键的文字，因此该问题通常出现在项目文件于 Studio 之外被修改之后。检查范围包括页面和组件中的文本、按钮，以及组件放置处的「文字」参数
+控件的文字来源为「翻译键」，而它指定的键不在项目中。在 Studio 中删除键时，使用该键的控件会改为持有键的文字，因此该问题通常出现在项目文件于 Studio 之外被修改之后检查范围包括页面和组件中的文本、按钮，以及组件放置处的「文字」参数
 
 游戏中该控件在文字的位置显示键名
 
@@ -3004,7 +3270,7 @@ In the game the widget shows the key's name in place of its words.
 
 ### 被响应两次的手势 · Gesture answered twice
 
-该页面响应一个绑定到鼠标手势（单击、双击、右键单击或滚轮）的输入意图，而页面上的某个控件用自己的事件头响应同一手势：「鼠标点击」「鼠标双击」「右键点击」或「鼠标滚轮」。该控件不是按钮这类可操作的控件，也不在其中；在可操作的控件之上，页面的意图不会触发
+该页面响应一个绑定到鼠标手势（单击、双击、右键单击或滚轮）的输入意图，而页面上的某个控件用自己的事件头响应同一手势：「鼠标点击」「鼠标双击」「右键点击」或「鼠标滚轮」该控件不是按钮这类可操作的控件，也不在其中；在可操作的控件之上，页面的意图不会触发
 
 在该控件上执行该手势时，控件自己的事件头和页面的意图都会执行。这可能是有意为之，例如点击时控件播放音效、页面同时推进
 
@@ -3024,7 +3290,7 @@ One gesture on the widget runs both its own head and the page's action. That can
 
 ### 未填写的存档字段 · Empty save field
 
-会执行的「保存游戏」节点上，项目的某个存档字段为空：节点上该字段的引脚既没有连线，也没有在卡片上填写值。卡片上填写的值即使是空文本也算已填写。存档字段在存档节点卡片上的「存档字段」中声明，每个「保存游戏」节点都为每个字段提供一个引脚
+会执行的「保存游戏」节点上，项目的某个存档字段为空：节点上该字段的引脚既没有连线，也没有在卡片上填写值卡片上填写的值即使是空文本也算已填写。存档字段在存档节点卡片上的「存档字段」中声明，每个「保存游戏」节点都为每个字段提供一个引脚
 
 本次存档写入该字段的默认值；通过「获取存档元数据」读取该字段的存档界面，会为该存档槽显示默认值
 
@@ -3042,7 +3308,7 @@ The save is written with the field's default, and a save screen that reads the f
 
 ### 未连接的输入 · Empty input
 
-会执行的节点上，有必填输入既没有连线，也没有在卡片上填写值。事件头通向的节点会执行，输出被会执行的节点读取的节点也会执行。节点标为可选的输入不报告；两个输入任填其一即可时，只报告一次。消息中的节点名与引脚名为英文
+会执行的节点上，有必填输入既没有连线，也没有在卡片上填写值。事件头通向的节点会执行，输出被会执行的节点读取的节点也会执行。节点标为可选的输入不报告；两个输入任填其一即可时，只报告一次消息中的节点名与引脚名为英文
 
 节点执行时该输入没有值：视节点而定，或者没有任何效果，例如未连接元素的「设置文本」，或者整条链在此中止
 
@@ -3114,7 +3380,7 @@ The list draws each row from its own fields, so the fields the rows do not carry
 
 ### 来自另一个故事的场景 · Scene from another story
 
-「开始游戏」节点选定的场景属于另一个故事，而不是节点选定的故事，例如在已选好场景的节点上更换了故事。故事或场景由连线传入的节点不检查；项目中已不存在的故事或场景按「目标缺失」报告
+「开始游戏」节点选定的场景属于另一个故事，而不是节点选定的故事，例如在已选好场景的节点上更换了故事故事或场景由连线传入的节点不检查；项目中已不存在的故事或场景按「目标缺失」报告
 
 节点执行时无法从该场景开始故事，游戏不会开始
 
@@ -3136,7 +3402,7 @@ When the node runs, the story cannot start from that scene, and the game does no
 
 游戏中该变量在此处没有值：设置它的行被跳过，读取它的位置得到空值
 
-- 变量已被删除：撤销该删除；或重新声明一个变量，并在每一处使用它的行中重新选择。新建的同名变量不会被自动采用
+- 变量已被删除：撤销该删除；或重新声明一个变量，并在每一处使用它的行中重新选择新建的同名变量不会被自动采用
 - 该行来自其他场景：/local 变量只属于声明它的场景。在本场景中用 /local 声明，或改用存档变量，再在该行中重新选择
 
 A row reads or sets a variable that is not declared where the row is. A scene variable needs a /local row in the same scene; a saved or persistent variable needs an entry in the Variables panel. Disabled rows are not checked.
@@ -3232,7 +3498,7 @@ random() 或 randomInt() 位于每次使用都会重新计算的位置：/if 的
 
 游戏中结果会不断变化：/if 每次判断都可能进入不同的分支，菜单显示期间选项会闪烁，文本中显示的数字在每次重绘时改变
 
-- 在该行之前先取值到变量，例如先写 /local roll 0，再写 /set roll randomInt(1, 6)，然后在原先调用的位置使用 roll。结果需要保留到场景之外时，改用存档变量
+- 在该行之前先取值到变量，例如先写 /local roll 0，再写 /set roll randomInt(1, 6)，然后在原先调用的位置使用 roll结果需要保留到场景之外时，改用存档变量
 - 若有意让值在每次重绘时变化，可在「项目 ▸ 项目 ▸ 项目检查」中将该规则设为「关闭」
 
 random() or randomInt() is called where its result is worked out again each time it is used: an /if condition, a choice option's Hidden when or Disabled when, or the text of a line, prompt or option. Calls on the right of /set, /inc and /dec, and in /until, are not reported.
@@ -3280,7 +3546,7 @@ In the game a blank narration or dialogue row is skipped and shows nothing. A bl
 
 ### 文本效果未安装 · Text effect not installed
 
-旁白、对白或选项行中的文本设置了行内效果（例如抖动），但没有已安装并启用的插件提供该效果。效果 ID 以提供它的插件 ID 开头
+旁白、对白或选项行中的文本设置了行内效果（例如抖动），但没有已安装并启用的插件提供该效果效果 ID 以提供它的插件 ID 开头
 
 游戏中该文本按无效果显示。构建会被拒绝，因为无法打包绘制该效果的插件
 
@@ -3336,7 +3602,7 @@ Players of that language still see the old translation, which may no longer matc
 
 ### 译文未带样式 · Translation drops styling
 
-该行带有样式、暂停或行内事件，而它在某种语言中的译文没有全部带上，或带有该行并不存在的标记。只检查已有译文的故事行
+该行带有样式、暂停或行内事件，而它在某种语言中的译文没有全部带上，或带有该行并不存在的标记只检查已有译文的故事行
 
 该语言的玩家看到的相应文字没有样式；缺少标记的暂停、表情切换或音效不会发生
 
@@ -3374,7 +3640,7 @@ Nothing in the game shows these translations, but they stay in the language and 
 
 ### 缺少语音 · Missing voice
 
-某一需要配音的行，在项目的某种配音语言中没有录音。检查旁白与对白行；开启「为选项配音」时也检查选项。提示语、空白行与已禁用的行不检查
+某一需要配音的行，在项目的某种配音语言中没有录音。检查旁白与对白行；开启「为选项配音」时也检查选项提示语、空白行与已禁用的行不检查
 
 选择该配音语言的玩家听不到该行的语音
 
@@ -3452,7 +3718,7 @@ That place is painted in its own default color instead. The game runs, with a co
 
 ### 缺少字形 · Missing glyphs
 
-项目文本中有字符是字体列表中任何字体都无法绘制的。故事文本、角色与场景名称、翻译键以及页面上的文本按每一种语言检查，有译文时检查译文；控件按其每个状态所用的字体检查。空格与表情符号不检查，系统界面字体等内置字体视为不含任何字符，未列出任何字体的项目不做该检查
+项目文本中有字符是字体列表中任何字体都无法绘制的。故事文本、角色与场景名称、翻译键以及页面上的文本按每一种语言检查，有译文时检查译文；控件按其每个状态所用的字体检查空格与表情符号不检查，系统界面字体等内置字体视为不含任何字符，未列出任何字体的项目不做该检查
 
 每个字符在每种语言中只报告一次，位置为它首次出现的地方；超出本规则下方设定的数量（默认 20 个）后，其余字符合并为一条。无法读取的字体会使检查停止，直到它被修复；.ttc、.otc、.eot 或 .svg 字体在游戏中无法绘制任何文字
 

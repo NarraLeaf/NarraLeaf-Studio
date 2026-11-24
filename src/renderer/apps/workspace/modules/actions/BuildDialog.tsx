@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronRight, RefreshCw } from "lucide-react";
-import { Button, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { ChevronRight, RefreshCw } from "lucide-react";
+import { Button, Checkbox, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import {
     NETWORK_ACCESS_POLICIES,
@@ -665,12 +665,18 @@ export function BuildDialogContent({
 
 /** Low-key rail marker; absent when a section is clean. */
 function SeverityDot({ severity }: { severity?: BuildPreflightSeverity }) {
+    const { t } = useTranslation();
     if (!severity) {
         return null;
     }
+    // The dot says what it means on hover and to a screen reader: a bare amber dot beside a section
+    // name had no way to say "look in here".
+    const label = t(severity === "error" ? "build.railAttention.error" : "build.railAttention.warning");
     return (
         <span
-            aria-hidden
+            role="img"
+            aria-label={label}
+            data-tip={label}
             className={cn("h-1.5 w-1.5 shrink-0 rounded-full", severity === "error" ? "bg-danger" : "bg-warning")}
         />
     );
@@ -1035,6 +1041,11 @@ function TargetsSection({
     );
 }
 
+/**
+ * One format a platform can be packaged as. A format is "in the set or not" (several can be on at
+ * once), which is what a checkbox says (docs/design-system.md §7); the pills it replaces told on from
+ * off with a faint fill and a small tick that was easy to miss.
+ */
 function FormatPill({
     format,
     active,
@@ -1046,19 +1057,13 @@ function FormatPill({
 }) {
     const { t } = useTranslation();
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
-                "transition-colors duration-150",
-                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
-                active ? "bg-primary/15 text-fg" : "bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
-            )}
+        <Checkbox
+            checked={active}
+            onCheckedChange={() => onClick()}
+            className="rounded-md px-1.5 py-1 text-xs text-fg hover:bg-fill"
         >
-            {active && <Check className="h-3 w-3" />}
             {t(`build.format.${format}`)}
-        </button>
+        </Checkbox>
     );
 }
 

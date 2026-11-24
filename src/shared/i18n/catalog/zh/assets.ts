@@ -337,8 +337,8 @@ export const assets = {
             title: "新建资产集",
             subTitle: "在该取值下新建资产集",
             no: {
-                locale: "本项目只声明了一种语言。",
-                release: "本项目没有变体。",
+                locale: "本项目只声明了一种语言",
+                release: "本项目没有变体",
             },
             type: "文件类型",
             axis: "按什么变化",
@@ -346,14 +346,14 @@ export const assets = {
         inspector: {
             axes: "按什么变化",
             filter: "成员共同带有",
-            residencyBlocked: "按变体变化的资产集不能位于按语言变化的资产集之下。",
+            residencyBlocked: "按变体变化的资产集不能位于按语言变化的资产集之下",
             fallback: "兜底取值",
-            fallbackMissing: "该取值没有文件，整个资产集都无法解析。",
+            fallbackMissing: "该取值没有文件，整个资产集都无法解析",
             variants: "取值",
             variantInherited: "兜底",
             variantMissing: "无文件",
             variantAmbiguous: "{count} 个文件",
-            noVariants: "本项目没有可供该资产集变化的取值。",
+            noVariants: "本项目没有可供该资产集变化的取值",
         },
         history: {
             edit: "编辑资产集",

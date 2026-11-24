@@ -47,7 +47,7 @@ export function StoryMotionPresetGallery(props: {
         <div className="flex flex-col gap-2">
             {categories.map(category => (
                 <section key={category}>
-                    <div className="sticky top-0 z-10 bg-surface-overlay/95 px-1 pb-1 text-2xs font-medium tracking-wide text-fg-subtle backdrop-blur">
+                    <div className="sticky top-0 z-10 bg-surface-overlay/95 px-1 pb-1 text-2xs text-fg-muted backdrop-blur">
                         {t(`motion.presetCategory.${category}`)}
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">

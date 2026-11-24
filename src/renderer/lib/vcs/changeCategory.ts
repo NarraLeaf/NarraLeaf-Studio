@@ -121,6 +121,7 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      * looks under the story, the way they do for the variable registry.
      */
     "transform-presets": "story",
+    "story-commands": "story",
     localization: "localization",
     "localization-keys": "localization",
     /** Voice lines are one recorded asset per text unit, and the author browses them as sound. */

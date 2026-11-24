@@ -90,7 +90,7 @@ export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorC
                 />
             </div>
             {drawnByRuntime && (
-                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.defaultAvatarRuntimeHint")}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{t("characters.properties.defaultAvatarRuntimeHint")}</p>
             )}
         </div>
     );

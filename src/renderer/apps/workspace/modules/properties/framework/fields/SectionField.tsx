@@ -1,8 +1,12 @@
-import { useState, useCallback, memo } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { createContext, useContext, useState, useCallback, memo } from "react";
 import { HelpTrigger } from "@/lib/help";
+import { SectionTitle } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { SectionFieldDefinition } from "../types";
 import { FieldRenderer } from "./FieldRenderer";
+
+/** Whether this section sits inside another one, which draws it in the nested form. */
+const InsideSectionContext = createContext(false);
 
 interface SectionFieldProps<TData> {
     field: SectionFieldDefinition<TData>;
@@ -11,73 +15,61 @@ interface SectionFieldProps<TData> {
 }
 
 /**
- * Renders a collapsible section containing nested fields
+ * A group of fields under a `section` heading (docs/design-system.md §4.1).
+ *
+ * No card and no filled header bar: the heading's weight and colour and the divider above it set the
+ * section apart from its fields, the same way a section with nothing to fold reads. The first section
+ * in a run drops the divider, since the panel header's own rule is already above it.
+ *
+ * Nothing here clips, so a field inside a section can open a menu or a popover past its edge.
  */
 function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<TData>) {
+    const nested = useContext(InsideSectionContext);
     const [isCollapsed, setIsCollapsed] = useState(field.defaultCollapsed ?? false);
 
     const toggleCollapse = useCallback(() => {
-        if (field.collapsible) {
-            setIsCollapsed((prev) => !prev);
-        }
-    }, [field.collapsible]);
-
-    /*
-     * The card clips nothing on purpose: a field inside a section can open a menu or a popover that
-     * has to reach past the card's edge, which is why `overflow-visible` replaced the original
-     * `overflow-hidden` here. That leaves the header to round its own corners. Its fill
-     * (`bg-surface-raised`) is a different one from the body's, so with no radius of its own it
-     * painted square into the card's rounded top corners and the whole section read as a plain
-     * rectangle - the card's radius was still there, just covered up. Collapsed, the header *is* the
-     * card, so it takes the radius on all four corners.
-     */
-    const headerRadiusClass = isCollapsed ? "rounded-md" : "rounded-t-md";
+        setIsCollapsed((prev) => !prev);
+    }, []);
 
     /*
      * A section with a topic answers `F1` from anywhere inside it, and shows the `?` when the pointer
-     * is over its header, as a panel header does. The `?` sits at the header's far end, away from the
-     * chevron, and keeps its click to itself: the header around it folds the section on a click.
+     * is over its heading, as a panel header does. The `?` sits at the heading's far end, outside the
+     * fold toggle, so its click opens the topic and leaves the section as it was.
      */
     return (
-        <div
-            className={`border border-edge rounded-md overflow-visible ${field.className || ""}`}
+        <section
+            // A nested section has no divider of its own: the outer section's rule already groups it,
+            // and space alone separates it from the sibling before it.
+            className={cn(
+                nested ? "pt-1 first:pt-0" : "border-t border-edge-subtle pt-4 first:border-t-0 first:pt-0",
+                field.className,
+            )}
             data-help-topic={field.helpTopic}
         >
-            <div
-                className={`flex items-center gap-2 px-3 py-2 bg-surface-raised ${headerRadiusClass} ${
-                    field.collapsible ? "cursor-pointer hover:bg-surface-overlay" : ""
-                } ${field.helpTopic ? "group/help" : ""}`}
-                onClick={toggleCollapse}
+            <SectionTitle
+                className={field.helpTopic ? "group/help" : undefined}
+                collapsed={field.collapsible ? isCollapsed : undefined}
+                onToggle={field.collapsible ? toggleCollapse : undefined}
+                nested={nested}
+                actions={field.helpTopic ? <HelpTrigger topic={field.helpTopic} className="-my-1" /> : undefined}
             >
-                {field.collapsible && (
-                    <span className="text-fg-muted">
-                        {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4" />
-                        ) : (
-                            <ChevronDown className="w-4 h-4" />
-                        )}
-                    </span>
-                )}
-                <span className="text-sm font-medium text-fg-muted">{field.title}</span>
-                {field.helpTopic ? (
-                    <span className="ml-auto flex" onClick={event => event.stopPropagation()}>
-                        <HelpTrigger topic={field.helpTopic} className="-my-1" />
-                    </span>
-                ) : null}
-            </div>
-            {!isCollapsed && (
-                <div className="p-3 space-y-3">
-                    {field.fields.map((nestedField) => (
-                        <FieldRenderer
-                            key={nestedField.id}
-                            field={nestedField}
-                            data={data}
-                            onSaving={onSaving}
-                        />
-                    ))}
+                {field.title}
+            </SectionTitle>
+            {!(field.collapsible && isCollapsed) && (
+                <div className={nested ? "mt-2 space-y-3" : "mt-3 space-y-3"}>
+                    <InsideSectionContext.Provider value={true}>
+                        {field.fields.map((nestedField) => (
+                            <FieldRenderer
+                                key={nestedField.id}
+                                field={nestedField}
+                                data={data}
+                                onSaving={onSaving}
+                            />
+                        ))}
+                    </InsideSectionContext.Provider>
                 </div>
             )}
-        </div>
+        </section>
     );
 }
 

@@ -562,7 +562,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             "other keys" list for what no declaration claims. Two readouts of one store
                             is how a reader ends up trusting the one that says less. */}
                         <div>
-                            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.uiState.widget")}</h3>
+                            <h3 className="mb-1 text-2xs text-fg-muted">{t("devMode.uiState.widget")}</h3>
                             <ul className="space-y-0.5 text-2xs text-fg-muted">
                                 <li>
                                     {t("devMode.uiState.hover")} ·{" "}
@@ -692,7 +692,7 @@ function KeyValueBlock(props: {
         <div>
             {/* The drawer's section-heading style (see BlueprintDebuggerPanel's `Section`): an <h3>
                 carrying FieldLabel's eyebrow typography, and not uppercased. */}
-            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+            <h3 className="mb-1 text-2xs text-fg-muted">
                 {title}
                 {surfaceId ? <span className="text-fg-subtle"> · {surfaceId.slice(0, 8)}…</span> : null}
             </h3>

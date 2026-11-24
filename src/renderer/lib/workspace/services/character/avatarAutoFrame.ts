@@ -12,7 +12,8 @@ import type { PortraitCrop, StoredCharacter } from "./types";
 
 /**
  * Framing dialog avatars on the head the model finds: the Characters panel's "Auto-frame all", the
- * button beside a portrait's framing, and the `character_avatars_autoframe` agent tool all run this.
+ * button beside a portrait's framing, the character editor after a picture is added or replaced, and
+ * the `character_avatars_autoframe` agent tool all run this.
  *
  * What it writes is an ordinary per-differential framing - a preset pose's `portrait`, a layered
  * look's avatar-entry `portrait` - the same field the framing box writes. So everything downstream is
@@ -350,5 +351,102 @@ export async function runAutoFrame(
             }, DONE_LINGER_MS);
         }
         setRunState({ running: false });
+    }
+}
+
+// ── After an art edit, by itself ───────────────────────────────────────────────────────────────
+
+/** Each differential's draw list before an art edit, by avatar key: what the edit is compared with. */
+export type AvatarLooks = ReadonlyMap<string, readonly string[]>;
+
+export function captureAvatarLooks(character: Character): AvatarLooks {
+    return new Map(planAutoFrame(character, true).map(item => [item.key, item.layers]));
+}
+
+function sameCrop(a: PortraitCrop, b: PortraitCrop): boolean {
+    return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6 && Math.abs(a.w - b.w) < 1e-6 && Math.abs(a.h - b.h) < 1e-6;
+}
+
+/**
+ * The differentials whose avatar should be framed by the model now that an art edit changed what
+ * they draw: those with no framing of their own, and those whose framing is exactly what the model
+ * found on the previous art (so Studio placed it, and it belongs to pictures that are gone). A
+ * framing the author placed or moved in the framing box does not match the model's and is kept, as
+ * is a drawn avatar override.
+ */
+export async function avatarKeysAfterArtChange(
+    ctx: WorkspaceContext,
+    character: Character,
+    before: AvatarLooks,
+    detect: HeadFrameDetector,
+): Promise<string[]> {
+    const assets = ctx.services.get<AssetsService>(Services.Assets);
+    const appearance = character.profile.appearance;
+    const keys: string[] = [];
+    for (const item of planAutoFrame(character, true)) {
+        const previous = before.get(item.key);
+        if (item.skip || (previous && previous.join("|") === item.layers.join("|"))) {
+            continue;
+        }
+        const own = appearance.getAvatar(item.key)?.portrait
+            ?? (item.selection.poseId ? appearance.getPose(item.selection.poseId)?.portrait : undefined);
+        if (!own) {
+            keys.push(item.key);
+            continue;
+        }
+        if (!previous || previous.length === 0) {
+            continue;
+        }
+        const decoded = await Promise.all(previous.map(asset => decodeLayer(assets, asset)));
+        const bitmaps = decoded.filter((bitmap): bitmap is ImageBitmap => bitmap !== null);
+        try {
+            const found = bitmaps.length > 0 ? await detect(bitmaps).catch(() => null) : null;
+            if (found && sameCrop(found, own)) {
+                keys.push(item.key);
+            }
+        } finally {
+            bitmaps.forEach(bitmap => bitmap.close());
+        }
+    }
+    return keys;
+}
+
+/** Resolves once no run is going, so an edit made during one is framed after it rather than dropped. */
+function whenIdle(): Promise<void> {
+    if (!runState.running) return Promise.resolve();
+    return new Promise(resolve => {
+        const stop = subscribeAutoFrameRunState(() => {
+            if (!runState.running) {
+                stop();
+                resolve();
+            }
+        });
+    });
+}
+
+/**
+ * Frame the dialog avatars an art edit affected (`avatarKeysAfterArtChange`), so the author does not
+ * have to press Auto-frame: run by the character editor right after a picture is added or replaced,
+ * which is the author's own action. One step of undo, as any run; the console bar shows it without
+ * opening the console. Resolves with the report, or null when there was nothing to frame.
+ */
+export async function autoFrameAfterArtChange(
+    ctx: WorkspaceContext,
+    character: Character,
+    before: AvatarLooks,
+    detect: HeadFrameDetector,
+): Promise<AutoFrameReport | null> {
+    const keys = await avatarKeysAfterArtChange(ctx, character, before, detect);
+    if (keys.length === 0) {
+        return null;
+    }
+    for (;;) {
+        await whenIdle();
+        try {
+            return await runAutoFrame(ctx, { characterIds: [character.profile.getId()], keys, overwrite: true, detect });
+        } catch (error) {
+            // Another run started between the wait and this one; wait for it too.
+            if (!(error instanceof AutoFrameBusyError)) throw error;
+        }
     }
 }

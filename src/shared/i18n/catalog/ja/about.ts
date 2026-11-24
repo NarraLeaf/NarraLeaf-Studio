@@ -7,4 +7,6 @@ export const about = {
     contributorsLabel: "コントリビューター",
     visitWebsite: "公式サイトを開く",
     openSourceLicenses: "オープンソースライセンス",
+    privacyNotice: "プライバシーに関する説明",
+    licensingNotice: "ライセンスについて",
 } satisfies LocaleNamespace<"about">;

@@ -4,6 +4,8 @@ NarraLeaf Studio can optionally protect the files in a packaged game.
 
 Asset protection is provided by a component that is **not** open source, even
 though NarraLeaf Studio itself is. Only this protection layer is kept closed.
+The terms under which it may be distributed with your game, commercially
+included, are in [LICENSING.md](../LICENSING.md).
 
 ## What it does
 

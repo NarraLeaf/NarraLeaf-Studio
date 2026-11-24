@@ -78,9 +78,9 @@ const DRY_RUN: AgentJsonSchema = {
 /** A character's entrance defaults, as the layered character tools take them (see character_upsert). */
 const LAYERED_ENTRANCE: AgentJsonSchema = {
     description:
-        "Entrance defaults, as on character_upsert: `\"standing\"` fits them to the canvas (feet on the bottom edge), null clears them, an object `{ zoom, scaleX, scaleY, position: { xalign, yalign, xoffset, yoffset } }` replaces them. A new character, or one whose canvas changed, gets a standing entrance when it has none.",
+        "Entrance defaults, as on character_upsert: `\"framed\"` fits them to the figure measured in the composite, in the usual visual-novel framing (head under the top edge, the top 80% of a full-length figure on the stage), `\"standing\"` stands the whole canvas on the bottom edge, null clears them, an object `{ zoom, scaleX, scaleY, position: { xalign, yalign, xoffset, yoffset } }` replaces them. A new character, or one whose canvas changed, gets the entrance of a cast member with a canvas of the same size, or else the framed one, when it has none.",
     oneOf: [
-        { type: "string", enum: ["standing"] },
+        { type: "string", enum: ["framed", "standing"] },
         { type: "null" },
         { type: "object" },
     ],
@@ -320,12 +320,12 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
     ws(
         "characters_list",
         "List characters",
-        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot. `groups` lists the cast groups the Characters panel files characters under (id, name, member count), and each character's `group`/`groupId` names its own (null = ungrouped); character_upsert {group} moves one.",
+        "Lists characters with id, name, nicknames, name colour, `kind` and their looks: a `preset` character's `poses` (one sprite image each); a `layered` character's `layered` block (canvas, axes with their tags and default, and the layer stack bottom to top with what each layer draws per tag - the exact shape character_layered_set takes, so edit it and send it back); a `live2d`/`spine`/`puppet` character's model (read-only: those are set up in Studio). Also `entranceTransform` (how big the sprite is drawn and where it stands), `behaviours` (command lines it runs on its own when it starts and stops speaking, in the shape character_upsert takes) and the dialog avatar: `defaultAvatar`, the hand-drawn `avatars` per pose or tag combination, `bakedAvatars` (crops Studio cut from the sprites itself) and a layered character's `avatarAxes`. `spriteSize` is the default look's pixels (a layered character's canvas) and `drawnAtCenter` the box it occupies on a `/show <name> pos=center` row, in design pixels from the stage's top-left - check it instead of guessing from a screenshot. `groups` lists the cast groups the Characters panel files characters under (id, name, member count), and each character's `group`/`groupId` names its own (null = ungrouped); character_upsert {group} moves one.",
     ),
     ws(
         "character_upsert",
         "Create or update a character",
-        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet is given a standing one (feet on the bottom edge, own pixel size, scaled down only if taller than the stage). A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"standing\"` to refit. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites: after giving a character sprites, call character_avatars_autoframe so they are framed on the detected head. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
+        "Creates a character, or updates the one with this `id` or exact `name`. Poses are sprite images already imported as assets. A line `Name: text` in a story resolves to the character with that name or nickname. A sprite is drawn at its own pixel size times `zoom`, its centre placed by `position`; a character that gets poses and has no `entranceTransform` yet shares the entrance of a cast member whose default look is the same pixel size (art exported at one size is drawn to one scale, so their heights stay comparable), and otherwise is framed on its measured figure, as Studio's character panel frames it: head just under the top edge; a figure with transparent space under it shows its top 80%; a figure that reaches the picture's bottom edge (cut there by the artist) stands on the stage's bottom edge. A reused character keeps the entrance its old art was tuned for - the answer warns; pass `entranceTransform: \"framed\"` to refit it on its own figure, or `\"standing\"` for the whole picture on the bottom edge. Warns when a pose image has no transparency. Name, colour, nicknames, entrance and avatars work on a layered character too; its looks are written with character_layered_set. Avatars (the face beside a line in the dialogue box and the backlog): `defaultAvatar` shows wherever nothing more specific does - and is the only one a Live2D/Spine character has; `avatars` gives a picture per pose (preset) or per tag combination (layered). Without either, Studio cuts avatars from the sprites: after giving a character sprites, call character_avatars_autoframe so they are framed on the detected head. `group` files the character under a cast group of the Characters panel (by name or id; a name no group has creates that group), null takes it out of its group. One step of undo (a group the call created stays when it is undone).",
         {
             id: { type: "string" },
             name: { type: "string" },
@@ -361,9 +361,9 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
             confirmSwitch: CONFIRM_SWITCH,
             entranceTransform: {
                 description:
-                    "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"standing\"` fits it to the default pose (feet on the bottom edge); null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
+                    "What every entrance (`/show`) falls back to - the Entrance section of the character panel. `\"framed\"` fits it to the figure measured in the default pose, in the visual-novel framing (head under the top edge, the top 80% of a full-length figure on the stage), `\"standing\"` stands the whole picture on the bottom edge; null clears it; an object replaces it. `position` places the sprite's CENTRE: `xalign`/`yalign` are shares of the stage from the left and up from the bottom, `xoffset`/`yoffset` design pixels (+ is up). `pos=left|center|right` on a row writes `xalign` and `yalign: 0.5`, so set the baseline with `yoffset` (drawn height / 2 - stage height / 2), not `yalign`. `scaleX: -1` mirrors.",
                 oneOf: [
-                    { type: "string", enum: ["standing"] },
+                    { type: "string", enum: ["framed", "standing"] },
                     { type: "null" },
                     {
                         type: "object",
@@ -379,6 +379,21 @@ export const AGENT_TOOLS: readonly AgentToolDescriptor[] = [
                         },
                         additionalProperties: false,
                     },
+                ],
+            },
+            behaviours: {
+                description:
+                    "Command lines the character runs on its own - the Behaviours section of the character panel. `startSpeaking` runs on a line where it takes over as speaker, `stopSpeaking` on the next line someone else (or narration) speaks; each only while the character is on stage, together with that line and without delaying its text. Lines are `.story` command lines naming the character by name, e.g. `/transform Mei zoom=1.05 d=0.3`; only stage commands are accepted (/transform, /char, /front, /motion, /skin, /param, /reset, /sound). An event given replaces that event's lines, [] keeps the event with no lines, null on an event removes it; null for the whole field removes every behaviour. A row written right above a line that sets the same thing (the same character's zoom, say) wins over the behaviour there, and project checks warn about it. A line can be excluded in Studio (Trigger character behaviours, in the line's properties); editing that line through story_apply keeps the setting.",
+                oneOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            startSpeaking: { oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+                            stopSpeaking: { oneOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+                        },
+                        additionalProperties: false,
+                    },
+                    { type: "null" },
                 ],
             },
         },

@@ -295,7 +295,10 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // v30 Studio would *play*: `compileStoryAction` would compile the row to nothing, so the story would
 // run straight past the page it was meant to wait on, its variable never written. Refusing the
 // document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 31 as const;
+// v32 adds the `customCommand` action payload: a row that plays one of the project's own commands
+// (`editor/story/commands.json`). No migration, for the reason v31 gave: a v31 Studio would compile
+// the row to nothing and the story would run past it, so refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 32 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -717,6 +720,14 @@ export type StoryNodeActionPayload =
     | {
           action: "narration";
           text: StoryTextSegment;
+          /**
+           * The line declines to set off character behaviours (`@shared/story/characterBehaviours`):
+           * nobody's start or stop runs here and the last speaker stays who it was, as though the
+           * floor had not changed hands. Absent is the ordinary case, a line that takes part.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          skipCharacterBehaviours?: true;
       }
     | {
           action: "dialogue";
@@ -733,6 +744,14 @@ export type StoryNodeActionPayload =
           speakerName?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
+          /**
+           * The line declines to set off character behaviours (`@shared/story/characterBehaviours`):
+           * nobody's start or stop runs here and the last speaker stays who it was, as though the
+           * floor had not changed hands. Absent is the ordinary case, a line that takes part.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          skipCharacterBehaviours?: true;
       }
     | {
           action: "choice";
@@ -1288,7 +1307,34 @@ export type StoryActionPayload =
            * variable keeps the value it had. Absent writes nothing at all.
            */
           resultTarget?: StoryVariableRef;
+      }
+    | {
+          /**
+           * A call to one of the project's own story commands (`editor/story/commands.json`): the
+           * author wrote a few rows once, named them, and this row plays them here.
+           *
+           * By id, never by name, so renaming the command keeps every call on it. What the rows are
+           * is read from the command at compile time, not copied in: editing the command changes
+           * every call, which is the difference between a command and a snippet. See
+           * `@shared/story/customCommands` for how the rows are expanded.
+           */
+          action: "customCommand";
+          commandId: string;
+          /**
+           * What the call passes, keyed by the command's parameter name: each value as the command
+           * line resolved it (a number, a character, an option), so a rename of the character it
+           * names leaves the call pointing at the same character. A parameter left out takes the
+           * command's default.
+           */
+          args: Record<string, StoryCustomCommandArg>;
       };
+
+/**
+ * One value a call passes to a custom command, as the command line resolved it - `{kind:"number",
+ * value:10}`, `{kind:"character", characterId}` - kept as plain JSON so the expansion, which runs in
+ * the shipped game, can read it without the editor's command layer.
+ */
+export type StoryCustomCommandArg = { kind: string; [key: string]: StoryPluginActionParamValue };
 
 /** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
 export type StoryPluginActionParamValue =
@@ -1593,6 +1639,15 @@ export type StoryInlineEvent = {
         characterId: string;
         pose?: string;
         tags?: StoryCharacterTagSelection;
+        /**
+         * How long the swap cross-fades, in milliseconds; 0 swaps instantly. Absent means the token
+         * sets none and takes the fade in effect before it in the scene, which starts at 0 - so a
+         * document written before this field, where no token sets one, swaps instantly as it did.
+         * The carrying-forward is worked out in `@shared/story/inlineExpressionFade`. It compiles to
+         * a `Dissolve` the engine plays only when the typewriter reaches the token: a skipped line, or
+         * one shown all at once, still swaps instantly. Additive, so no schema step.
+         */
+        fadeMs?: number;
     };
     sound?: { assetId: string };
 };

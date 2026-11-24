@@ -41,6 +41,18 @@ import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
+import {
+    behaviourRowOverridden,
+    characterBehaviourPresenceChange,
+    characterBehaviourStageNames,
+    handWrittenChannelsBeforeLine,
+    hasCharacterBehaviourRows,
+    speakingRowSkipsBehaviours,
+    speakingRowSpeaker,
+    storyRowStageChannels,
+    type CharacterBehaviourEvent,
+    type CharacterBehaviours,
+} from "@shared/story/characterBehaviours";
 import { translate } from "@/lib/i18n";
 import { authoredNameOrNull } from "@shared/utils/generatedId";
 import {
@@ -345,6 +357,14 @@ export type StoryStageSnapshot = {
     targetCamera: Record<string, unknown> | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
+    /**
+     * Who had the floor before the target row, for the cast's behaviours (null for nobody), and which
+     * characters with behaviours the path left on stage. A launch seeds the compiled guards with
+     * these, so the target row's own line decides its behaviours from the same state a playthrough
+     * would hand it. Absent on a snapshot made before behaviours existed, which reads as nobody.
+     */
+    behaviourFloor?: string | null;
+    behaviourPresence?: string[];
     diagnostics: StageSnapshotDiagnostic[];
 };
 
@@ -423,6 +443,9 @@ export function walkStoryStageTimeline(input: {
         input.readPersistent,
         new Map((input.characters ?? []).flatMap(character => (
             character.entranceTransform ? [[character.id, character.entranceTransform] as const] : []
+        ))),
+        new Map((input.characters ?? []).flatMap(character => (
+            character.behaviours && hasCharacterBehaviourRows(character.behaviours) ? [[character.id, character.behaviours] as const] : []
         ))),
     );
     for (const blockId of input.through ?? []) {
@@ -551,6 +574,9 @@ export function computeStoryStageSnapshot(input: {
         new Map((input.characters ?? []).flatMap(character => (
             character.entranceTransform ? [[character.id, character.entranceTransform] as const] : []
         ))),
+        new Map((input.characters ?? []).flatMap(character => (
+            character.behaviours && hasCharacterBehaviourRows(character.behaviours) ? [[character.id, character.behaviours] as const] : []
+        ))),
     );
     return walker.run();
 }
@@ -658,6 +684,14 @@ class SnapshotWalker {
     private reachedTarget = false;
     /** Set only by {@link walkTimeline}: the frames and menus a whole-scene walk records. */
     private timeline: StageTimelineWalk | null = null;
+    /**
+     * Who has the floor, for the cast's behaviours: the speaker of the last line that took part, null
+     * for nobody. The walk follows one path, so unlike the compiled guards it knows this exactly.
+     */
+    private behaviourFloor: string | null = null;
+    /** Characters with behaviours that the walked path has on stage. */
+    private readonly behaviourPresence = new Set<string>();
+    private readonly behaviourStageNames: ReadonlyMap<string, string>;
 
     constructor(
         private readonly scene: StoryScene,
@@ -671,7 +705,10 @@ class SnapshotWalker {
         private readonly readPersistent: ((storageKey: string) => StoryLiteralValue | null | undefined) | undefined,
         /** characterId → the entrance defaults that character carries; only characters that set one. */
         private readonly entranceDefaults: ReadonlyMap<string, StoryTransformProps>,
+        /** characterId → the behaviours that character carries; only characters with a behaviour row. */
+        private readonly behaviours: ReadonlyMap<string, CharacterBehaviours> = new Map(),
     ) {
+        this.behaviourStageNames = characterBehaviourStageNames(scene, behaviours.keys());
         if (targetBlockId) {
             this.addToPath(targetBlockId);
         }
@@ -731,6 +768,8 @@ class SnapshotWalker {
             camera: this.camera,
             targetCamera: this.targetCamera,
             nvl: this.nvl,
+            behaviourFloor: this.behaviourFloor,
+            behaviourPresence: [...this.behaviourPresence],
             diagnostics: this.diagnostics,
         };
     }
@@ -1024,7 +1063,8 @@ class SnapshotWalker {
                 this.visitList(block.childrenIds, insideNvl);
                 return;
             }
-            // narration / dialogue have no stage-state effect before the target.
+            // A line stages nothing itself; the cast's behaviours it sets off do.
+            this.applyLineBehaviours(block);
             this.recordFrame(block);
             this.visitList(block.childrenIds, insideNvl);
             return;
@@ -1036,6 +1076,7 @@ class SnapshotWalker {
                 return;
             }
             this.applyAction(block, block.payload);
+            this.trackBehaviourPresence(block);
             this.recordFrame(block);
             this.visitList(block.childrenIds, insideNvl);
             return;
@@ -1254,6 +1295,75 @@ class SnapshotWalker {
             default:
                 return false;
         }
+    }
+
+    /** Keep {@link behaviourPresence} in step with the entrances and exits the path runs. */
+    private trackBehaviourPresence(block: StoryBlock): void {
+        if (this.inert > 0 || this.declaring || this.behaviours.size === 0) {
+            return;
+        }
+        const change = characterBehaviourPresenceChange(block, this.behaviourStageNames);
+        if (change?.onStage) {
+            this.behaviourPresence.add(change.characterId);
+        } else if (change) {
+            this.behaviourPresence.delete(change.characterId);
+        }
+    }
+
+    /**
+     * The cast's behaviours at one line, applied the way the compiled guards run them: when the floor
+     * changes hands, the previous speaker's stop and then this speaker's start, each only for a
+     * character on stage, with a behaviour row a hand-written row overrides left out.
+     */
+    private applyLineBehaviours(block: StoryBlock): void {
+        if (this.inert > 0 || this.declaring || this.behaviours.size === 0 || speakingRowSkipsBehaviours(block)) {
+            return;
+        }
+        const speaker = speakingRowSpeaker(block);
+        if (speaker === undefined || speaker === this.behaviourFloor) {
+            return;
+        }
+        const written = handWrittenChannelsBeforeLine(this.scene, block.id);
+        const previous = this.behaviourFloor;
+        if (previous && this.behaviourPresence.has(previous)) {
+            this.applyBehaviourRows(block, previous, "stopSpeaking", written);
+        }
+        if (speaker && this.behaviourPresence.has(speaker)) {
+            this.applyBehaviourRows(block, speaker, "startSpeaking", written);
+        }
+        this.behaviourFloor = speaker;
+    }
+
+    private applyBehaviourRows(line: StoryBlock, characterId: string, event: CharacterBehaviourEvent, written: ReadonlyMap<string, string>): void {
+        const prefix = `${line.id}~${characterId}~${event}~`;
+        const diagnosticsFrom = this.diagnostics.length;
+        for (const row of this.behaviours.get(characterId)?.[event] ?? []) {
+            if (row.kind !== "action" || behaviourRowOverridden(row, written) || !this.behaviourTargetOnStage(row)) {
+                continue;
+            }
+            const synthetic = { ...row, id: `${prefix}${row.id}`, parentId: line.parentId, childrenIds: [] } as Extract<StoryBlock, { kind: "action" }>;
+            this.applyAction(synthetic, synthetic.payload);
+        }
+        // Reported against the line an author can open, as the compile reports them.
+        for (let index = diagnosticsFrom; index < this.diagnostics.length; index += 1) {
+            if (this.diagnostics[index].blockId?.startsWith(prefix)) {
+                this.diagnostics[index] = { ...this.diagnostics[index], blockId: line.id };
+            }
+        }
+    }
+
+    /**
+     * Whether what a behaviour row addresses is on the stage the path built. A row naming a portrait
+     * that is not there would otherwise be filed as a new, hidden record - an object the compile
+     * never registered.
+     */
+    private behaviourTargetOnStage(row: StoryBlock): boolean {
+        const subject = [...storyRowStageChannels(row)][0]?.split("|")[0];
+        if (!subject?.startsWith("stage:")) {
+            return true;
+        }
+        const name = subject.slice("stage:".length);
+        return [this.key("image", name), this.key("text", name), this.key("layer", name)].some(key => this.displayables.has(key));
     }
 
     private applyAction(block: StoryBlock, payload: StoryActionPayload): void {

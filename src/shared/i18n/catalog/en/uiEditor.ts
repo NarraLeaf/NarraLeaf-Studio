@@ -371,6 +371,166 @@ export const uiEditor = {
         slotTaken: "The {slot} slot already has a Game UI",
         surfaceNotAdded: "The interface could not be pasted",
     },
+    designImport: {
+        open: "Import design",
+        pickerTitle: "Choose a design file or images",
+        title: "Import Figma design",
+        titlePsd: "Import PSD",
+        titleImages: "Import images",
+        documents: "Document",
+        images: "Images",
+        imagesPageName: "Imported images",
+        frames: "Frames",
+        size: "{width} × {height}",
+        import: "Import",
+        importing: "Importing…",
+        willAdd: {
+            one: "Adds {count} page.",
+            other: "Adds {count} pages.",
+        },
+        willAddGameUi: {
+            one: "Imports {count} Game UI.",
+            other: "Imports {count} Game UI.",
+        },
+        willReplace: "Replaces the project's Game UI: {names}.",
+        target: {
+            label: "Import as",
+            gameUi: "Game UI",
+            page: "Page",
+        },
+        gameUiReplaced: {
+            one: "{slot} Game UI replaced “{name}”, with {count} part wired to do its job.",
+            other: "{slot} Game UI replaced “{name}”, with {count} parts wired to do their jobs.",
+        },
+        gameUiAdded: {
+            one: "Added the {slot} Game UI, with {count} part wired to do its job.",
+            other: "Added the {slot} Game UI, with {count} parts wired to do their jobs.",
+        },
+        historyReplace: "Import Game UI from a design",
+        added: {
+            one: "Added {count} page.",
+            other: "Added {count} pages.",
+        },
+        buttons: {
+            one: "Made {count} button from its state layers.",
+            other: "Made {count} buttons from their state layers.",
+        },
+        reportTitle: "Simplified on import",
+        noNotes: "Every layer was imported as designed.",
+        imagesSkipped: {
+            one: "{count} picture could not be added to the assets.",
+            other: "{count} pictures could not be added to the assets.",
+        },
+        error: {
+            mixed: "Choose one Figma export, one PSD, or any number of images.",
+            psdRead: "Could not read the PSD.",
+            imageRead: "Could not read “{name}”.",
+            bake: "Could not draw the PSD layers.",
+            read: "Could not read the file.",
+            notExport: "The file is not a NarraLeaf Figma export.",
+            tooNew: "The file was exported by a newer version of the plugin. Update Studio to import it.",
+            noFrames: "The file contains no frames.",
+            apply: "Could not import the design.",
+        },
+        note: {
+            rasterized: {
+                one: "{count} layer was imported as a picture.",
+                other: "{count} layers were imported as pictures.",
+            },
+            multipleFills: {
+                one: "{count} layer has several fills. Only the top one was kept.",
+                other: "{count} layers have several fills. Only the top one was kept.",
+            },
+            missingFont: {
+                one: "{count} font has no matching font asset and uses the default font.",
+                other: "{count} fonts have no matching font asset and use the default font.",
+            },
+            letterSpacing: {
+                one: "Letter spacing on {count} text layer was not imported.",
+                other: "Letter spacing on {count} text layers was not imported.",
+            },
+            mixedTextStyles: {
+                one: "{count} text layer mixes styles and uses its first style throughout.",
+                other: "{count} text layers mix styles and use their first style throughout.",
+            },
+            justifiedText: {
+                one: "{count} justified text layer is aligned left.",
+                other: "{count} justified text layers are aligned left.",
+            },
+            blendMode: {
+                one: "The blend mode of {count} layer was not imported.",
+                other: "The blend modes of {count} layers were not imported.",
+            },
+            paintSimplified: {
+                one: "{count} gradient or image paint on a stroke or text is a single colour.",
+                other: "{count} gradient or image paints on strokes or text are a single colour.",
+            },
+            autoLayoutFlattened: {
+                one: "{count} auto layout frame keeps its positions without auto layout.",
+                other: "{count} auto layout frames keep their positions without auto layout.",
+            },
+            missingImage: {
+                one: "{count} picture is missing from the file.",
+                other: "{count} pictures are missing from the file.",
+            },
+            aspectMismatch: {
+                one: "{count} frame has a different aspect ratio from the project and is centred.",
+                other: "{count} frames have a different aspect ratio from the project and are centred.",
+            },
+            blendMerged: {
+                one: "{count} layer with a blend mode was merged into the layer below it.",
+                other: "{count} layers with blend modes were merged into the layers below them.",
+            },
+            clipBaseDropped: {
+                one: "{count} clipped layer was left out because the layer it clips to is hidden.",
+                other: "{count} clipped layers were left out because the layers they clip to are hidden.",
+            },
+            layerStyles: {
+                one: "The layer style of {count} layer, such as a shadow or stroke, was not imported.",
+                other: "The layer styles of {count} layers, such as shadows or strokes, were not imported.",
+            },
+            imageCentered: {
+                one: "{count} image is not the size of the canvas and was placed in the centre.",
+                other: "{count} images are not the size of the canvas and were placed in the centre.",
+            },
+            buttonNotRecognized: {
+                one: "{count} group of button states has other layers beside the states and was imported as it is.",
+                other: "{count} groups of button states have other layers beside the states and were imported as they are.",
+            },
+            gameUiArtSkipped: {
+                one: "{count} layer belongs to no Game UI, such as a background or sprite, and was left out.",
+                other: "{count} layers belong to no Game UI, such as backgrounds or sprites, and were left out.",
+            },
+            gameUiSlotTwice: {
+                one: "{count} group is named for a Game UI slot another group already fills and was left out.",
+                other: "{count} groups are named for Game UI slots other groups already fill and were left out.",
+            },
+            dialogLineGuessed: {
+                one: "In {count} dialogue box no text is named as the line, so the largest text became the line.",
+                other: "In {count} dialogue boxes no text is named as the line, so the largest text became the line.",
+            },
+            dialogNameGuessed: {
+                one: "{count} text above the line became the speaker's name because no text is named as the name.",
+                other: "{count} texts above the line became the speaker's name because no text is named as the name.",
+            },
+            dialogNoLine: {
+                one: "{count} dialogue box has no text for the line. Add a Sentence to it.",
+                other: "{count} dialogue boxes have no text for the line. Add a Sentence to each.",
+            },
+            listNotRecognized: {
+                one: "{count} choice or notification group has no option with text and was imported as it is.",
+                other: "{count} choice or notification groups have no option with text and were imported as they are.",
+            },
+            quickMenuPageMissing: {
+                one: "{count} quick menu button opens a page the project does not have and was left unwired.",
+                other: "{count} quick menu buttons open pages the project does not have and were left unwired.",
+            },
+            hiddenSkipped: {
+                one: "{count} hidden layer was left out.",
+                other: "{count} hidden layers were left out.",
+            },
+        },
+    },
     templateStore: {
         open: "Start from a template",
         title: "UI templates",

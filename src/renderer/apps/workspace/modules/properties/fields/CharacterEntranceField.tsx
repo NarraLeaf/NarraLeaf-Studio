@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoryTransformProps, StoryTransformRef } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -6,7 +6,11 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import { useWorkspace } from "@/apps/workspace/context";
 import { TransformChannelEditor } from "@/apps/workspace/modules/story/scene-editor/TransformChannelEditor";
 import { resolveStoryMotionStageSize } from "@/apps/workspace/modules/story-motion/StoryMotionEditorTab";
-import { CharacterEntrancePreview } from "./CharacterEntrancePreview";
+import { type ContextMenuDef } from "@/lib/components/elements";
+import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
+import { framedEntrance, type EntranceMatch } from "@/lib/workspace/services/agent/spriteStage";
+import { castEntranceMatches, loadHeadDetector, measureCharacterSprite } from "@/lib/workspace/services/agent/spriteFacts";
+import { CharacterEntrancePreview, SPRITE_COMPOSITE_PX } from "./CharacterEntrancePreview";
 import type { CustomFieldProps } from "../framework/types";
 import type { CharacterEditorContext } from "../schemas/characterSchema";
 
@@ -54,6 +58,57 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
         ? appearance.resolvePoseAssetId(undefined) ?? undefined
         : undefined;
 
+    // The standard framing (`framedEntrance`), measured on her figure when asked for: where the
+    // silhouette sits in the picture and, from the head model, how many heads tall she is. Adding art
+    // in the editor does the same by itself (`entranceAfterArtChange`); this is the way back after
+    // hand edits, and the way in for a character whose defaults an author set. Same composite the preview asks for,
+    // so the compositor answers both from one entry; its `size` is the artwork's.
+    const sprite = useCompositedSprite(data.character, {}, SPRITE_COMPOSITE_PX);
+    const [framing, setFraming] = useState(false);
+    const applyFramed = async (): Promise<void> => {
+        const size = sprite.size;
+        if (!context || !isInitialized || !size || framing) {
+            return;
+        }
+        setFraming(true);
+        try {
+            const measure = await measureCharacterSprite(context, data.character, loadHeadDetector);
+            commitProps(framedEntrance(size, stageSize, measure ?? undefined));
+        } finally {
+            setFraming(false);
+        }
+    };
+
+    // Cast members whose art is the same size: drawn to one scale, so sharing their defaults keeps
+    // the difference in heights that framing each character on her own would erase.
+    const [matched, setMatched] = useState<{ characterId: string; matches: EntranceMatch[] }>({ characterId, matches: [] });
+    useEffect(() => {
+        if (!context || !isInitialized || !sprite.size) {
+            return;
+        }
+        let live = true;
+        void castEntranceMatches(context, data.character, sprite.size)
+            .then(matches => { if (live) setMatched({ characterId, matches }); })
+            .catch(() => undefined);
+        return () => { live = false; };
+    }, [characterId, context, data.character, isInitialized, sprite.size]);
+    const matches = matched.characterId === characterId ? matched.matches : [];
+    const sameAs = (props: StoryTransformProps) => JSON.stringify(props) === JSON.stringify(value);
+
+    const applyFramedLabel = t("characters.properties.entranceApplyFramed");
+    const matchLabel = (match: EntranceMatch) => t("characters.properties.entranceMatch", { name: match.name });
+    const menuItems: ContextMenuDef | undefined = sprite.size
+        ? [
+            { id: "apply-framed", label: applyFramedLabel, disabled: framing, onClick: () => void applyFramed() },
+            ...matches.slice(0, 5).map((match, index) => ({
+                id: `match-${index}`,
+                label: matchLabel(match),
+                disabled: sameAs(match.props),
+                onClick: () => commitProps(structuredClone(match.props)),
+            })),
+        ]
+        : undefined;
+
     const commit = (next: StoryTransformRef): void => {
         commitProps(next.to);
     };
@@ -79,11 +134,12 @@ export function CharacterEntranceField({ data }: CustomFieldProps<CharacterEdito
                 targetKind="character"
                 scope="characterDefaults"
                 previewAssetId={previewAssetId}
+                menuItems={menuItems}
+                // Beside Add rather than under an explanation of the empty state: it is the one-click
+                // way to fill the bag, and the cast matches stay in the card's overflow menu.
+                footerActions={sprite.size ? [{ id: "apply-framed", label: applyFramedLabel, disabled: framing, onClick: () => void applyFramed() }] : undefined}
                 onChange={commit}
             />
-            {value === undefined && (
-                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.entranceEmpty")}</p>
-            )}
         </div>
     );
 }

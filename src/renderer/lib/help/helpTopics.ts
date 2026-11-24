@@ -43,8 +43,10 @@ export const HELP_TOPIC_IDS = [
     "search",
     "undo",
     "studioSettings",
+    "agents",
     "storyScene",
     "storyCommands",
+    "customStoryCommands",
     "storyVariables",
     "renameRefactor",
     "storyExpressions",
@@ -59,6 +61,7 @@ export const HELP_TOPIC_IDS = [
     "stagePlacement",
     "dictionary",
     "storyComments",
+    "storyInlineExpression",
     "dictionaryMarks",
     "assets",
     "assetSources",
@@ -67,6 +70,7 @@ export const HELP_TOPIC_IDS = [
     "mediaConversion",
     "characters",
     "appearances",
+    "characterBehaviours",
     "puppetRuntimes",
     "audio",
     "audioClips",
@@ -83,6 +87,7 @@ export const HELP_TOPIC_IDS = [
     "focusNavigationSettings",
     "pageMusic",
     "uiComponents",
+    "designImport",
     "blueprints",
     "scripts",
     "uiBindings",
@@ -90,6 +95,7 @@ export const HELP_TOPIC_IDS = [
     "spellcheck",
     "lint",
     "tests",
+    "projectCleanup",
     "dashboard",
     "recovery",
     "versionControl",
@@ -98,6 +104,7 @@ export const HELP_TOPIC_IDS = [
     "versionRestore",
     "versionConflicts",
     "versionServer",
+    "teamProject",
     "freeze",
     "build",
     "saveLocation",
@@ -221,7 +228,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "studioSettings",
         section: "start",
         clip: true,
-        related: ["keyboard", "plugins"],
+        related: ["keyboard", "plugins", "agents"],
+    },
+    {
+        id: "agents",
+        section: "start",
+        related: ["studioSettings", "undo", "runModes"],
     },
 
     // --- Story ----------------------------------------------------------------
@@ -244,7 +256,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "storyCommands",
         section: "story",
         clip: true,
-        related: ["storyScene", "storyVariables", "storyExpressions"],
+        related: ["storyScene", "storyVariables", "storyExpressions", "customStoryCommands"],
+    },
+    {
+        id: "customStoryCommands",
+        section: "story",
+        related: ["storyCommands", "characterBehaviours", "lint"],
     },
     {
         id: "storyVariables",
@@ -308,6 +325,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "storyComments",
         section: "story",
         related: ["storyScene", "versionControl"],
+    },
+    // The expression change a dialogue line carries inline, and its cross-fade - F1 inside its settings.
+    {
+        id: "storyInlineExpression",
+        section: "story",
+        related: ["storyScene", "characters", "appearances"],
     },
     {
         id: "dictionaryMarks",
@@ -374,6 +397,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "content",
         clip: true,
         related: ["appearances", "assets", "storyScene"],
+    },
+    {
+        id: "characterBehaviours",
+        section: "content",
+        related: ["characters", "storyCommands", "lint"],
     },
     {
         id: "appearances",
@@ -494,6 +522,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["uiSurfaces", "uiBindings"],
     },
     {
+        id: "designImport",
+        section: "interface",
+        related: ["uiSurfaces", "uiComponents", "brand"],
+    },
+    {
         id: "blueprints",
         section: "interface",
         clip: true,
@@ -545,6 +578,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "quality",
         related: ["lint", "runModes", "build"],
     },
+    // The Run menu's clean-up dialog: which tasks touch what, and which of them undo.
+    {
+        id: "projectCleanup",
+        section: "quality",
+        related: ["blueprints", "storyComments", "localization", "lint"],
+    },
     {
         id: "dashboard",
         section: "quality",
@@ -562,7 +601,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "versionControl",
         section: "version",
         clip: true,
-        related: ["versionChanges", "versionViewing", "versionRestore", "versionServer"],
+        related: ["versionChanges", "versionViewing", "versionRestore", "versionServer", "teamProject"],
     },
     {
         id: "versionChanges",
@@ -582,12 +621,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "versionConflicts",
         section: "version",
-        related: ["versionServer", "versionChanges", "freeze"],
+        related: ["versionServer", "versionChanges", "freeze", "teamProject"],
     },
     {
         id: "versionServer",
         section: "version",
-        related: ["versionControl", "versionConflicts", "newProject"],
+        related: ["versionControl", "versionConflicts", "newProject", "teamProject"],
+    },
+    {
+        id: "teamProject",
+        section: "version",
+        related: ["versionServer", "versionControl", "newProject"],
     },
     {
         id: "freeze",

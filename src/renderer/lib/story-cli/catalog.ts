@@ -14,6 +14,7 @@
  * Comments in English per project convention.
  */
 
+import { customCommandOfSpecId, customParamNameOfHint } from "@/apps/workspace/modules/story/scene-editor/commands/customCommandState";
 import type { StoryBlock } from "@shared/types/story";
 import {
     findParam,
@@ -106,7 +107,8 @@ export function queryCommands(options: { search?: string; category?: string } = 
         .filter(spec => !options.category || spec.category === options.category)
         .filter(spec => !search || searchWordsOf(spec).includes(search))
         .map(spec => ({
-            token: spec.token,
+            // A project's own command is listed as its author named it, which is how a line calls it.
+            token: customCommandOfSpecId(spec.id)?.name ?? spec.token,
             id: spec.id,
             category: spec.category,
             aliases: spec.aliases ?? [],
@@ -153,7 +155,7 @@ export function nearestCommands(query: string): string[] {
 function detailOf(def: StoryCommandDef): CommandDetail {
     const spec = getCommandSpec(def.commandId);
     return {
-        token: def.token,
+        token: customCommandOfSpecId(def.commandId)?.name ?? def.token,
         id: def.commandId,
         category: spec?.category ?? "",
         aliases: def.aliases ?? [],
@@ -169,7 +171,8 @@ function detailOf(def: StoryCommandDef): CommandDetail {
 function paramDetail(param: StoryCommandParam): CommandParamDetail {
     return {
         name: param.name,
-        hint: paramHintKey(param),
+        // A custom command's parameter has no catalog key; its name is the word.
+        hint: customParamNameOfHint(paramHintKey(param)) ?? paramHintKey(param),
         aliases: param.aliases ?? [],
         positional: param.positional === true,
         core: param.core === true,

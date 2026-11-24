@@ -1,5 +1,7 @@
 import { STORY_TEXT_OUTLINE_DEFAULT_COLOR, STORY_TEXT_OUTLINE_MAX_WIDTH } from "@shared/story/textOutline";
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
+import { hasCharacterBehaviourRows } from "@shared/story/characterBehaviours";
+import { useDeveloperMode } from "@/lib/developer/developerMode";
 import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
@@ -13,6 +15,7 @@ import type {
     StoryEndingPage,
     StoryGroupKind,
     StoryLiteralValue,
+    StoryNodeActionPayload,
     StoryRumblePresetId,
     StoryScene,
     StorySceneId,
@@ -677,6 +680,34 @@ export function ActionInspector(props: {
     );
 }
 
+/**
+ * Whether this line sets off the cast's behaviours (`@shared/story/characterBehaviours`). On by
+ * default; off makes the line count as though the floor had not changed hands.
+ *
+ * Shown only in a project where some character has a behaviour row: anywhere else the switch would
+ * be a control that changes nothing.
+ */
+function CharacterBehavioursToggle(props: {
+    characters: Character[];
+    payload: Extract<StoryNodeActionPayload, { action: "dialogue" | "narration" }>;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    if (!props.characters.some(character => hasCharacterBehaviourRows(character.profile.getBehaviours()))) {
+        return null;
+    }
+    return (
+        <ToggleField
+            label={t("storyInspector.field.characterBehaviours")}
+            checked={props.payload.skipCharacterBehaviours !== true}
+            onChange={checked => {
+                const { skipCharacterBehaviours: _skipped, ...rest } = props.payload;
+                props.onUpdatePayload(checked ? rest : { ...rest, skipCharacterBehaviours: true });
+            }}
+        />
+    );
+}
+
 function InspectorFields(props: {
     block: StoryBlock;
     document: StoryDocument;
@@ -699,6 +730,7 @@ function InspectorFields(props: {
                 <div className="grid grid-cols-1 gap-2">
                     <div className="text-xs text-fg-subtle">{t("storyInspector.narration.editHint")}</div>
                     <TextIdReadout text={payload.text} />
+                    <CharacterBehavioursToggle characters={props.characters} payload={payload} onUpdatePayload={props.onUpdatePayload} />
                     <VoiceInspectorSection block={block} />
                 </div>
             );
@@ -722,6 +754,7 @@ function InspectorFields(props: {
                         />
                         <TextIdReadout text={payload.text} />
                     </FieldGrid>
+                    <CharacterBehavioursToggle characters={props.characters} payload={payload} onUpdatePayload={props.onUpdatePayload} />
                     <VoiceInspectorSection block={block} />
                 </div>
             );
@@ -3285,7 +3318,7 @@ function ColorTextField(props: { label: string; value: string; onChange: (value:
                     allowOpacity={false}
                     onChange={next => props.onChange(colorValueToCss({ hex: next.hex, alpha: 1 }))}
                 />
-                <EnhancedInput value={props.value} onChange={props.onChange} />
+                <EnhancedInput className="min-w-0 flex-1" value={props.value} onChange={props.onChange} />
             </div>
         </div>
     );
@@ -3445,7 +3478,7 @@ function BackgroundActionEditor(props: {
                         <div>
                             <div className={FIELD_LABEL_CLASS}>{t("storyInspector.background.image")}</div>
                             <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-sm text-fg-muted">
-                                <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>
+                                <span className={["truncate", selectedAsset ? "" : "text-fg-subtle"].join(" ")}>
                                     {imageLabel}
                                 </span>
                             </div>
@@ -3874,6 +3907,12 @@ function TextSegmentEditor(props: {
 function TextIdReadout(props: { text: StoryTextSegment }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
+    // A uuid is nothing an author reads, so the row exists only with developer options on, where every
+    // other id in Studio is offered as well.
+    const developerMode = useDeveloperMode();
+    if (!developerMode) {
+        return null;
+    }
     return (
         <div>
             <button

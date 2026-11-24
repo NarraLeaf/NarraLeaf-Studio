@@ -613,10 +613,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     <div className="divide-y divide-edge">
                         {ungroupedCharacters.length > 0 && (
                             <div>
-                                <div className="px-3 py-2 text-xs text-fg-muted flex items-center gap-2 border-b border-edge">
-                                    <Users className="w-4 h-4" />
+                                {/* Drawn as the group headings below are (the Accordion's header), less the
+                                    chevron: this list does not fold, and its slot stays so the names line up. */}
+                                <div className="flex items-center gap-2 border-b border-edge py-2 pl-3 pr-3 text-sm font-semibold text-fg">
+                                    <span className="w-4 shrink-0" aria-hidden="true" />
+                                    <Users className="h-4 w-4 shrink-0 text-fg-muted" />
                                     <span>{t("characters.panel.ungrouped")}</span>
-                                    <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
+                                    <span className="text-2xs font-normal tabular-nums text-fg-subtle">{ungroupedCharacters.length}</span>
                                 </div>
                                 {/* No `divide-y` here, nor around the members below. Every row already
                                     draws its own separator, and the divide utilities are written as
@@ -643,7 +646,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                             title={
                                                 <div className="flex items-center gap-2">
                                                     <span>{group.name}</span>
-                                                    <span className="text-xs text-fg-subtle">({members.length})</span>
+                                                    <span className="text-2xs font-normal tabular-nums text-fg-subtle">{members.length}</span>
                                                 </div>
                                             }
                                             icon={<Users className="w-4 h-4" />}

@@ -75,9 +75,22 @@ export function ServersPanel() {
 
     return (
         <div className="flex flex-col gap-2">
-            {!loading && servers.length === 0 && (
-                <p className="text-xs text-fg-subtle">{t("settings.servers.empty")}</p>
-            )}
+            {/* Laid out as a settings row: what there is on the left, the way to add one on the right,
+                where every row in the pane keeps its control. */}
+            <div className="flex items-center justify-between gap-4">
+                <p className="min-w-0 text-xs text-fg-subtle">
+                    {!loading && servers.length === 0 ? t("settings.servers.empty") : null}
+                </p>
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    className={cn("h-7 shrink-0", highlighted && SETTINGS_HIGHLIGHT_RING)}
+                    data-settings-highlight={highlighted ? "on" : undefined}
+                    onClick={() => setAdding(true)}
+                >
+                    {t("settings.servers.openAdd")}
+                </Button>
+            </div>
 
             {servers.length > 0 && (
                 <div className="flex flex-col gap-1">
@@ -165,18 +178,6 @@ export function ServersPanel() {
                     })}
                 </div>
             )}
-
-            <div className="flex items-center gap-2">
-                <Button
-                    size="sm"
-                    variant="secondary"
-                    className={cn("h-7", highlighted && SETTINGS_HIGHLIGHT_RING)}
-                    data-settings-highlight={highlighted ? "on" : undefined}
-                    onClick={() => setAdding(true)}
-                >
-                    {t("settings.servers.openAdd")}
-                </Button>
-            </div>
 
             {/* Mounted while it is meant to be on screen, so a second reading of the
                 sequence starts at the first step rather than where the first one stopped. */}

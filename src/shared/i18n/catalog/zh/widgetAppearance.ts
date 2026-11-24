@@ -186,9 +186,9 @@ export const widgetAppearance = {
         stopReorderAria: "重新排序色标 {index}",
         stopReorderHint: "拖动，或按上下方向键",
         stopRemoveAria: "删除色标 {index}",
-        stopRemoveFloor: "渐变至少保留两个色标。",
+        stopRemoveFloor: "渐变至少保留两个色标",
         motionUnavailableAria: "背景颜色动效，渐变下不可用",
-        motionUnavailable: "渐变没有单一颜色可插值。填充不透明度与可见性仍会过渡。",
+        motionUnavailable: "渐变没有单一颜色可插值。填充不透明度与可见性仍会过渡",
     },
     blend: {
         normal: "正常",

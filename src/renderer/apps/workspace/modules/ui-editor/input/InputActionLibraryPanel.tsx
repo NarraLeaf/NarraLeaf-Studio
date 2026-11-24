@@ -394,7 +394,7 @@ export function InputActionLibraryPanel({ documentService, uiService, open, onOp
                     and nothing in the rows says so. */}
                 <div className="space-y-2" data-help-topic="focusNavigation">
                     <div className="group/help flex items-center justify-between gap-2 px-1 pt-2">
-                        <span className="min-w-0 truncate text-2xs font-medium text-fg-subtle">
+                        <span className="min-w-0 truncate text-2xs text-fg-muted">
                             {t("uiEditor.inputActions.navigationTitle")}
                         </span>
                         <HelpTrigger topic="focusNavigation" className="-my-1 h-5 w-5" />

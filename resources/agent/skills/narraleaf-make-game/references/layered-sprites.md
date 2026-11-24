@@ -99,7 +99,8 @@ whose name you kept, so story rows that chose them keep working; a tag you drop 
 rows that chose it (they fall back to the default - rewrite them).
 
 Name colour, nicknames and the entrance (`zoom`, baseline) are set with `character_upsert` as for any
-character; a new layered character gets a standing entrance fitted to its canvas.
+character; a new layered character gets the entrance of a cast member with a same-sized canvas, or
+else the framed one, measured on its composited figure.
 
 **Changing kind is destructive.** Turning a preset character layered (or back, by giving it `poses`)
 discards its looks - nothing is converted. The tools refuse first and list the story rows that chose

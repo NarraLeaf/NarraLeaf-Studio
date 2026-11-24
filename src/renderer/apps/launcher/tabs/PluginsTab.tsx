@@ -24,7 +24,7 @@ import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
-import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
+import { pluginDisplayDescription, pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { PluginDetailsModal } from "./PluginDetailsModal";
 
 type LauncherTab = "installed" | "store";
@@ -229,14 +229,18 @@ function InstalledRow({
             >
                 <PluginAvatar name={name} colorKey={plugin.manifest.name} src={plugin.iconUrl} />
                 <span className="min-w-0 flex-1">
+                    {/* Laid out as the store's rows are: name and publisher on the first line, what the
+                        plugin does on the second. The installed list used to give the second line to
+                        the publisher, so a row said who made a plugin but never what it is for. */}
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{name}</span>
+                        <span className="shrink-0 text-2xs text-fg-subtle">{plugin.manifest.publisher || plugin.pluginId}</span>
                         {plugin.builtIn ? <Badge tone="primary">{t("plugins.builtIn")}</Badge> : null}
                         <PluginStatusBadge status={plugin.status} />
                         {updateAvailable ? <Badge tone="warning">{t("plugins.updateAvailable")}</Badge> : null}
                     </span>
                     <span className="block truncate text-xs text-fg-subtle">
-                        {plugin.manifest.publisher || plugin.pluginId}
+                        {pluginDisplayDescription(plugin.manifest, locale) || plugin.pluginId}
                     </span>
                 </span>
             </button>
@@ -326,7 +330,7 @@ function StoreRow({
                 ) : installed ? (
                     <Badge tone="neutral">{t("plugins.store.installed")}</Badge>
                 ) : (
-                    <Button size="sm" variant="primary" onClick={onInstall} disabled={busy} className="gap-1">
+                    <Button size="sm" onClick={onInstall} disabled={busy} className="gap-1">
                         <Download className="h-3.5 w-3.5" />
                         {t("plugins.store.install")}
                     </Button>

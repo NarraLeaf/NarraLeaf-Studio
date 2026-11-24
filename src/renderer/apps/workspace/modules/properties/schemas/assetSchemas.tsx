@@ -19,6 +19,7 @@ import {
     createPropertyEditorSchema,
 } from "../framework";
 import type { Translator } from "@shared/i18n";
+import { isDeveloperModeEnabled } from "@/lib/developer/developerMode";
 import { AssetReferencesSection } from "../components/AssetReferencesSection";
 import { AssetReplaceAction } from "../components/AssetReplaceAction";
 import { AssetSourceSection } from "../components/AssetSourceSection";
@@ -185,8 +186,10 @@ function createImageInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<Asset
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }
@@ -255,8 +258,10 @@ function createAudioInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<Asset
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }
@@ -325,8 +330,10 @@ function createVideoInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<Asset
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }
@@ -395,8 +402,10 @@ function createFontInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetT
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }
@@ -441,8 +450,10 @@ function createJSONInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetT
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }
@@ -591,8 +602,10 @@ function createOtherInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<Asset
         {
             label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}…</span>
             ),
+            // A content hash is for whoever is debugging the asset store, not for authoring.
+            hidden: () => !isDeveloperModeEnabled(),
         },
     ];
 }

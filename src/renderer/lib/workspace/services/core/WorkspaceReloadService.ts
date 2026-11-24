@@ -28,6 +28,7 @@ import type { AppTagService } from "../appTag/AppTagService";
 import type { DictionaryService } from "../dictionary/DictionaryService";
 import type { StoryCommentsService } from "../storyComments/StoryCommentsService";
 import type { TransformPresetService } from "../transformPreset/TransformPresetService";
+import type { StoryCustomCommandService } from "../story/StoryCustomCommandService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 /**
@@ -204,6 +205,13 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         // refuses to save" state as at project open rather than throwing through the reload.
         reload: async ctx => {
             await ctx.services.get<TransformPresetService>(Services.TransformPreset).load();
+        },
+    },
+    {
+        id: "storyCommands",
+        labelKey: "workspace.shell.save.stores.storyCommands",
+        reload: async ctx => {
+            await ctx.services.get<StoryCustomCommandService>(Services.StoryCustomCommands).load();
         },
     },
     {

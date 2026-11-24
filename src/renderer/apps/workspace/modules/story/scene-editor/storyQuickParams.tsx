@@ -127,7 +127,7 @@ export function BlockOverview(props: {
         // The rows no command owns keep the old reading: italic, and no fragment brighter than
         // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it
         // stays prose rather than borrowing the syntax colours of a line it is not.
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm text-fg-muted" style={props.textStyle}>
             {fragments.map((fragment, index) =>
                 fragment.kind === "text"
                     // `whitespace-nowrap`, not `truncate`: as a flex item this span is already sized to

@@ -101,6 +101,12 @@ The exit code is `2` and the report's `experimental.refusal` says which of the t
 
 NarraLeaf Studio is open source, with one exception: an optional asset-protection component that is **not** open source. For details, see [docs/asset-protection.md](docs/asset-protection.md).
 
+## Licensing and privacy
+
+NarraLeaf Studio is licensed under the [Mozilla Public License 2.0](LICENSE). Games made with Studio belong to their authors and may be released and sold commercially at no cost; see [LICENSING.md](LICENSING.md) ([中文](LICENSING.zh-CN.md)) for what an exported game contains and what to keep when distributing it.
+
+Studio has no telemetry. [PRIVACY.md](PRIVACY.md) ([中文](PRIVACY.zh-CN.md)) lists every connection it makes and what stays on your computer.
+
 ## Development
 
 ### Setup

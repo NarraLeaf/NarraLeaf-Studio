@@ -429,6 +429,29 @@ export function literalExpression(value: StoryLiteralValue, source?: string): St
     return { source: source ?? formatStoryLiteral(value), ast: { kind: "literal", value } };
 }
 
+/**
+ * The words a boolean literal is written with. `true` / `false` always parse; `真` / `假` are the Chinese
+ * spellings (`偽` the Japanese false), which a story row prints when the editor is in Chinese (the same rule as localized command
+ * words: the localized spelling parses, the English one is always valid). Being keywords, a variable that
+ * happens to be called `真` is written quoted (`'真'`), as one called `true` already is.
+ */
+export const STORY_BOOLEAN_WORDS = {
+    true: ["true", "真"],
+    false: ["false", "假", "偽"],
+} as const;
+
+/** `true` / `false` for a boolean word in any spelling (case-insensitive), `undefined` for anything else. */
+export function parseStoryBooleanWord(word: string): boolean | undefined {
+    const lowered = word.trim().toLowerCase();
+    if ((STORY_BOOLEAN_WORDS.true as readonly string[]).includes(lowered)) {
+        return true;
+    }
+    if ((STORY_BOOLEAN_WORDS.false as readonly string[]).includes(lowered)) {
+        return false;
+    }
+    return undefined;
+}
+
 /** Render a literal the way the author would have typed it, so a migrated value round-trips visibly. */
 export function formatStoryLiteral(value: StoryLiteralValue): string {
     if (typeof value === "string") {

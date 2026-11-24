@@ -116,6 +116,8 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     declaration: "data",
     blueprint: "utils",
     plugin: "utils",
+    // Beside the other rows that hand the line to something defined outside the scene.
+    custom: "utils",
     invalid: "invalid",
     empty: "empty",
 };

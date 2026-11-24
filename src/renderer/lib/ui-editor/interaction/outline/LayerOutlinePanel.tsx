@@ -510,8 +510,9 @@ export function UILayersPanel({
     return (
         // `min-h-full`: the empty space under the last row is the outline's too, and a right click
         // there is answered with the outline's menu rather than falling through to the canvas.
+        // No heading of its own: the pane it sits in is already titled (UI Outline), and a second
+        // "Layers" line under it was one more level saying the same thing.
         <div className="min-h-full space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
-            <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
                 <div className="text-2xs leading-snug text-warning px-0.5">
                     {t("widgetChrome.outline.linkedSurfaceHint")}

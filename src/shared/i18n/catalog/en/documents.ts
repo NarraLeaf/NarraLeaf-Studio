@@ -21,6 +21,7 @@ export const documents = {
             blueprints: "blueprint",
             variables: "variable",
             saveSchema: "save schema",
+            storyCommands: "story command",
             localization: "translation",
             localizationKeys: "translation key",
             voice: "voice",

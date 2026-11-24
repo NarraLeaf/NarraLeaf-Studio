@@ -12,6 +12,7 @@ import { TRANSFORM_COMMANDS } from "./specs/transform";
 import { VFX_COMMANDS } from "./specs/vfx";
 import { MISC_COMMANDS } from "./specs/misc";
 import { INPUT_COMMANDS } from "./specs/input";
+import { customCommandLayer } from "./customCommandState";
 
 /**
  * The command registry: every spec, aggregated, indexed, and projected onto the grammar shape the
@@ -259,26 +260,62 @@ function localizedTokenMap(): ReadonlyMap<string, StoryCommandDef> {
 export function localizedCommandToken(def: StoryCommandDef): string {
     // The source locale writes the canonical token, always: the English label is where the token came
     // from, so anything else here would be the catalog second-guessing the grammar.
+    // A project's own command is spelled as its author named it, case and all, in every locale.
+    const custom = customCommandLayer().commandBySpecId.get(def.commandId);
+    if (custom) {
+        return custom.name;
+    }
     if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
         return def.token;
     }
     return localizedTokenTables().insert.get(def) ?? def.token;
 }
 
+/**
+ * Every command the line can be written with: the built-in ones, then the project's own
+ * (`customCommandState.ts`). The list changes when the project's command file does, so a caller that
+ * caches against it keys the cache on `customCommandLayer().version`.
+ */
 export function listCommandSpecs(): readonly AnyStoryCommandSpec[] {
-    return ALL_SPECS;
+    const custom = customCommandLayer();
+    return custom.specs.length === 0 ? ALL_SPECS : mergedEntry(custom.version).specs;
 }
 
 export function listCommandDefs(): readonly StoryCommandDef[] {
+    const custom = customCommandLayer();
+    return custom.defs.length === 0 ? DEFS : mergedEntry(custom.version).defs;
+}
+
+/** The built-in commands alone: what ships with Studio, for the readers that document the language. */
+export function listBuiltinCommandSpecs(): readonly AnyStoryCommandSpec[] {
+    return ALL_SPECS;
+}
+
+export function listBuiltinCommandDefs(): readonly StoryCommandDef[] {
     return DEFS;
 }
 
 export function getCommandSpec(id: string): AnyStoryCommandSpec | null {
+    return SPEC_BY_ID.get(id) ?? customCommandLayer().specById.get(id) ?? null;
+}
+
+/** A built-in spec by id, never a project's own - what a custom command borrows its slot types from. */
+export function getBuiltinCommandSpec(id: string): AnyStoryCommandSpec | null {
     return SPEC_BY_ID.get(id) ?? null;
 }
 
 export function getDefById(id: string): StoryCommandDef | null {
-    return DEF_BY_ID.get(id) ?? null;
+    return DEF_BY_ID.get(id) ?? customCommandLayer().defById.get(id) ?? null;
+}
+
+let merged: { version: number; specs: readonly AnyStoryCommandSpec[]; defs: readonly StoryCommandDef[] } | null = null;
+
+function mergedEntry(version: number) {
+    if (merged?.version !== version) {
+        const custom = customCommandLayer();
+        merged = { version, specs: [...ALL_SPECS, ...custom.specs], defs: [...DEFS, ...custom.defs] };
+    }
+    return merged;
 }
 
 /**
@@ -294,10 +331,16 @@ export function getCommandDef(token: string): StoryCommandDef | null {
     if (!normalized) {
         return null;
     }
+    // A project's own command comes last: a built-in spelling always wins, so a command added to
+    // Studio later can never be shadowed by a project that happened to name one the same.
     return DEFS.find(def => def.token === normalized)
         ?? DEFS.find(def => (def.aliases ?? []).includes(normalized))
         ?? localizedTokenMap().get(normalized)
         ?? DEFS.find(def => def.commandId.toLowerCase() === normalized)
+        ?? customCommandLayer().defByToken.get(normalized)
+        // By id as well, like the built-ins one line up: the command menu hands back the spec id
+        // (`custom:<uuid>`), and a pick that resolved to nothing committed nothing.
+        ?? customCommandLayer().defById.get(token.trim())
         ?? null;
 }
 

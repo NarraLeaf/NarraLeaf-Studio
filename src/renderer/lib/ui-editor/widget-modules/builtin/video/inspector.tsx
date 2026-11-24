@@ -54,7 +54,7 @@ function VideoAudioTrackField(props: CustomFieldProps<UIInspectorData>) {
     const current = getLiveVideoProps(props.data);
     return (
         <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-fg-muted">{t("widgets.video.audioTrack")}</span>
+            <span className="text-2xs text-fg-muted">{t("widgets.video.audioTrack")}</span>
             <Select
                 size="sm"
                 fullWidth

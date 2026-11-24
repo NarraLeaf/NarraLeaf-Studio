@@ -298,7 +298,7 @@ export function AppearanceFieldMotionButton({
                   ) : (
                       <div className="mt-3 space-y-3">
                           <div>
-                              <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                              <label className="mb-1 block text-2xs text-fg-muted">
                                   {t("widgetAppearance.motion.type")}
                               </label>
                               <Select
@@ -322,7 +322,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.duration")}
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -345,7 +345,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.delay")}
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -369,7 +369,7 @@ export function AppearanceFieldMotionButton({
                                       </div>
                                   </div>
                                   <div>
-                                      <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                      <label className="mb-1 block text-2xs text-fg-muted">
                                           {t("widgetAppearance.motion.easing")}
                                       </label>
                                       <Select
@@ -393,7 +393,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.stiffness")}
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -415,7 +415,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.damping")}
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -439,7 +439,7 @@ export function AppearanceFieldMotionButton({
                                   </div>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.mass")}
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -462,7 +462,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          <label className="mb-1 block text-2xs text-fg-muted">
                                               {t("widgetAppearance.motion.delay")}
                                           </label>
                                           <NumericDraftEnhancedInput

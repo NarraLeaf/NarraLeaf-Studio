@@ -74,7 +74,7 @@ export function TeamBuildUploadButton({ path, name, platforms }: { path: string;
     const button = (
         <button
             type="button"
-            className="flex shrink-0 items-center gap-1 rounded px-1 text-2xs text-fg-subtle hover:bg-fill hover:text-fg"
+            className="flex shrink-0 items-center gap-1 rounded-md px-1 text-2xs text-fg-subtle hover:bg-fill hover:text-fg"
             data-tip={t("workspace.shell.team.buildUpload.tip")}
             data-team-build-upload={upload.kind}
             onClick={() => void start()}

@@ -91,7 +91,7 @@ export function PluginDetailsBody({ installed, registryEntry, children }: Plugin
             ) : null}
 
             <div>
-                <div className="mb-2 text-xs font-medium text-fg-subtle">{t("plugins.permissions")}</div>
+                <div className="mb-2 text-xs font-semibold text-fg">{t("plugins.permissions")}</div>
                 {permissions.length > 0 ? (
                     <PluginInstallPermissionSections permissions={permissions} />
                 ) : (

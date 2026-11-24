@@ -606,6 +606,18 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         return items;
     }, [groupsToRender, showKeysExtras]);
 
+    // The caption above a row repeats its group's name for keys that have no speaker (a character's
+    // name row reads "Character" under the "Character" heading); there it is left out.
+    const captionFor = (index: number, speaker: string): string => {
+        for (let at = index - 1; at >= 0; at -= 1) {
+            const previous = flatItems[at];
+            if (previous?.kind === "group") {
+                return previous.name === speaker ? "" : speaker;
+            }
+        }
+        return speaker;
+    };
+
     const virtualizer = useVirtualizer({
         count: flatItems.length,
         getScrollElement: () => scrollRef.current,
@@ -1231,7 +1243,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                     style={{ transform: `translateY(${item.start}px)` }}
                                 >
                                     {entry.kind === "group" ? (
-                                        <div className="border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
+                                        <div className="border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-xs font-semibold text-fg">
                                             {entry.name}
                                         </div>
                                     ) : entry.kind === "addKey" ? (
@@ -1240,7 +1252,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                         <ReviewRow
                                             row={entry.row}
                                             locale={locale}
-                                            speaker={entry.row.speaker}
+                                            speaker={captionFor(item.index, entry.row.speaker)}
                                             state={state}
                                             target={target}
                                             editing={inlineEditing}
@@ -1254,7 +1266,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                         <TranslateRow
                                             row={entry.row}
                                             locale={locale}
-                                            speaker={entry.row.speaker}
+                                            speaker={captionFor(item.index, entry.row.speaker)}
                                             state={state}
                                             target={target}
                                             editing={inlineEditing}

@@ -109,7 +109,7 @@ function patchListScrollbarProps(data: UIInspectorData, partial: Partial<UIListS
 }
 
 function FieldLabel({ children }: { children: string }) {
-    return <span className="text-xs font-medium text-fg-muted">{children}</span>;
+    return <span className="text-2xs text-fg-muted">{children}</span>;
 }
 
 function ListNumberControl({
@@ -349,7 +349,7 @@ function ListContentPaddingEditor({
                       }}
                       onMouseDown={event => event.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
+                      <p className="mb-2 text-2xs text-fg-muted">{t("widgets.perSidePx")}</p>
                       {/* The popover's own clamp: it is a portal into `document.body`, so the
                           `<fieldset disabled>` the properties framework puts around this field never
                           reaches it. All four boxes write, and there is nothing here to exempt. */}
@@ -361,7 +361,7 @@ function ListContentPaddingEditor({
                           <div className="grid grid-cols-2 gap-2 min-w-0">
                               {sides.map(({ key, label }) => (
                                   <div key={key} className="flex min-w-0 flex-col gap-1">
-                                      <span className="text-2xs font-medium text-fg-subtle">{label}</span>
+                                      <span className="text-2xs text-fg-muted">{label}</span>
                                       <NumericDraftEnhancedInput
                                           committedDisplay={String(current[key])}
                                           draftResetKey={`${draftResetKey}-pad-${key}`}

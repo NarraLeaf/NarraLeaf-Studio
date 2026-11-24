@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isRailLayoutDefault, SIDEBAR_GROUP_ID, weaveGroupSlot } from "./sidebarPanelGroup";
+import { DEFAULT_COLLAPSED_PANEL_IDS, isRailLayoutDefault, LATE_COLLAPSED_PANEL_IDS, seedLateCollapsedPanels, SIDEBAR_GROUP_ID, weaveGroupSlot } from "./sidebarPanelGroup";
 
 const G = SIDEBAR_GROUP_ID;
 
@@ -75,5 +75,27 @@ describe("isRailLayoutDefault", () => {
             collapsedIds: [],
             defaultCollapsedIds: [],
         })).toBe(true);
+    });
+});
+
+describe("seedLateCollapsedPanels", () => {
+    const COMMANDS = "narraleaf-studio:story-commands";
+
+    it("folds a panel that joined the defaults later into a stored group once", () => {
+        expect(LATE_COLLAPSED_PANEL_IDS).toContain(COMMANDS);
+        expect(DEFAULT_COLLAPSED_PANEL_IDS).toContain(COMMANDS);
+        const first = seedLateCollapsedPanels(["narraleaf-studio:voice"], []);
+        expect(first.collapsed).toEqual(["narraleaf-studio:voice", COMMANDS]);
+        expect(first.seeded).toEqual([COMMANDS]);
+    });
+
+    it("leaves a panel the author pulled back out where they put it", () => {
+        const again = seedLateCollapsedPanels(["narraleaf-studio:voice"], [COMMANDS]);
+        expect(again.collapsed).toEqual(["narraleaf-studio:voice"]);
+        expect(again.seeded).toEqual([COMMANDS]);
+    });
+
+    it("does not fold a panel in twice", () => {
+        expect(seedLateCollapsedPanels([COMMANDS], []).collapsed).toEqual([COMMANDS]);
     });
 });

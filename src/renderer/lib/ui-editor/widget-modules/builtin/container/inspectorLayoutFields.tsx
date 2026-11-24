@@ -182,7 +182,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                                 const current = getContainerProps(data.element);
                                 return (
                                     <div className="flex min-w-0 flex-col gap-1">
-                                        <span className="text-xs font-medium text-fg-muted">{t("widgets.gap")}</span>
+                                        <span className="text-2xs text-fg-muted">{t("widgets.gap")}</span>
                                         <NumericDraftEnhancedInput
                                             committedDisplay={String(current.stackGap)}
                                             draftResetKey={element.id}

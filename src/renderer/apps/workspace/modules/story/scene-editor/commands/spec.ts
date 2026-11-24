@@ -301,7 +301,7 @@ export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCom
  * A time in seconds — the one numeric shape in the whole vocabulary that carries a unit.
  *
  * Every slot measured in seconds shares it, so `d=1s`, `fade=0.5s` and `/wait 2s` are one rule rather
- * than four. The unit is optional on input and is what a committed row prints (`持续时间=1s`), which is
+ * than four. The unit is optional on input and is what a committed row prints (`动画持续时间=1s`), which is
  * the point of declaring it: a row may only show a line the author could have typed.
  */
 export const SECONDS_TYPE: StoryCommandParamType = { kind: "number", min: 0, unit: "s" };

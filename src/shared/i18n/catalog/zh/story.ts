@@ -3,6 +3,7 @@ import type { LocaleNamespace } from "../types";
 export const story = {
     panel: {
         storiesCount: "故事（{count}）",
+        stories: "故事",
         newStory: "新建故事",
         emptyStories: "此项目中还没有故事",
         storyActions: "故事操作",
@@ -507,6 +508,11 @@ export const story = {
         title: "行内事件",
         noCharacter: "该行没有角色",
         sound: "音效",
+        fade: "过渡时长",
+        fadeSeconds: "秒",
+        fadeInherited: "沿用前一个表情切换",
+        fadeInherit: "改为沿用前一个",
+        fadeHint: "0 为瞬间切换；之后未单独设置的表情切换沿用此设置",
     },
     actionCreator: {
         starred: "已收藏",
@@ -559,11 +565,12 @@ export const story = {
         rumbleLeft: "左马达",
         rumbleRight: "右马达",
         rumbleWait: "等待振动结束",
+        rumbleDuration: "振动持续时间",
         inputLock: "锁定 / 解锁",
         inputAction: "输入动作",
         inputTimeout: "时限",
         inputResult: "结果变量",
-        holdDuration: "按住秒数",
+        holdDuration: "按住时长",
         mashCount: "按键次数",
         scene: "场景",
         track: "音轨",
@@ -572,9 +579,11 @@ export const story = {
         seekTime: "秒数",
         cameraLookStrength: "色调强度",
 
-        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
-        // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
-        duration: "持续时间",
+        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<动画持续时间>`、以及作者可以直接敲的键
+        // （`动画持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
+        // 写「动画」而不是光写「持续时间」：`@显示 Narra 持续时间=0.3秒` 会被读成角色在场 0.3 秒，
+        // 而它说的是这次出场（淡入、移动）播多久。不是动画的时长（振动）用自己的词，见 rumbleDuration。
+        duration: "动画持续时间",
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",
@@ -583,7 +592,7 @@ export const story = {
         waitFor: "秒数或 click",
         waitForEnd: "等待播放结束",
         hideOnEnd: "播放结束后隐藏",
-        fade: "淡入淡出秒数",
+        fade: "淡入淡出",
         loop: "循环",
         returnable: "返回",
         vol: "音量",
@@ -591,14 +600,15 @@ export const story = {
         rate: "速度",
         muted: "静音",
         color: "颜色",
-        hold: "保持秒数",
+        hold: "保持",
         opacity: "不透明度",
         size: "字号",
         outline: "描边宽度",
         outlineColor: "描边颜色",
         // 变换属性词表（`commands/transformVocabulary.ts`），一个通道一个键。
         // 两个偏移是叠加在 `pos=` 上的设计像素，正值向右、向上。
-        // 与「模糊像素」（en Blur px）同一写法：单位写进词里。
+        // 与「模糊像素」（en Blur px）同一写法：单位写进词里，因为像素值在行里显示为裸数字。
+        // 秒数不同：时长值在行里带「秒」（`1.2秒`），所以 fade / hold / delay 的词里不再写「秒数」。
         xOffset: "横向偏移像素",
         yOffset: "纵向偏移像素",
         zoom: "缩放",
@@ -629,7 +639,7 @@ export const story = {
         blendMode: "混合模式",
         storyMotion: "动效",
         easing: "缓动",
-        delay: "延迟秒数",
+        delay: "延迟",
         repeat: "重复次数",
         repeatDelay: "重复间隔",
         repeatType: "重复方式",
@@ -915,6 +925,8 @@ export const story = {
         playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
+        // A slot that writes commands only (a character's behaviours): no narration, no speaker
+        insertPlaceholderCommand: "输入 {trigger} 选择命令…",
         noCategoryActionFound: "未找到 {category} 动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",
@@ -1104,6 +1116,7 @@ export const story = {
         flow: {
             missingRow: "该场景引用的一行已不在故事中",
             pluginInjectionOutsideScene: "插件的编译步骤指向了不在该场景中的行",
+            customCommandNotExpanded: "这行自定义指令没有可播放的内容：指令已删除、缺少参数，或调用了自身",
             optionOutsideMenu: "该选项不在菜单之内",
             branchOutsideCondition: "该分支不在条件之内",
             jumpTargetMissing: "该跳转前往的场景已不在本故事中",
@@ -1244,6 +1257,72 @@ export const story = {
         data: "数据",
         flow: "流程",
         utils: "工具",
+        custom: "自定义",
+    },
+    customCommandFallbackDetail: "自定义指令",
+    customCommands: {
+        title: "自定义指令",
+        new: "新建指令",
+        newName: "新指令",
+        import: "导入指令",
+        importFile: "从文件导入",
+        importClipboard: "从剪贴板导入",
+        empty: "还没有自定义指令",
+        emptyHint: "把几行命令保存为一条指令，在故事编辑器里用 @ 调用",
+        search: "搜索指令",
+        noMatches: "没有匹配的指令",
+        open: "打开",
+        copyAsText: "复制为文本",
+        export: "导出到文件",
+        delete: "删除",
+        deleteTitle: "删除自定义指令",
+        deleteMessage: "删除「{name}」后，调用它的行将不再播放任何内容",
+        missing: "这条自定义指令已被删除",
+        name: "名称",
+        description: "说明",
+        descriptionPlaceholder: "在命令菜单中显示",
+        noDescription: "暂无说明",
+        nameProblem: {
+            empty: "名称不能为空",
+            invalid: "名称不能包含空格或 / @ # < > = 引号，也不能以数字开头",
+            taken: "项目中已有同名指令",
+            builtin: "该名称已是内置命令",
+        },
+        params: "参数",
+        paramsEmpty: "在命令的值的位置写 <参数名> 即可声明参数，例如 xoffset=<力度>",
+        paramDefault: "默认 {value}",
+        paramRequired: "必填",
+        clearDefault: "清除默认值",
+        kind: {
+            number: "数字",
+            seconds: "秒数",
+            boolean: "开关",
+            enum: "选项",
+            character: "角色",
+            text: "文本",
+            unknown: "未知",
+        },
+        rows: "命令",
+        moveUp: "上移",
+        moveDown: "下移",
+        deleteRow: "删除这一行",
+        rowProblem: {
+            incomplete: "这一行还不是完整的命令",
+            notAllowed: "自定义指令中不能使用这个命令",
+            placement: "参数 {name} 必须单独占据一个值的位置",
+            unsupported: "参数 {name} 所在的位置不能作为参数",
+            noEffect: "参数 {name} 所在的位置无法按参数回放",
+            mismatch: "参数 {name} 在其他行中是另一种类型",
+            badName: "参数名 {name} 不能包含空格或特殊符号",
+        },
+        copied: "已复制到剪贴板",
+        copyFailed: "无法写入剪贴板",
+        pasteFailed: "无法读取剪贴板",
+        extractNothing: "没有可保存的命令",
+        extractNothingDetail: "自定义指令只能包含舞台、声音、等待和变量类命令",
+        extractSkipped: {
+            other: "已跳过 {count} 行不能放进自定义指令的内容",
+        },
     },
     pluginActionFallbackDetail: "插件故事动作",
     command: {
@@ -1349,6 +1428,7 @@ export const story = {
         nvl: "NVL",
         blueprint: "蓝图",
         plugin: "插件",
+        custom: "自定义指令",
         effect: "特效",
         camera: "镜头",
         control: "控制",
@@ -1468,6 +1548,7 @@ export const story = {
         insertBelow: "在下方插入",
         duplicate: "复制行",
         disable: "禁用",
+        saveAsCommand: "保存为自定义指令",
         enable: "启用",
         bindSpeaker: {
             one: "关联 {count} 行的说话人",
@@ -1517,7 +1598,7 @@ export const story = {
         mergeScenes: {
             confirm: "将“{merged}”合并到“{surviving}”？",
             detail: {
-                other: "其中 {count} 行将移到 {surviving} 的末尾。",
+                other: "其中 {count} 行将移到 {surviving} 的末尾",
             },
             done: {
                 other: "已将 {count} 行合并到 {scene}",

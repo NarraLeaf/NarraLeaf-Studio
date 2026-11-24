@@ -70,7 +70,7 @@ export function ProjectPalette(props: {
         <div className={props.className}>
             {PROJECT_PALETTE_SECTIONS.map(section => (
                 <div key={section.key} className="mb-2">
-                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{sectionLabel(section.key)}</div>
+                    <div className="mb-1 text-2xs text-fg-muted">{sectionLabel(section.key)}</div>
                     <div className="flex flex-wrap gap-1">
                         {section.colors.map(color => (
                             <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
@@ -83,7 +83,7 @@ export function ProjectPalette(props: {
                 is committed from the custom picker below. */}
             {recent.length > 0 && (
                 <div className="mb-2">
-                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("properties.palette.recent")}</div>
+                    <div className="mb-1 text-2xs text-fg-muted">{t("properties.palette.recent")}</div>
                     <div className="flex flex-wrap gap-1">
                         {recent.map(color => (
                             <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
@@ -92,7 +92,7 @@ export function ProjectPalette(props: {
                 </div>
             )}
             <div className="mt-2 flex items-center gap-2 border-t border-edge pt-2">
-                <span className="text-2xs font-medium tracking-wide text-fg-subtle">{t("properties.palette.custom")}</span>
+                <span className="text-2xs text-fg-muted">{t("properties.palette.custom")}</span>
                 <ColorPickerTrigger
                     value={colorValue}
                     displayMode="icon-hex"

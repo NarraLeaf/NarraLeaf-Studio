@@ -187,6 +187,7 @@ export function StoryCommentsPanel(_props: PanelComponentProps) {
                 {groups.length === 0 ? (
                     <EmptyState
                         size="sm"
+                        className="h-full"
                         icon={<MessageSquare className="h-5 w-5" />}
                         title={threads.length === 0 ? t("storyComments.empty") : t("storyComments.noMatches")}
                     />

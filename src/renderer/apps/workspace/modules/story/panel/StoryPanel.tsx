@@ -89,6 +89,19 @@ function filterStoryChapterOpenItems(ids: string[], document: StoryDocument): st
     return ids.filter(id => chapterIds.has(id));
 }
 
+/**
+ * A tree heading with its count: the count is meta text after the name (docs/design-system.md §4.1),
+ * not part of the heading in brackets, so it reads the same as the asset and character trees.
+ */
+function TitleWithCount(props: { title: string; count: number }) {
+    return (
+        <>
+            <span>{props.title}</span>
+            <span className="ml-1.5 text-2xs font-normal tabular-nums text-fg-subtle">{props.count}</span>
+        </>
+    );
+}
+
 export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
@@ -1131,7 +1144,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 >
                     <AccordionItem
                         id="stories"
-                        title={t("story.panel.storiesCount", { count: stories.length })}
+                        title={<TitleWithCount title={t("story.panel.stories")} count={stories.length} />}
                         className="!border-b-0"
                         actions={
                             <>
@@ -1267,7 +1280,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                 <AccordionItem
                                                     id={chapter.id}
                                                     level={1}
-                                                    title={t("story.panel.chapterTitle", { name: chapter.name, count: chapter.sceneIds.length })}
+                                                    title={<TitleWithCount title={chapter.name} count={chapter.sceneIds.length} />}
                                                     className="!border-b-0"
                                                     headerProps={{
                                                         className: cn(

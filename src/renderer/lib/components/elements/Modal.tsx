@@ -159,11 +159,12 @@ export function Modal({
                 `absolute inset-0` backdrop leaves the top 40px of its sidebar - logo included -
                 undimmed. That strip is bare content on Windows, where the sidebar gets no macOS
                 drag spacer, so the seam lands mid-logo. Everywhere else the window's own titlebar
-                already fills the strip and paints above this at `z-[20000]`, so nothing changes
-                there and its window controls stay bright and clickable. The panel keeps centering
-                inside the layer, below the titlebar, so the titlebar never crosses it. */}
+                fills the strip and paints above this at `z-[20000]`; the `nl-modal-backdrop`
+                class makes it lay the same dim over itself (styles.css), controls still clickable.
+                The panel keeps centering inside the layer, below the titlebar, so the titlebar
+                never crosses it. */}
             <div
-                className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
+                className="nl-modal-backdrop bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
                 onPointerDown={() => {
                     overlayPressClosesRef.current = isTopFloatingLayer(panelRef.current);
                 }}
@@ -187,7 +188,7 @@ export function Modal({
                     <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
                         {/* `flex-1` so the two trailing controls sit together on the right rather
                             than being spread apart by the close button's own `ml-auto`. */}
-                        {title && <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{title}</h2>}
+                        {title && <h2 className="min-w-0 flex-1 text-base font-semibold text-fg">{title}</h2>}
                         {helpTopic && <HelpTrigger topic={helpTopic} />}
                         {showCloseButton && (
                             <button

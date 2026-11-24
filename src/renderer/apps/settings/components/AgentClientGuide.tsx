@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, FieldLabel, IconButton } from "@/lib/components/elements";
+import { Button, IconButton } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -136,8 +136,10 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
     return (
         <div className="space-y-5">
             <div className={cn("transition-opacity duration-150", !enabled && "opacity-50")}>
-                <FieldLabel as="div">{t("settings.agent.guide.connection")}</FieldLabel>
-                <p className="mb-1.5 text-xs text-fg-subtle">
+                {/* Item level, the same as the setting rows around it: these are two more things to
+                    set up, not captions under the row above. */}
+                <p className="text-sm text-fg">{t("settings.agent.guide.connection")}</p>
+                <p className="mb-2 mt-1 text-xs text-fg-subtle">
                     {enabled ? connectionHint(t, client) : t("settings.agent.guide.offHint")}
                 </p>
                 <CodeBox
@@ -149,8 +151,8 @@ export function AgentClientGuide({ client: clientId, enabled, endpointKey }: Age
             </div>
 
             <div>
-                <FieldLabel as="div">{t("settings.agent.guide.skill")}</FieldLabel>
                 <SkillSection
+                    label={t("settings.agent.guide.skill")}
                     client={client}
                     info={info}
                     written={installedPath[client.id] ?? null}
@@ -218,7 +220,24 @@ function connectionHint(t: ReturnType<typeof useTranslation>["t"], client: Agent
     return t("settings.agent.guide.mergeInto", { file: client.configFile ?? "" });
 }
 
+/**
+ * The Agent Skill as a settings row: what it is and where it goes on the left, the button on the
+ * right, which is where every other row in the pane keeps its control.
+ */
+function SkillRow({ label, text, tip, children }: { label: string; text: string; tip?: string; children: ReactNode }) {
+    return (
+        <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 grow basis-64 flex-col gap-1">
+                <span className="text-sm text-fg">{label}</span>
+                <span className="break-words text-xs text-fg-subtle" data-tip={tip}>{text}</span>
+            </div>
+            <div className="ml-auto shrink-0">{children}</div>
+        </div>
+    );
+}
+
 function SkillSection({
+    label,
     client,
     info,
     written,
@@ -227,6 +246,7 @@ function SkillSection({
     onInstall,
     onExport,
 }: {
+    label: string;
     client: AgentClientDescriptor;
     info: AgentClientSetupInfo | null;
     /** What an install from this guide wrote, which says more than the folder it went into. */
@@ -244,44 +264,45 @@ function SkillSection({
     // the application reads skills - the same export as the Agent menu's.
     if (client.skill === "served") {
         return (
-            <div className="space-y-2">
-                <p className="text-xs text-fg-subtle">
-                    {exported ? t("settings.agent.guide.skillExported", { path: exported }) : t("settings.agent.guide.skillServed")}
-                </p>
+            <SkillRow
+                label={label}
+                text={exported ? t("settings.agent.guide.skillExported", { path: exported }) : t("settings.agent.guide.skillServed")}
+            >
                 <Button size="sm" variant="secondary" disabled={busy} onClick={onExport}>
                     {t("settings.agent.guide.skillExport")}
                 </Button>
-            </div>
+            </SkillRow>
         );
     }
 
     if (client.skill === "upload") {
         return (
-            <div className="space-y-2">
-                <p className="text-xs text-fg-subtle">
-                    {written ? t("settings.agent.guide.skillSaved", { path: written }) : t("settings.agent.guide.skillUpload")}
-                </p>
+            <SkillRow
+                label={label}
+                text={written ? t("settings.agent.guide.skillSaved", { path: written }) : t("settings.agent.guide.skillUpload")}
+            >
                 <Button size="sm" variant="secondary" disabled={busy} onClick={onInstall}>
                     {t("settings.agent.guide.skillSave")}
                 </Button>
-            </div>
+            </SkillRow>
         );
     }
 
     const target = info?.skillTargets[client.id] ?? null;
     const installed = target?.installed === true;
     return (
-        <div className="space-y-2">
-            <p className="truncate text-xs text-fg-subtle" data-tip={target?.displayPath}>
-                {target
-                    ? installed
-                        ? t("settings.agent.guide.skillInstalled", { path: target.displayPath })
-                        : t("settings.agent.guide.skillFolder", { path: target.displayPath })
-                    : " "}
-            </p>
+        <SkillRow
+            label={label}
+            tip={target?.displayPath}
+            text={target
+                ? installed
+                    ? t("settings.agent.guide.skillInstalled", { path: target.displayPath })
+                    : t("settings.agent.guide.skillFolder", { path: target.displayPath })
+                : " "}
+        >
             <Button size="sm" variant="secondary" disabled={busy || !target} onClick={onInstall}>
                 {installed || written ? t("settings.agent.guide.skillReinstall") : t("settings.agent.guide.skillInstall")}
             </Button>
-        </div>
+        </SkillRow>
     );
 }

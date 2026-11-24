@@ -31,16 +31,17 @@ function InfoFieldInner<TData>({ field, data }: InfoFieldProps<TData>) {
     return (
         <div className={field.className}>
             <FieldLabelRow field={field} />
-            <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
+            {/* Read-only values draw no box: label muted on the left, value in the text colour on the right, no colon. */}
+            <dl className="m-0 space-y-1">
                 {visibleItems.map((item, index) => (
-                    <div key={index} className="flex justify-between text-xs">
-                        <span className="text-fg-muted">{item.label}:</span>
-                        <span className="text-fg-muted">{item.getValue(data)}</span>
+                    <div key={index} className="flex min-w-0 justify-between gap-3 text-xs">
+                        <dt className="shrink-0 text-fg-muted">{item.label}</dt>
+                        <dd className="m-0 min-w-0 truncate text-right tabular-nums text-fg">{item.getValue(data)}</dd>
                     </div>
                 ))}
-            </div>
+            </dl>
             {field.helpText && (
-                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

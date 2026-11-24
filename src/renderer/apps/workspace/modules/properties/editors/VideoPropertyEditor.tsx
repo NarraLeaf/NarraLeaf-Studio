@@ -50,7 +50,7 @@ export function VideoPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                 <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
                         <Video className="w-4 h-4 text-fg-muted" />
-                        <span className="text-sm font-medium text-fg-muted">{t("properties.asset.video.preview")}</span>
+                        <span className="text-xs font-semibold text-fg">{t("properties.asset.video.preview")}</span>
                     </div>
                     <div className="flex items-center justify-center bg-surface rounded-md p-2">
                         <div className="text-xs text-fg-subtle text-center">
@@ -67,7 +67,7 @@ export function VideoPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {videoData && (
                 <div>
-                    <label className="block text-xs font-medium text-fg-muted mb-1">
+                    <label className="block text-2xs text-fg-muted mb-1">
                         {t("properties.asset.video.info")}
                     </label>
                     <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">

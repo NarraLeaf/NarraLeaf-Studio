@@ -401,7 +401,7 @@ export function CompactContainerAppearance({
                 {positionInLayout ? null : (
                     <div className="flex flex-wrap gap-2 min-w-0">
                         <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                            <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
+                            <span className="text-2xs text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
                             <div className="flex items-center gap-1 min-w-0">
                                 <NumericDraftEnhancedInput
                                     committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
@@ -425,7 +425,7 @@ export function CompactContainerAppearance({
                             </div>
                         </div>
                         <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                            <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
+                            <span className="text-2xs text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
                             <div className="flex items-center gap-1 min-w-0">
                                 <NumericDraftEnhancedInput
                                     committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
@@ -452,7 +452,7 @@ export function CompactContainerAppearance({
                 )}
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>
+                    <span className="text-2xs text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(readFiniteNumber(getTransform("transformScale"), 1))}
@@ -481,7 +481,7 @@ export function CompactContainerAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.rotation")}</span>
+                    <span className="text-2xs text-fg-muted">{t("widgetAppearance.transform.rotation")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={String(readFiniteNumber(getTransform("transformRotation"), 0))}
@@ -505,7 +505,7 @@ export function CompactContainerAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.opacity")}</span>
+                    <span className="text-2xs text-fg-muted">{t("widgetAppearance.transform.opacity")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(

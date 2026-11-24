@@ -429,9 +429,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         <div className="flex h-full min-h-0 flex-col" data-panel-id={panelId}>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 <div className="flex flex-col gap-2">
-                    <div className="truncate text-xs font-medium text-fg">
+                    <h3 className="m-0 truncate text-xs font-semibold text-fg">
                         {t("workspace.localization.panel.languagesTitle")}
-                    </div>
+                    </h3>
                     <p className="text-2xs leading-snug text-fg-subtle">
                         {t("workspace.localization.panel.languagesHint")}
                     </p>
@@ -439,7 +439,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         so a bordered box repeating it is a second copy of the same button. */}
                     {locales.length === 0 ? null : (
                         <div className="flex flex-col gap-1">
-                            {locales.map(locale => {
+                            {/* The source language leads: it is what every other row is translated from. */}
+                            {[...locales]
+                                .sort((x, y) => Number(y.code === config?.sourceLocale) - Number(x.code === config?.sourceLocale))
+                                .map(locale => {
                                 const isSource = locale.code === config?.sourceLocale;
                                 const progress = progressByLocale[locale.code];
                                 const menuOpen = localeMenu?.code === locale.code;

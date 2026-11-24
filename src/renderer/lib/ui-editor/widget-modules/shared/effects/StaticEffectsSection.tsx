@@ -13,7 +13,7 @@ export function StaticEffectsSection({ effects, onChange, supportedKinds, draftR
     const { t } = useTranslation();
     return (
         <div className="rounded-lg border border-edge bg-fill-subtle p-2.5 space-y-2 min-w-0">
-            <div className="text-xs font-medium text-fg-muted">{t("widgetChrome.effects.title")}</div>
+            <div className="text-xs font-semibold text-fg">{t("widgetChrome.effects.title")}</div>
             <EffectsStackEditor
                 values={effects}
                 onChange={onChange}

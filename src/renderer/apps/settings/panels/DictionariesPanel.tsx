@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { Button, EmptyState, SectionCard } from "@/lib/components/elements";
+import { Button } from "@/lib/components/elements";
 import { formatBytes } from "@shared/utils/formatBytes";
 import type { AvailableSpellcheckDictionary, InstalledSpellcheckDictionary } from "@shared/types/spellcheck";
 import { notifyDictionariesChanged } from "./dictionaryChanges";
@@ -87,21 +87,21 @@ export function DictionariesPanel() {
         .map(entry => ({ entry, installed: digests.has(entry.code) }))
         .filter(row => !row.installed || digests.get(row.entry.code) !== row.entry.sha256);
 
+    // Two lists under a label each, in the pane's own row style: no bordered cards with header bars,
+    // which nothing else in Settings uses, and one way of saying a list is empty for both.
+    const rowClass = "-mx-2 flex min-h-8 items-center gap-3 rounded-md px-2 hover:bg-fill-subtle";
     return (
-        <div className="flex flex-col gap-3" data-help-topic="spellcheck">
-            <SectionCard title={t("settings.dictionaries.installed.title")} bodyClassName="p-2">
+        <div className="flex flex-col gap-4" data-help-topic="spellcheck">
+            <div className="flex flex-col gap-1">
+                <p className="flex min-h-7 items-center text-xs text-fg-muted">{t("settings.dictionaries.installed.title")}</p>
                 {installed === null ? (
-                    <p className="px-1 py-1 text-xs text-fg-subtle">{t("settings.dictionaries.loading")}</p>
+                    <p className="text-xs text-fg-subtle">{t("settings.dictionaries.loading")}</p>
                 ) : installed.length === 0 ? (
-                    <EmptyState
-                        size="sm"
-                        title={t("settings.dictionaries.installed.emptyTitle")}
-                        description={t("settings.dictionaries.installed.emptyDescription")}
-                    />
+                    <p className="text-xs text-fg-subtle">{t("settings.dictionaries.installed.emptyTitle")}</p>
                 ) : (
                     <div className="flex flex-col">
                         {installed.map(entry => (
-                            <div key={entry.code} className="flex min-h-7 items-center gap-3 rounded-md px-1 hover:bg-fill-subtle">
+                            <div key={entry.code} className={rowClass}>
                                 <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{entry.name}</span>
                                 <span className="shrink-0 text-2xs text-fg-subtle">{entry.code}</span>
                                 <span className="shrink-0 text-xs text-fg-subtle">{formatBytes(entry.bytes)}</span>
@@ -117,27 +117,25 @@ export function DictionariesPanel() {
                         ))}
                     </div>
                 )}
-            </SectionCard>
+            </div>
 
-            <SectionCard
-                title={t("settings.dictionaries.available.title")}
-                bodyClassName="p-2"
-                actions={
+            <div className="flex flex-col gap-1">
+                <div className="flex min-h-7 items-center justify-between gap-4">
+                    <p className="text-xs text-fg-muted">{t("settings.dictionaries.available.title")}</p>
                     <Button size="sm" variant="secondary" disabled={browsing || busy !== null} onClick={() => void browse()}>
                         {t(available === null ? "settings.dictionaries.browse" : "settings.dictionaries.refresh")}
                     </Button>
-                }
-            >
+                </div>
                 {available === null ? (
-                    <p className="px-1 py-1 text-xs text-fg-subtle">
+                    <p className="text-xs text-fg-subtle">
                         {browsing ? t("settings.dictionaries.browsing") : t("settings.dictionaries.available.prompt")}
                     </p>
                 ) : offered.length === 0 ? (
-                    <p className="px-1 py-1 text-xs text-fg-subtle">{t("settings.dictionaries.available.none")}</p>
+                    <p className="text-xs text-fg-subtle">{t("settings.dictionaries.available.none")}</p>
                 ) : (
                     <div className="flex flex-col">
                         {offered.map(({ entry, installed: isInstalled }) => (
-                            <div key={entry.code} className="flex min-h-7 items-center gap-3 rounded-md px-1 hover:bg-fill-subtle">
+                            <div key={entry.code} className={rowClass}>
                                 <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{entry.name}</span>
                                 <span className="shrink-0 text-2xs text-fg-subtle">{entry.code}</span>
                                 {/* The licence travels with the entry and is shown beside it: the word
@@ -161,9 +159,8 @@ export function DictionariesPanel() {
                         ))}
                     </div>
                 )}
-                {failed && <p className="px-1 pt-2 text-xs text-danger">{t("settings.dictionaries.failed")}</p>}
-            </SectionCard>
-
+                {failed && <p className="pt-1 text-xs text-danger">{t("settings.dictionaries.failed")}</p>}
+            </div>
         </div>
     );
 }

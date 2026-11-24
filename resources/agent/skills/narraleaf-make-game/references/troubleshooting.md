@@ -101,7 +101,8 @@ traps that do not produce a refusal at all.
   mode on an alpha clip brightens it; leave the blend at Normal for a clip that carries its own alpha.
 - **A sprite is gigantic, tiny or floating.** A sprite is drawn at its pixel size times its
   character's entrance `zoom`, centred at the `/show` position. `character_upsert {id,
-  entranceTransform:"standing"}` puts its feet on the bottom edge at its own size; for a smaller
+  entranceTransform:"framed"}` gives it the standard framing (head under the top edge, the top 80% of
+  a full-length figure on the stage); `"standing"` puts its feet on the bottom edge; for a smaller
   figure give `{zoom:z, position:{xalign:0.5, yalign:0.5, yoffset: round(h*z/2 - H/2)}}` (h sprite
   height, H stage height). A reused skeleton character carries the demo's zoom 0.624.
 - **A sprite is a rectangle.** The image has no transparency; ask the author for a cut-out.

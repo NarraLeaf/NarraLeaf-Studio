@@ -495,7 +495,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     if (!setupDone) {
         return (
             <div className="space-y-1.5">
-                <p className="px-1 text-2xs tracking-wide text-fg-muted">
+                <p className="px-1 text-2xs text-fg-muted">
                     {setupTitle}
                 </p>
                 {runtimeRow}

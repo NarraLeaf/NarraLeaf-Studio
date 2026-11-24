@@ -81,10 +81,10 @@ export function SoftwareUpdatePanel() {
             {/* Laid out as a settings row - state on the left, the presses on the right - because
                 that is what every other row in this pane does, and a panel that reads top-to-bottom
                 while its neighbours read left-to-right looks like a different kind of thing. The
-                status line takes the label's weight: it is what this row is about. */}
+                status line is the row.s label: it is what this row is about. */}
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex flex-col gap-1 min-w-0 grow basis-64">
-                    <span className="text-sm font-medium text-fg">{t(updateStatusKey(state), { version })}</span>
+                    <span className="text-sm text-fg">{t(updateStatusKey(state), { version })}</span>
                     <span className="text-xs text-fg-subtle break-words">
                         {state.status === "error" && state.error
                             ? state.error

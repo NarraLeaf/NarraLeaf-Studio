@@ -86,7 +86,7 @@ export function EffectPopover(props: {
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="text-2xs font-medium tracking-wide text-fg-muted">{t("story.textEffect.effect")}</div>
+            <div className="text-2xs text-fg-muted">{t("story.textEffect.effect")}</div>
             <div className="mt-1 flex flex-col gap-0.5" role="radiogroup" aria-label={t("story.textEffect.effect")}>
                 <button
                     type="button"

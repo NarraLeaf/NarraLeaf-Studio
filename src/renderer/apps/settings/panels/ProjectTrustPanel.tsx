@@ -66,7 +66,7 @@ export function ProjectTrustPanel() {
     }, [load]);
 
     const row = (record: ProjectTrustRecord, grant: boolean) => (
-        <div key={record.path} className="group flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill">
+        <div key={record.path} className="group -mx-2 flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill">
             <p className="min-w-0 flex-1 truncate text-sm text-fg-muted" data-tip={record.displayPath}>
                 {record.displayPath}
             </p>
@@ -117,7 +117,7 @@ export function ProjectTrustPanel() {
                     {trusted.map(record => row(record, false))}
                 </div>
             )}
-            <p className="px-2 text-2xs text-fg-subtle">
+            <p className="text-2xs text-fg-subtle">
                 {t("settings.data.projectTrust.reloadNote")}
             </p>
         </div>

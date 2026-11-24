@@ -331,6 +331,33 @@ describe("RectangleChromeRenderer fill layer", () => {
         expect(container.querySelector<HTMLElement>("[data-child]")!.style.opacity).toBe("");
     });
 
+    it("draws a nine-slice fill as a border image cut where the fill says, under the content", () => {
+        const { container } = render(chrome(rectangleLike({
+            fillType: "image",
+            imageFill: { mode: "nineSlice", assetId: null, slice: { top: 12, right: 20, bottom: 12, left: 20 } },
+            backgroundImage: "https://example.test/frame.png",
+            fillOpacity: 0.5,
+        })));
+        const nine = container.querySelector<HTMLElement>('[data-ui-image-fill-mode="nineSlice"]');
+        expect(nine).not.toBeNull();
+        expect(nine!.style.borderWidth).toBe("12px 20px");
+        expect(nine!.style.zIndex).toBe("-1");
+        expect(nine!.style.pointerEvents).toBe("none");
+        expect(nine!.style.opacity).toBe("0.5");
+        expect(nine!.getAttribute("style")).toContain("frame.png");
+        expect(chromeRoot(container).style.opacity).toBe("1");
+    });
+
+    it("cuts a nine-slice fill that has no cut of its own at the default", () => {
+        const { container } = render(chrome(rectangleLike({
+            fillType: "image",
+            imageFill: { mode: "nineSlice", assetId: null },
+            backgroundImage: "https://example.test/frame.png",
+        })));
+        const nine = container.querySelector<HTMLElement>('[data-ui-image-fill-mode="nineSlice"]');
+        expect(nine!.style.borderWidth).toBe("16px");
+    });
+
     it("hides a tiled image fill when its visibility is off", () => {
         const { container } = render(chrome(rectangleLike({
             fillType: "image",

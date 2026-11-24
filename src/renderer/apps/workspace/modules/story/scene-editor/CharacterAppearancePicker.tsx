@@ -108,7 +108,7 @@ export function CharacterAppearancePicker(props: {
                 return (
                     <div key={axis.id} className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-2 px-1">
-                            <span className="text-2xs font-medium tracking-wide text-fg-subtle">{axis.name}</span>
+                            <span className="text-2xs text-fg-muted">{axis.name}</span>
                             {/* An axis this row leaves alone keeps whatever an earlier row set, which is
                                 not the same as falling back to the default — say which it is. */}
                             {!chosen && <span className="text-2xs text-fg-subtle">{t("story.appearance.unchanged")}</span>}

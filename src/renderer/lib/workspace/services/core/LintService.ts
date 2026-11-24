@@ -45,6 +45,8 @@ import type { ServiceAssetsService } from "./ServiceAssetsService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { ReferenceService } from "../references/ReferenceService";
 import { StoryService } from "../story/StoryService";
+import type { StoryCustomCommandService } from "../story/StoryCustomCommandService";
+import { EMPTY_CUSTOM_COMMAND_LIBRARY } from "@shared/story/customCommands";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
@@ -429,6 +431,7 @@ export class LintService extends Service<LintService> implements ILintService {
             // `AppTag == "main"` resolves in a project that has authored no variants at all.
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
             projectEndingSurfaceId: safely(() => services.get<AppTagService>(Services.AppTags).getProjectEndingSurfaceId(), ""),
+            customCommands: safely(() => services.get<StoryCustomCommandService>(Services.StoryCustomCommands).library(), EMPTY_CUSTOM_COMMAND_LIBRARY),
             dlcs: services.get<DlcService>(Services.Dlc).list(),
             // The union across the project and its variants: which of them opens which address is
             // decided when a build is compiled, and a graph belongs to all of them.
@@ -617,6 +620,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     id: character.profile.getId(),
                     name: character.profile.getName(),
                     assetIds: [...ids],
+                    ...(character.profile.getBehaviours() ? { behaviours: character.profile.getBehaviours() } : {}),
                     ...(appearance.getKind() === "layered"
                         ? { axes: appearance.getAxes().map(axis => ({ name: axis.name, tags: axis.tags.map(tag => tag.name) })) }
                         : {}),

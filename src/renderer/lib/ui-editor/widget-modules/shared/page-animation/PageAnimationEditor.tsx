@@ -4,6 +4,7 @@ import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
+import { NESTED_SECTION_CLASS } from "@/lib/components/elements/textLevels";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import type { IconButtonSelection } from "@/apps/workspace/modules/properties/framework/types";
@@ -207,7 +208,9 @@ function AnimationPhaseBlock({
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs font-semibold tracking-wide text-fg-muted">{label}</span>
+                {/* The block's name is a heading over the fields in it, so it is drawn as one (the
+                    nested-section form), not in the fields' own label style. */}
+                <span className={NESTED_SECTION_CLASS.panel}>{label}</span>
                 {showExitBlocking ? (
                     <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
                         <span>{t("widgetChrome.pageAnimation.wait")}</span>
@@ -219,19 +222,23 @@ function AnimationPhaseBlock({
                     </label>
                 ) : null}
             </div>
+            {/* Every cell holds a field: the preset on its own line, the two timings side by side,
+                then the direction and its angle. Delay used to sit alone on a third row with an
+                empty cell beside it, and a third column would cut the preset name to one character.
+                The right column is the same 92px on both rows, so the numbers line up. */}
+            <label className="min-w-0 space-y-1">
+                <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.preset")}</span>
+                <Select
+                    fullWidth
+                    options={presetOptions}
+                    value={preset}
+                    onChange={value => onPresetChange(value as UIPageAnimationPreset)}
+                    portalMenu
+                />
+            </label>
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.preset")}</span>
-                    <Select
-                        fullWidth
-                        options={presetOptions}
-                        value={preset}
-                        onChange={value => onPresetChange(value as UIPageAnimationPreset)}
-                        portalMenu
-                    />
-                </label>
-                <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.seconds")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.seconds")}</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatDurationSeconds(durationSeconds)}
                         onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
@@ -245,10 +252,25 @@ function AnimationPhaseBlock({
                         popoverThreshold={128}
                     />
                 </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.delay")}</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(delaySeconds)}
+                        onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
+                    />
+                </label>
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <div className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.direction")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.direction")}</span>
                     <IconButtonSegGroup
                         options={directionOptions}
                         mode="single"
@@ -260,7 +282,7 @@ function AnimationPhaseBlock({
                     />
                 </div>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">{t("widgetChrome.pageAnimation.angle")}</span>
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.angle")}</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatAngleDegrees(angleDegrees)}
                         onFiniteNumber={value => onAngleChange(normalizeAngleInput(value))}
@@ -269,32 +291,13 @@ function AnimationPhaseBlock({
                         min={0}
                         max={359}
                         step={ANGLE_STEP_DEGREES}
-                        unit="deg"
+                        unit="°"
                         disabled={!isAngle}
                         className={`w-full min-w-0 ${isAngle ? "" : "opacity-55"}`}
                         popoverThreshold={112}
                     />
                 </label>
             </div>
-            {/* Its own labelled row rather than a third column beside the seconds: the inspector is
-                narrow enough that a third column truncates the preset name to one character. */}
-            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
-                    {t("widgetChrome.pageAnimation.delay")}
-                </span>
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatDurationSeconds(delaySeconds)}
-                    onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
-                    inputMode="decimal"
-                    type="number"
-                    min={MIN_DURATION_SECONDS}
-                    max={MAX_DURATION_SECONDS}
-                    step={DURATION_STEP_SECONDS}
-                    unit="s"
-                    className="w-full min-w-0"
-                    popoverThreshold={128}
-                />
-            </label>
         </div>
     );
 }
@@ -320,36 +323,41 @@ function ChildTimingBlock({
     const { t } = useTranslation();
     return (
         <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
-            <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-2xs font-semibold tracking-wide text-fg-muted">
+            <div className="flex min-h-7 items-center">
+                <span className={NESTED_SECTION_CLASS.panel}>
                     {t("widgetChrome.pageAnimation.children")}
                 </span>
-                <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
-                    <span>{t("widgetChrome.pageAnimation.waitForChildren")}</span>
-                    <Switch
-                        checked={waitsForChildren}
-                        size="sm"
-                        onCheckedChange={onWaitsForChildrenChange}
+            </div>
+            {/* The block's two settings side by side, each labelled above: the switch takes the
+                left cell and the stagger the numbers' column, as in the phase blocks above. With
+                the switch up in the heading the left cell sat empty under a lone number. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                <label className="min-w-0 space-y-1">
+                    <span className="block truncate text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.waitForChildren")}</span>
+                    <span className="flex h-9 items-center">
+                        <Switch
+                            checked={waitsForChildren}
+                            size="sm"
+                            onCheckedChange={onWaitsForChildrenChange}
+                        />
+                    </span>
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-2xs text-fg-muted">{t("widgetChrome.pageAnimation.stagger")}</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(staggerSeconds)}
+                        onFiniteNumber={value => onStaggerChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
                     />
                 </label>
             </div>
-            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
-                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
-                    {t("widgetChrome.pageAnimation.stagger")}
-                </span>
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatDurationSeconds(staggerSeconds)}
-                    onFiniteNumber={value => onStaggerChange(normalizeDurationInput(value))}
-                    inputMode="decimal"
-                    type="number"
-                    min={MIN_DURATION_SECONDS}
-                    max={MAX_DURATION_SECONDS}
-                    step={DURATION_STEP_SECONDS}
-                    unit="s"
-                    className="w-full min-w-0"
-                    popoverThreshold={128}
-                />
-            </label>
         </div>
     );
 }
@@ -386,7 +394,7 @@ export function PageAnimationEditor({
         <div className="space-y-2.5">
             {onInheritedChange ? (
                 <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-edge bg-fill-subtle px-3 py-1.5">
-                    <span className="min-w-0 text-xs font-medium text-fg-muted">{resolvedInheritLabel}</span>
+                    <span className="min-w-0 text-2xs text-fg-muted">{resolvedInheritLabel}</span>
                     <Switch
                         checked={inherited}
                         size="sm"

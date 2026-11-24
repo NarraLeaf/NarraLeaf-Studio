@@ -1,6 +1,6 @@
 import React from "react";
 import { cn } from "../../utils/cn";
-import { FieldLabel } from "./FieldLabel";
+import { textLevelClass } from "./textLevels";
 
 /**
  * `title` is this card's heading and shadows the DOM attribute of the same name, which is why
@@ -8,7 +8,7 @@ import { FieldLabel } from "./FieldLabel";
  * `data-*` hook or an aria attribute on a card without the component learning about it.
  */
 export interface SectionCardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
-    /** Optional eyebrow title rendered in a bordered header row. */
+    /** Optional title rendered in a bordered header row, at the `item` level with semibold weight. */
     title?: React.ReactNode;
     /** Optional actions aligned to the right of the header. */
     actions?: React.ReactNode;
@@ -18,16 +18,15 @@ export interface SectionCardProps extends Omit<React.HTMLAttributes<HTMLDivEleme
 }
 
 /**
- * Bordered content section. Canonicalizes the
- * `rounded-md border border-white/10 bg-white/[0.02~0.03]` cards hand-rolled
- * across project settings / launcher panels.
+ * Bordered content section: the second and last container level (docs/design-system.md §4.1).
+ * A card never holds another card.
  */
 export function SectionCard({ title, actions, children, className, bodyClassName, ...props }: SectionCardProps) {
     return (
         <div className={cn("rounded-md border border-edge bg-fill-subtle", className)} {...props}>
             {(title || actions) && (
-                <div className="flex items-center justify-between gap-2 border-b border-edge px-3 py-2">
-                    {title ? <FieldLabel as="div" className="mb-0">{title}</FieldLabel> : <span />}
+                <div className="flex items-center justify-between gap-2 border-b border-edge-subtle px-3 py-2">
+                    {title ? <div className={cn("min-w-0 font-semibold", textLevelClass("item"))}>{title}</div> : <span />}
                     {actions}
                 </div>
             )}

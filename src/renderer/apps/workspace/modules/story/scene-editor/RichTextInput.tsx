@@ -130,6 +130,12 @@ export type InterpolationClickInfo = {
 
 export type EventClickInfo = {
     unit: number;
+    /**
+     * Which of the line's event chips this is, counting from 0 in reading order. Each chip is one
+     * `{ event }` run, so it is also the run's index among the line's event runs - what the settings
+     * need to work out the fade it inherits from the changes before it.
+     */
+    eventIndex: number;
     value: StoryInlineEvent;
     anchor: { top: number; left: number; bottom: number };
 };
@@ -1239,13 +1245,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         // The just-rendered chip is the [data-event] at this unit offset; measure it for the anchor
         // the popover positions against, mirroring the click path.
-        const chip = Array.from(el.querySelectorAll<HTMLElement>("[data-event]"))
-            .find(candidate => unitOffsetOfElement(el, candidate) === unit);
-        if (!chip) {
+        const chips = Array.from(el.querySelectorAll<HTMLElement>("[data-event]"));
+        const eventIndex = chips.findIndex(candidate => unitOffsetOfElement(el, candidate) === unit);
+        if (eventIndex < 0) {
             return null;
         }
-        const rect = chip.getBoundingClientRect();
-        return { unit, value: event, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
+        const rect = chips[eventIndex].getBoundingClientRect();
+        return { unit, eventIndex, value: event, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
     }, [insertRun]);
 
     /**
@@ -1434,6 +1440,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                         const rect = eventChip.getBoundingClientRect();
                         props.onEventClick({
                             unit: unitOffsetOfElement(el, eventChip),
+                            eventIndex: Array.from(el.querySelectorAll("[data-event]")).indexOf(eventChip),
                             value,
                             anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
                         });

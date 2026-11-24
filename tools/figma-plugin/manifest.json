@@ -1,0 +1,50 @@
+{
+  "name": "NarraLeaf Studio Export",
+  "id": "1707010640966969953",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  },
+  "menu": [
+    { "name": "导出并检查… / Export and check…", "command": "open" },
+    { "separator": true },
+    {
+      "name": "标为游戏界面 / Mark as Game UI",
+      "menu": [
+        { "name": "对话框 / Dialogue box", "command": "mark:dialog" },
+        { "name": "选项 / Choices", "command": "mark:choice" },
+        { "name": "快捷菜单 / Quick menu", "command": "mark:onStage" },
+        { "name": "通知 / Notifications", "command": "mark:notification" }
+      ]
+    },
+    {
+      "name": "标为对话框部件 / Mark dialogue part",
+      "menu": [
+        { "name": "台词 / Line", "command": "mark:sentence" },
+        { "name": "名字 / Speaker name", "command": "mark:name" },
+        { "name": "头像 / Avatar", "command": "mark:avatar" }
+      ]
+    },
+    {
+      "name": "标为快捷菜单按钮 / Mark quick-menu button",
+      "menu": [
+        { "name": "自动 / Auto", "command": "mark:auto" },
+        { "name": "跳过 / Skip", "command": "mark:skip" },
+        { "name": "日志 / Log", "command": "mark:log" },
+        { "name": "存档 / Save", "command": "mark:save" },
+        { "name": "读档 / Load", "command": "mark:load" },
+        { "name": "设置 / Config", "command": "mark:config" },
+        { "name": "隐藏 / Hide", "command": "mark:hide" }
+      ]
+    },
+    { "separator": true },
+    { "name": "清除标注 / Clear mark", "command": "mark:clear" }
+  ],
+  "relaunchButtons": [
+    { "command": "check", "name": "在 NarraLeaf 中检查 / Check in NarraLeaf" }
+  ]
+}

@@ -57,7 +57,7 @@ function patchChrome(data: UIInspectorData, partial: Partial<RectangleLikeProps>
     });
 }
 
-const ROW_LABEL = "text-xs font-medium text-fg-muted";
+const ROW_LABEL = "text-2xs text-fg-muted";
 
 /** Where the three name lists came from, said in one line — the same vocabulary the character editor uses. */
 function describeStatusKey(reason: PuppetDescriptionUnavailableReason | null | undefined): TranslationKey {
@@ -154,12 +154,12 @@ function PuppetModelField(props: CustomFieldProps<UIInspectorData>) {
                             role="button"
                             tabIndex={-1}
                             onClick={clear}
-                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill hover:text-fg-muted"
                         >
                             {t("common.clear")}
                         </span>
                     ) : (
-                        <span className="shrink-0 text-2xs tracking-wider text-fg-subtle">
+                        <span className="shrink-0 text-2xs text-fg-muted">
                             {t("widgets.puppet.modelChoose")}
                         </span>
                     )}
@@ -362,7 +362,7 @@ function PuppetStateField(props: CustomFieldProps<UIInspectorData>) {
                         this went with it - which left the author of a past version staring at a
                         stale or failed description with no way to take it again. */}
                     <InspectOnlyButton
-                        className="shrink-0 rounded-md px-1.5 py-0.5 tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted cursor-default"
+                        className="shrink-0 rounded-md px-1.5 py-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted cursor-default"
                         onClick={refresh}
                     >
                         {t("widgets.puppet.redescribe")}

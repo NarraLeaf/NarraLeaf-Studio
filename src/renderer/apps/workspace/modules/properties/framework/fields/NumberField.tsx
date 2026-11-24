@@ -59,7 +59,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                 formatValue={formatValue}
             />
             {field.helpText && (
-                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

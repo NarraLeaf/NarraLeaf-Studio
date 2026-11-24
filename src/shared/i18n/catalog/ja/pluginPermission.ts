@@ -18,9 +18,9 @@ export const pluginPermission = {
     },
     install: {
         type: "プラグインのインストール要求",
-        title: "{requester} が {plugin} のインストールを求めている",
-        body1: "このインストールで何が許可されるかを Studio が調べた内容：",
-        body2: "承認すると、ここに並ぶすべてがこのバージョンのプラグインに許可される。信頼できるプラグインだけをインストールする",
+        title: "プラグイン {plugin} をインストール",
+        body1: "承認すると、ここに並ぶすべてがこのバージョンのプラグインに許可される",
+        body2: "信頼できるプラグインだけをインストールする",
         source: "入手元：{source}",
     },
     filesystem: {
@@ -40,7 +40,7 @@ export const pluginPermission = {
     },
     trust: {
         type: "プラグインの信頼要求",
-        title: "{requester} が {plugin} を信頼することを求めている",
+        title: "プラグイン {plugin} を信頼",
         body1: "信頼したプラグインは、次からは確認なしで有効にできる",
         body2: "出所の分かっているプラグインだけを信頼する",
         permission: "このプラグインの識別情報を信頼する",
@@ -73,6 +73,9 @@ export const pluginPermission = {
             agentTools: "AI エージェント",
         },
         sidecarPlatforms: "{platforms} で動く",
+        platformWithArch: "{os}（{arch}）",
+        archAppleSilicon: "Apple シリコン",
+        archUniversal: "ユニバーサル",
         agentToolsSummary: "{tools}（{writes}）",
         agentTools: {
             one: "Studio に接続した AI エージェントにツールを {count} 個提供する",

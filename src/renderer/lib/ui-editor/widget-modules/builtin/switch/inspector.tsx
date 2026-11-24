@@ -51,7 +51,7 @@ function ToggleRow({
     // fires twice looks like a toggle that does nothing.
     return (
         <div className={cn("flex items-center justify-between gap-2 min-w-0", className)}>
-            <span className="text-xs font-medium text-fg-muted min-w-0 truncate">{label}</span>
+            <span className="text-2xs text-fg-muted min-w-0 truncate">{label}</span>
             <Switch
                 size="sm"
                 checked={checked}

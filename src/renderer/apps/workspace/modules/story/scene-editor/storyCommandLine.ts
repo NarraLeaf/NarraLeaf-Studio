@@ -3,6 +3,7 @@ import type {
     StoryActionableTargetRef,
     StoryActionPayload,
     StoryBlock,
+    StoryCustomCommandArg,
     StoryDeclarationPayload,
     StoryDisplayableTargetRef,
     StoryJumpPayload,
@@ -13,6 +14,7 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { formatStoryLiteral } from "@shared/types/story";
+import { localizedBooleanWord } from "./commands/localizedBoolean";
 import {
     actionableSubjectWord,
     declarationDefaultForType,
@@ -50,6 +52,7 @@ import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
 import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
+import { customCommandOfSpecId } from "./commands/customCommandState";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
     parsePositionValue,
@@ -88,7 +91,7 @@ import type {
  * A committed row read back as the command line that would produce it.
  *
  * The row used to print a *description* — `隐藏 Anyo` with a `d 1s` token beside it — while the line
- * the author typed was `@隐藏 Anyo 持续时间=1`. Two vocabularies for one row: the words differed, the
+ * the author typed was `@隐藏 Anyo 动画持续时间=1`. Two vocabularies for one row: the words differed, the
  * modifiers were abbreviated to one letter or dropped entirely, and the trigger character (the one
  * thing that says "this is a command") was missing. An author scanning a scene had to translate every
  * row back into the language they write in.
@@ -282,7 +285,7 @@ function choicesOf(entries: readonly { id: string; name: string }[] | readonly s
 /**
  * One argument, named by the SPEC param it fills rather than by the word it prints.
  *
- * The spec param is what supplies both the localized key (`d` → `持续时间`) and, for an enum, the
+ * The spec param is what supplies both the localized key (`d` → `动画持续时间`) and, for an enum, the
  * option set a canonical value is respelled against (`fade` → `淡变`). Naming the param instead of
  * the word is what lets this table stay in the canonical vocabulary and the display follow the
  * author's command language for free.
@@ -400,7 +403,9 @@ function assignedValueArg(
         // a value. `String()` here printed it bare, so a row assigning any string with a space in it
         // showed a line the author could not type back. Numbers, booleans and null are unchanged -
         // `formatStoryLiteral` writes those exactly as `String` did.
-        return positional("value", payload.expression ? source : formatStoryLiteral(payload.value ?? null));
+        // A boolean reads in the author's command language (`真`), which the expression parser takes back.
+        const literal = typeof payload.value === "boolean" ? localizedBooleanWord(payload.value) : formatStoryLiteral(payload.value ?? null);
+        return positional("value", payload.expression ? source : literal);
     }
     return positional("value", sceneName, {
         editValue: source,
@@ -422,8 +427,9 @@ function numberValue(value: number | undefined): string {
     return value === undefined ? "" : String(value);
 }
 
+/** A flag in the author's command language (`真` / `假` in Chinese); the parser reads every spelling back. */
 function booleanValue(value: boolean | undefined): string {
-    return value === undefined ? "" : String(value);
+    return value === undefined ? "" : localizedBooleanWord(value);
 }
 
 /**
@@ -471,7 +477,7 @@ const NUMERIC = /^-?\d+(?:\.\d+)?$/;
  *
  * Read off the param rather than off the payload field, so "which values carry a unit" is answered
  * once, by the grammar, for the row and the typed line alike — and spelled through
- * {@link localizedUnit}, which comes out of the same table the parser accepts, so the `持续时间=1秒` a
+ * {@link localizedUnit}, which comes out of the same table the parser accepts, so the `动画持续时间=1秒` a
  * Chinese author reads is a line they can type back.
  */
 function unitOf(param: StoryCommandParam | null): string {
@@ -1516,7 +1522,7 @@ function cameraSentence(
     if (payload.transform?.mode === "animation") {
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the shot's name rides the inspector.
-        return { commandId, args: [subject, arg("motion", "true")] };
+        return { commandId, args: [subject, arg("motion", booleanValue(true))] };
     }
     return { commandId, args: [subject, ...transformArgs(payload, lookups)] };
 }
@@ -1580,7 +1586,7 @@ function displayableSentence(
             commandId,
             args: [
                 positional("target", label, who),
-                arg("stopLoop", "true"),
+                arg("stopLoop", booleanValue(true)),
                 arg("d", seconds(payload.transform?.durationMs), {
                     apply: next => patchTransform(payload, { durationMs: msOf(next) }),
                 }),
@@ -1590,12 +1596,12 @@ function displayableSentence(
     if (payload.operation === "transform" || payload.operation === "loop") {
         // The flag is what makes the row read as the thing it is - a motion that keeps going rather
         // than a pose the scene waits for - so it is printed first, next to the subject.
-        const looping = payload.operation === "loop" ? [arg("loop", "true")] : [];
+        const looping = payload.operation === "loop" ? [arg("loop", booleanValue(true))] : [];
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired
         // `/camera motion` had.
         if (payload.transform?.mode === "animation") {
-            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", "true")] };
+            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", booleanValue(true))] };
         }
         // The whole neutral bag, and only the whole one, is a `/reset`. A partial clear prints as the
         // `=none` that produced it (`/transform hero mask=none`), which is the same row and the
@@ -1730,6 +1736,75 @@ function displayableTargetWord(
     return resolved.label || undefined;
 }
 
+/**
+ * A call to one of the project's own commands: its name, then each argument it passes, printed the
+ * way the line would type it - so the row reads back through the same parser that wrote it.
+ *
+ * A number, a switch and an option are click-to-edit, like the slot they borrow their type from; a
+ * character is not (retype the line), since the value a call stores for one is the whole resolved
+ * reference rather than an id the row could swap on its own.
+ */
+function customCommandSentence(
+    payload: Extract<StoryActionPayload, { action: "customCommand" }>,
+    lookups: StoryCommandLineLookups,
+    commandId: string,
+): Sentence | null {
+    const command = customCommandOfSpecId(commandId);
+    const def = getDefById(commandId);
+    if (!command || !def) {
+        return null;
+    }
+    const args: (Arg | null)[] = [];
+    for (const param of def.params) {
+        const value = payload.args[param.name] as Record<string, unknown> | undefined;
+        if (!value) {
+            continue;
+        }
+        const write = (next: StoryCustomCommandArg) => ({ ...payload, args: { ...payload.args, [param.name]: next } });
+        const extra = param.positional ? { positional: true } : {};
+        switch (value.kind) {
+            case "number": {
+                args.push(arg(param.name, numberValue(value.value as number), {
+                    ...extra,
+                    apply: next => write({ kind: "number", value: Number(next) }),
+                }));
+                break;
+            }
+            case "boolean": {
+                args.push(arg(param.name, booleanValue(value.value as boolean), {
+                    ...extra,
+                    apply: next => write({ kind: "boolean", value: next === "true" }),
+                }));
+                break;
+            }
+            case "enum": {
+                args.push(arg(param.name, String(value.value), {
+                    ...extra,
+                    enum: true,
+                    apply: next => write({ kind: "enum", value: next }),
+                }));
+                break;
+            }
+            case "target":
+            case "character": {
+                const target = (value.kind === "target" ? value.target : value) as { characterId?: string; name?: string } | undefined;
+                const characterId = target?.characterId;
+                const name = (characterId ? lookups.commandContext?.characters?.find(entry => entry.id === characterId)?.name : undefined)
+                    ?? target?.name;
+                args.push(arg(param.name, name, { ...extra, ...characterLink(lookups, characterId) }));
+                break;
+            }
+            case "text": {
+                args.push(arg(param.name, String(value.value ?? ""), extra));
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return { commandId, args };
+}
+
 function actionSentence(
     payload: StoryActionPayload,
     lookups: StoryCommandLineLookups,
@@ -1858,6 +1933,8 @@ function actionSentence(
             };
         }
 
+        case "customCommand":
+            return customCommandSentence(payload, lookups, commandId);
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.
@@ -1906,7 +1983,7 @@ function inputSentence(
                         apply: next => ({ ...payload, weakMagnitude: motorStrength(next) }),
                     }),
                     arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    arg("wait", payload.wait ? "true" : undefined, {
+                    arg("wait", payload.wait ? booleanValue(true) : undefined, {
                         apply: next => ({ ...payload, wait: next === "true" ? true : undefined }),
                     }),
                 ],
@@ -1997,7 +2074,7 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                 // Printed only when it is on, and spelled out as `return=true` the way every bare
                 // flag reads back. A row that has never been flagged prints the line it has always
                 // printed, so an existing project's jumps are untouched by the flag existing.
-                arg("return", payload.returnable ? "true" : undefined, {
+                arg("return", payload.returnable ? booleanValue(true) : undefined, {
                     apply: next => ({ ...payload, returnable: next === "true" ? true : undefined }),
                 }),
             ],
@@ -2142,6 +2219,8 @@ function declarationDefaultArg(value: StoryLiteralValue | undefined): Arg | null
     if (value === undefined) {
         return null;
     }
+    // Booleans stay `true` / `false` here: declarations print in the source vocabulary (see the retired
+    // scopes in `projectStoryCommandLine`'s tests), and this text is also what the script export writes.
     return { param: "default", value: typeof value === "string" ? value : JSON.stringify(value) };
 }
 

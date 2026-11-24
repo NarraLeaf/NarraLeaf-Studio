@@ -11,6 +11,7 @@ import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { textLevelClass } from "@/lib/components/elements/textLevels";
 import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
 import { SettingFontPicker } from "./SettingFontPicker";
@@ -70,6 +71,62 @@ interface SettingsExplorerProps<T> {
     loading?: boolean;
     emptyStateMessage?: string;
     panelFocusHandler?: () => void;
+    /**
+     * The category whose section the pane is scrolled to, reported as the author scrolls so the
+     * navigation beside it can follow. Not reported while a jump the navigation asked for is still
+     * travelling, so the row that was clicked stays lit rather than flickering through the
+     * categories the jump passes on its way.
+     */
+    onActiveCategoryChange?: (categoryKey: SettingCategory["key"]) => void;
+}
+
+/** How far below the pane's top a section's heading may sit and still count as the one in view. */
+const ACTIVE_SECTION_SLOP_PX = 48;
+
+/** How long a navigation jump holds the reported category still, if the browser never says it ended. */
+const NAV_SCROLL_LOCK_MS = 800;
+
+/**
+ * One block of rows under a category: the rows with no group come first, unheaded, then each group
+ * under its heading and each panel that carries its own heading, in the order they first appear.
+ */
+interface SettingBlock<T> {
+    key: string;
+    heading?: string;
+    entries: SettingEntry<T>[];
+}
+
+/**
+ * Whether a `Custom` panel draws its own heading.
+ *
+ * Not inside a group, whose heading already names it, and not when it is the only thing its
+ * category holds under the same name - "Shortcuts" above "Shortcuts".
+ */
+function panelHasHeading(descriptor: SettingDescriptor, categoryLabel: string): boolean {
+    return !descriptor.group && descriptor.label !== categoryLabel;
+}
+
+function blocksFor<T>(entries: SettingEntry<T>[], categoryLabel: string): SettingBlock<T>[] {
+    const plain: SettingEntry<T>[] = [];
+    const blocks: SettingBlock<T>[] = [];
+    const byGroup = new Map<string, SettingBlock<T>>();
+    for (const entry of entries) {
+        const { descriptor } = entry;
+        if (descriptor.group) {
+            let block = byGroup.get(descriptor.group.key);
+            if (!block) {
+                block = { key: `group:${descriptor.group.key}`, heading: descriptor.group.label, entries: [] };
+                byGroup.set(descriptor.group.key, block);
+                blocks.push(block);
+            }
+            block.entries.push(entry);
+        } else if (descriptor.type === SettingValueType.Custom && panelHasHeading(descriptor, categoryLabel)) {
+            blocks.push({ key: `panel:${descriptor.id}`, heading: descriptor.label, entries: [entry] });
+        } else {
+            plain.push(entry);
+        }
+    }
+    return plain.length > 0 ? [{ key: "plain", entries: plain }, ...blocks] : blocks;
 }
 
 function parseSettingInput(type: SettingValueType, rawValue: string): SettingValue | null {
@@ -131,6 +188,7 @@ export function SettingsExplorer<T>({
     loading = false,
     emptyStateMessage,
     panelFocusHandler,
+    onActiveCategoryChange,
 }: SettingsExplorerProps<T>) {
     const { t } = useTranslation();
     const [localSearch, setLocalSearch] = useState("");
@@ -635,21 +693,13 @@ export function SettingsExplorer<T>({
                         // with the reason, and a field that takes typing it will not keep is
                         // the one thing worse than a field that cannot be typed in.
                         disabled={descriptor.disabled}
+                        // Inside the field, so a field with a unit is as wide as every other
+                        // control in the column. Beside it, the unit took its own gutter and every
+                        // `ms`, `%` and `min` field ended short of the dropdowns above and below.
+                        suffix={descriptor.unit}
                     />
                 );
-                if (!descriptor.unit) {
-                    return input;
-                }
-                return (
-                    // The unit gets a fixed gutter rather than its own natural width, so the field
-                    // beside it ends where every other unit-bearing field does. Sized to hold the
-                    // longest of them (`min`); letting each size itself left the `ms` field and the
-                    // `%` field one row below it nine pixels out of line with each other.
-                    <div className="flex w-full items-center gap-2">
-                        <div className="min-w-0 flex-1">{input}</div>
-                        <span className="w-7 shrink-0 text-xs text-fg-muted">{descriptor.unit}</span>
-                    </div>
-                );
+                return input;
             }
         }
     };
@@ -672,6 +722,9 @@ export function SettingsExplorer<T>({
         }
         const highlighted = highlightedPanelId === descriptor.id;
         const marksItsOwnBlock = highlighted && !panelClaimedHighlight;
+        // The heading, when it has one, is drawn by the block it opens (`blocksFor`), the same as a
+        // group's; the panel itself is only its body. Its padding is a row's, so text inside lines
+        // up with the rows around it - a panel's own hover rows bleed back out with `-mx-2`.
         return (
             <div
                 key={descriptor.id}
@@ -684,8 +737,7 @@ export function SettingsExplorer<T>({
                     marksItsOwnBlock && SETTINGS_HIGHLIGHT_RING,
                 )}
             >
-                <span className="text-sm font-medium text-fg">{descriptor.label}</span>
-                <div className="mt-2">
+                <div>
                     {highlighted ? (
                         <SettingsHighlightContext.Provider value={panelHighlightState}>
                             <Panel />
@@ -725,7 +777,7 @@ export function SettingsExplorer<T>({
                     there, where `justify-between` alone would push a lone item back to the left. */}
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-col gap-1 min-w-0 grow basis-64">
-                        <span className="flex items-center gap-1 text-sm font-medium text-fg">
+                        <span className="flex items-center gap-1 text-sm text-fg">
                             {descriptor.label}
                             {/* Hover-revealed and only where there is something to undo; see
                                 `isModified`. `focus-within` on the row would be the keyboard
@@ -804,6 +856,56 @@ export function SettingsExplorer<T>({
         };
     }, [loading, selectedSettingId, selectedCategoryScrollSignal]);
 
+    // Which category the author has scrolled to, for the navigation. Held still while a jump the
+    // navigation asked for is under way (see `onActiveCategoryChange`); the smooth scroll ends with
+    // `scrollend`, and the timer covers a jump that did not need to move at all.
+    const navScrollLockUntil = useRef(0);
+    const lastReportedCategory = useRef<string | null>(null);
+    useEffect(() => {
+        navScrollLockUntil.current = Date.now() + NAV_SCROLL_LOCK_MS;
+        lastReportedCategory.current = selectedCategory ?? null;
+    }, [selectedCategory, selectedSettingId, selectedCategoryScrollSignal]);
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) {
+            return;
+        }
+        const release = () => {
+            navScrollLockUntil.current = 0;
+        };
+        container.addEventListener("scrollend", release);
+        return () => container.removeEventListener("scrollend", release);
+    }, [loading]);
+
+    const reportActiveCategory = () => {
+        const container = scrollContainerRef.current;
+        if (!container || !onActiveCategoryChange || Date.now() < navScrollLockUntil.current) {
+            return;
+        }
+        const keys = categoryEntriesToRender.map(entry => entry.category.key);
+        if (keys.length === 0) {
+            return;
+        }
+        let active = keys[0];
+        // At the bottom the last category is the one in view even when its heading cannot reach the
+        // top: a short final section never scrolls that far.
+        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 4) {
+            active = keys[keys.length - 1];
+        } else {
+            const top = container.getBoundingClientRect().top;
+            for (const key of keys) {
+                const node = categoryRefs.current[key];
+                if (node && node.getBoundingClientRect().top - top <= ACTIVE_SECTION_SLOP_PX) {
+                    active = key;
+                }
+            }
+        }
+        if (active !== lastReportedCategory.current) {
+            lastReportedCategory.current = active;
+            onActiveCategoryChange(active);
+        }
+    };
+
     const setCategoryRef = useCallback((categoryKey: SettingCategory["key"], node: HTMLElement | null) => {
         categoryRefs.current[categoryKey] = node;
     }, []);
@@ -828,7 +930,7 @@ export function SettingsExplorer<T>({
                 </div>
             )}
 
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto" onScroll={reportActiveCategory}>
                 {loading ? (
                     <div className="flex h-full items-center justify-center text-xs text-fg-subtle">
                         {t("settings.loading")}
@@ -846,11 +948,18 @@ export function SettingsExplorer<T>({
                                 className="scroll-mt-3"
                             >
                                 <div className="mb-2 border-b border-edge px-2 pb-2">
-                                    <h2 className="text-sm font-semibold text-fg">{entry.category.label}</h2>
+                                    <h2 className={textLevelClass("title", "page")}>{entry.category.label}</h2>
                                 </div>
-                                <div className="space-y-0">
-                                    {entry.entries.map(renderSetting)}
-                                </div>
+                                {blocksFor(entry.entries, entry.category.label).map((block, index) => (
+                                    <div key={block.key} data-settings-group={block.heading ? block.key : undefined}>
+                                        {block.heading && (
+                                            <h3 className={cn("m-0 px-2 pb-1", index === 0 ? "pt-2" : "pt-5", textLevelClass("section", "page"))}>
+                                                {block.heading}
+                                            </h3>
+                                        )}
+                                        {block.entries.map(renderSetting)}
+                                    </div>
+                                ))}
                             </section>
                         ))}
                     </div>

@@ -1,3 +1,5 @@
+import { createCustomCommandFromSceneRows } from "../../story-commands/extractStoryCommand";
+import { openStoryCommandTab } from "../../story-commands/storyCommandTab";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
@@ -224,7 +226,7 @@ const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 /** The docked preview under the script: never more than its share of the body's height. */
 const STACKED_PREVIEW_STYLE: CSSProperties = { maxHeight: `${STORY_PREVIEW_STACK_MAX_FRACTION * 100}%` };
 
-const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
+const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs text-fg-muted";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
 
 /**
@@ -475,7 +477,7 @@ export function StorySceneOverviewBlock(props: {
                                 {...writes.writes()}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
-                                <span className={["truncate", backgroundAsset ? "" : "italic text-fg-subtle"].join(" ")}>
+                                <span className={["truncate", backgroundAsset ? "" : "text-fg-subtle"].join(" ")}>
                                     {backgroundLabel}
                                 </span>
                             </button>
@@ -2322,6 +2324,35 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-insert", separator: true },
         { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
         { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
+        // The selected rows, written once as a command of the project's own. The rows stay where they
+        // are; the author replaces them with a call when the command reads right.
+        {
+            id: "save-as-command",
+            label: t("story.rowMenu.saveAsCommand"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                const context = editor.context;
+                if (!context) {
+                    return;
+                }
+                const { command, skipped } = createCustomCommandFromSceneRows(
+                    context,
+                    document,
+                    scene,
+                    menuSelectionIds,
+                    t("story.customCommands.newName"),
+                );
+                const notifications = context.services.get<UIService>(Services.UI).notifications;
+                if (!command) {
+                    notifications.warning(t("story.customCommands.extractNothing"), t("story.customCommands.extractNothingDetail"));
+                    return;
+                }
+                if (skipped > 0) {
+                    notifications.info(tn("story.customCommands.extractSkipped", skipped));
+                }
+                openStoryCommandTab(context, command.id, command.name);
+            },
+        },
         // Absent rather than greyed when there is nothing to repair or no character to repair it to:
         // this is a rung the author reaches for after a paste, not a standing property of a row.
         ...(menuSpeakerTargets.length > 0 ? [{
@@ -2765,7 +2796,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm ",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",

@@ -100,7 +100,7 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
                     className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                     onClick={() => setSelectorOpen(true)}
                 >
-                    <span className={["truncate", asset ? "" : "italic text-fg-subtle"].join(" ")}>{label}</span>
+                    <span className={["truncate", asset ? "" : "text-fg-subtle"].join(" ")}>{label}</span>
                 </button>
                 <button
                     type="button"

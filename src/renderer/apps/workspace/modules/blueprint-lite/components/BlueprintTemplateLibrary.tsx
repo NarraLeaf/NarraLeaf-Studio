@@ -295,7 +295,7 @@ function TemplateDetail(props: {
                         <p className="text-xs text-fg-muted">{t("blueprint.templateLibrary.choicesNone")}</p>
                     ) : (
                         <>
-                            <div className="text-2xs font-medium text-fg-subtle">{t("blueprint.templateLibrary.choicesHeading")}</div>
+                            <div className="text-2xs text-fg-muted">{t("blueprint.templateLibrary.choicesHeading")}</div>
                             <ul className="flex flex-col gap-1 text-xs text-fg-muted">
                                 {choices.map((choice, index) => (
                                     <li key={`${choice}:${index}`} className="flex items-center gap-2">

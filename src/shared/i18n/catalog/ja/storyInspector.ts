@@ -32,6 +32,8 @@ export const storyInspector = {
     },
 
     field: {
+        // A line of dialogue or narration that sets off the cast's behaviours
+        characterBehaviours: "振る舞いを実行",
         operation: "操作",
         value: "値",
         valueJson: "値（JSON）",

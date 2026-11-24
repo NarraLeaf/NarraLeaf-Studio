@@ -7,7 +7,7 @@ import os from "os";
 import { existsSync } from "fs";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
-import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
+import { app as electronApp, safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
 import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME, wrapPackKey } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
@@ -3651,6 +3651,7 @@ export class GameBuildManager {
                 runtimeDistDir: input.runtimeDistDir,
                 shell,
                 plugins: input.plugins,
+                studioVersion: electronApp.getVersion(),
             });
             const target = path.join(dir, fileName);
             await fs.mkdir(dir, { recursive: true });

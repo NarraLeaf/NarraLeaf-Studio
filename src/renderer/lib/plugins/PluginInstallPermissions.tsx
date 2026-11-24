@@ -179,6 +179,28 @@ export interface PluginInstallPermissionSectionsProps {
  * nothing at all - a heading with no rows under it reads as a capability the
  * plugin has, which is exactly backwards.
  */
+/**
+ * A `<platform>-<arch>` key as an author reads it: `macos-arm64` is "macOS (Apple silicon)", not the
+ * key. Older manifests spell the platforms the Node way (`darwin`, `win32`), so both are read. A key
+ * this does not recognise prints as written rather than as nothing.
+ */
+function binaryPlatformLabel(key: string, t: Translator["t"]): string {
+    const [platform = "", arch = ""] = key.toLowerCase().split("-");
+    const os = platform === "macos" || platform === "darwin" ? "macOS"
+        : platform === "windows" || platform === "win32" ? "Windows"
+            : platform === "linux" ? "Linux"
+                : null;
+    if (!os) {
+        return key;
+    }
+    const archLabel = os === "macOS" && arch === "arm64" ? t("pluginPermission.permissions.archAppleSilicon")
+        : os === "macOS" && arch === "x64" ? "Intel"
+            : arch === "universal" ? t("pluginPermission.permissions.archUniversal")
+                : arch === "arm64" ? "ARM64"
+                    : arch;
+    return archLabel ? t("pluginPermission.permissions.platformWithArch", { os, arch: archLabel }) : os;
+}
+
 export function PluginInstallPermissionSections({
     permissions,
     rounded = true,
@@ -226,7 +248,7 @@ export function PluginInstallPermissionSections({
                                 {permission.platforms.length > 0 ? (
                                     <div className="mt-0.5 text-xs text-warning/80">
                                         {t("pluginPermission.permissions.sidecarPlatforms", {
-                                            platforms: formatList(permission.platforms, { style: "narrow" }),
+                                            platforms: formatList(permission.platforms.map(key => binaryPlatformLabel(key, t)), { style: "narrow" }),
                                         })}
                                     </div>
                                 ) : null}

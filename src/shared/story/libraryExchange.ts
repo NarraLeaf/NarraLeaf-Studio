@@ -27,6 +27,8 @@ import type {
     StoryMotionTargetKind,
     StoryTransformRef,
 } from "../types/story";
+import type { StoryCustomCommand } from "../types/story/customCommands";
+import { normalizeStoryCustomCommandDocument } from "./customCommands";
 import {
     normalizeTransformPresetName,
     normalizeTransformPresetTransform,
@@ -40,7 +42,7 @@ export const LIBRARY_EXCHANGE_FORMAT = "narraleaf.library";
 export const LIBRARY_EXCHANGE_VERSION = 1;
 
 /** The two libraries that can travel. Each surface exports and imports exactly one of them. */
-export type LibraryExchangeKind = "transform-preset" | "story-motion";
+export type LibraryExchangeKind = "transform-preset" | "story-motion" | "story-command";
 
 export type TransformPresetExchangeItem = {
     name: string;
@@ -158,8 +160,46 @@ export function decodeStoryMotionExchange(text: string): LibraryExchangeResult<S
  * which for a Chinese or Japanese name means keeping it: only the characters a path cannot hold are
  * replaced.
  */
+/**
+ * The project's own story commands, as a file another project can import - and, because the file is
+ * plain text, as something to paste into a chat.
+ *
+ * Every command a chosen one calls is carried with it, so the file plays on its own: a command made
+ * of commands that left its parts behind would import as calls to nothing. Ids travel, so the
+ * importer can point the calls inside at the copies it makes (`StoryCustomCommandService`).
+ *
+ * What does not travel is what the rows NAME in the project they came from: a character or a file
+ * written into a row rather than passed as a parameter. Parameters are how a command is made to work
+ * anywhere, and the importing project's lint names whatever does not resolve.
+ */
+export function encodeStoryCommandExchange(chosen: readonly StoryCustomCommand[], all: readonly StoryCustomCommand[]): string {
+    const byId = new Map(all.map(command => [command.id, command]));
+    const carried = new Map<string, StoryCustomCommand>();
+    const visit = (command: StoryCustomCommand) => {
+        if (carried.has(command.id)) {
+            return;
+        }
+        carried.set(command.id, command);
+        for (const row of command.rows) {
+            const payload = row.block.kind === "action" ? row.block.payload : null;
+            if (payload?.action === "customCommand") {
+                const inner = byId.get(payload.commandId);
+                if (inner) {
+                    visit(inner);
+                }
+            }
+        }
+    };
+    chosen.forEach(visit);
+    return encode("story-command", [...carried.values()]);
+}
+
+export function decodeStoryCommandExchange(text: string): LibraryExchangeResult<StoryCustomCommand> {
+    return decode(text, "story-command", raw => normalizeStoryCustomCommandDocument({ commands: [raw] }).commands[0] ?? null);
+}
+
 export function libraryExchangeFileName(kind: LibraryExchangeKind, names: readonly string[]): string {
-    const fallback = kind === "transform-preset" ? "transform-presets" : "story-motions";
+    const fallback = kind === "transform-preset" ? "transform-presets" : kind === "story-command" ? "story-commands" : "story-motions";
     const base = names.length === 1 ? sanitizeFileName(names[0]) || fallback : fallback;
     return `${base}.json`;
 }

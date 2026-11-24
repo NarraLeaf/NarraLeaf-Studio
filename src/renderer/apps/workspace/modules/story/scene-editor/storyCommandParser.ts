@@ -7,6 +7,7 @@ import {
     type StoryCommandParam,
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
+import { parseStoryBooleanWord } from "@shared/types/story";
 import { getCommandDef } from "./commands/registry";
 import { findParamLocalized } from "./commands/localizedParams";
 import { numberValueOfLocalized } from "./commands/localizedUnits";
@@ -180,7 +181,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase();
         case "number": {
-            // Localized: the row prints `持续时间=1秒`, so that spelling has to parse — English first
+            // Localized: the row prints `动画持续时间=1秒`, so that spelling has to parse — English first
             // by construction of the table, so `d=1s` behaves identically in every command language.
             const parsed = numberValueOfLocalized(type, value);
             if (parsed === null) {
@@ -196,7 +197,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         }
         case "boolean":
             // Flags accept the human spellings too; resolution canonicalizes to true/false.
-            return ["true", "false", "on", "off", "yes", "no"].includes(value.trim().toLowerCase());
+            return parseStoryBooleanWord(value) !== undefined || ["on", "off", "yes", "no"].includes(value.trim().toLowerCase());
         case "color":
             return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
         // Context-dependent or unconstrained: the parser has nothing to check against.

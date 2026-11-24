@@ -227,6 +227,14 @@ export const properties = {
             stretch: "拉伸",
             crop: "裁剪",
             tile: "平铺",
+            nineSlice: "九宫格",
+        },
+        slice: {
+            label: "切分",
+            top: "上",
+            right: "右",
+            bottom: "下",
+            left: "左",
         },
     },
     menu: {

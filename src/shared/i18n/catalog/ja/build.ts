@@ -2,6 +2,10 @@ import type { LocaleNamespace } from "../types";
 
 /** `build` 日本語。製品ビルドのダイアログ、プラットフォームと形式の名前、状態のトースト。 */
 export const build = {
+    railAttention: {
+        warning: "このセクションに確認が必要な設定がある",
+        error: "このセクションにビルドを止める問題がある",
+    },
     dialog: {
         title: "配布用にビルド",
         start: "ビルド",

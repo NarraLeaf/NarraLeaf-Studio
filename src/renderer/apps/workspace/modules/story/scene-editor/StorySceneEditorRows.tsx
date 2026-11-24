@@ -48,6 +48,8 @@ import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { useStarredStoryCommands } from "./useStarredStoryCommands";
 import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
+import { paramHintText } from "./commands/customCommandState";
+import { useCustomStoryCommandsVersion } from "./commands/customCommands";
 import { expandCommandAbbreviation, localizeCommandVerb } from "./storyCommandSpelling";
 import { abbreviationsOf, NO_ABBREVIATIONS, type StoryCommandAbbreviations } from "./storyCommandAbbreviations";
 import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
@@ -70,6 +72,7 @@ import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
+import { foldInlineFades, inlineFadesAtBlockStart } from "@shared/story/inlineExpressionFade";
 import {
     collectStoryVariableOptions,
     resolveInterpolationName,
@@ -888,6 +891,16 @@ function TextEditBox(props: {
     );
     const [interpEdit, setInterpEdit] = useState<InterpolationClickInfo | null>(null);
     const [eventEdit, setEventEdit] = useState<EventClickInfo | null>(null);
+    /**
+     * The fade the line's `eventIndex`-th event chip takes when it sets none: the fade in effect as the
+     * row begins, carried through the line's events before it. The line is read from the editor, not
+     * the document, so a change just made to an earlier chip in the same line already counts.
+     */
+    const inheritedFadeAt = (eventIndex: number): number => {
+        const rowStart = inlineFadesAtBlockStart(props.scene).get(props.block.id) ?? 0;
+        const events = (props.editorRef.current?.getRuns() ?? []).filter(run => "event" in run);
+        return foldInlineFades(events.slice(0, Math.max(0, eventIndex)), rowStart).endMs;
+    };
     // The row's speaking character, resolved for the inline-expression picker (dialogue rows only).
     const rowCharacter = useMemo(
         () => props.characters.find(character => character.profile.getId() === dialoguePayload?.characterId) ?? null,
@@ -978,6 +991,7 @@ function TextEditBox(props: {
         if (!characterId) {
             return;
         }
+        // Inserted with no fade of its own, so it takes the one in effect before it in the scene.
         const info = props.editorRef.current?.insertEvent({ expression: { characterId } });
         if (info) {
             openEvent(info);
@@ -1048,7 +1062,7 @@ function TextEditBox(props: {
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
                 // A group member needs no indent of its own: the row holds the portrait column open
                 // for it, so read and edit start at the same x and entering edit never jumps.
-                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, props.characters, commandLine.trigger, props.continuing, t)}
                 onChange={props.onEditRichChange}
@@ -1145,6 +1159,7 @@ function TextEditBox(props: {
                     anchor={eventEdit.anchor}
                     value={eventEdit.value}
                     character={rowCharacter}
+                    inheritedFadeMs={inheritedFadeAt(eventEdit.eventIndex)}
                     onChange={event => {
                         props.editorRef.current?.updateEventAt(eventEdit.unit, event);
                         setEventEdit(current => (current ? { ...current, value: event } : current));
@@ -1879,7 +1894,7 @@ function ContainerFooter(props: {
     return (
         <button
             type="button"
-            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
+            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-fg-muted"
             style={{ marginLeft: rowIndent(1) }}
             onClick={event => {
                 event.stopPropagation();
@@ -1960,7 +1975,7 @@ function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderIn
     const def = info.commandId ? getDefById(info.commandId) : null;
     if (!def) {
         return (
-            <span className={HEADER_WORD_CLASS + " italic text-fg-muted"} style={textStyle}>
+            <span className={HEADER_WORD_CLASS + " text-fg-muted"} style={textStyle}>
                 {info.pill}
             </span>
         );
@@ -2076,7 +2091,7 @@ function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textS
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string; holdsReason?: (source: string) => boolean }) {
     const { t } = useTranslation();
     // The slot's NAME is vocabulary — the word the author may type as `位置=` — so it follows the
     // command language. The failure sentence around it is prose and stays in the interface language.
@@ -2092,8 +2107,8 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.source, props.commandContext, { typing: true }),
-        [ct, props.commandContext, props.source],
+        () => (props.holdsReason?.(props.source) ? null : getCommandLineReason(props.source, props.commandContext, { typing: true })),
+        [ct, props.commandContext, props.holdsReason, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
         return null;
@@ -2114,7 +2129,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
             ) : (
-                <span className="italic text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+                <span className="text-fg-subtle">{`<${paramHintText(ghost!.hintKey, ct as (key: never) => string)}>`}</span>
             )}
         </span>
     );
@@ -2155,6 +2170,18 @@ export function InsertRow(props: {
     onBackspaceEmpty: () => void;
     /** When on, a leading "@" opens the action creator like "/" (see `editor.slashAtAlias`). */
     slashAtAlias: boolean;
+    /**
+     * A slot hosted outside a scene that writes only certain commands - a character's behaviours.
+     * The menu offers those commands alone (no plugin actions), and the line can be nothing but a
+     * command: `#` opens no speaker picker, since there is no line of dialogue for it to start.
+     */
+    commandScope?: { commandIds: ReadonlySet<string> };
+    /**
+     * True for a line whose live reason the host answers itself on commit. The custom command editor
+     * passes it for a line holding `<参数>` placeholders: the story grammar reads `-<力度>` as a bad
+     * value, which is exactly what it is not there.
+     */
+    holdsReason?: (source: string) => boolean;
 }) {
     const { t } = useTranslation();
     // The action creator is command vocabulary end to end — command names, their categories, the
@@ -2207,7 +2234,8 @@ export function InsertRow(props: {
     // The menu is derived from the text, never stored - so a reopened draft row always has its
     // completion. Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
-    const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
+    const typedChooser = insertChooserType(value, props.slashAtAlias);
+    const chooser = props.mode.chooserDismissed || (props.commandScope && typedChooser === "character") ? "none" : typedChooser;
     // The trigger this line is actually wearing — the author's own key, not the canonical "/".
     const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
     // Composition state is local and short-lived: it exists only to hand the glyphs back to the field
@@ -2228,9 +2256,13 @@ export function InsertRow(props: {
     // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
     const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
     const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
+    // Read as the set itself, so the memoized lists below key on it rather than on a fresh object.
+    const commandIds = props.commandScope?.commandIds ?? null;
     // The author's abbreviations that still expand: the line replaces them once the word is finished,
     // and the menu ranks and prints the same list, so the two always agree on what `/c` is.
     const { live: abbreviations } = useStoryCommandAbbreviations();
+    // The project's own commands join the lists the moment the command file changes.
+    const customCommandsVersion = useCustomStoryCommandsVersion();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => {
             const all = [
@@ -2242,14 +2274,14 @@ export function InsertRow(props: {
                 ...availableSpecCommands(specPaletteCommands(), props.commandContext).map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
-            ];
+            ].filter(command => !commandIds || commandIds.has(command.id));
             return searchActionCommands(
                 scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
                 chooserQuery,
                 abbreviations,
             );
         },
-        [abbreviations, chooserQuery, ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [abbreviations, chooserQuery, commandIds, ct, customCommandsVersion, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -2258,13 +2290,18 @@ export function InsertRow(props: {
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
         () => {
-            const groups = availableSidebarGroups(
+            const available = availableSidebarGroups(
                 buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
                 props.commandContext,
             );
+            const groups = commandIds
+                ? available
+                    .map(entry => ({ ...entry, commands: entry.commands.filter(command => commandIds.has(command.id)) }))
+                    .filter(entry => entry.commands.length > 0)
+                : available;
             return scopeName === null ? groups : characterScopedSidebarGroups(groups, { drawnByRuntime: scopeDrawnByRuntime });
         },
-        [ct, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [commandIds, ct, customCommandsVersion, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
     );
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     // A scoped menu is one subject's list under that subject's name, so it does not lead with the
@@ -2318,7 +2355,7 @@ export function InsertRow(props: {
                 // answers to in the footnote. It was the other way round, so a zh author read a column
                 // of `t` `d` `at` with the words that explain them pushed to the margin.
                 label: candidate.hintKey
-                    ? ct(`story.paramHint.${candidate.hintKey}` as TranslationKey)
+                    ? paramHintText(candidate.hintKey, ct as (key: never) => string)
                     : candidate.label,
                 // The kind a name belongs to is carried untranslated; it shares the subject vocabulary
                 // the category strip already names, so it reads in the author's own language.
@@ -2381,6 +2418,10 @@ export function InsertRow(props: {
      * Returns whether it took the line. The caller has already established that the line was empty.
      */
     const foldTypedTrigger = (typed: string): boolean => {
+        // A command-only slot has no speaker to name, so a typed "＃" stays the character it is.
+        if (props.commandScope && typed.startsWith("＃")) {
+            return false;
+        }
         const folded = foldInputMethodTrigger(typed, {
             command: word => commandNamedByWord(word, abbreviations) !== null,
             speaker: name => isSpeakerName(props.characters, props.tempSpeakers, name),
@@ -2456,14 +2497,14 @@ export function InsertRow(props: {
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
                 {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
-                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
+                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} holdsReason={props.holdsReason} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
                     className={[
-                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:italic placeholder:text-fg-subtle",
+                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:text-fg-subtle",
                         // Transparent glyphs, opaque caret: the colours come from the mirror behind.
                         // Prose keeps its own text — there is nothing to colour, and a line the mirror
                         // would not draw must never be invisible.
@@ -2494,7 +2535,9 @@ export function InsertRow(props: {
                     // there, but neither is why the author pressed the trigger on a speaker's line.
                     placeholder={props.mode.confirmation
                         ? ""
-                        : scopeName !== null
+                        : props.commandScope
+                            ? t("story.rows.insertPlaceholderCommand", { trigger: props.slashAtAlias ? "@" : "/" })
+                            : scopeName !== null
                             ? t("story.rows.insertPlaceholderCharacter", { name: scopeName })
                             : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
@@ -2689,6 +2732,7 @@ export function InsertRow(props: {
                         stops={actionMenu.stops}
                         category={actionMenu.category}
                         reachable={actionMenu.reachable}
+                        hasCustom={actionMenu.hasCustom}
                         onCategory={actionMenu.chooseCategory}
                         activeKey={actionMenu.activeStop?.key ?? null}
                         onHighlight={actionMenu.selectKey}
@@ -3038,11 +3082,16 @@ function useActionCommandMenuState(
         setActiveKey(stops[nextIndex].key);
     };
 
+    // Whether the project has a command of its own at all. Asked of the groups, not of the query, so the
+    // 自定义 entry stays put while the author types - dimmed when the query misses it, like the rest.
+    const hasCustom = useMemo(() => allGroups.some(entry => entry.group.category === "custom"), [allGroups]);
+
     return {
         ranked,
         sections,
         starred,
         reachable,
+        hasCustom,
         category,
         chooseCategory,
         stops,
@@ -3175,6 +3224,8 @@ function ActionCommandMenu(props: {
     category: MenuCategory;
     reachable: ReadonlySet<MenuCategory>;
     onCategory: (category: MenuCategory) => void;
+    /** The project has commands of its own, so the column carries a 自定义 entry and grows by one row. */
+    hasCustom?: boolean;
     activeKey: string | null;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
@@ -3276,7 +3327,7 @@ function ActionCommandMenu(props: {
                     // The starred rows lead, under a header of their own in the shape of the subject
                     // headers below it — and with no gap above, being the first section.
                     <div className="pt-2 first:pt-0">
-                        <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                        <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs text-fg-muted">
                             <Star className="h-3 w-3 shrink-0" style={{ color: STARRED_ICON_COLOR }} />
                             <span>{t("story.actionCreator.starred")}</span>
                         </div>
@@ -3307,7 +3358,7 @@ function ActionCommandMenu(props: {
                             {/* A scoped menu has one section, and the panel's own header already
                                 named it — a second "角色" under it would only say it twice. */}
                             {props.scopeLabel ? null : (
-                            <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                            <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs text-fg-muted">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                 <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
@@ -3349,7 +3400,7 @@ function ActionCommandMenu(props: {
                 // menu that opens on a blank slot are the same object in two states rather than two
                 // panels of different sizes appearing at the same anchor.
                 <div className="flex h-72 flex-col">
-                    <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                    <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2 text-2xs text-fg-muted">
                         <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
                         <span className="truncate">{props.scopeLabel}</span>
                     </div>
@@ -3363,8 +3414,9 @@ function ActionCommandMenu(props: {
                 not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and
                 grew it back on the way out. Switching category is the one thing this column exists
                 for, and it flinched every time. Same size whatever is open; only the right column
-                scrolls. */
-            <div className="flex h-72">
+                scrolls. The 自定义 entry adds one row (28px and the 2px gap) to the column, so the menu
+                is that much taller in a project that has one; still fixed, whatever category is open. */
+            <div className={props.hasCustom ? "flex h-[19.75rem]" : "flex h-72"}>
                 {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
                     So the chosen category wears a plain fill and the accent stays on the command row —
                     one live highlight, and it is always the one Enter will take. */}
@@ -3377,7 +3429,8 @@ function ActionCommandMenu(props: {
                         empty={!props.reachable.has(ALL_MENU_CATEGORY)}
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
                     />
-                    {STORY_COMMAND_CATEGORIES.map(category => (
+                    {/* 自定义 only once the project has a command to file there. */}
+                    {STORY_COMMAND_CATEGORIES.filter(category => category.id !== "custom" || props.hasCustom).map(category => (
                         <ActionCommandCategoryRow
                             key={category.id}
                             icon={category.icon}
@@ -4033,7 +4086,7 @@ export function CharacterSelectTrigger(props: {
                         // The speaker's own colour, through the one seam the gutter's marks use — so
                         // the name and the face beside it cannot disagree about whose line this is.
                         speakerPaint ? speakerPaint.className : "",
-                        unassigned ? cn("italic text-fg-subtle", !frozen && "hover:text-primary") : speakerPaint ? "" : "text-fg-muted",
+                        unassigned ? cn("text-fg-subtle", !frozen && "hover:text-primary") : speakerPaint ? "" : "text-fg-muted",
                         props.className ?? "",
                         // The same underline every pointing word on a command line takes while the
                         // modifier is held, so "this leads somewhere" reads identically in the two
@@ -4256,13 +4309,13 @@ function BlockPreview(props: {
             // Empty rows are click-to-edit too: the caret clamps to 0 in the empty editor, so the
             // placeholder's own offset never matters — a single click just opens the line.
             return (
-                <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "italic text-fg-subtle"}>
+                <TextClickTarget style={textStyle} className={note ? "text-fg-muted" : "text-fg-subtle"}>
                     {getEmptyTextPlaceholder(block)}
                 </TextClickTarget>
             );
         }
         return (
-            <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "text-fg"}>
+            <TextClickTarget style={textStyle} className={note ? "text-fg-muted" : "text-fg"}>
                 <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words" segment={text} document={props.document} sceneId={props.scene.id} />
             </TextClickTarget>
         );
@@ -4421,7 +4474,7 @@ function BackgroundRowArtwork({ payload, selected, active }: {
 /**
  * A background row: the command line, held clear of the artwork strip at the row's trailing edge.
  *
- * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 持续时间=0.5` names
+ * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 动画持续时间=0.5` names
  * the image, and the strip beside it shows which image that is — so the only thing this preview adds
  * over the shared overview is the width cap that keeps the text from running under the picture.
  */

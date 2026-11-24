@@ -40,6 +40,24 @@ function identifiedLayers(psd: Psd): Array<{ layer: Layer; ref: PsdLayerReferenc
     });
 }
 
+/**
+ * Whether a layer style is switched on. Each effect is a single record or a list of them, and each
+ * record says whether it is enabled; the style as a whole can also be switched off.
+ */
+function hasLayerStyle(layer: Layer): boolean {
+    const effects = layer.effects;
+    if (!effects || effects.disabled) {
+        return false;
+    }
+    return Object.entries(effects).some(([key, value]) => {
+        if (key === "disabled" || key === "scale" || !value) {
+            return false;
+        }
+        const records = (Array.isArray(value) ? value : [value]) as { enabled?: boolean }[];
+        return records.some(record => record && typeof record === "object" && record.enabled !== false);
+    });
+}
+
 /** The tree, geometry only. Pixels stay in the worker until a bake asks for them. */
 export function describePsd(psd: Psd, fileName: string): PsdDocument {
     const references = new Map(identifiedLayers(psd).map(({ layer, ref }) => [layer, ref]));
@@ -54,6 +72,7 @@ export function describePsd(psd: Psd, fileName: string): PsdDocument {
             opacity: layer.opacity ?? 1,
             hidden,
             clipping: layer.clipping === true,
+            ...(hasLayerStyle(layer) ? { styled: true } : {}),
         };
         if (layer.children) {
             node.children = walk(layer.children, path, hidden);

@@ -66,8 +66,8 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey, characterAvatarSelection } from "@shared/utils/characterAvatar";
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
-import { defaultSpriteSize, stageSize } from "@/lib/workspace/services/agent/spriteFacts";
-import { entranceForFirstArt } from "@/lib/workspace/services/agent/spriteStage";
+import { captureDefaultLook, entranceAfterArtChange, loadHeadDetector, type DefaultLook } from "@/lib/workspace/services/agent/spriteFacts";
+import { autoFrameAfterArtChange, captureAvatarLooks, type AvatarLooks } from "@/lib/workspace/services/character/avatarAutoFrame";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
     CHARACTER_INSPECTOR_MAX_FRACTION,
@@ -119,7 +119,7 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
-                <span className="text-2xs tracking-wide text-fg-muted">{props.title}</span>
+                <span className="text-xs font-semibold text-fg">{props.title}</span>
                 <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
                     <Plus className="w-4 h-4" />
                 </button>
@@ -185,15 +185,12 @@ function DefaultStar(props: {
  * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
  * cannot be persisted - `toLayeredDefinition` never learns about it.
  */
-/** Whether a look has a picture yet - a pose's image, a layer's - not counting avatar overrides. */
-function appearanceHasArt(appearance: CharacterAppearance): boolean {
-    if (appearance.getKind() === "preset") {
-        return appearance.getPoses().some(pose => Boolean(pose.assetId));
-    }
-    if (appearance.getKind() === "layered") {
-        return appearance.getLayers().some(layer => Boolean(layer.assetId) || Object.values(layer.options ?? {}).some(Boolean));
-    }
-    return true;
+
+/** What an art edit is compared with: the default look (for the entrance) and each avatar's layers. */
+type ArtBefore = { look: DefaultLook | null; avatars: AvatarLooks };
+
+function captureArtBefore(character: Character | null | undefined): ArtBefore | null {
+    return character ? { look: captureDefaultLook(character), avatars: captureAvatarLooks(character) } : null;
 }
 
 export function CharacterEditor({ tabId, payload, active }: EditorComponentProps<CharacterEditorPayload>) {
@@ -399,22 +396,27 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
     }, []);
 
     /**
-     * Stand the character on the floor when her first art has just landed (`entranceForFirstArt`):
-     * without it a new character's picture comes on at its own pixels, centred on the stage.
+     * Fit the entrance defaults to the art just added (`entranceAfterArtChange`), so the author does
+     * not have to press anything: a character with no defaults, or with defaults Studio fitted to the
+     * previous art, is framed on the new figure - head model included, this being the author's own
+     * action - or shares a same-sized cast member's scale. Defaults the author chose are kept.
+     *
+     * Written only if nothing else changed them while the pictures were read.
      */
-    const fitFirstArt = useCallback(async (hadArt: boolean) => {
-        if (hadArt || !context || !character || character.profile.getEntranceTransform() !== undefined) {
+    const psdBeforeRef = useRef<ArtBefore | null>(null);
+    const fitAfterArt = useCallback(async (before: ArtBefore | null) => {
+        if (!context || !character) {
             return;
         }
-        const sprite = await defaultSpriteSize(context, character);
-        const entrance = entranceForFirstArt({
-            hadArt,
-            current: character.profile.getEntranceTransform(),
-            sprite,
-            stage: stageSize(context),
-        });
-        if (entrance) {
+        const started = JSON.stringify(character.profile.getEntranceTransform() ?? null);
+        const entrance = await entranceAfterArtChange(context, character, before?.look ?? null, loadHeadDetector).catch(() => undefined);
+        if (entrance && JSON.stringify(character.profile.getEntranceTransform() ?? null) === started) {
             character.profile.setEntranceTransform(entrance);
+        }
+        // The dialog avatars the new pictures changed, framed on the head the model finds - the
+        // Auto-frame button's run, limited to those differentials. A framing the author placed stays.
+        if (before) {
+            await autoFrameAfterArtChange(context, character, before.avatars, loadHeadDetector).catch(() => null);
         }
     }, [character, context]);
 
@@ -424,7 +426,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
             setSlot(null);
             return;
         }
-        const hadArt = appearanceHasArt(appearance);
+        const before = slot.kind !== "avatar" ? captureArtBefore(character) : null;
         if (slot.kind === "pose") {
             appearance.setPoseAsset(slot.poseId, assetId);
         } else if (slot.kind === "layer") {
@@ -436,9 +438,9 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
         }
         setSlot(null);
         if (assetId && slot.kind !== "avatar") {
-            void fitFirstArt(hadArt);
+            void fitAfterArt(before);
         }
-    }, [appearance, fitFirstArt, slot]);
+    }, [appearance, character, fitAfterArt, slot]);
 
     const toggleAvatarAxis = useCallback((axisId: string) => {
         if (!appearance) return;
@@ -770,7 +772,12 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                                 </button>
                                 <button
                                     className={ICON_BTN}
-                                    onClick={() => setPsdOpen(true)}
+                                    onClick={() => {
+                                        // The look the import replaces, for deciding whether its
+                                        // defaults were Studio's fit or the author's.
+                                        psdBeforeRef.current = captureArtBefore(character);
+                                        setPsdOpen(true);
+                                    }}
                                     aria-label={t("characters.editor.psd.title")}
                                     {...freeze.writes(false, t("characters.editor.psd.title"))}
                                 >
@@ -795,7 +802,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                     )}
                     {diagnostics.length > 0 && (
                         <div className="max-h-48 shrink-0 overflow-y-auto border-t border-edge">
-                            <div className="px-4 py-1.5 text-2xs tracking-wide text-fg-muted">
+                            <div className="px-4 py-1.5 text-2xs text-fg-muted">
                                 {t("characters.editor.problems")}
                             </div>
                             {diagnostics.map((diagnostic, index) => {
@@ -1244,7 +1251,7 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                 characterId={character.profile.getId()}
                 appearance={appearance}
                 characterName={character.profile.getProfile().name}
-                onImported={hadArt => void fitFirstArt(hadArt)}
+                onImported={() => void fitAfterArt(psdBeforeRef.current)}
             />
 
             <AssetSelector

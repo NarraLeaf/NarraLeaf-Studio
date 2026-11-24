@@ -499,6 +499,10 @@ export const IPCInterface: RendererPreloadedInterface = {
             ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
         openThirdPartyNotices: () =>
             ipcClient.invoke(IPCEventType.appOpenThirdPartyNotices, {}) as Promise<RequestStatus<void>>,
+        openPrivacyNotice: () =>
+            ipcClient.invoke(IPCEventType.appOpenPrivacyNotice, {}) as Promise<RequestStatus<void>>,
+        openLicensingNotice: () =>
+            ipcClient.invoke(IPCEventType.appOpenLicensingNotice, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>

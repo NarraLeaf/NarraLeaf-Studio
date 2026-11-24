@@ -41,7 +41,18 @@ describe("findParamLocalized", () => {
         const show = getCommandDef("show")!;
         expect(findParamLocalized(show, "位置")?.name).toBe("pos");
         expect(findParamLocalized(show, "显隐动画")?.name).toBe("in");
-        expect(findParamLocalized(show, "持续时间")?.name).toBe("d");
+        expect(findParamLocalized(show, "动画持续时间")?.name).toBe("d");
+    });
+
+    it("names a vibration's length as a vibration, not an animation", () => {
+        // Every other `d` is how long an animation plays, which is what 动画持续时间 says; a rumble
+        // row printing that word would claim its buzz is an animation.
+        i18nStore.setLocale("zh");
+        const rumble = getCommandDef("rumble")!;
+        const d = rumble.params.find(p => p.name === "d")!;
+        expect(localizedParamKey(rumble, d)).toBe("振动持续时间");
+        expect(findParamLocalized(rumble, "振动持续时间")?.name).toBe("d");
+        expect(findParamLocalized(rumble, "动画持续时间")).toBeNull();
     });
 
     it("keeps the canonical name and the English alias working in every locale", () => {
@@ -192,7 +203,7 @@ describe("localizedParamKey", () => {
         expect(localizedParamKey(show, show.params.find(p => p.name === "pos")!)).toBe("pos");
         i18nStore.setLocale("zh");
         expect(localizedParamKey(show, show.params.find(p => p.name === "pos")!)).toBe("位置");
-        expect(localizedParamKey(show, show.params.find(p => p.name === "d")!)).toBe("持续时间");
+        expect(localizedParamKey(show, show.params.find(p => p.name === "d")!)).toBe("动画持续时间");
     });
 });
 

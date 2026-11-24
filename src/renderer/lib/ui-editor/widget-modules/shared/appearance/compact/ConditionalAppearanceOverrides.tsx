@@ -67,7 +67,7 @@ export function ConditionalAppearanceOverrides({
 
             <div className="space-y-3 min-w-0">
                 {groupsWithExtraRows.length > 0 ? (
-                    <div className="text-2xs tracking-wide text-fg-subtle px-0.5">{t("widgetAppearance.conditions.conditionalRows")}</div>
+                    <div className="text-2xs text-fg-muted px-0.5">{t("widgetAppearance.conditions.conditionalRows")}</div>
                 ) : null}
                 {groupsWithExtraRows.map(group => {
                     const groupKey = group.key;
@@ -76,7 +76,7 @@ export function ConditionalAppearanceOverrides({
                             key={groupKey}
                             className="rounded-md border border-edge bg-fill-subtle p-2 space-y-2 min-w-0"
                         >
-                            <div className="text-2xs font-medium text-fg-muted">{formatKeyLabel(groupKey)}</div>
+                            <div className="text-2xs text-fg-muted">{formatKeyLabel(groupKey)}</div>
                             {group.rows.map((row, rowIndex) => {
                                 if (rowIndex === 0) return null;
                                 return (
@@ -150,13 +150,13 @@ export function ConditionalAppearanceOverrides({
                 })}
 
                 <div className="rounded-md border border-edge-subtle bg-fill-subtle p-2 space-y-2 min-w-0">
-                    <div className="text-2xs tracking-wide text-fg-subtle">{t("widgetAppearance.conditions.addRowManually")}</div>
+                    <div className="text-2xs text-fg-muted">{t("widgetAppearance.conditions.addRowManually")}</div>
                     <p className="text-2xs text-fg-subtle leading-snug">
                         {t("widgetAppearance.conditions.addRowHint")}
                     </p>
                 <div className="flex flex-wrap gap-2 items-end min-w-0 pt-1">
                     <div className="flex-1 min-w-[10rem]">
-                        <label className="text-2xs tracking-wide text-fg-subtle block mb-1">
+                        <label className="text-2xs text-fg-muted block mb-1">
                             {t("widgetAppearance.conditions.property")}
                         </label>
                         <Select

@@ -382,30 +382,10 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
     return (
         <div className={field.className}>
             <FieldLabelRow field={field} />
-            <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-fg">{t("properties.preview")}</span>
-                    <div className="flex items-center gap-2">
-                        {thumbnailId && (
-                            <button
-                                className={clearButtonClass}
-                                onClick={handleClearThumbnail}
-                                {...freeze.writes(isSaving)}
-                            >
-                                {t("common.clear")}
-                            </button>
-                        )}
-                        <button
-                            ref={anchorRef}
-                            className={secondaryGhostButtonClass}
-                            onClick={() => setSelectorOpen(true)}
-                            {...freeze.writes(isSaving)}
-                        >
-                            {t("properties.select")}
-                        </button>
-                    </div>
-                </div>
-                <div className="relative w-full aspect-square rounded-md border border-edge bg-surface text-xs text-fg-muted overflow-hidden">
+            {/* A tile and its two actions, no card and no "Preview" heading: the field label above already
+                names it, and a full-width square left an empty box taller than the rest of the inspector. */}
+            <div className="flex items-start gap-3">
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md border border-edge bg-surface text-xs text-fg-muted">
                     {thumbnailUrl ? (
                         <img
                             src={thumbnailUrl}
@@ -429,8 +409,27 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                         </button>
                     )}
                 </div>
-                {error && <div className="text-xs text-danger">{error}</div>}
-            </div>
+                    <div className="flex min-w-0 flex-col items-start gap-2">
+                        {thumbnailId && (
+                            <button
+                                className={clearButtonClass}
+                                onClick={handleClearThumbnail}
+                                {...freeze.writes(isSaving)}
+                            >
+                                {t("common.clear")}
+                            </button>
+                        )}
+                        <button
+                            ref={anchorRef}
+                            className={secondaryGhostButtonClass}
+                            onClick={() => setSelectorOpen(true)}
+                            {...freeze.writes(isSaving)}
+                        >
+                            {t("properties.select")}
+                        </button>
+                    </div>
+                </div>
+                {error && <div className="mt-1 text-xs text-danger">{error}</div>}
 
             <AssetSelector
                 visible={selectorOpen}

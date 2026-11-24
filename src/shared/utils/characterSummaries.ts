@@ -6,6 +6,7 @@ import type {
 } from "@shared/types/devMode";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { sanitizeCharacterEntranceProps } from "@shared/story/characterEntrance";
+import { hasCharacterBehaviourRows, sanitizeCharacterBehaviours } from "@shared/story/characterBehaviours";
 
 function trimmed(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -200,6 +201,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             color?: unknown;
             voiceTrackId?: unknown;
             entranceTransform?: unknown;
+            behaviours?: unknown;
         };
         const id = trimmed(raw.id);
         if (!id) {
@@ -217,6 +219,8 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
         // instead of a string, so a hand-edited or plugin-written character can put anything here,
         // and a bad value would reach the compiler as a transform prop the stage cannot read.
         const entranceTransform = sanitizeCharacterEntranceProps(raw.entranceTransform);
+        // Checked row by row for the same reason: a hand-edited file can put anything in a row.
+        const behaviours = sanitizeCharacterBehaviours(raw.behaviours);
         // Left empty when unnamed, never substituted with `id`: `id` is a UUID, and every consumer
         // of `name` treats it as display text (the story compiler feeds it straight to the NLR
         // nametag). Naming the fallback is the compiler's job, not this mapper's.
@@ -228,6 +232,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             ...(color ? { color } : {}),
             ...(voiceTrackId ? { voiceTrackId } : {}),
             ...(entranceTransform ? { entranceTransform } : {}),
+            ...(behaviours && hasCharacterBehaviourRows(behaviours) ? { behaviours } : {}),
         }];
     });
 }

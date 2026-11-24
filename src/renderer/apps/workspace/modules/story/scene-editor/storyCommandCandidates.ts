@@ -6,6 +6,7 @@ import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
 import { reservedTargetName } from "./commands/reservedTargetNames";
+import { localizedBooleanWord } from "./commands/localizedBoolean";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandFolder, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
@@ -109,6 +110,19 @@ export type StoryCommandCandidate = {
     /** Where the author filed it, outermost first; the menu files it the same way. */
     folders?: readonly StoryCommandFolder[];
 };
+
+/**
+ * The two boolean words in the author's command language (`真` / `假` in Chinese), filtered by what has
+ * been typed. Either spelling of the query matches, so `t` still finds `真` for an author who types English.
+ */
+function booleanCandidates(query: string): StoryCommandCandidate[] {
+    return [true, false]
+        .filter(value => !query || startsWithFold(localizedBooleanWord(value), query) || startsWithFold(String(value), query))
+        .map(value => {
+            const word = localizedBooleanWord(value);
+            return { value: word, label: word, mark: { kind: "boolean" as const, value } };
+        });
+}
 
 function startsWithFold(haystack: string, needle: string): boolean {
     return haystack.trim().toLowerCase().startsWith(needle.trim().toLowerCase());
@@ -429,8 +443,7 @@ function candidatesForType(
         case "keyword":
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value, mark: { kind: "word", value: type.value } }] : [];
         case "boolean":
-            return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase()))
-                .map(value => ({ value, label: value, mark: { kind: "boolean" as const, value: value === "true" } }));
+            return booleanCandidates(query);
         case "expression": {
             // Inside `visited(` / `picked(` the vocabulary is not the expression language's at all -
             // it is one entity name - so the whole variable/function offer is replaced rather than
@@ -448,8 +461,7 @@ function candidatesForType(
             // thing to do with a flag is set it to a constant.
             const target = type.assignTo ? resolved[type.assignTo] : undefined;
             const booleans = target?.kind === "variable" && target.valueType === "boolean"
-                ? ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase()))
-                    .map(value => ({ value, label: value, mark: { kind: "boolean" as const, value: value === "true" } }))
+                ? booleanCandidates(query)
                 : [];
             return [
                 ...booleans,
@@ -479,8 +491,7 @@ function candidatesForType(
         case "constant":
             // `true`/`false` and nothing else. A declaration's default cannot read a variable, so
             // offering variable names here pointed the author at values that would then be rejected.
-            return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase()))
-                .map(value => ({ value, label: value, mark: { kind: "boolean" as const, value: value === "true" } }));
+            return booleanCandidates(query);
         // Nothing to enumerate: a number, a colour, free text or an unconstrained literal is whatever
         // the author types.
         case "number":

@@ -436,9 +436,8 @@ function PatchDialogContent({
                                 })}
                             </span>
                         )}
-                        {!baselineAppDir.trim() && !dlc && (
-                            <span className="text-2xs text-fg-subtle">{t("build.patch.artifactWholeGame")}</span>
-                        )}
+                        {/* Nothing under an empty field: its placeholder already says an empty folder
+                            means the whole game, and the line here used to say it a second time. */}
                     </div>
                 )}
 

@@ -28,7 +28,34 @@ export const DEFAULT_COLLAPSED_PANEL_IDS: readonly string[] = [
     "narraleaf-studio:plugins",
     "narraleaf.gallery.panel",
     "narraleaf.menu-bar.panel",
+    "narraleaf-studio:story-commands",
 ];
+
+/**
+ * Panels added to {@link DEFAULT_COLLAPSED_PANEL_IDS} after the group first shipped.
+ *
+ * The defaults only reach an author with no stored member list, so a panel added later would land
+ * out on everyone else's rail. Each id here is folded into a stored list once, and the ids already
+ * folded are remembered, so pulling one back out keeps it out.
+ */
+export const LATE_COLLAPSED_PANEL_IDS: readonly string[] = [
+    "narraleaf-studio:story-commands",
+];
+
+/**
+ * Fold the late defaults not folded before into a stored member list. `seeded` is what earlier
+ * launches already folded; the result carries the list to use and the ids to remember.
+ */
+export function seedLateCollapsedPanels(
+    stored: readonly string[],
+    seeded: readonly string[],
+): { collapsed: string[]; seeded: string[] } {
+    const pending = LATE_COLLAPSED_PANEL_IDS.filter(id => !seeded.includes(id));
+    return {
+        collapsed: [...stored, ...pending.filter(id => !stored.includes(id))],
+        seeded: [...seeded, ...pending],
+    };
+}
 
 /**
  * Weave the group's id into a dock's ordered panel-id list at the slot the persisted order records

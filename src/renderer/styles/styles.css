@@ -1070,6 +1070,27 @@ input[type="radio"]:focus {
     }
 
     /**
+     * The titlebar paints at z-[20000], above every overlay layer, so a modal's full-window
+     * backdrop slides underneath it and leaves the strip bright. While any `.nl-modal-backdrop` is
+     * mounted the titlebar lays the same dim over itself instead. `pointer-events: none` keeps the
+     * window controls clickable and the strip draggable; they read as dimmed, like the rest.
+     */
+    .nl-titlebar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: rgb(0 0 0 / 0.6);
+        opacity: 0;
+        transition: opacity 0.2s ease-out;
+    }
+
+    html:has(.nl-modal-backdrop) .nl-titlebar::after {
+        opacity: 1;
+        backdrop-filter: blur(4px);
+    }
+
+    /**
      * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
      * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
      *
@@ -1411,15 +1432,11 @@ input[type="radio"]:focus {
 }
 
 /*
- * A focused dock panel rings itself in the accent, and one arm of that ring lands on this exact
- * seam. Stand the line down there so the seam still shows exactly ONE line — the accent one —
- * instead of an accent line pressed up against a grey one. The divider keeps its full grab area
- * and its hover glow; only the resting paint yields. (`+` covers the left dock, where the panel
- * precedes the divider; `:has(+ …)` covers the right/bottom docks, where it follows.)
+ * A focused dock panel marks its header with one accent line along the top edge. It used to ring the
+ * whole panel, which read as a selection or an annotation rather than "keys go here".
  */
-.nl-dock-focused + .nl-dock-divider,
-.nl-dock-divider:has(+ .nl-dock-focused) {
-    background-color: transparent;
+.nl-dock-focused > .nl-dock-header {
+    box-shadow: inset 0 1px 0 rgb(var(--nl-primary));
 }
 
 /*

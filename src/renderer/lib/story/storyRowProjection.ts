@@ -436,7 +436,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect" | "plugin" | "rumble" | "input" | "page"
+    | "blueprint" | "camera" | "effect" | "plugin" | "custom" | "rumble" | "input" | "page"
     | "label" | "goto" | "break" | "cut" | "ending" | "quit" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
@@ -492,6 +492,9 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
         // glance precisely because it is the one row whose behaviour is not in the document.
         if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
+        // A call to one of the project's own commands: its own badge, in the 自定义 hue the menu files
+        // it under, rather than the defensive "Effect" below.
+        if (block.payload.action === "customCommand") return badge("custom", "story.badge.custom", "custom");
         // Two badges for one payload arm, split the way the commands are filed: a rumble is
         // feedback about the moment on screen (场景), a lock or a wait decides when the story moves
         // on (流程).
@@ -967,6 +970,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ?? translate("story.describe.pluginAction");
         }
         if (payload.action === "input") return describeInput(payload, lookups);
+        if (payload.action === "customCommand") return translate("story.badge.custom");
         // The page IS the row, as it is a quit's: "Open page" alone would leave an author opening every
         // such row to find which one is the phone.
         if (payload.action === "page") {

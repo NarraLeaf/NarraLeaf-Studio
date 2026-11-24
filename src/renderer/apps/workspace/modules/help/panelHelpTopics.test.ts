@@ -3,6 +3,7 @@ import { isHelpTopicId } from "@/lib/help";
 import { STORY_VARIABLES_PANEL_ID } from "../story-variables/storyVariablesPanelId";
 import { STORY_SNAPSHOT_PANEL_ID } from "../story-snapshots/storySnapshotPanelId";
 import { STORY_ACTION_CREATOR_PANEL_ID } from "../story/scene-editor/storyActionCreatorEvents";
+import { AGENT_LOG_PANEL_ID } from "../agent/agentLogIds";
 import { PANEL_HELP_TOPICS } from "./panelHelpTopics";
 
 /**
@@ -18,6 +19,7 @@ const PANEL_ID_CONSTANTS: Record<string, string> = {
     STORY_VARIABLES_PANEL_ID,
     STORY_SNAPSHOT_PANEL_ID,
     STORY_ACTION_CREATOR_PANEL_ID,
+    AGENT_LOG_PANEL_ID,
 };
 
 describe("panel help topics", () => {

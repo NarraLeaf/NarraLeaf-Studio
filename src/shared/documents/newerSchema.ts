@@ -39,6 +39,7 @@ export const PROJECT_DOCUMENT_KINDS = [
     "assetSets",
     "audioTracks",
     "characters",
+    "storyCommands",
 ] as const;
 
 export type ProjectDocumentKind = typeof PROJECT_DOCUMENT_KINDS[number];

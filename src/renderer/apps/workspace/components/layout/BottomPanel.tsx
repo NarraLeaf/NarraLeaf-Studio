@@ -72,10 +72,11 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
 
     return (
         <div
-            // No border at the seam: the `.nl-dock-divider` above this panel is the one line
-            // drawn there. The (transparent) border box stays for the focus ring alone.
-            className={`bg-surface nl-sidebar-surface flex flex-col border transition-colors ${
-                isFocused ? 'nl-dock-focused border-primary' : 'border-transparent'
+            // No border at all: the `.nl-dock-divider` above this panel is the one line drawn at the
+            // seam, and focus is a thin accent line along the panel header (`.nl-dock-focused` in styles.css)
+            // rather than a ring round the whole panel, which read as a selection.
+            className={`bg-surface nl-sidebar-surface flex flex-col transition-colors ${
+                isFocused ? 'nl-dock-focused' : ''
             }`}
             // The dock cell (`height` px) also holds the 1px ResizableHandle divider above
             // this panel. Subtract it so the panel fits inside the cell instead of
@@ -86,10 +87,10 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
             tabIndex={0}
         >
             {/* Panel Header */}
-            <div className="nl-frame-surface h-10 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
+            <div className="nl-dock-header nl-frame-surface h-10 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
                     <span className="text-fg-muted">{panel.icon}</span>
-                    <h2 className="text-sm font-medium text-fg">{panel.titleKey ? t(panel.titleKey) : panel.title}</h2>
+                    <h2 className="text-sm font-semibold text-fg">{panel.titleKey ? t(panel.titleKey) : panel.title}</h2>
                 </div>
                 <button
                     onClick={onClose}

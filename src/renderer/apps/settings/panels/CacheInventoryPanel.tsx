@@ -116,7 +116,7 @@ export function CacheInventoryPanel() {
                     const bucket = report?.buckets.find(candidate => candidate.id === id);
                     const empty = !bucket || Boolean(bucket.error) || bucket.sizeBytes === 0;
                     return (
-                        <div key={id} className="group flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill-subtle">
+                        <div key={id} className="group -mx-2 flex h-8 items-center gap-3 rounded-md px-2 hover:bg-fill-subtle">
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm text-fg-muted" data-tip={bucket?.path ?? undefined}>
                                     {t(labelKey)}
@@ -143,7 +143,17 @@ export function CacheInventoryPanel() {
                 })}
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* At the right, under the column of per-row Clear buttons: the actions on the whole list
+                sit where its rows keep theirs, as every settings row keeps its control on the right. */}
+            <div className="flex items-center justify-end gap-2">
+                {freed !== null && !measuring && (
+                    <span className="mr-auto text-xs text-fg-subtle">
+                        {t("settings.data.cache.freed", { size: formatBytes(freed) })}
+                    </span>
+                )}
+                <Button size="sm" variant="secondary" className="h-7" disabled={measuring} onClick={() => void measure()}>
+                    {t("settings.data.cache.refresh")}
+                </Button>
                 <Button
                     size="sm"
                     variant="secondary"
@@ -153,14 +163,6 @@ export function CacheInventoryPanel() {
                 >
                     {t("settings.data.cache.clearAll")}
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7" disabled={measuring} onClick={() => void measure()}>
-                    {t("settings.data.cache.refresh")}
-                </Button>
-                {freed !== null && !measuring && (
-                    <span className="text-xs text-fg-subtle">
-                        {t("settings.data.cache.freed", { size: formatBytes(freed) })}
-                    </span>
-                )}
             </div>
         </div>
     );

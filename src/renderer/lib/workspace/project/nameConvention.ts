@@ -200,6 +200,9 @@ export const ProjectNameConvention = {
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],
+    // The project's own story commands. Under `story/` because they are story content: a row calling
+    // one plays what this file says, so it is versioned and built with the stories.
+    EditorStoryCommands: ["editor", "story", "commands.json"],
     EditorStoryDocument: (storyId: string) => ["editor", "story", "stories", storyId, "storydoc.json"],
     EditorStoryAnimations: ["editor", "story", "animations/"],
     EditorStoryAnimationIndex: ["editor", "story", "animations", "index.json"],

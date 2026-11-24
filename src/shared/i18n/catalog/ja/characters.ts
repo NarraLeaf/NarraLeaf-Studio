@@ -42,6 +42,7 @@ export const characters = {
         renameCharacter: "キャラクター {name} の名前変更",
         createCharacter: "キャラクター {name} の作成",
         editCharacter: "キャラクター {name} の編集",
+        applyBehaviourPresetAll: "すべてのキャラクターにプリセット「{preset}」を適用",
         deleteGroup: "グループ {name} の削除",
         autoFrameAvatars: "{name} のアバターの自動切り抜き",
     },
@@ -297,9 +298,34 @@ export const characters = {
         // 登場の行が書いていないチャンネルはここに戻る。行に出ている動詞（`charOp.enter`）と
         // 同じ言い方にしてある。
         entrance: "登場時の既定値",
-        entranceEmpty: "未設定の間、登場の行はステージの既定値を使う",
         entranceDrag: "ドラッグで配置",
         entranceZoom: "ドラッグで拡大縮小",
+        entranceApplyFramed: "標準の構図を適用",
+        entranceMatch: "「{name}」に合わせる",
+        // キャラクターの振る舞い：話し始め・話し終わりに自動で実行するコマンド行
+        behaviours: "振る舞い",
+        behaviourAdd: "振る舞いを追加",
+        // プリセットは通常のコマンド行を書き込み、一覧で確認・編集できる。数値は登場時の既定値が基準
+        behaviourPresets: "プリセットを適用",
+        behaviourPresetAll: "すべてのキャラクターに適用",
+        behaviourPreset: {
+            dimWhenSilent: "話していないときに暗くする",
+            fadeWhenSilent: "話していないときに薄くする",
+            growWhenSpeaking: "話しているときに拡大する",
+            shrinkWhenSilent: "話していないときに縮小する",
+            frontWhenSpeaking: "話しているときに最前面へ",
+        },
+        behaviourEvent: {
+            startSpeaking: "話し始めたとき",
+            stopSpeaking: "話し終えたとき",
+        },
+        behaviourRemove: "振る舞いを削除",
+        behaviourMore: "その他の操作",
+        behaviourAddRow: "コマンドを追加…",
+        behaviourRowDelete: "コマンドを削除",
+        behaviourRowIncomplete: "コマンドが不完全です",
+        // 台詞と同時に実行できるのはステージ系のコマンドのみ：変形、表情、効果音、カメラ
+        behaviourRowNotAllowed: "このコマンドは振る舞いに使用できません",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

@@ -109,6 +109,7 @@ export const documentDiff = {
         dictionaryTerms: "Dictionary terms",
         storyCommentThreads: "Story comment threads",
         transformPresets: "Transform presets",
+        storyCommands: "Story commands",
         localizationKeys: "Translation keys",
         projectLanguages: "Languages",
         projectPlugins: "Plugins",
@@ -520,6 +521,12 @@ export const documentDiff = {
         renamed: "Preset renamed",
         transform: "Preset transform changed",
     },
+    storyCommands: {
+        added: "Command added",
+        removed: "Command removed",
+        renamed: "Command renamed",
+        changed: "Command's rows changed",
+    },
     dictionary: {
         added: "Term added",
         removed: "Term removed",
@@ -789,6 +796,7 @@ export const documentDiff = {
         dictionary: "Dictionary",
         storyComments: "Story comments",
         transformPresets: "Transform presets",
+        storyCommands: "Story commands",
         saveSchema: "Save fields",
         assetSets: "Asset sets",
         localization: "Translations",

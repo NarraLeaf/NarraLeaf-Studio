@@ -1,4 +1,5 @@
 import type { CharacterFrameSequence } from "./character/frameSequence";
+import type { CharacterBehaviours } from "../story/characterBehaviours";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDiagnostic, BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
@@ -420,6 +421,12 @@ export type DevModeCharacterSummary = {
      * has to show.
      */
     entranceTransform?: StoryTransformProps;
+    /**
+     * The rows this character runs when it starts or stops speaking, sanitized - absent when it has
+     * none. Carried as authored and planned at compile time, for the reason the entrance defaults are:
+     * which line sets one off is a property of the scene, not of the character.
+     */
+    behaviours?: CharacterBehaviours;
     /**
      * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
      * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried

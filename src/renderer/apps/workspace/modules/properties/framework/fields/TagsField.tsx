@@ -169,7 +169,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                 </div>
             )}
             {field.helpText && (
-                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
+                <p className="mt-1 text-2xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

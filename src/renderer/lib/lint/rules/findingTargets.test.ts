@@ -546,6 +546,11 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
             uiDocument: uiDocument({ surfaces: [{ id: "map", name: "Map", rootElementId: "map-root" }], elements: [element({ id: "map-root", type: "nl.root" })] }),
         }),
     }],
+    "story/custom-command-broken": [{
+        context: () => createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Hub", [action("c1", { action: "customCommand", commandId: "gone", args: {} })])])],
+        }),
+    }],
     "story/input-action-missing": [{
         context: () => createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Chase", [action("w1", { action: "input", operation: "wait", actionId: "gone" })])])],
@@ -606,6 +611,29 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                 assetIds: [],
                 axes: [{ name: "Outfit", tags: ["White", "Blue"] }, { name: "Hair", tags: ["Long", "Blue"] }],
             }],
+        }),
+    }],
+    "story/behaviour-conflict": [{
+        context: () => createTestLintContext({
+            characters: [{
+                id: "char-alice",
+                name: "Alice",
+                assetIds: [],
+                behaviours: {
+                    startSpeaking: [{
+                        id: "grow",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "character", operation: "move", characterId: "char-alice", transform: { mode: "props", to: { zoom: 1.05 } } },
+                    }],
+                },
+            }],
+            stories: [story("s1", "Main", [scene("sc1", "Opening", [
+                action("enter", { action: "character", operation: "enter", characterId: "char-alice" }),
+                action("move", { action: "character", operation: "move", characterId: "char-alice", transform: { mode: "props", to: { zoom: 1.2 } } }),
+                { id: "line", kind: "nodeAction", payload: { action: "dialogue", characterId: "char-alice", text: { textId: "text-line", value: "Hi", role: "dialogue" } } },
+            ])])],
         }),
     }],
     "story/parallel-same-target": [{

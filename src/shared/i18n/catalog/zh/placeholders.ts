@@ -7,6 +7,7 @@ export const placeholders = {
         properties: "属性",
         characters: "角色",
         story: "故事",
+        storyCommands: "自定义指令",
         localization: "本地化",
         voice: "配音",
         assets: "资产",

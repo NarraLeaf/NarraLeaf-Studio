@@ -112,7 +112,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
 
             {/* Name */}
             <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
+                <label className="block text-2xs text-fg-muted mb-1">
                     {t("common.name")}
                 </label>
                 <input
@@ -127,7 +127,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
 
             {/* Tags */}
             <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
+                <label className="block text-2xs text-fg-muted mb-1">
                     {t("properties.tags.label")}
                 </label>
                 <div className="flex flex-wrap gap-1 mb-2">
@@ -182,7 +182,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
 
             {/* Description */}
             <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
+                <label className="block text-2xs text-fg-muted mb-1">
                     {t("common.description")}
                 </label>
                 <textarea

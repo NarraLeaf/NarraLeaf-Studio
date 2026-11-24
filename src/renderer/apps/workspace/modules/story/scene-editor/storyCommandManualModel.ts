@@ -5,6 +5,7 @@ import type { AnyStoryCommandSpec } from "./commands/registry";
 import type { StoryCommandParamSpec } from "./commands/spec";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { paramHintKey, paramTypes, type StoryCommandParamType } from "./storyCommandGrammar";
+import { paramHintText } from "./commands/customCommandState";
 import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
 /**
@@ -139,7 +140,7 @@ function describeNumber(type: Extract<StoryCommandParamType, { kind: "number" }>
 }
 
 function paramHint(name: string, param: StoryCommandParamSpec, t: ManualTranslate): string {
-    return t(`story.paramHint.${paramHintKey({ ...param, name })}` as TranslationKey);
+    return paramHintText(paramHintKey({ ...param, name }), t as (key: never) => string);
 }
 
 /**

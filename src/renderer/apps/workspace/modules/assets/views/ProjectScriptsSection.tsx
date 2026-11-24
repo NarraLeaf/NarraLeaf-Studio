@@ -125,7 +125,7 @@ export function ProjectScriptsSection({ open }: { open: boolean }) {
             title={
                 <span className="flex items-center gap-1.5">
                     <span>{t("blueprint.script.sectionTitle")}</span>
-                    <span className="text-xs text-fg-subtle">{tn("assets.itemCount", entries.length)}</span>
+                    <span className="text-2xs tabular-nums text-fg-subtle" aria-label={tn("assets.itemCount", entries.length)}>{entries.length}</span>
                 </span>
             }
             actions={

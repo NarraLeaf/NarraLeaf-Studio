@@ -397,7 +397,7 @@ function Field({
 }) {
     return (
         <div className="grid min-w-0 gap-1 [&>*]:min-w-0">
-            <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
+            <span className="min-w-0 truncate text-2xs text-fg-muted">{label}</span>
             {children}
         </div>
     );

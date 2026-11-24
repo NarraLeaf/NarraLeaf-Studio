@@ -62,6 +62,6 @@ describe("what to call a surface", () => {
         i18nStore.setLocale("zh");
         expect(getSurfaceDisplayLabel(mainPage, unmoved, translate)).toBe("入口页面");
         expect(getSurfaceDisplayLabel(page, unmoved, translate)).toBe("页面");
-        expect(getSurfaceDisplayLabel(gameUi, unmoved, translate)).toBe("游戏 UI");
+        expect(getSurfaceDisplayLabel(gameUi, unmoved, translate)).toBe("游戏界面");
     });
 });

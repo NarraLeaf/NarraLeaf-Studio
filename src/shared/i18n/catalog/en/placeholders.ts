@@ -7,6 +7,7 @@ export const placeholders = {
         properties: "Properties",
         characters: "Characters",
         story: "Story",
+        storyCommands: "Custom Commands",
         localization: "Localization",
         voice: "Voice",
         assets: "Assets",

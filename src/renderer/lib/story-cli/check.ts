@@ -216,6 +216,7 @@ async function lintStories(data: ProjectData, stories: readonly StoryLintStory[]
             id: character.profile.getId(),
             name: character.profile.getName(),
             assetIds: [],
+            ...(character.profile.getBehaviours() ? { behaviours: character.profile.getBehaviours() } : {}),
         })),
         assets: Object.values(data.assets).flatMap(shard =>
             Object.values(shard as Record<string, { id: string; type: string; name: string; tags?: string[] }>).map(

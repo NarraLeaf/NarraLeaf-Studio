@@ -90,6 +90,7 @@ export const documentDiff = {
         dictionaryTerms: "辞書の項目",
         storyCommentThreads: "ストーリーコメントスレッド",
         transformPresets: "変換プリセット",
+        storyCommands: "カスタムコマンド",
         localizationKeys: "翻訳キー",
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
@@ -473,6 +474,12 @@ export const documentDiff = {
         renamed: "プリセット名を変更",
         transform: "プリセットの変換を変更",
     },
+    storyCommands: {
+        added: "コマンドを追加",
+        removed: "コマンドを削除",
+        renamed: "コマンド名を変更",
+        changed: "コマンドの内容を変更",
+    },
     dictionary: {
         added: "用語を追加",
         removed: "用語を削除",
@@ -702,6 +709,7 @@ export const documentDiff = {
         dictionary: "辞書",
         storyComments: "ストーリーのコメント",
         transformPresets: "変換プリセット",
+        storyCommands: "カスタムコマンド",
         saveSchema: "セーブ項目",
         assetSets: "アセットセット",
         localization: "翻訳",

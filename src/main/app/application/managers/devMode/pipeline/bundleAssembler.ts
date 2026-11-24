@@ -114,6 +114,14 @@ import { Fs } from "@shared/utils/fs";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
 import { refuseNewerProjectDocument, type ProjectDocumentGate } from "@shared/documents/newerSchema";
+import {
+    customCommandLibrary,
+    expandStoryCustomCommandsInDocument,
+    normalizeStoryCustomCommandDocument,
+    STORY_CUSTOM_COMMANDS_DOCUMENT_PATH,
+    type StoryCustomCommandLibrary,
+} from "@shared/story/customCommands";
+import { STORY_CUSTOM_COMMAND_SCHEMA_VERSION } from "@shared/types/story/customCommands";
 import { CHARACTER_STORE_VERSION } from "@shared/characters/characterStoreModel";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { ASSET_SET_SCHEMA_VERSION } from "@shared/types/assetSet";
@@ -625,6 +633,20 @@ export function planSceneDrop(
 /**
  * @param carriedDlc the DLC ids this package holds, or null to carry every story the project has.
  */
+/**
+ * The project's own story commands, by id. An absent file is no commands; one a newer Studio wrote is
+ * refused like every other project document.
+ */
+async function loadStoryCustomCommands(projectPath: string): Promise<StoryCustomCommandLibrary> {
+    const commandsPath = path.join(projectPath, ...STORY_CUSTOM_COMMANDS_DOCUMENT_PATH.split("/"));
+    const raw = await readOptionalJsonFile<unknown>(commandsPath, {
+        kind: "storyCommands",
+        subject: relativeSubject(projectPath, commandsPath),
+        supportedVersion: STORY_CUSTOM_COMMAND_SCHEMA_VERSION,
+    });
+    return raw ? customCommandLibrary(normalizeStoryCustomCommandDocument(raw).commands) : customCommandLibrary([]);
+}
+
 async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
@@ -643,6 +665,7 @@ async function loadStoryLibrary(
     const documents: Record<string, StoryDocument> = {};
     const stories: StoryLibraryEntry[] = [];
     const seen = new Set<string>();
+    const customCommands = await loadStoryCustomCommands(projectPath);
     for (const entry of Array.isArray(index.stories) ? index.stories : []) {
         if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
             continue;
@@ -674,7 +697,11 @@ async function loadStoryLibrary(
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
-        documents[entry.id] = applyAppTagToStoryDocument(document, {
+        // Calls to the project's own commands become the rows they stand for here, before the edition
+        // fold and the asset-set pass, so both see the rows that actually play - a set named inside a
+        // command is resolved like one named on the line, and a cut that removes the call removes its
+        // rows with it. Nothing downstream, the shipped game included, ever sees a call.
+        documents[entry.id] = applyAppTagToStoryDocument(expandStoryCustomCommandsInDocument(document, customCommands), {
             tagName: variant.name,
             tagId: variant.id,
             // A story no `Start Game` node names still gets swept, from its own entry scene: a jump

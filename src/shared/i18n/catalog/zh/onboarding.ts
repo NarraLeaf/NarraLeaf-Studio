@@ -78,7 +78,7 @@ export const onboarding = {
     },
     skipConfirm: {
         title: "跳过设置",
-        message: "Studio 将以默认设置启动。设置流程不再出现，其中的每一项都在设置中。",
+        message: "Studio 将以默认设置启动。设置流程不再出现，其中的每一项都在设置中",
     },
     nav: {
         skip: "跳过设置",
@@ -89,9 +89,9 @@ export const onboarding = {
         storyName: "第一章",
         scene: "天台，傍晚",
         speaker: "Narra",
-        line: "铃声是十分钟前响的。",
-        lineContinued: "上面没有别人。",
-        narration: "身后通往楼梯间的门一直开着。",
+        line: "铃声是十分钟前响的",
+        lineContinued: "上面没有别人",
+        narration: "身后通往楼梯间的门一直开着",
         background: "天台",
         placement: "居中",
         transition: "淡入淡出",

@@ -7,6 +7,7 @@ import {
     MonitorPlay,
     Music,
     Settings2,
+    SquareFunction,
     StickyNote,
     Type,
     UserRound,
@@ -44,7 +45,9 @@ export type StoryCommandCategoryId =
     | "sound"
     | "data"
     | "flow"
-    | "utils";
+    | "utils"
+    /** The project's own commands (`editor/story/commands.json`). Empty, and hidden, until it has one. */
+    | "custom";
 
 /** 舞台's second-level subjects - the only category that has one. */
 export type StoryStageSubjectId = "image" | "text" | "layer" | "video" | "vfx";
@@ -85,6 +88,7 @@ export const STORY_COMMAND_CATEGORIES: readonly StoryCommandCategory[] = [
     { id: "data", icon: Database, iconColor: "#b8aa86" },
     { id: "flow", icon: Settings2, iconColor: "#b2a6c9" },
     { id: "utils", icon: StickyNote, iconColor: "#a8adb5" },
+    { id: "custom", icon: SquareFunction, iconColor: "#a3b39a" },
 ];
 
 /**
@@ -107,6 +111,7 @@ export const STORY_COMMAND_GROUPS: readonly StoryCommandGroup[] = [
     { id: "data", category: "data", icon: Database, iconColor: "#b8aa86" },
     { id: "flow", category: "flow", icon: Settings2, iconColor: "#b2a6c9" },
     { id: "utils", category: "utils", icon: StickyNote, iconColor: "#a8adb5" },
+    { id: "custom", category: "custom", icon: SquareFunction, iconColor: "#a3b39a" },
 ];
 
 const GROUP_BY_ID = new Map<string, StoryCommandGroup>(STORY_COMMAND_GROUPS.map(group => [group.id, group]));

@@ -248,7 +248,7 @@
     "Runs when the page opens, for each instance: puts the slider and the number at the volume saved for its track (multiply by 100).": "页面打开时对每个实例运行：把滑块和数字设为该音轨已保存的音量（乘以 100）。",
     "Runs when the page opens. Get History gives every line shown so far, Set List Content makes an Entry row for each, and Scroll To Bottom brings the newest into view. Inside a row, Speaker, Line and Avatar each show one field of that row, so this blueprint does not touch them.": "打开页面时运行。「获取历史记录」给出到目前为止显示过的每一行，「设置列表内容」为每一行生成一个「条目」，「滚动到底部」让最新的一行出现在视野中。每个条目里的「说话人」「对白」「头像」各自显示该行的一个字段，所以本蓝图不需要处理它们。",
     "Runs when the page opens. List Auto Saves reads the auto saves the game has made, and Set List Content draws one row for each, from the Auto save row inside the list. Each row's time and line are Blueprint Values on its two texts.": "打开页面时运行。「列出自动存档」读取游戏做过的自动存档，「设置列表内容」按列表里的「自动存档」行为每个存档画一行。每行的时间和对白是它两段文字上的蓝图值。",
-    "Runs when the page opens. Logo fades in with the page and the first long Delay holds it; it is hidden, Disclaimer is shown and held by the second, and Title opens once Disclaimer is hidden. A long wait counts from the start of the fade in (set in each element's Animation section); the short ones let the fade out finish. Advance (a click, Space or Enter) and Dismiss (Escape) end the long wait that is running, so the element on screen fades out at once. Skip Delay reaches a Delay through its Token pin, which is why the presses are handled in this layer. Replace Page closes this page as it opens Title, so Go back and Go Page set to None return to Title, not here. Disclaimer starts hidden: show it in the UI Outline to edit it, then hide it again. For an image logo, put an Image element in Logo in place of Wordmark.": "打开页面时运行。「标志」随页面淡入，由第一个较长的「延迟」保持，随后隐藏；接着显示「免责声明」，由第二个较长的「延迟」保持，隐藏后打开标题页。较长的等待从开始淡入时算起（淡入在各元素的「动画」分区中设置），较短的等待留给淡出。「推进」意图（单击、空格键或回车键）与「关闭」意图（Esc 键）会结束正在进行的较长等待，屏幕上的元素随即淡出。「跳过延迟」通过「令牌」引脚找到对应的「延迟」，因此按键也在本图层中处理。「替换页面」在打开标题页的同时关闭本页面，因此「返回上一页」与页面为「无」的「前往页面」都回到标题页，而不是这里。「免责声明」默认隐藏：编辑时在「UI 大纲」中显示它，编辑后再隐藏。若要使用图片标志，在「标志」中用「图片」元素替换「文字标志」。",
+    "Runs when the page opens. Logo fades in with the page and the first long Delay holds it; it is hidden, Disclaimer is shown and held by the second, and Open Title runs once Disclaimer is hidden. A long wait counts from the start of the fade in (set in each element's Animation section); the short ones let the fade out finish. Disclaimer starts hidden: show it in the UI Outline to edit it, then hide it again. For an image logo, put an Image element in Logo in place of Wordmark.": "打开页面时运行。「标志」随页面淡入，由第一个较长的「延迟」保持，随后隐藏；接着显示「免责声明」，由第二个较长的「延迟」保持，隐藏后运行「打开标题页」。较长的等待从开始淡入时算起（淡入在各元素的「动画」分区中设置），较短的等待留给淡出。「免责声明」默认隐藏：编辑时在「UI 大纲」中显示它，编辑后再隐藏。若要使用图片标志，在「标志」中用「图片」元素替换「文字标志」。",
     "Runs when the page opens. Reads the skip setting the player saved, so a returning player sees the choice they left: Read only is lit when only read text is skipped, All text otherwise. Pressing either button changes the setting and the highlight in that button's own blueprint. This is the pattern for any pair of buttons that shows a saved choice; the two layers below repeat it for full screen and for muting when unfocused.": "打开页面时运行。读取玩家保存的跳过设置，让再次打开页面的玩家看到自己上次的选择：仅跳过已读文本时点亮「仅已读」，否则点亮「全部文本」。按下其中一个按钮时，由该按钮自己的蓝图修改设置并切换高亮。凡是用一对按钮显示已保存选项的地方都可以照此编写，下面两个图层对全屏和失去焦点时静音做了同样的事。",
     "Runs when the page opens. Writes a 0 in front of the slot's Slot param, so slot 1 reads 01.": "打开页面时运行。在存档位的「槽位」参数前加一个 0，因此 1 号存档位显示为 01。",
     "Runs when the page opens: converts the saved delay back to the slider's 0–100 (divide by 20) and shows the same number as the layer above.": "页面打开时运行：把已保存的等待时间换算回滑块的 0–100（除以 20），并显示与上一个图层相同的数字。",
@@ -398,6 +398,12 @@
     "preview-1": "preview-1",
     "preview-2": "preview-2",
     "say": "say",
-    "▶": "▶"
+    "▶": "▶",
+    "Open Title on a press": "按下时打开标题页",
+    "Advance (a click, Space or Enter) and Dismiss (Escape) skip the rest of the page and open Title, whichever part of it is on screen.": "「推进」意图（单击、空格键或回车键）与「关闭」意图（Esc 键）会跳过本页面余下的部分并打开标题页，无论屏幕上正显示哪一部分。",
+    "Open Title once": "只打开一次标题页",
+    "Called at the end of the timed sequence and on a press. Replace Page closes this page as it opens Title, so Go back and Go Page set to None return to Title, not here. Title opened records that it has run, because a press made as the sequence ends would otherwise open Title a second time.": "在计时流程结束时和按下时调用。「替换页面」在打开标题页的同时关闭本页面，因此「返回上一页」与页面为「无」的「前往页面」都回到标题页，而不是这里。「已打开标题页」记录它已经运行过，否则在流程结束的同时按下会再打开一次标题页。",
+    "Open Title": "打开标题页",
+    "Title opened": "已打开标题页"
   }
 }

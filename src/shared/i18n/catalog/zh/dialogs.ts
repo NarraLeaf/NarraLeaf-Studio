@@ -61,7 +61,7 @@ export const dialogs = {
         asset: "资产",
         page: "页面",
         entryPage: "入口页面",
-        gameUi: "游戏 UI",
+        gameUi: "游戏界面",
         image: "图片",
         audio: "音频",
         video: "视频",

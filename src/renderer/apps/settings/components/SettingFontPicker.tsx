@@ -491,7 +491,7 @@ export function SettingFontPicker({
                                     <div
                                         key={row.key}
                                         style={common}
-                                        className="flex items-center px-3 text-xs font-semibold tracking-wider text-fg-muted"
+                                        className="flex items-center px-3 text-xs font-semibold text-fg"
                                     >
                                         {row.label}
                                     </div>

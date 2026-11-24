@@ -138,7 +138,7 @@ export function AssetField(props: {
                     onClick={() => setSelectorOpen(true)}
                 >
                     <Icon className={`h-3.5 w-3.5 shrink-0 ${selectedSet ? "text-primary" : "text-fg-subtle"}`} />
-                    <span className={["truncate", selectedAsset || selectedSet ? "" : "italic text-fg-subtle"].join(" ")}>{label}</span>
+                    <span className={["truncate", selectedAsset || selectedSet ? "" : "text-fg-subtle"].join(" ")}>{label}</span>
                 </button>
                 {props.compact ? null : (
                     <button

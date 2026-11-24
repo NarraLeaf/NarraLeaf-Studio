@@ -41,7 +41,7 @@ export function BlueprintLayerTemplateGrid({ templates, onPickTemplate, onOpenLi
         <div className="flex h-full min-h-0 overflow-y-auto" style={{ paddingLeft: CANVAS_SIDEBAR_INSET_PADDING }}>
             <div className="m-auto w-full max-w-3xl px-6 py-8">
                 <div className="mb-4 text-center">
-                    <p className="text-sm font-medium text-fg-muted">{t("blueprint.layerTemplates.heading")}</p>
+                    <p className="text-sm font-semibold text-fg">{t("blueprint.layerTemplates.heading")}</p>
                     <p className="mt-1 text-xs text-fg-subtle">{t("blueprint.layerTemplates.description")}</p>
                 </div>
                 <ul

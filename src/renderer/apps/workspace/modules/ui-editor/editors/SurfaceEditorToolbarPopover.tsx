@@ -202,7 +202,7 @@ export type SurfaceToolbarPopoverSectionProps = {
 export function SurfaceToolbarPopoverSection({ label, children, first = false }: SurfaceToolbarPopoverSectionProps) {
     return (
         <div className={first ? "" : "mt-1 border-t border-edge pt-2"}>
-            <div className="px-3 pb-1 text-2xs font-medium text-fg-subtle">{label}</div>
+            <div className="px-3 pb-1 text-2xs text-fg-muted">{label}</div>
             {children}
         </div>
     );

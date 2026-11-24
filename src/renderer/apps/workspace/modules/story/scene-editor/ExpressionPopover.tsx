@@ -8,6 +8,9 @@ import { useTranslation } from "@/lib/i18n";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { AssetField } from "./AssetField";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { ownInlineFadeMs } from "@shared/story/inlineExpressionFade";
 import { keepStoryKeysInPopover } from "./PausePopover";
 
 /**
@@ -20,6 +23,11 @@ export function ExpressionPopover(props: {
     anchor: { top: number; left: number; bottom: number };
     value: StoryInlineEvent;
     character: Character | null;
+    /**
+     * The fade this change takes when it sets none: the one in effect after the changes before it in
+     * the scene (see `inlineExpressionFade`). Shown in the field while the change inherits.
+     */
+    inheritedFadeMs: number;
     onChange: (event: StoryInlineEvent) => void;
     onRemove: () => void;
     onClose: () => void;
@@ -56,8 +64,30 @@ export function ExpressionPopover(props: {
         if (!characterId) {
             return;
         }
-        props.onChange({ ...props.value, expression: { characterId, pose: next.pose, tags: next.tags } });
+        // The fade belongs to the token, not to the look it switches to - picking another look keeps
+        // it, and keeps it inheriting when it was.
+        const fadeMs = expression ? ownInlineFadeMs(props.value) : undefined;
+        props.onChange({
+            ...props.value,
+            expression: { characterId, pose: next.pose, tags: next.tags, ...(fadeMs !== undefined ? { fadeMs } : {}) },
+        });
     };
+    // A value typed here is this change's own, 0 included: an explicit 0 turns the fade off for this
+    // change and for the ones after it that inherit, where clearing the value hands it back to the
+    // one before. Equal to the inherited value or not, it stays its own until it is cleared.
+    const setFade = (ms: number | undefined) => {
+        if (!expression) {
+            return;
+        }
+        const { fadeMs, ...rest } = expression;
+        void fadeMs;
+        props.onChange({
+            ...props.value,
+            expression: ms === undefined ? rest : { ...rest, fadeMs: Math.max(0, Math.round(ms)) },
+        });
+    };
+    const ownFadeMs = expression ? ownInlineFadeMs(props.value) : undefined;
+    const inherits = ownFadeMs === undefined;
     const setSound = (assetId: string | undefined) => {
         const { sound, ...rest } = props.value;
         void sound;
@@ -76,10 +106,11 @@ export function ExpressionPopover(props: {
             // window below it and scrolls instead of running off the bottom.
             className="fixed z-[70] w-[26rem] overflow-y-auto rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left), maxHeight: Math.max(240, view.innerHeight - top - 8) }}
+            data-help-topic="storyInlineExpression"
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={keepStoryKeysInPopover}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.inlineEvent.title")}</div>
+            <div className="mb-1.5 text-2xs text-fg-muted">{t("story.inlineEvent.title")}</div>
             {props.character ? (
                 <CharacterAppearancePicker
                     character={props.character}
@@ -92,6 +123,40 @@ export function ExpressionPopover(props: {
                     {t("story.inlineEvent.noCharacter")}
                 </div>
             )}
+            {expression ? (
+                <div className="mt-2">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-fg-muted">{t("story.inlineEvent.fade")}</span>
+                        <NumericDraftEnhancedInput
+                            committedDisplay={formatStorySecondsValue(ownFadeMs ?? props.inheritedFadeMs)}
+                            onFiniteNumber={seconds => setFade(storySecondsToMs(seconds))}
+                            // Emptying the field is the keyboard's way back to inheriting.
+                            onEmpty={() => setFade(undefined)}
+                            type="text"
+                            inputMode="decimal"
+                            popoverWhenNarrow={false}
+                            // An inherited value reads quieter than one this change sets, as an inherited
+                            // differential chip does beside an owned one.
+                            className="w-20"
+                            inputClassName={inherits ? "text-fg-muted" : undefined}
+                            aria-label={t("story.inlineEvent.fade")}
+                        />
+                        <span className="text-xs text-fg-muted">{t("story.inlineEvent.fadeSeconds")}</span>
+                        {inherits ? (
+                            <span className="text-2xs text-fg-subtle">{t("story.inlineEvent.fadeInherited")}</span>
+                        ) : (
+                            <button
+                                type="button"
+                                className="text-2xs text-fg-muted transition-colors hover:text-fg"
+                                onClick={() => setFade(undefined)}
+                            >
+                                {t("story.inlineEvent.fadeInherit")}
+                            </button>
+                        )}
+                    </div>
+                    <div className="mt-1 text-2xs text-fg-subtle">{t("story.inlineEvent.fadeHint")}</div>
+                </div>
+            ) : null}
             <div className="mt-2">
                 <AssetField
                     label={t("story.inlineEvent.sound")}

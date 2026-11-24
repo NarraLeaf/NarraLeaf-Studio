@@ -1,3 +1,5 @@
+import { customCommandCallProblem } from "@shared/story/customCommands";
+import { findCharacterBehaviourConflicts } from "@shared/story/characterBehaviours";
 import { collectCutPoints } from "@shared/story/appTagFold";
 import { createLintBreather } from "../breather";
 import {
@@ -1166,6 +1168,43 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
+         * A call to one of the project's own commands that cannot play: the command was deleted, the
+         * call leaves out a parameter that has no default, or the command ends up calling itself.
+         *
+         * The call compiles to nothing, so whatever staging it stood for silently does not happen.
+         * An error, like a /page row with no page: the scene runs, but not the way it was written.
+         */
+        id: "story/custom-command-broken",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyCustomCommandBroken",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const cursor of eachScene(ctx)) {
+                for (const block of liveBlocks(cursor.scene)) {
+                    const problem = customCommandCallProblem(block, ctx.customCommands);
+                    if (!problem) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/custom-command-broken",
+                        messageKey: problem.code === "unknownCommand"
+                            ? "lint.rule.storyCustomCommandBroken.message"
+                            : problem.code === "missingArgs"
+                                ? "lint.rule.storyCustomCommandBroken.missingArgs"
+                                : "lint.rule.storyCustomCommandBroken.recursion",
+                        ...(problem.code === "missingArgs" ? { params: { params: problem.params.join(", ") } } : {}),
+                        ...(problem.code === "recursion" ? { params: { name: problem.commandName } } : {}),
+                        location: storyLocation(cursor.entry, cursor.scene, block.id),
+                        target: blockTarget(cursor.entry, cursor.scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
          * A `/waitinput`, `/hold` or `/mash` row waiting for an input action the project no longer
 
          * declares.
@@ -1765,6 +1804,50 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                                 target: blockTarget(entry, scene, row.id),
                             });
                         }
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A hand-written row that sets the same stage channel a character behaviour sets at the same
+         * line - `/move Alice zoom=1.2` right above a line where Alice's own `startSpeaking` sets her
+         * zoom too. The row wins (the compile leaves that behaviour row out there); this says so,
+         * because two places writing one number is how an author ends up editing the one that is
+         * not being used.
+         *
+         * Read off `findCharacterBehaviourConflicts`, the same function the compile and the stage walk
+         * consult, so the row marked here is exactly the row that took over.
+         */
+        id: "story/behaviour-conflict",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyBehaviourConflict",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            const behaviours = new Map(ctx.characters.flatMap(character => (
+                character.behaviours ? [[character.id, character.behaviours] as const] : []
+            )));
+            if (behaviours.size === 0) {
+                return findings;
+            }
+            const names = new Map(ctx.characters.map(character => [character.id, character.name]));
+            for (const { entry, scene } of eachScene(ctx)) {
+                const reported = new Set<string>();
+                for (const conflict of findCharacterBehaviourConflicts(scene, behaviours)) {
+                    const key = `${conflict.rowBlockId}|${conflict.characterId}`;
+                    if (reported.has(key)) {
+                        continue;
+                    }
+                    reported.add(key);
+                    findings.push({
+                        ruleId: "story/behaviour-conflict",
+                        messageKey: "lint.rule.storyBehaviourConflict.message",
+                        messageParams: { character: names.get(conflict.characterId) ?? "" },
+                        location: storyLocation(entry, scene, conflict.rowBlockId),
+                        target: blockTarget(entry, scene, conflict.rowBlockId),
                     });
                 }
             }

@@ -146,7 +146,12 @@ export const help = {
                 + "- A project cloned from a server stays connected to it, and the local copy is editable.\n"
                 + "- The Empty template holds the project structure only. The Skeleton template is a short story "
                 + "that runs as delivered: three scenes, one choice, and splash, title, extra, save, load, config "
-                + "and backlog screens with their blueprints already wired.",
+                + "and backlog screens with their blueprints already wired.\n"
+                + "- A template with a sample lists it under Sample content. Unticked parts are left out of the "
+                + "new project; the screens always come in.\n"
+                + "- The launcher also lists the team projects on a signed-in Team server, in the project list or "
+                + "on the Team page as set in Settings. One that is not on this machine yet is cloned from its "
+                + "row.",
         },
         undo: {
             title: "Undo and redo",
@@ -169,7 +174,29 @@ export const help = {
                 + "- Language, theme, editor text and every shortcut are set here.\n"
                 + "- Reset returns one setting, or all of them, to its default value.\n"
                 + "- Cached files can be listed and cleared. Cleared files are rebuilt when they are next needed.\n"
-                + "- Settings can be exported to a file and imported on another machine.",
+                + "- Settings can be exported to a file and imported on another machine. Signed in to Team, they "
+                + "can also be backed up to the server and restored on another computer.",
+        },
+        agents: {
+            title: "AI agents",
+            body:
+                "Studio can serve an MCP endpoint on this computer so that an AI agent, such as Claude Code or "
+                + "opencode, edits the open project directly and its changes appear in the editors at once. It is "
+                + "off until Allow agents to connect is switched on under Agent access in Settings.\n"
+                + "\n"
+                + "- With Allow agents to change projects off, an agent can read projects and every change it "
+                + "tries is refused.\n"
+                + "- Each change an agent makes is one undo step.\n"
+                + "- While an agent edits the story or the interface, that editor is read-only for the author. "
+                + "Read-write, on the notice at the top of the editor, switches it back. The lock lifts after "
+                + "five minutes without a call from the agent.\n"
+                + "- An agent imports files from inside the project. Another folder needs approval, unless full "
+                + "access is allowed.\n"
+                + "- An agent can play-test in Dev Mode. Running the game meanwhile hands Dev Mode back to the "
+                + "author and pauses the agent.\n"
+                + "- The Agent menu pauses and resumes the agent, and Agent log lists its calls.\n"
+                + "- The Agent Skill describes NarraLeaf projects to an agent. It is installed or exported on the "
+                + "same settings page.",
         },
         storyScene: {
             title: "Scenes and rows",
@@ -216,6 +243,22 @@ export const help = {
                 + "- Abbreviations of your own are set on a command's page in the panel. An abbreviation followed by a "
                 + "space is replaced with the command, so rows never contain it.\n"
                 + "- A row with a required value missing cannot be committed.",
+        },
+        customStoryCommands: {
+            title: "Custom commands",
+            body:
+                "A custom command saves a few command rows under a name, typed in the story editor like a built-in command, for example @Shake Anyo strength=10.\n"
+                + "\n"
+                + "- Create one on the Custom Commands page, under the … menu of the left sidebar, or select rows in the story editor and choose Save as custom command.\n"
+                + "- Write <name> where a value goes to declare a parameter, for example xoffset=<strength>; -<strength> uses its negative and <strength=5> sets a default.\n"
+                + "- A parameter takes the type of the place it is written in: a number keeps its unit and range, an option keeps its choices, a character place takes characters only.\n"
+                + "- A parameter without a default is required; a row that leaves it out is shown as a draft.\n"
+                + "- Editing a command changes every row that calls it; renaming it leaves those rows working.\n"
+                + "- A command can hold stage, sound, wait and variable commands and call other custom commands; dialogue, jumps and flow commands are not allowed.\n"
+                + "\n"
+                + "Copy as text and Export to file carry the commands it calls as well. Import them in another project from the clipboard or a file; a name that is taken gets a number.\n"
+                + "\n"
+                + "A row whose command is deleted, misses a required parameter or calls itself plays nothing, and the project check reports it.",
         },
         storyVariables: {
             title: "Variables",
@@ -346,6 +389,20 @@ export const help = {
                 + "- Struck-through text exists only in that version; highlighted text exists only in the current one.\n"
                 + "- Recent version-control revisions can be searched as well.\n"
                 + "- Restore this version changes that line only. Undo reverts it.",
+        },
+        storyInlineExpression: {
+            title: "Expression changes inside a line",
+            body:
+                "An expression change inserted in a line of dialogue changes the speaking character's portrait when the typewriter reaches it. One line can hold several.\n"
+                + "\n"
+                + "- While editing a dialogue row, choose Insert expression change on the text toolbar. It is inserted at the caret and its settings open.\n"
+                + "- In the settings, choose the portrait or variant. A sound effect can play at the same point.\n"
+                + "- With a cross-fade above 0 the new expression fades in. At 0 it changes instantly.\n"
+                + "- A change with no cross-fade of its own uses the one set on the previous change in the scene. Changing one changes every later change that uses it, and leaves earlier changes as they are.\n"
+                + "- Clear the field, or choose Use the previous change's, to use the previous change's cross-fade again.\n"
+                + "\n"
+                + "When a line is skipped or shown all at once, every change in it takes effect immediately without the fade, and the portrait ends on the last expression.\n"
+                + "Only the speaking character of the row changes, and that character must already be on stage through /show. A build reports a warning otherwise.",
         },
         storyComments: {
             title: "Comments on story rows",
@@ -519,8 +576,31 @@ export const help = {
                 "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
-                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime shows the Default dialog avatar from its properties.\n"
+                + "- The portrait beside dialogue is generated from a sprite. A character drawn by a runtime "
+                + "shows the Default dialog avatar from its properties.\n"
+                + "- Auto-frame all dialog avatars, in the panel, places each avatar's framing on the head a "
+                + "detection model finds. Auto-frame avatar, beside a portrait's framing, does the same for one "
+                + "portrait. Adding or replacing art in the character editor frames the avatars whose pictures changed; "
+                + "a framing adjusted by hand is kept. The framing stays adjustable.\n"
                 + "- A character can speak without being on stage.",
+        },
+        characterBehaviours: {
+            title: "Character behaviours",
+            body:
+                "Behaviours are commands a character runs automatically when it starts or stops speaking. "
+                + "They are set under Behaviours in the character's properties and written like commands in the story editor.\n"
+                + "\n"
+                + "- When the speaker changes, the previous speaker runs \"When stopping speaking\" and the new speaker runs \"When starting to speak\". Consecutive lines by one character run it once, on the first line\n"
+                + "- Narration counts as nobody speaking: the previous speaker runs \"When stopping speaking\"\n"
+                + "- Only characters on stage run behaviours. Nothing runs before a character enters or after it exits\n"
+                + "- Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order\n"
+                + "- Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump\n"
+                + "\n"
+                + "Apply preset writes a common pair of commands, such as dimming when not speaking or enlarging when speaking. The numbers are relative to the character's entrance defaults, the commands can be edited like any other, and applying a preset for the same property again replaces them. Apply to all characters writes it for every character from their own entrance defaults, as one step of undo\n"
+                + "\n"
+                + "With \"Trigger character behaviours\" turned off in a line's properties, that line runs no behaviours and the speaker is treated as unchanged\n"
+                + "\n"
+                + "When a command written above a line sets the same property of the same character as a behaviour, the written command is used and project checks show a warning on that row",
         },
         appearances: {
             title: "Character appearances",
@@ -849,6 +929,47 @@ export const help = {
                 + "- Snap to grid moves each selected element's top-left corner to the nearest grid point, with grid "
                 + "snapping on or off.",
         },
+        designImport: {
+            title: "Importing designs",
+            body:
+                "A screen drawn in another tool becomes a page in the UI editor. "
+                + "In the Interfaces panel, choose Import design and pick a Figma export, a PSD, or one or more images.\n"
+                + "\n"
+                + "- Figma: export frames with the NarraLeaf Studio Export plugin. Frames, groups and rectangles become containers, "
+                + "auto layout becomes a stack where a stack can express it, text becomes text, and vectors and masks arrive as pictures.\n"
+                + "- PSD: groups become containers and each layer becomes an image where Photoshop drew it. "
+                + "Clipped layers and layers with blend modes are merged into the layer they belong to, and hidden layers are left out.\n"
+                + "- Images: all the chosen images arrive on one page. Images the size of the largest one line up with it, "
+                + "and smaller ones are placed in the centre to be moved into place.\n"
+                + "\n"
+                + "Each page is scaled to the project resolution, and its pictures go into a new folder in the image assets. "
+                + "Everything that was simplified is listed after the import, such as PSD layer styles, which are not imported.\n"
+                + "\n"
+                + "Buttons drawn in states become working buttons. In a PSD or a Figma design, put the states in one group and name them normal, hover, pressed and disabled; "
+                + "a text layer beside them becomes the label. Image files named start.png, start_hover.png and start_pressed.png become one button. "
+                + "A Figma component with a State property becomes a button as well.\n"
+                + "\n"
+                + "A design of the running game can come in as Game UI instead of a page. Name its top-level groups for the Game UI they are: "
+                + "dialog, choice, quick menu or notification. The import dialog then offers Game UI for that frame and names the project's Game UI it replaces; "
+                + "one undo puts them back. Layers outside those groups, such as the background and sprites, are left out.\n"
+                + "\n"
+                + "- Dialogue box: a text named line becomes the sentence, a text named name shows the speaker's name, and a layer named avatar shows the speaker's avatar. "
+                + "When the name sits in a group of its own, the group is shown only while a character speaks. "
+                + "Without these names, the largest text becomes the line and the text above it the name.\n"
+                + "- Choice: the first option drawn becomes the row of the choice list, its text the option's words, and the gap to the second option the spacing.\n"
+                + "- Quick menu: buttons named auto, skip, log, save, load, config and hide do those jobs; Log, Save, Load and Config open the project's page of that name. "
+                + "A state named on is the look Auto and Skip keep while they run.\n"
+                + "- Notification: the first message drawn becomes the row of the notification list.\n"
+                + "\n"
+                + "In Figma, the plugin can mark layers instead of renaming them by hand: select layers and choose a Mark command under Plugins, NarraLeaf Studio Export in the right-click menu, "
+                + "or use Mark as in the plugin panel. A mark wins over the layer's name. A layer Figma named is renamed for its job; a name you chose is kept, with the job in front. "
+                + "The panel lists what the import will make of each frame, flags what it guessed by position and what is missing, and selects a layer on the canvas when you click its line.\n"
+                + "\n"
+                + "Text drawn into a picture cannot be translated. Keep button words as text on top of the picture.\n"
+                + "\n"
+                + "Install the Figma plugin from the Figma Community: search for NarraLeaf Studio Export, "
+                + "or open figma.com/community/plugin/1707010640966969953.",
+        },
         uiComponents: {
             title: "Reusable parts",
             body:
@@ -968,8 +1089,8 @@ export const help = {
                 "The source text of a story is checked for spelling. Translations are not.\n"
                 + "\n"
                 + "The language follows the project's source language, and can be set to another one, or to none, "
-                + "in Settings. A language is checked once its dictionary has been downloaded, under Spelling "
-                + "dictionaries in the same place. Until then nothing is marked.\n"
+                + "in Settings. A language is checked once its dictionary has been downloaded, under Editor › "
+                + "Spell checking in the same place. Until then nothing is marked.\n"
                 + "\n"
                 + "- A red wave marks a misspelling. Right-clicking it offers replacements, and offers to add the "
                 + "word to the project dictionary.\n"
@@ -1040,7 +1161,8 @@ export const help = {
                 + "workspace closes, before a build and before a restore.\n"
                 + "\n"
                 + "- Submitting a version appends to the list. It never replaces or removes an existing version.\n"
-                + "- Changes are not detected automatically. Run a check to list them.",
+                + "- Changes are not detected automatically. Run a check to list them.\n"
+                + "- A team project keeps its history on the Team server instead, and none of this applies to it.",
         },
         versionChanges: {
             title: "Changes since the last version",
@@ -1059,27 +1181,52 @@ export const help = {
                 + "side to keep. The project stays frozen until every conflict has an answer.\n"
                 + "\n"
                 + "- Both sides are shown side by side, and one side is kept per item.\n"
-                + "- Everything that merged automatically is already in place. Only the parts that "
-                + "could not be merged require an answer.\n"
+                + "- Everything that merged automatically is already in place. Only the parts that could not be "
+                + "merged require an answer.\n"
                 + "- Finishing the merge submits a version, and the result is stored in the history like any "
-                + "other.",
+                + "other.\n"
+                + "- A team project has no merge. Offline edits the server could not apply are listed in its "
+                + "version history instead.",
         },
         versionServer: {
             title: "Working with a server",
             body:
-                "A project can be connected to a version control server so that several people can work on it. "
-                + "Nothing is sent or fetched except by an explicit action.\n"
+                "A project can be connected to a version control server and exchange versions with it. Nothing "
+                + "is sent or fetched except by an explicit action.\n"
                 + "\n"
                 + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
                 + "- When both sides have new versions, Get first and Send afterwards.\n"
-                + "- Checking the current state contacts the server.\n"
-                + "- The server, and the account versions are recorded under, are set from NarraLeaf Team "
-                + "in the bottom-left corner of the window.\n"
-                + "- While a team project is open, its server cannot be changed or signed out of. Once it is closed, "
-                + "convert it to a personal project from the launcher, or sign out of the server in Settings.\n"
-                + "- After signing out of a server, the team projects that use it cannot be opened; they can only be "
-                + "deleted or converted to personal projects.",
+                + "- The server, and the account versions are recorded under, are set in NarraLeaf Team, opened "
+                + "from the bottom-left corner of the window or from Manage Team in the title bar's account "
+                + "menu.\n"
+                + "- On a Team server that supports realtime collaboration, a project is synced while it is "
+                + "edited and has no Send or Get.\n"
+                + "- While a team project is open, its server cannot be changed or signed out of. Once it is "
+                + "closed, convert it to a personal project from the launcher, or sign out of the server in "
+                + "Settings.\n"
+                + "- After signing out of a server, the team projects that use it cannot be opened; they can only "
+                + "be deleted or converted to personal projects.",
+        },
+        teamProject: {
+            title: "Team projects",
+            body:
+                "A project on a Team server that supports realtime collaboration is a team project. Each edit "
+                + "is sent to the server as it is made, and everyone with the project open sees it.\n"
+                + "\n"
+                + "- Version history is in the account menu in the title bar. The server saves a version when the "
+                + "project is idle, and Save version marks a point by hand.\n"
+                + "- View opens a saved version without changing anything. Compare with now lists what changed "
+                + "since it.\n"
+                + "- Restore applies an earlier version for everyone. It is saved as a new version and can be "
+                + "undone the same way.\n"
+                + "- Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be "
+                + "applied are listed in the version history, and each one can be applied by choice.\n"
+                + "- The project's owners decide which parts each member may edit. A read-only role edits "
+                + "nothing.\n"
+                + "- Convert to personal project, in the launcher, keeps a copy consistent with the server. "
+                + "Reconnect to the team project later sends the changes back and lists anything the team also "
+                + "changed to choose from.",
         },
         versionViewing: {
             title: "Viewing an old version",
@@ -1170,6 +1317,20 @@ export const help = {
                 + "visited scenes are kept. The stage and the backlog are not.\n"
                 + "- Do not restore progress: the slot is absent from the save list, and a load request "
                 + "fails.",
+        },
+        projectCleanup: {
+            title: "Cleaning up a project",
+            body:
+                "Clean Up Project in the Run menu runs several tidying tasks over the whole project at once. Each row shows how much it would change; a row with nothing to change is greyed\n"
+                + "\n"
+                + "- Auto-frame dialog avatars frames avatars on the head the detector finds, as Auto-frame all in the Characters panel does. Differentials that already have a framing keep it unless Replace existing framings is ticked\n"
+                + "- Clear project cache deletes asset thumbnails and the files builds and previews leave in the project. They are made again when needed. Preview saves are kept\n"
+                + "- Format all blueprints arranges every graph as Format graph does on the canvas\n"
+                + "- Delete unwired blueprint nodes removes nodes with no wire in or out that cannot run on their own. Event heads, function entries and comments stay\n"
+                + "- Delete orphaned comments removes comment threads whose row is in no story\n"
+                + "- Delete orphaned translations removes translations of lines that are in no story. Translations of disabled lines stay\n"
+                + "\n"
+                + "Blueprint changes undo in each blueprint's editor, and deleted comments return with one undo. Deleted translations cannot be restored",
         },
         patches: {
             title: "Patches",
@@ -1293,7 +1454,8 @@ export const help = {
                 + "- Web, Android and iOS builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "
                 + "game is still possible.\n"
-                + "- The other switch on this page decides whether the game may use the network.",
+                + "- Whether the game may use the network is set by Network policy, in the same group of project "
+                + "settings.",
         },
         screenEffects: {
             title: "Screen effect frame rate",

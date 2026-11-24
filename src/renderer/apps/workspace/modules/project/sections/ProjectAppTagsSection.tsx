@@ -502,7 +502,7 @@ function TagItem({
                     them. A part that cannot have content is not content. */}
                 {buildAxes.length === 0 ? null : (
                     <div className="grid gap-2 border-t border-edge pt-2">
-                        <span className="text-2xs font-medium text-fg-muted">
+                        <span className="text-2xs text-fg-muted">
                             {t("project.appTags.assetAxesTitle")}
                         </span>
                         {buildAxes.map(axis => (
@@ -521,7 +521,7 @@ function TagItem({
                     is most of them. A part that cannot have content is not content. */}
                 {mechanisms.length === 0 ? null : (
                     <div className="grid gap-2 border-t border-edge pt-2">
-                        <span className="text-2xs font-medium text-fg-muted">
+                        <span className="text-2xs text-fg-muted">
                             {t("project.appTags.reachableTitle")}
                         </span>
                         {mechanisms.map(mechanism => (
@@ -911,7 +911,7 @@ function Field({
     return (
         <div className="grid min-w-0 gap-1 [&>*]:min-w-0">
             <div className="flex min-w-0 items-baseline justify-between gap-2">
-                <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
+                <span className="min-w-0 truncate text-2xs text-fg-muted">{label}</span>
                 {trailing}
             </div>
             {children}

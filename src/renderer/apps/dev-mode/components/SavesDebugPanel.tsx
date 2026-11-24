@@ -429,7 +429,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
  * uppercased - the same rule the debugger and Interface panels follow.
  */
 function SectionHeading(props: { title: string }): ReactNode {
-    return <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{props.title}</h3>;
+    return <h3 className="mb-1 text-2xs text-fg-muted">{props.title}</h3>;
 }
 
 /**

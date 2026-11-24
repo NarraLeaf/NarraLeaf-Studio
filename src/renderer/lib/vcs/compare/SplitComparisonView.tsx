@@ -356,7 +356,7 @@ function SplitHalf({
     return (
         <section data-split-half={side} aria-label={label} className="flex h-full min-h-0 min-w-0 flex-col">
             <div className="flex min-h-7 shrink-0 items-center gap-2 border-b border-edge px-3">
-                <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
+                <span className="min-w-0 truncate text-2xs text-fg-muted">{label}</span>
             </div>
             <div
                 ref={scrollerRef}

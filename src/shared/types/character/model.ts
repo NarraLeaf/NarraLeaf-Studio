@@ -1,6 +1,7 @@
 import type { CharacterFrameSequence } from "./frameSequence";
 import type { PsdFingerprint } from "@shared/types/psdImport";
 import type { StoryTransformProps } from "@shared/types/story/document";
+import type { CharacterBehaviours } from "@shared/story/characterBehaviours";
 import type { PuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 
@@ -119,6 +120,14 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      * `voiceTrackId` was added on.
      */
     entranceTransform?: StoryTransformProps;
+    /**
+     * Command rows this character runs on its own when it starts or stops speaking - see
+     * `@shared/story/characterBehaviours` for when they fire and which rows they may hold.
+     *
+     * On the profile for the reason `entranceTransform` is: it survives a kind switch. Additive, no
+     * schema bump.
+     */
+    behaviours?: CharacterBehaviours;
 }
 
 /**

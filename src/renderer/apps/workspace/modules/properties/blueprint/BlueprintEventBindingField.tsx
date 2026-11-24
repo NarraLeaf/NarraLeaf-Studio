@@ -18,7 +18,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
 
     return (
         <div className="mt-2 space-y-2 border-t border-edge-subtle pt-3">
-            <p className="text-2xs tracking-wide text-fg-subtle">{t("properties.events.title")}</p>
+            <p className="text-2xs text-fg-muted">{t("properties.events.title")}</p>
             <div className="flex flex-wrap gap-1.5">
                 {rows.map(row => (
                     <span

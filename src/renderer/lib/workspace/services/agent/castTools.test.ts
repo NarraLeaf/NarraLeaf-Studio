@@ -222,6 +222,17 @@ describe("character_upsert entrance and alpha", () => {
         expect(refit.warnings).toBeUndefined();
     });
 
+    it("gives a new character the defaults of a cast member whose art is the same size", async () => {
+        const tuned = { position: { xalign: 0.5, yalign: 0.5, yoffset: -50 }, zoom: 0.624 };
+        const { run } = harness();
+        await run(characterUpsert, { name: "林", poses: [{ name: "normal", asset: "lin_smile" }], entranceTransform: tuned });
+        const out = await run(characterUpsert, { name: "列车员", poses: [{ name: "normal", asset: "lin_normal" }] });
+        expect(out.character.entranceTransform).toEqual(tuned);
+        // Asked for by name, she is framed on her own figure instead.
+        const refit = await run(characterUpsert, { name: "列车员", entranceTransform: "framed" });
+        expect(refit.character.entranceTransform).toEqual({ position: { xalign: 0.5, yalign: 0.5, yoffset: -40 } });
+    });
+
     it("sets and clears the entrance as stated", async () => {
         const { run, refusal } = harness({ characters: [fakeCharacter("narra", "Narra")] });
         const set = await run(characterUpsert, { id: "narra", entranceTransform: { zoom: 0.9, position: { yoffset: -90 } } });

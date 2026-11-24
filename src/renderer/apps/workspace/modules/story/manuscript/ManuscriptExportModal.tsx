@@ -161,12 +161,20 @@ export function ManuscriptExportModal(props: {
                             >
                                 <span className="text-fg">{t("manuscript.speakers.all")}</span>
                             </Checkbox>
+                            {/* No filter means everyone is in, so every name reads checked under a checked
+                                "All characters" rather than contradicting it. Unchecking one from there keeps
+                                the others; checking the last one back is the same as no filter again. */}
                             {speakers.map(speaker => (
                                 <Checkbox
                                     key={speaker.key}
                                     className="rounded-md px-1.5 py-1 hover:bg-fill"
-                                    checked={visibleSpeakerKeys.includes(speaker.key)}
-                                    onCheckedChange={checked => setSpeakerKeys(current => toggle(current, speaker.key, checked))}
+                                    checked={visibleSpeakerKeys.length === 0 || visibleSpeakerKeys.includes(speaker.key)}
+                                    onCheckedChange={checked => setSpeakerKeys(current => {
+                                        const base = current.filter(key => speakers.some(entry => entry.key === key));
+                                        const from = base.length === 0 ? speakers.map(entry => entry.key) : base;
+                                        const next = toggle(from, speaker.key, checked);
+                                        return next.length === speakers.length ? [] : next;
+                                    })}
                                 >
                                     <span className="min-w-0 flex-1 truncate text-fg">{speaker.name}</span>
                                     <span className="shrink-0 text-2xs text-fg-subtle">{tn("manuscript.speakers.lineCount", speaker.count)}</span>
