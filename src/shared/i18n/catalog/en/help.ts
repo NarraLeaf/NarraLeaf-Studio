@@ -1232,7 +1232,8 @@ export const help = {
                 + "- The project's owners decide which parts each member may edit. A read-only role edits "
                 + "nothing.\n"
                 + "- A local project cannot be uploaded as a team project from the workspace. Export it as a "
-                + "project package and upload the package in the Team admin.\n"
+                + "project package with File › Export Project, then upload the package with Import a project "
+                + "package on the Projects page of the Team console.\n"
                 + "- Convert to personal project, in the launcher, keeps a copy consistent with the server. "
                 + "Reconnect to the team project later sends the changes back and lists anything the team also "
                 + "changed to choose from.",
