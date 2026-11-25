@@ -977,6 +977,24 @@ export const help = {
                 + "Install the Figma plugin from the Figma Community: search for NarraLeaf Studio Export, "
                 + "or open figma.com/community/plugin/1707010640966969953.",
         },
+        pageOverview: {
+            title: "Page Overview",
+            body:
+                "Shows a page beside its controls, with a line from each control to every page, story or ending its "
+                + "logic leads to. Opened from the Interfaces panel header, a page's menu, the Blueprint Overview or the "
+                + "command palette.\n"
+                + "\n"
+                + "- Show switches between one page and all pages in a single scroll.\n"
+                + "- Each control is a card. Folded, it lists what its events do; unfolded, it shows the logic, the "
+                + "position, the size and the text settings.\n"
+                + "- Lines are read from the blueprints. A dashed line means the target arrives on a wire and is only "
+                + "known while the game runs.\n"
+                + "- When a control's logic has one page step, Opens changes that page. Everything else is edited in "
+                + "the blueprint.\n"
+                + "- Dragging a control in the preview moves it. Controls arranged by a stack, a scroll area or a list "
+                + "are moved on the canvas.\n"
+                + "- Edits are undone with the page's own undo history.",
+        },
         uiComponents: {
             title: "Reusable parts",
             body:

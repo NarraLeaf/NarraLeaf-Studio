@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { Workflow } from "lucide-react";
 import { EmptyState, SearchInput } from "@/lib/components/elements";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
@@ -15,6 +17,7 @@ import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBluepri
 import { useOpenBlueprintTarget, type BlueprintOpenOptions } from "../blueprint-lite/hooks/useOpenBlueprintTarget";
 import { blueprintEntryContextMenu } from "../blueprint-lite/hooks/blueprintEntryGesture";
 import { BlueprintWallThumbnail } from "./BlueprintWallThumbnail";
+import { openPageOverviewTab } from "../page-overview/openPageOverviewTab";
 import {
     buildBlueprintWall,
     countBlueprintWallTiles,
@@ -104,14 +107,28 @@ const BlueprintWallTileCard = memo(function BlueprintWallTileCard({
 
 function BlueprintWallSection({
     group,
+    onOpenPageOverview,
     ...tileProps
-}: { group: BlueprintWallGroup } & Omit<TileProps, "tile">) {
+}: { group: BlueprintWallGroup; onOpenPageOverview: (surfaceId: string) => void } & Omit<TileProps, "tile">) {
     const { t } = useTranslation();
+    // A page's blueprints read best beside the page itself; the overview lays them out that way.
+    const pageId = group.kind === "page" && group.key.startsWith("surface:") ? group.key.slice("surface:".length) : null;
+    const pageOverviewLabel = pageId ? t("uiEditor.pageOverview.openForPage", { label: group.title }) : "";
     return (
         <section className="pb-6" data-blueprint-overview-group={group.kind}>
-            <div className="mb-2 flex min-w-0 items-baseline gap-2">
+            <div className="mb-2 flex min-w-0 items-center gap-2">
                 <h2 className="truncate text-sm font-medium text-fg">{group.title}</h2>
                 <span className="shrink-0 text-2xs text-fg-subtle">{group.caption}</span>
+                {pageId ? (
+                    <ToolbarButton
+                        size="xs"
+                        onClick={() => onOpenPageOverview(pageId)}
+                        data-tip={pageOverviewLabel}
+                        aria-label={pageOverviewLabel}
+                    >
+                        <Workflow className="h-3.5 w-3.5" />
+                    </ToolbarButton>
+                ) : null}
             </div>
             {group.tiles.length > 0 ? (
                 <div
@@ -282,6 +299,11 @@ export function BlueprintWallTab({ tabId, active }: EditorTabComponentProps) {
                         localBp={services?.localBp ?? null}
                         nodeCatalog={services?.nodeCatalog ?? null}
                         onOpen={handleOpen}
+                        onOpenPageOverview={surfaceId => {
+                            if (context) {
+                                openPageOverviewTab(context, surfaceId);
+                            }
+                        }}
                     />
                 ))}
             </div>

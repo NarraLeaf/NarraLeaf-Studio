@@ -79,6 +79,7 @@ export const HELP_TOPIC_IDS = [
     "localization",
     "brand",
     "uiSurfaces",
+    "pageOverview",
     "inputActions",
     "inputActionBindings",
     "inputActionAnswering",
@@ -473,6 +474,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         clip: true,
         shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap", "ui-editor.snap-to-grid"],
         related: ["uiComponents", "blueprints", "inputActions", "focusNavigation"],
+    },
+    {
+        id: "pageOverview",
+        section: "interface",
+        related: ["uiSurfaces", "blueprints", "undo"],
     },
     // Four topics rather than one card. The feature has four separate things an author has to know
     // and no way to show a heading inside a topic, so each is its own and they carry each other.

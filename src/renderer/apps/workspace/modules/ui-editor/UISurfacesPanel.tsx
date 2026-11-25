@@ -18,7 +18,7 @@ import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
-import { Network, PanelsTopLeft } from "lucide-react";
+import { Network, PanelsTopLeft, Workflow } from "lucide-react";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -78,6 +78,7 @@ import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfac
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 import { interfaceDocumentFreezeScope } from "./uiFreezeScope";
 import { openBlueprintWallTab } from "../blueprint-wall/openBlueprintWallTab";
+import { openPageOverviewTab } from "../page-overview/openPageOverviewTab";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -525,6 +526,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     label: t("uiEditor.panel.openSurface", { label }),
                     onClick: () => handleOpenSurface(surface),
                 },
+                ...(surface.kind === "appSurface" && context
+                    ? [{
+                        id: "page-overview",
+                        label: t("uiEditor.pageOverview.openForPage", { label }),
+                        onClick: () => openPageOverviewTab(context, surface.id),
+                    }]
+                    : []),
                 {
                     id: "rename-surface",
                     label: t("uiEditor.panel.renameSurface", { label }),
@@ -586,7 +594,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             ));
             showMenu(event);
         },
-        [freeze, showMenu, hideMenu, uiService, documentService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, documentService, context, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -765,6 +773,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [documentService, freeze, handleSurfaceClick, kind, starterTitlePage, t]);
 
     const blueprintOverviewLabel = t("blueprint.overview.title");
+    const pageOverviewLabel = t("uiEditor.pageOverview.open");
 
     return (
         // Three sections that share the panel's height and draw a header each, so where one ends and
@@ -788,15 +797,26 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                         // than something to do in it, and it is grouped by exactly the two kinds the
                         // switch below chooses between.
                         context ? (
-                            <ToolbarButton
-                                size="xs"
-                                onClick={() => openBlueprintWallTab(context)}
-                                data-tip={blueprintOverviewLabel}
-                                aria-label={blueprintOverviewLabel}
-                                data-blueprint-overview-open=""
-                            >
-                                <Network className="h-3.5 w-3.5" />
-                            </ToolbarButton>
+                            <>
+                                <ToolbarButton
+                                    size="xs"
+                                    onClick={() => openPageOverviewTab(context)}
+                                    data-tip={pageOverviewLabel}
+                                    aria-label={pageOverviewLabel}
+                                    data-page-overview-open=""
+                                >
+                                    <Workflow className="h-3.5 w-3.5" />
+                                </ToolbarButton>
+                                <ToolbarButton
+                                    size="xs"
+                                    onClick={() => openBlueprintWallTab(context)}
+                                    data-tip={blueprintOverviewLabel}
+                                    aria-label={blueprintOverviewLabel}
+                                    data-blueprint-overview-open=""
+                                >
+                                    <Network className="h-3.5 w-3.5" />
+                                </ToolbarButton>
+                            </>
                         ) : undefined
                     }
                 >
