@@ -10,6 +10,7 @@ import {
     decodeBase64,
     encodeBase64,
     isAssetContentPath,
+    isAssetOrderPath,
     manifestOf,
     type TeamFileBytes,
     type TeamFileChange,
@@ -330,7 +331,7 @@ export class TeamDocSync {
                     return;
                 }
                 if (answer.kind === "refusal" && answer.reason !== "nothing-there") {
-                    await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+                    if (!isAssetOrderPath(change.path)) await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
                     putBack.push(change.path);
                     this.skipThrough.set(change.path, Number.POSITIVE_INFINITY);
                 }
@@ -440,8 +441,25 @@ export class TeamDocSync {
         // Edits go straight into this window's copy from here on.
         this.ports.documents.install(null);
         if (this.offlineBase === null && this.appliedSeq >= 0) {
-            this.offlineBase = await this.captureBase();
-            await this.persist();
+            // ❗ **Tracked as `capturing`, which a follow waits for before it agrees.** Taking the base
+            // reads the whole project and is slow; waking from sleep drops the socket and opens a new
+            // one at once. Untracked, the follow ran to the end first - online, edits going to the
+            // server - and this then wrote a base nobody would clear and painted the window offline,
+            // so the next open replayed everything since as offline edits.
+            const capturing = (async () => {
+                const base = await this.captureBase();
+                this.offlineBase ??= base;
+                await this.persist();
+            })();
+            const tracked: Promise<void> = capturing.finally(() => {
+                if (this.capturing === tracked) this.capturing = null;
+            });
+            this.capturing = tracked;
+            await tracked;
+        }
+        if (this.online) {
+            // A follow agreed meanwhile: the window is online, whatever this began as.
+            return;
         }
         if (wasOnline || this.view.state !== "offline") {
             this.set({ state: "offline" });
@@ -934,7 +952,7 @@ export class TeamDocSync {
         if (whole) {
             const agreed = this.known.get(path) ?? null;
             if (this.sentFiles.get(path) === (theirs ?? "")) this.sentFiles.delete(path);
-            if (mine !== agreed && mine !== theirs && this.sentFiles.get(path) !== mine) {
+            if (mine !== agreed && mine !== theirs && this.sentFiles.get(path) !== mine && !isAssetOrderPath(path)) {
                 await this.addConflicts([{ kind: "file", path, mine: disk, reason: "conflict" }]);
             }
             if (theirs === null) this.known.delete(path);
@@ -1070,7 +1088,9 @@ export class TeamDocSync {
             if (answer.reason === "unreachable") {
                 return;
             }
-            await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+            if (!isAssetOrderPath(change.path)) {
+                await this.addConflicts([{ kind: "file", path: change.path, mine: change.bytes, reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) }]);
+            }
             void this.putBack(change.path).catch(error => this.storageFailure(error));
         }
         await this.persist();

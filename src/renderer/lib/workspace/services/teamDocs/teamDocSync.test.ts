@@ -167,6 +167,8 @@ class Window {
     failStateWrites = false;
     failFlush = false;
     flushCalls = 0;
+    /** Holds every flush until it settles: a slow disk, as reading a whole project is on waking. */
+    flushGate: Promise<void> | null = null;
     loadState: (() => Promise<TeamDocState | null>) | null = null;
     failStateWhen: ((state: TeamDocState) => boolean) | null = null;
     beforeStateSave: ((state: TeamDocState) => Promise<void>) | null = null;
@@ -207,6 +209,7 @@ class Window {
             },
             flush: async () => {
                 this.flushCalls += 1;
+                await this.flushGate;
                 if (this.failFlush) {
                     await settle();
                     throw new Error("save failed");
@@ -535,6 +538,35 @@ describe("following a team project", () => {
         const conflicts = ada.sync.getView().conflicts;
         expect(conflicts).toHaveLength(1);
         expect(conflicts[0]).toMatchObject({ reason: "conflict", op: { op: "update-block", blockId: "a" } });
+    });
+
+    it("keeps no offline base once back online, when the connection returns while the base is still being taken", async () => {
+        // What waking from sleep does: the dropped socket is noticed and a new one is up at once,
+        // while reading the project for the offline base is still under way.
+        const server = new FakeServer();
+        const ada = new Window(server, "ada", true);
+        ada.disk.set("editor/save-schema.json", "{}");
+        await ada.sync.start();
+        ada.edit(insert("a"));
+        await settle();
+        expect(ada.sync.getView()).toMatchObject({ state: "online", seq: 1 });
+
+        let release!: () => void;
+        ada.flushGate = new Promise<void>(resolve => (release = resolve));
+        ada.setOnline(false);
+        ada.setOnline(true);
+        for (let i = 0; i < 5; i += 1) await settle();
+        ada.flushGate = null;
+        release();
+        for (let i = 0; i < 10; i += 1) await settle();
+
+        expect(ada.sync.getView().state).toBe("online");
+        expect(ada.state?.offline).toBeUndefined();
+        // And the window still edits through the server.
+        ada.edit(insert("b"));
+        for (let i = 0; i < 3; i += 1) await settle();
+        expect(server.document.scenes[SCENE].rootBlockIds).toEqual(["a", "b"]);
+        expect(ada.state?.offline).toBeUndefined();
     });
 
     it("survives closing while offline, and replays when it opens again online", async () => {
@@ -1047,6 +1079,27 @@ describe("following a team project", () => {
             expect(server.files.get(SCHEMA)).toBe("bob");
             expect(ada.disk.get(SCHEMA)).toBe("bob");
             expect(bob.sync.getView().conflicts).toEqual([]);
+        });
+
+        it("takes the server's asset order without reporting a conflict, because the order is only a hint", async () => {
+            const ORDER = "assets/assets.order.image.json";
+            const server = new FakeServer();
+            const ada = new Window(server, "ada", true);
+            const bob = new Window(server, "bob", true);
+            await ada.sync.start();
+            await bob.sync.start();
+
+            // Both imported at once: Bob's order arrives while his own is unsent, and the copy he
+            // sends after is refused as stale. Neither is something he wrote by hand.
+            bob.disk.set(ORDER, "{\"assetIds\":[\"b\"],\"groupIds\":[]}");
+            ada.writeFile(ORDER, "{\"assetIds\":[\"a\"],\"groupIds\":[]}");
+            bob.writeFile(ORDER, "{\"assetIds\":[\"a\",\"b\"],\"groupIds\":[]}");
+            await afterScan();
+            await afterScan();
+            expect(ada.sync.getView().conflicts).toEqual([]);
+            expect(bob.sync.getView().conflicts).toEqual([]);
+            expect(bob.disk.get(ORDER)).toBe(server.files.get(ORDER));
+            expect(ada.disk.get(ORDER)).toBe(server.files.get(ORDER));
         });
 
         it("preserves unresolved file conflicts and the author's bytes across reopening", async () => {
