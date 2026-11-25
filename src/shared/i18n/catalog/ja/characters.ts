@@ -222,7 +222,6 @@ export const characters = {
             prefixes: "接頭辞",
             addPrefix: "接頭辞を追加",
             removePrefix: "接頭辞 {prefix} を削除",
-            split: "命名",
             separators: "区切り文字",
             joiner: "結合文字",
             joinerSpace: "スペース",

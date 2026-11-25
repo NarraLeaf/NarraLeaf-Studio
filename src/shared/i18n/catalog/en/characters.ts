@@ -226,7 +226,6 @@ export const characters = {
             prefixes: "Prefixes",
             addPrefix: "Add prefix",
             removePrefix: "Remove prefix {prefix}",
-            split: "Naming",
             separators: "Separators",
             joiner: "Join with",
             joinerSpace: "Space",

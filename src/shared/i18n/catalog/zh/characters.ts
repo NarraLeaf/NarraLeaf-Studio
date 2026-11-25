@@ -201,7 +201,6 @@ export const characters = {
             prefixes: "前缀",
             addPrefix: "添加前缀",
             removePrefix: "移除前缀 {prefix}",
-            split: "命名",
             separators: "分隔符",
             joiner: "连接符",
             joinerSpace: "空格",

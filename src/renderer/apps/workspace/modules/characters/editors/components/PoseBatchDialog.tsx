@@ -364,9 +364,9 @@ export function PoseBatchDialog(props: {
                     </div>
                 )}
 
-                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-                    <FieldLabel as="span" density="page" className="mb-0">{t("characters.editor.poseBatch.prefixes")}</FieldLabel>
-                    <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <FieldLabel as="span" density="page" className="mb-0 mr-1.5">{t("characters.editor.poseBatch.prefixes")}</FieldLabel>
                         {rule.prefixes.map(prefix => (
                             <span
                                 key={prefix}
@@ -386,7 +386,7 @@ export function PoseBatchDialog(props: {
                         ))}
                         <Input
                             size="sm"
-                            className="w-36"
+                            className="w-28"
                             value={prefixDraft}
                             placeholder={t("characters.editor.poseBatch.addPrefix")}
                             aria-label={t("characters.editor.poseBatch.addPrefix")}
@@ -401,9 +401,8 @@ export function PoseBatchDialog(props: {
                         />
                     </div>
 
-                    <FieldLabel as="span" density="page" className="mb-0">{t("characters.editor.poseBatch.split")}</FieldLabel>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-fg-muted">{t("characters.editor.poseBatch.separators")}</span>
+                        <FieldLabel as="span" density="page" className="mb-0">{t("characters.editor.poseBatch.separators")}</FieldLabel>
                         <Input
                             size="sm"
                             className="w-20 font-mono"
@@ -412,7 +411,9 @@ export function PoseBatchDialog(props: {
                             placeholder={t("characters.editor.poseBatch.separators")}
                             onChange={event => updateRule({ separators: event.target.value })}
                         />
-                        <span className="text-xs text-fg-muted">{t("characters.editor.poseBatch.joiner")}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <FieldLabel as="span" density="page" className="mb-0">{t("characters.editor.poseBatch.joiner")}</FieldLabel>
                         <Select
                             size="sm"
                             portalMenu
@@ -466,6 +467,15 @@ export function PoseBatchDialog(props: {
                                         <span className="w-2/5 min-w-0 truncate text-fg-muted" title={row.path ?? row.stem}>
                                             {row.stem}
                                         </span>
+                                        <span className="w-16 shrink-0 text-right text-2xs text-fg-subtle">
+                                            {row.status === "added"
+                                                ? t("characters.editor.poseBatch.statusAdded")
+                                                : row.status === "library" && row.path
+                                                    // Only worth saying of a file: every image picked
+                                                    // from the library is in it by definition.
+                                                    ? t("characters.editor.poseBatch.statusLibrary")
+                                                    : ""}
+                                        </span>
                                         <div className="min-w-0 flex-1">
                                         <Input
                                             size="sm"
@@ -488,15 +498,6 @@ export function PoseBatchDialog(props: {
                                             }}
                                         />
                                         </div>
-                                        <span className="w-16 shrink-0 text-right text-2xs text-fg-subtle">
-                                            {row.status === "added"
-                                                ? t("characters.editor.poseBatch.statusAdded")
-                                                : row.status === "library" && row.path
-                                                    // Only worth saying of a file: every image picked
-                                                    // from the library is in it by definition.
-                                                    ? t("characters.editor.poseBatch.statusLibrary")
-                                                    : ""}
-                                        </span>
                                     </div>
                                 );
                             })}
