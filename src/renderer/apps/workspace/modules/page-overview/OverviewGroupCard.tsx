@@ -75,6 +75,11 @@ export type OverviewGroupCardProps = {
     onToggle: () => void;
     /** Live element, for the property fields. Absent for the page's own events. */
     element?: UIElement;
+    /**
+     * Moves on every edit to the page. The document is edited in place, so the element above is the
+     * same object before and after a change; this is what tells the fields their values moved.
+     */
+    revision: number;
     surfaceId: string;
     documentService: UIDocumentService | null;
     hasBlueprint: boolean;
@@ -102,6 +107,7 @@ export const OverviewGroupCard = memo(function OverviewGroupCard({
     selected,
     onToggle,
     element,
+    revision,
     surfaceId,
     documentService,
     hasBlueprint,
@@ -114,12 +120,13 @@ export const OverviewGroupCard = memo(function OverviewGroupCard({
     const { t } = useTranslation();
     const fields = useMemo(
         () => (expanded && element && documentService ? groupFields(element, documentService, surfaceId, t) : []),
-        // The element is replaced on every edit, which is what rebuilds the fields' values.
-        [expanded, element, documentService, surfaceId, t],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `revision` stands in for the element's contents
+        [expanded, element, documentService, surfaceId, t, revision],
     );
     const data = useMemo<UIInspectorData | null>(
         () => (element && documentService ? { element, elements: [element], documentService, surfaceId } : null),
-        [element, documentService, surfaceId],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- a new object per revision is what re-renders the fields
+        [element, documentService, surfaceId, revision],
     );
     const writes = useMemo(() => ({ scope: interfaceDocumentFreezeScope() }), []);
     const toggleLabel = t(expanded ? "uiEditor.pageOverview.group.collapse" : "uiEditor.pageOverview.group.expand", { name: title });

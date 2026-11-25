@@ -549,7 +549,7 @@ export const uiEditor = {
             goPage: "打开{target}",
             replacePage: "切换到{target}",
             showLayer: "叠加显示{target}",
-            showConfirm: "用{target}确认",
+            showConfirm: "弹出{target}询问",
             startGame: "开始{target}",
             quitGame: "退出游戏到{target}",
             goBack: "返回上一页",

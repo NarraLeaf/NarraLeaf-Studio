@@ -64,7 +64,10 @@ export function OverviewPagePreview({
         const origin = wrap.getBoundingClientRect();
         const next: HitBox[] = [];
         for (const elementId of elementIds) {
-            const node = wrap.querySelector<HTMLElement>(`[data-ui-preview-element-id="${CSS.escape(elementId)}"]`);
+            // The bridge draws the page with its editor markers on; a bare preview drawing names
+            // its elements under the preview attribute instead. Either one says where it is drawn.
+            const id = CSS.escape(elementId);
+            const node = wrap.querySelector<HTMLElement>(`[data-ui-element-id="${id}"], [data-ui-preview-element-id="${id}"]`);
             if (!node) {
                 continue;
             }

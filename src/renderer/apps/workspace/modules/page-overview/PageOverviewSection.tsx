@@ -20,12 +20,12 @@ import { destinationKind, destinationName, destinationNote, type OverviewNames }
 
 /** The canvas's columns, in CSS pixels: page, gap, controls, gap, destinations. */
 const PAD = 24;
-const PAGE_W = 360;
+const PAGE_W = 296;
 const PREVIEW_W = PAGE_W - 24;
-const GROUP_X = PAD + PAGE_W + 72;
-const GROUP_W = 300;
-const DEST_X = GROUP_X + GROUP_W + 88;
-const DEST_W = 220;
+const GROUP_X = PAD + PAGE_W + 56;
+const GROUP_W = 304;
+const DEST_X = GROUP_X + GROUP_W + 64;
+const DEST_W = 200;
 export const PAGE_OVERVIEW_CANVAS_WIDTH = DEST_X + DEST_W + PAD;
 /** Where a wire meets a card: the middle of its header row. */
 const PORT_Y = 18;
@@ -297,6 +297,7 @@ export function PageOverviewSection(props: PageOverviewSectionProps) {
                             selected={selectedElementId === group.elementId}
                             onToggle={() => onToggle(key, group.elementId)}
                             element={document.elements[group.elementId]}
+                            revision={contentRevision}
                             surfaceId={surface.id}
                             documentService={documentService}
                             hasBlueprint={Boolean(group.blueprintId)}
@@ -319,6 +320,7 @@ export function PageOverviewSection(props: PageOverviewSectionProps) {
                         expanded={expanded.has(overviewGroupKey(surface.id, PAGE_EXITS_GROUP_KEY))}
                         selected={false}
                         onToggle={() => onToggle(overviewGroupKey(surface.id, PAGE_EXITS_GROUP_KEY), null)}
+                        revision={contentRevision}
                         surfaceId={surface.id}
                         documentService={documentService}
                         hasBlueprint={Boolean(overview.pageBlueprintId)}

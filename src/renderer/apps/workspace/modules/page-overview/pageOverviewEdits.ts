@@ -1,7 +1,8 @@
 import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import type { TranslationKey } from "@shared/i18n";
+import { uiEditorHistoryScope, type UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import type { PageOverviewExit } from "./pageOverviewModel";
 
 /**
@@ -9,10 +10,8 @@ import type { PageOverviewExit } from "./pageOverviewModel";
  * dragging it in the preview, and changing which page a step goes to.
  *
  * Both are recorded on the PAGE's undo stack, the one the overview claims while it is on screen,
- * so Ctrl+Z in the overview takes back what was just done there. A page's stack already holds its
- * blueprints as well as its elements (`UIEditorHistoryService.captureSnapshot`), which is what lets
- * a change to a `Go Page` node be one step on it rather than a step on a blueprint tab nobody has
- * open.
+ * so Ctrl+Z in the overview takes back what was just done there, rather than leaving a change to a
+ * `Go Page` node on the stack of a blueprint tab nobody has open.
  */
 
 export type OverviewEditServices = {
@@ -76,6 +75,12 @@ export function endOverviewDrag(services: OverviewEditServices, drag: OverviewDr
  *
  * Only for an exit `canRetargetExit` allowed: the node keeps every other param and every wire, and
  * the page it named simply changes, exactly as picking a different page on its card would.
+ *
+ * Recorded as a step that carries its own inverse rather than as a page snapshot. A page snapshot
+ * puts back which blueprints the page has but deliberately not what is inside them - a blueprint's
+ * contents have their own history, and overwriting them from a page step would take back blueprint
+ * edits made since - so a snapshot of this change would undo nothing. The inverse writes back the
+ * page the node named before, and nothing else.
  */
 export function retargetOverviewExit(
     services: OverviewEditServices,
@@ -84,19 +89,26 @@ export function retargetOverviewExit(
     exit: PageOverviewExit,
     nextSurfaceId: string,
 ): void {
-    const before = services.uiHistory.captureSnapshot(surfaceId);
-    services.history.withoutRecording(() => {
+    const node = services.localBlueprint.getBlueprintDocument().blueprints[blueprintId]?.graphs.events[exit.layerId]?.graph?.nodes?.[exit.nodeId];
+    if (!node) {
+        return;
+    }
+    const had = Boolean(node.params && Object.prototype.hasOwnProperty.call(node.params, "surfaceId"));
+    const previous = node.params?.surfaceId;
+    const write = (value: unknown, present: boolean) => {
         services.localBlueprint.updateEventGraphIr(blueprintId, exit.layerId, ir => {
-            const node = ir.nodes?.[exit.nodeId];
-            if (!node) {
+            const target = ir.nodes?.[exit.nodeId];
+            if (!target) {
                 return;
             }
-            node.params = { ...(node.params ?? {}), surfaceId: nextSurfaceId };
+            const { surfaceId: _old, ...rest } = target.params ?? {};
+            target.params = present ? { ...rest, surfaceId: value } : rest;
         });
-    });
-    services.uiHistory.record({
-        surfaceId,
-        before,
-        after: services.uiHistory.captureSnapshot(surfaceId),
+    };
+    services.history.withoutRecording(() => write(nextSurfaceId, true));
+    services.history.pushCommand(uiEditorHistoryScope(surfaceId), {
+        label: { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
+        undo: () => write(previous, had),
+        redo: () => write(nextSurfaceId, true),
     });
 }

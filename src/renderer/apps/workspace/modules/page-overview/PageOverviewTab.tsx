@@ -19,6 +19,8 @@ import { UIEditorHistoryService, uiEditorHistoryScope } from "@/lib/workspace/se
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useRegistry } from "@/apps/workspace/registry";
+import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
+import { useHistoryStepHandlers } from "../../components/layout/WorkspaceUndoKeybindings";
 import { useWorkspace } from "../../context";
 import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useOpenBlueprintTarget } from "../blueprint-lite/hooks/useOpenBlueprintTarget";
@@ -249,6 +251,24 @@ export function PageOverviewTab({ tabId, payload, active }: EditorTabComponentPr
             }
         };
     }, [active, scopeSurfaceId, services]);
+
+    // The shell's Undo key stands down inside editors, so an editor whose edits are undoable has to
+    // carry its own. These name the page's stack - the one every write here lands on.
+    const undoScope = useCallback(
+        () => uiEditorHistoryScope(scopeSurfaceId ?? ""),
+        [scopeSurfaceId],
+    );
+    const step = useHistoryStepHandlers(undoScope);
+    const undoKeybindings = useMemo(() => [
+        { id: "undo", key: "mod+z", description: "Undo the last change to the page shown", handler: step.undo },
+        { id: "redo", key: "mod+shift+z", description: "Redo the last change to the page shown", handler: step.redo },
+    ], [step]);
+    useKeybindings({
+        keybindings: undoKeybindings,
+        when: whenEditorFocused(tabId),
+        idPrefix: `page-overview-history-${tabId}`,
+        catalogPrefix: "workspace.",
+    });
 
     const edit = useMemo<OverviewEditServices | null>(() => (services
         ? { documentService: services.uiDocument, localBlueprint: services.localBp, uiHistory: services.uiHistory, history: services.history }
