@@ -396,7 +396,7 @@ export function PoseBatchDialog(props: {
                                             onCheckedChange={next => setRowTicked(row, next)}
                                             aria-label={row.stem}
                                         />
-                                        <span className="w-2/5 min-w-0 truncate text-fg-muted" title={row.stem}>
+                                        <span className="w-2/5 min-w-0 truncate text-fg-muted" data-tip={row.stem}>
                                             {row.stem}
                                         </span>
                                         <span className="w-16 shrink-0 text-right text-2xs text-fg-subtle">
