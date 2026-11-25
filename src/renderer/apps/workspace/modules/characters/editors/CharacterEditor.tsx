@@ -51,7 +51,7 @@ import { EditorComponentProps } from "../../types";
 import type { PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
-import { PoseBatchDialog, pickPoseFolder, type PoseBatchSource } from "./components/PoseBatchDialog";
+import { PoseBatchDialog, type PoseBatchSource } from "./components/PoseBatchDialog";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import { PuppetEditor } from "./components/PuppetEditor";
 import { InlineName, nextAutoName } from "./components/InlineName";
@@ -913,14 +913,9 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                                     </button>
                                     <button
                                         className={ICON_BTN}
-                                        onClick={async () => {
-                                            const assetsService = context?.services.get<AssetsService>(Services.Assets);
-                                            if (!assetsService) return;
-                                            const picked = await pickPoseFolder(assetsService);
-                                            if (picked) {
-                                                poseBatchBeforeRef.current = captureArtBefore(character);
-                                                setPoseBatch(picked);
-                                            }
+                                        onClick={() => {
+                                            poseBatchBeforeRef.current = captureArtBefore(character);
+                                            setPoseBatch({ kind: "folder" });
                                         }}
                                         aria-label={t("characters.editor.poseBatch.autoTitle")}
                                         {...freeze.writes(false, t("characters.editor.poseBatch.autoTitle"))}

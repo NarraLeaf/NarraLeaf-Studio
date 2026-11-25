@@ -886,7 +886,7 @@ When a command written above a line sets the same property of the same character
 - 分层立绘：图层由差分轴上的标签控制开关，服装与表情可以独立变化
 - 由运行时绘制：Live2D Cubism、Spine 或自定义运行时绘制的模型，运行时安装在本项目中。故事行用「动作」「外观」「皮肤」「参数」设置模型的状态；「动作」循环播放，直到另一行更改，不能设为只播放一次
 
-成品立绘可批量添加姿态：「批量添加姿态」从资源库选择多张图片；「自动添加姿态」选择一个文件夹，列出其中（含子文件夹）文件名以角色前缀开头的图片，例如角色 Miki 对应 Miki_Seifuku_Frown.png。姿态名由文件名去掉前缀、按分隔符拆分后用连接符拼接得到，Miki_Seifuku_Frown 即为「Seifuku Frown」；前缀、分隔符与连接符可在对话框中修改，并按角色记住。与资源库中已有图片内容相同的文件不重复导入，该角色已在使用的图片默认不勾选，整次添加可一步撤销
+成品立绘可批量添加姿态：「批量添加姿态」从资源库选择多张图片；「自动添加姿态」选择资源库中的一个文件夹，列出其中（含子文件夹）名称以角色前缀开头的图片，例如角色 Miki 对应 Miki_Seifuku_Frown.png。姿态名由文件名去掉前缀、按分隔符拆分后用连接符拼接得到，Miki_Seifuku_Frown 即为「Seifuku Frown」；前缀、分隔符与连接符可在对话框中修改，与所选文件夹一起按角色记住。该角色已在使用的图片默认不勾选，整次添加可一步撤销
 
 成品立绘与分层立绘的对白头像由绘制结果生成，默认随每条差分轴变化，在轴上关闭「头像随此轴变化」后不随该轴变化；没有差分给出头像时，对白显示角色属性中的「默认对白头像」
 
@@ -898,7 +898,7 @@ A character is drawn one of three ways, chosen when the character is created. It
 - Layered sprite: layers switched by tags on axes, so a costume and an expression change independently.
 - Drawn by a runtime: a model drawn by Live2D Cubism, Spine or a custom runtime installed in this project. Story rows set its state with Motion, Appearance, Skin and Parameter; a motion loops until another row changes it and cannot be set to play once.
 
-Preset poses can be added in bulk. Add poses from images picks several images from the library; Add poses from a folder lists the images in a folder, subfolders included, whose file names start with one of the character's prefixes, such as Miki_Seifuku_Frown.png for Miki. A pose is named after its file name with the prefix taken off, cut at the separators and joined again: Miki_Seifuku_Frown becomes Seifuku Frown. Prefixes, separators and the joiner can be changed in the dialog and are remembered per character. A file with the same content as an image already in the library is not imported again, images the character already uses start unticked, and the whole addition is one step of undo.
+Preset poses can be added in bulk. Add poses from images picks several images from the library; Add poses from a folder lists the images in a library folder you choose, subfolders included, whose names start with one of the character's prefixes, such as Miki_Seifuku_Frown.png for Miki. A pose is named after its file name with the prefix taken off, cut at the separators and joined again: Miki_Seifuku_Frown becomes Seifuku Frown. Prefixes, separators and the joiner can be changed in the dialog and are remembered per character, along with the folder. Images the character already uses start unticked, and the whole addition is one step of undo.
 
 For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar from the character's properties.
 

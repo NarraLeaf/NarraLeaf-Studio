@@ -197,7 +197,10 @@ export const characters = {
             batchTitle: "批量添加姿态",
             autoTitle: "自动添加姿态",
             selectImages: "选择姿态图片",
-            changeFolder: "更换文件夹…",
+            folder: "文件夹",
+            folderPlaceholder: "选择资源库文件夹",
+            allImages: "全部图片",
+            chooseFolder: "选择资源库中存放立绘的文件夹",
             prefixes: "前缀",
             addPrefix: "添加前缀",
             removePrefix: "移除前缀 {prefix}",
@@ -215,19 +218,11 @@ export const characters = {
             nothing: "未选择图片",
             poseName: "{file} 的姿态名称",
             statusAdded: "已添加",
-            statusLibrary: "资源库已有",
-            reading: "正在读取文件…",
-            importCount: {
-                other: "将向资源库导入 {count} 张新图片",
-            },
             add: {
                 other: "添加 {count} 个姿态",
             },
             adding: "正在添加…",
             failed: "无法添加姿态",
-            partlyFailed: {
-                other: "{count} 张图片无法导入",
-            },
         },
         psd: {
             title: "导入 PSD",

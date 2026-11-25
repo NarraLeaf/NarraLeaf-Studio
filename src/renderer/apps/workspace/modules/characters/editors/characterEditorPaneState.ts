@@ -154,3 +154,20 @@ export function getPoseNamingRule(panelState: PanelStateService, characterId: st
 export function setPoseNamingRule(panelState: PanelStateService, characterId: string, rule: PoseNamingRule): void {
     panelState.setPanelState<PoseNamingRule>(poseNamingKey(characterId), rule);
 }
+
+/**
+ * The library folder this character's last automatic pose add read, or `*` for every image. Kept
+ * beside the naming rule, for the same reason.
+ */
+function poseFolderKey(characterId: string): string {
+    return `character:editor:poseFolder:${characterId}`;
+}
+
+export function getPoseFolder(panelState: PanelStateService, characterId: string): string | null {
+    const value = panelState.getPanelState<{ folderId?: unknown }>(poseFolderKey(characterId))?.folderId;
+    return typeof value === "string" && value ? value : null;
+}
+
+export function setPoseFolder(panelState: PanelStateService, characterId: string, folderId: string): void {
+    panelState.setPanelState<{ folderId: string }>(poseFolderKey(characterId), { folderId });
+}

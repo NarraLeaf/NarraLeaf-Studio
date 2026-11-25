@@ -218,7 +218,10 @@ export const characters = {
             batchTitle: "画像からポーズを一括追加",
             autoTitle: "フォルダからポーズを自動追加",
             selectImages: "ポーズの画像を選択",
-            changeFolder: "フォルダを変更…",
+            folder: "フォルダ",
+            folderPlaceholder: "ライブラリのフォルダを選択",
+            allImages: "すべての画像",
+            chooseFolder: "立ち絵を収めたライブラリのフォルダを選択",
             prefixes: "接頭辞",
             addPrefix: "接頭辞を追加",
             removePrefix: "接頭辞 {prefix} を削除",
@@ -236,19 +239,11 @@ export const characters = {
             nothing: "画像が選択されていない",
             poseName: "{file} のポーズ名",
             statusAdded: "追加済み",
-            statusLibrary: "ライブラリにある",
-            reading: "ファイルを読み込んでいる…",
-            importCount: {
-                other: "新しい画像 {count} 枚をライブラリに読み込む",
-            },
             add: {
                 other: "ポーズを {count} 個追加",
             },
             adding: "追加している…",
             failed: "ポーズを追加できなかった",
-            partlyFailed: {
-                other: "{count} 枚の画像を読み込めなかった",
-            },
         },
         psd: {
             title: "PSD を読み込む",
