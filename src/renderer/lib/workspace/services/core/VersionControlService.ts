@@ -14,7 +14,6 @@ import type {
     VcsMergeDecision,
     VcsMergeDocument,
     VcsMergeState,
-    VcsPublishOutcome,
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
@@ -707,32 +706,6 @@ export class VersionControlService extends Service<VersionControlService> implem
     }
 
     /**
-     * Put this project on a server: register it there, point it at the server, send it.
-     *
-     * **Contacts the server, where {@link setRemote} does not**, and writes on both ends.
-     * Slow by the standards of this service: three calls, one of which sends the whole
-     * history.
-     *
-     * The two shapes of refusal are not a mixture by accident. Only the first step
-     * answers through the outcome, because it is the only one whose failure has no
-     * sentence anywhere yet; connecting and sending refuse by throwing, with the
-     * backend's own words, which the rail already knows how to draw.
-     */
-    public async publish(remoteOrigin: string, name: string): Promise<VcsPublishOutcome> {
-        const availability = await this.getAvailability();
-        if (!availability.available) {
-            throw new Error(`Version control is not available on this machine (${availability.reason})`);
-        }
-        const result = await getInterface().vcs.publishProject(this.projectPath(), remoteOrigin, name);
-        if (!result.success) throw vcsCallFailed(result);
-        // Announced even where the outcome says the server refused to record the project: the
-        // connect step may still have written the address (see `VcsManager.publishProject`), and a
-        // surface left naming the old server would be naming one this project no longer uses.
-        this.events.emit("serverChanged", undefined);
-        return result.data;
-    }
-
-    /**
      * Where this branch stands against its server.
      *
      * **The one read on this service that waits on a network.** Measured at up to ~2s
@@ -822,28 +795,6 @@ export class VersionControlService extends Service<VersionControlService> implem
         }
         const result = await getInterface().vcs.useServerSession(this.projectPath());
         if (!result.success) throw vcsCallFailed(result);
-        if (result.data.session !== null) this.events.emit("serverChanged", undefined);
-        return result.data;
-    }
-
-    /**
-     * Ask whether this project uses the sign-in held for a server it is not connected to yet, and
-     * answer with where it stands with that server.
-     *
-     * The server picker's question. What a server holds is read over the account's sign-in, and a
-     * project reaches a server that way only once the author has said it uses the sign-in there - so
-     * a project being pointed somewhere new is asked at the moment the author chooses where, rather
-     * than shown a list it may not read or asked a moment later when they press Create.
-     */
-    public async useServerSessionAt(remoteOrigin: string): Promise<VcsProjectServerSession> {
-        const availability = await this.getAvailability();
-        if (!availability.available) {
-            throw new Error(`Version control is not available on this machine (${availability.reason})`);
-        }
-        const result = await getInterface().vcs.useServerSession(this.projectPath(), remoteOrigin);
-        if (!result.success) throw vcsCallFailed(result);
-        // Announced like the project's own: where the server asked about is the one the project is
-        // already on, every surface showing its sign-in has to read it again.
         if (result.data.session !== null) this.events.emit("serverChanged", undefined);
         return result.data;
     }

@@ -2856,6 +2856,15 @@ export class VcsManager extends Manager {
             return { ok: true };
         }
 
+        // **Not from a project's window.** A local project becomes a team project on the Team side,
+        // from an exported project package; publishing from the workspace only connects a project
+        // to the copy a server already holds (above). The launcher's new team project, made for
+        // this server and sent straight away, is the one caller still allowed to register.
+        if (!options.newProject) {
+            this.app.logger.info("[Vcs] Refused to publish", root, "to", remoteOrigin, "- not on that server, and not a new team project");
+            return { ok: false, problem: { kind: "package-required" } };
+        }
+
         // A different project already answering to this name. Refused rather than published
         // through: registering here would put a second repository at an address somebody
         // else's project is cloned by, and the server is the one that decides which of them

@@ -40,6 +40,7 @@ import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { getAgentBridgeInterface, getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
+import type { TeamDocumentsService } from "../teamDocs/TeamDocumentsService";
 import type { ConsoleService, ConsoleLogLevel } from "../core/ConsoleService";
 import { AgentFollowService, type AgentWriteTarget } from "./AgentFollowService";
 import { AgentActivityLog, type AgentActivityToolMeta } from "./AgentActivityLog";
@@ -152,7 +153,20 @@ export class AgentBridgeService extends Service<AgentBridgeService> {
     private state(): AgentCallResult {
         const follow = this.follow?.getState();
         const state: AgentWorkspaceState = { paused: follow?.paused ?? false, follow: follow?.follow ?? true };
+        const team = this.teamState();
+        if (team) state.team = team;
         return { ok: true, content: [{ type: "text", text: JSON.stringify(state) }], structured: state };
+    }
+
+    /** Whether this window's project is a Team project, and how it stands with its server. */
+    private teamState(): AgentWorkspaceState["team"] {
+        try {
+            const view = this.getContext().services.get<TeamDocumentsService>(Services.TeamDocuments)?.getView() ?? null;
+            return view === null ? undefined : { state: view.state, mayEdit: view.mayEdit };
+        } catch {
+            // Answered at once and from any moment, including before the services are up.
+            return undefined;
+        }
     }
 
     private async run(request: AgentCallRequest): Promise<AgentCallResult> {

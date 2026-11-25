@@ -65,6 +65,7 @@ type Harness = {
         dictionaryLoad: ReturnType<typeof vi.fn>;
         storyCommentsLoad: ReturnType<typeof vi.fn>;
         transformPresetsLoad: ReturnType<typeof vi.fn>;
+        storyCommandsLoad: ReturnType<typeof vi.fn>;
         historyClearAll: ReturnType<typeof vi.fn>;
         showSticky: ReturnType<typeof vi.fn>;
     };
@@ -97,6 +98,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         dictionaryLoad: vi.fn(async () => []),
         storyCommentsLoad: vi.fn(async () => undefined),
         transformPresetsLoad: vi.fn(async () => []),
+        storyCommandsLoad: vi.fn(async () => undefined),
         historyClearAll: vi.fn(),
         showSticky: vi.fn(() => "toast-1"),
     };
@@ -143,6 +145,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.Dictionary]: { load: stubs.dictionaryLoad },
         [Services.StoryComments]: { load: stubs.storyCommentsLoad },
         [Services.TransformPreset]: { load: stubs.transformPresetsLoad },
+        [Services.StoryCustomCommands]: { load: stubs.storyCommandsLoad },
         [Services.History]: { clearAll: stubs.historyClearAll },
         [Services.VariableRegistry]: variables,
         [Services.SaveStatus]: saveStatus,
@@ -272,7 +275,7 @@ describe("WorkspaceReloadService", () => {
         expect(result.reloaded).toEqual([
             "project", "assets", "characters", "story",
             "uiDocument", "uiGraph", "variables", "audioTracks", "appTags", "localization", "voice",
-            "transformPresets", "dictionary", "storyComments",
+            "transformPresets", "storyCommands", "dictionary", "storyComments",
         ]);
         expect(harness.stubs.assetsReload).toHaveBeenCalledTimes(1);
         expect(harness.stubs.voiceReload).toHaveBeenCalledTimes(1);

@@ -125,7 +125,35 @@ async function ensureFolder(service: AssetsService, type: AssetType, name: strin
     return created.data.id;
 }
 
-/** Name an imported asset and file it, the two things an import does not do on its own. */
+/** How long an import waits for a team project's server to confirm each step before answering. */
+const TEAM_CONFIRM_TIMEOUT_MS = 20_000;
+
+/**
+ * What `read` answers once it answers something, or undefined if it has not by the deadline.
+ *
+ * ❗ **A team project applies no edit optimistically**: an import, a rename or a new folder is sent
+ * to the server and lands in this window only when its effect comes back. So the record an import
+ * returned is not in the library yet, and renaming or moving it straight away fails with "Asset not
+ * found" or is rejected because the folder is not here yet. Outside a team project every edit is
+ * applied before it returns, and the first read answers.
+ */
+async function confirmed<T>(read: () => T | undefined, timeoutMs = TEAM_CONFIRM_TIMEOUT_MS): Promise<T | undefined> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        const value = read();
+        if (value !== undefined || Date.now() >= deadline) {
+            return value;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+}
+
+/**
+ * Name an imported asset and file it, the two things an import does not do on its own.
+ *
+ * Answers the record as this window now holds it, so the name and folder an agent is told are the
+ * ones the project has, never the ones that were asked for.
+ */
 async function finishImported(
     ctx: WorkspaceContext,
     asset: Asset<AssetType, AssetSource>,
@@ -133,21 +161,38 @@ async function finishImported(
     folder: string | undefined,
 ): Promise<Asset<AssetType, AssetSource>> {
     const service = assetsService(ctx);
+    const current = () => service.getAssets()[asset.type]?.[asset.id] as Asset<AssetType, AssetSource> | undefined;
+    const held = await confirmed(current);
+    if (!held) {
+        throw refuse(
+            "unavailable",
+            `"${asset.name}" was sent to the team server, but the server has not confirmed it within ${TEAM_CONFIRM_TIMEOUT_MS / 1000} s, `
+                + `so it was not renamed to "${wantedName}"${folder ? ` or filed in "${folder}"` : ""}.`,
+            "It may still arrive: call assets_list before importing it again.",
+        );
+    }
     const name = uniqueAssetName(ctx, asset.type, wantedName, asset.id);
-    if (name !== asset.name) {
-        const renamed = await service.renameAsset(asset, name);
+    if (name !== held.name) {
+        const renamed = await service.renameAsset(held, name);
         if (!renamed.success) {
-            throw refuse("internal", `Imported, but could not rename "${asset.name}" to "${name}": ${renamed.error ?? "unknown error"}.`);
+            throw refuse("internal", `Imported as "${held.name}", but could not rename it to "${name}": ${renamed.error ?? "unknown error"}.`);
         }
+        await confirmed(() => (current()?.name === name ? true : undefined));
     }
     if (folder) {
         const groupId = await ensureFolder(service, asset.type, folder);
-        const current = service.getAssets()[asset.type]?.[asset.id] as Asset<AssetType, AssetSource> | undefined;
-        if (current && current.groupId !== groupId) {
-            await service.moveAssetsToGroup([current], groupId);
+        const category = categoryOfAssetType(asset.type);
+        await confirmed(() => (service.getGroupAssetsManager().getGroups(category).some(group => group.id === groupId) ? true : undefined));
+        const now = current();
+        if (now && now.groupId !== groupId) {
+            const moved = await service.moveAssetsToGroup([now], groupId);
+            if (!moved.success) {
+                throw refuse("internal", `Imported as "${now.name}", but could not move it into "${folder}": ${moved.error ?? "unknown error"}.`);
+            }
+            await confirmed(() => (current()?.groupId === groupId ? true : undefined));
         }
     }
-    return (service.getAssets()[asset.type]?.[asset.id] as Asset<AssetType, AssetSource> | undefined) ?? asset;
+    return current() ?? held;
 }
 
 export function describeImportRefusal(refusal: AssetImportRefusal | undefined, fallback: string | undefined): string {

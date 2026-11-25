@@ -356,21 +356,27 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
         return null;
     }
 
+    // ❗ One dialog for both branches below, at the same place in the tree. It used to be mounted
+    // inside each branch, so adding the first server - which turns the empty tab into the list -
+    // unmounted the dialog on its last step and mounted a fresh one on the empty address step.
+    const addModal = adding ? (
+        <AddServerModal
+            onAdded={serverAdded}
+            onClose={() => { setAdding(false); setPrefill(undefined); }}
+            initialAddress={prefill}
+            signInWithPassword={signInWithPassword}
+            signInWithBrowser={signInWithBrowser}
+        />
+    ) : null;
+
     // Nothing has been added yet, and there is one thing to do about that. Drawn as the
     // whole tab rather than as two empty columns: an empty list beside an empty pane says
     // the same thing twice and offers it once.
     if (servers.length === 0) {
         return (
+            <>
+            {addModal}
             <div className="h-full w-full" data-servers-tab="empty">
-                {adding && (
-                    <AddServerModal
-                        onAdded={serverAdded}
-                        onClose={() => { setAdding(false); setPrefill(undefined); }}
-                        initialAddress={prefill}
-                        signInWithPassword={signInWithPassword}
-                        signInWithBrowser={signInWithBrowser}
-                    />
-                )}
                 <EmptyState
                     className="h-full"
                     icon={<Server className="h-8 w-8" />}
@@ -388,21 +394,15 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                     )}
                 />
             </div>
+            </>
         );
     }
 
     return (
+        <>
+        {addModal}
         <div className="flex h-full w-full min-h-0 flex-col pt-4 px-6 pb-6" data-servers-tab="list">
             {operationError && <p className="mb-2 text-xs text-danger" role="alert">{operationError}</p>}
-            {adding && (
-                <AddServerModal
-                    onAdded={serverAdded}
-                    onClose={() => { setAdding(false); setPrefill(undefined); }}
-                    initialAddress={prefill}
-                    signInWithPassword={signInWithPassword}
-                    signInWithBrowser={signInWithBrowser}
-                />
-            )}
 
             {/* Drawn only where there is something to choose between, which is the reading
                 the wizard's picker already takes. One server is not a choice, and a strip of
@@ -585,6 +585,7 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                 />
             )}
         </div>
+        </>
     );
 }
 

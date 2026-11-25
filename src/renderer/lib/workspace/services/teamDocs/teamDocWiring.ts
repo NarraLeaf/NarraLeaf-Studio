@@ -74,7 +74,8 @@ export function documentForOp(op: LiveOp, storyId?: string): LiveDocument {
  * seams a live session hangs off, so the editors need nothing new.
  */
 export class TeamDocWiring {
-    private readonly transfers = new Map<string, { bytes: number; state: TeamTransferState | "unknown" }>();
+    /** Every file this window is carrying or collecting, by transfer, with the record it is for. */
+    private readonly transfers = new Map<string, { assetId: string; bytes: number; total: number; state: TeamTransferState | "unknown" }>();
     private poll: ReturnType<typeof setInterval> | null = null;
 
     public constructor(
@@ -220,32 +221,48 @@ export class TeamDocWiring {
                 if (answered.kind !== "offered") {
                     return { ok: false, problem: { kind: "refused", detail: "that transfer was not accepted" } };
                 }
-                this.transfers.set(part.transferId, { bytes: 0, state: "moving" });
+                this.transfers.set(part.transferId, { assetId, bytes: 0, total: answered.size, state: "moving" });
                 this.startPolling();
                 return { ok: true, part: { ...part, size: answered.size, digest: answered.digest } };
             },
             collect: (assetId, part, destination) => {
                 if (this.transfers.has(part.transferId)) return;
-                this.transfers.set(part.transferId, { bytes: 0, state: "waiting" });
+                this.transfers.set(part.transferId, { assetId, bytes: 0, total: part.size, state: "waiting" });
                 void collectTransfer({ remoteOrigin, project, transferId: part.transferId, label: assetId, destination, size: part.size, digest: part.digest });
                 this.startPolling();
             },
-            arrived: part => this.transfers.get(part.transferId) ?? { bytes: 0, state: "unknown" },
+            arrived: part => {
+                const entry = this.transfers.get(part.transferId);
+                return entry === undefined ? { bytes: 0, state: "unknown" } : { bytes: entry.bytes, state: entry.state };
+            },
             abandon: part => {
                 this.transfers.delete(part.transferId);
                 void abandonTransfers(remoteOrigin, project, [part.transferId]);
             },
-        } as AssetBlobPort;
+            inFlight: () => {
+                // ❗ AssetsService asks this while it applies every create-assets effect: a port
+                // without it threw there, and each import sent the window back to its last version.
+                const out = new Map<string, { bytes: number; total: number }>();
+                for (const entry of this.transfers.values()) {
+                    if (entry.state !== "moving" && entry.state !== "waiting") continue;
+                    const sum = out.get(entry.assetId) ?? { bytes: 0, total: 0 };
+                    out.set(entry.assetId, { bytes: sum.bytes + entry.bytes, total: sum.total + entry.total });
+                }
+                return out;
+            },
+        };
     }
 
     private startPolling(): void {
         this.poll ??= setInterval(() => {
             void listTransfers().then(views => {
                 for (const view of views) {
-                    if (this.transfers.has(view.transferId)) {
-                        this.transfers.set(view.transferId, { bytes: view.bytes, state: view.state });
+                    const entry = this.transfers.get(view.transferId);
+                    if (entry !== undefined) {
+                        this.transfers.set(view.transferId, { ...entry, bytes: view.bytes, total: view.total || entry.total, state: view.state });
                     }
                 }
+                this.get<AssetsService>(Services.Assets).noteTransferProgress();
                 const moving = [...this.transfers.values()].some(entry => entry.state === "moving" || entry.state === "waiting");
                 if (!moving) this.stopPolling();
             });

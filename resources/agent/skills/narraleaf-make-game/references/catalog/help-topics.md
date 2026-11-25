@@ -886,6 +886,8 @@ When a command written above a line sets the same property of the same character
 - 分层立绘：图层由差分轴上的标签控制开关，服装与表情可以独立变化
 - 由运行时绘制：Live2D Cubism、Spine 或自定义运行时绘制的模型，运行时安装在本项目中。故事行用「动作」「外观」「皮肤」「参数」设置模型的状态；「动作」循环播放，直到另一行更改，不能设为只播放一次
 
+成品立绘可批量添加姿态：「批量添加姿态」从资源库选择多张图片；「自动添加姿态」选择资源库中的一个文件夹，列出其中（含子文件夹）名称以角色前缀开头的图片，例如角色 Miki 对应 Miki_Seifuku_Frown.png。姿态名由文件名去掉前缀、按分隔符拆分后用连接符拼接得到，Miki_Seifuku_Frown 即为「Seifuku Frown」；前缀、分隔符与连接符可在对话框中修改，与所选文件夹一起按角色记住。该角色已在使用的图片默认不勾选，整次添加可一步撤销
+
 成品立绘与分层立绘的对白头像由绘制结果生成，默认随每条差分轴变化，在轴上关闭「头像随此轴变化」后不随该轴变化；没有差分给出头像时，对白显示角色属性中的「默认对白头像」
 
 由运行时绘制的角色不生成对白头像，对白显示「默认对白头像」；未设置时不显示头像
@@ -895,6 +897,8 @@ A character is drawn one of three ways, chosen when the character is created. It
 - Preset sprites: one finished image per pose.
 - Layered sprite: layers switched by tags on axes, so a costume and an expression change independently.
 - Drawn by a runtime: a model drawn by Live2D Cubism, Spine or a custom runtime installed in this project. Story rows set its state with Motion, Appearance, Skin and Parameter; a motion loops until another row changes it and cannot be set to play once.
+
+Preset poses can be added in bulk. Add poses from images picks several images from the library; Add poses from a folder lists the images in a library folder you choose, subfolders included, whose names start with one of the character's prefixes, such as Miki_Seifuku_Frown.png for Miki. A pose is named after its file name with the prefix taken off, cut at the separators and joined again: Miki_Seifuku_Frown becomes Seifuku Frown. Prefixes, separators and the joiner can be changed in the dialog and are remembered per character, along with the folder. Images the character already uses start unticked, and the whole addition is one step of undo.
 
 For preset and layered sprites, the dialog avatar is generated from the drawn result and by default changes with every axis; an axis with Avatar varies with this axis switched off leaves it unchanged. Where no differential gives one, dialogue shows the Default dialog avatar from the character's properties.
 
@@ -1741,6 +1745,7 @@ A project can be connected to a version control server and exchange versions wit
 - 「恢复」为所有人恢复到较早的版本；恢复本身保存为新版本，可用同样的方式撤回
 - 离线时，修改保存在本机，重新连接后发送；未能应用的修改列在历史版本中，可逐条选择应用
 - 项目所有者决定每位成员可以编辑的部分；只读角色不能编辑
+- 本地项目不能在工作区中上传为团队项目；需通过「文件 › 导出项目」导出项目包，再在 Team 后台「项目」页的「导入项目包」中上传
 - 启动器中的「转为个人项目」保留一份与服务器一致的副本；之后「重新连接到团队项目」把修改发回，团队同时改动的部分列出供选择
 
 A project on a Team server that supports realtime collaboration is a team project. Each edit is sent to the server as it is made, and everyone with the project open sees it.
@@ -1750,6 +1755,7 @@ A project on a Team server that supports realtime collaboration is a team projec
 - Restore applies an earlier version for everyone. It is saved as a new version and can be undone the same way.
 - Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be applied are listed in the version history, and each one can be applied by choice.
 - The project's owners decide which parts each member may edit. A read-only role edits nothing.
+- A local project cannot be uploaded as a team project from the workspace. Export it as a project package with File › Export Project, then upload the package with Import a project package on the Projects page of the Team console.
 - Convert to personal project, in the launcher, keeps a copy consistent with the server. Reconnect to the team project later sends the changes back and lists anything the team also changed to choose from.
 
 相关主题 · Related：与服务器协作 · Working with a server、版本控制 · Version control、添加项目 · Adding a project

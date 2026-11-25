@@ -23,6 +23,7 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     "name-taken": "wizard.source.onServerUnknown",
     "already-published": "wizard.source.onServerUnknown",
     declined: "wizard.source.onServerUnknown",
+    "package-required": "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
 

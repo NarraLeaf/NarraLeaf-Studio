@@ -67,6 +67,19 @@ export function isAssetContentPath(path: string): boolean {
     return path.startsWith(`${ASSET_CONTENT_ROOT}/`);
 }
 
+/**
+ * Whether a path is an asset section's row order (`assets/assets.order.<category>.json`).
+ *
+ * ❗ **A hint, never a record of what is there**: which assets a section holds is decided by its
+ * metadata alone, and an id the order does not mention is appended (`reconcileAssetOrder`). So when
+ * two people import at once and the server keeps the other one's order, nothing is lost by taking
+ * theirs - and reporting it as an edit that "could not be applied" only alarms the author about a
+ * file they never edited. Every import rewrites it, so this collided on nearly every simultaneous one.
+ */
+export function isAssetOrderPath(path: string): boolean {
+    return /^assets\/assets\.order\.[a-z]+\.json$/.test(path);
+}
+
 /** Whether an offline replay sends a path whole: any shared file but the stories (rows) and the comments. */
 export function isReplayedWhole(path: string): boolean {
     return isTeamFilePath(path);

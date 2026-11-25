@@ -86,6 +86,10 @@ const SPAWN_SITES: Record<string, { kind: Classification; why: string }> = {
         kind: "not-project-scoped",
         why: "Studio's own downloaded installer, unpacking the next version beside this one; no project involved",
     },
+    "app/application/managers/updateMacSupport.ts": {
+        kind: "not-project-scoped",
+        why: "asks codesign whether Studio's own app bundle is certificate-signed before self-updating; no project involved",
+    },
 };
 
 function walk(dir: string, out: string[] = []): string[] {

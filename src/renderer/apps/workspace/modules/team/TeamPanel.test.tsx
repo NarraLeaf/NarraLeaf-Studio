@@ -12,11 +12,11 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
  *
  * Both used to be in the version rail, standing above the two controls that rail exists for. The
  * whole point of moving them is that the daily pair got their column back, so what is pinned here
- * is that everything which left actually arrived: connecting, checking, signing in, and the name
+ * is that everything which left actually arrived: checking, signing in, and the name
  * versions are recorded under. Changing server, disconnecting and signing out are not here on
  * purpose: a team project's server settings change from outside it (the launcher and Settings).
  *
- * The other half of the rule is in `VersionRailServerPicker.test.tsx`, which pins that none of
+ * The other half of the rule is in `VersionRailServerSection.test.tsx`, which pins that none of
  * them crept back into the rail.
  */
 
@@ -152,13 +152,13 @@ describe("what the Team panel holds", () => {
         expect(seam("server-locked")?.textContent).toBe("workspace.shell.team.serverLocked");
     });
 
-    it("offers connecting, and nothing about a server, for a project on none", () => {
+    it("offers only managing servers for a project on none", () => {
         panel({ remote: null, serverSession: null });
 
-        // Checking and disconnecting are acts on a destination that does not exist yet. Drawn
-        // disabled they would be two controls for leaving a state nobody has entered.
+        // Checking and disconnecting are acts on a destination that does not exist yet. Connecting
+        // is not offered either: a local project becomes a team project on the Team side, from an
+        // exported project package, never from here.
         expect(actions()).toEqual([
-            "workspace.shell.versionControl.server.connect",
             "workspace.shell.team.manage",
         ]);
         expect(seam("server-locked")).toBeNull();
@@ -196,18 +196,6 @@ describe("what the Team panel holds", () => {
 
         fireEvent.click(action("workspace.shell.versionControl.server.check"));
         expect(surface.checkRemote).toHaveBeenCalledTimes(1);
-    });
-
-    it("opens the server dialog from the connect row, over the top of itself", () => {
-        panel({ remote: null, serverSession: null });
-
-        expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
-        fireEvent.click(action("workspace.shell.versionControl.server.connect"));
-
-        // Both are still mounted: this one is what the author comes back to when the picker
-        // closes, and it is where the server they just chose is read.
-        expect(document.querySelector("[data-vcs-seam='server-picker']")).not.toBeNull();
-        expect(document.querySelector("[data-team-panel]")).not.toBeNull();
     });
 
     it("sends the machine's own list to Settings, where a server is added once", () => {

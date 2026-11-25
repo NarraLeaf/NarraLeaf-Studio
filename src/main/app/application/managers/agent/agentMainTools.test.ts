@@ -63,6 +63,23 @@ describe("agent_status", () => {
         expect((result.content[0] as { text: string }).text).toContain("Write access: OFF");
     });
 
+    it("says a project is a Team project, how it stands with its server, and a personal one says nothing", async () => {
+        const host = fakeHost({
+            workspaceState: async handle => handle.projectPath === "/games/team"
+                ? { paused: false, follow: true, team: { state: "offline", mayEdit: true } }
+                : { paused: false, follow: true },
+        }, [{ projectPath: "/games/team", name: "T" }, { projectPath: "/games/solo", name: "S" }]);
+        const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);
+        if (!result.ok) throw new Error("refused");
+        expect(result.structured).toMatchObject({
+            projects: [{ path: "/games/team", team: { state: "offline", mayEdit: true } }, { path: "/games/solo", team: null }],
+        });
+        const text = (result.content[0] as { text: string }).text;
+        expect(text).toContain("TEAM PROJECT (server offline)");
+        expect(text).toContain("edits wait on this machine until it reconnects.");
+        expect(text.match(/TEAM PROJECT/g)).toHaveLength(1);
+    });
+
     it("tolerates a workspace that does not answer", async () => {
         const host = fakeHost({ workspaceState: async () => null }, [{ projectPath: "/games/a", name: null }]);
         const result = await AGENT_MAIN_TOOL_HANDLERS.agent_status(host, {}, ctx);

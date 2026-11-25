@@ -14,7 +14,6 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { TeamCollaboration } from "./TeamCollaboration";
 import { TeamRequestsSection } from "./TeamRequests";
 import { teamServerFace } from "./teamFace";
-import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
 
 /**
@@ -57,14 +56,14 @@ function TeamAction({ label, onClick, disabled, tone }: {
  * rail, and Settings) is what left an author reading a name in one column that nothing would ever
  * record.
  *
- * **Nothing here is on the daily path.** Connecting, changing, checking, signing in and signing out
+ * **Nothing here is on the daily path.** Checking, signing in and signing out
  * are between them performed a handful of times in a project's life. That is exactly why they left
  * the version rail: they were standing above Send and Get, which are pressed every working day, and
  * a dialog two clicks deep costs those rare acts nothing.
  *
  * **A dialog rather than a popover hanging off the cell**, and the reason is mechanical rather than
- * aesthetic. Two of the things reachable from here are themselves dialogs - the server picker and
- * the certificate-trust question - and dialogs are portalled into the window's overlay layer while
+ * aesthetic. Things reachable from here are themselves dialogs - adding a server and the
+ * certificate-trust question - and dialogs are portalled into the window's overlay layer while
  * a body-level popover is parked outside the window root's `isolate` (see `windowOverlayHost`). A
  * popover would therefore paint OVER the dialog it had just opened, and the first click inside that
  * dialog would land outside the popover and unmount it, taking the dialog with it.
@@ -88,7 +87,6 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
     onClose: () => void;
 }) {
     const { t } = useTranslation();
-    const [picking, setPicking] = useState(false);
     const [adding, setAdding] = useState(false);
     const { remote, serverSession, availableSession, syncState, busy } = surface;
     const running = busy !== null;
@@ -116,15 +114,6 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
 
     return (
         <>
-            {/* Opened from here so that choosing a server is one press from the cell that owns the
-                question. It is the same dialog the rail used to open, it covers this one, and this
-                one is still underneath when it closes - which is where the new server is read. */}
-            <ServerPickerDialog
-                surface={surface}
-                isOpen={picking}
-                onClose={() => setPicking(false)}
-            />
-
             {/* The same sequence Settings runs. Mounted here because the reader who needs it is
                 looking at a project pointed somewhere this machine has no account on, and the
                 remedy is an address their operator gave them - not a token pasted into a side
@@ -234,17 +223,10 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                     </div>
 
                     <div className="-mx-2 flex flex-col border-t border-edge pt-2">
-                        {/* Connecting is how a personal project becomes a team project, and stays here.
-                            Once it is one, which server it works with - and whether it works with
-                            one at all - is changed from outside it: the launcher converts it, and
-                            Settings signs out. */}
-                        {remote === null && (
-                            <TeamAction
-                                label={t("workspace.shell.versionControl.server.connect")}
-                                onClick={() => setPicking(true)}
-                                disabled={running}
-                            />
-                        )}
+                        {/* Nothing here makes a personal project a team project: that is done on the
+                            Team side, from an exported project package. Once a project is one, which
+                            server it works with is changed from outside it: the launcher converts it,
+                            and Settings signs out. */}
                         {remote !== null && (
                             <TeamAction
                                 label={t("workspace.shell.versionControl.server.check")}
@@ -279,8 +261,7 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
 
                     <TeamRequestsSection />
 
-                    {/* A refusal that belongs to something pressed in here. The picker draws its
-                        own, over the top of this, so the two are never read at once. */}
+                    {/* A refusal that belongs to something pressed in here. */}
                     {surface.failure !== null && (
                         <p data-team-seam="failure" className="break-words text-2xs text-danger">
                             {surface.failure.text}

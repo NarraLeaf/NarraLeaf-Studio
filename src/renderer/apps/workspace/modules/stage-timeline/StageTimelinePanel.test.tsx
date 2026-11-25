@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { EMPTY_CUSTOM_COMMAND_LIBRARY } from "@shared/story/customCommands";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryAnimationAsset, type StoryBlock, type StoryDocument } from "@shared/types/story";
 import { createEmptyVoiceDocument, type VoiceDocument } from "@shared/types/voice";
 import { buildSavedRuntimeTable, createEmptyVariableRegistry } from "@shared/variables/variableRegistryModel";
@@ -104,6 +105,7 @@ function makeWorkspace(assetId: string) {
         [Services.Voice, voice],
         [Services.VariableRegistry, { getRegistry: () => registry, onRegistryChanged: (callback: () => void) => registryEvents.on("changed", callback) }],
         [Services.Story, storyService],
+        [Services.StoryCustomCommands, { library: () => EMPTY_CUSTOM_COMMAND_LIBRARY, onCommandsChanged: () => () => undefined }],
     ]);
     const context = {
         services: { get: (key: unknown) => {

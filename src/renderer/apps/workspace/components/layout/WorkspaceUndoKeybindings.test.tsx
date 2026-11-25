@@ -63,14 +63,6 @@ describe("workspace history while the inspector has focus", () => {
     let undoFirst: ReturnType<typeof vi.fn>;
     let undoSecond: ReturnType<typeof vi.fn>;
     let redoSecond: ReturnType<typeof vi.fn>;
-    let live: {
-        phase: string;
-        listeners: Set<() => void>;
-        getView: () => { phase: string; canUndo: boolean; canRedo: boolean };
-        onChanged: (listener: () => void) => () => void;
-        undo: ReturnType<typeof vi.fn>;
-        redo: ReturnType<typeof vi.fn>;
-    };
 
     beforeEach(() => {
         history = new HistoryService();
@@ -78,20 +70,9 @@ describe("workspace history while the inspector has focus", () => {
         const store = new UIStore();
         keybindings = new KeybindingService(focus, store);
         const ui = { focus, keybindings, getStore: () => store };
-        live = {
-            phase: "idle",
-            listeners: new Set(),
-            getView: () => ({ phase: live.phase, canUndo: live.phase === "active", canRedo: live.phase === "active" }),
-            onChanged: listener => {
-                live.listeners.add(listener);
-                return () => { live.listeners.delete(listener); };
-            },
-            undo: vi.fn(),
-            redo: vi.fn(),
-        };
         fixture.context = {
             services: {
-                get: (id: string) => id === Services.UI ? ui : id === Services.History ? history : live,
+                get: (id: string) => id === Services.UI ? ui : id === Services.History ? history : undefined,
             },
         };
         undoFirst = vi.fn();
@@ -189,76 +170,13 @@ describe("workspace history while the inspector has focus", () => {
         expect(undoFirst).not.toHaveBeenCalled();
     });
 
-    it("blocks local history while frozen and sends session undo to the live service", () => {
+    it("blocks local history while frozen", () => {
         fixture.frozen = true;
         render(<WorkspaceUndoKeybindings />);
         fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
-        expect(undoFirst).not.toHaveBeenCalled();
-
-        act(() => {
-            live.phase = "active";
-            live.listeners.forEach(listener => listener());
-        });
-        fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
         fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
-        expect(live.undo).toHaveBeenCalledOnce();
-        expect(live.redo).toHaveBeenCalledOnce();
         expect(undoFirst).not.toHaveBeenCalled();
-    });
-
-    it("uses local undo and redo while waiting for the host", () => {
-        render(<WorkspaceUndoKeybindings />);
-        act(() => {
-            live.phase = "asking";
-            live.listeners.forEach(listener => listener());
-        });
-
-        fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
-        expect(undoFirst).toHaveBeenCalledOnce();
-        expect(history.canRedo(FIRST_SCOPE)).toBe(true);
-        fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
         expect(history.canUndo(FIRST_SCOPE)).toBe(true);
-        expect(live.undo).not.toHaveBeenCalled();
-        expect(live.redo).not.toHaveBeenCalled();
-    });
-
-    it("shows and executes the local Edit menu while waiting for the host", () => {
-        render(<WorkspaceHistoryMenu />);
-        act(() => {
-            live.phase = "asking";
-            live.listeners.forEach(listener => listener());
-        });
-
-        expect(fixture.group?.actions[0].label).toContain("workspace.history.entry.edit");
-        expect(fixture.group?.actions[0].disabled).toBe(false);
-        act(() => fixture.group?.actions[0].onClick());
-        expect(undoFirst).toHaveBeenCalledOnce();
-        expect(live.undo).not.toHaveBeenCalled();
-    });
-
-    it("does not take a local step after entry begins, even before React rerenders", () => {
-        render(<WorkspaceUndoKeybindings />);
-        act(() => {
-            live.phase = "entering";
-            live.listeners.forEach(listener => listener());
-            fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
-        });
-
-        expect(undoFirst).not.toHaveBeenCalled();
-        expect(live.undo).toHaveBeenCalledOnce();
-    });
-
-    it("routes a previously registered menu action by the current phase", () => {
-        render(<WorkspaceHistoryMenu />);
-        const undo = fixture.group?.actions[0].onClick;
-        expect(undo).toBeDefined();
-        act(() => {
-            live.phase = "entering";
-            live.listeners.forEach(listener => listener());
-            undo?.();
-        });
-        expect(undoFirst).not.toHaveBeenCalled();
-        expect(live.undo).toHaveBeenCalledOnce();
     });
 
     it("reopens a closed tab from a text field and unregisters the shortcut on unmount", () => {

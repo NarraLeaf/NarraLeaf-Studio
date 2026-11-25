@@ -442,6 +442,7 @@ export const workspace = {
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
             importPsd: "PSD import",
+            addPoses: "Add poses",
             importAudio: "audio import",
         },
     },
@@ -737,8 +738,8 @@ export const workspace = {
             offline: "Offline: edits are kept on this machine and sent after reconnecting",
             syncing: "Syncing",
             readOnly: "Read-only role in this project",
-            conflictsTitle: "Offline edits that could not be applied",
-            conflictsHint: "Choose which offline edits to apply.",
+            conflictsTitle: "Edits that could not be applied",
+            conflictsHint: "These edits collided with the version on the server. Choose which to apply anyway.",
             conflictItem: "Project item",
             conflictChanged: "Changed",
             conflictRemoved: "Removed",
@@ -1671,7 +1672,6 @@ export const workspace = {
                 // A project with no server, which is every project until someone says otherwise.
                 // One line and one button, because connecting is a decision rather than a default.
                 none: "Not connected to a server",
-                connect: "Connect to a server",
                 // Pointing a project that already has a server at a different one. Named for the
                 // change rather than for the connection - a project with a server is not being
                 // asked to connect to one - and it carries this catalog's ellipsis, the mark of a
@@ -1689,40 +1689,10 @@ export const workspace = {
                  * one, so it can be in no list.
                  */
                 picker: {
-                    title: "Connect to a server",
-                    // Asked of the server as soon as one is chosen, because what this project
-                    // becomes on it depends on what is already there.
-                    reading: "Reading what this server holds",
-                    // The server already holds this project - matched on the repository id,
-                    // which is the only thing that survives a rename on either end. There is
-                    // nothing left to decide, so the name is stated rather than asked for.
-                    already: "This server already holds this project, as {name}.",
-                    // The path on the end of the address, which is what the repository is
-                    // called on the server and what a collaborator clones by. Filled in from
-                    // the project's folder, because that is the answer nearly every time.
-                    nameLabel: "Name on the server",
-                    namePlaceholder: "my-game",
-                    nameHint: "Letters, digits, dots, dashes and underscores.",
-                    // Both refusals belong to the server and are said here instead of there:
-                    // one comes back as a bare status code, and the other after the dialog
-                    // has closed on a publish that is already half done.
-                    nameInvalid: "A name on a server can hold letters, digits, dots, dashes and underscores.",
-                    nameTaken: "This server already has a project with that name.",
-                    // What the button does where the server has never seen this project: it
-                    // records it, points at it, and sends every version on this machine.
-                    createAndSend: "Create and send",
-                    empty: "No servers have been added.",
                     // The last row of the list. The ellipsis is the convention for a control
                     // that opens somewhere else: this one opens Settings and closes the dialog.
                     add: "Add a server…",
-                    // The project names a server this machine has no account on: a copy somebody
-                    // sent, or a server that was signed out of. Stated with the address it names,
-                    // because the remedy is the row under it and not a box to retype it into.
-                    unknownServer: "This project uses {host}, which has not been added on this machine.",
                 },
-                save: "Connect",
-                cancel: "Cancel",
-                disconnect: "Disconnect",
                 // Reaching the server costs up to two seconds, so it never happens on its own -
                 // the panel opens on "not checked" and this is what asks.
                 check: "Check the server",
@@ -1778,31 +1748,6 @@ export const workspace = {
                  * for each — and because nothing was written when the first one is the one that
                  * failed.
                  */
-                publish: {
-                    publishing: "Putting this project on the server…",
-                    noToken: "This installation cannot ask that server to record the project. Add the server again with its token.",
-                    refused: "That server refused the account signed in here, so the project was not recorded.",
-                    unreachable: "That server did not answer, so the project was not recorded.",
-                    // The server answered and made a project, and it is not this one. A server
-                    // too old to be asked for this does exactly that.
-                    wrongRepository: "That server recorded a different project, so nothing was sent to it.",
-                    // A different project already answering to the name asked for. Names the
-                    // remedy, because the only one is to pick another name.
-                    nameTaken: "Another project on that server is already called that. Choose a different name.",
-                    // The same repository under a name it was published as before, on a
-                    // server whose operator has said a repository gets one name. Names it,
-                    // because what the author does next is connect to that project.
-                    alreadyPublished: "This project is already on that server as {name}, and that server gives a project one name.",
-                    unknown: "That server did not record the project.",
-                    // The author said this project does not use the sign-in for that server, or
-                    // closed the question. Nothing was sent.
-                    declined: "This project does not use the sign-in for that server, so the project was not recorded.",
-                    // Not a refusal: this project has been on that server before - a copied
-                    // project folder carries the same repository - and it is registered under the
-                    // name it was published as. Said rather than done quietly, because the author
-                    // typed a name and it is not the one in the address.
-                    connectedAs: "This project is already on that server as {name}, so it is connected under that name. Use Send to put this machine's versions on top of what is there.",
-                },
                 /**
                  * Signing this installation in to the server, and saying who is signed in.
                  *

@@ -1074,11 +1074,17 @@ input[type="radio"]:focus {
      * backdrop slides underneath it and leaves the strip bright. While any `.nl-modal-backdrop` is
      * mounted the titlebar lays the same dim over itself instead. `pointer-events: none` keeps the
      * window controls clickable and the strip draggable; they read as dimmed, like the rest.
+     *
+     * `bottom: -1px` reaches over the titlebar's 1px bottom border. An absolutely placed child
+     * covers its parent's padding box only, so at `inset: 0` the border - translucent, over the
+     * window's light background - stayed bright: a white line between the dimmed titlebar and the
+     * dimmed workspace.
      */
     .nl-titlebar::after {
         content: "";
         position: absolute;
         inset: 0;
+        bottom: -1px;
         pointer-events: none;
         background: rgb(0 0 0 / 0.6);
         opacity: 0;

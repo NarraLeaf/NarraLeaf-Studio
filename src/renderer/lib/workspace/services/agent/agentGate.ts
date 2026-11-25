@@ -76,13 +76,14 @@ export function gateAgentCall(input: AgentGateInput): AgentCallResult | null {
         );
     }
     // A Team project arms a partial freeze of its own (the kind is still called "live-session",
-    // and so is the code on the wire, which agents already match). It is reported as the Team
-    // project rather than as a freeze, because the remedy is different and so is the sentence.
+    // and so is the code on the wire, which agents already match) - only for a read-only role, since
+    // an editor's agent writes go to the server like the editor's own. Reported as the Team project
+    // rather than as a freeze, because the remedy is different and so is the sentence.
     if (input.freeze?.reason.kind === "live-session") {
         return agentRefusal(
             "live_session",
-            "This is a Team project: its shared documents take edits only from Studio's own editors, so agent writes would bypass the server.",
-            "Work read-only, or ask the author to make the change in Studio.",
+            "This is a Team project and the author's role in it is read-only, so no edit can be made from this Studio, by the author or by an agent.",
+            "Work read-only, or ask the project's owner on the team server for an editing role.",
         );
     }
     if (input.freeze) {

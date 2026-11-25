@@ -1,6 +1,7 @@
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { CharacterDiagnosticTarget } from "@/lib/workspace/services/character/characterDiagnostics";
 import type { CharacterTagSelection } from "@/lib/workspace/services/character/types";
+import type { PoseNamingRule } from "@/lib/workspace/services/character/poseBatchImport";
 
 /**
  * What the character editor remembers between mounts.
@@ -133,4 +134,40 @@ export function patchCharacterEditorViewState(
     patch: Partial<CharacterEditorViewState>,
 ): void {
     panelState.setPanelState<Partial<CharacterEditorViewState>>(viewStateKey(characterId), patch);
+}
+
+/**
+ * The naming rule this character's last batch pose import used: its prefixes, separators and joiner.
+ *
+ * Per character, because the prefixes are the character's own file names, and kept with the editor's
+ * other remembered state rather than on the character: it is how the author imports, not part of the
+ * work, and it should not travel with the project or show up as a change in version control.
+ */
+function poseNamingKey(characterId: string): string {
+    return `character:editor:poseNaming:${characterId}`;
+}
+
+export function getPoseNamingRule(panelState: PanelStateService, characterId: string): Partial<PoseNamingRule> | null {
+    return panelState.getPanelState<Partial<PoseNamingRule>>(poseNamingKey(characterId)) ?? null;
+}
+
+export function setPoseNamingRule(panelState: PanelStateService, characterId: string, rule: PoseNamingRule): void {
+    panelState.setPanelState<PoseNamingRule>(poseNamingKey(characterId), rule);
+}
+
+/**
+ * The library folder this character's last automatic pose add read, or `*` for every image. Kept
+ * beside the naming rule, for the same reason.
+ */
+function poseFolderKey(characterId: string): string {
+    return `character:editor:poseFolder:${characterId}`;
+}
+
+export function getPoseFolder(panelState: PanelStateService, characterId: string): string | null {
+    const value = panelState.getPanelState<{ folderId?: unknown }>(poseFolderKey(characterId))?.folderId;
+    return typeof value === "string" && value ? value : null;
+}
+
+export function setPoseFolder(panelState: PanelStateService, characterId: string, folderId: string): void {
+    panelState.setPanelState<{ folderId: string }>(poseFolderKey(characterId), { folderId });
 }
