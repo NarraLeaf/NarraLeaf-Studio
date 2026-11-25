@@ -187,7 +187,7 @@ describe("AssetsListView on a large library", () => {
     });
 
     it("drops onto the section header into the section root, past its folders", async () => {
-        const onRootDrop = vi.fn(async () => undefined);
+        const onRootDrop = vi.fn(async (_event: React.DragEvent, _category: AssetCategory) => undefined);
         render(<Harness onRootDrop={onRootDrop} />);
 
         // A section of nothing but folders has every row claiming the drop for a folder. The header
