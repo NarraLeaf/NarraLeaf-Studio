@@ -413,6 +413,7 @@ export const workspace = {
             agentEdit: "エージェントの編集",
             agentPluginEdit: "エージェント: {tool}",
             importPsd: "PSD の読み込み",
+            addPoses: "ポーズの一括追加",
             importAudio: "音声の読み込み",
         },
     },

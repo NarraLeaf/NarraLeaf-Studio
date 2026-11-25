@@ -442,6 +442,7 @@ export const workspace = {
             agentEdit: "agent edit",
             agentPluginEdit: "agent: {tool}",
             importPsd: "PSD import",
+            addPoses: "Add poses",
             importAudio: "audio import",
         },
     },

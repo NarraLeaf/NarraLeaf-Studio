@@ -408,6 +408,31 @@ export class CharacterAppearance {
         return pose;
     }
 
+    /**
+     * Several poses, each with its image, in one change: a batch import of forty sprites is one write
+     * and one redraw rather than eighty. Answers the poses made, in order. The first becomes the
+     * default when the character had none, as {@link createPose} does.
+     */
+    public addPoses(entries: readonly { name: string; assetId: string | null }[]): CharacterPose[] {
+        const preset = this.preset;
+        if (!preset || entries.length === 0) return [];
+        const made: CharacterPose[] = [];
+        for (const entry of entries) {
+            const name = entry.name.trim();
+            if (!name) continue;
+            const pose: CharacterPose = { id: newId("p"), name, assetId: entry.assetId ?? null };
+            preset.poses.push(pose);
+            made.push(pose);
+            if (pose.assetId) this.notifyAssetChange(null, pose.assetId);
+        }
+        if (made.length === 0) return [];
+        if (!preset.defaultPoseId) {
+            preset.defaultPoseId = made[0].id;
+        }
+        this.notifyChange();
+        return made;
+    }
+
     public removePose(poseId: string): boolean {
         const preset = this.preset;
         if (!preset) return false;

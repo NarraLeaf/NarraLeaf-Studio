@@ -402,6 +402,7 @@ export const workspace = {
             agentEdit: "Agent 编辑",
             agentPluginEdit: "Agent：{tool}",
             importPsd: "PSD 导入",
+            addPoses: "批量添加姿态",
             importAudio: "音频导入",
         },
     },

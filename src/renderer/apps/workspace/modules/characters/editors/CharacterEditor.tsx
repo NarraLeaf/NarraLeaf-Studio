@@ -28,8 +28,10 @@ import {
     Eye,
     EyeOff,
     FileImage,
+    FolderSearch,
     Grid3x3,
     ImagePlus,
+    Images,
     Layers,
     Lock,
     Plus,
@@ -49,6 +51,7 @@ import { EditorComponentProps } from "../../types";
 import type { PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
+import { PoseBatchDialog, pickPoseFolder, type PoseBatchSource } from "./components/PoseBatchDialog";
 import { EditorProjectUndoKeybindings } from "@/apps/workspace/components/layout/EditorProjectUndoKeybindings";
 import { PuppetEditor } from "./components/PuppetEditor";
 import { InlineName, nextAutoName } from "./components/InlineName";
@@ -88,7 +91,9 @@ type SlotRef =
     | { kind: "layer"; layerId: string }
     | { kind: "option"; layerId: string; tagId: string }
     /** A differential's dialog avatar, keyed the way the baker keys it. */
-    | { kind: "avatar"; avatarKey: string };
+    | { kind: "avatar"; avatarKey: string }
+    /** Several images, each to become a pose of its own (the batch add). */
+    | { kind: "poses" };
 
 /**
  * What the author has selected, which is also what a diagnostic row jumps to — and, for a preset
@@ -112,7 +117,7 @@ const DELETE_DETAIL = {
 } as const;
 
 
-function Section(props: { title: string; onAdd: () => void; children: React.ReactNode }) {
+function Section(props: { title: string; onAdd: () => void; actions?: React.ReactNode; children: React.ReactNode }) {
     // The one "+" every appearance section shares - poses, axes, layers, snapshots - so guarding it here
     // covers all four creation flows at once. Its `onAdd` always writes the appearance.
     const freeze = useFreezeGuard();
@@ -120,9 +125,12 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
                 <span className="text-xs font-semibold text-fg">{props.title}</span>
-                <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
-                    <Plus className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-0.5">
+                    {props.actions}
+                    <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
+                        <Plus className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
             {props.children}
         </div>
@@ -248,6 +256,8 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
     const [occluded, setOccluded] = useState<Record<string, boolean>>({});
     const [grid, setGrid] = useState(false);
     const [psdOpen, setPsdOpen] = useState(false);
+    const [poseBatch, setPoseBatch] = useState<PoseBatchSource | null>(null);
+    const poseBatchBeforeRef = useRef<ArtBefore | null>(null);
     const [cropping, setCropping] = useState(false);
     /**
      * Author's intent for where a new crop is written, before the differential carries one of its
@@ -424,6 +434,15 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
         const assetId = assets[0]?.id ?? null;
         if (!appearance || !slot) {
             setSlot(null);
+            return;
+        }
+        if (slot.kind === "poses") {
+            // Not written here: the batch dialog lists them with their names first.
+            setSlot(null);
+            if (assets.length > 0) {
+                poseBatchBeforeRef.current = captureArtBefore(character);
+                setPoseBatch({ kind: "assets", assets });
+            }
             return;
         }
         const before = slot.kind !== "avatar" ? captureArtBefore(character) : null;
@@ -882,6 +901,34 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                         <>
                         <Section
                             title={t("characters.editor.poses")}
+                            actions={(
+                                <>
+                                    <button
+                                        className={ICON_BTN}
+                                        onClick={event => openSlot({ kind: "poses" }, event.currentTarget)}
+                                        aria-label={t("characters.editor.poseBatch.batchTitle")}
+                                        {...freeze.writes(false, t("characters.editor.poseBatch.batchTitle"))}
+                                    >
+                                        <Images className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        className={ICON_BTN}
+                                        onClick={async () => {
+                                            const assetsService = context?.services.get<AssetsService>(Services.Assets);
+                                            if (!assetsService) return;
+                                            const picked = await pickPoseFolder(assetsService);
+                                            if (picked) {
+                                                poseBatchBeforeRef.current = captureArtBefore(character);
+                                                setPoseBatch(picked);
+                                            }
+                                        }}
+                                        aria-label={t("characters.editor.poseBatch.autoTitle")}
+                                        {...freeze.writes(false, t("characters.editor.poseBatch.autoTitle"))}
+                                    >
+                                        <FolderSearch className="w-3.5 h-3.5" />
+                                    </button>
+                                </>
+                            )}
                             onAdd={() => appearance.createPose(
                                 nextAutoName(n => t("characters.editor.defaultPoseName", { n: String(n) }), poses),
                             )}
@@ -1254,6 +1301,20 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                 onImported={() => void fitAfterArt(psdBeforeRef.current)}
             />
 
+            {poseBatch && (
+            <PoseBatchDialog
+                source={poseBatch}
+                onClose={() => setPoseBatch(null)}
+                characterId={character.profile.getId()}
+                characterName={character.profile.getProfile().name}
+                appearance={appearance}
+                onAdded={poseIds => {
+                    if (poseIds[0]) setFocus({ kind: "pose", id: poseIds[0] });
+                    void fitAfterArt(poseBatchBeforeRef.current);
+                }}
+            />
+            )}
+
             <AssetSelector
                 visible={slot !== null}
                 assetType={AssetType.Image}
@@ -1265,8 +1326,10 @@ export function CharacterEditor({ tabId, payload, active }: EditorComponentProps
                 anchorRef={anchorMemo}
                 title={t(slot?.kind === "avatar"
                     ? "characters.editor.selectAvatarImage"
-                    : "characters.editor.selectImage")}
-                multiple={false}
+                    : slot?.kind === "poses"
+                        ? "characters.editor.poseBatch.selectImages"
+                        : "characters.editor.selectImage")}
+                multiple={slot?.kind === "poses"}
                 {...(assetSetGroups
                     ? { virtualGroups: assetSetGroups, resolveAssetPreviewUrl: resolveAssetSetPreviewUrl }
                     : {})}
@@ -1287,7 +1350,7 @@ function setAvatarOverride(appearance: CharacterAppearance, key: string, assetId
 
 /** What the picker should open showing as already chosen. */
 function currentSlotAssetIds(appearance: CharacterAppearance, slot: SlotRef | null): string[] {
-    if (!slot) return [];
+    if (!slot || slot.kind === "poses") return [];
     const id = slot.kind === "pose"
         ? appearance.getPose(slot.poseId)?.assetId
         : slot.kind === "layer"
