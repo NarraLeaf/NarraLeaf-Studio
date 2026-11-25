@@ -41,7 +41,7 @@ export type AgentErrorCode =
     | "paused"
     /** The project is frozen for writing (a version-control operation, a recovery, a reload). */
     | "frozen"
-    /** The project is open as a Team project; agent writes would bypass the server. (Named for the live sessions it outlived.) */
+    /** The project is a Team project in which the author's role is read-only. (Named for the live sessions it outlived.) */
     | "live_session"
     /** The page or scene changed since the agent read it - read it again and redo the edit. */
     | "stale_revision"
@@ -253,6 +253,15 @@ export type AgentFolderAccessAnswer = {
 export type AgentWorkspaceState = {
     paused: boolean;
     follow: boolean;
+    /**
+     * Set when the project is a Team project kept in step with its server: every edit is sent to the
+     * server and lands only when the server applies it. Absent for a personal project.
+     */
+    team?: {
+        state: "starting" | "syncing" | "online" | "offline";
+        /** False for a read-only role: every write is refused. */
+        mayEdit: boolean;
+    };
 };
 
 export function agentText(text: string, structured?: Record<string, unknown>): AgentCallResult {

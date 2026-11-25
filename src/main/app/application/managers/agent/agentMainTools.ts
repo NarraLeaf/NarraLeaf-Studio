@@ -109,6 +109,7 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             responding: state !== null,
             paused: state?.paused ?? null,
             follow: state?.follow ?? null,
+            team: state?.team ?? null,
             pluginTools: host.pluginToolsOf(handle),
         };
     }));
@@ -123,10 +124,18 @@ async function agentStatus(host: AgentMainToolHost): Promise<AgentCallResult> {
             const tools = project.pluginTools.length > 0
                 ? `\n  Plugin tools here: ${project.pluginTools.join(", ")}. If your tool list lacks them, list tools again (your client may cache the list).`
                 : "";
+            const team = project.team === null
+                ? ""
+                : `\n  ${[
+                    `TEAM PROJECT (server ${project.team.state}${project.team.mayEdit ? "" : ", read-only role"}): every edit is sent to the team server and appears once the server applies it, and other members see it live.`,
+                    !project.team.mayEdit
+                        ? "Your writes are refused: the author's role here is read-only."
+                        : project.team.state === "online" ? "" : "Not connected now: edits wait on this machine until it reconnects.",
+                ].filter(Boolean).join(" ")}`;
             const trust = project.trusted
                 ? ""
                 : "\n  NOT TRUSTED by the author: you may read it, but changes, folder access outside it and imports are refused until they trust it.";
-            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${trust}${tools}`;
+            return `- ${project.name ?? path.basename(project.path)} (${project.path}): ${flags}${team}${trust}${tools}`;
         }),
         projects.length > 1 ? "More than one project is open: pass `project` (its path) to every workspace tool." : "",
         policy.writesEnabled

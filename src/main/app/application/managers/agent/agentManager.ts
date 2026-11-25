@@ -1016,7 +1016,13 @@ export class AgentManager implements AgentMainToolHost {
             return null;
         }
         const structured = result.structured ?? {};
-        return { paused: structured.paused === true, follow: structured.follow !== false };
+        const state: AgentWorkspaceState = { paused: structured.paused === true, follow: structured.follow !== false };
+        // Read field by field: the window is a renderer, and only these shapes are passed on.
+        const team = structured.team as { state?: unknown; mayEdit?: unknown } | null | undefined;
+        if (team && typeof team === "object" && (team.state === "starting" || team.state === "syncing" || team.state === "online" || team.state === "offline")) {
+            state.team = { state: team.state, mayEdit: team.mayEdit !== false };
+        }
+        return state;
     }
 
     public forward(handle: AgentWorkspaceHandle, tool: string, args: Record<string, unknown>, context: AgentCallContext): Promise<AgentCallResult> {
