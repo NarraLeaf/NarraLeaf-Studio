@@ -49,6 +49,32 @@ const bridge = vi.hoisted(() => ({
     settings: { "team.projectsPlacement": "team" } as Record<string, unknown>,
 }));
 
+/**
+ * The real dialog, with a way to say "a server was stored" without walking its steps, and a
+ * count of how often it was mounted - remounting is what put it back on its empty first step.
+ */
+const modal = vi.hoisted(() => ({ mounts: 0, added: null as unknown }));
+vi.mock("@/apps/settings/panels", async importOriginal => {
+    const real = await importOriginal<typeof import("@/apps/settings/panels")>();
+    const React = await import("react");
+    return {
+        ...real,
+        AddServerModal: (props: Parameters<typeof real.AddServerModal>[0]) => {
+            React.useEffect(() => {
+                modal.mounts += 1;
+            }, []);
+            return React.createElement(React.Fragment, null,
+                React.createElement("button", {
+                    "data-test": "server-stored",
+                    hidden: true,
+                    onClick: () => props.onAdded?.(modal.added as never),
+                }),
+                React.createElement(real.AddServerModal, props),
+            );
+        },
+    };
+});
+
 vi.mock("@/lib/settings/useGlobalSetting", () => ({
     useGlobalSetting: (key: string, resolve: (stored: unknown) => unknown) => resolve(bridge.settings[key]),
 }));
@@ -473,6 +499,22 @@ describe("with no servers", () => {
         // so nothing here opens another window to get at it.
         await waitFor(() => expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull());
         expect(bridge.launchSettings).not.toHaveBeenCalled();
+    });
+
+    it("keeps the dialog where it is when the first server is stored, though the tab turns into the list", async () => {
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        modal.mounts = 0;
+        render(<ServersTab />);
+        fireEvent.click(await find("[data-servers-action='manage']"));
+        await waitFor(() => expect(modal.mounts).toBe(1));
+
+        modal.added = session(ORIGIN, "Blackwood");
+        bridge.servers = [modal.added as VcsServerSession];
+        fireEvent.click(document.querySelector("[data-test='server-stored']")!);
+
+        await waitFor(() => expect(document.querySelector("[data-servers-tab='list']")).not.toBeNull());
+        expect(document.querySelector("[data-test='server-stored']")).not.toBeNull();
+        expect(modal.mounts).toBe(1);
     });
 
     it("asks no server anything, because there is none to ask", async () => {
