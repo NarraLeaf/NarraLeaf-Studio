@@ -1745,6 +1745,7 @@ A project can be connected to a version control server and exchange versions wit
 - 「恢复」为所有人恢复到较早的版本；恢复本身保存为新版本，可用同样的方式撤回
 - 离线时，修改保存在本机，重新连接后发送；未能应用的修改列在历史版本中，可逐条选择应用
 - 项目所有者决定每位成员可以编辑的部分；只读角色不能编辑
+- 本地项目不能在工作区中上传为团队项目；需导出项目包，再在 Team 后台上传
 - 启动器中的「转为个人项目」保留一份与服务器一致的副本；之后「重新连接到团队项目」把修改发回，团队同时改动的部分列出供选择
 
 A project on a Team server that supports realtime collaboration is a team project. Each edit is sent to the server as it is made, and everyone with the project open sees it.
@@ -1754,6 +1755,7 @@ A project on a Team server that supports realtime collaboration is a team projec
 - Restore applies an earlier version for everyone. It is saved as a new version and can be undone the same way.
 - Offline, edits are kept on this machine and sent after reconnecting. Edits that could not be applied are listed in the version history, and each one can be applied by choice.
 - The project's owners decide which parts each member may edit. A read-only role edits nothing.
+- A local project cannot be uploaded as a team project from the workspace. Export it as a project package and upload the package in the Team admin.
 - Convert to personal project, in the launcher, keeps a copy consistent with the server. Reconnect to the team project later sends the changes back and lists anything the team also changed to choose from.
 
 相关主题 · Related：与服务器协作 · Working with a server、版本控制 · Version control、添加项目 · Adding a project

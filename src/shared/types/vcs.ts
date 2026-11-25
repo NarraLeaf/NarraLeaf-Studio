@@ -1207,6 +1207,16 @@ export type VcsServerProjectsProblem =
      * here the server is there and signed in to, and the remedy is the author's answer.
      */
     | { kind: "declined" }
+    /**
+     * The server does not hold this project, and a local project is not put on a server from a
+     * project's window.
+     *
+     * A team project is made on the Team side, from an exported project package; publishing from
+     * the workspace connects only to a copy the server already holds. The launcher's new team
+     * project, which makes the project for that server and sends it straight away, is the one
+     * publish still allowed to register.
+     */
+    | { kind: "package-required" }
     | { kind: "unknown" };
 
 /**

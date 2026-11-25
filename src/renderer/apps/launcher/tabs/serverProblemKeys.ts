@@ -32,5 +32,8 @@ export const SERVER_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Trans
     // Not reachable from here: a project this tab makes for a server uses that server's sign-in by
     // the act of making it. Mapped for the reason `wrong-repository` is.
     declined: "launcher.servers.problem.unknown",
+    // Not reachable from here: a project made for a server is the one publish still allowed to
+    // register. Mapped for the reason `wrong-repository` is.
+    "package-required": "launcher.servers.problem.unknown",
     unknown: "launcher.servers.problem.unknown",
 };

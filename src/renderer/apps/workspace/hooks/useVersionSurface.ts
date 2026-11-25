@@ -9,9 +9,8 @@ import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceF
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
-import type { RevisionId, VcsAvailability, VcsCommitResult, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsStatus, VcsSyncState } from "@shared/types/vcs";
-import type { TranslationKey } from "@shared/i18n";
+import { VcsErrorCode } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCommitResult, VcsMergeState, VcsServerSession, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
@@ -85,15 +84,6 @@ export type VersionBusyKind =
     /** Sending revisions to the server. Nothing local changes, so a failure is harmless. */
     | "push"
     /**
-     * Putting the project on a server for the first time: register, connect, send.
-     *
-     * Its own state rather than `push`, because it is the one of these that takes as long
-     * as the project is big AND changes what the server holds. An author watching a
-     * spinner that says "sending" while three separate things happen has no way to know
-     * which of them the failure below it belongs to.
-     */
-    | "publish"
-    /**
      * Bringing the server's revisions down. Writes the working tree and re-reads every
      * document, so it is in the same class as a restore rather than in the same class as
      * a push.
@@ -120,43 +110,6 @@ export const VERSION_HISTORY_PAGE = 50;
  * all three places.
  */
 const VCS_AUTHOR_NAME_SETTING = "versionControl.authorName";
-
-/**
- * What the rail says when a server would not record the project being published.
- *
- * Its own table rather than the launcher's, because the reader is somewhere else and so
- * is what they can do next: the launcher is listing what a server holds, and this is one
- * project that did not get on to it. Every sentence therefore names the publish rather
- * than the server.
- *
- * A server's own words are deliberately not shown for `rejected`. They are English
- * written for whoever runs it, and the rail is 320px wide.
- */
-const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
-    "no-token": "workspace.shell.versionControl.server.publish.noToken",
-    refused: "workspace.shell.versionControl.server.publish.refused",
-    unreachable: "workspace.shell.versionControl.server.publish.unreachable",
-    "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
-    "name-taken": "workspace.shell.versionControl.server.publish.nameTaken",
-    "already-published": "workspace.shell.versionControl.server.publish.alreadyPublished",
-    declined: "workspace.shell.versionControl.server.publish.declined",
-    rejected: "workspace.shell.versionControl.server.publish.unknown",
-    unknown: "workspace.shell.versionControl.server.publish.unknown",
-};
-
-/**
- * The sentence one refusal is drawn as, with whatever it names filled in.
- *
- * The key still comes from the table above, so a refusal added to the vocabulary is still a
- * compile error here rather than a blank line on screen. What this adds is the one thing a
- * table cannot carry: a refusal that names something has to be given the something.
- */
-function publishProblemSentence(problem: VcsServerProjectsProblem): string {
-    const key = PUBLISH_PROBLEM_KEYS[problem.kind];
-    return problem.kind === "already-published"
-        ? translate(key, { name: problem.name })
-        : translate(key);
-}
 
 export interface VersionFailure {
     /**
@@ -376,25 +329,6 @@ export interface VersionSurface {
     /** Ask the server where things stand. The only thing here that waits on a network by itself. */
     checkRemote: () => void;
     /**
-     * Point the project at a server, or disconnect it with null.
-     *
-     * Does not contact it - see the service. Answers whether it was written, so the form
-     * knows whether to close.
-     */
-    setRemote: (url: string | null) => Promise<boolean>;
-    /**
-     * Put this project on a server: register it there, connect it, send it.
-     *
-     * **Contacts the server, where {@link setRemote} does not**, and is the act an author
-     * means by connecting a project that already has versions in it. Answers whether the
-     * whole of it went through, so the dialog knows whether to close; every way it can
-     * fail leaves its sentence in {@link failure}, naming the step that did not go.
-     *
-     * `name` is what the project is called on the server, which is what a collaborator
-     * clones by.
-     */
-    publish: (remoteOrigin: string, name: string) => Promise<boolean>;
-    /**
      * Who this installation is signed in to that server as, or null for nobody.
      *
      * Read on open beside {@link remote}, and for the same reason: it is local. Null on
@@ -416,15 +350,6 @@ export interface VersionSurface {
      * where that leaves it. Resolves once the author has answered or closed the question.
      */
     useServerSession: () => Promise<void>;
-    /**
-     * Ask whether this project uses the sign-in held for a server it is not on yet - the one an
-     * author has just chosen for it - and say whether it does now.
-     *
-     * The server picker's question: what that server holds cannot be read for this project until
-     * the author has said so. Resolves false for a no, a question closed unanswered, or a server this
-     * machine holds no sign-in for.
-     */
-    askToUseServer: (remoteOrigin: string) => Promise<boolean>;
     /**
      * This project's repository id, or null before the identity read lands.
      *
@@ -1049,115 +974,6 @@ export function useVersionSurface(): VersionSurface {
             });
     }, [services, busy, readSession]);
 
-    const setRemote = useCallback(async (url: string | null): Promise<boolean> => {
-        if (!services) {
-            return false;
-        }
-        setBusy("remote");
-        setFailure(null);
-        try {
-            const written = await services.versionControl.setRemote(url);
-            if (!alive.current) return true;
-            setRemoteUrl(written);
-            // Whatever was known about the OLD server describes a server this project is
-            // no longer pointed at. Left in place, disconnecting would leave the row
-            // reporting "2 versions ahead" of nothing.
-            setSyncState(null);
-            // **The session is keyed by the address that just changed.** It is read once,
-            // when the project opens, and nothing else re-read it - so a project connected
-            // to a server this installation is signed in to went on saying it was signed
-            // in to nothing: the row drew the address instead of the server's name and
-            // offered to sign in, under two buttons that were already working. Re-read
-            // here rather than in the rail, because this is where the address moved.
-            await readSession();
-            return true;
-        } catch (thrown) {
-            if (alive.current) {
-                // Two readings of the same refusal, and they must not be the same string.
-                // `vcsSignInRequired` matches what the SERVER said, in English, so it is fed
-                // the raw message; what the author reads goes through `describeFailure`,
-                // which turns a recognised code into a translated sentence. Handing the
-                // translated one to the matcher would make the way in disappear in every
-                // locale but English.
-                const needsSignIn = vcsSignInRequired(rawMessage(thrown));
-                setRemoteNeedsSignIn(needsSignIn);
-                setFailure(describeFailure(thrown));
-                // The address survives this one refusal - see the manager - and the row
-                // that offers a sign-in is the one drawn beside a configured server, so
-                // the surface has to know it was kept or the way in is still not there.
-                if (needsSignIn && url !== null) {
-                    setRemoteUrl(url);
-                }
-            }
-            return false;
-        } finally {
-            if (alive.current) setBusy(null);
-        }
-    }, [services, readSession]);
-
-    /**
-     * Put this project on a server.
-     *
-     * Three acts behind one press, and what this owns is which of them the author is
-     * told about. The first answers with a coded problem, because "the server would not
-     * record this project" had no sentence anywhere before; the other two throw, with
-     * the words the backend and the manager already refuse in - including the sign-in
-     * refusal, which is why the same `remoteNeedsSignIn` reading as {@link setRemote}
-     * runs here. A publish stopped for want of a sign-in has to leave the way in on
-     * screen, exactly as connecting does.
-     *
-     * The address is re-read rather than assumed on the way out. Connecting is the
-     * middle step and may or may not have happened by the time this resolves, and the
-     * row that draws the server is the one that has to be right about it.
-     */
-    const publish = useCallback(async (remoteOrigin: string, name: string): Promise<boolean> => {
-        if (!services || busy !== null) {
-            return false;
-        }
-        setBusy("publish");
-        setFailure(null);
-        try {
-            const outcome = await services.versionControl.publish(remoteOrigin, name);
-            if (!alive.current) return outcome.ok;
-            if (!outcome.ok) {
-                setFailure({ text: publishProblemSentence(outcome.problem), tone: "failure" });
-                return false;
-            }
-            if (outcome.connectedAs !== undefined) {
-                // A note rather than a failure, because nothing failed: this project has been on
-                // that server before and is registered under the name it was published as, so it
-                // is connected under that one. Said because the author typed a name and the
-                // address does not carry it - a substitution nobody is told about is the thing
-                // this line exists to prevent.
-                setFailure({
-                    text: translate("workspace.shell.versionControl.server.publish.connectedAs", {
-                        name: outcome.connectedAs,
-                    }),
-                    tone: "note",
-                });
-            }
-            setRemoteUrl(await services.versionControl.getRemote());
-            setSyncState(await services.versionControl.getSyncState());
-            // For the reason {@link setRemote} re-reads it: the address this project answers
-            // to has just changed, and the session is looked up by that address.
-            await readSession();
-            return true;
-        } catch (thrown) {
-            if (alive.current) {
-                const needsSignIn = vcsSignInRequired(rawMessage(thrown));
-                setRemoteNeedsSignIn(needsSignIn);
-                setFailure(describeFailure(thrown));
-                // Whatever the connect step managed to write. A publish that got as far
-                // as the address and no further is a project WITH a server, and the row
-                // saying so is where the next attempt starts from.
-                setRemoteUrl(await services.versionControl.getRemote().catch(() => null));
-            }
-            return false;
-        } finally {
-            if (alive.current) setBusy(null);
-        }
-    }, [services, busy, readSession]);
-
     const signOutOfServer = useCallback(async (): Promise<void> => {
         if (!services) {
             return;
@@ -1198,22 +1014,6 @@ export function useVersionSurface(): VersionSurface {
             if (alive.current) setBusy(null);
         }
     }, [services, busy]);
-
-    const askToUseServer = useCallback(async (remoteOrigin: string): Promise<boolean> => {
-        if (!services) {
-            return false;
-        }
-        // Not `busy`: the question is a window of its own, and the dialog that asked it holds its
-        // own state while it is up. Marking the whole surface busy would grey out a rail the author
-        // is not looking at.
-        try {
-            const next = await services.versionControl.useServerSessionAt(remoteOrigin);
-            return next.session !== null;
-        } catch (thrown) {
-            if (alive.current) setFailure(describeFailure(thrown));
-            return false;
-        }
-    }, [services]);
 
     const pushToRemote = useCallback(async (): Promise<boolean> => {
         if (!services || busy !== null) {
@@ -1382,13 +1182,10 @@ export function useVersionSurface(): VersionSurface {
         syncState,
         merge,
         checkRemote,
-        setRemote,
-        publish,
         remoteNeedsSignIn,
         serverSession,
         availableSession,
         useServerSession,
-        askToUseServer,
         repositoryId,
         signOutOfServer,
         pushToRemote,
@@ -1405,18 +1202,6 @@ export function describeShownVersion(state: VersionSurfaceState): string | null 
         return revisionLabel(state.number);
     }
     return null;
-}
-
-/**
- * What was thrown, as the thrower worded it.
- *
- * Deliberately NOT what the author reads - {@link describeFailure} is that, and it translates the
- * situations this interface has words for. This one exists for the checks that match on the
- * server's own English (`vcsSignInRequired`), which would stop recognising anything the moment it
- * was handed a translated sentence.
- */
-function rawMessage(thrown: unknown): string {
-    return thrown instanceof Error ? thrown.message : String(thrown);
 }
 
 /**

@@ -172,9 +172,12 @@ beforeEach(() => {
     manager = new VcsManager(fakeApp(), undefined, teamSessionCall, asker);
 });
 
+/** The launcher's new team project: the one publish still allowed to register. */
+const NEW_PROJECT = { newProject: true } as const;
+
 describe("publishing a project to a server", () => {
     it("registers, connects and sends, in that order", async () => {
-        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({ ok: true });
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT)).resolves.toEqual({ ok: true });
 
         expect(lore.calls).toEqual([
             "list",
@@ -186,7 +189,7 @@ describe("publishing a project to a server", () => {
     });
 
     it("registers the repository this machine already has, rather than asking for a new one", async () => {
-        await manager.publishProject(PROJECT, ORIGIN, "driftwood");
+        await manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT);
 
         // The id it already has, and a stable client id so a retry is not a second project.
         expect(server.create).toHaveBeenCalledWith(
@@ -197,11 +200,21 @@ describe("publishing a project to a server", () => {
     it("writes nothing and sends nothing when the server will not record the project", async () => {
         server.create.mockResolvedValue({ ok: false, problem: { kind: "refused", code: "refused", detail: "" } });
 
-        const outcome = await manager.publishProject(PROJECT, ORIGIN, "driftwood");
+        const outcome = await manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT);
 
         expect(outcome).toEqual({ ok: false, problem: { kind: "refused" } });
         // The project is exactly as it was: no address, and no version off the machine.
         expect(lore.calls).toEqual(["list", "register"]);
+    });
+
+    it("refuses, from a project's own window, a project the server does not hold, and writes nothing", async () => {
+        // A local project becomes a team project on the Team side, from an exported project
+        // package. From the workspace a publish only connects to a copy the server already holds.
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "package-required" } });
+
+        expect(lore.calls).toEqual(["list"]);
+        expect(server.create).not.toHaveBeenCalled();
     });
 
     it("stops before the registration when this installation cannot ask the server anything", async () => {
@@ -277,7 +290,7 @@ describe("publishing a project to a server", () => {
         // here at all, the address included.
         server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "driftwood")]));
 
-        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT))
             .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
 
         expect(lore.calls).toEqual(["list"]);
@@ -291,14 +304,14 @@ describe("publishing a project to a server", () => {
         // refusal exists to prevent.
         server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "Driftwood")]));
 
-        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT))
             .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
     });
 
     it("puts the address back when connecting fails, and sends nothing", async () => {
         lore.failures.set(`publishToRemote ${ORIGIN}/driftwood ${REPOSITORY}`, new Error("loreserver said no"));
 
-        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT))
             .rejects.toThrow("loreserver said no");
 
         expect(lore.calls).toEqual([
@@ -316,7 +329,7 @@ describe("publishing a project to a server", () => {
         // on the server - and would hide the two buttons that finish the job.
         lore.failures.set("push", new Error("Branch has diverged, sync to merge remote changes"));
 
-        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", NEW_PROJECT))
             .rejects.toThrow("Branch has diverged");
 
         expect(lore.calls.filter((call) => call.startsWith("writeRemote")))
@@ -355,6 +368,7 @@ describe("whose sign-in publishing uses", () => {
     }
 
     it("asks, from a project's own window, and records the yes for this project and server", async () => {
+        server.list.mockResolvedValue(listed([projectRow()]));
         await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({ ok: true });
 
         expect(asker).toHaveBeenCalledTimes(1);
@@ -382,6 +396,7 @@ describe("whose sign-in publishing uses", () => {
     });
 
     it("asks again after an earlier no, because choosing a server is asking again", async () => {
+        server.list.mockResolvedValue(listed([projectRow()]));
         asker.mockResolvedValueOnce(false);
         await manager.publishProject(PROJECT, ORIGIN, "driftwood");
 

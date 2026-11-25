@@ -8,8 +8,6 @@ import {
 } from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
-    UNKNOWN_SERVER,
-    NO_SERVER,
     VERSION_BRANCH_MAX_CHARS,
     VERSION_CHANGE_LIST_LIMIT,
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -26,7 +24,6 @@ import {
     hasMoreHistory,
     hiddenCheckpointCount,
     historyRowHeadline,
-    initialServerChoice,
     nextHistoryLimit,
     isCommitFormPresent,
     isVersionSurfaceVisible,
@@ -1025,36 +1022,3 @@ describe("versionFace", () => {
     });
 });
 
-describe("which server the connect dialog opens on", () => {
-    const servers = [{ remoteOrigin: "lore://one.example.lan:41337" }, { remoteOrigin: "lore://two.example.lan:41337" }];
-
-    it("opens on the server this project already uses", () => {
-        // The remote a connected project carries: the origin with the name it has there on
-        // the end of it. Matched on the origin, or a project that is plainly connected opens
-        // as though this installation had never heard of its server.
-        expect(initialServerChoice(servers, "lore://two.example.lan:41337/my-game"))
-            .toBe("lore://two.example.lan:41337");
-    });
-
-    it("opens on that server for a remote with no name on it", () => {
-        expect(initialServerChoice(servers, "lore://two.example.lan:41337")).toBe("lore://two.example.lan:41337");
-    });
-
-    it("opens on nothing for a project with no server", () => {
-        // Not on the first server in the list: the dialog decides where work is sent, and
-        // a preselected destination nobody named is one press away from being used.
-        expect(initialServerChoice(servers, null)).toBe(NO_SERVER);
-        expect(initialServerChoice(servers, "   ")).toBe(NO_SERVER);
-    });
-
-    it("says so where the project's server is not one this machine has an account on", () => {
-        // A copy somebody sent, or a server that was signed out of. It used to open on an
-        // address field with the address in it, which read as an invitation to retype it; the
-        // only thing that can be done about it is adding the server.
-        expect(initialServerChoice(servers, "lore://plain.example.lan:41337/my-game")).toBe(UNKNOWN_SERVER);
-    });
-
-    it("opens on nothing when no server has been added", () => {
-        expect(initialServerChoice([], null)).toBe(NO_SERVER);
-    });
-});

@@ -6,7 +6,7 @@ import type {
     VcsSyncState,
     VcsUnavailableReason,
 } from "@shared/types/vcs";
-import { VCS_DEFAULT_BRANCH, parseVcsRemoteUrl } from "@shared/types/vcs";
+import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import { recogniseSystemRevisionMessage } from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
@@ -924,49 +924,6 @@ function versionIdentity(inputs: VersionFaceInputs, t: Translator["t"]): string 
 
 function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
     return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
-}
-
-/**
- * What the server dialog opens on for a project pointed at a server this machine has no
- * account on.
- *
- * **Not a choice - a fact to be told.** It used to be the "another address" row, with the
- * address already typed into it, because a bare `loreserver` could be pointed at by address
- * alone. Studio speaks to Team servers now: a server is reached at its `nlteam://` endpoint,
- * which is what says where a token is presented and which remote the repositories live on,
- * so the one remedy for a server that is not in the list is adding it.
- */
-export const UNKNOWN_SERVER = "unknown";
-
-/** The dialog with nothing chosen, which is how it opens for a project that uses no server. */
-export const NO_SERVER = "";
-
-/**
- * Which row the server dialog opens on.
- *
- * The server this project already uses, so that changing one is a choice between named
- * things rather than a retype. A project that uses none opens on nothing at all rather
- * than on the first server in the list: connecting somewhere nobody asked for is the one
- * outcome a dialog about where work is sent must not make easy.
- *
- * Matched on the ORIGIN, not on the whole address. A project's remote carries the name it
- * has on the server (`lore://host:41337/my-game`) while a session records only the origin,
- * so comparing the two strings never matched a project that was in fact connected - and it
- * opened on the address field with the address already in it, which reads as a server this
- * installation has never heard of.
- *
- * An address no session accounts for is the remaining case, and it is a fact rather than a
- * row: this machine has no account on that server. {@link UNKNOWN_SERVER} is what the dialog
- * says so with.
- */
-export function initialServerChoice(
-    servers: ReadonlyArray<{ remoteOrigin: string }>,
-    remote: string | null,
-): string {
-    const address = remote?.trim() ?? "";
-    if (address === "") return NO_SERVER;
-    const origin = parseVcsRemoteUrl(address)?.origin ?? address;
-    return servers.some((server) => server.remoteOrigin === origin) ? origin : UNKNOWN_SERVER;
 }
 
 /**
