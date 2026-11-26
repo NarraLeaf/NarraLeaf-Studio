@@ -65,6 +65,9 @@ import { assertValidStoryId } from "@shared/utils/storyId";
 import { StoryDocumentJsonCache } from "./storyDocumentJson";
 import { applyStoryOpToDocument, storyOpSceneReach } from "@shared/story/applyStoryOp";
 import type { TeamStoryLibraryOp } from "@shared/authority/project";
+import { storyDiffToOps } from "@shared/story/storyDiffToOps";
+import { sameRecord } from "@/lib/live/recordRestore";
+import { refuseTeamStep } from "../teamDocs/teamStepRefusal";
 import {
     applyStoryOpToLibrary,
     parseStoryDocument,
@@ -183,6 +186,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private readonly events = new EventEmitter<StoryServiceEvents>();
     /** Where edits go instead of into the document, when something else owns them. See {@link StoryOpSink}. */
     private opSink: StoryOpSink | null = null;
+    /**
+     * While a step recorded offline is worked out for the server (see {@link sendStepThroughSink}):
+     * the copy of one story its writes land on, and the operations they made, in order.
+     */
+    private stepDraft: { storyId: StoryId; document: StoryDocument; ops: LiveStoryOp[] } | null = null;
     private dirty = false;
     private revision = 0;
     /**
@@ -433,6 +441,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label: { key: "story.history.deleteStory" as TranslationKey, params: { name: storedEntry.name } },
             undo: async () => {
+                if (this.opSink) {
+                    if (this.getStoryEntry(storyId)) {
+                        refuseTeamStep(this.getContext(), "undo", "changed");
+                    }
+                    if (!storedDocument) {
+                        // Nothing was read before the story went, so there is nothing to send back.
+                        refuseTeamStep(this.getContext(), "undo", "offline");
+                    }
+                    this.opSink.library?.(storyId, {
+                        op: "create-story",
+                        entry: JSON.parse(JSON.stringify(storedEntry)) as StoryLibraryEntry,
+                        document: JSON.parse(JSON.stringify(storedDocument)) as StoryDocument,
+                    });
+                    return;
+                }
                 if (storedDocument) {
                     this.documents.set(storyId, JSON.parse(JSON.stringify(storedDocument)) as StoryDocument);
                     this.dirtyDocuments.add(storyId);
@@ -454,6 +477,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 }
             },
             redo: () => {
+                if (this.opSink) {
+                    if (!this.getStoryEntry(storyId)) {
+                        refuseTeamStep(this.getContext(), "redo", "gone");
+                    }
+                    this.opSink.library?.(storyId, { op: "delete-story" });
+                    return;
+                }
                 this.removeStory(storyId);
             },
         });
@@ -589,6 +619,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public getStoryDocument(storyId: StoryId): StoryDocument {
+        if (this.stepDraft?.storyId === storyId) {
+            return this.stepDraft.document;
+        }
         const document = this.documents.get(storyId);
         if (!document) {
             throw new RendererError(`Story document not loaded: ${storyId}`);
@@ -1372,11 +1405,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapter: JSON.parse(JSON.stringify(chapter)) as StoryChapter,
             beforeChapterId: before.chapters[index + 1]?.id ?? null,
         }]));
-        const result = history.withoutRecording(action);
         if (this.opSink !== null) {
-            // Inside a session an undo is the inverse operation, which is the session's to send.
-            return result;
+            // In a team project the edits go to the server, and the team's undo makes one step of
+            // the operations this one call sends (`teamUndo.ts`) - so they are not hidden from it.
+            return action();
         }
+        const result = history.withoutRecording(action);
         const after = this.getStoryDocument(storyId);
         const addedSceneIds = listSceneIdsInDocumentOrder(after).filter(id => !sceneNamesBefore.has(id));
         const addedChapterIds = after.chapters.map(chapter => chapter.id).filter(id => !chaptersBefore.has(id));
@@ -1464,7 +1498,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 this.applySceneName(storyId, renamed.id, renamed.to);
             }
         };
-        history.pushCommand(projectHistoryScope(), { label, undo: take, redo: put });
+        history.pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => (this.opSink ? this.sendStepThroughSink(storyId, take) : take()),
+            redo: () => (this.opSink ? this.sendStepThroughSink(storyId, put) : put()),
+        });
         return result;
     }
 
@@ -2231,9 +2269,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
         history.pushCommand(scope, {
             ...historyEntry,
             undo: () => {
+                if (this.opSink) {
+                    this.restoreStructureThroughSink(storyId, { scenes: { [sceneId]: after } }, { scenes: { [sceneId]: before } }, "undo", "scenes");
+                    return;
+                }
                 this.replaceScene(storyId, sceneId, before);
             },
             redo: () => {
+                if (this.opSink) {
+                    this.restoreStructureThroughSink(storyId, { scenes: { [sceneId]: before } }, { scenes: { [sceneId]: after } }, "redo", "scenes");
+                    return;
+                }
                 this.replaceScene(storyId, sceneId, after);
             },
         });
@@ -2493,6 +2539,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * operation does. Takes ownership of `op` (see the applier).
      */
     private applyOp(storyId: StoryId, op: LiveStoryOp): boolean {
+        if (this.stepDraft?.storyId === storyId) {
+            this.stepDraft.ops.push(structuredClone(op));
+            return applyStoryOpToDocument(this.stepDraft.document, structuredClone(op), { now: new Date().toISOString() }).changed;
+        }
         let changed = false;
         this.mutateDocument(storyId, document => {
             changed = applyStoryOpToDocument(document, op, { now: new Date().toISOString() }).changed;
@@ -2948,9 +2998,97 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const after = this.captureStoryStructure(storyId);
         this.getHistoryService().pushCommand(scopeId, {
             label,
-            undo: () => this.applyStoryStructure(storyId, before),
-            redo: () => this.applyStoryStructure(storyId, after),
+            undo: () => this.opSink
+                ? this.restoreStructureThroughSink(storyId, after, before, "undo", "outline")
+                : this.applyStoryStructure(storyId, before),
+            redo: () => this.opSink
+                ? this.restoreStructureThroughSink(storyId, before, after, "redo", "outline")
+                : this.applyStoryStructure(storyId, after),
         });
+    }
+
+    /*
+     * ⚠ Steps recorded while a team project was offline, taken after it reconnected. The server owns
+     * the stories by then: a write here would land on this machine alone, and a structure snapshot
+     * written back would also take back every scene other authors changed meanwhile. The two helpers
+     * below send what the step changed as operations instead.
+     */
+
+    /**
+     * Put back what a structure step changed - the scenes that differ between its two sides, and the
+     * outline when it changed - as operations, and only while each still reads as the step left it.
+     * `"scenes"` compares the scenes alone, for a step about one scene's contents.
+     */
+    private restoreStructureThroughSink(
+        storyId: StoryId,
+        expected: Partial<StoryStructureSnapshot>,
+        target: Partial<StoryStructureSnapshot>,
+        direction: "undo" | "redo",
+        reach: "outline" | "scenes",
+    ): void {
+        const current = this.getStoryDocument(storyId);
+        const next = JSON.parse(JSON.stringify(current)) as StoryDocument;
+        const sceneIds = new Set([...Object.keys(expected.scenes ?? {}), ...Object.keys(target.scenes ?? {})]);
+        for (const sceneId of sceneIds) {
+            const from = expected.scenes?.[sceneId];
+            const to = target.scenes?.[sceneId];
+            if (sameRecord(from, to)) {
+                continue;
+            }
+            if (!sameRecord(current.scenes[sceneId], from)) {
+                refuseTeamStep(this.getContext(), direction, from && !current.scenes[sceneId] ? "gone" : "changed");
+            }
+            if (to) {
+                next.scenes[sceneId] = this.cloneScene(to);
+            } else {
+                delete next.scenes[sceneId];
+            }
+        }
+        if (reach === "outline") {
+            const outline = (document: Partial<StoryStructureSnapshot>) => ({
+                chapters: document.chapters ?? [],
+                entrySceneId: document.entrySceneId ?? null,
+                unassignedSceneIds: document.unassignedSceneIds ?? [],
+            });
+            if (!sameRecord(outline(expected), outline(target))) {
+                if (!sameRecord(outline(current), outline(expected))) {
+                    refuseTeamStep(this.getContext(), direction, "changed");
+                }
+                const restored = JSON.parse(JSON.stringify(outline(target))) as ReturnType<typeof outline>;
+                next.chapters = restored.chapters;
+                if (restored.entrySceneId === null) {
+                    delete next.entrySceneId;
+                } else {
+                    next.entrySceneId = restored.entrySceneId;
+                }
+                if (target.unassignedSceneIds === undefined) {
+                    delete next.unassignedSceneIds;
+                } else {
+                    next.unassignedSceneIds = restored.unassignedSceneIds;
+                }
+            }
+        }
+        for (const op of storyDiffToOps(current, next)) {
+            this.handedToSink(storyId, op);
+        }
+    }
+
+    /**
+     * Run a step's own writes against a copy of the story and send the operations they made. For the
+     * steps that re-derive what to do from the document as it stands - they read and write through
+     * {@link getStoryDocument} and {@link applyOp}, which the copy stands in for meanwhile.
+     */
+    private sendStepThroughSink(storyId: StoryId, run: () => void): void {
+        const draft = { storyId, document: JSON.parse(JSON.stringify(this.getStoryDocument(storyId))) as StoryDocument, ops: [] as LiveStoryOp[] };
+        this.stepDraft = draft;
+        try {
+            run();
+        } finally {
+            this.stepDraft = null;
+        }
+        for (const op of draft.ops) {
+            this.handedToSink(storyId, op);
+        }
     }
 
     private getHistoryService(): HistoryService {

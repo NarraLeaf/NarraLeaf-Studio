@@ -315,9 +315,13 @@ export class TeamUndo {
      * One of this window's ordinary edits is being sent. Recorded with the other operations of the
      * same turn, unless it is an undo being applied (that edit IS a step) or a document this layer
      * leaves alone.
+     *
+     * "Being applied" is `isApplyingStep`, not `isRestoring`: code that holds recording only to batch
+     * its writes (an agent's outline step, the rename refactor) is still making edits, and if it
+     * records no step of its own the team's is the only one there will be.
      */
     public intended(clientId: string, document: LiveDocument | { doc: string }): void {
-        if (document.doc === "ui" || document.doc === "file" || this.ports.history.isRestoring()) {
+        if (document.doc === "ui" || document.doc === "file" || this.ports.history.isApplyingStep()) {
             return;
         }
         let group = this.turn;
@@ -411,6 +415,8 @@ export class TeamUndo {
             mergeWindowMs: DEFAULT_MERGE_WINDOW_MS,
             tag: TEAM_UNDO_TAG,
             team: true,
+            // It only waits for the server: what the author does meanwhile still records its steps.
+            waitsOnly: true,
         });
     }
 

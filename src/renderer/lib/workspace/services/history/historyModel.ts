@@ -62,6 +62,13 @@ export type HistoryCommandBody = {
     fold?: (incoming: HistoryCommandBody) => boolean;
     /** What `fold` reads off an incoming entry. Opaque to the stack. */
     payload?: unknown;
+    /**
+     * The promise `undo`/`redo` returns only waits - for a server's answer - and writes nothing
+     * through the services meanwhile. Recording is then given back as soon as the call returns, so
+     * what the author does during the wait still leaves its steps; the step stays pending (no other
+     * undo starts) until it settles.
+     */
+    waitsOnly?: boolean;
 };
 
 export type HistoryEntry = {
@@ -159,6 +166,7 @@ export function createCommandEntry(input: {
     tag?: string;
     fold?: HistoryCommandBody["fold"];
     payload?: unknown;
+    waitsOnly?: boolean;
 }): HistoryEntry {
     return {
         id: nextHistoryEntryId(),
@@ -174,6 +182,7 @@ export function createCommandEntry(input: {
             redo: input.redo,
             ...(input.fold ? { fold: input.fold } : {}),
             ...(input.payload !== undefined ? { payload: input.payload } : {}),
+            ...(input.waitsOnly ? { waitsOnly: true } : {}),
         },
         dispose: input.dispose,
     };

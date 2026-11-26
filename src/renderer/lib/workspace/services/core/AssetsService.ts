@@ -61,6 +61,7 @@ import { AssetTrash } from "../assets/AssetTrash";
 import { AssetLibraryChange, type AssetIdentity, type TakenFolder } from "../assets/AssetLibraryChange";
 import { describeRestoreNotKept } from "@/lib/workspace/assets/importFailure";
 import { HistoryService } from "../history/HistoryService";
+import { refuseTeamStep } from "../teamDocs/teamStepRefusal";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 
@@ -2670,6 +2671,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         history.pushCommand(projectHistoryScope(), {
             label,
             undo: async () => {
+                if (this.opSink) {
+                    // Recorded offline: the files were set aside on this machine, and a team server
+                    // now owns the library - there is no way to bring them back through it from here.
+                    refuseTeamStep(this.getContext(), "undo", "offline");
+                }
                 // Reverse order so a nested cascade unwinds from the inside out.
                 for (const plan of [...restorable].reverse()) {
                     await this.restoreAssetFromPlan(plan);
@@ -2681,6 +2687,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             // Re-runs the deletion rather than replaying a snapshot: everything is live again after
             // an undo, so making the same call the author made is the honest way to remove it.
             redo: async () => {
+                if (this.opSink) {
+                    refuseTeamStep(this.getContext(), "redo", "offline");
+                }
                 if (groups) {
                     await this.deleteGroup(groups.category, groups.groupId, true, { allowReferenced: true });
                     return;
@@ -2965,8 +2974,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const history = this.getContext().services.get<HistoryService>(Services.History);
         history.pushCommand(projectHistoryScope(), {
             label,
-            undo: () => change.undo(),
-            redo: () => change.redo(),
+            // Recorded offline (online a team project leaves no step here): the old bytes are on this
+            // machine only, with no way through the server that now owns the library.
+            undo: () => (this.opSink ? refuseTeamStep(this.getContext(), "undo", "offline") : change.undo()),
+            redo: () => (this.opSink ? refuseTeamStep(this.getContext(), "redo", "offline") : change.redo()),
             dispose: () => change.dispose(),
         });
         return replaced;

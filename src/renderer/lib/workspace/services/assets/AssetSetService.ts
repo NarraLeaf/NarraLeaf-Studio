@@ -30,6 +30,8 @@ import { projectHistoryScope } from "../history/historyScopes";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
+import { planRecordRestore } from "@/lib/live/recordRestore";
+import { refuseTeamStep } from "../teamDocs/teamStepRefusal";
 import type { AssetType } from "./assetTypes";
 
 /**
@@ -458,15 +460,45 @@ export class AssetSetService extends Service<AssetSetService> {
         after: ProjectAssetSetDocument,
         label: HistoryLabel,
     ): void {
-        const restore = (snapshot: ProjectAssetSetDocument) => {
+        const restore = (snapshot: ProjectAssetSetDocument, expected: ProjectAssetSetDocument, direction: "undo" | "redo") => {
+            if (this.opSink) {
+                this.restoreThroughSink(expected, snapshot, direction);
+                return;
+            }
             this.document = structuredClone(snapshot);
             this.commitMutation();
         };
         this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
             label,
-            undo: () => restore(before),
-            redo: () => restore(after),
+            undo: () => restore(before, after, "undo"),
+            redo: () => restore(after, before, "redo"),
         });
+    }
+
+    /*
+     * ⚠ A step recorded offline in a team project and taken after it reconnected must not write the
+     * snapshot back: the server owns the document by then, and the snapshot would overwrite every
+     * record other authors changed meanwhile, on this machine alone. What the step changed goes back
+     * through the server instead, record by record (`@/lib/live/recordRestore`), and only while those
+     * records still read as the step left them.
+     */
+    private restoreThroughSink(from: ProjectAssetSetDocument, to: ProjectAssetSetDocument, direction: "undo" | "redo"): void {
+        const plan = planRecordRestore(from.sets, to.sets, this.getDocument().sets);
+        if (plan.conflict) {
+            refuseTeamStep(this.getContext(), direction, "changed");
+        }
+        if (plan.deletes.length > 0) {
+            this.opSink?.handle({ op: "delete-asset-sets", setIds: plan.deletes });
+        }
+        if (plan.creates.length > 0) {
+            this.opSink?.handle({
+                op: "create-asset-sets",
+                creates: plan.creates.map(({ record, beforeId }) => ({ set: structuredClone(record), beforeId })),
+            });
+        }
+        for (const set of plan.updates) {
+            this.opSink?.handle({ op: "update-asset-set", setId: set.id, set: structuredClone(set) });
+        }
     }
 
     /* --------------------------------------------------------------- the live-session seam */

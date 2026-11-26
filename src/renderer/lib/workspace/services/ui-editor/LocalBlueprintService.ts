@@ -1563,7 +1563,15 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             } else {
                 delete entries[variableId];
             }
-            registry.replaceRegistry({ ...currentRegistry, entries });
+            if (registry.replaceRegistry({ ...currentRegistry, entries }) === false) {
+                // A team server owns the registry and refuses a whole one written back: the entry
+                // goes back, or away again, as the one operation it is.
+                if (restoring) {
+                    registry.restoreEntry(savedEntry);
+                } else {
+                    registry.deleteEntry(variableId);
+                }
+            }
             if (patches.length > 0) {
                 this.applyBlueprintMutation(doc => {
                     for (const patch of patches) {

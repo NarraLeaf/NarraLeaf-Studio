@@ -412,6 +412,7 @@ export const workspace = {
             gone: "该步骤涉及的内容已被删除",
             pending: "该步骤尚待服务器确认，请稍后再试",
             unavailable: "该步骤缺少撤销所需的记录",
+            offline: "该步骤记录于离线期间，涉及的文件无法经服务器恢复",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.

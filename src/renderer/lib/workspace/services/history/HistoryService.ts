@@ -194,6 +194,12 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
      * count, or they would be told they had covered themselves.
      */
     private commandPushes = 0;
+    /**
+     * How deep inside the synchronous part of applying an entry this is. Unlike `suppressionDepth`,
+     * which {@link withoutRecording} also raises for code that only batches its writes, this says an
+     * undo or redo is running - what a layer recording a team's steps must not mistake for an edit.
+     */
+    private applyingDepth = 0;
     /** An asynchronous entry still running. A second undo while one is in flight is refused. */
     private pending: Promise<void> | null = null;
 
@@ -330,6 +336,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             payload?: unknown;
             /** A team project's own step (`teamUndo.ts`): not counted in {@link getCommandPushCount}. */
             team?: boolean;
+            /** See `HistoryCommandBody.waitsOnly`. */
+            waitsOnly?: boolean;
         },
     ): boolean {
         if (this.suppressionDepth > 0) {
@@ -353,6 +361,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
                 tag: request.tag,
                 fold: request.fold,
                 payload: request.payload,
+                waitsOnly: request.waitsOnly,
             }),
             request,
         );
@@ -506,6 +515,11 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
     /** True while an entry is being applied - the signal document services use to skip re-recording. */
     public isRestoring(): boolean {
         return this.suppressionDepth > 0;
+    }
+
+    /** True only while an undo or redo is being applied, not while recording is merely held. */
+    public isApplyingStep(): boolean {
+        return this.applyingDepth > 0;
     }
 
     /** Run `fn` with recording turned off. For code that rebuilds state as a side effect of a restore. */
@@ -734,6 +748,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
 
         let result: void | Promise<void>;
         this.suppressionDepth += 1;
+        this.applyingDepth += 1;
         try {
             result = this.applyEntry(entry, direction);
         } catch (error) {
@@ -741,6 +756,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             put();
             console.error(`[History] ${direction} failed in ${id}`, error);
             return false;
+        } finally {
+            this.applyingDepth -= 1;
         }
 
         if (!(result instanceof Promise)) {
@@ -752,6 +769,11 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             return true;
         }
 
+        // An entry that only waits gives recording back now; see `HistoryCommandBody.waitsOnly`.
+        const waitsOnly = entry.body.kind === "command" && entry.body.waitsOnly === true;
+        if (waitsOnly) {
+            this.suppressionDepth -= 1;
+        }
         let retained = false;
         const pending = result
             .then(() => {
@@ -763,7 +785,9 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             })
             .finally(() => {
                 if (this.pending !== pending) return;
-                this.suppressionDepth -= 1;
+                if (!waitsOnly) {
+                    this.suppressionDepth -= 1;
+                }
                 this.pending = null;
                 if (retained) {
                     this.touch(id);

@@ -312,6 +312,35 @@ describe("the team's undo", () => {
         expect(h.history.checkpoint(SCENE, { label: { key: "x" } as never })).toBe(true);
     });
 
+    it("records edits made while recording is only held to batch them", async () => {
+        const h = createHarness();
+        h.history.withoutRecording(() => h.edit(setText("a", "Batched")));
+        await h.deliver();
+
+        expect(h.history.canUndo(SCENE)).toBe(true);
+    });
+
+    it("records an edit the author makes while a step is waiting for the server", async () => {
+        const h = createHarness();
+        h.edit(setText("a", "First"));
+        await h.deliver();
+
+        expect(h.history.undo(SCENE)).toBe(true);
+        // The inverse is out; before it comes back, the author edits another row.
+        h.edit(setText("b", "Meanwhile"));
+        for (let round = 0; round < 3; round += 1) {
+            await h.deliver();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        await h.history.settled();
+        expect(text(h.doc(), "a")).toBe("a");
+        expect(text(h.doc(), "b")).toBe("Meanwhile");
+
+        // That edit is a step of its own, on top: the next Ctrl+Z takes it back.
+        expect(await h.step("undo")).toBe(true);
+        expect(text(h.doc(), "b")).toBe("b");
+    });
+
     it("files steps by what they are about", () => {
         expect(teamUndoScope(STORY, setText("a", "x"))).toBe(SCENE);
         expect(teamUndoScope(STORY, { op: "rename-story", name: "x" })).toBe(projectHistoryScope());

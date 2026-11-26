@@ -423,6 +423,7 @@ export const workspace = {
             gone: "この操作で変更した内容は削除されています",
             pending: "この操作はサーバーの確認待ちです。しばらくしてからもう一度お試しください",
             unavailable: "この操作には元に戻すための記録がありません",
+            offline: "この操作はオフライン中に記録されたため、変更したファイルをサーバー経由で戻せません",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.

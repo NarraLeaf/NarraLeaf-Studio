@@ -454,6 +454,7 @@ export const workspace = {
             gone: "The content this step changed has been deleted.",
             pending: "This step is still waiting for the server. Try again in a moment.",
             unavailable: "This step has no record of what it replaced.",
+            offline: "This step was recorded offline, and the files it changed cannot be brought back through the server.",
         },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
