@@ -32,6 +32,8 @@ import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import { sameRecord } from "@/lib/live/recordRestore";
+import { refuseTeamStep } from "../teamDocs/teamStepRefusal";
 
 /**
  * The project's cast, at `editor/services/character.json`.
@@ -280,12 +282,20 @@ export class CharacterService extends Service<CharacterService> implements IChar
             this.getHistoryService().pushCommand(projectHistoryScope(), {
                 label,
                 undo: () => {
+                    if (this.opSink) {
+                        this.restoreRecordsThroughSink([{ id, expected: after, target: null }], "undo");
+                        return;
+                    }
                     const current = this.characters[id];
                     if (current) {
                         this.removeCharacter(id, current, undefined);
                     }
                 },
                 redo: () => {
+                    if (this.opSink) {
+                        this.restoreRecordsThroughSink([{ id, expected: null, target: after }], "redo");
+                        return;
+                    }
                     if (!this.characters[id]) {
                         this.registerCharacter(Character.fromJSON(after), index);
                         this.markDirty();
@@ -309,8 +319,12 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.adoptRecord(id, after, "as-written");
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
-            undo: () => this.adoptRecord(id, before),
-            redo: () => this.adoptRecord(id, after),
+            undo: () => this.opSink
+                ? this.restoreRecordsThroughSink([{ id, expected: after, target: before }], "undo")
+                : this.adoptRecord(id, before),
+            redo: () => this.opSink
+                ? this.restoreRecordsThroughSink([{ id, expected: before, target: after }], "redo")
+                : this.adoptRecord(id, after),
         });
         return true;
     }
@@ -352,8 +366,12 @@ export class CharacterService extends Service<CharacterService> implements IChar
         }
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
-            undo: () => changes.forEach(change => this.adoptRecord(change.id, change.before)),
-            redo: () => changes.forEach(change => this.adoptRecord(change.id, change.after)),
+            undo: () => this.opSink
+                ? this.restoreRecordsThroughSink(changes.map(change => ({ id: change.id, expected: change.after, target: change.before })), "undo")
+                : changes.forEach(change => this.adoptRecord(change.id, change.before)),
+            redo: () => this.opSink
+                ? this.restoreRecordsThroughSink(changes.map(change => ({ id: change.id, expected: change.before, target: change.after })), "redo")
+                : changes.forEach(change => this.adoptRecord(change.id, change.after)),
         });
         return changes.length;
     }
@@ -401,6 +419,20 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return this.getHistoryService().pushCommand(projectHistoryScope(), {
             label,
             undo: async () => {
+                if (this.opSink) {
+                    // The images the gesture wrote into the library are files on this machine with no
+                    // way through the server from here; the record alone would draw layers whose
+                    // images are not what it names.
+                    if (library && !library.isEmpty()) {
+                        refuseTeamStep(this.getContext(), "undo", "offline");
+                    }
+                    const live = this.characters[id] ? snapshot() : null;
+                    this.restoreRecordsThroughSink([{ id, expected: live, target: stored }], "undo");
+                    if (live) {
+                        after = live;
+                    }
+                    return;
+                }
                 const live = this.characters[id] ? snapshot() : null;
                 this.adoptRecord(id, stored);
                 try {
@@ -416,6 +448,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 }
             },
             redo: async () => {
+                if (this.opSink) {
+                    if (library && !library.isEmpty()) {
+                        refuseTeamStep(this.getContext(), "redo", "offline");
+                    }
+                    this.restoreRecordsThroughSink([{ id, expected: stored, target: after }], "redo");
+                    return;
+                }
                 await library?.redo();
                 this.adoptRecord(id, after);
             },
@@ -569,6 +608,20 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 params: { name: stored.profile.name },
             },
             undo: async () => {
+                if (this.opSink) {
+                    // The record through the server; the rows that spoke it go back the same way,
+                    // through the story service's own writes. The avatar file travels whole.
+                    this.restoreRecordsThroughSink([{ id, expected: null, target: stored }], "undo");
+                    if (thumbnailId && thumbnailBytes) {
+                        await this.getServiceAssetsService().restoreFile(
+                            thumbnailId,
+                            thumbnailBytes,
+                            storeWrite("workspace.shell.save.stores.characters", "notRetried"),
+                        );
+                    }
+                    revertCharacterSpeakerFallback(this.getStoryService(), spokenRows, id, speakerName);
+                    return;
+                }
                 if (thumbnailId && thumbnailBytes) {
                     await this.getServiceAssetsService().restoreFile(
                         thumbnailId,
@@ -584,6 +637,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 revertCharacterSpeakerFallback(this.getStoryService(), spokenRows, id, speakerName);
             },
             redo: () => {
+                if (this.opSink) {
+                    // Every machine rewrites the rows from the one deletion; see `deleteCharacter`.
+                    this.restoreRecordsThroughSink([{ id, expected: stored, target: null }], "redo");
+                    return;
+                }
                 const current = this.characters[id];
                 if (!current) {
                     return;
@@ -594,6 +652,37 @@ export class CharacterService extends Service<CharacterService> implements IChar
         });
 
         return true;
+    }
+
+    /**
+     * Take a step over character records through the server: a step recorded while a team project
+     * was offline, taken after it reconnected. Its own writes (`adoptRecord`, `registerCharacter`,
+     * `removeCharacter`) would land on this machine alone, so each record goes as the operation the
+     * cast's mutators send - and only while every one of them still reads as the step left it
+     * (`expected`; null for "not there"). Somebody's change since refuses the whole step.
+     */
+    private restoreRecordsThroughSink(
+        changes: readonly { id: string; expected: StoredCharacter | null; target: StoredCharacter | null }[],
+        direction: "undo" | "redo",
+    ): void {
+        for (const { id, expected } of changes) {
+            const live = this.characters[id]?.toJSON() as StoredCharacter | undefined;
+            // The avatars' stamps are the live ones whatever the record says (see `adoptRecord`).
+            const comparable = live && expected ? withLiveAvatarStamps(expected, live) : expected;
+            if (!sameRecord(live ?? null, comparable)) {
+                refuseTeamStep(this.getContext(), direction, live || !expected ? "changed" : "gone");
+            }
+        }
+        for (const { id, target } of changes) {
+            const live = this.characters[id]?.toJSON() as StoredCharacter | undefined;
+            if (target === null) {
+                this.handedToSink({ op: "delete-character", characterId: id });
+            } else if (!live) {
+                this.handedToSink({ op: "create-character", character: structuredClone(target) });
+            } else {
+                this.handedToSink({ op: "update-character", characterId: id, character: withLiveAvatarStamps(target, live) });
+            }
+        }
     }
 
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
@@ -698,6 +787,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 params: { name: stored.name },
             },
             undo: () => {
+                if (this.opSink) {
+                    if (this.groups[id]) {
+                        refuseTeamStep(this.getContext(), "undo", "changed");
+                    }
+                    this.handedToSink({ op: "set-character-group", groupId: id, group: { ...stored }, members: memberIds });
+                    return;
+                }
                 this.registerGroup({ ...stored });
                 for (const memberId of memberIds) {
                     this.characters[memberId]?.profile.setGroupId(id);
@@ -707,6 +803,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 void this.flush();
             },
             redo: () => {
+                if (this.opSink) {
+                    if (!sameRecord(this.groups[id], stored)) {
+                        refuseTeamStep(this.getContext(), "redo", this.groups[id] ? "changed" : "gone");
+                    }
+                    this.handedToSink({ op: "delete-character-group", groupId: id });
+                    return;
+                }
                 this.removeGroup(id, memberIds);
             },
         });

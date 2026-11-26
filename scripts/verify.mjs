@@ -36,6 +36,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { typecheckArgs, typecheckCompiler, typecheckEntry } from "./typecheck-command.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -50,8 +51,16 @@ const CI = argv.includes("--ci");
 const RUN_CHECKS = argv.includes("--checks") || !argv.includes("--tests");
 const RUN_TESTS = argv.includes("--tests") || !argv.includes("--checks");
 
+// The type checker (tsrs, or tsc under NLS_TYPECHECKER=tsc) is chosen in scripts/typecheck-command.mjs.
+let TYPECHECKER;
+try {
+    TYPECHECKER = typecheckCompiler();
+} catch (error) {
+    console.error(`verify: ${error.message}`);
+    process.exit(2);
+}
 const TOOLS = {
-    tsc: "node_modules/typescript/bin/tsc",
+    typecheck: typecheckEntry(ROOT, TYPECHECKER) ?? `node_modules/${TYPECHECKER === "tsc" ? "typescript" : "tsrs"}`,
     oxlint: "node_modules/oxlint/bin/oxlint",
     vitest: "node_modules/vitest/vitest.mjs",
 };
@@ -88,8 +97,11 @@ function run(args, { env = {}, capture = true } = {}) {
     });
 }
 
-/** Heap a typecheck may grow to, and the memory one check is budgeted when deciding how many run at once. */
-const TSC_HEAP_MB = 6144;
+/**
+ * Memory one check is budgeted when deciding how many run at once. Sized for the checks that still
+ * run TypeScript 5.x through its compiler API, the plugin API types and the script API declarations,
+ * which load much of the renderer tree. A tsrs typecheck of the renderer peaks under 1 GB.
+ */
 const CHECK_MEMORY_MB = 3072;
 
 const indent = text => text.replace(/^/gm, "    ");
@@ -101,11 +113,9 @@ const toPosix = file => path.relative(ROOT, file).split(path.sep).join("/");
 async function runChecks() {
     // Built somewhere of its own: dist/runtime is what a running `yarn dev` previews games from.
     const runtimeOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "nls-verify-runtime-"));
-    // The renderer-sized programs outgrow node's default heap on a machine with little memory and
-    // die with "Reached heap limit" after a minute or more, which looks like a hang.
     const typecheck = project => ({
         name: `Typecheck ${project}`,
-        args: [`--max-old-space-size=${TSC_HEAP_MB}`, TOOLS.tsc, "--project", `src/${project}/tsconfig.json`],
+        args: typecheckArgs(project, { compiler: TYPECHECKER }),
     });
     // Slowest first, so the last free slot is not the one left holding the longest check.
     const checks = [
@@ -140,9 +150,9 @@ async function runChecks() {
         { name: "Starter template translations", args: ["scripts/gen-skeleton-locale.mjs", "--check"] },
     ];
 
-    // Cores alone overcommit memory: the renderer, runtime and builtin-plugins programs and the
-    // plugin API build each hold most of the renderer tree, a few gigabytes apiece, and eight of
-    // them side by side on an 8 GB machine spend the run swapping. A CI runner (16 GB, 4 cores)
+    // Cores alone overcommit memory: the plugin API build holds most of the renderer tree in
+    // TypeScript 5.x, and so did the renderer, runtime and builtin-plugins typechecks under tsc;
+    // eight such checks side by side on an 8 GB machine spend the run swapping. A CI runner (16 GB, 4 cores)
     // is still limited by its cores. The budget is the memory free now, not the machine's total:
     // on a workstation running several Studio instances and other runs, sizing by the total
     // started ten typechecks on 31 GB with 7 GB free and exhausted it. NLS_VERIFY_LANES caps the

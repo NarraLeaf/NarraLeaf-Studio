@@ -53,6 +53,10 @@ const CALM: Record<string, string> = {
     "apps/workspace/modules/ui-editor/panel/ComponentLibraryPanel.tsx": "component library cards",
     "apps/workspace/modules/ui-editor/panel/templates/UITemplateCard.tsx": "template gallery cards",
     "lib/ui-editor/docker/UIEditorDockerBar.tsx": "the docker bar's component strip",
+    "apps/workspace/modules/page-overview/PageOverviewTab.tsx":
+        "the page overview's previews of each page, laid out side by side as a map of the game",
+    "apps/workspace/modules/page-overview/PageOverviewFlow.tsx":
+        "the page overview's destination cards, each a preview of the page a control leads to",
     "lib/workspace/services/agent/tools/uiTools.ts":
         "ui_screenshot's offscreen page, photographed for an agent after every animation is finished - nobody watches it move",
 };

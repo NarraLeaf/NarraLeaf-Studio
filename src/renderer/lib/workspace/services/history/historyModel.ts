@@ -43,7 +43,33 @@ export type HistoryEntryBody =
      * Neither side is a snapshot: the entry carries its own inverse. What an operation with effects
      * outside one document needs (deleting an asset moves a file; putting it back moves it back).
      */
-    | { kind: "command"; undo: () => void | Promise<void>; redo: () => void | Promise<void> };
+    | HistoryCommandBody;
+
+/**
+ * An entry that carries its own inverse.
+ *
+ * `fold` and `payload` are for the one kind of command that does compose: two deltas of the same
+ * author over the same records, a few hundred milliseconds apart (a team project's interface edits,
+ * typed one keystroke at a time). When the stack would merge two commands - same `mergeKey`, inside
+ * the window, no barrier - it asks the older one's `fold` whether it can take the newer one in; with
+ * no `fold` the answer is no, which is every other command.
+ */
+export type HistoryCommandBody = {
+    kind: "command";
+    undo: () => void | Promise<void>;
+    redo: () => void | Promise<void>;
+    /** Take `incoming` into this entry, or answer false to keep them apart. */
+    fold?: (incoming: HistoryCommandBody) => boolean;
+    /** What `fold` reads off an incoming entry. Opaque to the stack. */
+    payload?: unknown;
+    /**
+     * The promise `undo`/`redo` returns only waits - for a server's answer - and writes nothing
+     * through the services meanwhile. Recording is then given back as soon as the call returns, so
+     * what the author does during the wait still leaves its steps; the step stays pending (no other
+     * undo starts) until it settles.
+     */
+    waitsOnly?: boolean;
+};
 
 export type HistoryEntry = {
     readonly id: string;
@@ -138,6 +164,9 @@ export function createCommandEntry(input: {
     now: number;
     dispose?: () => void;
     tag?: string;
+    fold?: HistoryCommandBody["fold"];
+    payload?: unknown;
+    waitsOnly?: boolean;
 }): HistoryEntry {
     return {
         id: nextHistoryEntryId(),
@@ -147,7 +176,14 @@ export function createCommandEntry(input: {
         ...(input.tag ? { tag: input.tag } : {}),
         createdAt: input.now,
         updatedAt: input.now,
-        body: { kind: "command", undo: input.undo, redo: input.redo },
+        body: {
+            kind: "command",
+            undo: input.undo,
+            redo: input.redo,
+            ...(input.fold ? { fold: input.fold } : {}),
+            ...(input.payload !== undefined ? { payload: input.payload } : {}),
+            ...(input.waitsOnly ? { waitsOnly: true } : {}),
+        },
         dispose: input.dispose,
     };
 }
@@ -172,7 +208,8 @@ function disposeEntry(entry: HistoryEntry): void {
  *    other way round because a snapshot entry carries its end state.
  *
  * Anything else (a command, or the two kinds mixed) does not merge. A command's inverse is not
- * composable in general, and pretending otherwise loses half a gesture.
+ * composable in general, and pretending otherwise loses half a gesture - except for a command that
+ * says it composes, by carrying a `fold` (see {@link HistoryCommandBody}).
  */
 export function mergeHistoryEntries(previous: HistoryEntry, incoming: HistoryEntry): boolean {
     if (previous.body.kind === "checkpoint" && incoming.body.kind === "checkpoint") {
@@ -184,6 +221,11 @@ export function mergeHistoryEntries(previous: HistoryEntry, incoming: HistoryEnt
     }
     if (previous.body.kind === "snapshot" && incoming.body.kind === "snapshot") {
         previous.body.after = incoming.body.after;
+        previous.updatedAt = incoming.updatedAt;
+        previous.label = incoming.label;
+        return true;
+    }
+    if (previous.body.kind === "command" && incoming.body.kind === "command" && previous.body.fold?.(incoming.body)) {
         previous.updatedAt = incoming.updatedAt;
         previous.label = incoming.label;
         return true;
@@ -373,6 +415,28 @@ export class HistoryStack {
         this.mergeBarrier = true;
         dropped.forEach(disposeEntry);
         return dropped.length + running.length;
+    }
+
+    /**
+     * Drop every entry `predicate` names, of any kind.
+     *
+     * Unlike {@link dropWhere}, for the one caller that is letting go of every snapshot and checkpoint
+     * of a stack at once (`HistoryService.setManagedScopes`): with all of them gone there are no
+     * neighbours left describing documents that never followed one another.
+     */
+    public dropAny(predicate: (entry: HistoryEntry) => boolean): number {
+        const dropped = [
+            ...this.undoEntries.filter(predicate),
+            ...this.redoEntries.filter(predicate),
+        ];
+        if (dropped.length === 0) {
+            return 0;
+        }
+        this.undoEntries = this.undoEntries.filter(entry => !predicate(entry));
+        this.redoEntries = this.redoEntries.filter(entry => !predicate(entry));
+        this.mergeBarrier = true;
+        dropped.forEach(disposeEntry);
+        return dropped.length;
     }
 
     /** Entries oldest-first. For tests and diagnostics; callers must not mutate them. */

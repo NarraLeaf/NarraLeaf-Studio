@@ -46,6 +46,8 @@ import { createDashboardTab } from "@/apps/workspace/modules/dashboard/openDashb
 import { DASHBOARD_TAB_ID } from "@/apps/workspace/modules/dashboard/dashboardTabId";
 import { createBlueprintWallTab } from "@/apps/workspace/modules/blueprint-wall/openBlueprintWallTab";
 import { BLUEPRINT_WALL_TAB_ID } from "@/apps/workspace/modules/blueprint-wall/blueprintWallTabId";
+import { createPageOverviewTab } from "@/apps/workspace/modules/page-overview/openPageOverviewTab";
+import { PAGE_OVERVIEW_TAB_ID, readPageOverviewPayload, type PageOverviewTabPayload } from "@/apps/workspace/modules/page-overview/pageOverviewTabId";
 
 /** Legacy global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
@@ -88,6 +90,7 @@ export type SerializedTabContent =
     | { kind: "help"; topicId?: string }
     | { kind: "dashboard" }
     | { kind: "blueprintOverview" }
+    | { kind: "pageOverview"; payload: PageOverviewTabPayload }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
@@ -257,6 +260,10 @@ function serializeTabContent(tab: EditorTabDefinition): SerializedTabContent | n
     if (tab.id === BLUEPRINT_WALL_TAB_ID) {
         return { kind: "blueprintOverview" };
     }
+    if (tab.id === PAGE_OVERVIEW_TAB_ID) {
+        // The page and the mode travel, so a restart reopens the overview where it was left.
+        return { kind: "pageOverview", payload: readPageOverviewPayload(tab.payload) };
+    }
     if (tab.id.startsWith(SURFACE_TAB_PREFIX)) {
         const surfaceId = tab.id.slice(SURFACE_TAB_PREFIX.length);
         if (!surfaceId) {
@@ -363,6 +370,9 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     const o = value as Record<string, unknown>;
     const kind = o.kind;
     if (kind === "welcome" || kind === "dashboard" || kind === "blueprintOverview") {
+        return true;
+    }
+    if (kind === "pageOverview") {
         return true;
     }
     if (kind === "surface" && typeof o.surfaceId === "string" && o.surfaceId.length > 0) {
@@ -585,6 +595,10 @@ function buildTabDefinitionContent(ctx: WorkspaceContext, entry: SerializedTab):
     }
     if (entry.kind === "blueprintOverview") {
         return createBlueprintWallTab();
+    }
+    if (entry.kind === "pageOverview") {
+        // A page deleted since is dropped by the overview itself, which falls back to the first page.
+        return createPageOverviewTab(readPageOverviewPayload(entry.payload));
     }
     if (entry.kind === "surface") {
         const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);

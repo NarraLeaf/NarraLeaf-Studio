@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BookPlus, FilePlus, Network, Settings, UserPlus, Waypoints } from "lucide-react";
+import { BookPlus, FilePlus, Network, Settings, UserPlus, Waypoints, Workflow } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -15,6 +15,7 @@ import { SEARCH_PANEL_ID } from "../../modules/search";
 import { requestSearchFocus } from "../../modules/search/searchFocusRequest";
 import { openDefaultSceneFlowTab } from "../../modules/story-flow/openSceneFlowTab";
 import { openBlueprintWallTab } from "../../modules/blueprint-wall/openBlueprintWallTab";
+import { openPageOverviewTab } from "../../modules/page-overview/openPageOverviewTab";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 
 const STORY_PANEL_ID = "narraleaf-studio:story";
@@ -114,6 +115,13 @@ export function WorkspaceCommands() {
                 categoryKey: "workspace.shell.commandPalette.categoryGo",
                 icon: <Network className="w-4 h-4" />,
                 run: () => openBlueprintWallTab(context),
+            },
+            {
+                id: "go:page-overview",
+                titleKey: "uiEditor.pageOverview.title",
+                categoryKey: "workspace.shell.commandPalette.categoryGo",
+                icon: <Workflow className="w-4 h-4" />,
+                run: () => openPageOverviewTab(context),
             },
             {
                 id: "story:new-story",

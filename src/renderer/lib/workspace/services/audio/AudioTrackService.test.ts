@@ -503,3 +503,43 @@ describe("the live-session seam", () => {
         expect(service.getTrack(child.id)!.parentId).toBeNull();
     });
 });
+
+/**
+ * A step recorded while a team project was offline, taken after it reconnected: the server owns the
+ * mixer by then, so the step must not write its snapshot back - that would happen on this machine
+ * alone, and would also take back whatever other authors changed meanwhile.
+ */
+describe("an offline step taken once a team server owns the mixer", () => {
+    async function offlineEditThenOnline() {
+        const harness = await createHarness();
+        const ambience = harness.service.createTrack({ name: "Ambience", volume: 0.5 });
+        const rain = harness.service.createTrack({ name: "Rain", volume: 0.5 });
+        harness.service.updateTrack(ambience.id, { volume: 0.2 });
+        const sent: LiveAudioTrackOp[] = [];
+        harness.service.setOperationSink({ handle: op => (sent.push(op), true) });
+        return { ...harness, ambience, rain, sent };
+    }
+
+    it("sends back only the record the step changed, as an operation", async () => {
+        const { service, history, ambience, rain, sent } = await offlineEditThenOnline();
+        // Somebody else's edit to another bus, arriving after the reconnection.
+        service.applyLiveOp({ op: "update-audio-track", trackId: rain.id, track: { ...service.getTrack(rain.id)!, volume: 0.9 } });
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+
+        expect(sent).toEqual([{ op: "update-audio-track", trackId: ambience.id, track: { ...service.getTrack(ambience.id)!, volume: 0.5 } }]);
+        // Nothing written here: the mixer changes when the effect comes back.
+        expect(service.getTrack(ambience.id)?.volume).toBe(0.2);
+        expect(service.getTrack(rain.id)?.volume).toBe(0.9);
+    });
+
+    it("refuses, and keeps the step, when somebody changed that record since", async () => {
+        const { service, history, ambience, sent } = await offlineEditThenOnline();
+        service.applyLiveOp({ op: "update-audio-track", trackId: ambience.id, track: { ...service.getTrack(ambience.id)!, volume: 0.7 } });
+
+        expect(history.undo(projectHistoryScope())).toBe(false);
+        expect(sent).toEqual([]);
+        expect(history.canUndo(projectHistoryScope())).toBe(true);
+    });
+});
+

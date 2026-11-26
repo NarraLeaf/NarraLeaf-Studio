@@ -45,7 +45,7 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { useStarterTitlePage } from "./panel/templates/useStarterTitlePage";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
-import { SurfaceList, type SurfaceListGlobalBlueprintCard, type SurfaceListStarterTile } from "./panel/SurfaceList";
+import { SurfaceList, type SurfaceListGlobalBlueprintCard, type SurfaceListPageOverviewCard, type SurfaceListStarterTile } from "./panel/SurfaceList";
 import { reorderSurfacesForDrop, type SurfaceDropGap } from "./panel/surfaceReorder";
 import {
     useOpenBlueprintTarget,
@@ -78,6 +78,8 @@ import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfac
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 import { interfaceDocumentFreezeScope } from "./uiFreezeScope";
 import { openBlueprintWallTab } from "../blueprint-wall/openBlueprintWallTab";
+import { openPageOverviewTab } from "../page-overview/openPageOverviewTab";
+import { PageOverviewThumbnail } from "../page-overview/PageOverviewThumbnail";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -151,7 +153,7 @@ export function createComponentEditorTab(component: UIComponentDefinition) {
 }
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
     const openBlueprintTarget = useOpenBlueprintTarget();
@@ -525,6 +527,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     label: t("uiEditor.panel.openSurface", { label }),
                     onClick: () => handleOpenSurface(surface),
                 },
+                ...(surface.kind === "appSurface" && context
+                    ? [{
+                        id: "page-overview",
+                        label: t("uiEditor.pageOverview.openForPage", { label }),
+                        onClick: () => openPageOverviewTab(context, surface.id),
+                    }]
+                    : []),
                 {
                     id: "rename-surface",
                     label: t("uiEditor.panel.renameSurface", { label }),
@@ -586,7 +595,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             ));
             showMenu(event);
         },
-        [freeze, showMenu, hideMenu, uiService, documentService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, documentService, context, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -744,6 +753,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         };
     }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind, t]);
 
+    // First in the Pages list, so the view of every page sits before the pages themselves.
+    const appPageCount = (documentService?.getDocument().surfaces ?? []).filter(surface => surface.kind === "appSurface").length;
+    const pageOverviewCard = useMemo<SurfaceListPageOverviewCard | undefined>(() => {
+        if (kind !== "appSurface" || !context || appPageCount === 0) {
+            return undefined;
+        }
+        return {
+            title: t("uiEditor.pageOverview.title"),
+            meta: tn("uiEditor.pageOverview.cardMeta", appPageCount),
+            preview: <PageOverviewThumbnail />,
+            onClick: () => openPageOverviewTab(context),
+        };
+    }, [appPageCount, context, kind, t, tn]);
+
     // A project that has no interface yet is offered a title page that already starts and continues
     // the game, under the page it was created with. Only on the Pages side: a title page is a page.
     const starterTile = useMemo<SurfaceListStarterTile | undefined>(() => {
@@ -816,6 +839,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     <SurfaceList
                         surfaces={filteredSurfaces}
                         entrySurfaceId={entrySurfaceId}
+                        pageOverviewCard={pageOverviewCard}
                         globalBlueprintCard={globalBlueprintCard}
                         renderSurfacePreview={renderSurfacePreview}
                         getSurfaceContentRevision={getSurfaceContentRevision}

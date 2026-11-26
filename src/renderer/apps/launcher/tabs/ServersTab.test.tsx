@@ -40,6 +40,10 @@ const bridge = vi.hoisted(() => ({
     launchWorkspace: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => Promise.resolve({ success: true })),
     launchProjectWizard: vi.fn<(props: unknown) => Promise<unknown>>(() => Promise.resolve({ success: true, data: null })),
     publishProject: vi.fn(),
+    setGlobalState: vi.fn((key: string, value: unknown) => {
+        bridge.settings[key] = value;
+        return Promise.resolve({ success: true });
+    }),
     listTodos: vi.fn(),
     listClients: vi.fn(),
     /** What `team.open` answers: the old fixtures had an idle session that advertised nothing. */
@@ -89,6 +93,7 @@ vi.mock("@/lib/app/bridge", () => ({
             publishProject: bridge.publishProject,
         },
         app: {
+            state: { setGlobalState: bridge.setGlobalState },
             launchSettings: bridge.launchSettings,
             launchProjectWizard: bridge.launchProjectWizard,
         },
@@ -205,6 +210,7 @@ afterEach(() => {
     bridge.launchWorkspace.mockClear();
     bridge.launchProjectWizard.mockClear();
     bridge.publishProject.mockReset();
+    bridge.setGlobalState.mockClear();
     bridge.listTodos.mockReset();
     bridge.listClients.mockReset();
     bridge.teamState = "idle";
@@ -535,17 +541,15 @@ describe("reaching a server", () => {
         expect(bridge.refreshServer).toHaveBeenCalledWith(ORIGIN);
     });
 
-    it("does not reach a second server until one is chosen", async () => {
+    it("opens on the server last shown, and reaches another only once it is chosen", async () => {
         bridge.servers = [session(ORIGIN, "Blackwood"), session(OTHER, "Other")];
+        bridge.settings["team.activeAccount"] = { remoteOrigin: OTHER, chosenAt: 1 };
         bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
         render(<ServersTab />);
 
-        await waitFor(() => expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(2));
-        expect(bridge.refreshServer).not.toHaveBeenCalled();
-
-        fireEvent.click(document.querySelector(`[data-server-choice='${OTHER}']`)!);
         await waitFor(() => expect(bridge.refreshServer).toHaveBeenCalledWith(OTHER));
         expect(bridge.refreshServer).toHaveBeenCalledTimes(1);
+        expect(document.querySelector("[data-servers-choices]")).toBeNull();
     });
 
     it("puts a server's refusal in words rather than showing an empty list", async () => {
@@ -741,10 +745,10 @@ describe("the two views of a server", () => {
 
         await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalled());
         // One tab is not a choice, the same reading a strip of one server takes. The rule
-        // stays, and so does the one act that is about neither view.
+        // stays, and so does the way to the server list.
         expect(document.querySelector("[data-servers-views] [role='tablist']")).toBeNull();
         expect(document.querySelector("[data-servers-views]")).not.toBeNull();
-        expect(document.querySelector("[data-servers-action='manage']")).not.toBeNull();
+        expect(document.querySelector("[data-servers-action='switch']")).not.toBeNull();
     });
 });
 
@@ -817,35 +821,57 @@ describe("who else is on the server", () => {
 });
 
 describe("which server is being read", () => {
-    it("draws no strip for a list of one, and still says which one it is", async () => {
+    it("opens a list of one on that one, and names it in the heading", async () => {
         open([project()]);
 
         await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
-        // A column of servers costs 256 of the tab's 560 pixels, and with one server there
-        // is nothing in it to choose between.
-        expect(document.querySelector("[data-servers-strip]")).toBeNull();
-        // Still named, and still the element that stands for that one choice.
-        expect(document.body.textContent).toContain("Blackwood Studio");
-        expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(1);
+        expect(document.querySelector(`[data-server-heading='${ORIGIN}']`)?.textContent).toContain("Blackwood Studio");
+        expect(document.querySelector("[data-servers-choices]")).toBeNull();
     });
 
-    it("names the chosen server once when the strip is carrying them", async () => {
+    it("switches on a screen of its own, and remembers the server chosen there", async () => {
         bridge.servers = [session(ORIGIN, "Blackwood"), session(OTHER, "Other")];
         bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
         render(<ServersTab />);
 
-        await waitFor(() => expect(document.querySelector("[data-servers-strip]")).not.toBeNull());
-        fireEvent.click(document.querySelector(`[data-server-choice='${ORIGIN}']`)!);
-
         await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
-        // The strip carries them; the row under it is the server being read, not a third
-        // copy of a choice already on screen.
-        expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(2);
+        // The name is text: no menu hangs off the heading.
+        expect(document.querySelector("[data-servers-picker]")).toBeNull();
+
+        fireEvent.click(await find("[data-servers-action='switch']"));
+        const list = await find("[data-servers-choices]");
+        // The views are put away while the list is up, and the one on screen is marked.
+        expect(document.querySelector("[data-servers-views]")).toBeNull();
+        expect(list.querySelector(`[data-server-choice='${ORIGIN}']`)?.getAttribute("aria-current")).toBe("true");
+
+        fireEvent.click(list.querySelector(`[data-server-choice='${OTHER}']`)!);
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(OTHER));
+        expect(document.querySelector("[data-servers-choices]")).toBeNull();
+        expect(document.querySelector(`[data-server-heading='${OTHER}']`)?.textContent).toContain("Other");
+        expect(bridge.setGlobalState).toHaveBeenCalledWith(
+            "team.activeAccount",
+            expect.objectContaining({ remoteOrigin: OTHER }),
+        );
     });
 
-    it("adds another server from the header, without leaving the tab", async () => {
+    it("goes back to the server it came from when the switch is pressed again", async () => {
         open([project()]);
 
+        // The switch waits for a server to go back to.
+        await find(`[data-server-heading='${ORIGIN}']`);
+        fireEvent.click(await find("[data-servers-action='switch']"));
+        await find("[data-servers-choices]");
+        fireEvent.click(await find("[data-servers-action='switch']"));
+
+        await waitFor(() => expect(document.querySelector("[data-servers-choices]")).toBeNull());
+        expect(document.querySelector(`[data-server-heading='${ORIGIN}']`)).not.toBeNull();
+    });
+
+    it("adds another server from the switch screen, without leaving the tab", async () => {
+        open([project()]);
+
+        await find(`[data-server-heading='${ORIGIN}']`);
+        fireEvent.click(await find("[data-servers-action='switch']"));
         fireEvent.click(await find("[data-servers-action='manage']"));
 
         await waitFor(() => expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull());

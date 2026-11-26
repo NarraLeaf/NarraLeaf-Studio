@@ -15,8 +15,9 @@
     // `rootDir` here: an inherited rootDir puts the generator's own transient
     // entry outside it and the plugin API types stop building.
     "noEmit": true,
-    // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+    // A tsc run keeps what it learned in .cache/tsc (gitignored, one file per project and per
     // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+    // `yarn lint` and CI run tsrs, which scripts/typecheck-command.mjs points at .cache/tsrs.
     "incremental": true,
     "tsBuildInfoFile": "../../.cache/tsc/renderer.tsbuildinfo",
     "strict": true,

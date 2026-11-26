@@ -236,3 +236,95 @@ describe("StoryService structural operations", () => {
         expect(snapshot(service, story.id)).toBe(before);
     });
 });
+
+/**
+ * Steps recorded while a team project was offline, taken after it reconnected. The server owns the
+ * stories by then: the step must go back as operations, through it - never as this window's own
+ * write, and never as a structure snapshot that would also take back what other authors did since.
+ */
+describe("an offline structure step taken once a team server owns the story", () => {
+    type Sent = { storyId: StoryId; op: unknown };
+
+    function goOnline(service: StoryService): Sent[] {
+        const sent: Sent[] = [];
+        service.setOperationSink({
+            handle: (storyId, op) => (sent.push({ storyId, op }), true),
+            library: (storyId, op) => (sent.push({ storyId, op }), true),
+        });
+        return sent;
+    }
+
+    /** The server applying what was sent, as its effects would. */
+    function deliver(service: StoryService, sent: Sent[]): void {
+        for (const { storyId, op } of sent.splice(0)) {
+            service.applyLiveOp(storyId, op as never);
+        }
+    }
+
+    it("takes a split back through the server, and lands where it started", async () => {
+        const { service, history } = createHarness();
+        const story = await seedStory(service, history);
+        const chapter = service.createChapter(story.id, "One");
+        const a = service.createScene(story.id, { chapterId: chapter.id, name: "A" });
+        addRows(service, story.id, a.id, ["r1", "r2", "r3"]);
+        const scope = storySceneHistoryScope(story.id, a.id);
+        const before = snapshot(service, story.id);
+        service.splitScene(story.id, a.id, "r2", "A 2", { scopeId: scope });
+        const split = snapshot(service, story.id);
+        const sent = goOnline(service);
+
+        expect(history.undo(scope)).toBe(true);
+        // Sent, not written: the outline changes when the effects come back.
+        expect(snapshot(service, story.id)).toBe(split);
+        expect(sent.length).toBeGreaterThan(0);
+
+        deliver(service, sent);
+        expect(JSON.parse(snapshot(service, story.id))).toEqual(JSON.parse(before));
+    });
+
+    it("refuses, and keeps the step, once somebody has changed a scene it would put back", async () => {
+        const { service, history } = createHarness();
+        const story = await seedStory(service, history);
+        const chapter = service.createChapter(story.id, "One");
+        const a = service.createScene(story.id, { chapterId: chapter.id, name: "A" });
+        addRows(service, story.id, a.id, ["r1", "r2", "r3"]);
+        const scope = storySceneHistoryScope(story.id, a.id);
+        const result = service.splitScene(story.id, a.id, "r2", "A 2", { scopeId: scope })!;
+        const sent = goOnline(service);
+        // Another author edits a row in the half the split made.
+        service.applyLiveOp(story.id, { op: "update-block", sceneId: result.sceneId, blockId: "r3", payload: narration("r3", "theirs").payload });
+
+        expect(history.undo(scope)).toBe(false);
+        expect(sent).toEqual([]);
+        expect(history.canUndo(scope)).toBe(true);
+    });
+
+    it("puts a story deleted offline back through the server", async () => {
+        const { service, history } = createHarness();
+        const story = await seedStory(service, history);
+        await service.deleteStory(story.id);
+        const sent = goOnline(service);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+        expect(sent).toHaveLength(1);
+        expect(sent[0].op).toMatchObject({ op: "create-story", entry: { id: story.id } });
+    });
+
+    it("leaves an agent's outline edits to the team's undo rather than hiding them from it", async () => {
+        const { service, history } = createHarness();
+        const story = await seedStory(service, history);
+        const sent = goOnline(service);
+        let applyingInside = true;
+
+        service.runAgentOutlineStep(story.id, { key: "x" } as never, () => {
+            applyingInside = history.isRestoring();
+            service.createChapter(story.id, "One");
+        });
+
+        expect(applyingInside).toBe(false);
+        expect(sent.map(item => (item.op as { op: string }).op)).toContain("create-chapter");
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+});
+

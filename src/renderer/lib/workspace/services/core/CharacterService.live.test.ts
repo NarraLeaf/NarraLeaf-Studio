@@ -324,3 +324,46 @@ describe("the cast's live-session seam", () => {
         });
     });
 });
+
+/**
+ * A step recorded while a team project was offline, taken after it reconnected: the cast's own
+ * restore writes this window's store directly, so with a server owning the cast it has to go as the
+ * operation instead - and only while the record still reads as the step left it.
+ */
+describe("an offline cast step taken once a team server owns the cast", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function editedOffline() {
+        const harness = createHarness();
+        const ada = harness.service.createCharacter("Ada");
+        const record = structuredClone(ada.toJSON());
+        record.profile.description = "Late";
+        harness.service.commitCharacterRecord(record as never, { key: "x" } as never);
+        harness.service.setOperationSink(harness.sink);
+        return { ...harness, id: ada.profile.getId() };
+    }
+
+    it("sends the record back as an operation rather than writing it here", () => {
+        const { service, history, taken, id } = editedOffline();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+
+        expect(taken).toHaveLength(1);
+        expect(taken[0]).toMatchObject({ op: "update-character", characterId: id });
+        expect(taken[0].op === "update-character" && taken[0].character.profile.description).toBe("");
+        expect(service.getCharacter(id)?.profile.getDescription()).toBe("Late");
+    });
+
+    it("refuses, and keeps the step, once somebody else has changed the character", () => {
+        const { service, history, taken, id } = editedOffline();
+        const theirs = structuredClone(service.getCharacter(id)!.toJSON());
+        theirs.profile.description = "Theirs";
+        service.applyLiveOp({ op: "update-character", characterId: id, character: theirs as never });
+
+        expect(history.undo(projectHistoryScope())).toBe(false);
+        expect(taken).toEqual([]);
+        expect(history.canUndo(projectHistoryScope())).toBe(true);
+    });
+});
+

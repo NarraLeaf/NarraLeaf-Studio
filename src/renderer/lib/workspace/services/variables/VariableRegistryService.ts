@@ -335,6 +335,24 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         return entry;
     }
 
+    /**
+     * Put one entry back exactly as it was - what an undo of its deletion does. Through the server
+     * when one owns the registry (`create-variable`), where {@link replaceRegistry} is refused.
+     * Nothing when an entry with this id is already there.
+     */
+    public restoreEntry(entry: VariableRegistryEntry): void {
+        if (this.getEntry(entry.id)) {
+            return;
+        }
+        const copy = JSON.parse(JSON.stringify(entry)) as VariableRegistryEntry;
+        if (this.opSink?.handle({ op: "create-variable", entry: copy })) {
+            return;
+        }
+        this.applyRegistryMutation(registry => {
+            registry.entries[copy.id] = copy;
+        });
+    }
+
     public renameEntry(id: string, name: string): void {
         const entry = this.getEntry(id);
         const next = name.trim();

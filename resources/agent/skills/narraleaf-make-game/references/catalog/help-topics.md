@@ -1108,6 +1108,30 @@ The UI editor builds the game's own screens: the main menu, save and load, the d
 
 相关主题 · Related：可复用的部件 · Reusable parts、蓝图 · Blueprints、输入意图 · Input actions、焦点导航 · Focus navigation
 
+### 页面总览 · Page Overview
+
+并排显示页面与其中的控件，每个控件连线到其逻辑通往的页面、剧情或结束操作。从页面列表的第一张卡片、页面右键菜单、蓝图总览或命令面板打开
+
+- 画布操作与蓝图编辑器相同：滚动或按住中键拖动平移，双指缩放。节点可以拖动，「重新排列」恢复自动布局
+- 「显示」在当前页面与全部页面之间切换。显示全部页面时，跳转到其他页面的连线直接连到该页面的节点
+- 每个控件是一个节点，每个去向是一个执行引脚。展开后显示蓝图预览、位置、尺寸与文字设置
+- 连线读取自蓝图。虚线表示目标由连线传入，运行时才确定
+- 控件的逻辑只有一个跳转页面的步骤时，可在「跳转到」中更换页面；其他修改在蓝图中进行
+- 在预览中拖动控件即可移动。由堆叠、滚动区或列表排列的控件需在画布上移动
+- 修改记入该页面的撤销历史
+
+Shows a page beside its controls, with a line from each control to every page, story or ending its logic leads to. Opened from the first card in the Pages list, a page's menu, the Blueprint Overview or the command palette.
+
+- The canvas works like the blueprint editor: scroll or drag with the middle button to pan, pinch to zoom. Nodes can be dragged; Arrange puts them back.
+- Show switches between one page and all pages. With all pages, a line to another page ends on that page's node.
+- Each control is a node with an exec pin per place its logic leads. Unfolded, it shows a preview of its blueprint, the position, the size and the text settings.
+- Lines are read from the blueprints. A dashed line means the target arrives on a wire and is only known while the game runs.
+- When a control's logic has one page step, Opens changes that page. Everything else is edited in the blueprint.
+- Dragging a control in the preview moves it. Controls arranged by a stack, a scroll area or a list are moved on the canvas.
+- Edits are undone with the page's own undo history.
+
+相关主题 · Related：游戏界面 · Game screens、蓝图 · Blueprints、撤销 · Undo and redo
+
 ### 输入意图 · Input actions
 
 输入意图是对玩家操作的命名，并附带触发它的手势；蓝图响应意图而非手势，修改手势无需修改蓝图

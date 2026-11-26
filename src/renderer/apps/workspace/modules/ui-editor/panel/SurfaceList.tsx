@@ -43,6 +43,8 @@ type SurfaceListProps = {
     surfaces: UISurface[];
     /** The page the game starts on, which its card says. Resolved by the caller from the document. */
     entrySurfaceId: string | null;
+    /** The Page Overview's card, first in the Pages list - before App logic and the pages. */
+    pageOverviewCard?: SurfaceListPageOverviewCard;
     globalBlueprintCard?: SurfaceListGlobalBlueprintCard;
     renderSurfacePreview?: (surface: UISurface) => ReactNode;
     /** Moves only when this surface's own content changed; keeps one page's edit off the other cards. */
@@ -71,6 +73,15 @@ export type SurfaceListStarterTile = {
     onClick: () => void;
     /** The tile writes the interface document, so a frozen project greys it. */
     writeProps: FrozenControlProps;
+};
+
+/** A card that opens a view of every page at once, drawn like the cards beside it. */
+export type SurfaceListPageOverviewCard = {
+    title: string;
+    meta: string;
+    /** Drawn to fill the box it is given, which is the same size as a surface preview beside it. */
+    preview: ReactNode;
+    onClick: () => void;
 };
 
 export type SurfaceListGlobalBlueprintCard = {
@@ -343,6 +354,7 @@ function useListContentWidth(): [number, (node: HTMLDivElement | null) => void] 
 export function SurfaceList({
     surfaces,
     entrySurfaceId,
+    pageOverviewCard,
     globalBlueprintCard,
     renderSurfacePreview,
     getSurfaceContentRevision,
@@ -459,6 +471,25 @@ export function SurfaceList({
     return (
         <div ref={attachList} data-surface-list={layout.mode} className={LIST_SCROLLER_CLASS}>
             <div className={layout.mode === "tiles" ? "grid content-start" : "flex flex-col"} style={gridStyle}>
+                {pageOverviewCard ? (
+                    <button
+                        type="button"
+                        className={cardClass(shape)}
+                        onClick={pageOverviewCard.onClick}
+                        aria-label={pageOverviewCard.title}
+                        data-page-overview-open=""
+                    >
+                        <div
+                            className={shape === "tile" ? "w-full" : "w-24 shrink-0"}
+                            style={{ height: previewHeight }}
+                        >
+                            {pageOverviewCard.preview}
+                        </div>
+                        <div className={shape === "tile" ? "mt-1.5 flex w-full items-start gap-1" : "min-w-0 flex-1"}>
+                            <CardCaption name={pageOverviewCard.title} meta={pageOverviewCard.meta} />
+                        </div>
+                    </button>
+                ) : null}
                 {globalBlueprintCard ? (
                     <button
                         type="button"

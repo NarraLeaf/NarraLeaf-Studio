@@ -395,16 +395,19 @@ describe("scopes side by side", () => {
         expect(h.uidoc.getComponentContentRevision(SLOT)).toBeGreaterThan(componentRevision);
     });
 
-    it("records nothing locally while a live session takes the edits", () => {
+    it("records a team step per edit, and no snapshot, while a team server takes the edits", () => {
         const h = createHarness();
         h.uidoc.setOperationSink({ handle: () => true });
+        const before = h.definition(SLOT);
 
         h.slot.updateElementLayout("number", { x: 200 });
         h.slot.runSurfaceHistoryTransaction(SLOT_SURFACE, () => h.slot.deleteElements(["frame"]));
 
-        // Inside a session undo is the session's - sending the inverse of this window's own last
-        // operation - and a local snapshot of the definition would be a document nobody agreed to.
-        expect(h.depth(uiComponentHistoryScope(SLOT)).undo).toBe(0);
+        // Nothing landed here - the server applies it - so a snapshot of the definition would record
+        // nothing. Each edit leaves the step that sends its earlier records back instead
+        // (`uiTeamUndo.ts`), on the definition's own stack; the transaction is one of them.
+        expect(h.definition(SLOT)).toEqual(before);
+        expect(h.depth(uiComponentHistoryScope(SLOT)).undo).toBe(2);
     });
 });
 

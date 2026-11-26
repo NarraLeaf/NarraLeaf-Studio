@@ -113,6 +113,8 @@ export const launcher = {
             action: "添加服务器",
         },
         choose: "选择一台服务器",
+        // 服务器名右侧那个图标的提示，也是它打开的那一屏的标题：列出已登录的服务器，点一台就换过去。
+        switch: "切换服务器",
         newProject: "新建项目",
         loading: "正在读取项目列表",
         noProjects: "该服务器上暂无项目",

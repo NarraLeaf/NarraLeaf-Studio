@@ -107,6 +107,7 @@ export const launcher = {
             action: "サーバーを追加",
         },
         choose: "サーバーを選ぶ",
+        switch: "サーバーを切り替え",
         newProject: "新しいプロジェクト",
         loading: "プロジェクトの一覧を読んでいる",
         noProjects: "このサーバーにプロジェクトはない",

@@ -152,6 +152,12 @@ design-system debt counter (`yarn style:ratchet`), the generated script and plug
 declarations, the starter-template translations and the game runtime bundle, then `yarn test`.
 Each of those still runs on its own by the name in brackets.
 
+The typechecks run on [tsrs](https://github.com/oxc-project/tsrs), a Rust port of the
+TypeScript 7 compiler: all five take about fifteen seconds from cold and stay under 1 GB,
+where TypeScript 5.x took minutes and pushed an 8 GB machine into swap.
+`NLS_TYPECHECKER=tsc yarn verify` (or `yarn lint --tsc`) runs them on TypeScript 5.x
+instead, for when the two disagree.
+
 `yarn lint:oxc` runs the same type-check `yarn lint` does, through the TypeScript 7
 preview oxlint type-checks with, and adds the lint rules on top. Everything in the
 correctness category is a warning today and there are a few hundred of them, almost

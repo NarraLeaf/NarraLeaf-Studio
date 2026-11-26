@@ -11,10 +11,11 @@
     // `../shared/**/*` below cannot satisfy: with an output layout to compute,
     // the compiler wants every input under one root, and these two live side by
     // side. That is a hard error under the TypeScript 7 preview `yarn lint:oxc`
-    // type-checks with, and dead weight under the 5.x compiler `yarn lint` uses.
+    // type-checks with, and dead weight under TypeScript 5.x.
     "noEmit": true,
-    // Each run keeps what it learned in .cache/tsc (gitignored, one file per project and per
+    // A tsc run keeps what it learned in .cache/tsc (gitignored, one file per project and per
     // checkout), so the next run rechecks only what changed. Delete the file for a cold check.
+    // `yarn lint` and CI run tsrs, which scripts/typecheck-command.mjs points at .cache/tsrs.
     "incremental": true,
     "tsBuildInfoFile": "../../.cache/tsc/main.tsbuildinfo",
     "strict": true,

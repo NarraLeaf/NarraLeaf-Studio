@@ -25,7 +25,8 @@ writes, the interface conventions it keeps and the traps to avoid.
   verification and packaging.
 - **Watched, not hidden.** Every edit lands live in the Studio you have open, and most edits are one
   undo step. The few that are not (project settings, the palette, renaming a scene, choosing the
-  entry scene, importing or generating assets) have no undo in Studio's own editors either;
+  entry scene, importing or generating assets) have no undo in Studio's own editors either (in a
+  team project only project settings lack one);
   `narraleaf-make-game/SKILL.md` lists them by tool. The status bar shows what the agent is editing,
   and you can pause it at any moment.
 - **Any agent.** The guide is plain Markdown with an open `SKILL.md` format, and Studio's server also

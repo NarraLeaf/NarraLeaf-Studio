@@ -138,7 +138,7 @@ import { storyScenePropertySchema, type StorySceneEditorContext } from "./schema
 /** Translator function, threaded into module-scope schema builders (they run outside React). */
 type TranslateFn = Translator["t"];
 
-function createLayoutInspectorSchema(
+export function createLayoutInspectorSchema(
     elements: UIElement[],
     documentService: UIDocumentService,
     t: TranslateFn,

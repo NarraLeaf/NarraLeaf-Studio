@@ -28,6 +28,8 @@ import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 import { EventEmitter } from "../ui/EventEmitter";
+import { planRecordRestore } from "@/lib/live/recordRestore";
+import { refuseTeamStep } from "../teamDocs/teamStepRefusal";
 
 /**
  * Somewhere a mixer edit can go instead of into the document.
@@ -254,15 +256,45 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
         after: ProjectAudioTrack[],
         label: HistoryLabel,
     ): void {
-        const restore = (snapshot: ProjectAudioTrack[]) => {
+        const restore = (snapshot: ProjectAudioTrack[], expected: ProjectAudioTrack[], direction: "undo" | "redo") => {
+            if (this.opSink) {
+                this.restoreThroughSink(expected, snapshot, direction);
+                return;
+            }
             this.getDocument().tracks = structuredClone(snapshot);
             this.commitMutation();
         };
         this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
             label,
-            undo: () => restore(before),
-            redo: () => restore(after),
+            undo: () => restore(before, after, "undo"),
+            redo: () => restore(after, before, "redo"),
         });
+    }
+
+    /*
+     * ⚠ A step recorded offline in a team project and taken after it reconnected must not write the
+     * snapshot back: the server owns the document by then, and the snapshot would overwrite every
+     * record other authors changed meanwhile, on this machine alone. What the step changed goes back
+     * through the server instead, record by record (`@/lib/live/recordRestore`), and only while those
+     * records still read as the step left them.
+     */
+    private restoreThroughSink(from: ProjectAudioTrack[], to: ProjectAudioTrack[], direction: "undo" | "redo"): void {
+        const plan = planRecordRestore(from, to, this.getDocument().tracks);
+        if (plan.conflict) {
+            refuseTeamStep(this.getContext(), direction, "changed");
+        }
+        for (const trackId of plan.deletes) {
+            this.opSink?.handle({ op: "delete-audio-track", trackId });
+        }
+        for (const { record, beforeId } of plan.creates) {
+            this.opSink?.handle({ op: "create-audio-track", track: structuredClone(record), beforeId });
+        }
+        for (const track of plan.updates) {
+            this.opSink?.handle({ op: "update-audio-track", trackId: track.id, track: structuredClone(track) });
+        }
+        for (const { id, beforeId } of plan.moves) {
+            this.opSink?.handle({ op: "move-audio-track", trackId: id, beforeId });
+        }
     }
 
     /** A new bus, appended after its would-be siblings so it lands where the author is looking. */
