@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Server } from "lucide-react";
+import { Check, ChevronRight, Server } from "lucide-react";
 import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 import { deepLinkServerHost } from "@shared/utils/teamDeepLink";
 
 import { getInterface } from "@/lib/app/bridge";
 import {
     Button,
-    ContextMenu,
     EmptyState,
     IconButton,
     TabStrip,
 } from "@/lib/components/elements";
-import type { ContextMenuDef } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import { listProjects, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { getProfile, listProjects, useTeamCapability, useTeamConnection } from "@/lib/team";
+import { TeamAvatar } from "@/lib/team/TeamAvatar";
+import { useActiveSignIn } from "@/lib/team/TeamAccountMenu";
 import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import {
     TEAM_PROJECTS_PLACEMENT_KEY,
@@ -73,15 +73,14 @@ export { isEmptyOnServer };
  * question and hold one kind of control:
  *
  * 1. **which server this is**, as a heading - a name, and under it the address and the
- *    account. The one primary control of the current view sits at its right, and there is
- *    never a second. With one server the name is plain text; with several it opens a menu of
- *    them (see `ServerPicker`), which is where the strip of chips that used to stand above
- *    it went. A column of servers down the left spent 256 of the 560 on a list that usually
- *    holds one row, and the strip spent a row on printing the chosen name twice.
+ *    account. It is text and not a control. At its right sit the way to the server list, as
+ *    an icon, and the one primary control of the current view, and there is never a second
+ *    primary. The tab opens on the server last shown (the launcher's active account), and
+ *    switching is a screen of its own: the icon puts the list of servers where the views were,
+ *    with adding a server as that screen's control, and choosing one goes back to its views.
  * 2. **which view of it is on screen**, as a {@link TabStrip}. Projects and People are two
  *    views of one server rather than two commands, and a tab with an underline is the only
- *    thing on this screen that says so. Adding a server is the one act here that is not
- *    about the server being read, so it sits at the far end of that rule, as an icon.
+ *    thing on this screen that says so.
  *
  * **One scrolling region at a time.** The project list, one project, and the roster are
  * three views of the same body rather than three boxes dividing it. Each is put away behind
@@ -165,12 +164,27 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
     // in flight, and the one that started first must not be the one that lands last.
     const latest = useRef(0);
 
+    /**
+     * The server this installation last showed, which is where the tab opens.
+     *
+     * It is the launcher's active account (`team.activeAccount`), the same one the account menu
+     * shows and switches: which server somebody is reading and which account they are looking at
+     * are one choice, and recording them apart would let the two disagree.
+     */
+    const { active, choose } = useActiveSignIn(servers);
+    /** Whether the server list is on screen in place of the chosen server's views. */
+    const [switching, setSwitching] = useState(false);
+
     useEffect(() => {
-        // One server is not a choice, so it is not presented as one - the same reading the
-        // wizard's picker takes. With several, none is opened until one is asked for: which
-        // server to reach is the author's decision, not a default.
-        setChosen(current => current ?? (servers.length === 1 ? servers[0]?.remoteOrigin ?? null : null));
-    }, [servers]);
+        setChosen(current => current ?? active);
+    }, [active]);
+
+    /** Show this server, remember it for the next visit, and put the list away. */
+    const pickServer = useCallback((remoteOrigin: string) => {
+        setChosen(remoteOrigin);
+        choose(remoteOrigin);
+        setSwitching(false);
+    }, [choose]);
 
     // When the chosen server's session was signed in. Adding a server again at the same
     // address replaces its session without changing which server is chosen, and the read
@@ -218,6 +232,8 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
         () => servers.find(entry => entry.remoteOrigin === chosen) ?? null,
         [servers, chosen],
     );
+    /** The list is up while switching, and whenever there is no server to show instead. */
+    const showList = switching || session === null;
 
     // What this server offers, read off what it last said about itself rather than found
     // out by asking. See `serverCan`: a deployment that does not do one of these has no
@@ -279,7 +295,7 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                 return false;
             }
         });
-        if (held !== undefined) setChosen(held.remoteOrigin);
+        if (held !== undefined) pickServer(held.remoteOrigin);
     // Acted on once per link: `at` changes with each one, the server list does not need to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [deepLink?.at, loading]);
@@ -404,38 +420,63 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
         <div className="flex h-full w-full min-h-0 flex-col pt-4 px-6 pb-6" data-servers-tab="list">
             {operationError && <p className="mb-2 text-xs text-danger" role="alert">{operationError}</p>}
 
-            {(session !== null || servers.length > 1) && (
-                <ServerHeading
-                    session={session}
-                    // One server is not a choice, so its name stays plain text. With several,
-                    // the name is where the others are reached from.
-                    servers={servers.length > 1 ? servers : null}
-                    onChoose={setChosen}
-                    action={session !== null && current !== "people" && openedProject === null ? (
-                        <Button
-                            size="sm"
-                            variant="primary"
-                            className="shrink-0"
-                            // A server that did not answer the list will not take a project
-                            // either, so the button waits for the list to arrive.
-                            disabled={creating || reading || problem !== null}
-                            onClick={() => void newProject()}
-                            data-servers-action="new-project"
-                        >
-                            {t("launcher.servers.newProject")}
-                        </Button>
-                    ) : null}
+            <ServerHeading
+                    session={showList ? null : session}
+                    action={(
+                        <div className="flex shrink-0 items-center gap-2">
+                            {/* The way to the server list. Pressed while the list is up; pressing
+                                it again goes back to the server that was on screen. */}
+                            <IconButton
+                                size="sm"
+                                variant="ghost"
+                                className={cn("shrink-0", showList && "bg-fill text-fg")}
+                                disabled={session === null}
+                                onClick={() => setSwitching(value => !value)}
+                                aria-pressed={showList}
+                                data-servers-action="switch"
+                                data-tip={t("launcher.servers.switch")}
+                                aria-label={t("launcher.servers.switch")}
+                            >
+                                <Server className="h-4 w-4" />
+                            </IconButton>
+                            {showList && (
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="shrink-0"
+                                    onClick={() => setAdding(true)}
+                                    data-servers-action="manage"
+                                >
+                                    {t("launcher.servers.manage")}
+                                </Button>
+                            )}
+                            {!showList && current !== "people" && openedProject === null && (
+                                <Button
+                                    size="sm"
+                                    variant="primary"
+                                    className="shrink-0"
+                                    // A server that did not answer the list will not take a project
+                                    // either, so the button waits for the list to arrive.
+                                    disabled={creating || reading || problem !== null}
+                                    onClick={() => void newProject()}
+                                    data-servers-action="new-project"
+                                >
+                                    {t("launcher.servers.newProject")}
+                                </Button>
+                            )}
+                        </div>
+                    )}
                 />
-            )}
 
-            {/* The two views, and the one act that is not about either of them. The rule
-                under this row is the only line across the screen: everything above it says
-                which server and which view, everything below it is that view. */}
+            {/* The views of the server. The rule under this row is the only line across the
+                screen: everything above it says which server and which view, everything below
+                it is that view. With no server chosen there is nothing to divide, so no rule. */}
+            {!showList && (
             <div
                 className="mb-3 flex shrink-0 items-center gap-2 border-b border-edge"
                 data-servers-views
             >
-                {session !== null && views.length > 1 ? (
+                {views.length > 1 && (
                     <TabStrip
                         size="sm"
                         className="min-w-0 flex-1 border-b-0"
@@ -453,35 +494,36 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                             ),
                         }))}
                     />
-                ) : (
-                    <div className="min-h-7 flex-1" />
                 )}
-                {/* An icon, and a server rather than a plus: beside "New Project" a plus
-                    reads as a second way to make one. Adding a server is rare once there is
-                    one, and it is the only thing here that is not about the server being
-                    read, so it sits at the end of the rule rather than beside the heading. */}
-                <IconButton
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0"
-                    onClick={() => setAdding(true)}
-                    data-servers-action="manage"
-                    data-tip={t("launcher.servers.manage")}
-                    aria-label={t("launcher.servers.manage")}
-                >
-                    <Server className="h-4 w-4" />
-                </IconButton>
             </div>
+            )}
 
             {/* One region, three views, one of them on screen. The two that are not are put
                 away rather than taken down: coming back is the list at the scroll position it
                 was left at, and the roster read once for this visit rather than again for
                 every project somebody looks at. */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                {/* With none chosen the heading already says to choose one, and is where it
-                    is done, so the body says nothing rather than saying it again. */}
-                {session === null ? null : (
-                    <>
+                {/* The servers to choose from, while switching or with none to show. The chosen
+                    server's views stay mounted under it, so going back is where it was left. */}
+                {showList && (
+                    <div className="min-h-0 overflow-y-auto">
+                        <div
+                            className="divide-y divide-edge overflow-hidden rounded-md border border-edge"
+                            data-servers-choices
+                        >
+                            {servers.map(entry => (
+                                <ServerChoiceRow
+                                    key={entry.remoteOrigin}
+                                    session={entry}
+                                    current={entry.remoteOrigin === session?.remoteOrigin}
+                                    onChoose={() => pickServer(entry.remoteOrigin)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {session !== null && (
+                    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", showList && "hidden")}>
                         {canMembers && (
                             <div className={cn(
                                 "flex min-h-0 flex-1 flex-col",
@@ -551,7 +593,7 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                                 />
                             </div>
                         )}
-                    </>
+                    </div>
                 )}
             </div>
 
@@ -589,16 +631,11 @@ const VIEW_LABELS: Record<ServersView, TranslationKey> = {
 
 function ServerHeading({
     session,
-    servers,
-    onChoose,
     action,
 }: {
-    /** The server being read, or null while several are held and none has been chosen. */
+    /** The server on screen, or null while the server list is. */
     session: VcsServerSession | null;
-    /** Every server held, where there is more than one to choose between; otherwise null. */
-    servers: readonly VcsServerSession[] | null;
-    onChoose: (remoteOrigin: string) => void;
-    /** The one primary control of the view on screen, or nothing where the view has none. */
+    /** The controls at the heading's right. */
     action: ReactNode;
 }) {
     const { t } = useTranslation();
@@ -608,31 +645,26 @@ function ServerHeading({
     return (
         <div
             className="mb-2 flex shrink-0 items-center gap-3"
-            data-server-choice={servers === null && session !== null ? session.remoteOrigin : undefined}
+            data-server-heading={session?.remoteOrigin}
         >
             <div className="min-w-0 flex-1">
-                {servers === null ? (
-                    <span className="block truncate text-sm text-fg" data-tip={session?.authUrl}>
-                        {name}
-                    </span>
+                {session === null ? (
+                    <span className="block truncate text-sm text-fg">{t("launcher.servers.switch")}</span>
                 ) : (
-                    <ServerPicker
-                        servers={servers}
-                        chosen={session?.remoteOrigin ?? null}
-                        label={name ?? t("launcher.servers.choose")}
-                        onChoose={onChoose}
-                    />
-                )}
-                {session !== null && (
-                    <span className="flex gap-3 text-2xs text-fg-subtle">
-                        {/* The address is what every project remote and stored session is keyed
-                            on, so it stays; it is only dropped where a server that gave no name
-                            would have it printed twice. */}
-                        {name !== host && <span className="min-w-0 truncate">{host}</span>}
-                        <span className="min-w-0 truncate" data-tip={session.account.identity}>
-                            {session.account.displayName}
+                    <>
+                        <span className="block truncate text-sm text-fg" data-tip={session.authUrl}>
+                            {name}
                         </span>
-                    </span>
+                        <span className="flex gap-3 text-2xs text-fg-subtle">
+                            {/* The address is what every project remote and stored session is
+                                keyed on, so it stays; it is only dropped where a server that gave
+                                no name would have it printed twice. */}
+                            {name !== host && <span className="min-w-0 truncate">{host}</span>}
+                            <span className="min-w-0 truncate" data-tip={session.account.identity}>
+                                {session.account.displayName}
+                            </span>
+                        </span>
+                    </>
                 )}
             </div>
             {action}
@@ -641,83 +673,70 @@ function ServerHeading({
 }
 
 /**
- * The heading's name, made the way to the other servers.
+ * One server to choose, in the list the body shows while none has been chosen.
  *
- * It replaced a strip of chips above the heading, which spent a row of a fixed 800x500 window
- * and printed the chosen server's name twice, once in the strip and once under it. The name
- * now reads as the heading it is, with a chevron saying it opens, and the list behind it is
- * the shared menu with a check against the server being read.
+ * The rows share one box and a rule between them, the way the project list reads, rather than
+ * each standing in a bordered card of its own. The face is this installation's account on that
+ * server: its monogram at once, and its avatar once the account's own profile has said where one
+ * is. That read is one call per row and is the only thing this list asks of a server.
  */
-function ServerPicker({
-    servers,
-    chosen,
-    label,
+function ServerChoiceRow({
+    session,
+    current,
     onChoose,
 }: {
-    servers: readonly VcsServerSession[];
-    chosen: string | null;
-    label: string;
-    onChoose: (remoteOrigin: string) => void;
+    session: VcsServerSession;
+    /** Whether this is the server the list was opened from. */
+    current: boolean;
+    onChoose: () => void;
 }) {
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-    /**
-     * Whether the menu was open when the press on the trigger began. The menu closes itself on
-     * a press outside it, this trigger included, before the click arrives; without this the
-     * click would read "closed" and open it straight back up.
-     */
-    const openAtPress = useRef(false);
+    const name = serverDisplayName(session);
+    const host = serverHost(session.remoteOrigin);
+    const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
 
-    const toggle = () => {
-        const wasOpen = openAtPress.current;
-        openAtPress.current = false;
-        if (position !== null) {
-            setPosition(null);
-            return;
-        }
-        if (wasOpen || triggerRef.current === null) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPosition({ x: rect.left, y: rect.bottom + 4 });
-    };
-
-    const items: ContextMenuDef = servers.map(entry => ({
-        id: entry.remoteOrigin,
-        label: serverDisplayName(entry),
-        icon: entry.remoteOrigin === chosen ? <Check className="h-3.5 w-3.5" /> : undefined,
-        tooltip: serverHost(entry.remoteOrigin),
-        onClick: () => onChoose(entry.remoteOrigin),
-    }));
+    useEffect(() => {
+        let alive = true;
+        setAvatarUrl(undefined);
+        void getProfile(session.remoteOrigin)
+            .then(answer => {
+                if (alive && answer.ok) setAvatarUrl(answer.value.avatarUrl);
+            })
+            .catch(() => undefined);
+        return () => {
+            alive = false;
+        };
+    }, [session.remoteOrigin, session.account.username]);
 
     return (
-        <>
-            <button
-                ref={triggerRef}
-                type="button"
-                onPointerDown={() => { openAtPress.current = position !== null; }}
-                onKeyDown={() => { openAtPress.current = false; }}
-                onClick={toggle}
-                aria-haspopup="menu"
-                aria-expanded={position !== null}
-                data-servers-picker
-                className={cn(
-                    "-mx-1.5 flex max-w-full items-center gap-1 rounded-md px-1.5 text-sm",
-                    "cursor-default transition-colors duration-150 hover:bg-fill",
-                    chosen === null ? "text-fg-muted" : "text-fg",
-                    position !== null && "bg-fill",
-                )}
-            >
-                <span className="min-w-0 truncate">{label}</span>
-                <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
-            </button>
-            {position !== null && (
-                <ContextMenu
-                    items={items}
-                    position={position}
-                    onClose={() => setPosition(null)}
-                    iconsEnabled
-                />
+        <button
+            type="button"
+            onClick={onChoose}
+            data-server-choice={session.remoteOrigin}
+            aria-current={current || undefined}
+            className={cn(
+                "flex w-full items-center gap-3 px-3 py-2 text-left",
+                "cursor-default transition-colors duration-150 hover:bg-fill",
             )}
-        </>
+        >
+            <TeamAvatar
+                remoteOrigin={session.remoteOrigin}
+                name={session.account.username}
+                avatarUrl={avatarUrl}
+                className="h-7 w-7"
+            />
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg" data-tip={session.authUrl}>{name}</span>
+                <span className="flex gap-3 text-2xs text-fg-subtle">
+                    {name !== host && <span className="min-w-0 truncate">{host}</span>}
+                    <span className="min-w-0 truncate" data-tip={session.account.identity}>
+                        {session.account.displayName}
+                    </span>
+                </span>
+            </span>
+            {current
+                ? <Check aria-hidden className="h-4 w-4 shrink-0 text-primary" />
+                : <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-subtle" />}
+        </button>
     );
 }
 
