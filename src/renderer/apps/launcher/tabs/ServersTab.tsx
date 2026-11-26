@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Server } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Server } from "lucide-react";
 import type { TeamDeepLink } from "@shared/utils/teamDeepLink";
 import { deepLinkServerHost } from "@shared/utils/teamDeepLink";
 
 import { getInterface } from "@/lib/app/bridge";
 import {
     Button,
+    ContextMenu,
     EmptyState,
     IconButton,
     TabStrip,
 } from "@/lib/components/elements";
+import type { ContextMenuDef } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { listProjects, useTeamCapability, useTeamConnection } from "@/lib/team";
 import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
@@ -19,7 +21,6 @@ import {
 } from "@/lib/settings/teamProjectsPlacement";
 import { cn } from "@/lib/utils/cn";
 import {
-    ServerRow,
     serverCan,
     serverDisplayName,
     serverHost,
@@ -68,17 +69,16 @@ export { isEmptyOnServer };
  * more than any judgement about it does: with the navigation column taken off, this tab has
  * 560x460 CSS pixels for everything it draws, and 512x420 inside its own padding.
  *
- * So the screen is a head and a body, and the head is three bands that each answer one
+ * So the screen is a head and a body, and the head is two bands that each answer one
  * question and hold one kind of control:
  *
- * 1. **which servers there are**, as a strip of chips, drawn only where there is more than
- *    one to choose between. A column of servers standing permanently down the left spent
- *    256 of the 560 on a list that usually holds one row.
- * 2. **which server this is**, as a heading - a name, and under it the address and the
- *    account. It is text and not a control: it is the subject of the screen, and a heading
- *    that answers a click is a heading somebody clicks by mistake. The one primary control
- *    of the current view sits at its right, and there is never a second.
- * 3. **which view of it is on screen**, as a {@link TabStrip}. Projects and People are two
+ * 1. **which server this is**, as a heading - a name, and under it the address and the
+ *    account. The one primary control of the current view sits at its right, and there is
+ *    never a second. With one server the name is plain text; with several it opens a menu of
+ *    them (see `ServerPicker`), which is where the strip of chips that used to stand above
+ *    it went. A column of servers down the left spent 256 of the 560 on a list that usually
+ *    holds one row, and the strip spent a row on printing the chosen name twice.
+ * 2. **which view of it is on screen**, as a {@link TabStrip}. Projects and People are two
  *    views of one server rather than two commands, and a tab with an underline is the only
  *    thing on this screen that says so. Adding a server is the one act here that is not
  *    about the server being read, so it sits at the far end of that rule, as an icon.
@@ -89,7 +89,7 @@ export { isEmptyOnServer };
  * is the list as it was left.
  *
  * Nothing is asked of a server until an author opens it. The list of servers is local, so
- * the strip costs nothing; choosing one is the deliberate act that goes to the network, and
+ * the menu of them costs nothing; choosing one is the deliberate act that goes to the network, and
  * what is asked for then is what that server said it offers - the projects it holds, and
  * the roster if it has one. **A capability it did not advertise is never asked for**, so a
  * deployment that offers less has fewer sections rather than more errors.
@@ -404,33 +404,14 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
         <div className="flex h-full w-full min-h-0 flex-col pt-4 px-6 pb-6" data-servers-tab="list">
             {operationError && <p className="mb-2 text-xs text-danger" role="alert">{operationError}</p>}
 
-            {/* Drawn only where there is something to choose between, which is the reading
-                the wizard's picker already takes. One server is not a choice, and a strip of
-                one is a second copy of the name in the heading below it. */}
-            {servers.length > 1 && (
-                <div className="mb-2 flex shrink-0 flex-wrap gap-1" data-servers-strip>
-                    {servers.map(entry => (
-                        <ServerRow
-                            key={entry.remoteOrigin}
-                            session={entry}
-                            size="sm"
-                            compact
-                            chosen={chosen === entry.remoteOrigin}
-                            onChoose={() => setChosen(entry.remoteOrigin)}
-                            data-server-choice={entry.remoteOrigin}
-                        />
-                    ))}
-                </div>
-            )}
-
-            {session !== null && (
+            {(session !== null || servers.length > 1) && (
                 <ServerHeading
                     session={session}
-                    // With one server the strip is not drawn, so this heading is the element
-                    // that stands for that choice. With several the strip carries them and
-                    // this must not be a second copy of one of them.
-                    marked={servers.length === 1}
-                    action={current !== "people" && openedProject === null ? (
+                    // One server is not a choice, so its name stays plain text. With several,
+                    // the name is where the others are reached from.
+                    servers={servers.length > 1 ? servers : null}
+                    onChoose={setChosen}
+                    action={session !== null && current !== "people" && openedProject === null ? (
                         <Button
                             size="sm"
                             variant="primary"
@@ -594,7 +575,7 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
  *
  * It used to be the shared {@link ServerRow}, drawn as a button and then told not to look
  * like one (`px-0 hover:bg-transparent`). That component exists so that *lists* of servers
- * read alike in Settings, in the wizard and in the strip above; a page heading is not one of
+ * read alike in Settings and in the wizard; a page heading is not one of
  * those, and dressing it as a row put a target at the top of the screen that answers nothing.
  * So the order the row reads in is kept - the name, then the address, then whose account this
  * is - and the identity comes from the same two functions, but the element is text.
@@ -608,39 +589,135 @@ const VIEW_LABELS: Record<ServersView, TranslationKey> = {
 
 function ServerHeading({
     session,
-    marked,
+    servers,
+    onChoose,
     action,
 }: {
-    session: VcsServerSession;
-    /** Whether this heading is the element standing for the choice of server. */
-    marked: boolean;
+    /** The server being read, or null while several are held and none has been chosen. */
+    session: VcsServerSession | null;
+    /** Every server held, where there is more than one to choose between; otherwise null. */
+    servers: readonly VcsServerSession[] | null;
+    onChoose: (remoteOrigin: string) => void;
     /** The one primary control of the view on screen, or nothing where the view has none. */
     action: ReactNode;
 }) {
-    const name = serverDisplayName(session);
-    const host = serverHost(session.remoteOrigin);
+    const { t } = useTranslation();
+    const name = session === null ? null : serverDisplayName(session);
+    const host = session === null ? null : serverHost(session.remoteOrigin);
 
     return (
         <div
             className="mb-2 flex shrink-0 items-center gap-3"
-            data-server-choice={marked ? session.remoteOrigin : undefined}
+            data-server-choice={servers === null && session !== null ? session.remoteOrigin : undefined}
         >
             <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg" data-tip={session.authUrl}>
-                    {name}
-                </span>
-                <span className="flex gap-3 text-2xs text-fg-subtle">
-                    {/* The address is what every project remote and stored session is keyed
-                        on, so it stays; it is only dropped where a server that gave no name
-                        would have it printed twice. */}
-                    {name !== host && <span className="min-w-0 truncate">{host}</span>}
-                    <span className="min-w-0 truncate" data-tip={session.account.identity}>
-                        {session.account.displayName}
+                {servers === null ? (
+                    <span className="block truncate text-sm text-fg" data-tip={session?.authUrl}>
+                        {name}
                     </span>
-                </span>
+                ) : (
+                    <ServerPicker
+                        servers={servers}
+                        chosen={session?.remoteOrigin ?? null}
+                        label={name ?? t("launcher.servers.choose")}
+                        onChoose={onChoose}
+                    />
+                )}
+                {session !== null && (
+                    <span className="flex gap-3 text-2xs text-fg-subtle">
+                        {/* The address is what every project remote and stored session is keyed
+                            on, so it stays; it is only dropped where a server that gave no name
+                            would have it printed twice. */}
+                        {name !== host && <span className="min-w-0 truncate">{host}</span>}
+                        <span className="min-w-0 truncate" data-tip={session.account.identity}>
+                            {session.account.displayName}
+                        </span>
+                    </span>
+                )}
             </div>
             {action}
         </div>
+    );
+}
+
+/**
+ * The heading's name, made the way to the other servers.
+ *
+ * It replaced a strip of chips above the heading, which spent a row of a fixed 800x500 window
+ * and printed the chosen server's name twice, once in the strip and once under it. The name
+ * now reads as the heading it is, with a chevron saying it opens, and the list behind it is
+ * the shared menu with a check against the server being read.
+ */
+function ServerPicker({
+    servers,
+    chosen,
+    label,
+    onChoose,
+}: {
+    servers: readonly VcsServerSession[];
+    chosen: string | null;
+    label: string;
+    onChoose: (remoteOrigin: string) => void;
+}) {
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+    /**
+     * Whether the menu was open when the press on the trigger began. The menu closes itself on
+     * a press outside it, this trigger included, before the click arrives; without this the
+     * click would read "closed" and open it straight back up.
+     */
+    const openAtPress = useRef(false);
+
+    const toggle = () => {
+        const wasOpen = openAtPress.current;
+        openAtPress.current = false;
+        if (position !== null) {
+            setPosition(null);
+            return;
+        }
+        if (wasOpen || triggerRef.current === null) return;
+        const rect = triggerRef.current.getBoundingClientRect();
+        setPosition({ x: rect.left, y: rect.bottom + 4 });
+    };
+
+    const items: ContextMenuDef = servers.map(entry => ({
+        id: entry.remoteOrigin,
+        label: serverDisplayName(entry),
+        icon: entry.remoteOrigin === chosen ? <Check className="h-3.5 w-3.5" /> : undefined,
+        tooltip: serverHost(entry.remoteOrigin),
+        onClick: () => onChoose(entry.remoteOrigin),
+    }));
+
+    return (
+        <>
+            <button
+                ref={triggerRef}
+                type="button"
+                onPointerDown={() => { openAtPress.current = position !== null; }}
+                onKeyDown={() => { openAtPress.current = false; }}
+                onClick={toggle}
+                aria-haspopup="menu"
+                aria-expanded={position !== null}
+                data-servers-picker
+                className={cn(
+                    "-mx-1.5 flex max-w-full items-center gap-1 rounded-md px-1.5 text-sm",
+                    "cursor-default transition-colors duration-150 hover:bg-fill",
+                    chosen === null ? "text-fg-muted" : "text-fg",
+                    position !== null && "bg-fill",
+                )}
+            >
+                <span className="min-w-0 truncate">{label}</span>
+                <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+            </button>
+            {position !== null && (
+                <ContextMenu
+                    items={items}
+                    position={position}
+                    onClose={() => setPosition(null)}
+                    iconsEnabled
+                />
+            )}
+        </>
     );
 }
 
