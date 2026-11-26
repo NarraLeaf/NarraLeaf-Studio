@@ -12,7 +12,13 @@ import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
-import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS, type HistoryLabel, type HistoryScopeId } from "../history/historyModel";
+import {
+    DEFAULT_HISTORY_LIMIT,
+    DEFAULT_MERGE_WINDOW_MS,
+    type HistoryCommandBody,
+    type HistoryLabel,
+    type HistoryScopeId,
+} from "../history/historyModel";
 import {
     HistoryScopeKind,
     historyScopeSubject,
@@ -491,6 +497,40 @@ export class UIEditorHistoryService
             mergeWindowMs: options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS,
             equals: areSnapshotsEqual,
         });
+    }
+
+    /**
+     * Record a step that carries its own inverse on `surfaceId`'s stack - a team project's interface
+     * edit, which a snapshot cannot describe (see `uiTeamUndo.ts`). The same stack, label and merge
+     * window as {@link record}, so Ctrl+Z on the canvas and the Edit menu reach it unchanged.
+     */
+    public recordCommand(options: {
+        surfaceId: string;
+        undo: () => void;
+        redo: () => void;
+        fold?: HistoryCommandBody["fold"];
+        payload?: unknown;
+        dispose?: () => void;
+        mergeKey?: string;
+        mergeWindowMs?: number;
+        label?: HistoryLabel;
+    }): boolean {
+        this.ensureScope(options.surfaceId);
+        return this.history().pushCommand(uiEditorHistoryScope(options.surfaceId), {
+            label: options.label ?? { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
+            undo: options.undo,
+            redo: options.redo,
+            fold: options.fold,
+            payload: options.payload,
+            dispose: options.dispose,
+            mergeKey: options.mergeKey,
+            mergeWindowMs: options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS,
+        });
+    }
+
+    /** Whether an undo or redo is being applied right now, during which nothing is recorded. */
+    public isRestoring(): boolean {
+        return this.history().isRestoring();
     }
 
     /**

@@ -83,6 +83,26 @@ describe("HistoryStack", () => {
         expect(stack.undoDepth).toBe(2);
     });
 
+    it("merges a command only when the older one folds the newer in", () => {
+        const stack = new HistoryStack();
+        const taken: unknown[] = [];
+        const command = (payload: string, now: number, fold?: (incoming: { payload?: unknown }) => boolean) =>
+            createCommandEntry({ scopeId: "s", label: LABEL, undo: () => {}, redo: () => {}, mergeKey: "k", now, payload, fold });
+        stack.push(command("a", 0, incoming => { taken.push(incoming.payload); return true; }), { now: 0 });
+        stack.push(command("b", 10), { now: 10 });
+        expect(stack.undoDepth).toBe(1);
+        expect(taken).toEqual(["b"]);
+
+        // A fold that declines keeps them apart, and so does the merge window.
+        stack.breakMerge();
+        stack.push(command("c", 20, () => false), { now: 20 });
+        stack.push(command("d", 30), { now: 30 });
+        expect(stack.undoDepth).toBe(3);
+        stack.push(command("e", 40, () => true), { now: 40 });
+        stack.push(command("f", 5000), { now: 5000 });
+        expect(stack.undoDepth).toBe(5);
+    });
+
     it("breakMerge ends the group for exactly one push", () => {
         const stack = new HistoryStack();
         stack.push(checkpoint("a", 0, "typing"), { now: 0 });

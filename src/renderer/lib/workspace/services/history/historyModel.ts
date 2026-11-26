@@ -43,7 +43,26 @@ export type HistoryEntryBody =
      * Neither side is a snapshot: the entry carries its own inverse. What an operation with effects
      * outside one document needs (deleting an asset moves a file; putting it back moves it back).
      */
-    | { kind: "command"; undo: () => void | Promise<void>; redo: () => void | Promise<void> };
+    | HistoryCommandBody;
+
+/**
+ * An entry that carries its own inverse.
+ *
+ * `fold` and `payload` are for the one kind of command that does compose: two deltas of the same
+ * author over the same records, a few hundred milliseconds apart (a team project's interface edits,
+ * typed one keystroke at a time). When the stack would merge two commands - same `mergeKey`, inside
+ * the window, no barrier - it asks the older one's `fold` whether it can take the newer one in; with
+ * no `fold` the answer is no, which is every other command.
+ */
+export type HistoryCommandBody = {
+    kind: "command";
+    undo: () => void | Promise<void>;
+    redo: () => void | Promise<void>;
+    /** Take `incoming` into this entry, or answer false to keep them apart. */
+    fold?: (incoming: HistoryCommandBody) => boolean;
+    /** What `fold` reads off an incoming entry. Opaque to the stack. */
+    payload?: unknown;
+};
 
 export type HistoryEntry = {
     readonly id: string;
@@ -138,6 +157,8 @@ export function createCommandEntry(input: {
     now: number;
     dispose?: () => void;
     tag?: string;
+    fold?: HistoryCommandBody["fold"];
+    payload?: unknown;
 }): HistoryEntry {
     return {
         id: nextHistoryEntryId(),
@@ -147,7 +168,13 @@ export function createCommandEntry(input: {
         ...(input.tag ? { tag: input.tag } : {}),
         createdAt: input.now,
         updatedAt: input.now,
-        body: { kind: "command", undo: input.undo, redo: input.redo },
+        body: {
+            kind: "command",
+            undo: input.undo,
+            redo: input.redo,
+            ...(input.fold ? { fold: input.fold } : {}),
+            ...(input.payload !== undefined ? { payload: input.payload } : {}),
+        },
         dispose: input.dispose,
     };
 }
@@ -172,7 +199,8 @@ function disposeEntry(entry: HistoryEntry): void {
  *    other way round because a snapshot entry carries its end state.
  *
  * Anything else (a command, or the two kinds mixed) does not merge. A command's inverse is not
- * composable in general, and pretending otherwise loses half a gesture.
+ * composable in general, and pretending otherwise loses half a gesture - except for a command that
+ * says it composes, by carrying a `fold` (see {@link HistoryCommandBody}).
  */
 export function mergeHistoryEntries(previous: HistoryEntry, incoming: HistoryEntry): boolean {
     if (previous.body.kind === "checkpoint" && incoming.body.kind === "checkpoint") {
@@ -184,6 +212,11 @@ export function mergeHistoryEntries(previous: HistoryEntry, incoming: HistoryEnt
     }
     if (previous.body.kind === "snapshot" && incoming.body.kind === "snapshot") {
         previous.body.after = incoming.body.after;
+        previous.updatedAt = incoming.updatedAt;
+        previous.label = incoming.label;
+        return true;
+    }
+    if (previous.body.kind === "command" && incoming.body.kind === "command" && previous.body.fold?.(incoming.body)) {
         previous.updatedAt = incoming.updatedAt;
         previous.label = incoming.label;
         return true;

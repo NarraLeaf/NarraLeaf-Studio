@@ -82,6 +82,11 @@ export const uiEditor = {
         importSurfaces: "{count} 個のインターフェースの追加",
         importComponent: "コンポーネント {name} の追加",
         importComponents: "{count} 個のコンポーネントの追加",
+        teamUndoRefused: "元に戻せません",
+        teamRedoRefused: "やり直せません",
+        teamStepChanged: "この操作の後に関連する要素が変更されています。続けるとその変更が上書きされます",
+        teamStepPending: "この変更はサーバーの確認待ちです。しばらくしてからもう一度お試しください",
+        teamStepOffline: "この操作はオフライン中に記録されたため、チームプロジェクトの接続中は元に戻せません",
     },
     inputActions: {
         title: "入力アクション",

@@ -8,6 +8,7 @@ import {
     createSnapshotEntry,
     DEFAULT_HISTORY_LIMIT,
     HistoryStack,
+    type HistoryCommandBody,
     type HistoryEntry,
     type HistoryLabel,
     type HistoryScopeId,
@@ -307,6 +308,10 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             dispose?: () => void;
             /** The family the entry belongs to, for {@link dropTagged}. */
             tag?: string;
+            /** Take a newer entry with the same `mergeKey` into this one; see `HistoryCommandBody`. */
+            fold?: HistoryCommandBody["fold"];
+            /** What another entry's `fold` reads off this one. */
+            payload?: unknown;
         },
     ): boolean {
         if (this.suppressionDepth > 0) {
@@ -325,6 +330,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
                 now: Date.now(),
                 dispose: request.dispose,
                 tag: request.tag,
+                fold: request.fold,
+                payload: request.payload,
             }),
             request,
         );
