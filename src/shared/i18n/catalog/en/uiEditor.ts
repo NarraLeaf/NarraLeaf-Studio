@@ -93,6 +93,13 @@ export const uiEditor = {
         importSurfaces: "add {count} interfaces",
         importComponent: "add component {name}",
         importComponents: "add {count} components",
+        // A team project: undo sends the earlier records back to the server, and refuses where that
+        // would overwrite a later change or the edit has not come back yet.
+        teamUndoRefused: "Cannot undo",
+        teamRedoRefused: "Cannot redo",
+        teamStepChanged: "These elements have been changed since this step. Taking it would overwrite those changes.",
+        teamStepPending: "This change is still waiting for the server. Try again in a moment.",
+        teamStepOffline: "This step was recorded while offline and cannot be undone now that the team project is connected.",
     },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and
@@ -594,6 +601,8 @@ export const uiEditor = {
         showOwnership: "Ownership lines",
         showAllElements: "All elements",
         collapseAll: "Collapse all",
+        arrange: "Arrange",
+        arrangeTip: "Put every node back where the overview places it",
         noPages: "This project has no pages yet",
         noGroups: "Nothing on this page can be clicked or changed by the player",
         elements: {

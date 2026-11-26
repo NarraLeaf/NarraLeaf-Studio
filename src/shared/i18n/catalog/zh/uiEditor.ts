@@ -79,6 +79,11 @@ export const uiEditor = {
         importSurfaces: "添加 {count} 个界面",
         importComponent: "添加组件 {name}",
         importComponents: "添加 {count} 个组件",
+        teamUndoRefused: "无法撤销",
+        teamRedoRefused: "无法重做",
+        teamStepChanged: "该步骤之后相关元素已被修改，继续操作将覆盖这些修改",
+        teamStepPending: "该修改尚待服务器确认，请稍后再试",
+        teamStepOffline: "该步骤记录于离线期间，团队项目联网后无法撤销",
     },
     inputActions: {
         title: "输入意图",
@@ -523,6 +528,8 @@ export const uiEditor = {
         showOwnership: "所属连线",
         showAllElements: "全部元素",
         collapseAll: "全部折叠",
+        arrange: "重新排列",
+        arrangeTip: "把所有节点放回自动排列的位置",
         noPages: "项目里还没有页面",
         noGroups: "这个页面上没有玩家可以操作的元素",
         elements: {

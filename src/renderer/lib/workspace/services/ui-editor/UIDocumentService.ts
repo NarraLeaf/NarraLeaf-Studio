@@ -64,7 +64,7 @@ import {
 import type { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
-import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
+import { applyUIParts, diffUIParts, uiPartsBefore, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
 import { ProjectDocumentTooNewError } from "@shared/documents/newerSchema";
 import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { RendererError } from "@shared/utils/error";
@@ -82,6 +82,13 @@ import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { storeWrite } from "../autosave/writeReport";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
+import {
+    composeUITeamSteps,
+    uiDocumentHoldsParts,
+    uiPartsToward,
+    UITeamStep,
+    type UITeamStepParts,
+} from "./uiTeamUndo";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
@@ -270,6 +277,12 @@ type CreateSurfaceInput = {
     settings?: UISurfaceSettings;
     stageMount?: UIStageSurfaceMount;
 };
+
+/**
+ * How long a team step's send may go unanswered before "the document does not show it" is read as
+ * "it never landed" rather than "it is still on its way". A round trip is a few hundred milliseconds.
+ */
+const TEAM_STEP_LANDING_MS = 5000;
 
 type UIDocumentMutationHistoryOptions =
     | {
@@ -1052,6 +1065,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
+    /**
+     * Team steps whose last send has not been seen landing yet. Checked on every arrival, so a step
+     * knows whether "the document does not hold it" means "still on its way" or "never landed".
+     */
+    private readonly unsettledTeamSteps = new Set<UITeamStep>();
+    /** What the edits inside the outermost history transaction sent, recorded as one team step at its end. */
+    private teamTransaction: { surfaceId: string; label?: HistoryLabel; parts: UITeamStepParts | null } | null = null;
     /** How deep inside {@link runDetachedDraft} this is: edits then land on a private copy and nowhere else. */
     private draftDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
@@ -1260,6 +1280,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     ): void {
         const next = cloneUIHistoryDocument(document);
         normalizeFlowChildLayouts(next);
+        if (this.opSink && diffUIParts(this.getDocument(), next) !== null) {
+            // A snapshot step - recorded while this window was offline - would be written into this
+            // copy alone, behind the server's back, and the two would part company without a word.
+            // Sent instead, it would put back every record of the page, other authors' included.
+            this.warn(
+                translate("uiEditor.history.teamUndoRefused" as TranslationKey),
+                translate("uiEditor.history.teamStepOffline" as TranslationKey),
+            );
+            throw new RendererError("A snapshot step cannot be restored while a team server owns the interface");
+        }
         this.document = next;
         this.revision += 1;
         this.setDirty(true);
@@ -1283,11 +1313,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         const beforeHistory = historyService.captureSnapshot(surfaceId);
+        const openedTeam = this.beginTeamTransaction(surfaceId, options.label);
         this.historySuppressionDepth += 1;
         try {
             action();
         } finally {
             this.historySuppressionDepth -= 1;
+            this.endTeamTransaction(openedTeam);
         }
         historyService.record({
             surfaceId,
@@ -1319,6 +1351,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
         const beforeHistory = historyService.captureSnapshot(surfaceId);
+        // In a team project the edits made before a failure have already been sent and cannot be
+        // called back; the step is recorded all the same, so the author can take them back.
+        const openedTeam = this.beginTeamTransaction(surfaceId, options.label);
         this.historySuppressionDepth += 1;
         try {
             action();
@@ -1327,6 +1362,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw error;
         } finally {
             this.historySuppressionDepth -= 1;
+            this.endTeamTransaction(openedTeam);
         }
         historyService.record({
             surfaceId,
@@ -2620,6 +2656,169 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private applyParts(parts: LiveUIParts): void {
         const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
         this.mutateDocument(document => applyUIParts(document, copy), { live: true });
+        this.settleTeamSteps();
+    }
+
+    /* ------------------------------------------------------------ team undo */
+
+    /**
+     * Leave the step a team edit makes: on the stack of the page (or definition) it was recorded for,
+     * or folded into the transaction it ran inside. Nothing while an undo or redo is being applied -
+     * that edit is the step being taken, not a new one.
+     */
+    private recordTeamStep(parts: UITeamStepParts, options: UIDocumentMutationOptions): void {
+        const historyService = this.getHistoryService();
+        if (!historyService || historyService.isRestoring()) {
+            return;
+        }
+        if (this.historySuppressionDepth > 0) {
+            // Inside a transaction every edit belongs to its one step, whatever it asked for alone -
+            // the snapshot the transaction records outside a team project covers them all too.
+            const transaction = this.teamTransaction;
+            if (transaction) {
+                transaction.parts = transaction.parts ? composeUITeamSteps(transaction.parts, parts) : parts;
+            }
+            return;
+        }
+        const history = options.history;
+        if (!history) {
+            return;
+        }
+        this.pushTeamStep(history.surfaceId, parts, {
+            mergeKey: history.mergeKey,
+            mergeWindowMs: history.mergeWindowMs,
+            label: history.label,
+        });
+    }
+
+    private pushTeamStep(
+        surfaceId: string,
+        parts: UITeamStepParts,
+        options: { mergeKey?: string; mergeWindowMs?: number; label?: HistoryLabel } = {},
+    ): void {
+        const historyService = this.getHistoryService();
+        if (!historyService) {
+            return;
+        }
+        const step = new UITeamStep(parts, "after", Date.now());
+        this.unsettledTeamSteps.add(step);
+        const recorded = historyService.recordCommand({
+            surfaceId,
+            undo: () => this.takeTeamStep(step, "undo"),
+            redo: () => this.takeTeamStep(step, "redo"),
+            payload: step,
+            // A run of keystrokes into one field is one step, as it is outside a team project.
+            fold: incoming => {
+                const next = incoming.payload;
+                if (!(next instanceof UITeamStep) || step.holds !== "after") {
+                    return false;
+                }
+                step.parts = composeUITeamSteps(step.parts, next.parts);
+                step.sentAt = next.sentAt;
+                this.unsettledTeamSteps.delete(next);
+                this.unsettledTeamSteps.add(step);
+                return true;
+            },
+            dispose: () => {
+                this.unsettledTeamSteps.delete(step);
+            },
+            mergeKey: options.mergeKey,
+            mergeWindowMs: options.mergeWindowMs,
+            label: options.label,
+        });
+        if (!recorded) {
+            this.unsettledTeamSteps.delete(step);
+        }
+    }
+
+    /**
+     * Take one team step back (undo) or forward again (redo): send the other side of it as an edit.
+     *
+     * Refused, and left on the stack, when the document no longer holds the side the step would leave
+     * - somebody changed one of its records since, and sending the old record would overwrite them -
+     * or when the step has not landed yet. A step that never landed at all (the server refused it)
+     * changed nothing, so taking it is quietly nothing.
+     */
+    private takeTeamStep(step: UITeamStep, direction: "undo" | "redo"): void {
+        const from = direction === "undo" ? step.parts.after : step.parts.before;
+        const to = direction === "undo" ? step.parts.before : step.parts.after;
+        const toSide = direction === "undo" ? "before" : "after";
+        const document = this.getDocument();
+        if (!uiDocumentHoldsParts(document, from)) {
+            if (!uiDocumentHoldsParts(document, to)) {
+                this.refuseTeamStep(direction, "uiEditor.history.teamStepChanged");
+            }
+            if (step.sentAt !== null && Date.now() - step.sentAt < TEAM_STEP_LANDING_MS) {
+                this.refuseTeamStep(direction, "uiEditor.history.teamStepPending");
+            }
+            step.holds = toSide;
+            step.sentAt = null;
+            this.unsettledTeamSteps.delete(step);
+            return;
+        }
+        const parts = JSON.parse(JSON.stringify(uiPartsToward(document, to))) as LiveUIParts;
+        // The ordinary door: to the server while one is listening, into this document when not.
+        this.mutateDocument(next => applyUIParts(next, parts));
+        step.holds = toSide;
+        if (uiDocumentHoldsParts(this.getDocument(), to)) {
+            step.sentAt = null;
+            this.unsettledTeamSteps.delete(step);
+        } else {
+            step.sentAt = Date.now();
+            this.unsettledTeamSteps.add(step);
+        }
+    }
+
+    /** Mark every step whose last send this document now shows as landed. */
+    private settleTeamSteps(): void {
+        if (this.unsettledTeamSteps.size === 0) {
+            return;
+        }
+        const document = this.getDocument();
+        for (const step of [...this.unsettledTeamSteps]) {
+            if (uiDocumentHoldsParts(document, step.holds === "after" ? step.parts.after : step.parts.before)) {
+                step.sentAt = null;
+                this.unsettledTeamSteps.delete(step);
+            }
+        }
+    }
+
+    /** Tell the author why the key did nothing, and throw so the history service keeps the step. */
+    private refuseTeamStep(direction: "undo" | "redo", detail: string): never {
+        const title = direction === "undo" ? "uiEditor.history.teamUndoRefused" : "uiEditor.history.teamRedoRefused";
+        this.warn(translate(title as TranslationKey), translate(detail as TranslationKey));
+        throw new RendererError(`Team ${direction} refused: ${detail}`);
+    }
+
+    private warn(title: string, detail: string): void {
+        try {
+            this.getContext().services.get<UIService>(Services.UI).notifications.warning(title, detail);
+        } catch {
+            // No interface to tell (a test, a closing workspace): the refusal still stands.
+        }
+    }
+
+    /**
+     * Open the team half of a history transaction. Only the outermost one collects; answers whether
+     * this call opened it, which is what {@link endTeamTransaction} is given back.
+     */
+    private beginTeamTransaction(surfaceId: string, label: HistoryLabel | undefined): boolean {
+        if (this.teamTransaction) {
+            return false;
+        }
+        this.teamTransaction = { surfaceId, label, parts: null };
+        return true;
+    }
+
+    private endTeamTransaction(opened: boolean): void {
+        if (!opened) {
+            return;
+        }
+        const transaction = this.teamTransaction;
+        this.teamTransaction = null;
+        if (transaction?.parts) {
+            this.pushTeamStep(transaction.surfaceId, transaction.parts, { label: transaction.label });
+        }
     }
 
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
@@ -2647,7 +2846,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             // dragged, and applied blind the second of those puts a deleted element back on every
             // screen in the room with every machine agreeing about it.
             const updates = uiPartsUpdates(current, parts);
+            // Read before the send: the records as they stand now are what undo puts back.
+            const before = uiPartsBefore(current, parts);
             if (this.opSink.handle({ op: "write-ui", parts, ...(updates.length === 0 ? {} : { updates }) })) {
+                // Nothing changed here, so the snapshot below would record nothing: the step this edit
+                // leaves is the delta's own two sides instead. See `uiTeamUndo.ts`.
+                this.recordTeamStep({ before, after: parts }, options);
                 return;
             }
         }

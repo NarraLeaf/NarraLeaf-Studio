@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
+import { useStore } from "@xyflow/react";
 import { useTranslation } from "@/lib/i18n";
 import { LivePreviewFrame } from "../ui-editor/panel/LivePreviewFrame";
 import { beginOverviewDrag, endOverviewDrag, moveOverviewDrag, type OverviewDrag, type OverviewEditServices } from "./pageOverviewEdits";
@@ -20,8 +21,11 @@ export type OverviewPagePreviewProps = {
     onSelect: (elementId: string) => void;
     /** Null while the page cannot be written - the preview then only selects. */
     edit: OverviewEditServices | null;
-    /** Told whenever the boxes move, so the section can redraw the lines that start at them. */
-    onLayout: () => void;
+    /**
+     * Told where each control is drawn, as a height inside the node that holds the preview, so the
+     * node can put that control's pin beside it. Only when the answer changes.
+     */
+    onPins: (pins: ReadonlyArray<{ elementId: string; y: number }>) => void;
 };
 
 /** A minimal hit box, so a control drawn one pixel wide can still be pointed at. */
@@ -46,7 +50,7 @@ export function OverviewPagePreview({
     selectedElementId,
     onSelect,
     edit,
-    onLayout,
+    onPins,
 }: OverviewPagePreviewProps) {
     const { t } = useTranslation();
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +59,9 @@ export function OverviewPagePreview({
     const designHeight = Math.max(1, surface.designSize.height);
     const height = Math.round((width * designHeight) / designWidth);
     const scale = width / designWidth;
+    // The canvas is zoomed, and a measured rectangle is zoomed with it; boxes are placed in the
+    // node's own pixels, so every measurement is divided back out.
+    const zoom = useStore(state => state.transform[2]);
 
     const measure = useCallback(() => {
         const wrap = wrapRef.current;
@@ -62,6 +69,7 @@ export function OverviewPagePreview({
             return;
         }
         const origin = wrap.getBoundingClientRect();
+        const z = zoom > 0 ? zoom : 1;
         const next: HitBox[] = [];
         for (const elementId of elementIds) {
             // The bridge draws the page with its editor markers on; a bare preview drawing names
@@ -75,18 +83,20 @@ export function OverviewPagePreview({
             if (rect.width === 0 && rect.height === 0) {
                 continue;
             }
-            const w = Math.max(MIN_HIT, rect.width);
-            const h = Math.max(MIN_HIT, rect.height);
+            const rw = rect.width / z;
+            const rh = rect.height / z;
+            const w = Math.max(MIN_HIT, rw);
+            const h = Math.max(MIN_HIT, rh);
             next.push({
                 elementId,
-                left: rect.left - origin.left - (w - rect.width) / 2,
-                top: rect.top - origin.top - (h - rect.height) / 2,
+                left: (rect.left - origin.left) / z - (w - rw) / 2,
+                top: (rect.top - origin.top) / z - (h - rh) / 2,
                 width: w,
                 height: h,
             });
         }
         setBoxes(previous => (sameBoxes(previous, next) ? previous : next));
-    }, [elementIds]);
+    }, [elementIds, zoom]);
 
     // The drawing is built lazily and replaced on every content revision, so the boxes are measured
     // after it lands rather than on a fixed schedule.
@@ -114,8 +124,9 @@ export function OverviewPagePreview({
     }, [measure]);
 
     useEffect(() => {
-        onLayout();
-    }, [boxes, onLayout]);
+        const offset = wrapRef.current?.offsetTop ?? 0;
+        onPins(boxes.map(box => ({ elementId: box.elementId, y: Math.round(offset + box.top + box.height / 2) })));
+    }, [boxes, onPins]);
 
     const dragRef = useRef<{ drag: OverviewDrag; pointerId: number; x: number; y: number } | null>(null);
 
@@ -142,10 +153,11 @@ export function OverviewPagePreview({
 
     const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
         const current = dragRef.current;
-        if (!current || !edit || current.pointerId !== event.pointerId || scale <= 0) {
+        const factor = scale * (zoom > 0 ? zoom : 1);
+        if (!current || !edit || current.pointerId !== event.pointerId || factor <= 0) {
             return;
         }
-        moveOverviewDrag(edit, current.drag, (event.clientX - current.x) / scale, (event.clientY - current.y) / scale);
+        moveOverviewDrag(edit, current.drag, (event.clientX - current.x) / factor, (event.clientY - current.y) / factor);
     };
 
     const finishDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -160,7 +172,8 @@ export function OverviewPagePreview({
     };
 
     return (
-        <div ref={wrapRef} className="relative" style={{ width, height }} data-page-overview-preview={surface.id}>
+        // `nodrag nopan`: a press on the preview picks or moves a control, never the node or the canvas.
+        <div ref={wrapRef} className="nodrag nopan relative" style={{ width, height }} data-page-overview-preview={surface.id}>
             <LivePreviewFrame
                 previewId={surface.id}
                 contentRevision={contentRevision}

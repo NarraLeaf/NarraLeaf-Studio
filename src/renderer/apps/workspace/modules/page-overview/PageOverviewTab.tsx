@@ -36,7 +36,7 @@ import {
     type PageOverviewExit,
     type PageOverviewGroup,
 } from "./pageOverviewModel";
-import { PageOverviewSection } from "./PageOverviewSection";
+import { PageOverviewFlow } from "./PageOverviewFlow";
 import { readPageOverviewPayload, type PageOverviewMode, type PageOverviewTabPayload } from "./pageOverviewTabId";
 import type { OverviewNames } from "./pageOverviewText";
 
@@ -391,32 +391,23 @@ export function PageOverviewTab({ tabId, payload, active }: EditorTabComponentPr
         services.ui.panels.show(PROPERTIES_PANEL_ID);
     }, [selectElement, services]);
 
-    const scrollerRef = useRef<HTMLDivElement | null>(null);
+    // Asking for a page frames it on the canvas; the counter makes asking for the same page again
+    // frame it again after the author has panned away.
+    const [focus, setFocus] = useState<{ surfaceId: string | null; nonce: number }>({ surfaceId: null, nonce: 0 });
     const showPage = useCallback((surfaceId: string) => {
-        if (mode === "current") {
-            setPayload({ ...requested, surfaceId });
-            scrollerRef.current?.scrollTo({ top: 0 });
-            return;
-        }
         setPayload({ ...requested, surfaceId });
-        const section = scrollerRef.current?.querySelector(`[data-page-overview-section="${CSS.escape(surfaceId)}"]`);
-        section?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, [mode, requested, setPayload]);
+        setFocus(previous => ({ surfaceId, nonce: previous.nonce + 1 }));
+    }, [requested, setPayload]);
 
-    // A page named from outside - the panel, a menu - is scrolled to in "All pages" as well.
-    const lastScrolledTo = useRef<string | null>(null);
+    // A page named from outside - the panel, a menu - is framed as well.
     useEffect(() => {
-        if (mode !== "all" || !requested.surfaceId || lastScrolledTo.current === requested.surfaceId) {
-            return;
+        if (requested.surfaceId) {
+            setFocus(previous => (previous.surfaceId === requested.surfaceId ? previous : { surfaceId: requested.surfaceId ?? null, nonce: previous.nonce + 1 }));
         }
-        lastScrolledTo.current = requested.surfaceId;
-        const frame = requestAnimationFrame(() => {
-            scrollerRef.current
-                ?.querySelector(`[data-page-overview-section="${CSS.escape(requested.surfaceId ?? "")}"]`)
-                ?.scrollIntoView({ block: "start" });
-        });
-        return () => cancelAnimationFrame(frame);
-    }, [mode, requested.surfaceId, overviews]);
+    }, [requested.surfaceId]);
+
+    const [arrangeNonce, setArrangeNonce] = useState(0);
+    const blocks = useMemo(() => overviews.map(({ surface, overview }) => ({ surfaceId: surface.id, overview })), [overviews]);
 
     const openDestination = useCallback((destination: OverviewDestination) => {
         const target = destination.target;
@@ -504,43 +495,44 @@ export function PageOverviewTab({ tabId, payload, active }: EditorTabComponentPr
                         <Button size="sm" variant="secondary" onClick={() => setExpanded(new Set())} disabled={expanded.size === 0}>
                             {t("uiEditor.pageOverview.collapseAll")}
                         </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setArrangeNonce(value => value + 1)} data-tip={t("uiEditor.pageOverview.arrangeTip")}>
+                            {t("uiEditor.pageOverview.arrange")}
+                        </Button>
                     </div>
                 </div>
 
-                <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto bg-surface-sunken">
+                <div className="relative min-h-0 flex-1">
                     {pages.length === 0 ? (
                         <div className="p-8">
                             <EmptyState title={t("uiEditor.pageOverview.noPages")} />
                         </div>
-                    ) : null}
-                    {overviews.map(({ surface, overview }, index) => (
-                        <div key={surface.id} className={index > 0 ? "border-t border-edge" : undefined}>
-                            <PageOverviewSection
-                                overview={overview}
-                                surface={surface}
-                                document={documents.ui}
-                                documentService={services.uiDocument}
-                                contentRevision={surfaceRevision(surface.id)}
-                                renderSurface={renderSurface}
-                                surfaceRevision={surfaceRevision}
-                                names={names}
-                                headTitle={headTitle}
-                                selectedElementId={selection?.surfaceId === surface.id ? selection.elementId : null}
-                                onSelect={selectFromPreview}
-                                expanded={expanded}
-                                onToggle={(key, elementId) => toggle(key, elementId, surface.id)}
-                                showJumps={showJumps}
-                                showOwnership={showOwnership}
-                                edit={edit}
-                                blueprintPreview={blueprintPreview}
-                                readOnly={readOnly}
-                                retargetFor={(group, exits) => retargetFor(surface.id, group, overview, exits)}
-                                onOpenLogic={(group, exit) => openLogic(surface, overview, group, exit)}
-                                onMoreProperties={showMoreProperties}
-                                onDestination={openDestination}
-                            />
-                        </div>
-                    ))}
+                    ) : (
+                        <PageOverviewFlow
+                            blocks={blocks}
+                            mode={mode}
+                            showJumps={showJumps}
+                            showOwnership={showOwnership}
+                            focus={focus}
+                            arrangeNonce={arrangeNonce}
+                            document={documents.ui}
+                            documentService={services.uiDocument}
+                            names={names}
+                            headTitle={headTitle}
+                            renderSurface={renderSurface}
+                            surfaceRevision={surfaceRevision}
+                            selection={selection}
+                            onSelectFromPreview={selectFromPreview}
+                            expanded={expanded}
+                            onToggle={toggle}
+                            edit={edit}
+                            blueprintPreview={blueprintPreview}
+                            readOnly={readOnly}
+                            retargetFor={retargetFor}
+                            onOpenLogic={openLogic}
+                            onMoreProperties={showMoreProperties}
+                            onDestination={openDestination}
+                        />
+                    )}
                 </div>
                 {mode === "all" && overviews.length > 0 ? (
                     <div className="shrink-0 border-t border-edge px-3 py-1 text-2xs text-fg-subtle">
