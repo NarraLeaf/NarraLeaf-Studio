@@ -540,10 +540,10 @@ describe("reaching a server", () => {
         bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
         render(<ServersTab />);
 
-        await waitFor(() => expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(2));
+        fireEvent.click(await find("[data-servers-picker]"));
         expect(bridge.refreshServer).not.toHaveBeenCalled();
 
-        fireEvent.click(document.querySelector(`[data-server-choice='${OTHER}']`)!);
+        fireEvent.click(await screen.findByText("Other"));
         await waitFor(() => expect(bridge.refreshServer).toHaveBeenCalledWith(OTHER));
         expect(bridge.refreshServer).toHaveBeenCalledTimes(1);
     });
@@ -817,30 +817,31 @@ describe("who else is on the server", () => {
 });
 
 describe("which server is being read", () => {
-    it("draws no strip for a list of one, and still says which one it is", async () => {
+    it("offers no menu for a list of one, and still says which one it is", async () => {
         open([project()]);
 
         await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
-        // A column of servers costs 256 of the tab's 560 pixels, and with one server there
-        // is nothing in it to choose between.
-        expect(document.querySelector("[data-servers-strip]")).toBeNull();
+        // With one server there is nothing to choose between.
+        expect(document.querySelector("[data-servers-picker]")).toBeNull();
         // Still named, and still the element that stands for that one choice.
         expect(document.body.textContent).toContain("Blackwood Studio");
         expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(1);
     });
 
-    it("names the chosen server once when the strip is carrying them", async () => {
+    it("names the chosen server once, in the heading that opens the others", async () => {
         bridge.servers = [session(ORIGIN, "Blackwood"), session(OTHER, "Other")];
         bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
         render(<ServersTab />);
 
-        await waitFor(() => expect(document.querySelector("[data-servers-strip]")).not.toBeNull());
-        fireEvent.click(document.querySelector(`[data-server-choice='${ORIGIN}']`)!);
+        fireEvent.click(await find("[data-servers-picker]"));
+        fireEvent.click(await screen.findByText("Blackwood"));
 
         await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
-        // The strip carries them; the row under it is the server being read, not a third
-        // copy of a choice already on screen.
-        expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(2);
+        const picker = document.querySelector("[data-servers-picker]")!;
+        expect(picker.textContent).toBe("Blackwood");
+        // The menu closed on the choice, so the only copy of the name is the heading's.
+        expect(screen.getAllByText("Blackwood")).toHaveLength(1);
+        expect(screen.queryByText("Other")).toBeNull();
     });
 
     it("adds another server from the header, without leaving the tab", async () => {
