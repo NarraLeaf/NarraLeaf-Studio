@@ -22,7 +22,12 @@ import type { SelectOption } from "@/lib/components/elements";
 import { BLUEPRINT_EXEC_EDGE_COLOR, BLUEPRINT_EDGE_STROKE_WIDTH } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import { BLUEPRINT_MINIMAP_SIZES } from "../blueprint-lite/flow/blueprintMinimapPreference";
+import {
+    BLUEPRINT_MINIMAP_SIZES,
+    DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE,
+    type BlueprintMinimapPreference,
+} from "../blueprint-lite/flow/blueprintMinimapPreference";
+import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "../blueprint-lite/flow/components/BlueprintCanvasToolbar";
 import { LivePreviewFrame } from "../ui-editor/panel/LivePreviewFrame";
 import { OverviewGroupCard, type OverviewBlueprintPreviewSource } from "./OverviewGroupCard";
 import { OverviewPagePreview } from "./OverviewPagePreview";
@@ -50,8 +55,13 @@ import { destinationKind, destinationName, destinationNote, type OverviewNames }
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-primary";
 /** The pins an ownership line joins: quieter, since that line says where a control is, not where it goes. */
 const OWN_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-surface-overlay";
-/** As the blueprint editor pans: the middle button drags, the wheel scrolls, a pinch zooms. */
-const PAN_BUTTONS = [1, 2];
+/**
+ * As the blueprint editor pans: under the pointer tool the middle button drags the canvas and the
+ * left button moves nodes; under the hand tool the left button drags the canvas too, and nodes stay
+ * put. The wheel scrolls and a pinch zooms under either.
+ */
+const PAN_BUTTONS_SELECT_TOOL = [1];
+const PAN_BUTTONS_HAND_TOOL = [0, 1];
 const PREVIEW_W = OVERVIEW_PAGE_W - 16;
 
 /** Everything a node needs that is not its own id: the overview's data and the actions it can take. */
@@ -311,6 +321,13 @@ function PageOverviewFlowInner(props: PageOverviewFlowProps) {
     const [sizes, setSizes] = useState<ReadonlyMap<string, OverviewSize>>(() => new Map());
     const [moved, setMoved] = useState<ReadonlyMap<string, { x: number; y: number }>>(() => new Map());
     const [pins, setPins] = useState<ReadonlyMap<string, ReadonlyArray<{ elementId: string; y: number }>>>(() => new Map());
+    // The blueprint editor's own toolbar: which gesture a drag is, the zoom, and the overview.
+    const [tool, setTool] = useState<BlueprintCanvasTool>("select");
+    const [minimap, setMinimap] = useState<BlueprintMinimapPreference>(DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE);
+    /** Clicking the overview goes there, keeping the zoom - as the blueprint editor's does. */
+    const jumpToMinimapPoint = useCallback((_event: unknown, position: { x: number; y: number }) => {
+        void flow.setCenter(position.x, position.y, { zoom: flow.getViewport().zoom, duration: 220 });
+    }, [flow]);
 
     useEffect(() => {
         setMoved(new Map());
@@ -424,12 +441,12 @@ function PageOverviewFlowInner(props: PageOverviewFlowProps) {
                 nodeTypes={NODE_TYPES}
                 onNodesChange={onNodesChange}
                 nodesConnectable={false}
-                nodesDraggable
+                nodesDraggable={tool === "select"}
                 elementsSelectable={false}
                 deleteKeyCode={null}
                 selectionKeyCode={null}
                 multiSelectionKeyCode={null}
-                panOnDrag={PAN_BUTTONS}
+                panOnDrag={tool === "pan" ? PAN_BUTTONS_HAND_TOOL : PAN_BUTTONS_SELECT_TOOL}
                 panOnScroll
                 panOnScrollMode={PanOnScrollMode.Free}
                 panOnScrollSpeed={1}
@@ -443,9 +460,12 @@ function PageOverviewFlowInner(props: PageOverviewFlowProps) {
                 data-page-overview-flow=""
             >
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
+                <BlueprintCanvasToolbar tool={tool} onToolChange={setTool} minimap={minimap} onMinimapChange={setMinimap} />
+                {minimap.visible ? (
                 <MiniMap
                     pannable
-                    style={BLUEPRINT_MINIMAP_SIZES.medium}
+                    onClick={jumpToMinimapPoint}
+                    style={BLUEPRINT_MINIMAP_SIZES[minimap.size]}
                     ariaLabel={`${t("blueprint.minimap.label")} — ${t("blueprint.minimap.hint")}`}
                     nodeColor="rgb(var(--nl-fg-subtle) / 0.55)"
                     nodeStrokeColor="rgb(var(--nl-fg-muted))"
@@ -455,6 +475,7 @@ function PageOverviewFlowInner(props: PageOverviewFlowProps) {
                     maskStrokeWidth={1}
                     className="!m-4 !rounded-md !border !border-edge-strong !bg-surface-overlay shadow-lg cursor-grab active:cursor-grabbing"
                 />
+                ) : null}
             </ReactFlow>
         </FlowContext.Provider>
     );

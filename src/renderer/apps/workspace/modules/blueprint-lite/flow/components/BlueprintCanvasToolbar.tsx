@@ -47,16 +47,21 @@ const FORMAT_DIRECTIONS = [
 export type BlueprintCanvasToolbarProps = {
     tool: BlueprintCanvasTool;
     onToolChange: (tool: BlueprintCanvasTool) => void;
+    /**
+     * The two edits that act on the whole graph. Optional, and drawn only when given: a canvas that
+     * is read rather than edited (the Page Overview) borrows the tools, the zoom and the overview
+     * without them.
+     */
     /** The colour the plain Group button uses - the last one the author picked. */
-    groupColor: string;
-    onCreateGroup: (color: string) => void;
+    groupColor?: string;
+    onCreateGroup?: (color: string) => void;
     /** False with nothing selected: a group has to be a group of something. */
-    canGroup: boolean;
+    canGroup?: boolean;
     /** The direction the plain Format button uses - the last one the author picked. */
-    formatDirection: BlueprintLayoutDirection;
-    onFormat: (direction: BlueprintLayoutDirection) => void;
+    formatDirection?: BlueprintLayoutDirection;
+    onFormat?: (direction: BlueprintLayoutDirection) => void;
     /** False on an empty graph, where formatting has nothing to arrange. */
-    canFormat: boolean;
+    canFormat?: boolean;
     /** Whether the graph overview is up, and how large. */
     minimap: BlueprintMinimapPreference;
     onMinimapChange: (preference: BlueprintMinimapPreference) => void;
@@ -65,12 +70,12 @@ export type BlueprintCanvasToolbarProps = {
 export function BlueprintCanvasToolbar({
     tool,
     onToolChange,
-    groupColor,
+    groupColor = "default",
     onCreateGroup,
-    canGroup,
-    formatDirection,
+    canGroup = false,
+    formatDirection = "horizontal",
     onFormat,
-    canFormat,
+    canFormat = false,
     minimap,
     onMinimapChange,
 }: BlueprintCanvasToolbarProps) {
@@ -128,6 +133,8 @@ export function BlueprintCanvasToolbar({
             >
                 <Map className="h-4 w-4" />
             </SurfaceEditorToolbarButton>
+            {onCreateGroup ? (
+                <>
             {/* The button groups in the colour the author last chose, and the chevron is where a
                 different one is picked - the same bargain the zoom control makes with its
                 percentage: the common answer costs one click, the rest cost two. */}
@@ -169,6 +176,10 @@ export function BlueprintCanvasToolbar({
                     />
                 ))}
             </SurfaceToolbarPopoverPanel>
+                </>
+            ) : null}
+            {onFormat ? (
+                <>
             {/* Same bargain as the group button beside it: the direction the author last formatted
                 in costs one click, the other one costs two. */}
             <SurfaceEditorToolbarButtonGroup aria-label={t("blueprint.format.graph")}>
@@ -205,6 +216,8 @@ export function BlueprintCanvasToolbar({
                     />
                 ))}
             </SurfaceToolbarPopoverPanel>
+                </>
+            ) : null}
         </TooltipGroup>
     );
 }
