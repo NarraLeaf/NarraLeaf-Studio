@@ -857,6 +857,8 @@ describe("which server is being read", () => {
     it("goes back to the server it came from when the switch is pressed again", async () => {
         open([project()]);
 
+        // The switch waits for a server to go back to.
+        await find(`[data-server-heading='${ORIGIN}']`);
         fireEvent.click(await find("[data-servers-action='switch']"));
         await find("[data-servers-choices]");
         fireEvent.click(await find("[data-servers-action='switch']"));
@@ -868,6 +870,7 @@ describe("which server is being read", () => {
     it("adds another server from the switch screen, without leaving the tab", async () => {
         open([project()]);
 
+        await find(`[data-server-heading='${ORIGIN}']`);
         fireEvent.click(await find("[data-servers-action='switch']"));
         fireEvent.click(await find("[data-servers-action='manage']"));
 
