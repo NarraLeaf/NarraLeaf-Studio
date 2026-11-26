@@ -6630,7 +6630,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         });
 
-        if (historyService && beforeHistory) {
+        // Inside `runSurfaceHistoryTransaction` the transaction records the whole step; recording the
+        // paste here as well left a second, empty step behind it (an Alt-drag copy is one).
+        if (historyService && beforeHistory && this.historySuppressionDepth === 0) {
             historyService.record({
                 surfaceId,
                 before: beforeHistory,

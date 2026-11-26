@@ -1,4 +1,4 @@
-import { useCallback, useRef, startTransition } from "react";
+import { useCallback, useEffect, useRef, startTransition } from "react";
 import type {
     OnDrag,
     OnDragEnd,
@@ -122,7 +122,7 @@ export type SmartSnapContext = {
     surfaceId: string;
     designSize: { width: number; height: number };
     isEnabled: () => boolean;
-    /** When true (e.g. Alt held), snapping is skipped for this gesture. */
+    /** When true (Cmd/Ctrl held), snapping is skipped for this gesture. */
     isSuspended: () => boolean;
     setGuides: (guides: ActiveSnapGuides | null) => void;
     /** Elements excluded from snap targets (typically the current selection). */
@@ -186,7 +186,29 @@ type MoveableHandlersConfig = {
     beginTransform: () => void;
     endTransform: () => void;
     smartSnap?: SmartSnapContext;
+    /**
+     * Places copies of the dragged elements where an Alt-drag dropped them, leaving the originals
+     * where they were (`positions` keyed by the original's id). Absent, Alt does nothing to a drag.
+     */
+    duplicateOnDrop?: (positions: Record<string, { x: number; y: number }>) => boolean;
 };
+
+/**
+ * Shift while moving keeps the move on one axis, the one the pointer has travelled further along.
+ * Read from each move's own event, so Shift can be pressed or let go mid-drag.
+ */
+export function constrainDragToAxis(translateX: number, translateY: number, constrain: boolean): [number, number] {
+    if (!constrain) {
+        return [translateX, translateY];
+    }
+    return Math.abs(translateX) >= Math.abs(translateY) ? [translateX, 0] : [0, translateY];
+}
+
+/** Whether a gesture's input event has a modifier down (Moveable hands the native event through). */
+function inputHas(event: { inputEvent?: unknown }, key: "shiftKey" | "altKey"): boolean {
+    const input = event.inputEvent as Partial<Record<"shiftKey" | "altKey", boolean>> | null | undefined;
+    return Boolean(input?.[key]);
+}
 
 export type MoveableHandlers = {
     handleDragStart: (e: OnDragStart) => void;
@@ -219,6 +241,7 @@ export function useMoveableHandlers({
     beginTransform,
     endTransform,
     smartSnap,
+    duplicateOnDrop,
 }: MoveableHandlersConfig): MoveableHandlers {
     const layoutCache = useRef<Map<string, UILayout>>(new Map());
     const dragDeltaCache = useRef<Map<string, [number, number]>>(new Map());
@@ -228,6 +251,46 @@ export function useMoveableHandlers({
     const snapLinesCacheRef = useRef<SnapGuideLine[]>([]);
     // Moveable runs one able at a time, so drag, resize and rotate can share a single deadzone.
     const gestureDeadzone = useRef<GestureDeadzone>(createGestureDeadzone());
+    /**
+     * What stays behind while an Alt-drag carries a copy away: a still picture of each dragged
+     * element at its starting place, so the author sees the original stay put as they drag. Only a
+     * picture - no element id, no selectable class, no pointer - and gone when the drag ends.
+     */
+    const duplicateGhosts = useRef<HTMLElement[]>([]);
+    const syncDuplicateGhosts = useCallback(
+        (show: boolean) => {
+            if (!show) {
+                duplicateGhosts.current.forEach(ghost => ghost.remove());
+                duplicateGhosts.current = [];
+                return;
+            }
+            if (duplicateGhosts.current.length > 0) {
+                return;
+            }
+            duplicateGhosts.current = selectedTargets.flatMap(target => {
+                const elementId = target.dataset.uiElementId;
+                const parent = target.parentNode;
+                if (!elementId || !parent) {
+                    return [];
+                }
+                const ghost = target.cloneNode(true) as HTMLElement;
+                for (const node of [ghost, ...Array.from(ghost.querySelectorAll<HTMLElement>("[data-ui-element-id], .ui-editor-node"))]) {
+                    node.removeAttribute("data-ui-element-id");
+                    node.classList.remove("ui-editor-node");
+                }
+                ghost.style.transform = buildTransform(0, 0, layoutCache.current.get(elementId)?.rotation);
+                ghost.style.outline = "";
+                ghost.style.pointerEvents = "none";
+                ghost.setAttribute("aria-hidden", "true");
+                ghost.inert = true;
+                parent.insertBefore(ghost, target);
+                return [ghost];
+            });
+        },
+        [selectedTargets],
+    );
+    useEffect(() => () => syncDuplicateGhosts(false), [syncDuplicateGhosts]);
+
     const performanceHintCache = useRef<
         Map<HTMLElement, { willChange: string; backfaceVisibility: string; transformOrigin: string }>
     >(new Map());
@@ -322,8 +385,11 @@ export function useMoveableHandlers({
         selectionIds.forEach(cacheLayoutForElement);
     }, [cacheLayoutForElement, selectionIds]);
 
-    const finalizeDrag = useCallback(() => {
+    const finalizeDrag = useCallback((duplicate = false) => {
+        syncDuplicateGhosts(false);
+        const copying = duplicate && duplicateOnDrop != null;
         const patches: Record<string, Partial<UILayout>> = {};
+        const copyPositions: Record<string, { x: number; y: number }> = {};
         // A move made while a state is entered is about where the element sits *in that state*, and
         // the state may already be holding it away from where it rests - so the gesture starts from
         // the position on screen, not from the layout, or the offset the state carries is lost.
@@ -348,14 +414,20 @@ export function useMoveableHandlers({
                 currentStateOffset(documentService.getDocument(), enteredState, elementId) ?? { x: 0, y: 0 };
             const nextX = initialLayout.x + stateOffset.x + translateX;
             const nextY = initialLayout.y + stateOffset.y + translateY;
-            patches[elementId] = {
-                x: nextX,
-                y: nextY,
-            };
-            // Keep the DOM at its final absolute position before React applies
-            // the updated layout, so the controller does not flash back for a frame.
-            target.style.left = `${nextX}px`;
-            target.style.top = `${nextY}px`;
+            if (copying) {
+                // The copy goes where the drag ended; the original goes back to where it was, which
+                // is where its DOM still is - the drag only ever moved it by transform.
+                copyPositions[elementId] = { x: initialLayout.x + translateX, y: initialLayout.y + translateY };
+            } else {
+                patches[elementId] = {
+                    x: nextX,
+                    y: nextY,
+                };
+                // Keep the DOM at its final absolute position before React applies
+                // the updated layout, so the controller does not flash back for a frame.
+                target.style.left = `${nextX}px`;
+                target.style.top = `${nextY}px`;
+            }
             applyFinalTransform(target, initialLayout.rotation);
             layoutCache.current.delete(elementId);
             dragDeltaCache.current.delete(elementId);
@@ -370,11 +442,14 @@ export function useMoveableHandlers({
                 );
             });
         }
+        if (copying && Object.keys(copyPositions).length > 0) {
+            duplicateOnDrop(copyPositions);
+        }
         clearPerformanceHints();
         clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform, smartSnap]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, duplicateOnDrop, selectedTargets, scheduleMoveableRectUpdate, endTransform, smartSnap, syncDuplicateGhosts]);
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
@@ -573,7 +648,12 @@ export function useMoveableHandlers({
             if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
-            let [translateX, translateY] = e.beforeTranslate;
+            syncDuplicateGhosts(duplicateOnDrop != null && inputHas(e, "altKey"));
+            let [translateX, translateY] = constrainDragToAxis(
+                e.beforeTranslate[0] ?? 0,
+                e.beforeTranslate[1] ?? 0,
+                inputHas(e, "shiftKey"),
+            );
             if (smartSnap?.isEnabled() && !smartSnap.isSuspended()) {
                 ensureSmartSnapCandidateLines();
                 const doc = documentService.getDocument();
@@ -644,7 +724,7 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.set(elementId, [translateX, translateY]);
             });
         },
-        [documentService, ensureSmartSnapCandidateLines, isGroupSelection, selectedTargets, smartSnap, viewportScale],
+        [documentService, duplicateOnDrop, ensureSmartSnapCandidateLines, isGroupSelection, selectedTargets, smartSnap, syncDuplicateGhosts, viewportScale],
     );
 
     const handleDragEnd = useCallback(
@@ -652,7 +732,9 @@ export function useMoveableHandlers({
             if (isGroupSelection) {
                 return;
             }
-            finalizeDrag();
+            // Alt as the pointer comes up decides it, as Figma does: it can be pressed or let go
+            // anywhere along the drag.
+            finalizeDrag(inputHas(e, "altKey"));
         },
         [finalizeDrag, isGroupSelection],
     );
@@ -679,6 +761,7 @@ export function useMoveableHandlers({
             if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
+            syncDuplicateGhosts(duplicateOnDrop != null && inputHas(e, "altKey"));
             const doc = documentService.getDocument();
             const perEvent = e.events.map(event => {
                 const target = event.target;
@@ -689,7 +772,8 @@ export function useMoveableHandlers({
                 if (!elementId) {
                     return null;
                 }
-                const [tx, ty] = resolveGroupDragTranslate(e.beforeTranslate, event.beforeTranslate);
+                const [rawX, rawY] = resolveGroupDragTranslate(e.beforeTranslate, event.beforeTranslate);
+                const [tx, ty] = constrainDragToAxis(rawX, rawY, inputHas(e, "shiftKey"));
                 return { target, elementId, tx, ty };
             }).filter((row): row is NonNullable<typeof row> => row != null);
 
@@ -756,7 +840,7 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.set(row.elementId, [tx, ty]);
             });
         },
-        [documentService, ensureSmartSnapCandidateLines, isGroupSelection, smartSnap, viewportScale],
+        [documentService, duplicateOnDrop, ensureSmartSnapCandidateLines, isGroupSelection, smartSnap, syncDuplicateGhosts, viewportScale],
     );
 
     const handleDragGroupEnd = useCallback(
@@ -764,7 +848,7 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
-            finalizeDrag();
+            finalizeDrag(inputHas(e, "altKey"));
         },
         [finalizeDrag, isGroupSelection],
     );
@@ -838,7 +922,12 @@ export function useMoveableHandlers({
                 translateX: tx0,
                 translateY: ty0,
             };
-            if (initialLayout.lockAspectRatio) {
+            // Shift keeps the proportions for this one gesture, as in every design tool; the stored
+            // lock keeps them always. Read from the live event, so pressing or releasing Shift
+            // mid-drag takes effect on the next move.
+            const keepRatio =
+                initialLayout.lockAspectRatio === true || Boolean((e.inputEvent as MouseEvent | undefined)?.shiftKey);
+            if (keepRatio) {
                 preview = applyLockedAspectToResizePreview(
                     true,
                     initialLayout,
@@ -884,7 +973,7 @@ export function useMoveableHandlers({
                     viewportScale,
                     smartSnap.surfaceId,
                     {
-                        preserveAspectRatio: initialLayout.lockAspectRatio === true,
+                        preserveAspectRatio: keepRatio,
                         aspectRatio:
                             Math.abs(initialLayout.width) > 0 && Math.abs(initialLayout.height) > 0
                                 ? Math.abs(initialLayout.width) / Math.abs(initialLayout.height)

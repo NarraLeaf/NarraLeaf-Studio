@@ -1044,6 +1044,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             openSurfaceEditor={handleOpenSurfaceEditor}
                             openComponentEditor={handleOpenComponentEditor}
                             readOnly={readOnly}
+                            localBlueprint={localBlueprint}
                         />
                     ) : null}
 

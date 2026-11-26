@@ -97,25 +97,28 @@ const ANCHORS: Record<string, Anchor[]> = {
     "ui-editor.pan": [
         {
             file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`,
-            present: ["const isMiddleMouse = event.button === 1;", "const panY = event.shiftKey ? 0 : -panDeltaY;"],
+            present: [
+                "const isMiddleMouse = event.button === 1;",
+                "const panY = event.shiftKey ? 0 : -panDeltaY;",
+                "if (event.code !== \"Space\" || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) {",
+            ],
         },
     ],
     "ui-editor.zoom": [
-        { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const isZoomInteraction = event.ctrlKey ||"] },
+        { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["event.ctrlKey || event.metaKey || (tool.kind === \"pan\" && normalizedDeltaY !== 0);"] },
     ],
     "ui-editor.toggle-select": [
         {
             file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`,
-            present: ["if ((event.metaKey || event.ctrlKey) && selectionData && selectionData.surfaceId === surfaceId) {"],
+            present: ["if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId && selectionData.elementIds.length > 0) {"],
         },
-        { file: `${UI_INTERACTION}/outline/LayerOutlinePanel.tsx`, present: ["} else if (event.metaKey || event.ctrlKey) {"] },
     ],
-    "ui-editor.add-select": [
-        {
-            file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`,
-            present: ["} else if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {"],
-        },
-        { file: `${UI_INTERACTION}/outline/LayerOutlinePanel.tsx`, present: ["if (event.shiftKey && selectionData?.surfaceId === surfaceId) {"] },
+    "ui-editor.deep-select": [
+        { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const deep = event.metaKey || event.ctrlKey;", "} else if (deep) {"] },
+    ],
+    "ui-editor.select-layer": [
+        { file: `${R}/lib/ui-editor/context-menu/buildCanvasContextMenu.ts`, present: ["id: \"select-layer\","] },
+        { file: `${WORKSPACE}/modules/ui-editor/editors/useSurfaceCanvasContextMenu.ts`, present: ["const layersAtPoint = collectLayersAtPoint({"] },
     ],
     "ui-editor.select-inside": [
         { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const allowDrillIntoChild = detail >= 2 || rapidSameTarget;"] },
@@ -134,8 +137,18 @@ const ANCHORS: Record<string, Anchor[]> = {
         { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["source: \"moveableDoubleClick\","] },
     ],
     "ui-editor.suspend-snap": [
-        { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["const transformSnapSuspended = useCallback(() => altKeyRef.current, []);"] },
-        { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const suspendSnap = (insertSnapSuspended?.() ?? false) || event.altKey;"] },
+        { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["snapSuspendKeyRef.current = e.metaKey || e.ctrlKey;", "const transformSnapSuspended = useCallback(() => snapSuspendKeyRef.current, []);"] },
+        { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const suspendSnap = (insertSnapSuspended?.() ?? false) || event.metaKey || event.ctrlKey;"] },
+    ],
+    "ui-editor.duplicate-drag": [
+        { file: `${UI_INTERACTION}/useMoveableHandlers.ts`, present: ["finalizeDrag(inputHas(e, \"altKey\"));"] },
+        { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["return uiEditorDuplicateSelectionAt("] },
+    ],
+    "ui-editor.axis-drag": [
+        { file: `${UI_INTERACTION}/useMoveableHandlers.ts`, present: ["inputHas(e, \"shiftKey\"),"] },
+    ],
+    "ui-editor.keep-ratio": [
+        { file: `${UI_INTERACTION}/useMoveableHandlers.ts`, present: ["initialLayout.lockAspectRatio === true || Boolean((e.inputEvent as MouseEvent | undefined)?.shiftKey);"] },
     ],
     "ui-editor.drop-image": [
         { file: `${WORKSPACE}/modules/ui-editor/editors/useSurfaceImageDrop.ts`, present: ["onDrop: handleImageAssetsDropped,"] },

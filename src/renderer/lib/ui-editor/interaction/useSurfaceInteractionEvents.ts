@@ -11,6 +11,7 @@ import {
     isUiContainerDrillLockHit,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    resolveSelectionLevelHit,
     resolveUiContainerDrillTarget,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
@@ -87,11 +88,12 @@ type UseSurfaceInteractionEventsParams = {
     readOnly?: UIEditorReadOnly;
     /**
      * True for a press the selection's drag takes although it hit something else - its frame, where
-     * a clipping container hides the element (`pressLandsOnClippedSelection`). Such a press leaves the
-     * selection alone, so that the drag starting from it has something to move; released without
-     * moving, it selects what it hit after all, as the same click anywhere else does.
+     * a clipping container hides the element or a sibling covers it (`pressLandsInSelectionFrame`).
+     * Such a press leaves the selection alone, so that the drag starting from it has something to
+     * move; released without moving, it selects what it hit after all, as the same click anywhere
+     * else does.
      */
-    pressDragsClippedSelection?: (event: PointerEvent) => boolean;
+    pressDragsSelectionFrame?: (event: PointerEvent) => boolean;
 };
 
 export type InsertPreview = {
@@ -119,12 +121,12 @@ export function useSurfaceInteractionEvents({
     insertSnapEnabled,
     insertSnapSuspended,
     readOnly = UI_EDITOR_WRITABLE,
-    pressDragsClippedSelection,
+    pressDragsSelectionFrame,
 }: UseSurfaceInteractionEventsParams) {
     /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
     const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
-    /** A press `pressDragsClippedSelection` gave to the selection's drag, until the pointer comes up. */
-    const heldClippedPressRef = useRef<PointerEvent | null>(null);
+    /** A press `pressDragsSelectionFrame` gave to the selection's drag, until the pointer comes up. */
+    const heldFramePressRef = useRef<PointerEvent | null>(null);
     const insertDrawEnabled = isSurfaceGestureEnabled("insertDraw", readOnly);
 
     useEffect(() => {
@@ -220,8 +222,8 @@ export function useSurfaceInteractionEvents({
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
                 let curX = surfacePoint.x;
                 let curY = surfacePoint.y;
-                // Prefer live modifier state on the pointer event; keyup can be missed after Alt+Tab / menus.
-                const suspendSnap = (insertSnapSuspended?.() ?? false) || event.altKey;
+                // Prefer live modifier state on the pointer event; keyup can be missed after Cmd+Tab / menus.
+                const suspendSnap = (insertSnapSuspended?.() ?? false) || event.metaKey || event.ctrlKey;
                 if (insertSnapEnabled?.() && !suspendSnap) {
                     const doc = documentService.getDocument();
                     const lines = collectSnapGuideLines(
@@ -274,8 +276,8 @@ export function useSurfaceInteractionEvents({
         };
 
         const handlePointerUp = (event: PointerEvent) => {
-            const held = heldClippedPressRef.current;
-            heldClippedPressRef.current = null;
+            const held = heldFramePressRef.current;
+            heldFramePressRef.current = null;
             if (
                 held &&
                 event.type === "pointerup" &&
@@ -365,10 +367,10 @@ export function useSurfaceInteractionEvents({
                 return;
             }
 
-            if (tool.kind === "select" && !isMoveableTarget && pressDragsClippedSelection?.(event)) {
+            if (tool.kind === "select" && !isMoveableTarget && pressDragsSelectionFrame?.(event)) {
                 // Held until the pointer comes up: dragged, it moved the selection; released where it
                 // was pressed, it is the click it would have been anywhere else.
-                heldClippedPressRef.current = event;
+                heldFramePressRef.current = event;
                 return;
             }
 
@@ -393,11 +395,19 @@ export function useSurfaceInteractionEvents({
                         containerDrillLastPointerRef.current = null;
                         return;
                     }
-                    if ((event.metaKey || event.ctrlKey) && selectionData && selectionData.surfaceId === surfaceId) {
+                    // Cmd/Ctrl reaches the deepest element under the pointer in one press, past the
+                    // outermost-frame pick and the one-level-per-double-click drill. Shift adds to or
+                    // takes from the selection, at the selection's own level unless Cmd/Ctrl is held too.
+                    const deep = event.metaKey || event.ctrlKey;
+                    if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId && selectionData.elementIds.length > 0) {
+                        containerDrillLastPointerRef.current = null;
+                        const toggledId = deep
+                            ? elementId
+                            : resolveSelectionLevelHit(doc, surfaceId, selectionData, elementId);
                         const cur = selectionData.elementIds;
-                        const nextIds = cur.includes(elementId)
-                            ? cur.filter(id => id !== elementId)
-                            : [...cur, elementId];
+                        const nextIds = cur.includes(toggledId)
+                            ? cur.filter(id => id !== toggledId)
+                            : [...cur, toggledId];
                         if (nextIds.length === 0) {
                             selectSurfaceForProperties(stateService, surfaceId, uiService);
                         } else {
@@ -405,17 +415,15 @@ export function useSurfaceInteractionEvents({
                                 editor: "ui",
                                 surfaceId,
                                 elementIds: nextIds,
-                                primaryId: elementId,
+                                primaryId: nextIds.includes(toggledId) ? toggledId : nextIds[nextIds.length - 1],
                             });
                         }
-                    } else if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {
-                        const nextIds = selectionData.elementIds.includes(elementId)
-                            ? selectionData.elementIds
-                            : [...selectionData.elementIds, elementId];
+                    } else if (deep) {
+                        containerDrillLastPointerRef.current = null;
                         stateService.setUIElementSelection({
                             editor: "ui",
                             surfaceId,
-                            elementIds: nextIds,
+                            elementIds: [elementId],
                             primaryId: elementId,
                         });
                     } else {
@@ -495,8 +503,126 @@ export function useSurfaceInteractionEvents({
         insertSnapEnabled,
         insertSnapSuspended,
         insertDrawEnabled,
-        pressDragsClippedSelection,
+        pressDragsSelectionFrame,
     ]);
+
+    // Space held over the canvas turns a drag into a pan, whatever tool is chosen - the way every
+    // design tool pans without a middle button or a trip to the Hand tool. Its own capture-phase
+    // listener, so the press never reaches selection, Selecto or Moveable.
+    useEffect(() => {
+        if (!surfaceElement) {
+            return undefined;
+        }
+        const view = surfaceElement.ownerDocument.defaultView;
+        if (!view) {
+            return undefined;
+        }
+        let pointerInside = false;
+        let spaceHeld = false;
+        let panning = false;
+        let previousCursor: string | null = null;
+
+        const setCursor = (cursor: string | null) => {
+            if (cursor === null) {
+                if (previousCursor !== null) {
+                    surfaceElement.style.cursor = previousCursor;
+                    previousCursor = null;
+                }
+                return;
+            }
+            if (previousCursor === null) {
+                previousCursor = surfaceElement.style.cursor;
+            }
+            surfaceElement.style.cursor = cursor;
+        };
+        const isTyping = (target: EventTarget | null) =>
+            target instanceof Element && Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) {
+                return;
+            }
+            if (!pointerInside && !spaceHeld) {
+                return;
+            }
+            // Not a page scroll, and not a click on whatever button has focus.
+            event.preventDefault();
+            if (!spaceHeld) {
+                spaceHeld = true;
+                setCursor(panning ? "grabbing" : "grab");
+            }
+        };
+        const onKeyUp = (event: KeyboardEvent) => {
+            if (event.code !== "Space" || !spaceHeld) {
+                return;
+            }
+            event.preventDefault();
+            spaceHeld = false;
+            if (!panning) {
+                setCursor(null);
+            }
+        };
+        const onPointerDown = (event: PointerEvent) => {
+            if (!spaceHeld || event.button !== 0) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            panning = true;
+            setCursor("grabbing");
+            panStateRef.current.active = true;
+            panStateRef.current.startX = event.clientX;
+            panStateRef.current.startY = event.clientY;
+            const current = stateService.getViewportTransform();
+            panStateRef.current.startOffsetX = current.offsetX;
+            panStateRef.current.startOffsetY = current.offsetY;
+            // Released outside the window, the pan still ends.
+            try {
+                surfaceElement.setPointerCapture(event.pointerId);
+            } catch {
+                // An element that can no longer capture: the window-level pointerup still ends it.
+            }
+        };
+        const onPointerUp = () => {
+            if (!panning) {
+                return;
+            }
+            panning = false;
+            setCursor(spaceHeld ? "grab" : null);
+        };
+        const onEnter = () => {
+            pointerInside = true;
+        };
+        const onLeave = () => {
+            pointerInside = false;
+        };
+        const onBlur = () => {
+            spaceHeld = false;
+            if (!panning) {
+                setCursor(null);
+            }
+        };
+
+        surfaceElement.addEventListener("pointerdown", onPointerDown, true);
+        surfaceElement.addEventListener("pointerenter", onEnter);
+        surfaceElement.addEventListener("pointerleave", onLeave);
+        view.addEventListener("keydown", onKeyDown, true);
+        view.addEventListener("keyup", onKeyUp, true);
+        view.addEventListener("pointerup", onPointerUp, true);
+        view.addEventListener("pointercancel", onPointerUp, true);
+        view.addEventListener("blur", onBlur);
+        return () => {
+            surfaceElement.removeEventListener("pointerdown", onPointerDown, true);
+            surfaceElement.removeEventListener("pointerenter", onEnter);
+            surfaceElement.removeEventListener("pointerleave", onLeave);
+            view.removeEventListener("keydown", onKeyDown, true);
+            view.removeEventListener("keyup", onKeyUp, true);
+            view.removeEventListener("pointerup", onPointerUp, true);
+            view.removeEventListener("pointercancel", onPointerUp, true);
+            view.removeEventListener("blur", onBlur);
+            setCursor(null);
+        };
+    }, [panStateRef, stateService, surfaceElement]);
 
     useEffect(() => {
         if (!surfaceElement) {
@@ -510,14 +636,18 @@ export function useSurfaceInteractionEvents({
             const pageDeltaY = resolveSurfaceWheelPageDelta(rect.height || surfaceElement.clientHeight);
             const normalizedDeltaX = normalizeSurfaceWheelDelta(event.deltaX, event.deltaMode, pageDeltaX);
             const normalizedDeltaY = normalizeSurfaceWheelDelta(event.deltaY, event.deltaMode, pageDeltaY);
-            const isZoomInteraction = event.ctrlKey || (tool.kind === "pan" && normalizedDeltaY !== 0);
+            // A trackpad pinch arrives as a wheel with Ctrl set by the browser. Cmd+wheel is how a
+            // Mac mouse zooms (every design tool does it); before, it fell through to a pan.
+            const isPinch = event.ctrlKey && !event.metaKey;
+            const isZoomInteraction =
+                event.ctrlKey || event.metaKey || (tool.kind === "pan" && normalizedDeltaY !== 0);
 
             if (isZoomInteraction) {
                 const pointerX = event.clientX - rect.left;
                 const pointerY = event.clientY - rect.top;
                 const currentScale = Math.max(0.0001, viewport.scale);
-                const zoomSpeed = event.ctrlKey ? PINCH_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
-                const zoomDeltaLimit = event.ctrlKey
+                const zoomSpeed = isPinch ? PINCH_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
+                const zoomDeltaLimit = isPinch
                     ? SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX
                     : SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX;
                 const zoomDeltaY = clampSurfaceWheelDelta(normalizedDeltaY, zoomDeltaLimit);

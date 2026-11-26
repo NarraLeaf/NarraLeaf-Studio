@@ -255,6 +255,7 @@ export const uiEditor = {
         insert: "插入",
         insertChild: "插入子元素",
         selectAll: "全选",
+        selectLayer: "选择图层",
         expandAll: "全部展开",
         collapseAll: "全部折叠",
         rename: "重命名…",

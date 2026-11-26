@@ -279,6 +279,7 @@ export const uiEditor = {
         insert: "Insert",
         insertChild: "Insert child",
         selectAll: "Select all",
+        selectLayer: "Select layer",
         expandAll: "Expand all",
         collapseAll: "Collapse all",
         rename: "Rename…",

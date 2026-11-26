@@ -49,6 +49,23 @@ export type BuildCanvasContextMenuInput = {
     insertBlockedReason: string | null;
     /** Set as Root Element or Wrap in Container, in a component's own editor (`resolveComponentRootSwapMenuEntry`). */
     rootSwap?: ComponentRootSwapMenuEntry | null;
+    /**
+     * Every layer under the pointer, front-most first (`collectLayersAtPoint`), for Select Layer:
+     * the one way to reach an element something bigger is drawn over without moving that out of
+     * the way. Omitted or a single entry, the row is left out.
+     */
+    layersAtPoint?: readonly CanvasLayerAtPoint[];
+    /** Selects one of `layersAtPoint`. */
+    selectLayer?: (elementId: string) => void;
+};
+
+/** A layer under the right-click, as Select Layer lists it. */
+export type CanvasLayerAtPoint = {
+    elementId: string;
+    label: string;
+    /** How far below the page's root it sits, for indenting the row. */
+    depth: number;
+    selected: boolean;
 };
 
 export type BuildOutlineContextMenuInput = {

@@ -257,6 +257,7 @@ export const uiEditor = {
         insert: "挿入",
         insertChild: "子として挿入",
         selectAll: "すべて選択",
+        selectLayer: "レイヤーを選択",
         expandAll: "すべて展開",
         collapseAll: "すべて折りたたむ",
         rename: "名前を変更…",

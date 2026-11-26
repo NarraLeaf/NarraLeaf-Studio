@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPlainSelectionPress, pressLandsOnClippedSelection } from "./clippedSelectionDrag";
+import { isPlainSelectionPress, pressLandsInSelectionFrame } from "./clippedSelectionDrag";
 
 type Box = { left: number; top: number; width: number; height: number };
 
@@ -21,16 +21,16 @@ function fakeElement(box: Box, children: Element[] = []): Element {
 const viewport = fakeElement({ left: 0, top: 0, width: 2000, height: 2000 });
 const clippingContainer = fakeElement({ left: 100, top: 100, width: 400, height: 300 });
 
-describe("pressLandsOnClippedSelection", () => {
+describe("pressLandsInSelectionFrame", () => {
     it("takes a press inside the frame of an element that is not drawn there", () => {
         // Dragged below its clipping container: nothing at the point but the canvas behind it.
         const title = fakeElement({ left: 120, top: 600, width: 200, height: 40 });
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 200, y: 620 },
                 targets: [title],
                 insideFrame: true,
-                elementsAtPoint: [viewport],
+                pressTarget: viewport,
             }),
         ).toBe(true);
     });
@@ -40,39 +40,39 @@ describe("pressLandsOnClippedSelection", () => {
         const title = fakeElement({ left: 120, top: 120, width: 200, height: 40 }, [label]);
         for (const hit of [title, label]) {
             expect(
-                pressLandsOnClippedSelection({
+                pressLandsInSelectionFrame({
                     point: { x: 200, y: 140 },
                     targets: [title],
                     insideFrame: true,
-                    elementsAtPoint: [hit, clippingContainer, viewport],
+                    pressTarget: hit,
                 }),
             ).toBe(false);
         }
     });
 
-    it("keeps a press on something drawn over the element a press on that thing", () => {
-        // Covered rather than clipped: the element is still listed under the point.
+    it("takes a press on something drawn over the element", () => {
+        // Covered rather than clipped: a bigger sibling sits on top, the element is selected from the outline.
         const title = fakeElement({ left: 120, top: 120, width: 200, height: 40 });
         const button = fakeElement({ left: 150, top: 110, width: 100, height: 60 });
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 200, y: 140 },
                 targets: [title],
                 insideFrame: true,
-                elementsAtPoint: [button, title, clippingContainer, viewport],
+                pressTarget: button,
             }),
-        ).toBe(false);
+        ).toBe(true);
     });
 
     it("takes nothing outside the selection's frame", () => {
         // A rotated element's bounding box reaches past its frame at the corners.
         const rotated = fakeElement({ left: 120, top: 600, width: 200, height: 200 });
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 125, y: 605 },
                 targets: [rotated],
                 insideFrame: false,
-                elementsAtPoint: [viewport],
+                pressTarget: viewport,
             }),
         ).toBe(false);
     });
@@ -82,30 +82,30 @@ describe("pressLandsOnClippedSelection", () => {
         const right = fakeElement({ left: 400, top: 600, width: 100, height: 40 });
         // Inside the frame drawn around both, inside neither of them.
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 300, y: 620 },
                 targets: [left, right],
                 insideFrame: true,
-                elementsAtPoint: [viewport],
+                pressTarget: viewport,
             }),
         ).toBe(false);
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 450, y: 620 },
                 targets: [left, right],
                 insideFrame: true,
-                elementsAtPoint: [viewport],
+                pressTarget: viewport,
             }),
         ).toBe(true);
     });
 
     it("takes nothing when nothing is selected", () => {
         expect(
-            pressLandsOnClippedSelection({
+            pressLandsInSelectionFrame({
                 point: { x: 1, y: 1 },
                 targets: [],
                 insideFrame: true,
-                elementsAtPoint: [viewport],
+                pressTarget: viewport,
             }),
         ).toBe(false);
     });

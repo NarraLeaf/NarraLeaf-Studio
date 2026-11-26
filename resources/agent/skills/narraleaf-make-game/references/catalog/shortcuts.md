@@ -111,15 +111,19 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 上移 10 像素 · Move up 10 px：`⇧↑`（macOS）/ `Shift+↑`（Windows）
 - 下移 10 像素 · Move down 10 px：`⇧↓`（macOS）/ `Shift+↓`（Windows）
 - 吸附到网格 · Snap to grid：`R`
-- 平移画布 · Pan the Canvas：中键拖动 · Middle-drag；滚动滚轮 · Scroll；Shift+滚动滚轮 · Shift+Scroll（不可改 · fixed）
+- 平移画布 · Pan the Canvas：空格键+拖动 · Space+Drag；中键拖动 · Middle-drag；滚动滚轮 · Scroll；Shift+滚动滚轮 · Shift+Scroll（不可改 · fixed）
 - 以指针为中心缩放 · Zoom at the Pointer：Ctrl+滚动滚轮 · Ctrl+Scroll（不可改 · fixed）
-- 加入或移出选择 · Add to or Remove from Selection：Ctrl+单击元素 · Ctrl+Click an element（不可改 · fixed）
-- 加入选择 · Add to Selection：Shift+单击元素 · Shift+Click an element（不可改 · fixed）
+- 加入或移出选择 · Add to or Remove from Selection：Shift+单击元素 · Shift+Click an element（不可改 · fixed）
+- 选中最深层元素 · Select the Deepest Element：Ctrl+单击元素 · Ctrl+Click an element（不可改 · fixed）
+- 选择指针下的图层 · Select a Layer Under the Pointer：右键单击画布 · Right-click the canvas（不可改 · fixed）
 - 选择容器内的元素 · Select Inside a Container：双击容器 · Double-click a container（不可改 · fixed）
 - 直接编辑文字 · Edit Text in Place：双击文本或按钮 · Double-click text or a button（不可改 · fixed）
 - 放弃正在编辑的文字 · Discard the Text Being Edited：Esc（不可改 · fixed）
 - 裁剪图片 · Crop an Image：双击图片 · Double-click an image（不可改 · fixed）
-- 暂停智能吸附 · Suspend Smart Snap：Alt+拖动 · Alt+Drag（不可改 · fixed）
+- 暂停智能吸附 · Suspend Smart Snap：Ctrl+拖动 · Ctrl+Drag（不可改 · fixed）
+- 拖出副本 · Drag a Copy：Alt+拖动 · Alt+Drag（不可改 · fixed）
+- 沿单轴移动 · Move Along One Axis：Shift+拖动 · Shift+Drag（不可改 · fixed）
+- 等比缩放 · Resize Keeping Proportions：Shift+拖动控制点 · Shift+Drag a handle（不可改 · fixed）
 - 添加图片元素 · Add an Image Element：把图片资产拖到画布上 · Drag an image asset onto the canvas（不可改 · fixed）
 - 调整顺序或移入其他元素 · Reorder or Move Into Another Element：拖动大纲中的元素 · Drag an outline item（不可改 · fixed）
 

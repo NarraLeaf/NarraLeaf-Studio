@@ -1,5 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
+import { collectLayersAtPoint } from "@/lib/ui-editor/interaction/layersAtPoint";
+import { resolvePlainPressTarget } from "@/lib/ui-editor/interaction/containerDrillSelection";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
 import { describeSurfaceInsertRefusal } from "@/lib/ui-editor/context-menu/insertRefusal";
@@ -52,6 +56,33 @@ const FREEZE_READ_ONLY_CANVAS_MENU_IDS: ReadonlySet<string> = new Set([
     ...DEVELOPER_MENU_ROW_IDS,
 ]);
 
+/**
+ * The element a right-click is about: what a left click at the same spot would select
+ * (`resolvePlainPressTarget`), kept as the whole selection when the press is anywhere inside a
+ * selected element - a multiple selection included - and the deepest element hit with Cmd/Ctrl.
+ */
+export function resolveContextMenuTarget(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    hitElementId: string,
+    deep: boolean,
+): string {
+    if (deep) {
+        return hitElementId;
+    }
+    if (selection) {
+        let cur: string | null = hitElementId;
+        for (let guard = 0; cur && guard < 256; guard++) {
+            if (selection.elementIds.includes(cur)) {
+                return cur;
+            }
+            cur = document.elements[cur]?.parentId ?? null;
+        }
+    }
+    return resolvePlainPressTarget(document, surfaceId, selection, hitElementId);
+}
+
 export function useSurfaceCanvasContextMenu(params: {
     surface: UISurface | null | undefined;
     documentService: EditorDocumentService;
@@ -83,6 +114,8 @@ export function useSurfaceCanvasContextMenu(params: {
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
     const lastContextHitElementId = useRef<string | null>(null);
+    /** The deepest element under the right-click: what Paste aims at, the container under the pointer. */
+    const lastContextRawHitElementId = useRef<string | null>(null);
 
     const handleCanvasContextMenu = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
@@ -100,12 +133,23 @@ export function useSurfaceCanvasContextMenu(params: {
             lastContextPoint.current = { x: event.clientX, y: event.clientY };
             const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
             const hitElementId = hit?.dataset.uiElementId ?? null;
-            const hitElement = hitElementId ? documentService.getDocument().elements[hitElementId] : null;
-            // A component's frame is hit like any element: its menu offers what the frame allows and
-            // greys out what it refuses (see `isComponentEditorRootElement`).
-            lastContextHitElementId.current = hitElement ? hitElementId : null;
-
+            const hitDocument = documentService.getDocument();
+            const hitElement = hitElementId ? hitDocument.elements[hitElementId] : null;
             const curSel = stateService.getSelection();
+            const curUi = curSel.type === "element" && curSel.data.editor === "ui" && curSel.data.surfaceId === surface.id
+                ? curSel.data
+                : null;
+            // A component's frame is hit like any element: its menu offers what the frame allows and
+            // greys out what it refuses (see `isComponentEditorRootElement`). The menu acts on what a
+            // left click there would have selected - the outermost frame, or the selected container
+            // the press is inside - not on the deepest thing under the pointer, so Delete in the menu
+            // deletes what the author sees selected. Cmd/Ctrl reaches the deepest, as a click does.
+            lastContextRawHitElementId.current = hitElement ? hitElementId : null;
+            lastContextHitElementId.current =
+                hitElement && hitElementId
+                    ? resolveContextMenuTarget(hitDocument, surface.id, curUi, hitElementId, event.metaKey || event.ctrlKey)
+                    : null;
+
             if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
                 const nextSel = resolveCanvasContextSelection(surface.id, lastContextHitElementId.current, curSel);
                 if (nextSel) {
@@ -119,6 +163,12 @@ export function useSurfaceCanvasContextMenu(params: {
                 stateService.getSelection(),
             );
             const doc = documentService.getDocument();
+            const layersAtPoint = collectLayersAtPoint({
+                canvas: event.currentTarget,
+                document: doc,
+                point: { x: event.clientX, y: event.clientY },
+                selectedIds: menuSel?.elementIds ?? [],
+            });
             const canGroup = canGroupSelection(doc, surface.id, menuSel);
             const canUngroup = getContainersToUngroup(doc, surface.id, menuSel).length > 0;
 
@@ -134,6 +184,15 @@ export function useSurfaceCanvasContextMenu(params: {
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 insertBlockedReason: describeSurfaceInsertRefusal(doc, surface.id),
                 rootSwap: resolveComponentRootSwapMenuEntry({ document: doc, surfaceId: surface.id, menuSelection: menuSel, documentService, stateService }),
+                layersAtPoint,
+                selectLayer: elementId => {
+                    stateService.setUIElementSelection({
+                        editor: "ui",
+                        surfaceId: surface.id,
+                        elementIds: [elementId],
+                        primaryId: elementId,
+                    });
+                },
                 actions: {
                     hideMenu,
                     insertType: type => {
@@ -150,7 +209,7 @@ export function useSurfaceCanvasContextMenu(params: {
                                 ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
                                 : null;
                         void uiEditorPaste(documentService, localBlueprint, stateService, surface.id, {
-                            hitElementId: lastContextHitElementId.current,
+                            hitElementId: lastContextRawHitElementId.current,
                             primaryElementId: primary,
                         });
                     },
@@ -243,7 +302,13 @@ export function useSurfaceCanvasContextMenu(params: {
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             );
             setMenuItems(
-                freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS, freeze.reason),
+                freezeContextMenuRows(
+                    withDeveloperRows,
+                    freeze.frozen,
+                    // Selecting is not editing: a frozen canvas still selects what it shows.
+                    new Set([...FREEZE_READ_ONLY_CANVAS_MENU_IDS, ...layersAtPoint.map(layer => `select-layer-${layer.elementId}`)]),
+                    freeze.reason,
+                ),
             );
             showMenu(event);
         },

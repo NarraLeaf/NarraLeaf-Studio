@@ -1099,11 +1099,11 @@ The UI editor builds the game's own screens: the main menu, save and load, the d
 
 相关快捷键 · Shortcuts：
 
-- 平移画布 · Pan the Canvas：中键拖动 · Middle-drag；滚动滚轮 · Scroll；Shift+滚动滚轮 · Shift+Scroll
+- 平移画布 · Pan the Canvas：空格键+拖动 · Space+Drag；中键拖动 · Middle-drag；滚动滚轮 · Scroll；Shift+滚动滚轮 · Shift+Scroll
 - 以指针为中心缩放 · Zoom at the Pointer：Ctrl+滚动滚轮 · Ctrl+Scroll
 - 选择容器内的元素 · Select Inside a Container：双击容器 · Double-click a container
 - 直接编辑文字 · Edit Text in Place：双击文本或按钮 · Double-click text or a button
-- 暂停智能吸附 · Suspend Smart Snap：Alt+拖动 · Alt+Drag
+- 暂停智能吸附 · Suspend Smart Snap：Ctrl+拖动 · Ctrl+Drag
 - 吸附到网格 · Snap to grid：`R`
 
 相关主题 · Related：可复用的部件 · Reusable parts、蓝图 · Blueprints、输入意图 · Input actions、焦点导航 · Focus navigation

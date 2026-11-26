@@ -196,4 +196,51 @@ describe("UI editor context menus", () => {
         expect(items.some(item => !("separator" in item) && item.id.includes("-id"))).toBe(false);
         expect(enabled(findItem(items, "copy"))).toBe(true);
     });
+
+    it("lists every layer under the pointer under Select Layer, and selects the one picked", () => {
+        const doc = createDocument();
+        const selectLayer = vi.fn();
+        const hideMenu = vi.fn();
+        const items = buildCanvasContextMenu({
+            document: doc,
+            surfaceId: "surface",
+            menuSelection: null,
+            hasClipboard: false,
+            widgetModules: [],
+            documentService: {} as any,
+            actions: { ...noopActions(), hideMenu },
+            canGroup: false,
+            canUngroup: false,
+            insertBlockedReason: null,
+            layersAtPoint: [
+                { elementId: "cover", label: "Cover", depth: 1, selected: false },
+                { elementId: "child", label: "Child", depth: 2, selected: true },
+            ],
+            selectLayer,
+        });
+        const row = findItem(items, "select-layer");
+        expect(row.submenu?.map(item => item.label)).toEqual(["Cover", "\u2003\u2713 Child"]);
+        row.submenu?.[1].onClick?.();
+        expect(hideMenu).toHaveBeenCalled();
+        expect(selectLayer).toHaveBeenCalledWith("child");
+    });
+
+    it("leaves Select Layer out when there is only one layer to choose", () => {
+        const doc = createDocument();
+        const items = buildCanvasContextMenu({
+            document: doc,
+            surfaceId: "surface",
+            menuSelection: null,
+            hasClipboard: false,
+            widgetModules: [],
+            documentService: {} as any,
+            actions: noopActions(),
+            canGroup: false,
+            canUngroup: false,
+            insertBlockedReason: null,
+            layersAtPoint: [{ elementId: "child", label: "Child", depth: 1, selected: false }],
+            selectLayer: vi.fn(),
+        });
+        expect(items.some(item => !("separator" in item) && item.id === "select-layer")).toBe(false);
+    });
 });

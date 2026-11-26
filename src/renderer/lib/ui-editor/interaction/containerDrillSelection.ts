@@ -102,6 +102,84 @@ export function shouldPromoteToSurfaceRootChild(
 }
 
 /**
+ * What a Shift press adds to (or takes from) the selection: the element on the press's ancestor chain
+ * that sits beside the selection's primary element - a sibling of it, or the element itself.
+ *
+ * A plain press picks the outermost frame and a press inside the selected container drills one level,
+ * so the selection is always at one level of the tree; Shift keeps adding at that same level. Adding
+ * the deepest hit instead turned "panel selected, Shift-click a button inside it" into a parent and its
+ * own child, and the child then silently dropped out of every move. A press nowhere near that level -
+ * another frame altogether - adds that frame, as a plain press there would have picked it.
+ * Cmd/Ctrl is what reaches past the level (`deep`).
+ */
+export function resolveSelectionLevelHit(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection,
+    hitElementId: string,
+): string {
+    const anchorId = selection.primaryId ?? selection.elementIds[selection.elementIds.length - 1];
+    const anchorParentId = anchorId ? document.elements[anchorId]?.parentId ?? null : null;
+    if (anchorParentId) {
+        let cur: string | null = hitElementId;
+        for (let guard = 0; cur && guard < 256; guard++) {
+            const element: UIDocument["elements"][string] | undefined = document.elements[cur];
+            if (!element) {
+                break;
+            }
+            if (element.parentId === anchorParentId) {
+                return cur;
+            }
+            cur = element.parentId ?? null;
+        }
+    }
+    return promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, hitElementId);
+}
+
+/**
+ * The parent whose children a marquee picks from: the level the selection is at, or the page's root
+ * when nothing on this surface is selected. Picking every element the rectangle touches, at every
+ * depth, put a container and all of its own children into one selection.
+ */
+export function resolveMarqueeLevelParent(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null | undefined,
+): string | null {
+    const rootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (isEmptyOrAbsentUiSelection(selection, surfaceId)) {
+        return rootId;
+    }
+    const anchorId = selection!.primaryId ?? selection!.elementIds[selection!.elementIds.length - 1];
+    return (anchorId ? document.elements[anchorId]?.parentId : null) ?? rootId;
+}
+
+/**
+ * The elements a marquee selects out of everything it touched (`hitIds`, any depth): those at
+ * `levelParentId`. When none of them is at that level - the rectangle was drawn somewhere else on the
+ * page entirely - it falls back to the outermost frames it touched, as a press there would.
+ */
+export function filterMarqueeHitsToLevel(
+    document: UIDocument,
+    surfaceId: string,
+    levelParentId: string | null,
+    hitIds: readonly string[],
+): string[] {
+    const atLevel = hitIds.filter(id => document.elements[id]?.parentId === levelParentId);
+    if (atLevel.length > 0) {
+        return atLevel;
+    }
+    const promoted: string[] = [];
+    for (const id of hitIds) {
+        const frame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, id);
+        if (!promoted.includes(frame)) {
+            promoted.push(frame);
+        }
+    }
+    return promoted;
+}
+
+/**
  * True when `hitElementId` is a strict descendant of the single selected drillable structural widget.
  * Used to require double-click / selecto double to drill into children instead of a single pointer pick.
  */
@@ -152,4 +230,27 @@ export function resolveUiContainerDrillTarget(
         currentId = element.parentId;
     }
     return null;
+}
+
+/**
+ * What a plain press on `hitElementId` selects, without pressing: the same rule
+ * `useSurfaceInteractionEvents` applies on pointerdown, for whatever has to agree with it - the hover
+ * frame that shows what a click would pick, and the right-click that selects before its menu opens.
+ *
+ * - Inside the selected container, a single press keeps the container (drilling takes a double one).
+ * - Under another top-level frame than the selection, or with nothing selected, the frame.
+ * - Otherwise the element hit.
+ */
+export function resolvePlainPressTarget(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    hitElementId: string,
+): string {
+    if (selection && isUiContainerDrillLockHit(document, surfaceId, selection, hitElementId)) {
+        return selection.elementIds[0];
+    }
+    return shouldPromoteToSurfaceRootChild(document, selection, surfaceId, hitElementId)
+        ? promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, hitElementId)
+        : hitElementId;
 }

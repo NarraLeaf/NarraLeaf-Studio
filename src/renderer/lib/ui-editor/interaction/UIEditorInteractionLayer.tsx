@@ -7,7 +7,7 @@ import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
 import { useHoverFollowsCanvas } from "./useHoverFollowsCanvas";
-import { isPlainSelectionPress, pressLandsOnClippedSelection } from "./clippedSelectionDrag";
+import { isPlainSelectionPress, pressLandsInSelectionFrame } from "./clippedSelectionDrag";
 import { useTranslation } from "@/lib/i18n";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -23,13 +23,7 @@ import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
-import {
-    hasSuppressNextCanvasWidgetDoubleClick,
-    markSuppressNextCanvasWidgetDoubleClick,
-    promoteHitToDirectChildOfSurfaceRoot,
-    resolveUiContainerDrillTarget,
-    shouldPromoteToSurfaceRootChild,
-} from "./containerDrillSelection";
+import { filterMarqueeHitsToLevel, resolveMarqueeLevelParent, resolvePlainPressTarget } from "./containerDrillSelection";
 import {
     getSingleSelectedElementId,
     isMoveableInteractionTarget,
@@ -41,6 +35,8 @@ import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
 import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { filterSelectionToTopLevelMovers, selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { uiEditorDuplicateSelectionAt } from "@/lib/ui-editor/commands/uiEditorCommands";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import {
     isSurfaceGestureEnabled,
@@ -102,6 +98,8 @@ type Props = {
      * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
      */
     readOnly?: UIEditorReadOnly;
+    /** Widgets' private blueprints, copied along with an Alt-drag's copies. Without it Alt-drag only moves. */
+    localBlueprint?: LocalBlueprintService | null;
 };
 export function UIEditorInteractionLayer({
     surfaceId,
@@ -114,6 +112,7 @@ export function UIEditorInteractionLayer({
     openSurfaceEditor,
     openComponentEditor,
     readOnly = UI_EDITOR_WRITABLE,
+    localBlueprint = null,
 }: Props) {
     const { t } = useTranslation();
     const [selection, setSelection] = useState(stateService.getSelection());
@@ -122,6 +121,8 @@ export function UIEditorInteractionLayer({
     const documentRevision = useUIDocumentRevision(documentService);
     type MoveableInstance = React.ElementRef<typeof Moveable>;
     const moveableRef = useRef<MoveableInstance | null>(null);
+    type SelectoInstance = React.ElementRef<typeof Selecto>;
+    const selectoRef = useRef<SelectoInstance | null>(null);
 
     // Insert mode drag-to-create state
     const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
@@ -129,7 +130,8 @@ export function UIEditorInteractionLayer({
     const insertState = useRef<InsertToolDragState | null>(null);
 
     const [snapGuides, setSnapGuidesState] = useState<ActiveSnapGuides | null>(() => stateService.getSnapGuides());
-    const altKeyRef = useRef(false);
+    /** Cmd (macOS) or Ctrl held: snapping is off for as long as it is, mid-gesture included. */
+    const snapSuspendKeyRef = useRef(false);
 
     const scheduleMoveableRectUpdate = useCallback(() => {
         // Keep the overlay controller aligned after DOM/layout updates.
@@ -232,33 +234,6 @@ export function UIEditorInteractionLayer({
         return stateService.on("snapGuidesChanged", setSnapGuidesState);
     }, [stateService]);
 
-    useEffect(() => {
-        const isAltKey = (e: KeyboardEvent) => e.key === "Alt" || e.code === "AltLeft" || e.code === "AltRight";
-
-        const down = (e: KeyboardEvent) => {
-            if (isAltKey(e)) {
-                altKeyRef.current = true;
-            }
-        };
-        const up = (e: KeyboardEvent) => {
-            if (isAltKey(e)) {
-                altKeyRef.current = false;
-            }
-        };
-        const resetAlt = () => {
-            altKeyRef.current = false;
-        };
-        window.addEventListener("keydown", down);
-        window.addEventListener("keyup", up);
-        window.addEventListener("blur", resetAlt);
-        document.addEventListener("visibilitychange", resetAlt);
-        return () => {
-            window.removeEventListener("keydown", down);
-            window.removeEventListener("keyup", up);
-            window.removeEventListener("blur", resetAlt);
-            document.removeEventListener("visibilitychange", resetAlt);
-        };
-    }, []);
 
     // containerRef.current is often null on the first render (sibling viewport not committed yet).
     // Reading it only during render leaves Selecto's dragContainer stuck on the pointer-events-none
@@ -268,6 +243,33 @@ export function UIEditorInteractionLayer({
     useLayoutEffect(() => {
         setSurfaceElement(containerRef.current);
     }, [containerRef]);
+
+    useEffect(() => {
+        // The window the canvas is actually in: a detached editor window is a second document this
+        // realm's bare `window` never hears keys from.
+        const view = surfaceElement?.ownerDocument.defaultView;
+        if (!view) {
+            return undefined;
+        }
+        // The state after the key event, whichever key it was: a missed keyup (Cmd-Tab away, a
+        // menu) is corrected by the next key, and blur below clears it outright.
+        const track = (e: KeyboardEvent) => {
+            snapSuspendKeyRef.current = e.metaKey || e.ctrlKey;
+        };
+        const reset = () => {
+            snapSuspendKeyRef.current = false;
+        };
+        view.addEventListener("keydown", track);
+        view.addEventListener("keyup", track);
+        view.addEventListener("blur", reset);
+        view.document.addEventListener("visibilitychange", reset);
+        return () => {
+            view.removeEventListener("keydown", track);
+            view.removeEventListener("keyup", track);
+            view.removeEventListener("blur", reset);
+            view.document.removeEventListener("visibilitychange", reset);
+        };
+    }, [surfaceElement]);
 
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
 
@@ -344,6 +346,13 @@ export function UIEditorInteractionLayer({
         // Defer: Moveable reads `targets` after this commit; avoid flushSync inside useLayoutEffect (React warning).
         scheduleMoveableRectUpdate();
     }, [selection, surfaceElement, surfaceId, documentRevision, scheduleMoveableRectUpdate]);
+
+    // Selecto keeps its own list of what is selected, and a Shift marquee adds to that list. The
+    // selection also changes from the outline, the keyboard and every click (which the canvas's
+    // pointerdown applies, not Selecto), so the list is handed the real one each time it changes.
+    useEffect(() => {
+        selectoRef.current?.setSelectedTargets(selectedTargets);
+    }, [selectedTargets]);
 
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
     const selectionIds = selectionData?.elementIds ?? [];
@@ -498,16 +507,19 @@ export function UIEditorInteractionLayer({
                     });
                 }
                 const elementId = target.dataset.uiElementId ?? "";
+                // The outline is drawn inside the zoomed canvas, so a fixed 1px became a quarter of a
+                // pixel at 25% and four at 400%. One screen pixel, whatever the zoom.
+                const width = `${1 / Math.max(0.0001, viewport.scale)}px`;
                 target.style.outline = elementId === primaryId
-                    ? `1px solid ${PRIMARY_OUTLINE_STRONG}`
-                    : `1px dashed ${PRIMARY_OUTLINE_WEAK}`;
+                    ? `${width} solid ${PRIMARY_OUTLINE_STRONG}`
+                    : `${width} dashed ${PRIMARY_OUTLINE_WEAK}`;
                 target.style.outlineOffset = "0px";
             });
             previousSelectedTargets.current = selectedTargets;
         } else {
             previousSelectedTargets.current = [];
         }
-    }, [selectedTargets, primaryId, showOutlines]);
+    }, [selectedTargets, primaryId, showOutlines, viewport.scale]);
 
     const updateFloatingToolbarPosition = useCallback(() => {
         if (!hasFloatingToolbar || selectedTargets.length !== 1 || !surfaceElement) {
@@ -579,6 +591,95 @@ export function UIEditorInteractionLayer({
         showOutlines,
     ]);
 
+    // What a click would select, framed while the pointer rests on it - the outermost frame, the
+    // selected container, or with Cmd/Ctrl the deepest element - so the author sees which layer
+    // they are about to pick before picking it. Not drawn on what is already selected, nor while a
+    // gesture is under way.
+    const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
+    const [hoverRect, setHoverRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+    useEffect(() => {
+        if (!surfaceElement || tool.kind !== "select" || !selectionEnabled || isInlineTextEditing) {
+            setHoverTargetId(null);
+            return undefined;
+        }
+        const view = surfaceElement.ownerDocument.defaultView;
+        let last: { target: EventTarget | null; deep: boolean } | null = null;
+        let frame = 0;
+        const resolve = () => {
+            frame = 0;
+            if (!last) {
+                setHoverTargetId(null);
+                return;
+            }
+            const node = (last.target as Element | null)?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+            const hitId = node && surfaceElement.contains(node) ? node.dataset.uiElementId : undefined;
+            const doc = documentService.getDocument();
+            if (!hitId || !doc.elements[hitId]) {
+                setHoverTargetId(null);
+                return;
+            }
+            const live = stateService.getSelection();
+            const liveData = isUIElementSelection(live) && live.data.surfaceId === surfaceId ? live.data : null;
+            const id = last.deep ? hitId : resolvePlainPressTarget(doc, surfaceId, liveData, hitId);
+            setHoverTargetId(liveData?.elementIds.includes(id) ? null : id);
+        };
+        const schedule = () => {
+            if (!frame) {
+                frame = requestAnimationFrame(resolve);
+            }
+        };
+        const onMove = (event: PointerEvent) => {
+            if (event.buttons !== 0 || event.pointerType === "touch") {
+                last = null;
+            } else {
+                last = { target: event.target, deep: event.metaKey || event.ctrlKey };
+            }
+            schedule();
+        };
+        const onLeave = () => {
+            last = null;
+            schedule();
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (last && (event.key === "Meta" || event.key === "Control")) {
+                last = { ...last, deep: event.metaKey || event.ctrlKey };
+                schedule();
+            }
+        };
+        surfaceElement.addEventListener("pointermove", onMove);
+        surfaceElement.addEventListener("pointerdown", onLeave);
+        surfaceElement.addEventListener("pointerleave", onLeave);
+        view?.addEventListener("keydown", onKey);
+        view?.addEventListener("keyup", onKey);
+        const unsubscribe = stateService.on("selectionChanged", schedule);
+        return () => {
+            if (frame) {
+                cancelAnimationFrame(frame);
+            }
+            surfaceElement.removeEventListener("pointermove", onMove);
+            surfaceElement.removeEventListener("pointerdown", onLeave);
+            surfaceElement.removeEventListener("pointerleave", onLeave);
+            view?.removeEventListener("keydown", onKey);
+            view?.removeEventListener("keyup", onKey);
+            unsubscribe();
+        };
+    }, [documentService, isInlineTextEditing, selectionEnabled, stateService, surfaceElement, surfaceId, tool.kind]);
+
+    useLayoutEffect(() => {
+        if (!hoverTargetId || !surfaceElement) {
+            setHoverRect(null);
+            return;
+        }
+        const node = surfaceElement.querySelector(`[data-ui-element-id="${hoverTargetId}"]`);
+        if (!isHTMLElement(node)) {
+            setHoverRect(null);
+            return;
+        }
+        const box = node.getBoundingClientRect();
+        const origin = surfaceElement.getBoundingClientRect();
+        setHoverRect({ left: box.left - origin.left, top: box.top - origin.top, width: box.width, height: box.height });
+    }, [hoverTargetId, surfaceElement, viewport.scale, viewport.offsetX, viewport.offsetY, documentRevision]);
+
     const handleSelectEnd = useCallback(
         (e: any) => {
             if (!surfaceElement) {
@@ -595,54 +696,30 @@ export function UIEditorInteractionLayer({
             }
 
             const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
-            const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
-            if (
-                !multiIntent &&
-                targetIds.length === 1 &&
-                input?.type === "mousedown" &&
-                e.isDouble &&
-                hasSuppressNextCanvasWidgetDoubleClick()
-            ) {
+            // A click (Selecto ends one on the press itself) was already applied by the canvas's
+            // pointerdown, which owns every click rule - outermost-frame pick, drill, Cmd/Ctrl deep
+            // select, Shift at the selection's level. Applying Selecto's own idea of it on top
+            // overwrote that with a list Selecto keeps for itself; only a marquee is Selecto's.
+            if (input?.type === "mousedown") {
                 return;
             }
+            const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
             const prev = stateService.getSelection();
-
-            let elementIds = targetIds;
-            let primaryId = targetIds[targetIds.length - 1];
-            let handledDrillSelection = false;
-
-            if (
-                !multiIntent &&
-                targetIds.length === 1 &&
-                isUIElementSelection(prev) &&
-                prev.data.surfaceId === surfaceId &&
-                prev.data.elementIds.length === 1
-            ) {
-                const hitId = targetIds[0];
-                const drillTargetId = resolveUiContainerDrillTarget(doc, surfaceId, prev.data, hitId);
-                // `useSurfaceInteractionEvents` pointerdown also updates selection; drill lock is applied there too.
-                // Selecto immediate click ends on mousedown (not mouseup); marquee ends on mouseup — only block mousedown.
-                const immediateClickEnd = input?.type === "mousedown";
-                if (immediateClickEnd && !e.isDouble && drillTargetId) {
-                    return;
-                }
-                if (e.isDouble && drillTargetId) {
-                    markSuppressNextCanvasWidgetDoubleClick();
-                    elementIds = [drillTargetId];
-                    primaryId = drillTargetId;
-                    handledDrillSelection = true;
-                }
+            const prevData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
+            const levelParentId = resolveMarqueeLevelParent(doc, surfaceId, prevData);
+            const kept = multiIntent && prevData ? targetIds.filter(id => prevData.elementIds.includes(id)) : [];
+            const picked = filterMarqueeHitsToLevel(
+                doc,
+                surfaceId,
+                levelParentId,
+                targetIds.filter(id => !kept.includes(id)),
+            );
+            const elementIds = [...kept, ...picked.filter(id => !kept.includes(id))];
+            if (elementIds.length === 0) {
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
+                return;
             }
-
-            if (!multiIntent && targetIds.length === 1 && !handledDrillSelection) {
-                const hitId = targetIds[0];
-                const selData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
-                if (shouldPromoteToSurfaceRootChild(doc, selData, surfaceId, hitId)) {
-                    const promoted = promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId);
-                    elementIds = [promoted];
-                    primaryId = promoted;
-                }
-            }
+            const primaryId = elementIds[elementIds.length - 1];
 
             stateService.setUIElementSelection({
                 editor: "ui",
@@ -687,8 +764,28 @@ export function UIEditorInteractionLayer({
     }, [surfaceElement, viewport]);
 
     const insertSnapEnabled = useCallback(() => stateService.getSmartSnapEnabled(), [stateService]);
-    const insertSnapSuspended = useCallback(() => altKeyRef.current, []);
-    const transformSnapSuspended = useCallback(() => altKeyRef.current, []);
+    const insertSnapSuspended = useCallback(() => snapSuspendKeyRef.current, []);
+    const transformSnapSuspended = useCallback(() => snapSuspendKeyRef.current, []);
+
+    // Alt-drag leaves the originals and drops copies (`useMoveableHandlers`). The selection is read
+    // live: it is the one being dragged, and the callback outlives the render that made it.
+    const duplicateOnDrop = useCallback(
+        (positions: Record<string, { x: number; y: number }>) => {
+            if (!localBlueprint || !isSurfaceGestureEnabled("transform", readOnly)) {
+                return false;
+            }
+            const live = stateService.getSelection();
+            return uiEditorDuplicateSelectionAt(
+                documentService,
+                localBlueprint,
+                stateService,
+                surfaceId,
+                isUIElementSelection(live) ? live.data : null,
+                positions,
+            );
+        },
+        [documentService, localBlueprint, readOnly, stateService, surfaceId],
+    );
 
     const transformController = useTransformController({
         documentService,
@@ -705,6 +802,8 @@ export function UIEditorInteractionLayer({
         surfaceDesignSize: surface.designSize,
         stateService,
         snapSuspended: transformSnapSuspended,
+        documentRevision,
+        duplicateOnDrop: localBlueprint ? duplicateOnDrop : undefined,
     });
     const imageCropController = useImageCropController({
         documentService,
@@ -725,25 +824,26 @@ export function UIEditorInteractionLayer({
         return candidates[0] ?? transformController;
     }, [imageCropController, transformController]);
 
-    // A press inside the selection's frame where a clipping container hides the element (see
-    // `pressLandsOnClippedSelection`). The canvas's pointerdown would select whatever the press hit
-    // and Selecto would start a marquee; Moveable takes it instead, and a press released without
-    // moving is still the click it would have been (`useSurfaceInteractionEvents`).
+    // A press inside the selection's frame that reaches something else - a clipping container hides
+    // the element there, or a sibling is drawn over it (see `pressLandsInSelectionFrame`). The
+    // canvas's pointerdown would select whatever the press hit and Selecto would start a marquee;
+    // Moveable takes it instead, and a press released without moving is still the click it would
+    // have been (`useSurfaceInteractionEvents`).
     const selectionDraggable =
         transformEnabled && activeController.id === "transform" && activeController.moveableProps.draggable === true;
     const activeTargets = activeController.targets;
-    const pressDragsClippedSelection = useCallback(
+    const pressDragsSelectionFrame = useCallback(
         (event: MouseEvent | PointerEvent) => {
             const moveable = moveableRef.current;
             if (!selectionDraggable || !moveable || !isPlainSelectionPress(event)) {
                 return false;
             }
             const point = { x: event.clientX, y: event.clientY };
-            return pressLandsOnClippedSelection({
+            return pressLandsInSelectionFrame({
                 point,
                 targets: activeTargets,
                 insideFrame: moveable.hitTest({ left: point.x, top: point.y, width: 1, height: 1 }) > 0,
-                elementsAtPoint: document.elementsFromPoint(point.x, point.y),
+                pressTarget: event.target instanceof Element ? event.target : null,
             });
         },
         [activeTargets, selectionDraggable],
@@ -767,7 +867,7 @@ export function UIEditorInteractionLayer({
         insertSnapEnabled,
         insertSnapSuspended,
         readOnly,
-        pressDragsClippedSelection,
+        pressDragsSelectionFrame,
     });
 
     const handleSelectionDragStart = useCallback(
@@ -784,12 +884,12 @@ export function UIEditorInteractionLayer({
                 return false;
             }
             // Here Moveable would not start on its own: the press hit what is behind the element.
-            if (input && pressDragsClippedSelection(input)) {
+            if (input && pressDragsSelectionFrame(input)) {
                 moveableRef.current?.dragStart(input);
                 return false;
             }
         },
-        [isMoveableControlTarget, isTargetInsideSelection, pressDragsClippedSelection, transformEnabled],
+        [isMoveableControlTarget, isTargetInsideSelection, pressDragsSelectionFrame, transformEnabled],
     );
 
     const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
@@ -865,7 +965,16 @@ export function UIEditorInteractionLayer({
                     {snapGuides && snapGuides.surfaceId === surfaceId ? (
                         <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
                     ) : null}
+                    {hoverRect ? (
+                        <div
+                            aria-hidden
+                            data-ui-editor-hover-frame=""
+                            className="pointer-events-none absolute border border-primary"
+                            style={hoverRect}
+                        />
+                    ) : null}
                     <Selecto
+                        ref={selectoRef}
                         className={SELECTO_CLASS_NAME}
                         container={surfaceElement}
                         rootContainer={surfaceElement}

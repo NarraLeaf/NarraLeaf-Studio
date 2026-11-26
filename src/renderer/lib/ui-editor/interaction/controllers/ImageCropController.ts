@@ -50,7 +50,8 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
         rotatable: false,
         keepRatio: false,
         origin: false,
-        zoom: config.viewportScale,
+        // Screen-pixel handles, as in `TransformController`: Moveable is not inside the zoomed canvas.
+        zoom: 1,
         throttleDrag: 0,
         throttleResize: 0,
         onDragStart: handlers.handleDragStart,
@@ -59,7 +60,7 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
         onResizeStart: handlers.handleResizeStart,
         onResize: handlers.handleResize,
         onResizeEnd: handlers.handleResizeEnd,
-    }), [config.viewportScale, handlers]);
+    }), [handlers]);
 
     const targets = match && imageTarget ? [imageTarget] : [];
 

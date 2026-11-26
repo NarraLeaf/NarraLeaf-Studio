@@ -23,7 +23,7 @@ function press(type: "pointerdown" | "pointerup", target: EventTarget, x: number
     target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
 }
 
-function renderCanvas(pressDragsClippedSelection?: (event: PointerEvent) => boolean) {
+function renderCanvas(pressDragsSelectionFrame?: (event: PointerEvent) => boolean) {
     return renderHook(() =>
         useSurfaceInteractionEvents({
             surfaceElement,
@@ -39,7 +39,7 @@ function renderCanvas(pressDragsClippedSelection?: (event: PointerEvent) => bool
             panStateRef: { current: { active: false, startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0 } },
             documentService: { getDocument: () => ({ elements: {} }) } as unknown as UIDocumentService,
             stateService,
-            pressDragsClippedSelection,
+            pressDragsSelectionFrame,
         }),
     );
 }

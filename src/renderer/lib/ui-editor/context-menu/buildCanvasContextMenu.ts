@@ -50,6 +50,26 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
     });
 
+    const layers = input.layersAtPoint ?? [];
+    const selectLayer = input.selectLayer;
+    if (layers.length > 1 && selectLayer) {
+        const shallowest = Math.min(...layers.map(layer => layer.depth));
+        items.push({
+            id: "select-layer",
+            label: translate("uiEditor.contextMenu.selectLayer"),
+            submenu: layers.map(layer => ({
+                id: `select-layer-${layer.elementId}`,
+                // Indented by depth below the shallowest layer listed, so a container reads as the
+                // parent of what is inside it; the selected one is marked as the outline marks it.
+                label: `${"\u2003".repeat(Math.max(0, layer.depth - shallowest))}${layer.selected ? "\u2713 " : ""}${layer.label}`,
+                onClick: () => {
+                    actions.hideMenu();
+                    selectLayer(layer.elementId);
+                },
+            })),
+        });
+    }
+
     if (!menuSelection || menuSelection.elementIds.length === 0) {
         return items;
     }

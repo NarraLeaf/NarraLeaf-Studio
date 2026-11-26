@@ -377,6 +377,71 @@ export function uiEditorDuplicateSelection(
     return applyClipboardPayload(documentService, stateService, surfaceId, { parentId, beforeChildId }, payload);
 }
 
+/**
+ * Copy the selection to where an Alt-drag dropped it, leaving the originals where they were.
+ *
+ * `positions` is where each dragged element ended up (its layout `x`/`y`, keyed by the original's id).
+ * The copies go into the same parent, right after the last original, and are placed there; the
+ * originals are not touched. One undo step takes the copies away again, and the copies are what is
+ * selected afterwards - they are what the author was carrying, as in every design tool.
+ *
+ * Returns false (and writes nothing) when nothing in the selection can be copied.
+ */
+export function uiEditorDuplicateSelectionAt(
+    documentService: UIDocumentService,
+    localBp: LocalBlueprintService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    positions: Readonly<Record<string, { x: number; y: number }>>,
+): boolean {
+    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+        return false;
+    }
+    const payload = snapshotSelection(documentService, localBp, surfaceId, selection);
+    if (!payload) {
+        return false;
+    }
+    const doc = documentService.getDocument();
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
+    const parentId = tops.length > 0 ? doc.elements[tops[0]]?.parentId : null;
+    const parent = parentId ? doc.elements[parentId] : null;
+    if (!parentId || !parent) {
+        return false;
+    }
+    const lastTop = tops[tops.length - 1];
+    const idx = parent.childrenIds.indexOf(lastTop);
+    const beforeChildId = idx >= 0 && idx < parent.childrenIds.length - 1 ? parent.childrenIds[idx + 1] : null;
+
+    let newRootIds: string[] = [];
+    documentService.runSurfaceHistoryTransaction(surfaceId, () => {
+        const result = documentService.pasteClipboardPayload(surfaceId, parentId, beforeChildId, payload);
+        if (!result.ok) {
+            return;
+        }
+        newRootIds = result.newRootIds;
+        const patches: Record<string, { x: number; y: number }> = {};
+        payload.topLevelElementIds.forEach((sourceId, index) => {
+            const copyId = result.newRootIds[index];
+            const position = positions[sourceId];
+            if (copyId && position) {
+                patches[copyId] = { x: position.x, y: position.y };
+            }
+        });
+        documentService.updateElementLayouts(patches);
+    });
+    if (newRootIds.length === 0) {
+        return false;
+    }
+    stateService.setUIElementSelection({
+        editor: "ui",
+        surfaceId,
+        elementIds: newRootIds,
+        primaryId: newRootIds[newRootIds.length - 1],
+    });
+    return true;
+}
+
 export function uiEditorDeleteSelection(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
