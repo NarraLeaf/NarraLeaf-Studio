@@ -26,6 +26,10 @@ import { TeamDocSync, type TeamDocNotice, type TeamDocState, type TeamDocView } 
 import { TeamDocWiring } from "./teamDocWiring";
 import { createTeamFilePorts } from "./teamFilePorts";
 import { writeTeamDocStore } from "./teamDocStateStore";
+import { TeamUndo } from "./teamUndo";
+import { createTeamUndoReaders } from "./teamUndoReaders";
+import { HistoryService } from "../history/HistoryService";
+import type { TranslationKey } from "@shared/i18n";
 
 /** One document's difference between a saved version and now. */
 export type TeamVersionComparison =
@@ -416,6 +420,18 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
         // A window the server knows to be on the project: what its file transfers are authorised by.
         await announceClient(remoteOrigin, { project }).catch(() => undefined);
 
+        // Undo for this window's own edits while the server owns the documents. It sends its steps
+        // through the sync built below, so it reaches it through `this.sync` once that exists.
+        const undo = new TeamUndo({
+            self: instance,
+            history: ctx.services.get<HistoryService>(Services.History),
+            read: createTeamUndoReaders(ctx),
+            send: (document, op, derived) => this.sync?.sendStep(document, op, derived) ?? null,
+            applyLocally: (document, op, derived) => wiring.apply(document, op, derived),
+            notify: (title, detail) => ctx.services.get<UIService>(Services.UI).notifications.warning(title, detail),
+            translate: key => translate(key as TranslationKey),
+        });
+
         this.sync = new TeamDocSync({
             instance,
             kernel: KERNEL_VERSION,
@@ -463,7 +479,11 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
                 return () => connectionListeners.delete(listener);
             },
             documents: {
-                install: handler => wiring.install(handler),
+                install: handler => {
+                    wiring.install(handler);
+                    // The editors' own snapshots describe nothing while the server owns the documents.
+                    undo.setActive(handler !== null);
+                },
                 apply: (document, op, derived) => wiring.apply(document, op, derived),
             },
             story: {
@@ -512,6 +532,7 @@ export class TeamDocumentsService extends Service<TeamDocumentsService> {
             },
             notify: notice => this.notify(ctx, notice),
             files,
+            undo,
         });
         this.sync.onChanged(() => {
             void this.armFreeze(ctx);

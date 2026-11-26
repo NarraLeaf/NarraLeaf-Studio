@@ -827,6 +827,8 @@ export class TeamDocSync {
         }
         this.ports.documents.install(null);
         this.pending.clear();
+        // Every step was about documents that have just been replaced.
+        this.ports.undo?.reset();
         await this.adoptBase();
         await this.catchUp(seq);
         this.ports.documents.install(this.view.mayEdit ? this.handler : null);
@@ -1128,7 +1130,7 @@ export class TeamDocSync {
             // An address this window cannot place: apply it as ever.
         }
         try {
-            this.ports.documents.apply(document as LiveDocument, effect.op as ProjectOp, effect.derived as LiveDerived | undefined);
+            this.applyOwn(effect.clientId, document as LiveDocument, effect.op as ProjectOp, effect.derived as LiveDerived | undefined);
         } catch (error) {
             // A document this window holds differently from the server: the honest repair is a
             // fresh start from the last version, which the next connection makes.
@@ -1157,28 +1159,73 @@ export class TeamDocSync {
             void this.dropLink();
             return false;
         }
-        void this.send(document, op, derived).then(answer => {
+        const clientId = this.mintClientId();
+        this.ports.undo?.intended(clientId, document);
+        void this.send(document, op, derived, undefined, clientId).then(answer => {
             if (answer.kind === "refusal" && answer.reason === "unreachable") {
                 // Never reached the server (the connection went, or the new one has not agreed):
                 // it goes into this window's copy and is replayed, rather than lost.
                 void this.dropLink().then(() => {
                     try {
-                        this.ports.documents.apply(document, op, derived);
+                        this.applyOwn(clientId, document as LiveDocument, op, derived);
                     } catch (error) {
+                        this.ports.undo?.abandoned(clientId);
                         this.ports.notify({ kind: "refused", reason: "unreachable", detail: error instanceof Error ? error.message : String(error) });
                     }
                 });
                 return;
             }
             if (answer.kind === "refusal") {
+                this.ports.undo?.abandoned(clientId);
                 this.ports.notify({ kind: "refused", reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
             }
         });
         return true;
     };
 
-    private async send(document: LiveDocument | TeamFileDocument, op: ProjectOp, derived?: LiveDerived, basedOn?: number): Promise<TeamDocAnswer> {
-        const clientId = `${this.ports.instance}:${Date.now().toString(36)}:${(this.nextClient++).toString(36)}`;
+    /**
+     * Send one operation of an undo or redo step (`teamUndo.ts`), answering the id its effect will
+     * carry - or null when nothing can be sent now, in which case the step is applied here instead.
+     */
+    public sendStep(document: LiveDocument, op: ProjectOp, derived?: LiveDerived): string | null {
+        if (!this.online || !this.view.mayEdit || this.agreed === null || this.agreed !== this.ports.link()) {
+            return null;
+        }
+        const clientId = this.mintClientId();
+        void this.send(document, op, derived, undefined, clientId).then(answer => {
+            if (answer.kind === "refusal") {
+                this.ports.undo?.abandoned(clientId);
+                if (answer.reason !== "unreachable") {
+                    this.ports.notify({ kind: "refused", reason: answer.reason, ...(answer.detail === undefined ? {} : { detail: answer.detail }) });
+                }
+            }
+        });
+        return clientId;
+    }
+
+    /** Apply an edit of this window's own here, showing it to the undo as an effect of its own. */
+    private applyOwn(clientId: string, document: LiveDocument, op: ProjectOp, derived?: LiveDerived): void {
+        const undo = this.ports.undo;
+        if (!undo?.tracks(clientId)) {
+            this.ports.documents.apply(document, op, derived);
+            return;
+        }
+        const before = undo.before(document, op);
+        this.ports.documents.apply(document, op, derived);
+        undo.landed(clientId, { document, op, ...(derived === undefined ? {} : { derived }) }, before);
+    }
+
+    private mintClientId(): string {
+        return `${this.ports.instance}:${Date.now().toString(36)}:${(this.nextClient++).toString(36)}`;
+    }
+
+    private async send(
+        document: LiveDocument | TeamFileDocument,
+        op: ProjectOp,
+        derived?: LiveDerived,
+        basedOn?: number,
+        clientId: string = this.mintClientId(),
+    ): Promise<TeamDocAnswer> {
         const answered = await this.ports.call("doc.intent", {
             clientId,
             document,
@@ -1476,6 +1523,21 @@ export type TeamDocPorts = {
     notify(notice: TeamDocNotice): void;
     /** The disk, for files that travel whole. Without it only documents are kept in step. */
     files?: TeamFilePorts;
+    /**
+     * Undo for this window's own edits (`teamUndo.ts`): told what is sent, shown each of its own
+     * effects immediately before and after it is applied, and told what was refused.
+     */
+    undo?: TeamDocUndoPort;
+};
+
+/** What {@link TeamDocSync} tells the team's undo. See `TeamUndo`. */
+export type TeamDocUndoPort = {
+    intended(clientId: string, document: LiveDocument | TeamFileDocument): void;
+    tracks(clientId: string): boolean;
+    before(document: LiveDocument, op: ProjectOp): unknown;
+    landed(clientId: string, effect: { document: LiveDocument; op: ProjectOp; derived?: LiveDerived }, before: unknown): void;
+    abandoned(clientId: string): void;
+    reset(): void;
 };
 
 /** A file effect's address and operation, or null for any other effect. */

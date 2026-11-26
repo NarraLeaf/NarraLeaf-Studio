@@ -178,6 +178,22 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
      * their own, or one undo would push a fresh entry and the stack would never drain.
      */
     private suppressionDepth = 0;
+    /**
+     * Stacks whose snapshot and checkpoint entries cannot be applied right now, or null.
+     *
+     * A team project's documents are edited by sending operations to its server: an edit does not
+     * land on this machine when it is made, so a snapshot of the document taken around it records
+     * nothing, and restoring one would write behind the server's back. While a team server owns the
+     * documents, the stacks of the editors it owns take only command entries - the team's own steps,
+     * which carry their inverse (`teamUndo.ts`) - and what they held before is let go.
+     */
+    private managed: ((scopeId: HistoryScopeId) => boolean) | null = null;
+    /**
+     * How many command and group entries editors have recorded, for a caller that must know whether
+     * the gesture it is watching recorded a step of its own (see `teamUndo.ts`). Team steps do not
+     * count, or they would be told they had covered themselves.
+     */
+    private commandPushes = 0;
     /** An asynchronous entry still running. A second undo while one is in flight is refused. */
     private pending: Promise<void> | null = null;
 
@@ -312,6 +328,8 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             fold?: HistoryCommandBody["fold"];
             /** What another entry's `fold` reads off this one. */
             payload?: unknown;
+            /** A team project's own step (`teamUndo.ts`): not counted in {@link getCommandPushCount}. */
+            team?: boolean;
         },
     ): boolean {
         if (this.suppressionDepth > 0) {
@@ -319,6 +337,9 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             // holding for a later undo is unreachable from this moment.
             request.dispose?.();
             return false;
+        }
+        if (!request.team) {
+            this.commandPushes += 1;
         }
         return this.pushEntry(
             createCommandEntry({
@@ -371,6 +392,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         if (this.suppressionDepth > 0 || request.members.length === 0) {
             return false;
         }
+        this.commandPushes += 1;
         const now = Date.now();
         const members: HeldGroupMember[] = request.members.map(member => {
             const state = { applied: true };
@@ -634,6 +656,37 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         this.events.clear();
     }
 
+    /**
+     * Say which stacks take command entries only - a team server's documents - or (null) none.
+     *
+     * The snapshot and checkpoint entries those stacks already hold are dropped as they are named:
+     * they describe a copy that is no longer written directly, and applying one now would change
+     * this window behind the server's back (or, refused, do nothing visible).
+     */
+    public setManagedScopes(predicate: ((scopeId: HistoryScopeId) => boolean) | null): void {
+        this.managed = predicate;
+        if (!predicate) {
+            return;
+        }
+        for (const [scopeId, stack] of this.stacks) {
+            if (predicate(scopeId) && stack.dropAny(entry => entry.body.kind !== "command") > 0) {
+                this.events.emit("changed", { scopeId, cause: "clear" });
+            }
+        }
+    }
+
+    /** See {@link commandPushes}. */
+    public getCommandPushCount(): number {
+        return this.commandPushes;
+    }
+
+    /** Drop every entry carrying `tag`, on every stack. */
+    public dropTaggedEverywhere(tag: string): void {
+        for (const scopeId of [...this.stacks.keys()]) {
+            this.dropTagged(scopeId, tag);
+        }
+    }
+
     /** Depths of every live stack, for diagnostics and tests. */
     public describe(): Array<{ scopeId: HistoryScopeId; undo: number; redo: number; registered: boolean }> {
         return [...this.stacks.entries()].map(([scopeId, stack]) => ({
@@ -647,6 +700,10 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
     // === Internals ==========================================================
 
     private pushEntry(entry: HistoryEntry, request: HistoryPushRequest): boolean {
+        if (entry.body.kind !== "command" && this.managed?.(entry.scopeId)) {
+            // A snapshot of a document a team server owns: see {@link managed}.
+            return false;
+        }
         const stack = this.ensureStack(entry.scopeId);
         stack.push(entry, { now: entry.createdAt, mergeWindowMs: request.mergeWindowMs });
         this.touch(entry.scopeId);

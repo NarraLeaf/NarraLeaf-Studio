@@ -408,6 +408,28 @@ export class HistoryStack {
         return dropped.length + running.length;
     }
 
+    /**
+     * Drop every entry `predicate` names, of any kind.
+     *
+     * Unlike {@link dropWhere}, for the one caller that is letting go of every snapshot and checkpoint
+     * of a stack at once (`HistoryService.setManagedScopes`): with all of them gone there are no
+     * neighbours left describing documents that never followed one another.
+     */
+    public dropAny(predicate: (entry: HistoryEntry) => boolean): number {
+        const dropped = [
+            ...this.undoEntries.filter(predicate),
+            ...this.redoEntries.filter(predicate),
+        ];
+        if (dropped.length === 0) {
+            return 0;
+        }
+        this.undoEntries = this.undoEntries.filter(entry => !predicate(entry));
+        this.redoEntries = this.redoEntries.filter(entry => !predicate(entry));
+        this.mergeBarrier = true;
+        dropped.forEach(disposeEntry);
+        return dropped.length;
+    }
+
     /** Entries oldest-first. For tests and diagnostics; callers must not mutate them. */
     public listUndo(): readonly HistoryEntry[] {
         return this.undoEntries;

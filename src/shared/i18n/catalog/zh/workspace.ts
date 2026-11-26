@@ -405,6 +405,14 @@ export const workspace = {
             addPoses: "批量添加姿态",
             importAudio: "音频导入",
         },
+        team: {
+            undoRefused: "无法撤销",
+            redoRefused: "无法重做",
+            changed: "该步骤之后相关内容已被修改，继续操作将覆盖这些修改",
+            gone: "该步骤涉及的内容已被删除",
+            pending: "该步骤尚待服务器确认，请稍后再试",
+            unavailable: "该步骤缺少撤销所需的记录",
+        },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {

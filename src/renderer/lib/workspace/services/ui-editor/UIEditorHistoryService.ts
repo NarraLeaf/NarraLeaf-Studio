@@ -525,6 +525,7 @@ export class UIEditorHistoryService
             dispose: options.dispose,
             mergeKey: options.mergeKey,
             mergeWindowMs: options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS,
+            team: true,
         });
     }
 

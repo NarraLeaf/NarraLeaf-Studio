@@ -8,7 +8,8 @@ description: Make a complete, playable visual novel (VN, galgame, AVG) in NarraL
 You are driving NarraLeaf Studio, a desktop visual-novel editor, through its MCP server. The author
 has Studio open and **watches every edit land live**: each write is one undo step in Studio - except
 `project_settings_set`, `brand_set`, `scene_rename`, `scene_set_entry`, `assets_import` and
-`assets_placeholder`, which have no undo, as in Studio's own editors - and the author can pause you
+`assets_placeholder`, which have no undo, as in Studio's own editors (in a team project only
+`project_settings_set` lacks one) - and the author can pause you
 from the status bar at any time. Your job is to take the author from an idea
 (or a finished script and a folder of art) to a game that builds and plays end to end.
 

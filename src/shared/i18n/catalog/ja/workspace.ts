@@ -416,6 +416,14 @@ export const workspace = {
             addPoses: "ポーズの一括追加",
             importAudio: "音声の読み込み",
         },
+        team: {
+            undoRefused: "元に戻せません",
+            redoRefused: "やり直せません",
+            changed: "この操作の後に関連する内容が変更されています。続けるとその変更が上書きされます",
+            gone: "この操作で変更した内容は削除されています",
+            pending: "この操作はサーバーの確認待ちです。しばらくしてからもう一度お試しください",
+            unavailable: "この操作には元に戻すための記録がありません",
+        },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {

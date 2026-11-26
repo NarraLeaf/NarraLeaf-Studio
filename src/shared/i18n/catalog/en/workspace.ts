@@ -445,6 +445,16 @@ export const workspace = {
             addPoses: "Add poses",
             importAudio: "audio import",
         },
+        // A team project: undo sends what was there before as a new edit, and refuses where that
+        // would overwrite a later change, the content is gone, or the step is still on its way.
+        team: {
+            undoRefused: "Cannot undo",
+            redoRefused: "Cannot redo",
+            changed: "This content has been changed since this step. Taking it would overwrite those changes.",
+            gone: "The content this step changed has been deleted.",
+            pending: "This step is still waiting for the server. Try again in a moment.",
+            unavailable: "This step has no record of what it replaced.",
+        },
     },
     // An AI agent connected over Studio's MCP endpoint: its status bar cell and the cell's menu.
     agent: {

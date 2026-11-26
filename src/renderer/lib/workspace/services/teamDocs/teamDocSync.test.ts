@@ -8,6 +8,9 @@ import { TeamDocSync, type TeamDocNotice, type TeamDocPorts, type TeamDocState }
 import type { TeamFileContent } from "@shared/authority/project";
 import type { TeamFilePorts } from "./teamFileSync";
 import { KERNEL_VERSION } from "@shared/authority/kernel";
+import { HistoryService } from "../history/HistoryService";
+import { storySceneHistoryScope } from "../history/historyScopes";
+import { TeamUndo } from "./teamUndo";
 
 const STORY = "00000000-0000-4000-8000-000000000001";
 const NOW = "2026-11-14T00:00:00.000Z";
@@ -193,7 +196,10 @@ class Window {
     reloads = 0;
     private readonly writes = new Set<(path: string) => void>();
 
-    constructor(readonly server: FakeServer, readonly name: string, withFiles = false) {
+    /** With `withUndo`: the window's undo stacks, and the team's undo over them. */
+    history: HistoryService | null = null;
+
+    constructor(readonly server: FakeServer, readonly name: string, withFiles = false, withUndo = false) {
         this.link = `${name}-${++this.links}`;
         const encoder = new TextEncoder();
         const files: TeamFilePorts = {
@@ -296,6 +302,25 @@ class Window {
             },
             ...(withFiles ? { files } : {}),
         };
+        if (withUndo) {
+            const history = new HistoryService();
+            history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
+            this.history = history;
+            ports.undo = new TeamUndo({
+                self: name,
+                history,
+                read: {
+                    sources: () => ({ story: this.document }),
+                    context: () => ({ document: this.document }),
+                    storyEntry: () => undefined,
+                    story: () => this.document,
+                },
+                send: (document, op, derived) => this.sync.sendStep(document, op, derived),
+                applyLocally: (_document, op) => applyStoryOpToDocument(this.document, structuredClone(op) as LiveStoryOp, { now: NOW }),
+                notify: (title, detail) => this.notices.push({ kind: "refused", reason: title, detail }),
+                translate: key => key,
+            });
+        }
         this.sync = new TeamDocSync(ports);
         opened.push(this.sync);
     }
@@ -458,6 +483,40 @@ describe("following a team project", () => {
         expect(bob.rows()).toEqual(["a", "b"]);
         expect(ada.sync.getView()).toMatchObject({ state: "online", seq: 2 });
         expect(ada.state?.seq).toBe(2);
+    });
+
+    it("takes back this window's own edit through the server, and refuses once somebody else has changed it", async () => {
+        const server = new FakeServer();
+        const ada = new Window(server, "ada", false, true);
+        const bob = new Window(server, "bob");
+        await ada.sync.start();
+        await bob.sync.start();
+        const scene = storySceneHistoryScope(STORY, SCENE);
+
+        bob.edit(insert("a", "first"));
+        await settle();
+        ada.edit(update("a", "second"));
+        await settle();
+        expect(bob.text("a")).toBe("second");
+        // Somebody else's insert is not this window's to take back: one step, for the update.
+        expect(ada.history!.describe().find(entry => entry.scopeId === scene)?.undo).toBe(1);
+
+        expect(ada.history!.undo(scene)).toBe(true);
+        await settle();
+        await ada.history!.settled();
+        expect(ada.text("a")).toBe("first");
+        expect(bob.text("a")).toBe("first");
+
+        expect(ada.history!.redo(scene)).toBe(true);
+        await settle();
+        await ada.history!.settled();
+        expect(bob.text("a")).toBe("second");
+
+        bob.edit(update("a", "third"));
+        await settle();
+        expect(ada.history!.undo(scene)).toBe(false);
+        expect(bob.text("a")).toBe("third");
+        expect(ada.notices.at(-1)).toMatchObject({ detail: "workspace.history.team.changed" });
     });
 
     it("fetches what it missed when an effect arrives out of turn", async () => {
