@@ -526,6 +526,8 @@ export const uiEditor = {
         showOwnership: "所属の線",
         showAllElements: "すべての要素",
         collapseAll: "すべて折りたたむ",
+        arrange: "並べ直す",
+        arrangeTip: "すべてのノードを自動配置の位置に戻す",
         noPages: "プロジェクトにまだページがない",
         noGroups: "このページにはプレイヤーが操作できる要素がない",
         elements: {
