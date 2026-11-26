@@ -270,6 +270,11 @@ export function PageOverviewTab({ tabId, payload, active }: EditorTabComponentPr
         catalogPrefix: "workspace.",
     });
 
+    const blueprintPreview = useMemo(
+        () => ({ localBp: services?.localBp ?? null, nodeCatalog: services?.nodeCatalog ?? null, revision: shown.blueprint }),
+        [services, shown.blueprint],
+    );
+
     const edit = useMemo<OverviewEditServices | null>(() => (services
         ? { documentService: services.uiDocument, localBlueprint: services.localBp, uiHistory: services.uiHistory, history: services.history }
         : null), [services]);
@@ -527,6 +532,7 @@ export function PageOverviewTab({ tabId, payload, active }: EditorTabComponentPr
                                 showJumps={showJumps}
                                 showOwnership={showOwnership}
                                 edit={edit}
+                                blueprintPreview={blueprintPreview}
                                 readOnly={readOnly}
                                 retargetFor={(group, exits) => retargetFor(surface.id, group, overview, exits)}
                                 onOpenLogic={(group, exit) => openLogic(surface, overview, group, exit)}

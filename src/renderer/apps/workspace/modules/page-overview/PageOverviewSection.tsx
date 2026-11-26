@@ -5,7 +5,7 @@ import type { SelectOption } from "@/lib/components/elements";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LivePreviewFrame } from "../ui-editor/panel/LivePreviewFrame";
-import { OverviewGroupCard } from "./OverviewGroupCard";
+import { OverviewGroupCard, type OverviewBlueprintPreviewSource } from "./OverviewGroupCard";
 import { OverviewPagePreview } from "./OverviewPagePreview";
 import type { OverviewEditServices } from "./pageOverviewEdits";
 import {
@@ -52,6 +52,7 @@ export type PageOverviewSectionProps = {
     showJumps: boolean;
     showOwnership: boolean;
     edit: OverviewEditServices | null;
+    blueprintPreview: OverviewBlueprintPreviewSource;
     readOnly: boolean;
     retargetFor: (group: PageOverviewGroup | null, exits: readonly PageOverviewExit[]) => { exit: PageOverviewExit; value: string; options: SelectOption[]; onChange: (surfaceId: string) => void } | null;
     onOpenLogic: (group: PageOverviewGroup | null, exit?: PageOverviewExit) => void;
@@ -91,6 +92,7 @@ export function PageOverviewSection(props: PageOverviewSectionProps) {
         showJumps,
         showOwnership,
         edit,
+        blueprintPreview,
         readOnly,
         retargetFor,
         onOpenLogic,
@@ -301,6 +303,8 @@ export function PageOverviewSection(props: PageOverviewSectionProps) {
                             surfaceId={surface.id}
                             documentService={documentService}
                             hasBlueprint={Boolean(group.blueprintId)}
+                            blueprintId={group.blueprintId}
+                            preview={blueprintPreview}
                             notes={notes}
                             readOnly={readOnly}
                             retarget={expanded.has(key) ? retargetFor(group, group.exits) : null}
@@ -324,6 +328,8 @@ export function PageOverviewSection(props: PageOverviewSectionProps) {
                         surfaceId={surface.id}
                         documentService={documentService}
                         hasBlueprint={Boolean(overview.pageBlueprintId)}
+                        blueprintId={overview.pageBlueprintId}
+                        preview={blueprintPreview}
                         notes={[]}
                         readOnly={readOnly}
                         retarget={expanded.has(overviewGroupKey(surface.id, PAGE_EXITS_GROUP_KEY)) ? retargetFor(null, overview.pageExits) : null}

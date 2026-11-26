@@ -6,6 +6,14 @@ import { Button, Select, type SelectOption } from "@/lib/components/elements";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import {
+    BlueprintLayerPreview,
+    resolveFirstBlueprintLayerPreview,
+    type BlueprintLayerPreviewModel,
+} from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
+import { buildPreviewModel } from "@/lib/ui-editor/widget-modules/shared/blueprint/blueprintLayerPreviewModel";
 import { FieldRenderer } from "../properties/framework";
 import type { FieldDefinition } from "../properties/framework/types";
 import { InspectorWritesProvider } from "../properties/framework/fields/inspectorWrites";
@@ -61,6 +69,26 @@ function groupFields(element: UIElement, documentService: UIDocumentService, sur
     return fields;
 }
 
+/** What drawing a blueprint's preview needs. `revision` moves with every blueprint edit. */
+export type OverviewBlueprintPreviewSource = {
+    localBp: LocalBlueprintService | null;
+    nodeCatalog: BlueprintNodeCatalogService | null;
+    revision: number;
+};
+
+/**
+ * The layer a card previews: the one its first exit sits in, so the drawing shows the step the
+ * summary above it names. A control with no exit shows its first layer, as every other blueprint
+ * entry in Studio does.
+ */
+function previewModelFor(source: OverviewBlueprintPreviewSource, blueprintId: string, exit: PageOverviewExit | undefined): BlueprintLayerPreviewModel | null {
+    const layer = exit ? source.localBp?.getBlueprintDocument().blueprints[blueprintId]?.graphs.events[exit.layerId] : undefined;
+    if (layer?.graph) {
+        return buildPreviewModel(layer.graph, layer.name, source.nodeCatalog);
+    }
+    return resolveFirstBlueprintLayerPreview(source.localBp, source.nodeCatalog, blueprintId);
+}
+
 export type OverviewGroupCardProps = {
     groupKey: string;
     title: string;
@@ -83,6 +111,9 @@ export type OverviewGroupCardProps = {
     surfaceId: string;
     documentService: UIDocumentService | null;
     hasBlueprint: boolean;
+    /** The blueprint the card previews; absent when nothing has been written into one yet. */
+    blueprintId?: string;
+    preview: OverviewBlueprintPreviewSource;
     notes: readonly string[];
     readOnly: boolean;
     /** The exit a picker may change, with the pages it can choose from. */
@@ -111,6 +142,8 @@ export const OverviewGroupCard = memo(function OverviewGroupCard({
     surfaceId,
     documentService,
     hasBlueprint,
+    blueprintId,
+    preview,
     notes,
     readOnly,
     retarget,
@@ -129,6 +162,11 @@ export const OverviewGroupCard = memo(function OverviewGroupCard({
         [element, documentService, surfaceId, revision],
     );
     const writes = useMemo(() => ({ scope: interfaceDocumentFreezeScope() }), []);
+    const previewModel = useMemo(
+        () => (expanded && blueprintId ? previewModelFor(preview, blueprintId, exits[0]) : null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `preview.revision` stands in for the blueprint, edited in place
+        [expanded, blueprintId, exits, preview.localBp, preview.nodeCatalog, preview.revision],
+    );
     const toggleLabel = t(expanded ? "uiEditor.pageOverview.group.collapse" : "uiEditor.pageOverview.group.expand", { name: title });
 
     const exitLines = exits.length > 0 ? (
@@ -184,11 +222,26 @@ export const OverviewGroupCard = memo(function OverviewGroupCard({
                         {notes.map(note => (
                             <div key={note} className="text-2xs text-fg-subtle">{note}</div>
                         ))}
-                        <div>
-                            <Button size="sm" variant="secondary" onClick={() => onOpenLogic(exits[0])}>
-                                {hasBlueprint ? t("uiEditor.pageOverview.group.editInBlueprint") : t("uiEditor.pageOverview.group.addLogic")}
-                            </Button>
-                        </div>
+                        {hasBlueprint && blueprintId ? (
+                            // The drawing is the way in, as on every other blueprint entry: click opens
+                            // the blueprint on the step the summary names.
+                            <button
+                                type="button"
+                                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                                onClick={() => onOpenLogic(exits[0])}
+                                data-tip={t("uiEditor.pageOverview.group.editInBlueprint")}
+                                aria-label={t("uiEditor.pageOverview.group.editInBlueprint")}
+                                data-page-overview-blueprint-preview=""
+                            >
+                                <BlueprintLayerPreview model={previewModel} />
+                            </button>
+                        ) : (
+                            <div>
+                                <Button size="sm" variant="secondary" onClick={() => onOpenLogic(exits[0])} disabled={readOnly}>
+                                    {t("uiEditor.pageOverview.group.addLogic")}
+                                </Button>
+                            </div>
+                        )}
                     </section>
                     {data && fields.length > 0 ? (
                         <section className="flex flex-col gap-3">
