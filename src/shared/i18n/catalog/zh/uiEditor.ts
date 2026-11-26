@@ -528,6 +528,8 @@ export const uiEditor = {
         showOwnership: "所属连线",
         showAllElements: "全部元素",
         collapseAll: "全部折叠",
+        arrange: "重新排列",
+        arrangeTip: "把所有节点放回自动排列的位置",
         noPages: "项目里还没有页面",
         noGroups: "这个页面上没有玩家可以操作的元素",
         elements: {

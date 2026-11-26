@@ -601,6 +601,8 @@ export const uiEditor = {
         showOwnership: "Ownership lines",
         showAllElements: "All elements",
         collapseAll: "Collapse all",
+        arrange: "Arrange",
+        arrangeTip: "Put every node back where the overview places it",
         noPages: "This project has no pages yet",
         noGroups: "Nothing on this page can be clicked or changed by the player",
         elements: {
