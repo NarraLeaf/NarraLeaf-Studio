@@ -478,9 +478,9 @@ export function ServersTab({ onForget, deepLink, addRequest }: ServersTabProps =
                 was left at, and the roster read once for this visit rather than again for
                 every project somebody looks at. */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                {session === null ? (
-                    <EmptyState className="flex-1" title={t("launcher.servers.choose")} />
-                ) : (
+                {/* With none chosen the heading already says to choose one, and is where it
+                    is done, so the body says nothing rather than saying it again. */}
+                {session === null ? null : (
                     <>
                         {canMembers && (
                             <div className={cn(
