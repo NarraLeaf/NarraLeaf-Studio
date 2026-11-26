@@ -509,6 +509,9 @@ export const uiEditor = {
     pageOverview: {
         title: "页面总览",
         open: "打开页面总览",
+        cardMeta: {
+            other: "{count} 个页面",
+        },
         openForPage: "在页面总览中查看{label}",
         pages: "页面",
         modeLabel: "显示",

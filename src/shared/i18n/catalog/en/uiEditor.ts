@@ -579,6 +579,10 @@ export const uiEditor = {
     pageOverview: {
         title: "Page Overview",
         open: "Open Page Overview",
+        cardMeta: {
+            one: "{count} page",
+            other: "{count} pages",
+        },
         openForPage: "Show {label} in Page Overview",
         pages: "Pages",
         modeLabel: "Show",

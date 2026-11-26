@@ -981,8 +981,8 @@ export const help = {
             title: "Page Overview",
             body:
                 "Shows a page beside its controls, with a line from each control to every page, story or ending its "
-                + "logic leads to. Opened from the Interfaces panel header, a page's menu, the Blueprint Overview or the "
-                + "command palette.\n"
+                + "logic leads to. Opened from the first card in the Pages list, a page's menu, the Blueprint Overview "
+                + "or the command palette.\n"
                 + "\n"
                 + "- Show switches between one page and all pages in a single scroll.\n"
                 + "- Each control is a card. Folded, it lists what its events do; unfolded, it shows the logic, the "

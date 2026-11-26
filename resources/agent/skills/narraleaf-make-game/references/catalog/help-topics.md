@@ -1110,7 +1110,7 @@ The UI editor builds the game's own screens: the main menu, save and load, the d
 
 ### 页面总览 · Page Overview
 
-并排显示页面与其中的控件，每个控件连线到其逻辑通往的页面、剧情或结束操作。从界面面板顶部、页面右键菜单、蓝图总览或命令面板打开
+并排显示页面与其中的控件，每个控件连线到其逻辑通往的页面、剧情或结束操作。从页面列表的第一张卡片、页面右键菜单、蓝图总览或命令面板打开
 
 - 「显示」在当前页面与全部页面之间切换，全部页面在同一滚动区中依次排列
 - 每个控件是一张卡片。折叠时列出各事件的去向；展开后显示逻辑、位置、尺寸与文字设置
@@ -1119,7 +1119,7 @@ The UI editor builds the game's own screens: the main menu, save and load, the d
 - 在预览中拖动控件即可移动。由堆叠、滚动区或列表排列的控件需在画布上移动
 - 修改记入该页面的撤销历史
 
-Shows a page beside its controls, with a line from each control to every page, story or ending its logic leads to. Opened from the Interfaces panel header, a page's menu, the Blueprint Overview or the command palette.
+Shows a page beside its controls, with a line from each control to every page, story or ending its logic leads to. Opened from the first card in the Pages list, a page's menu, the Blueprint Overview or the command palette.
 
 - Show switches between one page and all pages in a single scroll.
 - Each control is a card. Folded, it lists what its events do; unfolded, it shows the logic, the position, the size and the text settings.

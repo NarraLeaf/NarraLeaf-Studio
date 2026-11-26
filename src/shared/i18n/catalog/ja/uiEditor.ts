@@ -512,6 +512,9 @@ export const uiEditor = {
     pageOverview: {
         title: "ページ全体図",
         open: "ページ全体図を開く",
+        cardMeta: {
+            other: "{count} ページ",
+        },
         openForPage: "{label}をページ全体図で表示",
         pages: "ページ",
         modeLabel: "表示",
