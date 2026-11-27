@@ -89,6 +89,13 @@ export type StoryEditorViewState = {
      * config-derived default (expanded while the scene is still unconfigured, collapsed once set up).
      */
     overviewCollapsed?: boolean;
+    /**
+     * This scene's row filter, as selected sets (see {@link StoryEditorViewPrefs}). Per scene: a filter
+     * set while working one scene used to follow the author into every other scene and across
+     * restarts, so a scene could open a week later with half its lines hidden behind a small number
+     * on the funnel. Absent = unfiltered.
+     */
+    rowFilter?: { facets: StoryRowFacetId[]; speakers: StoryRowSpeakerKey[] };
 };
 
 /**
@@ -107,9 +114,11 @@ function normalizeDensity(value: unknown): StoryEditorDensity {
 }
 
 /**
- * Editor-wide view preferences: density and the row filter. Persisted per-project via
- * {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
- * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
+ * Editor-wide view preferences. Persisted per-project via {@link PanelStateService} (the same store
+ * the row view-state uses), so they survive tab switches and restarts. Editor-wide, not per-scene, so
+ * they live under their own key rather than the scene map. Only `density` is read by the editor now;
+ * the row filter moved to the scene's own view state, and the two filter fields here are what older
+ * builds wrote.
  */
 export type StoryEditorViewPrefs = {
     density: StoryEditorDensity;
@@ -188,6 +197,17 @@ type StoryEditorViewStateStore = Record<StorySceneId, StoryEditorViewState>;
 
 export function getStoryEditorViewState(panelState: PanelStateService, sceneId: StorySceneId): StoryEditorViewState | undefined {
     return panelState.getPanelState<StoryEditorViewStateStore>(STORY_EDITOR_VIEW_STATE_KEY)?.[sceneId];
+}
+
+/** This scene's stored row filter, cleaned of facets and speakers this build no longer knows. */
+export function getStoryEditorSceneRowFilter(
+    panelState: PanelStateService,
+    sceneId: StorySceneId,
+): { facets: StoryRowFacetId[]; speakers: StoryRowSpeakerKey[] } | null {
+    const stored = getStoryEditorViewState(panelState, sceneId)?.rowFilter;
+    return stored
+        ? { facets: normalizeStoryRowFacets(stored.facets), speakers: normalizeStoryRowSpeakers(stored.speakers) }
+        : null;
 }
 
 /** Merge a partial update into a scene's persisted view state (focus, selection, and/or scroll). */

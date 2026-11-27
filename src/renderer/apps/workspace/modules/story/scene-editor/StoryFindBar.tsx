@@ -42,6 +42,8 @@ export function StoryFindBar(props: {
     invalidPattern: boolean;
     /** Total hits in the scene, and which one is current (1-based; 0 when there are none). */
     matchCount: number;
+    /** Hits in rows a collapsed container or the row filter hides: counted, never searched. */
+    hiddenMatchCount?: number;
     activeMatch: number;
     onNext: () => void;
     onPrevious: () => void;
@@ -56,7 +58,7 @@ export function StoryFindBar(props: {
     /** Bumped by the opener to pull focus back to the field on a repeated Mod+F. */
     focusToken: number;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const inputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
@@ -68,6 +70,7 @@ export function StoryFindBar(props: {
         input.select();
     }, [props.focusToken]);
 
+    const hidden = props.hiddenMatchCount ?? 0;
     const noMatches = props.invalidPattern || (props.query.length > 0 && props.matchCount === 0);
 
     return (
@@ -140,6 +143,9 @@ export function StoryFindBar(props: {
                         : props.matchCount === 0
                             ? t("story.find.noMatches")
                             : `${props.activeMatch}/${props.matchCount}`}
+                {hidden > 0 && !props.invalidPattern && props.query.length > 0 ? (
+                    <span className="ml-1 text-warning" data-tip={tn("story.find.hidden", hidden)}>+{hidden}</span>
+                ) : null}
             </span>
             <ToolbarButton
                 size="sm"

@@ -855,6 +855,12 @@ export const story = {
         replace: "置換",
         replaceAll: "すべて置換",
         open: "検索と置換",
+        hidden: {
+            other: "ほかに {count} 件が非表示の行にあり、検索も置換もされない",
+        },
+        replaced: {
+            other: "{count} 件を置換した",
+        },
     },
     commandManual: {
         open: "コマンドの手引き",

@@ -91,7 +91,7 @@ import {
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow, rowDragEngaged } from "./storyRowSelectionGesture";
 import type { StoryRevealIntent, StoryRevealTarget, StoryRowRevealRequest } from "./storyRowReveal";
-import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
+import { getStoryEditorSceneRowFilter, getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
     isStoryRowFilterActive,
@@ -280,6 +280,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * than to a line edge. A ref, not state: reading it must never re-render the list mid-keypress.
      */
     const goalColumnRef = useRef<number | null>(null);
+    /**
+     * A vertical caret walk that stepped onto a row with no text (an action row), so it had to leave
+     * the edit. Remembered against that row: the next plain Up/Down off it, onto a row that has text,
+     * goes straight back into editing at the same column, instead of leaving the author selecting
+     * rows until they think to press Enter. Anything that moves the cursor some other way, or opens
+     * anything, makes it stale (`blockId` no longer the active row, or the mode no longer idle).
+     */
+    const caretWalkRef = useRef<{ blockId: StoryBlockId; goalX: number | null } | null>(null);
     // Anchor row for keyboard range-selection (Shift+Arrow grows the selection from here).
     const selectionAnchorRef = useRef<StoryBlockId | null>(null);
     const plainPasteRequestedRef = useRef(false);
@@ -402,19 +410,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         revealRow(target, pending?.intent ?? "step");
     }, [activeBlockId, revealRow]);
-    // Editor-wide view preferences. PanelStateService loads from disk before the editor renders,
-    // so the synchronous read below sees the persisted value; the setters write it back.
+    // View preferences. PanelStateService loads from disk before the editor renders, so the
+    // synchronous reads below see the persisted values; the setters write them back. Density is
+    // editor-wide; the row filter belongs to this scene (see `StoryEditorViewState.rowFilter`).
     const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
-        const prefs = panelStateService ? getStoryEditorViewPrefs(panelStateService) : null;
-        return prefs ? { facets: new Set(prefs.selectedRowFacets), speakers: new Set(prefs.selectedRowSpeakers) } : EMPTY_STORY_ROW_FILTER;
+        const stored = panelStateService && sceneId ? getStoryEditorSceneRowFilter(panelStateService, sceneId) : null;
+        return stored ? { facets: new Set(stored.facets), speakers: new Set(stored.speakers) } : EMPTY_STORY_ROW_FILTER;
     });
     const [density, setDensityState] = useState<StoryEditorDensity>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).density : "compact"));
     const setRowFilter = useCallback((value: StoryRowFilter) => {
         setRowFilterState(value);
-        if (panelStateService) {
-            patchStoryEditorViewPrefs(panelStateService, { selectedRowFacets: [...value.facets], selectedRowSpeakers: [...value.speakers] });
+        if (panelStateService && sceneId) {
+            patchStoryEditorViewState(panelStateService, sceneId, { rowFilter: { facets: [...value.facets], speakers: [...value.speakers] } });
         }
-    }, [panelStateService]);
+    }, [panelStateService, sceneId]);
     const setDensity = useCallback((value: StoryEditorDensity) => {
         setDensityState(value);
         if (panelStateService) {
@@ -422,6 +431,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [panelStateService]);
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
+    // Opening anything (an inspector, a slot, a line) ends a caret walk; see `caretWalkRef`.
+    useEffect(() => {
+        if (editorMode.kind !== "idle") {
+            caretWalkRef.current = null;
+        }
+    }, [editorMode.kind]);
     /**
      * The line being typed into the open insert slot.
      *
@@ -2150,6 +2165,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? (goingBack ? "end" : "start")
             : { goalX, line: goingBack ? "last" : "first" };
         if (!openRowForEditing(targetBlock, caret)) {
+            caretWalkRef.current = vertical ? { blockId: targetBlock.id, goalX } : null;
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
@@ -3512,10 +3528,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 ? Math.min(visibleRows.length - 1, currentIndex + 1)
                 : Math.max(0, currentIndex - 1);
         const next = visibleRows[nextIndex];
+        // Take the walk, whatever happens next: it is good for one step only.
+        const walk = caretWalkRef.current;
+        caretWalkRef.current = null;
         if (next) {
             selectSingleRow(next.block.id);
+            if (walk && walk.blockId === activeBlockId && editorMode.kind === "idle" && next.block.id !== activeBlockId) {
+                const caret: StoryCaretTarget = walk.goalX === null
+                    ? (direction === "up" ? "end" : "start")
+                    : { goalX: walk.goalX, line: direction === "up" ? "last" : "first" };
+                if (openRowForEditing(next.block, caret)) {
+                    goalColumnRef.current = walk.goalX;
+                } else {
+                    // Another row without text: still walking.
+                    caretWalkRef.current = { blockId: next.block.id, goalX: walk.goalX };
+                }
+            }
         }
-    }, [activeBlockId, addRowFocused, focusAddRow, rowIndexById, selectSingleRow, visibleRows]);
+    }, [activeBlockId, addRowFocused, editorMode.kind, focusAddRow, openRowForEditing, rowIndexById, selectSingleRow, visibleRows]);
 
     // Shift+Arrow - grow (or shrink) the selection between the anchor row and the moving head.
     const extendRowSelection = useCallback((direction: "up" | "down") => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
+    getStoryEditorSceneRowFilter,
     getStoryEditorViewPrefs,
     getStoryEditorViewState,
     patchStoryEditorViewPrefs,
@@ -92,5 +93,24 @@ describe("storyEditorSessionStore view prefs", () => {
             selectedRowFacets: ["sound"],
             selectedRowSpeakers: ["id:c1"],
         });
+    });
+});
+
+describe("the row filter is kept per scene", () => {
+    it("does not follow the author into another scene", () => {
+        const panelState = fakePanelState();
+        patchStoryEditorViewState(panelState, "scene-a", { rowFilter: { facets: ["sound"], speakers: ["id:c1"] } });
+
+        expect(getStoryEditorSceneRowFilter(panelState, "scene-a")).toEqual({ facets: ["sound"], speakers: ["id:c1"] });
+        expect(getStoryEditorSceneRowFilter(panelState, "scene-b")).toBeNull();
+    });
+
+    it("leaves the rest of the scene's view state alone and drops what this build no longer knows", () => {
+        const panelState = fakePanelState();
+        patchStoryEditorViewState(panelState, "scene-a", { activeBlockId: "b1", selectedBlockIds: ["b1"] });
+        patchStoryEditorViewState(panelState, "scene-a", { rowFilter: { facets: ["sound", "gone"] as never, speakers: ["oops"] } });
+
+        expect(getStoryEditorViewState(panelState, "scene-a")?.activeBlockId).toBe("b1");
+        expect(getStoryEditorSceneRowFilter(panelState, "scene-a")).toEqual({ facets: ["sound"], speakers: [] });
     });
 });

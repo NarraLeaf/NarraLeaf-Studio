@@ -1981,6 +1981,31 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         return matches;
     }, [editor.visibleRows, findMatcher, findOpen, findQuery]);
 
+    /**
+     * Hits the search above deliberately skips - in rows a collapsed container or the row filter has
+     * put away. They are not searched or replaced, but they are counted: a Replace All that quietly
+     * left half a character's lines unrenamed because "dialogue only" was still on from last week is
+     * exactly the surprise the count is there to prevent.
+     */
+    const hiddenFindMatchCount = useMemo(() => {
+        const scene = editor.scene;
+        if (!findOpen || !findQuery || !scene) {
+            return 0;
+        }
+        const shown = new Set(editor.visibleRows.map(row => row.block.id));
+        let count = 0;
+        for (const block of Object.values(scene.blocks)) {
+            if (shown.has(block.id)) {
+                continue;
+            }
+            const slot = getSegmentSlot(block);
+            if (slot) {
+                count += findMatcher.findRanges(segmentPlainText(slot.segment)).length;
+            }
+        }
+        return count;
+    }, [editor.scene, editor.visibleRows, findMatcher, findOpen, findQuery]);
+
     // A shrinking result set must not leave the cursor pointing past the end.
     const activeFindIndex = findMatches.length === 0 ? 0 : findCursor % findMatches.length;
 
@@ -2055,12 +2080,21 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         // One history entry for the sweep, not one per row.
         editor.updateBlockPayloads(edits);
         setFindCursor(0);
-    }, [editor, findMatcher, findMatches, findReplacement, freeze.frozen]);
+        // The sweep can rewrite lines far off screen; the count is the only sign of how much it did.
+        editor.context?.services.get<UIService>(Services.UI).notifications.info(tn("story.find.replaced", findMatches.length));
+    }, [editor, findMatcher, findMatches, findReplacement, freeze.frozen, tn]);
 
     const openFind = useCallback(() => {
+        // Text selected in a row is what the author wants to find, the way every editor reads it.
+        // One line only: a selection that crosses rows is a row selection, not a search term.
+        const selected = window.getSelection()?.toString() ?? "";
+        if (selected.trim() !== "" && !/[\r\n]/.test(selected) && editor.rootRef.current?.contains(window.getSelection()?.anchorNode ?? null)) {
+            setFindQuery(selected);
+            setFindCursor(0);
+        }
         setFindOpen(true);
         setFindFocusToken(token => token + 1);
-    }, []);
+    }, [editor.rootRef]);
     openFindRef.current = openFind;
 
     const openCommandManual = useCallback(() => {
@@ -2625,6 +2659,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     invalidPattern={findMatcher.error !== undefined}
                     freeze={freeze}
                     matchCount={findMatches.length}
+                    hiddenMatchCount={hiddenFindMatchCount}
                     activeMatch={findMatches.length === 0 ? 0 : activeFindIndex + 1}
                     onNext={() => stepMatch(1)}
                     onPrevious={() => stepMatch(-1)}

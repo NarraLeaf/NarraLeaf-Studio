@@ -412,6 +412,15 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
             onMouseLeave={() => setHovered(false)}
             onDoubleClick={event => {
                 event.stopPropagation();
+                // A double-click on one of the row's own controls (the fold chevron, a branch's
+                // condition chip, a value token, the nametag, the hover buttons) belongs to that
+                // control. Those stop the click but not the dblclick, so it used to reach the row as
+                // well: the chip opened its editor AND an insert slot inside the branch, the chevron
+                // folded twice and then opened the inspector.
+                const control = (event.target as HTMLElement | null)?.closest?.("button, [role='button'], input, select, a[href]");
+                if (control && control !== event.currentTarget && event.currentTarget.contains(control)) {
+                    return;
+                }
                 // Double-click is the "show me this row" gesture, so it brings the property editor out
                 // of a collapsed rail — for every kind of row, including the text ones whose second
                 // click is already spoken for below. Reveal only: focus stays in the scene, so the
@@ -1232,6 +1241,12 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
                     event.stopPropagation();
+                    // Only the first click of a double-click: the next row slides up under the
+                    // pointer with its own delete button in the same place, and the second click
+                    // took that row too.
+                    if (event.detail > 1) {
+                        return;
+                    }
                     props.onDelete();
                 }}
             >
@@ -1641,7 +1656,8 @@ function ConditionChip(props: {
     }
     const payload = block.payload;
     const togglePopover = (event: MouseEvent) => {
-        event.stopPropagation();
+        // The click goes on up to the row, which selects it (see `selectRowFromClick`): editing a
+        // branch's condition used to leave the selection, and the rail, on whatever row was before.
         if (anchor) {
             setAnchor(null);
             return;
@@ -2711,6 +2727,11 @@ export function InsertRow(props: {
                         };
                         if (event.key === "Tab") {
                             event.preventDefault();
+                            // Shift+Tab has no meaning in the slot (see the key map); it used to fall in
+                            // here and take the highlighted candidate exactly as Tab does.
+                            if (event.shiftKey) {
+                                return;
+                            }
                             if (takeHighlighted()) {
                                 return;
                             }
@@ -2865,6 +2886,13 @@ export function getSpeakerCandidates(characters: Character[], tempSpeakers: Temp
         }
         candidates.push({ key: tempSpeakerKey(speaker.name), kind: "temp", name: speaker.name });
         seen.add(speaker.name.toLowerCase());
+    }
+    // A name typed in full is the name meant: `#Ann` with a temp speaker "Ann" and a character "Anna"
+    // highlights Ann, not the character that merely contains the letters. Only an existing speaker
+    // matched exactly moves; a partial hit keeps the order above.
+    const exact = needle ? candidates.findIndex(candidate => candidate.name.toLowerCase() === needle) : -1;
+    if (exact > 0) {
+        candidates.unshift(...candidates.splice(exact, 1));
     }
     if (typed && !seen.has(needle)) {
         candidates.push({ key: tempSpeakerKey(typed), kind: "temp", name: typed });
@@ -4018,8 +4046,20 @@ export function CharacterSelectTrigger(props: {
         close();
     };
 
+    /**
+     * Whether the author has pointed at a candidate since the field last changed - an arrow or the
+     * pointer. An emptied field lists the whole cast with the first one highlighted, and Enter there
+     * used to hand the line to whoever happened to be first; an empty name nobody pointed past now
+     * leaves the speaker as it was.
+     */
+    const pointedRef = useRef(false);
+
     /** Enter with nothing highlighted still has to mean something: keep whatever was typed. */
     const commitDraft = () => {
+        if (!trimmed && !pointedRef.current) {
+            close();
+            return;
+        }
         // On a group, the highlight moves into its column rather than committing.
         if (!picker.activeCharacter && picker.enterGroup()) {
             return;
@@ -4166,7 +4206,10 @@ export function CharacterSelectTrigger(props: {
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
-                onChange={event => setDraft(event.target.value)}
+                onChange={event => {
+                    pointedRef.current = false;
+                    setDraft(event.target.value);
+                }}
                 onMouseDown={event => event.stopPropagation()}
                 onKeyDown={event => {
                     event.stopPropagation();
@@ -4176,6 +4219,7 @@ export function CharacterSelectTrigger(props: {
                     }
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                         event.preventDefault();
+                        pointedRef.current = true;
                         picker.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
                         return;
                     }
@@ -4183,6 +4227,7 @@ export function CharacterSelectTrigger(props: {
                     // field is empty, so the caret has nothing to move across when these fire.
                     if (event.key === "ArrowRight" ? picker.enterGroup() : event.key === "ArrowLeft" && picker.leaveGroup()) {
                         event.preventDefault();
+                        pointedRef.current = true;
                         return;
                     }
                     // Same contract as the `#` slot: the highlight is what Tab and Enter both take.
@@ -4202,8 +4247,14 @@ export function CharacterSelectTrigger(props: {
                 activeKey={picker.activeStop?.key ?? null}
                 openGroup={picker.openGroup}
                 activeMemberKey={picker.activeMember?.key ?? null}
-                onHighlight={picker.selectCharacter}
-                onHighlightMember={picker.selectMember}
+                onHighlight={key => {
+                    pointedRef.current = true;
+                    picker.selectCharacter(key);
+                }}
+                onHighlightMember={key => {
+                    pointedRef.current = true;
+                    picker.selectMember(key);
+                }}
                 onEnterGroup={picker.enterGroup}
                 onChoose={choose}
                 onClear={() => {

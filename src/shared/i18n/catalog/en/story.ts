@@ -932,6 +932,14 @@ export const story = {
         replace: "Replace",
         replaceAll: "Replace all",
         open: "Find and replace",
+        hidden: {
+            one: "{count} more match is in a hidden row and is not searched or replaced",
+            other: "{count} more matches are in hidden rows and are not searched or replaced",
+        },
+        replaced: {
+            one: "Replaced {count} match",
+            other: "Replaced {count} matches",
+        },
     },
     commandManual: {
         open: "Command manual",

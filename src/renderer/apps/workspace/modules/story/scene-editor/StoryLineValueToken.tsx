@@ -58,7 +58,9 @@ export function StoryLineValueToken(props: {
     const link = useStoryRefLink(props.target);
 
     const open = (event: ReactMouseEvent<HTMLButtonElement>) => {
-        event.stopPropagation();
+        // The click is left to reach the row, whose click handler selects it - the path every
+        // control inside a row takes (see `selectRowFromClick`). Stopping it here meant editing a
+        // value left the selection, and the inspector, on some other row.
         // Following the reference outranks editing the value, because the author had to hold a key to
         // ask for it. A modifier press with nothing behind it falls through to the editor rather than
         // doing nothing, which is the only reading that never loses a click.

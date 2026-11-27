@@ -825,6 +825,12 @@ export const story = {
         replace: "替换",
         replaceAll: "全部替换",
         open: "查找和替换",
+        hidden: {
+            other: "另有 {count} 处位于隐藏的行中，不会被查找或替换",
+        },
+        replaced: {
+            other: "已替换 {count} 处",
+        },
     },
     commandManual: {
         open: "指令手册",

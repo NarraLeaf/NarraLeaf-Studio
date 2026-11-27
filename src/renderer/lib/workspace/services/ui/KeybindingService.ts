@@ -382,6 +382,19 @@ export class KeybindingService {
             return;
         }
 
+        // A focused control that already took a plain Enter or Space as its own activation (and said
+        // so with preventDefault) has answered the key. Firing a global binding as well made one press
+        // do two things - the story nametag opened its picker and the editor's Enter opened the row
+        // underneath. Only these two keys: they are the activation keys, and a control's own
+        // preventDefault on anything else says nothing about the shortcuts above it.
+        if (
+            event.defaultPrevented
+            && (event.key === "Enter" || event.key === " ")
+            && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        ) {
+            return;
+        }
+
         const currentFocus = this.focusManager.getFocus();
         const inEditableField = isEditableKeyboardTarget(event.target);
 

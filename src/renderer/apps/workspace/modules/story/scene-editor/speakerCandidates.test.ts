@@ -52,6 +52,12 @@ describe("getSpeakerCandidates", () => {
         expect(candidates[0].kind).toBe("character");
     });
 
+    it("puts a speaker typed in full ahead of a character that only contains the letters", () => {
+        const anna = character("char-anna", "Anna");
+        const candidates = getSpeakerCandidates([anna], temps("Ann"), "ann");
+        expect(candidates.map(candidate => candidate.name)).toEqual(["Ann", "Anna"]);
+    });
+
     it("filters both kinds by the query", () => {
         const candidates = getSpeakerCandidates([alice, bob], temps("Carol"), "bo");
         expect(candidates.map(candidate => candidate.name)).toEqual(["Bob", "bo"]);
