@@ -145,7 +145,7 @@ export const FIXED_INPUT_CATALOG: readonly FixedInputEntry[] = [
     entry("ui-editor.select-layer", CATEGORY.uiEditor, label("uiEditor.selectLayer"), gesture("rightClickCanvas")),
     entry("ui-editor.select-inside", CATEGORY.uiEditor, label("uiEditor.selectInside"), gesture("doubleClickContainer")),
     entry("ui-editor.edit-text", CATEGORY.uiEditor, label("uiEditor.editText"), gesture("doubleClickText")),
-    entry("ui-editor.discard-text", CATEGORY.uiEditor, label("uiEditor.discardText"), key("escape")),
+    entry("ui-editor.discard-text", CATEGORY.uiEditor, label("uiEditor.discardText"), key("escape"), key("mod+enter")),
     entry("ui-editor.crop", CATEGORY.uiEditor, label("uiEditor.crop"), gesture("doubleClickImage")),
     entry("ui-editor.suspend-snap", CATEGORY.uiEditor, label("uiEditor.suspendSnap"), gesture("drag", "mod")),
     entry("ui-editor.duplicate-drag", CATEGORY.uiEditor, label("uiEditor.dragCopy"), gesture("drag", "alt")),

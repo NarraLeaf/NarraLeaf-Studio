@@ -204,6 +204,17 @@ export function constrainDragToAxis(translateX: number, translateY: number, cons
     return Math.abs(translateX) >= Math.abs(translateY) ? [translateX, 0] : [0, translateY];
 }
 
+/** The step Shift turns a rotation in. */
+const ROTATION_SNAP_DEGREES = 15;
+
+/**
+ * A canvas gesture commits whole design pixels, as a design tool does. A drag at 33% zoom used to
+ * leave `x: 103.03, w: 248.48` behind: values no one typed and every neighbour then has to match.
+ */
+function wholePixel(value: number): number {
+    return Math.round(value);
+}
+
 /** Whether a gesture's input event has a modifier down (Moveable hands the native event through). */
 function inputHas(event: { inputEvent?: unknown }, key: "shiftKey" | "altKey"): boolean {
     const input = event.inputEvent as Partial<Record<"shiftKey" | "altKey", boolean>> | null | undefined;
@@ -412,12 +423,12 @@ export function useMoveableHandlers({
             }
             const stateOffset =
                 currentStateOffset(documentService.getDocument(), enteredState, elementId) ?? { x: 0, y: 0 };
-            const nextX = initialLayout.x + stateOffset.x + translateX;
-            const nextY = initialLayout.y + stateOffset.y + translateY;
+            const nextX = wholePixel(initialLayout.x + stateOffset.x + translateX);
+            const nextY = wholePixel(initialLayout.y + stateOffset.y + translateY);
             if (copying) {
                 // The copy goes where the drag ended; the original goes back to where it was, which
                 // is where its DOM still is - the drag only ever moved it by transform.
-                copyPositions[elementId] = { x: initialLayout.x + translateX, y: initialLayout.y + translateY };
+                copyPositions[elementId] = { x: wholePixel(initialLayout.x + translateX), y: wholePixel(initialLayout.y + translateY) };
             } else {
                 patches[elementId] = {
                     x: nextX,
@@ -468,26 +479,28 @@ export function useMoveableHandlers({
             const flipBaselineX = getResizeFlipBaseline(initialLayout, startData, "x");
             const flipBaselineY = getResizeFlipBaseline(initialLayout, startData, "y");
             const patch: Partial<UILayout> = {};
+            // Whole pixels, and never narrower than one: a handle dragged exactly onto the opposite
+            // edge with snapping off committed a box of zero width.
             if (cached?.width !== undefined) {
-                patch.width = Math.abs(cached.width);
+                patch.width = Math.max(1, wholePixel(Math.abs(cached.width)));
             }
             if (cached?.height !== undefined) {
-                patch.height = Math.abs(cached.height);
+                patch.height = Math.max(1, wholePixel(Math.abs(cached.height)));
             }
             if (!isFlowChild && cached?.x !== undefined) {
-                patch.x = cached.x;
+                patch.x = wholePixel(cached.x);
             } else if (!isFlowChild && initialLayout) {
                 patch.x = initialLayout.x;
             }
             if (!isFlowChild && cached?.y !== undefined) {
-                patch.y = cached.y;
+                patch.y = wholePixel(cached.y);
             } else if (!isFlowChild && initialLayout) {
                 patch.y = initialLayout.y;
             }
             const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
             if (!isFlowChild && initialLayout && (translateX !== 0 || translateY !== 0)) {
-                patch.x = initialLayout.x + translateX;
-                patch.y = initialLayout.y + translateY;
+                patch.x = wholePixel(initialLayout.x + translateX);
+                patch.y = wholePixel(initialLayout.y + translateY);
             }
             if (Object.keys(patch).length > 0) {
                 patches[elementId] = patch;
@@ -1140,11 +1153,15 @@ export function useMoveableHandlers({
                 return;
             }
             clearSmartSnapGuides();
-            const rotation = Number.isFinite(e.beforeRotation)
+            const rawRotation = Number.isFinite(e.beforeRotation)
                 ? e.beforeRotation
                 : Number.isFinite(e.beforeRotate)
                     ? e.beforeRotate
                     : e.rotate;
+            // Shift turns in 15° steps, so 0, 45 and 90 are reachable on purpose rather than by luck.
+            const rotation = inputHas(e, "shiftKey") && Number.isFinite(rawRotation)
+                ? Math.round(rawRotation / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
+                : rawRotation;
             const elementId = e.target.dataset.uiElementId;
             const fallbackRotation = Number.isFinite(rotation) ? rotation : 0;
             if (!elementId) {

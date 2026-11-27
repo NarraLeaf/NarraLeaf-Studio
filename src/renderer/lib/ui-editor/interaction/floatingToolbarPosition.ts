@@ -5,6 +5,7 @@ export type FloatingToolbarPosition = {
 
 const DEFAULT_FLOATING_TOOLBAR_TOP_GAP = 8;
 const DEFAULT_FLOATING_TOOLBAR_MIN_TOP = 34;
+const FLOATING_TOOLBAR_MIN_LEFT = 4;
 
 type RectLike = Pick<DOMRect, "left" | "top">;
 
@@ -17,7 +18,8 @@ export function resolveFloatingToolbarPosition(input: {
     const gap = input.gap ?? DEFAULT_FLOATING_TOOLBAR_TOP_GAP;
     const minTop = input.minTop ?? DEFAULT_FLOATING_TOOLBAR_MIN_TOP;
     return {
-        left: input.targetRect.left - input.surfaceRect.left,
+        // Kept on the canvas: an element running off its left edge took the bar off screen with it.
+        left: Math.max(FLOATING_TOOLBAR_MIN_LEFT, input.targetRect.left - input.surfaceRect.left),
         top: Math.max(minTop, input.targetRect.top - input.surfaceRect.top - gap),
     };
 }

@@ -23,7 +23,15 @@ import {
     uiEditorSelectAllInSurface,
     uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import {
+    elementsChangedByHistoryStep,
+    isSurfaceRootElement,
+    selectSurfaceForProperties,
+} from "@/lib/ui-editor/commands/uiEditorSelection";
+import { uiEditorArrange, type UiEditorArrangeOp } from "@/lib/ui-editor/commands/uiEditorArrange";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { getOutlineVisualChildren } from "./outline/outlineDropGeometry";
+import { beginOrExplainInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
 import { uiEditorAlign, type UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
 import {
     UI_EDITOR_NUDGE_LARGE_STEP,
@@ -60,6 +68,17 @@ function getUiSelection(stateService: UIEditorStateService, surfaceId: string): 
     return data.surfaceId === surfaceId ? data : null;
 }
 
+export type UIEditorZoomActions = {
+    /** Multiply the zoom, about the middle of the free canvas. */
+    zoomBy: (factor: number) => void;
+    zoomTo: (scale: number) => void;
+    fit: () => void;
+    toSelection: () => void;
+};
+
+/** One zoom key step: the ratio between two presses of = or -. */
+const ZOOM_KEY_STEP = 1.25;
+
 export type UseUIEditorKeybindingsParams = {
     tabId: string;
     surfaceId: string | undefined;
@@ -72,6 +91,8 @@ export type UseUIEditorKeybindingsParams = {
     stateService: UIEditorStateService | null;
     uiService: UIService | null;
     requestRenamePrimary: () => void;
+    /** The canvas view, for the zoom keys. Absent, they do nothing. */
+    zoom?: UIEditorZoomActions | null;
     /**
      * While active, the keybindings that edit do nothing.
      *
@@ -96,6 +117,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         stateService,
         uiService,
         requestRenamePrimary,
+        zoom = null,
         readOnly = UI_EDITOR_WRITABLE,
     } = params;
     const readOnlyActive = readOnly.active;
@@ -181,24 +203,30 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             }
             uiEditorAlign(documentService, surfaceId, getUiSelection(stateService, surfaceId), op);
         };
-        const undo = () => {
-            if (isTypingInField()) {
+        const arrange = (op: UiEditorArrangeOp) => () => {
+            if (!documentService || !stateService || isTypingInField()) {
                 return;
             }
-            if (!historyService) {
-                return;
-            }
-            historyService.undo(surfaceId);
+            uiEditorArrange(documentService, surfaceId, getUiSelection(stateService, surfaceId), op);
         };
-        const redo = () => {
-            if (isTypingInField()) {
+        // After an undo or redo, what it changed is selected (`elementsChangedByHistoryStep`).
+        const stepHistory = (direction: "undo" | "redo") => {
+            if (isTypingInField() || !historyService) {
                 return;
             }
-            if (!historyService) {
+            const before = documentService?.getDocument();
+            const moved = direction === "undo" ? historyService.undo(surfaceId) : historyService.redo(surfaceId);
+            const after = documentService?.getDocument();
+            if (!moved || !before || !after || !stateService || before === after) {
                 return;
             }
-            historyService.redo(surfaceId);
+            const changed = elementsChangedByHistoryStep(before, after, surfaceId);
+            if (changed) {
+                stateService.setUIElementSelection({ editor: "ui", surfaceId, elementIds: changed, primaryId: changed[changed.length - 1] });
+            }
         };
+        const undo = () => stepHistory("undo");
+        const redo = () => stepHistory("redo");
 
         const modPairs = bindMod("ctrl", [
             { suffix: "undo", key: "z", handler: whenWritable(undo) },
@@ -286,6 +314,10 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 key: "alt+shift+v",
                 handler: whenWritable(align("distributeVertical")),
             },
+            { id: "bring-forward", key: "mod+]", handler: whenWritable(arrange("bringForward")) },
+            { id: "send-backward", key: "mod+[", handler: whenWritable(arrange("sendBackward")) },
+            { id: "bring-to-front", key: "mod+alt+]", handler: whenWritable(arrange("bringToFront")) },
+            { id: "send-to-back", key: "mod+alt+[", handler: whenWritable(arrange("sendToBack")) },
         ];
     }, [
         surfaceId,
@@ -335,6 +367,70 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         };
         const step = UI_EDITOR_NUDGE_STEP;
         const large = UI_EDITOR_NUDGE_LARGE_STEP;
+        const selectIds = (ids: string[]) => {
+            if (!stateService || ids.length === 0) {
+                return;
+            }
+            stateService.setUIElementSelection({ editor: "ui", surfaceId, elementIds: ids, primaryId: ids[ids.length - 1] });
+        };
+        // Enter goes into the selection: its own layers, or - on a text element - into its text.
+        const enterSelection = () => {
+            if (!documentService || !stateService) {
+                return;
+            }
+            const sel = getUiSelection(stateService, surfaceId);
+            if (!sel || sel.elementIds.length === 0) {
+                return;
+            }
+            const doc = documentService.getDocument();
+            const only = sel.elementIds.length === 1 ? doc.elements[sel.elementIds[0]] : null;
+            if (only && !readOnlyActive && isInlineTextEditableElement(only)) {
+                beginOrExplainInlineTextEdit({ stateService, documentService }, surfaceId, only.id);
+                return;
+            }
+            const children = sel.elementIds.flatMap(id => doc.elements[id]?.childrenIds ?? []).filter(id => doc.elements[id]);
+            selectIds(children);
+        };
+        // Shift+Enter (and Escape) go up a level.
+        const selectParent = (): boolean => {
+            if (!documentService || !stateService) {
+                return false;
+            }
+            const sel = getUiSelection(stateService, surfaceId);
+            const doc = documentService.getDocument();
+            const rootId = resolveSurfaceRootElementId(doc, surfaceId);
+            const parents = [...new Set((sel?.elementIds ?? []).map(id => doc.elements[id]?.parentId).filter((id): id is string => Boolean(id)))];
+            const usable = parents.filter(id => id !== rootId && !isSurfaceRootElement(doc.elements[id]));
+            if (usable.length === 0) {
+                return false;
+            }
+            selectIds(usable);
+            return true;
+        };
+        // Tab and Shift+Tab step through the selection's siblings, in the order the outline lists them.
+        const stepSibling = (direction: 1 | -1) => () => {
+            if (!documentService || !stateService) {
+                return;
+            }
+            const sel = getUiSelection(stateService, surfaceId);
+            const doc = documentService.getDocument();
+            const currentId = sel ? sel.primaryId ?? sel.elementIds[sel.elementIds.length - 1] : null;
+            const current = currentId ? doc.elements[currentId] : null;
+            const parent = current?.parentId
+                ? doc.elements[current.parentId]
+                : doc.elements[resolveSurfaceRootElementId(doc, surfaceId) ?? ""];
+            if (!parent) {
+                return;
+            }
+            const siblings = getOutlineVisualChildren(parent).filter(id => doc.elements[id] && !isSurfaceRootElement(doc.elements[id]));
+            if (siblings.length === 0) {
+                return;
+            }
+            const index = current ? siblings.indexOf(current.id) : -1;
+            const next = siblings[(index + direction + siblings.length) % siblings.length];
+            selectIds([next]);
+        };
+        const setTool = (kind: "select" | "pan") => () => stateService?.setTool({ kind });
         // Literal ids and keys, for the reason the align bindings above spell theirs out.
         return [
             { id: "nudge-left", key: "arrowleft", handler: nudge(-step, 0) },
@@ -346,8 +442,19 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             { id: "nudge-up-large", key: "shift+arrowup", handler: nudge(0, -large) },
             { id: "nudge-down-large", key: "shift+arrowdown", handler: nudge(0, large) },
             { id: "snap-to-grid", key: "r", handler: snapToGrid },
+            { id: "zoom-in", key: "=", handler: () => zoom?.zoomBy(ZOOM_KEY_STEP) },
+            { id: "zoom-out", key: "-", handler: () => zoom?.zoomBy(1 / ZOOM_KEY_STEP) },
+            { id: "zoom-actual", key: "shift+0", handler: () => zoom?.zoomTo(1) },
+            { id: "zoom-fit", key: "shift+1", handler: () => zoom?.fit() },
+            { id: "zoom-selection", key: "shift+2", handler: () => zoom?.toSelection() },
+            { id: "tool-select", key: "v", handler: setTool("select") },
+            { id: "tool-hand", key: "h", handler: setTool("pan") },
+            { id: "select-children", key: "enter", handler: enterSelection },
+            { id: "select-parent", key: "shift+enter", handler: () => void selectParent() },
+            { id: "select-next-sibling", key: "tab", handler: stepSibling(1) },
+            { id: "select-previous-sibling", key: "shift+tab", handler: stepSibling(-1) },
         ];
-    }, [surfaceId, documentService, stateService, readOnlyActive]);
+    }, [surfaceId, documentService, stateService, readOnlyActive, zoom]);
 
     const escapeHandler = useCallback(() => {
         if (!stateService || !surfaceId) {
@@ -362,8 +469,26 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             stateService.setInteractionOverride(null);
             return;
         }
+        // An armed insert tool is put down first: Escape used to clear the selection and leave the
+        // tool armed for the next click.
+        if (stateService.getTool().kind !== "select") {
+            stateService.setTool({ kind: "select" });
+            return;
+        }
+        // Then up one level, as in a design tool, and only from the top level out of the selection.
+        const sel = getUiSelection(stateService, surfaceId);
+        if (sel && documentService) {
+            const doc = documentService.getDocument();
+            const rootId = resolveSurfaceRootElementId(doc, surfaceId);
+            const parents = [...new Set(sel.elementIds.map(id => doc.elements[id]?.parentId).filter((id): id is string => Boolean(id)))];
+            const usable = parents.filter(id => id !== rootId && !isSurfaceRootElement(doc.elements[id]));
+            if (usable.length > 0) {
+                stateService.setUIElementSelection({ editor: "ui", surfaceId, elementIds: usable, primaryId: usable[usable.length - 1] });
+                return;
+            }
+        }
         selectSurfaceForProperties(stateService, surfaceId, uiService);
-    }, [contextMenuOpen, onCloseContextMenu, stateService, surfaceId, uiService]);
+    }, [contextMenuOpen, documentService, onCloseContextMenu, stateService, surfaceId, uiService]);
 
     useKeybinding({
         id: `ui-surface-editor-${tabId}-escape`,

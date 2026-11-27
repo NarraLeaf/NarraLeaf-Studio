@@ -195,7 +195,8 @@ describe("what a paste does not change", () => {
     it("pastes into a container from the context menu and after a selection with Ctrl+V", () => {
         const doc = page();
         expect(pasteOn(doc, "box", [label])).toEqual({ parentId: "box", beforeChildId: null });
-        expect(pasteAfter(doc, "box", [label])).toEqual({ parentId: "root", beforeChildId: "after" });
+        // With one container selected, Ctrl+V pastes into it, as a design tool pastes into the selected frame.
+        expect(pasteAfter(doc, "box", [label])).toEqual({ parentId: "box", beforeChildId: null });
         expect(pasteOn(doc, "before", [label])).toEqual({ parentId: "root", beforeChildId: null });
     });
 

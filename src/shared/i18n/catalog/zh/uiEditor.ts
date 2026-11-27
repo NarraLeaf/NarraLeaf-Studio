@@ -262,6 +262,8 @@ export const uiEditor = {
         rename: "重命名…",
         showSelected: "显示所选",
         hideSelected: "隐藏所选",
+        showInGame: "在游戏中显示",
+        hideInGame: "在游戏中隐藏",
         addToComponentLibrary: "添加到组件库",
         setAsRoot: "设为根元素",
         wrapRootInContainer: "用容器包裹",

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { createGestureDeadzone, GESTURE_DEADZONE_PX } from "./gestureDeadzone";
 import type {
     OnDrag,
     OnDragEnd,
@@ -454,6 +455,14 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             }
             event.preventDefault();
             event.stopPropagation();
+            // A press that wobbles a pixel or two is a click, not a drag: without this, a click on
+            // the picture rewrote its fill from cover to crop and left an undo step behind.
+            if (
+                lastDragRef.current === null &&
+                Math.hypot(event.clientX - dragState.startClientX, event.clientY - dragState.startClientY) < GESTURE_DEADZONE_PX
+            ) {
+                return;
+            }
             const delta = clientDeltaToContainerDelta(
                 runtime.container,
                 event.clientX - dragState.startClientX,
@@ -541,8 +550,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
 
     // ── Drag ─────────────────────────────────────────────────────────────
 
+    const moveableDeadzone = useRef(createGestureDeadzone());
     const handleDragStart = useCallback(
         (event: OnDragStart) => {
+            moveableDeadzone.current.begin(event.clientX, event.clientY);
             if (!imageTarget) {
                 return;
             }
@@ -560,7 +571,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
     );
 
     const handleDrag = useCallback((event: OnDrag) => {
-        if (!event.target) {
+        if (!event.target || !moveableDeadzone.current.update(event.clientX, event.clientY)) {
             return;
         }
         lastDragRef.current = {

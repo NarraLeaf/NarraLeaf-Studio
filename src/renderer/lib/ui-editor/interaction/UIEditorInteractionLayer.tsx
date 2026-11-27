@@ -813,10 +813,34 @@ export function UIEditorInteractionLayer({
         [documentService, localBlueprint, readOnly, stateService, surfaceId],
     );
 
+    // What a moving selection does not snap to: itself and everything inside it - a container used to
+    // stick to its own children's old edges for its first few pixels, then jump - and the layers
+    // hidden on the canvas, which are not there to line up with.
+    const snapExcludedElementIds = useMemo(() => {
+        void layerFlagsRevision;
+        const doc = documentService.getDocument();
+        const excluded = new Set<string>();
+        for (const id of selectionIds) {
+            if (doc.elements[id]) {
+                for (const inner of collectSubtreeElementIds(doc, id)) {
+                    excluded.add(inner);
+                }
+            }
+        }
+        for (const id of Object.keys(doc.elements)) {
+            if (stateService.isElementHiddenInEditor(id)) {
+                for (const inner of collectSubtreeElementIds(doc, id)) {
+                    excluded.add(inner);
+                }
+            }
+        }
+        return [...excluded];
+    }, [documentRevision, documentService, layerFlagsRevision, selectionIds, stateService]);
+
     const transformController = useTransformController({
         documentService,
         selectionIds: transformSelectionIds,
-        snapExcludedElementIds: selectionIds,
+        snapExcludedElementIds: snapExcludedElementIds,
         selectedTargets: transformTargets,
         isGroupSelection,
         viewportScale: viewport.scale,
@@ -1037,7 +1061,8 @@ export function UIEditorInteractionLayer({
                         onClick={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
                         onClickGroup={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
                     />
-                    {hasFloatingToolbar && floatingToolbarPosition ? (
+                    {/* Out of the way while the element is being moved, resized or turned. */}
+                    {hasFloatingToolbar && floatingToolbarPosition && selectionEnabled ? (
                         <div
                             className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-surface-overlay/90 text-fg shadow-lg shadow-black/30"
                             style={{

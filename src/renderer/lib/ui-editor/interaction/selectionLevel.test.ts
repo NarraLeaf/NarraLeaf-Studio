@@ -14,6 +14,7 @@ import {
 } from "./containerDrillSelection";
 import { resolveContextMenuTarget } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { constrainDragToAxis } from "./useMoveableHandlers";
+import { elementsChangedByHistoryStep } from "@/lib/ui-editor/commands/uiEditorSelection";
 
 function element(id: string, type: string, parentId: string | null, childrenIds: string[] = []): UIElement {
     return { id, type, parentId, childrenIds, layout: { x: 0, y: 0, width: 100, height: 100 } } as UIElement;
@@ -129,5 +130,25 @@ describe("constrainDragToAxis (Shift while moving)", () => {
 
     it("leaves a free move alone", () => {
         expect(constrainDragToAxis(40, 12, false)).toEqual([40, 12]);
+    });
+});
+
+describe("elementsChangedByHistoryStep", () => {
+    it("selects what came back and what moved, outermost only", () => {
+        const after = JSON.parse(JSON.stringify(document)) as UIDocument;
+        const before = JSON.parse(JSON.stringify(document)) as UIDocument;
+        delete (before.elements as Record<string, unknown>).quit;
+        before.elements.panel.childrenIds = ["title", "start"];
+        after.elements.start.layout = { ...after.elements.start.layout, x: 40 };
+        after.elements.startLabel.layout = { ...after.elements.startLabel.layout, x: 9 };
+        expect(elementsChangedByHistoryStep(before, after, "page")).toEqual(["start", "quit"]);
+    });
+
+    it("leaves the selection alone when only deletions happened", () => {
+        const before = JSON.parse(JSON.stringify(document)) as UIDocument;
+        const after = JSON.parse(JSON.stringify(document)) as UIDocument;
+        delete (after.elements as Record<string, unknown>).quit;
+        after.elements.panel.childrenIds = ["title", "start"];
+        expect(elementsChangedByHistoryStep(before, after, "page")).toBeNull();
     });
 });

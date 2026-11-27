@@ -99,13 +99,14 @@ describe("UI editor context menus", () => {
             "delete",
             "rename",
             "add-to-component-library",
-            "show-selected",
             "hide-selected",
             "group",
             "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
         }
+        // Only the visibility row that would change something is offered: nothing here is hidden.
+        expect(items.some(item => !("separator" in item) && item.id === "show-selected")).toBe(false);
         expect(findItem(items, "arrange").submenu?.every(item => item.disabled)).toBe(true);
     });
 

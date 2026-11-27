@@ -264,6 +264,8 @@ export const uiEditor = {
         rename: "名前を変更…",
         showSelected: "選択中のものを表示",
         hideSelected: "選択中のものを隠す",
+        showInGame: "ゲーム内で表示",
+        hideInGame: "ゲーム内で非表示",
         addToComponentLibrary: "コンポーネントライブラリに追加",
         setAsRoot: "ルート要素にする",
         wrapRootInContainer: "コンテナで包む",

@@ -752,6 +752,9 @@ export function useSurfaceInteractionEvents({
 
         const handleWheel = (event: WheelEvent) => {
             event.preventDefault();
+            // The live view, not the one this listener was set up with: a trackpad sends wheel events
+            // faster than React re-renders, and every event read from a stale view lost its delta.
+            const viewport = stateService.getViewportTransform();
             const rect = surfaceElement.getBoundingClientRect();
             const pageDeltaX = resolveSurfaceWheelPageDelta(rect.width || surfaceElement.clientWidth);
             const pageDeltaY = resolveSurfaceWheelPageDelta(rect.height || surfaceElement.clientHeight);
@@ -777,7 +780,10 @@ export function useSurfaceInteractionEvents({
                 if (nextScale === currentScale) {
                     return;
                 }
-                const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                const surfacePoint = {
+                    x: (pointerX - viewport.offsetX) / currentScale,
+                    y: (pointerY - viewport.offsetY) / currentScale,
+                };
                 const nextOffsetX = pointerX - surfacePoint.x * nextScale;
                 const nextOffsetY = pointerY - surfacePoint.y * nextScale;
                 stateService.updateViewport({

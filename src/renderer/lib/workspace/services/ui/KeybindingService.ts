@@ -79,6 +79,30 @@ function normalizeKeyboardEventKey(event: KeyboardEvent): string {
 }
 
 /**
+ * The letter or digit of the physical key (`KeyA` → `a`, `Digit1` → `1`), or null for any other key.
+ *
+ * What a chord is matched by when the produced character is not the key's own: on macOS, Option
+ * types a different character (Option+A is "å", Option+H is "˙"), and Shift+1 is "!". Matched by
+ * `event.key` alone, every Option-letter shortcut - the align and distribute set among them - could
+ * never fire, while the menus printed them as working.
+ */
+export function physicalKeyFromCode(code: string | undefined): string | null {
+    if (!code) {
+        return null;
+    }
+    const letter = /^Key([A-Z])$/.exec(code);
+    if (letter) {
+        return letter[1].toLowerCase();
+    }
+    const digit = /^Digit([0-9])$/.exec(code);
+    if (digit) {
+        return digit[1];
+    }
+    const punctuation: Record<string, string> = { BracketLeft: "[", BracketRight: "]", Equal: "=", Minus: "-" };
+    return punctuation[code] ?? null;
+}
+
+/**
  * Global-state key holding the user's keybinding overrides as one `Record<id, binding>` map.
  * A single key (not one per id) because ids may contain dots, which the dotted-path settings
  * store would silently split into nested objects.
@@ -109,10 +133,13 @@ export function sanitizeKeybindingOverrides(raw: unknown): Record<string, string
  * literal `ctrl`.
  */
 export function keybindingFromKeyboardEvent(
-    event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+    event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey"> & { code?: string },
     isMac: boolean,
 ): string | null {
-    const key = event.key === " " ? "space" : event.key.toLowerCase();
+    const typed = event.key === " " ? "space" : event.key.toLowerCase();
+    // With Option or Shift held, record the key pressed rather than the character it typed, so
+    // Option+A records as alt+a, not alt+å (see `physicalKeyFromCode`).
+    const key = (event.altKey || event.shiftKey) && physicalKeyFromCode(event.code) ? physicalKeyFromCode(event.code)! : typed;
     if (key === "control" || key === "alt" || key === "shift" || key === "meta") {
         return null;
     }
@@ -141,14 +168,19 @@ export function keybindingFromKeyboardEvent(
  * Check if keyboard event matches parsed keybinding. Exported for tests.
  */
 export function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
-    const evKey = normalizeKeyboardEventKey(event);
-    return (
-        event.ctrlKey === parsed.ctrl &&
-        event.altKey === parsed.alt &&
-        event.shiftKey === parsed.shift &&
-        event.metaKey === parsed.meta &&
-        evKey === parsed.key
-    );
+    if (
+        event.ctrlKey !== parsed.ctrl ||
+        event.altKey !== parsed.alt ||
+        event.shiftKey !== parsed.shift ||
+        event.metaKey !== parsed.meta
+    ) {
+        return false;
+    }
+    if (normalizeKeyboardEventKey(event) === parsed.key) {
+        return true;
+    }
+    // The typed character is not the key's own (Option+A is "å"): match the physical key.
+    return (event.altKey || event.shiftKey) && physicalKeyFromCode(event.code) === parsed.key;
 }
 
 /**

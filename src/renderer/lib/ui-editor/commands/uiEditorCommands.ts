@@ -1,4 +1,4 @@
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { isUIStructuralWidgetPart, type UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import {
@@ -109,6 +109,12 @@ export function resolvePasteTargetAfterSelection(
             selected &&
             !sourceElementIds.includes(selected.id) &&
             selected.id !== effectiveRootId &&
+            // A component's frame is the surface's own root here, which the code below already
+            // resolves as the place a paste goes.
+            !isSurfaceRootElement(selected) &&
+            // Nor a part a widget built (a slider's handle): pasting is aimed at its widget, as
+            // `aimAddAtElement` explains.
+            !isUIStructuralWidgetPart(document, selected) &&
             parentTakesNewElement(document, selected) &&
             collectSubtreeElementIds(document, effectiveRootId).has(selected.id)
         ) {
@@ -573,19 +579,23 @@ export function uiEditorSelectAllInSurface(
         return;
     }
     const allowed = collectSubtreeElementIds(doc, effectiveRootId);
-    const ids: string[] = [];
-    const walk = (id: string) => {
+    // Everything at the level the selection is at - the siblings of what is selected - or the top
+    // level when nothing is, as in a design tool. It used to take every element at every depth, so a
+    // container came selected with all of its own children, and Cmd+A then Cmd+Shift+G dissolved
+    // every group on the page at once.
+    const sel = stateService.getSelection();
+    const selData = sel.type === "element" && sel.data.editor === "ui" && sel.data.surfaceId === surfaceId ? sel.data : null;
+    const anchorId = selData ? selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] : null;
+    const anchorParentId = anchorId ? doc.elements[anchorId]?.parentId ?? null : null;
+    let levelParent = anchorParentId && allowed.has(anchorParentId) ? doc.elements[anchorParentId] : root;
+    // In a component's editor the root holds only the frame: the level under it is the frame's.
+    if (levelParent && levelParent.childrenIds.length === 1 && isSurfaceRootElement(doc.elements[levelParent.childrenIds[0]])) {
+        levelParent = doc.elements[levelParent.childrenIds[0]];
+    }
+    const ids = (levelParent?.childrenIds ?? []).filter(id => {
         const el = doc.elements[id];
-        if (!el || !allowed.has(id)) {
-            return;
-        }
-        // Everything on the surface, and not the surface: a page's root, or a component's frame.
-        if (!isSurfaceRootElement(el)) {
-            ids.push(id);
-        }
-        el.childrenIds.forEach(walk);
-    };
-    walk(effectiveRootId);
+        return el != null && allowed.has(id) && !isSurfaceRootElement(el);
+    });
     if (ids.length === 0) {
         selectSurfaceForProperties(stateService, surfaceId, uiService);
         return;

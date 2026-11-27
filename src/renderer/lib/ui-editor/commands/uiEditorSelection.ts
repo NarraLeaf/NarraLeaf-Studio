@@ -1,6 +1,7 @@
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { canUngroupContainer, filterToTopLevelMovers, planGroupElements } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { canUngroupContainer, collectSubtreeElementIds, filterToTopLevelMovers, planGroupElements } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
@@ -104,4 +105,53 @@ export function getContainersToUngroup(
 
 export function isRootElement(elementType: string): boolean {
     return elementType === ROOT_WIDGET_TYPE;
+}
+
+/**
+ * What an undo or redo changed on one surface, to select afterwards: the elements whose own fields
+ * (place, size, properties, name, parent) differ, and the ones that came back. Undoing a delete used
+ * to bring the element back unselected, and an undone move left the author looking for what moved.
+ *
+ * `null` when nothing that still exists changed (only deletions) or when the change is too broad to
+ * be a selection (`limit`); the caller then leaves the selection as it was.
+ */
+export function elementsChangedByHistoryStep(
+    before: UIDocument,
+    after: UIDocument,
+    surfaceId: string,
+    limit = 64,
+): string[] | null {
+    const rootId = resolveSurfaceRootElementId(after, surfaceId);
+    if (!rootId) {
+        return null;
+    }
+    const fingerprint = (element: UIElement) =>
+        JSON.stringify([element.layout, element.props ?? null, element.name ?? null, element.parentId, element.type, element.extra ?? null]);
+    const changed: string[] = [];
+    for (const id of collectSubtreeElementIds(after, rootId)) {
+        const next = after.elements[id];
+        if (!next || id === rootId || isSurfaceRootElement(next)) {
+            continue;
+        }
+        const previous = before.elements[id];
+        if (!previous || fingerprint(previous) !== fingerprint(next)) {
+            changed.push(id);
+            if (changed.length > limit) {
+                return null;
+            }
+        }
+    }
+    // A change inside a changed element is that element's: select the outermost only.
+    const changedSet = new Set(changed);
+    const outermost = changed.filter(id => {
+        let cur = after.elements[id]?.parentId ?? null;
+        for (let guard = 0; cur && guard < 256; guard++) {
+            if (changedSet.has(cur)) {
+                return false;
+            }
+            cur = after.elements[cur]?.parentId ?? null;
+        }
+        return true;
+    });
+    return outermost.length > 0 ? outermost : null;
 }

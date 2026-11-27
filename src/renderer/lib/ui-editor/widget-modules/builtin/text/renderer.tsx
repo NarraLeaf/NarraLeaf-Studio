@@ -450,7 +450,9 @@ export function TextRenderer({
             surfaceId: surface.id,
         });
         el.focus();
-        el.select();
+        // The caret at the end of the text, not the whole text selected: the first key typed used
+        // to replace everything.
+        el.setSelectionRange(el.value.length, el.value.length);
     }, [isEditing]);
 
     const updateDraftFromTextarea = useCallback((value: string) => {
@@ -471,14 +473,19 @@ export function TextRenderer({
             if (isImeKeyEvent(e)) {
                 return;
             }
-            if (e.key === "Escape") {
+            // Escape and Cmd/Ctrl+Enter both finish editing and keep what was typed, as in a design
+            // tool. Escape used to throw the typing away, so a habit carried over from Figma lost
+            // work. Undo takes an edit back.
+            if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
                 e.preventDefault();
-                skipBlurCommitRef.current = true;
+                // Not on to the canvas, whose Escape would then also move the selection up a level.
+                e.stopPropagation();
                 debugUIDoubleClick("TextRenderer escape close", {
                     elementId: element.id,
                     surfaceId: surface.id,
                 });
-                stateService?.setInteractionOverride(null);
+                // Leaving the field is the commit path a click elsewhere takes (`handleTextareaBlur`).
+                e.currentTarget.blur();
             }
         },
         [element.id, stateService, surface.id],
@@ -515,7 +522,6 @@ export function TextRenderer({
                             return;
                         }
                         el.focus();
-                        el.select();
                     });
                 }
                 return;

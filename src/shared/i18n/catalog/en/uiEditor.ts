@@ -286,6 +286,8 @@ export const uiEditor = {
         rename: "Rename…",
         showSelected: "Show selected",
         hideSelected: "Hide selected",
+        showInGame: "Show in game",
+        hideInGame: "Hide in game",
         addToComponentLibrary: "Add to Component Library",
         setAsRoot: "Set as root element",
         wrapRootInContainer: "Wrap in container",

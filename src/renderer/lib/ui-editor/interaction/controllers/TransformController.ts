@@ -122,9 +122,12 @@ export function useTransformController(config: TransformControllerConfig): Inter
         duplicateOnDrop: config.duplicateOnDrop,
     });
 
+    // Only a selection made entirely of what a stack places is held still. One such element among
+    // freely placed ones used to make the whole selection undraggable; now the free ones move and the
+    // stack puts its own child back.
     const selectionHasFlowLayoutChild = useMemo(() => {
         const doc = config.documentService.getDocument();
-        return config.selectionIds.some(id => {
+        return config.selectionIds.length > 0 && config.selectionIds.every(id => {
             const el = doc.elements[id];
             return el != null && isUIElementFlowLayoutChild(doc, el);
         });

@@ -194,13 +194,14 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
         expect(uiEditorDuplicateSelection(service, {} as never, recordingState(frameOnly).state, surfaceId, frameOnly)).toBe(false);
     });
 
-    it("selects everything inside the frame on Select all, and not the frame", () => {
+    it("selects the frame's own layers on Select all, and not the frame", () => {
         const { service, surfaceId } = componentEditor(rootName);
         const { state, read } = recordingState(selection(surfaceId, ["frame"]));
 
         uiEditorSelectAllInSurface(service, state, surfaceId);
 
-        expect((read() as { data: UIElementSelection }).data.elementIds).toEqual(["panel", "icon", "label"]);
+        // The level under the frame - not what is nested inside those layers in turn.
+        expect((read() as { data: UIElementSelection }).data.elementIds).toEqual(["panel", "label"]);
     });
 
     it("pastes and inserts into the frame, never beside it", () => {
@@ -258,7 +259,8 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
             expect(findItem(canvas, id).disabled).toBe(true);
             expect(findItem(outline, id).disabled).toBe(true);
         }
-        for (const id of ["rename", "show-selected", "hide-selected"]) {
+        // The frame is shown, so Hide is what the canvas menu offers for it.
+        for (const id of ["rename", "hide-selected"]) {
             expect(findItem(canvas, id).disabled).not.toBe(true);
         }
         for (const id of ["rename", "toggle-visible", "insert-child"]) {

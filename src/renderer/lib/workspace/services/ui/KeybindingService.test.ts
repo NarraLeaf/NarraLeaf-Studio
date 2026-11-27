@@ -52,6 +52,16 @@ describe("matchesKeybinding", () => {
         const parsed = parseKeybinding("mod+z", true);
         expect(matchesKeybinding(keyEvent({ key: "z", metaKey: true, shiftKey: true }), parsed)).toBe(false);
     });
+
+    it("matches Option+letter on macOS by the key pressed, not the character Option types", () => {
+        const parsed = parseKeybinding("alt+a", true);
+        expect(matchesKeybinding(keyEvent({ key: "å", code: "KeyA", altKey: true }), parsed)).toBe(true);
+        expect(matchesKeybinding(keyEvent({ key: "∂", code: "KeyD", altKey: true }), parsed)).toBe(false);
+    });
+
+    it("records Option+A as alt+a", () => {
+        expect(keybindingFromKeyboardEvent({ key: "å", code: "KeyA", altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }, true)).toBe("alt+a");
+    });
 });
 
 describe("formatKeybinding", () => {

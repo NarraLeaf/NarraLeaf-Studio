@@ -62,6 +62,11 @@ export function collectSnapGuideLines(
         if (!el || el.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(el)) {
             continue;
         }
+        // Nothing snaps to what is not drawn: a layer hidden in the game, or inside one, is not on
+        // the canvas, and a guide flashing to it lines the selection up with empty space.
+        if (isHiddenOnChain(document, id)) {
+            continue;
+        }
         const b = getSurfaceAxisAlignedBoundsFromDocument(document, id);
         if (!b || b.width <= 0 || b.height <= 0) {
             continue;
@@ -84,6 +89,21 @@ export function collectSnapGuideLines(
     }
 
     return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
+}
+
+function isHiddenOnChain(document: UIDocument, elementId: string): boolean {
+    let cur: string | null = elementId;
+    for (let guard = 0; cur && guard < 256; guard++) {
+        const element: UIDocument["elements"][string] | undefined = document.elements[cur];
+        if (!element) {
+            return false;
+        }
+        if (element.layout.visible === false) {
+            return true;
+        }
+        cur = element.parentId ?? null;
+    }
+    return false;
 }
 
 function dedupeLines(lines: SnapGuideLine[]): SnapGuideLine[] {

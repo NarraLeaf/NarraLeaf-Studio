@@ -11,6 +11,8 @@ import { MotionConfig } from "motion/react";
 import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
+import type { UIEditorZoomActions } from "@/lib/ui-editor/interaction/useUIEditorKeybindings";
+import { SURFACE_ZOOM_MAX_SCALE, SURFACE_ZOOM_MIN_SCALE } from "@/lib/ui-editor/geometry/fitViewport";
 import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, Play, Magnet, PanelsTopLeft, MonitorPlay } from "lucide-react";
@@ -448,7 +450,57 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
 
     useUiClipboardSync(Boolean(surface && documentService));
 
+    // The zoom keys: = and - step about the middle of the free canvas, Shift+0 is 100%, Shift+1 fits
+    // the page, Shift+2 frames the selection.
+    // Read through a ref: `zoom` is a new object every render, and the keybindings re-register
+    // whenever the actions they are handed change.
+    const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
+    const zoomActions = useMemo<UIEditorZoomActions | null>(() => {
+        if (!stateService) {
+            return null;
+        }
+        return {
+            zoomBy: factor => zoomRef.current.setZoomScale(stateService.getViewportTransform().scale * factor),
+            zoomTo: scale => zoomRef.current.setZoomScale(scale),
+            fit: () => zoomRef.current.applyFitMode("contain"),
+            toSelection: () => {
+                const container = viewportRef.current;
+                const selection = stateService.getSelection();
+                if (!container || !isUIElementSelection(selection) || selection.data.surfaceId !== surface?.id) {
+                    return;
+                }
+                const boxes = selection.data.elementIds
+                    .map(id => container.querySelector(`[data-ui-element-id="${id}"]`)?.getBoundingClientRect())
+                    .filter((box): box is DOMRect => Boolean(box && box.width > 0 && box.height > 0));
+                if (boxes.length === 0) {
+                    return;
+                }
+                const origin = container.getBoundingClientRect();
+                const current = stateService.getViewportTransform();
+                // The selection's box in design pixels, from its box on screen.
+                const toSurfaceX = (x: number) => (x - origin.left - current.offsetX) / current.scale;
+                const toSurfaceY = (y: number) => (y - origin.top - current.offsetY) / current.scale;
+                const left = toSurfaceX(Math.min(...boxes.map(box => box.left)));
+                const top = toSurfaceY(Math.min(...boxes.map(box => box.top)));
+                const right = toSurfaceX(Math.max(...boxes.map(box => box.right)));
+                const bottom = toSurfaceY(Math.max(...boxes.map(box => box.bottom)));
+                const margin = 0.8;
+                const scale = Math.max(
+                    SURFACE_ZOOM_MIN_SCALE,
+                    Math.min(SURFACE_ZOOM_MAX_SCALE, Math.min((origin.width * margin) / (right - left), (origin.height * margin) / (bottom - top))),
+                );
+                stateService.updateViewport({
+                    scale,
+                    offsetX: origin.width / 2 - ((left + right) / 2) * scale,
+                    offsetY: origin.height / 2 - ((top + bottom) / 2) * scale,
+                });
+            },
+        };
+    }, [stateService, surface?.id]);
+
     useUIEditorKeybindings({
+        zoom: zoomActions,
         tabId,
         surfaceId: surface?.id,
         enabled: Boolean(surface && documentService && stateService && localBlueprint),

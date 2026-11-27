@@ -39,6 +39,7 @@ import {
     FlaskConical,
     Grid3x3,
     Group,
+    Hand,
     History,
     IndentDecrease,
     IndentIncrease,
@@ -297,6 +298,25 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("ui-editor.nudge-down-large", "shift+arrowdown", "workspace.shell.keybindings.catalog.uiEditor.nudgeDownLarge", CATEGORY.uiEditor, ChevronsDown),
     // Each selected element's top-left corner onto the nearest point of the project's grid.
     entry("ui-editor.snap-to-grid", "r", "workspace.shell.keybindings.catalog.uiEditor.snapToGrid", CATEGORY.uiEditor, Grid3x3),
+    // Layer order, as in Figma: Cmd/Ctrl+] and [ one step, with Alt all the way.
+    entry("ui-editor.bring-forward", "mod+]", "workspace.shell.keybindings.catalog.uiEditor.bringForward", CATEGORY.uiEditor, MoveUp),
+    entry("ui-editor.send-backward", "mod+[", "workspace.shell.keybindings.catalog.uiEditor.sendBackward", CATEGORY.uiEditor, MoveDown),
+    entry("ui-editor.bring-to-front", "mod+alt+]", "workspace.shell.keybindings.catalog.uiEditor.bringToFront", CATEGORY.uiEditor, ArrowUpToLine),
+    entry("ui-editor.send-to-back", "mod+alt+[", "workspace.shell.keybindings.catalog.uiEditor.sendToBack", CATEGORY.uiEditor, ArrowDownToLine),
+    // The view: bare keys, as in a design tool (Cmd+= and Cmd+- belong to the Studio's own zoom).
+    entry("ui-editor.zoom-in", "=", "workspace.shell.keybindings.catalog.uiEditor.zoomIn", CATEGORY.uiEditor, ZoomIn),
+    entry("ui-editor.zoom-out", "-", "workspace.shell.keybindings.catalog.uiEditor.zoomOut", CATEGORY.uiEditor, ZoomOut),
+    entry("ui-editor.zoom-actual", "shift+0", "workspace.shell.keybindings.catalog.uiEditor.zoomActual", CATEGORY.uiEditor, Square),
+    entry("ui-editor.zoom-fit", "shift+1", "workspace.shell.keybindings.catalog.uiEditor.zoomFit", CATEGORY.uiEditor, Maximize2),
+    entry("ui-editor.zoom-selection", "shift+2", "workspace.shell.keybindings.catalog.uiEditor.zoomSelection", CATEGORY.uiEditor, Locate),
+    // Tools.
+    entry("ui-editor.tool-select", "v", "workspace.shell.keybindings.catalog.uiEditor.toolSelect", CATEGORY.uiEditor, SquareDashedMousePointer),
+    entry("ui-editor.tool-hand", "h", "workspace.shell.keybindings.catalog.uiEditor.toolHand", CATEGORY.uiEditor, Hand),
+    // Walking the layer tree from the keyboard.
+    entry("ui-editor.select-children", "enter", "workspace.shell.keybindings.catalog.uiEditor.selectChildren", CATEGORY.uiEditor, IndentIncrease),
+    entry("ui-editor.select-parent", "shift+enter", "workspace.shell.keybindings.catalog.uiEditor.selectParent", CATEGORY.uiEditor, IndentDecrease),
+    entry("ui-editor.select-next-sibling", "tab", "workspace.shell.keybindings.catalog.uiEditor.selectNextSibling", CATEGORY.uiEditor, ChevronDown),
+    entry("ui-editor.select-previous-sibling", "shift+tab", "workspace.shell.keybindings.catalog.uiEditor.selectPreviousSibling", CATEGORY.uiEditor, ChevronUp),
 
     // --- Blueprint editor ----------------------------------------------------
     entry("blueprint.undo", "mod+z", "workspace.shell.keybindings.catalog.blueprint.undo", CATEGORY.blueprint, Undo2),

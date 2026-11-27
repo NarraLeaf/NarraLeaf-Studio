@@ -176,27 +176,38 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         });
     }
 
-    items.push(
-        { separator: true, id: "sep-vis" },
-        {
+    // The game's own visibility (the outline's eye only hides a layer on the canvas): offered the way
+    // that would change something - Show for what is hidden, Hide for what is shown - rather than both
+    // rows every time.
+    const layerIds = menuSelection.elementIds.filter(id => {
+        const el = input.document.elements[id];
+        return el != null && el.type !== ROOT;
+    });
+    const someHidden = layerIds.some(id => input.document.elements[id]?.layout.visible === false);
+    const someShown = layerIds.some(id => input.document.elements[id]?.layout.visible !== false);
+    items.push({ separator: true, id: "sep-vis" });
+    if (someHidden) {
+        items.push({
             id: "show-selected",
-            label: translate("common.show"),
+            label: translate("uiEditor.contextMenu.showInGame"),
             disabled: !hasLayer,
             onClick: () => {
                 actions.hideMenu();
                 actions.setSelectedVisible(true);
             },
-        },
-        {
+        });
+    }
+    if (someShown || !hasLayer) {
+        items.push({
             id: "hide-selected",
-            label: translate("common.hide"),
+            label: translate("uiEditor.contextMenu.hideInGame"),
             disabled: !hasLayer,
             onClick: () => {
                 actions.hideMenu();
                 actions.setSelectedVisible(false);
             },
-        },
-    );
+        });
+    }
 
     items.push(
         {

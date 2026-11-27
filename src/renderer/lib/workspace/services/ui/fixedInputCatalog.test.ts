@@ -130,7 +130,7 @@ const ANCHORS: Record<string, Anchor[]> = {
     "ui-editor.discard-text": [
         {
             file: `${R}/lib/ui-editor/widget-modules/builtin/text/renderer.tsx`,
-            present: ["if (e.key === \"Escape\") {\n                e.preventDefault();\n                skipBlurCommitRef.current = true;"],
+            present: ["if (e.key === \"Escape\" || (e.key === \"Enter\" && (e.metaKey || e.ctrlKey))) {", "e.currentTarget.blur();"],
         },
     ],
     "ui-editor.crop": [

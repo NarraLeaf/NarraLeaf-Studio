@@ -93,7 +93,7 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 删除所选 · Delete Selection：`Delete`
 - 删除所选 · Delete Selection：`Backspace`
 - 重命名 · Rename：`F2`；也可以 · also：双击大纲中的元素 · Double-click an outline item
-- 关闭菜单 / 退出编辑 · Close Menu / Exit Edit：`Esc`
+- 关闭菜单 / 退出编辑 / 选中父级 · Close Menu / Exit Edit / Select Parent：`Esc`
 - 左对齐 · Align left：`⌥A`（macOS）/ `Alt+A`（Windows）
 - 水平居中 · Center horizontally：`⌥H`（macOS）/ `Alt+H`（Windows）
 - 右对齐 · Align right：`⌥D`（macOS）/ `Alt+D`（Windows）
@@ -111,6 +111,21 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 上移 10 像素 · Move up 10 px：`⇧↑`（macOS）/ `Shift+↑`（Windows）
 - 下移 10 像素 · Move down 10 px：`⇧↓`（macOS）/ `Shift+↓`（Windows）
 - 吸附到网格 · Snap to grid：`R`
+- 上移一层 · Bring forward：`⌘]`（macOS）/ `Ctrl+]`（Windows）
+- 下移一层 · Send backward：`⌘[`（macOS）/ `Ctrl+[`（Windows）
+- 置于顶层 · Bring to front：`⌘⌥]`（macOS）/ `Ctrl+Alt+]`（Windows）
+- 置于底层 · Send to back：`⌘⌥[`（macOS）/ `Ctrl+Alt+[`（Windows）
+- 放大 · Zoom in：`+`
+- 缩小 · Zoom out：`-`
+- 缩放到 100% · Zoom to 100%：`⇧0`（macOS）/ `Shift+0`（Windows）
+- 适应编辑区 · Zoom to fit：`⇧1`（macOS）/ `Shift+1`（Windows）
+- 缩放到所选 · Zoom to selection：`⇧2`（macOS）/ `Shift+2`（Windows）
+- 选择工具 · Select tool：`V`
+- 抓手工具 · Hand tool：`H`
+- 选中子级或编辑文字 · Select children or edit text：`Enter`
+- 选中父级 · Select parent：`⇧Enter`（macOS）/ `Shift+Enter`（Windows）
+- 选中下一个图层 · Select next layer：`Tab`
+- 选中上一个图层 · Select previous layer：`⇧Tab`（macOS）/ `Shift+Tab`（Windows）
 - 平移画布 · Pan the Canvas：空格键+拖动 · Space+Drag；中键拖动 · Middle-drag；滚动滚轮 · Scroll；Shift+滚动滚轮 · Shift+Scroll（不可改 · fixed）
 - 以指针为中心缩放 · Zoom at the Pointer：Ctrl+滚动滚轮 · Ctrl+Scroll（不可改 · fixed）
 - 加入或移出选择 · Add to or Remove from Selection：Shift+单击元素 · Shift+Click an element（不可改 · fixed）
@@ -118,7 +133,7 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 选择指针下的图层 · Select a Layer Under the Pointer：右键单击画布 · Right-click the canvas（不可改 · fixed）
 - 选择容器内的元素 · Select Inside a Container：双击容器 · Double-click a container（不可改 · fixed）
 - 直接编辑文字 · Edit Text in Place：双击文本或按钮 · Double-click text or a button（不可改 · fixed）
-- 放弃正在编辑的文字 · Discard the Text Being Edited：Esc（不可改 · fixed）
+- 完成编辑文字 · Finish Editing Text：Esc；Ctrl+Enter（不可改 · fixed）
 - 裁剪图片 · Crop an Image：双击图片 · Double-click an image（不可改 · fixed）
 - 暂停智能吸附 · Suspend Smart Snap：Ctrl+拖动 · Ctrl+Drag（不可改 · fixed）
 - 拖出副本 · Drag a Copy：Alt+拖动 · Alt+Drag（不可改 · fixed）
