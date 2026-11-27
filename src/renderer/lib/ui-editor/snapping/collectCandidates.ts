@@ -2,7 +2,7 @@ import type { UIDocument, UISurfaceDesignSize } from "@shared/types/ui-editor/do
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { getSurfaceAxisAlignedBoundsFromDocument } from "./surfaceRect";
-import type { SmartSnapDetailSettings, SnapGuideLine } from "./types";
+import type { AxisAlignedRect, SmartSnapDetailSettings, SnapGuideLine } from "./types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "./types";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
@@ -48,13 +48,42 @@ export function collectSnapGuideLines(
         { axis: "horizontal", value: dh / 2, kind: "surface-center", sourceElementId: null },
     );
 
-    const rootId = resolveSurfaceRootElementId(document, surfaceId);
-    if (!rootId) {
-        return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
+    for (const b of collectSnapCandidateRects(document, surfaceId, excludedElementIds)) {
+        const left = b.x;
+        const right = b.x + b.width;
+        const top = b.y;
+        const bottom = b.y + b.height;
+        const cx = b.x + b.width / 2;
+        const cy = b.y + b.height / 2;
+
+        lines.push(
+            { axis: "vertical", value: left, kind: "element-edge", sourceElementId: b.id },
+            { axis: "vertical", value: right, kind: "element-edge", sourceElementId: b.id },
+            { axis: "vertical", value: cx, kind: "element-center", sourceElementId: b.id },
+            { axis: "horizontal", value: top, kind: "element-edge", sourceElementId: b.id },
+            { axis: "horizontal", value: bottom, kind: "element-edge", sourceElementId: b.id },
+            { axis: "horizontal", value: cy, kind: "element-center", sourceElementId: b.id },
+        );
     }
 
-    const subtree = collectSubtreeElementIds(document, rootId);
-    for (const id of subtree) {
+    return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
+}
+
+/**
+ * The boxes a selection can line up with, in surface space: every drawn layer on the surface except
+ * the excluded ones (the selection itself, what it carries, layers hidden in the editor).
+ */
+export function collectSnapCandidateRects(
+    document: UIDocument,
+    surfaceId: string,
+    excludedElementIds: ReadonlySet<string>,
+): (AxisAlignedRect & { id: string })[] {
+    const rootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!rootId) {
+        return [];
+    }
+    const out: (AxisAlignedRect & { id: string })[] = [];
+    for (const id of collectSubtreeElementIds(document, rootId)) {
         if (excludedElementIds.has(id)) {
             continue;
         }
@@ -71,24 +100,9 @@ export function collectSnapGuideLines(
         if (!b || b.width <= 0 || b.height <= 0) {
             continue;
         }
-        const left = b.x;
-        const right = b.x + b.width;
-        const top = b.y;
-        const bottom = b.y + b.height;
-        const cx = b.x + b.width / 2;
-        const cy = b.y + b.height / 2;
-
-        lines.push(
-            { axis: "vertical", value: left, kind: "element-edge", sourceElementId: id },
-            { axis: "vertical", value: right, kind: "element-edge", sourceElementId: id },
-            { axis: "vertical", value: cx, kind: "element-center", sourceElementId: id },
-            { axis: "horizontal", value: top, kind: "element-edge", sourceElementId: id },
-            { axis: "horizontal", value: bottom, kind: "element-edge", sourceElementId: id },
-            { axis: "horizontal", value: cy, kind: "element-center", sourceElementId: id },
-        );
+        out.push({ ...b, id });
     }
-
-    return dedupeLines(filterSnapGuideLinesByDetailSettings(lines, detailSettings));
+    return out;
 }
 
 function isHiddenOnChain(document: UIDocument, elementId: string): boolean {

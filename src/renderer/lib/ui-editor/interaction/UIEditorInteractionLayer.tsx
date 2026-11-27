@@ -23,6 +23,8 @@ import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
+import { CanvasMeasureLayer } from "./measure/CanvasMeasureLayer";
+import { createFrameSignal } from "./measure/frameSignal";
 import { hasFlagOnChain, useEditorLayerFlags } from "./useEditorLayerFlags";
 import { filterMarqueeHitsToLevel, resolveMarqueeLevelParent, resolvePlainPressTarget } from "./containerDrillSelection";
 import {
@@ -52,6 +54,8 @@ const MOVEABLE_FOLLOW_SETTLED_FRAMES = 3;
 
 /** Hard stop, in case something keeps the frame moving forever. Roughly two seconds at 60fps. */
 const MOVEABLE_FOLLOW_MAX_FRAMES = 120;
+
+const EMPTY_IDS: readonly string[] = [];
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -124,6 +128,8 @@ export function UIEditorInteractionLayer({
     const moveableRef = useRef<MoveableInstance | null>(null);
     type SelectoInstance = React.ElementRef<typeof Selecto>;
     const selectoRef = useRef<SelectoInstance | null>(null);
+    /** Each frame the selection frame is redrawn; the measurements over it follow along. */
+    const gestureFrames = useMemo(createFrameSignal, []);
 
     // Insert mode drag-to-create state
     const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
@@ -138,8 +144,9 @@ export function UIEditorInteractionLayer({
         // Keep the overlay controller aligned after DOM/layout updates.
         requestAnimationFrame(() => {
             moveableRef.current?.updateRect?.();
+            gestureFrames.notify();
         });
-    }, []);
+    }, [gestureFrames]);
     const updateMoveableRectNow = useCallback(() => {
         moveableRef.current?.updateRect?.();
     }, []);
@@ -166,6 +173,7 @@ export function UIEditorInteractionLayer({
             let previous = "";
             const tick = () => {
                 moveableRef.current?.updateRect?.();
+                gestureFrames.notify();
                 const box = moveableRef.current?.getRect?.();
                 const signature = box ? `${box.left},${box.top},${box.width},${box.height}` : "";
                 framesSinceMoved = signature === previous ? framesSinceMoved + 1 : 0;
@@ -178,7 +186,7 @@ export function UIEditorInteractionLayer({
             };
             requestAnimationFrame(tick);
         });
-    }, [stateService]);
+    }, [gestureFrames, stateService]);
 
     useEffect(() => {
         if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {
@@ -1022,9 +1030,23 @@ export function UIEditorInteractionLayer({
         <>
             {tool.kind === "select" && surfaceElement && (
                 <div ref={setOverlayElement} className="pointer-events-none absolute inset-0 z-[9]">
-                    {snapGuides && snapGuides.surfaceId === surfaceId ? (
-                        <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
-                    ) : null}
+                    <CanvasMeasureLayer
+                        surfaceElement={surfaceElement}
+                        surfaceId={surfaceId}
+                        designSize={surface.designSize}
+                        viewport={viewport}
+                        documentService={documentService}
+                        stateService={stateService}
+                        documentRevision={documentRevision}
+                        selectionIds={selectionData?.surfaceId === surfaceId ? selectionIds : EMPTY_IDS}
+                        primaryId={primaryId}
+                        selectedTargets={selectedTargets}
+                        snapGuides={snapGuides}
+                        snapExcludedElementIds={snapExcludedElementIds}
+                        frames={gestureFrames}
+                        showSize={activeController.id === "transform" && !isInlineTextEditing}
+                        measureEnabled={activeController.id === "transform" && !isInlineTextEditing}
+                    />
                     {hoverRect ? (
                         <div
                             aria-hidden
@@ -1060,6 +1082,10 @@ export function UIEditorInteractionLayer({
                         clickable={isInlineTextMoveableTarget ? true : moveableProps.clickable}
                         onClick={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
                         onClickGroup={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
+                        onRender={gestureFrames.notify}
+                        onRenderGroup={gestureFrames.notify}
+                        onRenderEnd={gestureFrames.notify}
+                        onRenderGroupEnd={gestureFrames.notify}
                     />
                     {/* Out of the way while the element is being moved, resized or turned. */}
                     {hasFloatingToolbar && floatingToolbarPosition && selectionEnabled ? (

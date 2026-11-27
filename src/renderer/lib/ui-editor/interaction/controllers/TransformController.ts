@@ -31,6 +31,9 @@ interface TransformControllerConfig {
     documentRevision: number;
 }
 
+/** Screen pixels outside each corner that turn the selection rather than pass through to the canvas. */
+export const ROTATE_ZONE_PX = 20;
+
 /** The resize handles that leave an element's top-left corner where it is. */
 export const ORIGIN_RESIZE_DIRECTIONS = ["e", "s", "se"];
 
@@ -164,6 +167,14 @@ export function useTransformController(config: TransformControllerConfig): Inter
         }),
         resizable: !isInlineTextEditing,
         rotatable: !isInlineTextEditing,
+        // Turned from just outside a corner, as in design tools, rather than from a handle on a stalk
+        // above the element: the stalk sat where the floating toolbar does on a narrow element, and
+        // reaching for it meant leaving the corner the hand was already at.
+        rotationPosition: "none",
+        rotateAroundControls: true,
+        // How far out from a corner the turning zone reaches, in screen pixels. Moveable sizes the
+        // zone from this, and with its default of 0 the zone is there but cannot be hit.
+        controlPadding: ROTATE_ZONE_PX,
         // Aspect ratio is enforced in useMoveableHandlers; Moveable keepRatio fights raw clientX/Y math.
         keepRatio: false,
         // No transform-origin dot: nothing here moves the origin, and on a small element the dot sat

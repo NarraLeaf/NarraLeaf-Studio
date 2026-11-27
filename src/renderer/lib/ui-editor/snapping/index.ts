@@ -9,7 +9,8 @@ export type {
 } from "./types";
 export { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "./types";
 export { getSurfaceAxisAlignedBoundsForLayout, getSurfaceAxisAlignedBoundsFromDocument, getSurfaceTopLeftForLayout } from "./surfaceRect";
-export { collectSnapGuideLines } from "./collectCandidates";
+export { collectSnapCandidateRects, collectSnapGuideLines } from "./collectCandidates";
+export { resolveSnapGuideSpans, type SnapGuideSpan } from "./guideSpans";
 export {
     DEFAULT_SNAP_THRESHOLD_PX,
     surfaceThresholdFromViewportPx,

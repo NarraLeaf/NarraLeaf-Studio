@@ -141,6 +141,9 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 拖出副本 · Drag a Copy：Alt+拖动 · Alt+Drag（不可改 · fixed）
 - 沿单轴移动 · Move Along One Axis：Shift+拖动 · Shift+Drag（不可改 · fixed）
 - 等比缩放 · Resize Keeping Proportions：Shift+拖动控制点 · Shift+Drag a handle（不可改 · fixed）
+- 旋转 · Rotate：在角的外侧拖动 · Drag just outside a corner（不可改 · fixed）
+- 按 15° 旋转 · Rotate in 15° Steps：Shift+在角的外侧拖动 · Shift+Drag just outside a corner（不可改 · fixed）
+- 测量到图层的距离 · Measure Distance to a Layer：Alt+悬停在图层上 · Alt+Hover a layer（不可改 · fixed）
 - 添加图片元素 · Add an Image Element：把图片资产拖到画布上 · Drag an image asset onto the canvas（不可改 · fixed）
 - 调整顺序或移入其他元素 · Reorder or Move Into Another Element：拖动大纲中的元素 · Drag an outline item（不可改 · fixed）
 
