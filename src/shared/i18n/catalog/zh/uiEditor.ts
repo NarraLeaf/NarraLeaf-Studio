@@ -252,6 +252,7 @@ export const uiEditor = {
     },
     contextMenu: {
         pasteIntoContainer: "粘贴到容器内",
+        pasteHere: "粘贴到此处",
         insert: "插入",
         insertChild: "插入子元素",
         selectAll: "全选",

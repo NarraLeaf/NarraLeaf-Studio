@@ -16,7 +16,11 @@ import {
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
-import { buildLayoutPatchForNewElementFromSurfaceRect } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import {
+    buildLayoutPatchForNewElementFromSurfaceRect,
+    buildLayoutPatchForPointInSurface,
+} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { insertToolCanPlace, resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import {
     collectSnapGuideLines,
@@ -56,6 +60,8 @@ export type InsertToolDragState = {
     startSurfaceX: number;
     startSurfaceY: number;
     primaryElementId: string | null;
+    /** What the press landed on (the surface root over empty page): the new element goes into its container. */
+    aimedElementId: string | null;
 };
 
 type PanState = {
@@ -154,11 +160,12 @@ export function useSurfaceInteractionEvents({
             setInsertPreview(next);
         };
 
-        const constrainInsertPoint = (state: InsertToolDragState, current: SurfacePoint): SurfacePoint => {
+        // A component keeps its own proportions; anything else is drawn square while Shift is held.
+        const constrainInsertPoint = (state: InsertToolDragState, current: SurfacePoint, shift: boolean): SurfacePoint => {
             return constrainPointToAspectRatio(
                 { x: state.startSurfaceX, y: state.startSurfaceY },
                 current,
-                state.aspectRatio ?? null,
+                state.aspectRatio ?? (shift ? 1 : null),
             );
         };
 
@@ -200,24 +207,24 @@ export function useSurfaceInteractionEvents({
             const height = Math.abs(preview.currentY - preview.startY);
 
             const MIN_SIZE = 10;
-            if (width < MIN_SIZE && height < MIN_SIZE) {
-                updateInsertPreview(null);
-                return;
-            }
-
             updateInsertPreview(null);
 
             const doc = documentService.getDocument();
-            const parentId = resolveNewElementParent(doc, surfaceId, state.primaryElementId);
+            const parentId = resolveNewElementParent(doc, surfaceId, state.primaryElementId, state.aimedElementId);
             if (!parentId) {
                 return;
             }
-            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, parentId, {
-                x,
-                y,
-                width,
-                height,
-            });
+            // A click without a drag places the widget at its default size, its top-left where the
+            // click was - it used to create nothing and leave the tool armed without a word.
+            const clicked = width < MIN_SIZE && height < MIN_SIZE;
+            const layoutPatch = clicked
+                ? buildLayoutPatchForPointInSurface(doc, parentId, { x: preview.startX, y: preview.startY })
+                : buildLayoutPatchForNewElementFromSurfaceRect(doc, parentId, {
+                      x,
+                      y,
+                      width,
+                      height,
+                  });
             const element = state.componentId
                 ? documentService.createComponentInstance(parentId, state.componentId, layoutPatch)
                 : documentService.createElement(parentId, state.nodeType, layoutPatch);
@@ -268,7 +275,7 @@ export function useSurfaceInteractionEvents({
                 } else {
                     stateService.setSnapGuides(null);
                 }
-                const current = constrainInsertPoint(insertStateRef.current, { x: curX, y: curY });
+                const current = constrainInsertPoint(insertStateRef.current, { x: curX, y: curY }, event.shiftKey);
                 updateInsertPreview({
                     startX: insertStateRef.current.startSurfaceX,
                     startY: insertStateRef.current.startSurfaceY,
@@ -370,7 +377,14 @@ export function useSurfaceInteractionEvents({
                         selectionData.elementIds[selectionData.elementIds.length - 1] ??
                         null;
                 }
+                const pressedNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+                const pressedId = pressedNode?.dataset.uiElementId;
+                const aimedElementId =
+                    pressedId && documentService.getDocument().elements[pressedId]
+                        ? pressedId
+                        : resolveSurfaceRootElementId(documentService.getDocument(), surfaceId);
                 insertStateRef.current = {
+                    aimedElementId,
                     active: true,
                     nodeType: tool.nodeType,
                     componentId: tool.componentId,

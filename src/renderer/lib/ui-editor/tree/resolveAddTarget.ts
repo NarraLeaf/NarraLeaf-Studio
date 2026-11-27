@@ -178,17 +178,19 @@ export function insertToolCanPlace(
  * canvas menu's Insert, an image dropped on the canvas.
  *
  * All three place the element by a geometry of their own and add it last among its siblings, so what
- * they need from the shared rule is the parent - the same parent a paste made with that selection
- * would settle on, `beforeChildId` apart. The pointer is deliberately not consulted: a new widget is
- * never dropped into whatever happened to be under the cursor, only into the selection's parent or
- * the surface root.
+ * they need from the shared rule is the parent. Where the gesture happened on the canvas, `aimedElementId`
+ * is what was under the pointer - or the surface root for empty page - and the element goes into the
+ * container drawn there, as in every design tool: drawn over a panel it belongs to the panel and moves
+ * with it; drawn on empty page it belongs to the page, whatever happens to be selected. Without a
+ * pointer (`undefined`) it is the selection's parent, as a paste with that selection would settle.
  */
 export function resolveNewElementParent(
     document: UIDocument,
     surfaceId: string,
     primaryElementId: UIElementId | null | undefined,
+    aimedElementId?: UIElementId | null,
 ): UIElementId | null {
-    const aim = aimAddAtElement(document, surfaceId, null, primaryElementId);
+    const aim = aimAddAtElement(document, surfaceId, aimedElementId ?? null, aimedElementId ? null : primaryElementId);
     if (!aim) {
         return null;
     }

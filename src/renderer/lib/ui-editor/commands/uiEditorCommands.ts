@@ -3,6 +3,7 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import {
     aimAddAtElement,
+    parentTakesNewElement,
     settleAddTarget,
     type UIEditorAddTarget,
 } from "@/lib/ui-editor/tree/resolveAddTarget";
@@ -89,6 +90,8 @@ export function resolvePasteTargetAfterSelection(
     document: UIDocument,
     surfaceId: string,
     selection: UIElementSelection | null,
+    /** What is being pasted came from these elements (`topLevelElementIds` of the payload). */
+    sourceElementIds: readonly string[] = [],
 ): UIEditorAddTarget | null {
     const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
     if (!effectiveRootId) {
@@ -96,6 +99,21 @@ export function resolvePasteTargetAfterSelection(
     }
     if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
         return { parentId: effectiveRootId, beforeChildId: null };
+    }
+    // One container selected: the paste goes into it, at the front, as a design tool pastes into the
+    // selected frame. Not when that container is what was copied - pasting a panel with the panel
+    // selected makes a second panel beside it, not one inside it.
+    if (selection.elementIds.length === 1) {
+        const selected = document.elements[selection.elementIds[0]];
+        if (
+            selected &&
+            !sourceElementIds.includes(selected.id) &&
+            selected.id !== effectiveRootId &&
+            parentTakesNewElement(document, selected) &&
+            collectSubtreeElementIds(document, effectiveRootId).has(selected.id)
+        ) {
+            return { parentId: selected.id, beforeChildId: null };
+        }
     }
 
     const allowed = collectSubtreeElementIds(document, effectiveRootId);
@@ -281,14 +299,14 @@ async function pasteFromClipboard(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    resolveTarget: () => UIEditorAddTarget | null,
+    resolveTarget: (payload: UIEditorClipboardPayload) => UIEditorAddTarget | null,
 ): Promise<boolean> {
     const source = await resolveUiPasteSource(documentService);
     if (!source || source.environment?.isFrozen()) {
         return false;
     }
     if (!source.foreign) {
-        const target = resolveTarget();
+        const target = resolveTarget(source.payload);
         return target ? applyClipboardPayload(documentService, stateService, surfaceId, target, source.payload) : false;
     }
     const report = await importForeignUiAssets(source);
@@ -298,7 +316,7 @@ async function pasteFromClipboard(
     if (report.frozen || source.environment?.isFrozen()) {
         return false;
     }
-    const target = resolveTarget();
+    const target = resolveTarget(source.payload);
     if (!target || !applyClipboardPayload(documentService, stateService, surfaceId, target, source.payload)) {
         return false;
     }
@@ -326,8 +344,8 @@ export function uiEditorPasteAfterSelection(
     selection: UIElementSelection | null,
 ): Promise<boolean> {
     void localBp;
-    return pasteFromClipboard(documentService, stateService, surfaceId, () =>
-        resolvePasteTargetAfterSelection(documentService.getDocument(), surfaceId, selection));
+    return pasteFromClipboard(documentService, stateService, surfaceId, payload =>
+        resolvePasteTargetAfterSelection(documentService.getDocument(), surfaceId, selection, payload.topLevelElementIds));
 }
 
 /** Paste using an explicit parent (e.g. context menu on outline row). */

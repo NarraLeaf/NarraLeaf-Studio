@@ -5,6 +5,8 @@ import {
     buildLayoutPatchForPointInSurface,
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
+import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -19,6 +21,33 @@ import type { ViewportTransform } from "@/apps/workspace/modules/ui-editor/edito
 import type { EditorDocumentService, EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 
 const DEFAULT_IMAGE_PLACEHOLDER_SIZE = 200;
+
+/** How far each further image of one drop is set from the one before, so none hides another. */
+const DROPPED_IMAGE_CASCADE = 24;
+
+/**
+ * The element a gesture at `point` (client pixels) lands on - the topmost selectable node of this
+ * canvas there - or the surface root over empty page. What the new element's parent is worked out from
+ * (`resolveNewElementParent`).
+ */
+function aimedElementAtClientPoint(
+    viewportElement: HTMLElement | null,
+    document: ReturnType<NonNullable<EditorDocumentService>["getDocument"]>,
+    surfaceId: string,
+    point: { x: number; y: number },
+): string | null {
+    const ownerDocument = viewportElement?.ownerDocument;
+    if (viewportElement && typeof ownerDocument?.elementsFromPoint === "function") {
+        for (const hit of ownerDocument.elementsFromPoint(point.x, point.y)) {
+            const node = hit.closest(SELECTABLE_TARGET) as HTMLElement | null;
+            const id = node?.dataset.uiElementId;
+            if (node && id && viewportElement.contains(node) && document.elements[id]) {
+                return id;
+            }
+        }
+    }
+    return resolveSurfaceRootElementId(document, surfaceId);
+}
 
 export function useSurfaceImageDrop(params: {
     viewportRef: RefObject<HTMLDivElement | null>;
@@ -48,7 +77,12 @@ export function useSurfaceImageDrop(params: {
                 selData?.surfaceId === surface.id
                     ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                     : null;
-            const parentId = resolveNewElementParent(doc, surface.id, primaryElementId);
+            const parentId = resolveNewElementParent(
+                doc,
+                surface.id,
+                primaryElementId,
+                aimedElementAtClientPoint(viewportRef.current, doc, surface.id, point),
+            );
             if (!parentId) {
                 return;
             }
@@ -112,34 +146,35 @@ export function useSurfaceImageDrop(params: {
                     selData?.surfaceId === surface.id
                         ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                         : null;
-                const parentId = resolveNewElementParent(doc, surface.id, primaryElementId);
+                const parentId = resolveNewElementParent(
+                    doc,
+                    surface.id,
+                    primaryElementId,
+                    aimedElementAtClientPoint(viewportRef.current, doc, surface.id, clientPosition),
+                );
                 if (!parentId) {
                     return;
                 }
 
                 const createdIds: string[] = [];
-                for (let i = 0; i < resolved.length; i++) {
-                    const asset = resolved[i];
-                    const { width: imgW, height: imgH } = dimList[i];
-                    const freshDoc = documentService.getDocument();
-                    // Anchor drop at pointer: widget center aligns with surfacePoint (not top-left).
-                    const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, parentId, {
-                        x: surfacePoint.x - imgW / 2,
-                        y: surfacePoint.y - imgH / 2,
-                        width: imgW,
-                        height: imgH,
-                    });
-                    const element = documentService.createElement(parentId, "nl.image", layoutPatch);
-                    const nextProps: Record<string, unknown> = {
-                        ...(element.props ?? {}),
-                        fillType: "image",
-                        imageFill: {
-                            mode: "stretch",
-                            assetId: asset.id,
-                        },
-                        borderWidth: 0,
-                        strokeVisible: false,
-                        appearance: createInitialImageAppearanceFromProps({
+                // One drop, one undo step: an image used to take two (the element, then its picture),
+                // and the first Cmd+Z left an empty box behind.
+                documentService.runSurfaceHistoryTransaction(surface.id, () => {
+                    for (let i = 0; i < resolved.length; i++) {
+                        const asset = resolved[i];
+                        const { width: imgW, height: imgH } = dimList[i];
+                        const freshDoc = documentService.getDocument();
+                        // Anchor drop at pointer: widget center aligns with surfacePoint (not top-left).
+                        // Several images cascade from there instead of landing exactly on one another.
+                        const cascade = i * DROPPED_IMAGE_CASCADE;
+                        const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, parentId, {
+                            x: surfacePoint.x - imgW / 2 + cascade,
+                            y: surfacePoint.y - imgH / 2 + cascade,
+                            width: imgW,
+                            height: imgH,
+                        });
+                        const element = documentService.createElement(parentId, "nl.image", layoutPatch);
+                        const nextProps: Record<string, unknown> = {
                             ...(element.props ?? {}),
                             fillType: "image",
                             imageFill: {
@@ -148,11 +183,21 @@ export function useSurfaceImageDrop(params: {
                             },
                             borderWidth: 0,
                             strokeVisible: false,
-                        }),
-                    };
-                    documentService.updateElementProps(element.id, nextProps);
-                    createdIds.push(element.id);
-                }
+                            appearance: createInitialImageAppearanceFromProps({
+                                ...(element.props ?? {}),
+                                fillType: "image",
+                                imageFill: {
+                                    mode: "stretch",
+                                    assetId: asset.id,
+                                },
+                                borderWidth: 0,
+                                strokeVisible: false,
+                            }),
+                        };
+                        documentService.updateElementProps(element.id, nextProps);
+                        createdIds.push(element.id);
+                    }
+                });
 
                 if (createdIds.length > 0) {
                     stateService.setUIElementSelection({

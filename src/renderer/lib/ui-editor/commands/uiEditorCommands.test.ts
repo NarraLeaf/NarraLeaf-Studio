@@ -50,10 +50,19 @@ function selection(ids: string[], primaryId = ids[ids.length - 1]): UIElementSel
 }
 
 describe("UI editor paste target resolution", () => {
-    it("pastes after a selected parent-capable element, not into it", () => {
+    it("pastes into a selected container, as a design tool pastes into the selected frame", () => {
         const doc = makeDocument();
 
         expect(resolvePasteTargetAfterSelection(doc, "surface", selection(["source"]))).toEqual({
+            parentId: "source",
+            beforeChildId: null,
+        });
+    });
+
+    it("pastes beside a selected container when that container is what was copied", () => {
+        const doc = makeDocument();
+
+        expect(resolvePasteTargetAfterSelection(doc, "surface", selection(["source"]), ["source"])).toEqual({
             parentId: "root",
             beforeChildId: "next",
         });

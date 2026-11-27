@@ -1025,17 +1025,13 @@ export function UIEditorDockerBar({
             {/* Centred in the part of the canvas the outline leaves free; see `editorSidebarInset`. */}
             <div className="pointer-events-auto absolute bottom-3 -translate-x-1/2" style={DOCKER_BAR_POSITION}>
                 <DockerBarAnimatedWidthShell>
-                    {showMultiSelectDocker ? (
-                        <MultiSelectDockerBar items={toReadOnlyDockerBarItems(multiSelectItems, readOnly)} />
-                    ) : showElementDocker ? (
-                        <ElementDockerBar
-                            items={toReadOnlyDockerBarItems(dockerItems, readOnly)}
-                            moduleName={selectedModule?.displayName ?? t("widgetChrome.docker.element")}
-                        />
-                    ) : (
+                    {/* The palette is always there. With something selected it used to give way to
+                        that element's controls, so inserting anything - into the selected container
+                        above all - meant deselecting first; now the controls follow it in the bar. */}
+                    <div className="flex items-center gap-1">
                         <PaletteDockerBar
                             primaryEntries={primaryEntries}
-                            overflowEntries={selectedElements.length === 0 ? overflowEntries : []}
+                            overflowEntries={overflowEntries}
                             activeInsertType={activeComponentId ? null : activeInsertType}
                             componentsActive={componentsLibraryOpen || Boolean(activeComponentId)}
                             onSelectType={handleSelectType}
@@ -1043,7 +1039,20 @@ export function UIEditorDockerBar({
                             overflowButtonRef={overflowButtonRef}
                             readOnly={paletteReadOnly}
                         />
-                    )}
+                        {showMultiSelectDocker || showElementDocker ? (
+                            <>
+                                <div className="mx-1 h-5 w-px bg-fill" aria-hidden />
+                                {showMultiSelectDocker ? (
+                                    <MultiSelectDockerBar items={toReadOnlyDockerBarItems(multiSelectItems, readOnly)} />
+                                ) : (
+                                    <ElementDockerBar
+                                        items={toReadOnlyDockerBarItems(dockerItems, readOnly)}
+                                        moduleName={selectedModule?.displayName ?? t("widgetChrome.docker.element")}
+                                    />
+                                )}
+                            </>
+                        ) : null}
+                    </div>
                 </DockerBarAnimatedWidthShell>
             </div>
             <ComponentsLibraryModal

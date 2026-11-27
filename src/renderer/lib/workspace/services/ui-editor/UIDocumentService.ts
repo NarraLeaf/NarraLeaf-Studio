@@ -6535,11 +6535,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     let layout = { ...copy.layout, ...patch };
                     const sameParentAsSource = oldEl.parentId === targetParentId;
                     if (!isUIFlowLayoutParentElement(parentEl) && sameParentAsSource) {
-                        layout = {
-                            ...layout,
-                            x: (layout.x ?? 0) + 16,
-                            y: (layout.y ?? 0) + 16,
-                        };
+                        // Stepped off by 16 only while something already sits exactly there: a copy
+                        // pasted beside its original moves off it, each further paste moves off the
+                        // one before (they used to pile up at the same +16), and a cut pasted back -
+                        // nothing left in its place - lands where it was.
+                        const occupied = (x: number, y: number) =>
+                            parentEl.childrenIds.some(childId => {
+                                const sibling = doc.elements[childId];
+                                return (
+                                    sibling != null &&
+                                    Math.abs((sibling.layout.x ?? 0) - x) < 0.5 &&
+                                    Math.abs((sibling.layout.y ?? 0) - y) < 0.5
+                                );
+                            });
+                        let x = layout.x ?? 0;
+                        let y = layout.y ?? 0;
+                        for (let step = 0; step < 64 && occupied(x, y); step++) {
+                            x += 16;
+                            y += 16;
+                        }
+                        layout = { ...layout, x, y };
                     }
                     copy.layout = roundUILayoutGeometryFields(layout);
                 } else {

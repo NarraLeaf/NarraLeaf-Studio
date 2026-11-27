@@ -276,6 +276,7 @@ export const uiEditor = {
     },
     contextMenu: {
         pasteIntoContainer: "Paste into container",
+        pasteHere: "Paste here",
         insert: "Insert",
         insertChild: "Insert child",
         selectAll: "Select all",

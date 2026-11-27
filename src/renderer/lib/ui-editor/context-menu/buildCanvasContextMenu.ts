@@ -17,9 +17,11 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
+        // Aimed at the spot right-clicked (into the container there), which is not what Cmd/Ctrl+V
+        // does - so it says where it pastes, and carries no chord (`menuShortcutBindings`).
         items.push({
-            id: "paste",
-            label: translate("common.paste"),
+            id: "paste-here",
+            label: translate("uiEditor.contextMenu.pasteHere"),
             onClick: () => {
                 actions.hideMenu();
                 actions.paste();
