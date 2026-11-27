@@ -150,6 +150,15 @@ const ANCHORS: Record<string, Anchor[]> = {
     "ui-editor.keep-ratio": [
         { file: `${UI_INTERACTION}/useMoveableHandlers.ts`, present: ["initialLayout.lockAspectRatio === true || Boolean((e.inputEvent as MouseEvent | undefined)?.shiftKey);"] },
     ],
+    "ui-editor.rotate": [
+        { file: `${UI_INTERACTION}/controllers/TransformController.ts`, present: ["rotationPosition: \"none\",", "rotateAroundControls: true,"] },
+    ],
+    "ui-editor.rotate-steps": [
+        { file: `${UI_INTERACTION}/useMoveableHandlers.ts`, present: ["const rotation = inputHas(e, \"shiftKey\") && Number.isFinite(rawRotation)"] },
+    ],
+    "ui-editor.measure": [
+        { file: `${UI_INTERACTION}/measure/CanvasMeasureLayer.tsx`, present: ["alt = event.altKey;", "measureBetween(selectionBox, target)"] },
+    ],
     "ui-editor.drop-image": [
         { file: `${WORKSPACE}/modules/ui-editor/editors/useSurfaceImageDrop.ts`, present: ["onDrop: handleImageAssetsDropped,"] },
     ],

@@ -1284,6 +1284,13 @@ input[type="radio"]:focus {
     will-change: transform;
 }
 
+/* Rotation is taken from just outside a corner (`rotateAroundControls`). Moveable puts a zone beside
+   every handle; the ones beside an edge's midpoint would turn the element from the middle of a side,
+   where a press is far more often meant for whatever lies next to it. */
+.moveable.narraleaf-moveable .moveable-around-control:is([data-direction="n"], [data-direction="s"], [data-direction="e"], [data-direction="w"]) {
+    display: none;
+}
+
 .moveable.narraleaf-moveable--inline-text-target .moveable-control-box,
 .moveable.narraleaf-moveable--inline-text-target .moveable-area {
     pointer-events: none !important;

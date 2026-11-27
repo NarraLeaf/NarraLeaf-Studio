@@ -1083,6 +1083,9 @@ A color or a font decided here can be used anywhere in the project. A field set 
 
 - 画布按游戏实际绘制的尺寸显示，编辑结果与玩家所见一致
 - 画布上的内容属于游戏，修改画布即修改发布的游戏，而非 Studio 本身
+- 选中元素后，选框下方显示其宽和高；拖动时对齐参考线只画到对齐的元素，并标出与最近一个的间距
+- 按住 Alt（Option）悬停在其他图层上，显示选中元素与该图层的距离；悬停在空白处，显示与所在容器的距离
+- 将指针移到选框四角的外侧即可拖动旋转，按住 Shift 以 15° 为步长旋转
 - 编辑游戏界面时，画布工具栏的「游戏界面参考」可淡显其他游戏界面，位置与叠放顺序与游戏一致；参考内容不可选中或编辑
 - 编辑游戏界面时，画布工具栏的「在实时预览中查看此界面」在显示该界面的故事行处打开实时预览，对话框对应一句对白，选项对应一个菜单；画布上的修改随即显示在预览中
 - 吸附设置中开启「网格」后，移动元素时其左上角、缩放时被拖动的边落在网格上；网格从画布左上角起算，间距在同一菜单中设置，按项目保存
@@ -1092,6 +1095,9 @@ The UI editor builds the game's own screens: the main menu, save and load, the d
 
 - The surface is drawn at the size the game draws it, so the placement matches what players see.
 - A surface belongs to the game. Changing one changes the shipped game, not Studio.
+- The selection's width and height show under it. While dragging, an alignment guide runs only as far as what it lines up, and labels the gap to the nearest of those.
+- Hold Alt (Option) over another layer to see the distances from the selection to it; over empty space, to the container the selection sits in.
+- Drag just outside a corner of the selection to rotate it; hold Shift to turn in 15° steps.
 - On a game UI surface, Game UI reference in the canvas toolbar shows the other game UI faintly, in the place and stacking order the game draws it. The reference cannot be selected or edited.
 - On a game UI surface, Show this interface in the live preview in the canvas toolbar opens the live preview at a story row that shows it: a line for the dialogue box, a menu for the choices. Edits on the canvas appear in the preview as they are made.
 - With Grid on in the snap settings, a moved element's top-left corner and a resized edge land on the grid, which starts at the surface's top-left corner. The grid size is set in the same menu and kept per project.
