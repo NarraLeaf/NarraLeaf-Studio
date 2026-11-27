@@ -94,6 +94,14 @@ type UseSurfaceInteractionEventsParams = {
      * else does.
      */
     pressDragsSelectionFrame?: (event: PointerEvent) => boolean;
+    /**
+     * Hands a press `pressDragsSelectionFrame` took to the selection's drag. Called with the
+     * `mousedown` that follows the press: Moveable's drag reads mouse events, and a pointer event
+     * handed to it starts nothing.
+     */
+    startSelectionFrameDrag?: (event: MouseEvent) => void;
+    /** The overlay Moveable draws its frame, handles and group drag area in (not inside `surfaceElement`). */
+    overlayElement?: HTMLElement | null;
 };
 
 export type InsertPreview = {
@@ -122,11 +130,18 @@ export function useSurfaceInteractionEvents({
     insertSnapSuspended,
     readOnly = UI_EDITOR_WRITABLE,
     pressDragsSelectionFrame,
+    startSelectionFrameDrag,
+    overlayElement = null,
 }: UseSurfaceInteractionEventsParams) {
     /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
     const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
-    /** A press `pressDragsSelectionFrame` gave to the selection's drag, until the pointer comes up. */
-    const heldFramePressRef = useRef<PointerEvent | null>(null);
+    /**
+     * A press whose effect on the selection waits for the pointer to come up: it may still become a
+     * drag of the selection, and only released where it went down is it the click it would have been.
+     * `target` is what the click counts as hitting when that is not the event's own target - the
+     * element under a multiple selection's drag area.
+     */
+    const heldFramePressRef = useRef<{ event: PointerEvent; target: Element | null } | null>(null);
     const insertDrawEnabled = isSurfaceGestureEnabled("insertDraw", readOnly);
 
     useEffect(() => {
@@ -275,17 +290,26 @@ export function useSurfaceInteractionEvents({
             });
         };
 
+        let pendingFrameDragStart: ((event: MouseEvent) => void) | null = null;
+        const clearPendingFrameDragStart = () => {
+            if (pendingFrameDragStart) {
+                surfaceElement.removeEventListener("mousedown", pendingFrameDragStart, true);
+                pendingFrameDragStart = null;
+            }
+        };
+
         const handlePointerUp = (event: PointerEvent) => {
+            clearPendingFrameDragStart();
             const held = heldFramePressRef.current;
             heldFramePressRef.current = null;
             if (
                 held &&
                 event.type === "pointerup" &&
-                Math.hypot(event.clientX - held.clientX, event.clientY - held.clientY) < GESTURE_DEADZONE_PX
+                Math.hypot(event.clientX - held.event.clientX, event.clientY - held.event.clientY) < GESTURE_DEADZONE_PX
             ) {
                 // After the mouseup that ends Moveable's drag, which comes after this event: changing
                 // the selection now would swap its targets in the middle of the gesture.
-                window.setTimeout(() => applySelectionPress(held), 0);
+                window.setTimeout(() => applySelectionPress(held.event, held.target), 0);
             }
             if (insertStateRef.current?.active) {
                 if (event.type === "pointercancel") {
@@ -367,19 +391,97 @@ export function useSurfaceInteractionEvents({
                 return;
             }
 
+            // Shift on something already selected takes it away - but only as a click. Pressed and
+            // dragged, it is the selection moving along one axis, and the selection has to still be
+            // there for it to move.
+            if (tool.kind === "select" && event.button === 0 && shiftPressTakesFromSelection(event, target)) {
+                heldFramePressRef.current = { event, target };
+                return;
+            }
+
             if (tool.kind === "select" && !isMoveableTarget && pressDragsSelectionFrame?.(event)) {
                 // Held until the pointer comes up: dragged, it moved the selection; released where it
                 // was pressed, it is the click it would have been anywhere else.
-                heldFramePressRef.current = event;
+                heldFramePressRef.current = { event, target: null };
+                clearPendingFrameDragStart();
+                if (startSelectionFrameDrag) {
+                    const start = (mouse: MouseEvent) => {
+                        pendingFrameDragStart = null;
+                        startSelectionFrameDrag(mouse);
+                    };
+                    pendingFrameDragStart = start;
+                    surfaceElement.addEventListener("mousedown", start, { capture: true, once: true });
+                }
                 return;
             }
 
             applySelectionPress(event);
         };
 
-        /** What a press does to the selection: select what it hit, or the surface when it hit nothing. */
-        const applySelectionPress = (event: PointerEvent) => {
-            const target = event.target as HTMLElement | null;
+        /**
+         * A press on Moveable's drag area. A multiple selection is moved by that area, drawn over the
+         * whole group in the overlay - outside `surfaceElement`, so `handlePointerDown` never hears
+         * it - and every press inside the group's box lands there rather than on an element. Read the
+         * element under it instead: a plain press still drags the group and, released without moving,
+         * selects that one element; Shift and Cmd/Ctrl act on it as they do anywhere else.
+         */
+        const handleOverlayPointerDown = (event: PointerEvent) => {
+            if (tool.kind !== "select" || event.button !== 0) {
+                return;
+            }
+            const beneath = elementBeneathMoveableArea(event);
+            if (!beneath) {
+                return;
+            }
+            if ((!event.shiftKey && !event.metaKey && !event.ctrlKey) || shiftPressTakesFromSelection(event, beneath)) {
+                heldFramePressRef.current = { event, target: beneath };
+                return;
+            }
+            applySelectionPress(event, beneath);
+        };
+
+        /** The selectable element under a press that landed on Moveable's drag area, or null. */
+        const elementBeneathMoveableArea = (event: PointerEvent): Element | null => {
+            const target = event.target as Element | null;
+            if (!target?.closest?.(".moveable-area")) {
+                return null;
+            }
+            const ownerDocument = surfaceElement.ownerDocument;
+            if (typeof ownerDocument.elementsFromPoint !== "function") {
+                return null;
+            }
+            for (const hit of ownerDocument.elementsFromPoint(event.clientX, event.clientY)) {
+                const node = hit.closest(SELECTABLE_TARGET);
+                if (node && surfaceElement.contains(node)) {
+                    return hit;
+                }
+            }
+            return null;
+        };
+
+        /** Whether a Shift press on `target` would take an element out of the selection. */
+        const shiftPressTakesFromSelection = (event: PointerEvent, target: Element | null): boolean => {
+            if (!event.shiftKey || !selectionData || selectionData.surfaceId !== surfaceId || selectionData.elementIds.length === 0) {
+                return false;
+            }
+            const node = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+            const elementId = node?.dataset.uiElementId;
+            const doc = documentService.getDocument();
+            if (!elementId || !doc.elements[elementId]) {
+                return false;
+            }
+            const toggledId = event.metaKey || event.ctrlKey
+                ? elementId
+                : resolveSelectionLevelHit(doc, surfaceId, selectionData, elementId);
+            return selectionData.elementIds.includes(toggledId);
+        };
+
+        /**
+         * What a press does to the selection: select what it hit, or the surface when it hit nothing.
+         * `targetOverride` is what it counts as hitting when that is not the event's own target.
+         */
+        const applySelectionPress = (event: PointerEvent, targetOverride: Element | null = null) => {
+            const target = (targetOverride ?? event.target) as HTMLElement | null;
             const isInsideSurface = !!(target && surfaceElement.contains(target));
             const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
             const isElementNode = !!elementNode;
@@ -475,12 +577,15 @@ export function useSurfaceInteractionEvents({
         };
 
         surfaceElement.addEventListener("pointerdown", handlePointerDown);
+        overlayElement?.addEventListener("pointerdown", handleOverlayPointerDown);
         window.addEventListener("pointermove", handlePointerMove);
         window.addEventListener("pointerup", handlePointerUp);
         window.addEventListener("pointercancel", handlePointerUp);
 
         return () => {
+            clearPendingFrameDragStart();
             surfaceElement.removeEventListener("pointerdown", handlePointerDown);
+            overlayElement?.removeEventListener("pointerdown", handleOverlayPointerDown);
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handlePointerUp);
             window.removeEventListener("pointercancel", handlePointerUp);
@@ -504,6 +609,8 @@ export function useSurfaceInteractionEvents({
         insertSnapSuspended,
         insertDrawEnabled,
         pressDragsSelectionFrame,
+        startSelectionFrameDrag,
+        overlayElement,
     ]);
 
     // Space held over the canvas turns a drag into a pan, whatever tool is chosen - the way every

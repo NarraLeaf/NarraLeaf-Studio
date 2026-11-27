@@ -240,6 +240,8 @@ export function UIEditorInteractionLayer({
     // overlay parent, so mousedown never reaches the listener. Sync after layout so Selecto/Moveable
     // attach to the real viewport.
     const [surfaceElement, setSurfaceElement] = useState<HTMLElement | null>(null);
+    /** Where Moveable draws (`useSurfaceInteractionEvents` reads presses on its group drag area). */
+    const [overlayElement, setOverlayElement] = useState<HTMLDivElement | null>(null);
     useLayoutEffect(() => {
         setSurfaceElement(containerRef.current);
     }, [containerRef]);
@@ -701,6 +703,15 @@ export function UIEditorInteractionLayer({
             // select, Shift at the selection's level. Applying Selecto's own idea of it on top
             // overwrote that with a list Selecto keeps for itself; only a marquee is Selecto's.
             if (input?.type === "mousedown") {
+                // Selecto has just put its own click result in its list; hand it the real selection
+                // back, or a later Shift marquee adds to an element that was never selected.
+                const live = stateService.getSelection();
+                const liveIds = isUIElementSelection(live) && live.data.surfaceId === surfaceId ? live.data.elementIds : [];
+                selectoRef.current?.setSelectedTargets(
+                    liveIds
+                        .map(id => surfaceElement.querySelector(`[data-ui-element-id="${id}"]`))
+                        .filter(isHTMLElement),
+                );
                 return;
             }
             const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
@@ -849,6 +860,13 @@ export function UIEditorInteractionLayer({
         [activeTargets, selectionDraggable],
     );
 
+    // Started from the canvas's own pointerdown rather than from Selecto: a press that lands on a
+    // selectable element - the sibling drawn over the selection - is a click to Selecto, which then
+    // never reports a drag start at all.
+    const startSelectionFrameDrag = useCallback((event: MouseEvent) => {
+        moveableRef.current?.dragStart(event);
+    }, []);
+
     useSurfaceInteractionEvents({
         surfaceElement,
         surfaceId,
@@ -868,6 +886,8 @@ export function UIEditorInteractionLayer({
         insertSnapSuspended,
         readOnly,
         pressDragsSelectionFrame,
+        startSelectionFrameDrag,
+        overlayElement,
     });
 
     const handleSelectionDragStart = useCallback(
@@ -883,9 +903,10 @@ export function UIEditorInteractionLayer({
             if (transformEnabled && isTargetInsideSelection(eventTarget)) {
                 return false;
             }
-            // Here Moveable would not start on its own: the press hit what is behind the element.
+            // Here Moveable would not start on its own: the press hit what is behind the element, or
+            // what is drawn over it. The canvas's pointerdown already handed the press to Moveable
+            // (`startSelectionFrameDrag`); Selecto only has to keep out of it.
             if (input && pressDragsSelectionFrame(input)) {
-                moveableRef.current?.dragStart(input);
                 return false;
             }
         },
@@ -961,7 +982,7 @@ export function UIEditorInteractionLayer({
     return (
         <>
             {tool.kind === "select" && surfaceElement && (
-                <div className="pointer-events-none absolute inset-0 z-[9]">
+                <div ref={setOverlayElement} className="pointer-events-none absolute inset-0 z-[9]">
                     {snapGuides && snapGuides.surfaceId === surfaceId ? (
                         <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
                     ) : null}

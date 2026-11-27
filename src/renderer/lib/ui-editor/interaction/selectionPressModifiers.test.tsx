@@ -127,10 +127,31 @@ describe("Shift press", () => {
         expect(setUIElementSelection).toHaveBeenCalledWith(selected("quit", "start"));
     });
 
-    it("takes a selected element away again", () => {
-        renderCanvas(selected("quit", "start"));
-        pressOn("startLabel", { shiftKey: true });
-        expect(setUIElementSelection).toHaveBeenCalledWith(selected("quit"));
+    it("takes a selected element away again - on release, so Shift-dragging the selection still moves it", () => {
+        vi.useFakeTimers();
+        try {
+            renderCanvas(selected("quit", "start"));
+            pressOn("startLabel", { shiftKey: true });
+            expect(setUIElementSelection).not.toHaveBeenCalled();
+            window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+            vi.runAllTimers();
+            expect(setUIElementSelection).toHaveBeenCalledWith(selected("quit"));
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("leaves the selection alone when a Shift press on it becomes a drag", () => {
+        vi.useFakeTimers();
+        try {
+            renderCanvas(selected("quit", "start"));
+            pressOn("startLabel", { shiftKey: true });
+            window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0, clientX: 200, clientY: 0 }));
+            vi.runAllTimers();
+            expect(setUIElementSelection).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("with Cmd/Ctrl too, adds the deepest element", () => {
