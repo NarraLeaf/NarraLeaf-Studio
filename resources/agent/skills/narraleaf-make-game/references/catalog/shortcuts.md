@@ -47,7 +47,7 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 关闭属性编辑器 · Close the property editor：`Esc`
 - 向下翻页移动故事行选择 · Move story row selection down a page：`PageDown`
 - 向上翻页移动故事行选择 · Move story row selection up a page：`PageUp`
-- 编辑当前行（或打开其检查器） · Edit the active row (or open its inspector)：`Enter`；也可以 · also：双击行 · Double-click a row
+- 编辑当前行（或打开其属性编辑器） · Edit the active row (or open its inspector)：`Enter`；也可以 · also：双击行 · Double-click a row
 - 以文本形式编辑当前行 · Edit the active row as text：`F2`
 - 在当前行下方插入新的故事行 · Insert a new story row below the active row：`⇧Enter`（macOS）/ `Shift+Enter`（Windows）
 - 删除选中的故事行 · Delete selected story rows：`Delete`

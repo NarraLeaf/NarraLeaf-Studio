@@ -75,6 +75,8 @@ import { ExpressionPopover } from "./ExpressionPopover";
 import { foldInlineFades, inlineFadesAtBlockStart } from "@shared/story/inlineExpressionFade";
 import {
     collectStoryVariableOptions,
+    defaultInterpolationForKind,
+    getLastInterpolationKind,
     resolveInterpolationName,
     type PersistentVariableOption,
     type SavedVariableOption,
@@ -993,6 +995,14 @@ function TextEditBox(props: {
         setEventEdit(null);
         props.editorRef.current?.focus();
     };
+    // Toolbar "value" button: the chip goes in at the caret with the kind used last, and its picker
+    // opens on it so the author names the variable straight away.
+    const insertValue = () => {
+        const info = props.editorRef.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind()));
+        if (info) {
+            openInterp(info);
+        }
+    };
     // Toolbar "expression" button: insert a default event (the character's default form) at the
     // caret, then open the picker on it so the author refines form/differential/SE in one motion.
     const insertEvent = () => {
@@ -1060,7 +1070,7 @@ function TextEditBox(props: {
             // the sentence because the pointer missed by two pixels.
             style={ROW_TEXT_HIT_BLEED}
         >
-            <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onReturnToText={() => props.editorRef.current?.focus()} />
+            <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onInsertValue={insertValue} onReturnToText={() => props.editorRef.current?.focus()} />
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}

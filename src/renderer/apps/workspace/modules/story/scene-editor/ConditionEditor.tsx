@@ -32,6 +32,7 @@ import type { TranslationKey } from "@shared/i18n";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import { Input, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
@@ -577,16 +578,19 @@ function ConditionValueField(props: {
         );
     }
     if (props.valueType === "number") {
+        // A draft field like every other number in the inspector. The native number input this
+        // replaces wrote 0 the moment it was emptied and would not hold a lone "-", so a value could
+        // be neither cleared to retype nor started negative.
         return (
-            <Input
-                type="number"
+            <NumericDraftEnhancedInput
                 size="sm"
-                fullWidth
-                value={typeof props.value === "number" ? String(props.value) : ""}
-                onChange={event => {
-                    const next = Number(event.target.value);
-                    props.onChange(Number.isFinite(next) ? next : 0);
-                }}
+                type="text"
+                inputMode="decimal"
+                committedDisplay={typeof props.value === "number" ? String(props.value) : ""}
+                placeholder="0"
+                onFiniteNumber={props.onChange}
+                onEmpty={() => props.onChange(0)}
+                popoverWhenNarrow={false}
             />
         );
     }

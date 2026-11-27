@@ -6,6 +6,14 @@ import type { LocaleNamespace } from "../types";
  * 停止と値の差し込みのポップオーバー、そして実況プレビュー。
  */
 export const story = {
+    /** Names a new story, chapter or scene is given when none is typed. */
+    defaultNames: {
+        story: "無題のストーリー",
+        chapter: "新しい章",
+        firstChapter: "第 1 章",
+        scene: "新しいシーン",
+        firstScene: "シーン 1",
+    },
     panel: {
         storiesCount: "ストーリー（{count}）",
         stories: "ストーリー",
@@ -515,6 +523,7 @@ export const story = {
         bold: "太字",
         italic: "イタリック",
         textColor: "文字色 {color}",
+        clearTextColor: "文字色を外す",
         moreColors: "プロジェクトのパレットから他の色",
         insertPause: "停止を差し込む（クリックを待つ）",
         insertValue: "行の中に値を差し込む",
@@ -1315,7 +1324,7 @@ export const story = {
         importFile: "ファイルから",
         importClipboard: "クリップボードから",
         empty: "カスタムコマンドはまだありません",
-        emptyHint: "複数のコマンド行を 1 つのコマンドとして保存し、ストーリーエディターで @ から呼び出します",
+        emptyHint: "複数のコマンド行を 1 つのコマンドとして保存し、ストーリーエディターで {trigger} から呼び出す",
         search: "コマンドを検索",
         noMatches: "一致するコマンドはありません",
         open: "開く",
@@ -1500,12 +1509,12 @@ export const story = {
         empty: "空行",
     },
     emptyPlaceholder: {
-        narration: "ダブルクリックで地の文を入力",
-        option: "ダブルクリックで選択肢の文を入力",
-        choice: "ダブルクリックで選択の問いかけを入力",
-        note: "ダブルクリックでメモを入力",
+        narration: "クリックして地の文を入力",
+        option: "クリックして選択肢の文を入力",
+        choice: "クリックして選択の問いかけを入力",
+        note: "クリックしてメモを入力",
         blank: "クリックして入力",
-        text: "ダブルクリックでテキストを入力",
+        text: "クリックしてテキストを入力",
     },
     characterName: {
         unassigned: "キャラクター未指定",

@@ -2,6 +2,14 @@
  *  rows, rich-text toolbar, character/layer/target pickers, pause & interpolation
  *  popovers, and the live preview pane. */
 export const story = {
+    /** Names a new story, chapter or scene is given when none is typed. */
+    defaultNames: {
+        story: "Untitled Story",
+        chapter: "New Chapter",
+        firstChapter: "Chapter 1",
+        scene: "New Scene",
+        firstScene: "Scene 1",
+    },
     panel: {
         storiesCount: "Stories ({count})",
         stories: "Stories",
@@ -574,6 +582,7 @@ export const story = {
         bold: "Bold",
         italic: "Italic",
         textColor: "Text color {color}",
+        clearTextColor: "Remove the text color",
         moreColors: "More colors from the project palette",
         insertPause: "Insert pause (waits for a click)",
         insertValue: "Insert inline value",
@@ -1421,7 +1430,7 @@ export const story = {
         importFile: "From file",
         importClipboard: "From clipboard",
         empty: "No custom commands yet",
-        emptyHint: "Save a few rows as one command and call it with @ in the story editor",
+        emptyHint: "Save a few rows as one command and call it with {trigger} in the story editor",
         search: "Search commands",
         noMatches: "No matching commands",
         open: "Open",
@@ -1619,11 +1628,11 @@ export const story = {
         empty: "Blank line",
     },
     emptyPlaceholder: {
-        narration: "Double-click to enter narration",
-        option: "Double-click to enter option text",
-        choice: "Double-click to enter choice prompt",
-        note: "Double-click to enter a note",
-        text: "Double-click to enter text",
+        narration: "Click to enter narration",
+        option: "Click to enter option text",
+        choice: "Click to enter choice prompt",
+        note: "Click to enter a note",
+        text: "Click to enter text",
         /** A blank row. Shown on hover only, so the line reads blank until it is pointed at. */
         blank: "Click to type",
     },

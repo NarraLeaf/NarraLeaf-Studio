@@ -453,7 +453,7 @@ export const storyInspector = {
     },
 
     narration: {
-        editHint: "Double-click the row to edit narration text.",
+        editHint: "Click the row to edit narration text.",
     },
 
     choice: {

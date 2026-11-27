@@ -434,7 +434,7 @@ export const storyInspector = {
     },
 
     narration: {
-        editHint: "行をダブルクリックすると地の文を編集できる",
+        editHint: "行をクリックすると地の文を編集できる",
     },
 
     choice: {

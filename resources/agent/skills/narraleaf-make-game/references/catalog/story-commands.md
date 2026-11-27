@@ -47,7 +47,7 @@ Change which of a character's looks is showing
 - 也可以写 · Also typed as：`/face`、`/expr`、`/expression`
 - `character`（角色 · Character）：character；按位置填写 · positional
 - `form` / `表情`（外观 · Appearance）：characterForm 或 · or puppetName；按位置填写 · positional
-- `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
+- `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（扇形 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 
@@ -125,7 +125,7 @@ Replace an object's image or text
 
 - 也可以写 · Also typed as：`/src`
 - `target`（目标 · Target）：target；按位置填写 · positional
-- `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
+- `t` / `transition`（转场 · Transition）：enum：`fade`（淡入 · Fade in）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（扇形 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`dissolve`（溶解 · Dissolve）；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `content`（内容 · Content）：content；按位置填写 · positional，吃掉本行剩余文字 · takes the rest of the line
@@ -269,7 +269,7 @@ Set the scene background image or color
 
 - 也可以写 · Also typed as：`/background`
 - `image`（图片或颜色 · Image or Color）：asset 或 · or color；按位置填写 · positional
-- `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
+- `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（扇形 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
 - `rule` / `ruleimage`（规则图 · Rule image）：asset；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
@@ -281,7 +281,7 @@ Set the scene background image or color
 Go to another scene, unloading this one unless Return is set
 
 - `scene`（场景 · Scene）：scene；按位置填写 · positional
-- `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（风扇 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
+- `t` / `transition`（转场 · Transition）：enum：`fade`（溶解 · Dissolve）、`slide`（推移 · Push）、`circle`（圆形遮罩 · Mask circle）、`wipe`（柔和擦除 · Soft wipe）、`iris`（柔和光圈 · Soft iris）、`blinds`（百叶 · Blinds）、`barn-door`（对开门 · Barn door）、`clock`（时钟 · Clock）、`fan`（扇形 · Fan）、`dots`（圆点 · Dots）、`blur`（模糊溶解 · Blur dissolve）、`black`（过色 · Through color）、`darkness`（压暗 · Darkness）、`exposure`（曝光 · Exposure）、`none`（无 · None）、`fade-in`（淡入 · Fade in）、`rule`（规则图 · Rule image）；写成 key=value · named
 - `rule` / `ruleimage`（规则图 · Rule image）：asset；写成 key=value · named
 - `d` / `duration`（动画持续时间 · Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named
 - `hold`（保持 · Hold Seconds）：number，≥ 0，单位 · unit s；写成 key=value · named

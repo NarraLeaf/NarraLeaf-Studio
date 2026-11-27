@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import type { PanelComponentProps } from "../types";
 import { useStoryCustomCommands } from "./useStoryCustomCommands";
@@ -37,6 +38,8 @@ const SQUARE_BUTTON_CLASS = cn(
  */
 export function StoryCommandsPanel({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
+    // The empty hint names the trigger this author types, not a fixed "@".
+    const trigger = useSlashAtAlias() ? "@" : "/";
     const { context } = useWorkspace();
     const { service, commands } = useStoryCustomCommands();
     const sharing = useStoryCommandSharing(service);
@@ -137,7 +140,7 @@ export function StoryCommandsPanel({ panelId }: PanelComponentProps) {
                         className="h-full"
                         icon={<SquareFunction className="h-5 w-5" />}
                         title={commands.length === 0 ? t("story.customCommands.empty") : t("story.customCommands.noMatches")}
-                        description={commands.length === 0 ? t("story.customCommands.emptyHint") : undefined}
+                        description={commands.length === 0 ? t("story.customCommands.emptyHint", { trigger }) : undefined}
                     />
                 ) : (
                     visible.map(command => (
