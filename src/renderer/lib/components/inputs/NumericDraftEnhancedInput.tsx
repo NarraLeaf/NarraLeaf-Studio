@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { EnhancedInput, type EnhancedInputProps } from "./EnhancedInput";
+import { arrowKeyStep, beginNumberScrub, evaluateNumericInput, stepNumber } from "./numericExpression";
 
 type Passthrough = Omit<EnhancedInputProps, "value" | "onChange">;
 
@@ -15,14 +16,14 @@ export interface NumericDraftEnhancedInputProps extends Passthrough {
     /**
      * When the number reaches the caller.
      *
-     * `change` (the default) hands over every keystroke that parses, which is what a field wired to
-     * something that redraws instantly wants: the picture follows the digits.
+     * `blur` (the default) waits for the field to be left, or for Enter, as a design tool's inspector
+     * does - because a number typed digit by digit is not one edit: `120` wrote 1, then 12, then 120,
+     * and the first two are figures the author never meant. They resized the element to 1px on the
+     * way, reflowed a stack around it, drifted a locked aspect ratio, and left undo steps to walk
+     * back. Escape puts the value back; the arrow keys step it and commit at once.
      *
-     * `blur` waits for the field to be left, or for Enter. For a value whose commit is expensive or
-     * coarse, because a number typed digit by digit is not one edit: `120` writes 1, then 12, then
-     * 120, and the first two are figures the author never meant. Downstream they are three documents
-     * to react to, three undo entries to walk back, and - where a value describes something that has
-     * to be MADE - two pieces of work nobody will ever look at.
+     * `change` hands over every keystroke that parses, for the rare field whose picture has to follow
+     * the digits as they are typed.
      */
     commitOn?: "change" | "blur";
     /**
@@ -48,12 +49,14 @@ export function NumericDraftEnhancedInput({
     onFiniteNumber,
     onEmpty,
     draftResetKey,
-    commitOn = "change",
+    commitOn = "blur",
     onDraftNumber,
     onBlur,
     onKeyDown,
     popoverWhenNarrow = true,
-    popoverThreshold = 200,
+    // The same width the X and Y fields switch at: at 200, the W and H beside them in a default-width
+    // inspector turned into click-to-open buttons while X and Y stayed fields.
+    popoverThreshold = 112,
     type,
     ...rest
 }: NumericDraftEnhancedInputProps) {
@@ -63,15 +66,44 @@ export function NumericDraftEnhancedInput({
     const draftRef = useRef<string | null>(null);
     draftRef.current = draft;
 
+    // The callbacks of the render the author was typing in. A draft still open when the field is
+    // reset (the selection moved) or unmounted belongs to what was selected then: a click on the
+    // canvas changes the selection on pointerdown, before the blur that would have committed it, and
+    // the typed number used to vanish. It is committed through these, so it lands where it was typed.
+    const typedInto = useRef({ onFiniteNumber, onEmpty, commitOn });
+    const flushTypedDraft = useCallback(() => {
+        const pending = draftRef.current;
+        const { onFiniteNumber: commitNumber, commitOn: mode } = typedInto.current;
+        if (pending === null || mode !== "blur") {
+            return;
+        }
+        const n = evaluateNumericInput(pending);
+        if (n !== null) {
+            commitNumber(n);
+        }
+    }, []);
+
+    const resetKeySeen = useRef(draftResetKey);
     useEffect(() => {
+        if (resetKeySeen.current === draftResetKey) {
+            return;
+        }
+        resetKeySeen.current = draftResetKey;
+        flushTypedDraft();
         setDraft(null);
-    }, [draftResetKey]);
+    }, [draftResetKey, flushTypedDraft]);
+    useEffect(() => flushTypedDraft, [flushTypedDraft]);
+    // After the reset effect above, so that one still sees the previous render's callbacks.
+    useEffect(() => {
+        typedInto.current = { onFiniteNumber, onEmpty, commitOn };
+    });
 
     const shown = draft !== null ? draft : committedDisplay;
 
     /** Hand over whatever is being typed, if anything is. */
     const commit = useCallback(() => {
         const pending = draftRef.current;
+        draftRef.current = null;
         setDraft(null);
         if (pending === null) {
             // Nothing was typed, so there is nothing to say. A field that committed on every blur
@@ -82,8 +114,8 @@ export function NumericDraftEnhancedInput({
             onEmpty?.();
             return;
         }
-        const n = Number.parseFloat(pending);
-        if (Number.isFinite(n)) {
+        const n = evaluateNumericInput(pending);
+        if (n !== null) {
             onFiniteNumber(n);
         }
     }, [onEmpty, onFiniteNumber]);
@@ -97,8 +129,8 @@ export function NumericDraftEnhancedInput({
                 }
                 return;
             }
-            const n = Number.parseFloat(next);
-            if (!Number.isFinite(n)) {
+            const n = evaluateNumericInput(next);
+            if (n === null) {
                 return;
             }
             onDraftNumber?.(n);
@@ -128,15 +160,56 @@ export function NumericDraftEnhancedInput({
             if (commitOn === "blur" && event.key === "Enter") {
                 event.preventDefault();
                 commit();
+            } else if (event.key === "Escape" && draftRef.current !== null) {
+                // Escape takes back what was typed and leaves the field, as it cancels anywhere else.
+                event.preventDefault();
+                event.stopPropagation();
+                draftRef.current = null;
+                setDraft(null);
+                event.currentTarget.blur();
+            } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !rest.readOnly && !rest.disabled) {
+                const current = evaluateNumericInput(draftRef.current ?? committedDisplay);
+                if (current !== null) {
+                    event.preventDefault();
+                    const next = stepNumber(current, (event.key === "ArrowUp" ? 1 : -1) * arrowKeyStep(event));
+                    draftRef.current = null;
+                    setDraft(null);
+                    onDraftNumber?.(next);
+                    onFiniteNumber(next);
+                }
             }
             onKeyDown?.(event);
         },
-        [commit, commitOn, onKeyDown]
+        [commit, commitOn, committedDisplay, onDraftNumber, onFiniteNumber, onKeyDown, rest.disabled, rest.readOnly]
+    );
+
+    // The leading icon scrubs the value: dragged sideways it previews every step and commits once.
+    const handleScrub = useCallback(
+        (event: PointerEvent<HTMLSpanElement>) => {
+            const start = evaluateNumericInput(draftRef.current ?? committedDisplay);
+            if (start === null) {
+                return;
+            }
+            beginNumberScrub(event, {
+                start,
+                onPreview: value => {
+                    setDraft(String(value));
+                    onDraftNumber?.(value);
+                },
+                onCommit: value => onFiniteNumber(value),
+                onEnd: () => {
+                    draftRef.current = null;
+                    setDraft(null);
+                },
+            });
+        },
+        [committedDisplay, onDraftNumber, onFiniteNumber]
     );
 
     return (
         <EnhancedInput
             {...rest}
+            onLeftIconPointerDown={rest.leftIcon ? handleScrub : undefined}
             type={type === "number" ? "text" : type}
             value={shown}
             onChange={handleChange}

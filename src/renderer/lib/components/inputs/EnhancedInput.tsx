@@ -8,6 +8,7 @@ import {
     type ChangeEvent,
     type FocusEvent,
     type MouseEvent,
+    type PointerEvent,
     type InputHTMLAttributes,
     type ReactNode,
 } from "react";
@@ -43,6 +44,11 @@ export interface EnhancedInputProps
     popoverThreshold?: number;
     /** When the narrow-column popover portal is used, set stacking above parent overlays (e.g. nested inspector popovers). */
     popoverZIndex?: number;
+    /**
+     * Makes the leading icon a scrub handle: pressed and dragged sideways, it changes the value, as
+     * the axis letters in a design tool's inspector do. The caller does the arithmetic.
+     */
+    onLeftIconPointerDown?: (event: PointerEvent<HTMLSpanElement>) => void;
 }
 
 /**
@@ -64,6 +70,7 @@ export function EnhancedInput({
     popoverThreshold = 112,
     popoverZIndex,
     onKeyDown,
+    onLeftIconPointerDown,
     ...rest
 }: EnhancedInputProps) {
     const { t } = useTranslation();
@@ -110,10 +117,14 @@ export function EnhancedInput({
         [onChange]
     );
 
+    // Select-all belongs to arriving in the field, not to every click in it: once it is focused, a
+    // click places the caret, and a drag selects part of the number.
+    const selectOnNextMouseUp = useRef(false);
     const handleFocus = useCallback(
         (event: FocusEvent<HTMLInputElement>) => {
             setHasFocus(true);
             if (selectAllOnFocus) {
+                selectOnNextMouseUp.current = true;
                 setTimeout(() => event.target.select(), 0);
             }
             onFocus?.(event);
@@ -123,7 +134,8 @@ export function EnhancedInput({
 
     const handleMouseUp = useCallback(
         (event: MouseEvent<HTMLInputElement>) => {
-            if (selectAllOnFocus) {
+            if (selectAllOnFocus && selectOnNextMouseUp.current) {
+                selectOnNextMouseUp.current = false;
                 event.preventDefault();
                 event.currentTarget.select();
             }
@@ -379,7 +391,15 @@ export function EnhancedInput({
             className={rootClassName}
         >
             {leftIcon && (
-                <span className="absolute left-2 text-fg-muted pointer-events-none flex items-center">
+                <span
+                    className={cn(
+                        "absolute left-2 text-fg-muted flex items-center",
+                        onLeftIconPointerDown && !rest.disabled && !rest.readOnly
+                            ? "cursor-ew-resize hover:text-fg"
+                            : "pointer-events-none",
+                    )}
+                    onPointerDown={onLeftIconPointerDown && !rest.disabled && !rest.readOnly ? onLeftIconPointerDown : undefined}
+                >
                     {leftIcon}
                 </span>
             )}

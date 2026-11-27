@@ -147,11 +147,40 @@ export function createLayoutInspectorSchema(
 ): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
     const linkedOnly = options.linkedOnly === true;
+    /**
+     * One edit for every selected element, one undo step for all of them. Writing them one by one
+     * gave each element its own step, so undoing a width typed for three elements put back one.
+     */
+    const inOneStep = (apply: () => void) => {
+        if (elements.length > 1 && surfaceId) {
+            documentService.runSurfaceHistoryTransaction(surfaceId, apply);
+        } else {
+            apply();
+        }
+    };
     const applyLayoutPatch = (patch: Partial<UIElement["layout"]>) => {
-        elements.forEach(element => {
-            documentService.updateElementLayout(element.id, patch);
+        inOneStep(() => {
+            elements.forEach(element => {
+                documentService.updateElementLayout(element.id, patch);
+            });
         });
     };
+    /**
+     * What a field shows for the selection: the value, when every selected element has the same one,
+     * and nothing (with "Mixed" as the placeholder) when they differ. Showing the first element's
+     * figure as though it were everyone's invited typing over values the author could not see.
+     */
+    const sharedDisplay = (read: (element: UIElement) => number | undefined, fallback: number): string => {
+        const values = elements.map(element => {
+            const value = read(element);
+            return Number.isFinite(value) ? (value as number) : fallback;
+        });
+        if (values.length === 0) {
+            return String(fallback);
+        }
+        return values.every(value => value === values[0]) ? String(values[0]) : "";
+    };
+    const mixedPlaceholder = t("properties.layout.mixed");
 
     const toNumber = (value: string | number) => {
         const next = Number(value);
@@ -163,9 +192,11 @@ export function createLayoutInspectorSchema(
         if (next === null) {
             return;
         }
-        elements.forEach(element => {
-            const patch = pairLayoutDimensionsForLock(element.layout, key, next);
-            documentService.updateElementLayout(element.id, patch);
+        inOneStep(() => {
+            elements.forEach(element => {
+                const patch = pairLayoutDimensionsForLock(element.layout, key, next);
+                documentService.updateElementLayout(element.id, patch);
+            });
         });
     };
 
@@ -218,10 +249,11 @@ export function createLayoutInspectorSchema(
                 id: "layout.width",
                 className: "min-w-0 flex-1 basis-0",
                 render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                    const w = getPrimaryLayout(data)?.width ?? 0;
+                    void data;
                     return (
                         <NumericDraftEnhancedInput
-                            committedDisplay={String(w)}
+                            committedDisplay={sharedDisplay(element => element.layout.width, 0)}
+                            placeholder={mixedPlaceholder}
                             draftResetKey={`${primaryId}-w`}
                             onFiniteNumber={value => {
                                 onSaving(true);
@@ -247,10 +279,11 @@ export function createLayoutInspectorSchema(
                 id: "layout.height",
                 className: "min-w-0 flex-1 basis-0",
                 render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                    const h = getPrimaryLayout(data)?.height ?? 0;
+                    void data;
                     return (
                         <NumericDraftEnhancedInput
-                            committedDisplay={String(h)}
+                            committedDisplay={sharedDisplay(element => element.layout.height, 0)}
+                            placeholder={mixedPlaceholder}
                             draftResetKey={`${primaryId}-h`}
                             onFiniteNumber={value => {
                                 onSaving(true);
@@ -286,11 +319,7 @@ export function createLayoutInspectorSchema(
                         const nextLocked = !allLocked;
                         onSaving(true);
                         try {
-                            elements.forEach(el => {
-                                documentService.updateElementLayout(el.id, {
-                                    lockAspectRatio: nextLocked,
-                                });
-                            });
+                            applyLayoutPatch({ lockAspectRatio: nextLocked });
                         } finally {
                             onSaving(false);
                         }
@@ -375,9 +404,10 @@ export function createLayoutInspectorSchema(
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {
-                        const element = data.elements[0];
-                        return String(element ? readElementSurfaceTopLeft(element).x : 0);
+                        void data;
+                        return sharedDisplay(element => readElementSurfaceTopLeft(element).x, 0);
                     },
+                    placeholder: mixedPlaceholder,
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
@@ -394,9 +424,10 @@ export function createLayoutInspectorSchema(
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {
-                        const element = data.elements[0];
-                        return String(element ? readElementSurfaceTopLeft(element).y : 0);
+                        void data;
+                        return sharedDisplay(element => readElementSurfaceTopLeft(element).y, 0);
                     },
+                    placeholder: mixedPlaceholder,
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
@@ -447,11 +478,11 @@ export function createLayoutInspectorSchema(
                     id: "layout.rotationValue",
                     className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const layoutRotation = getPrimaryLayout(data)?.rotation;
-                        const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
+                        void data;
                         return (
                             <NumericDraftEnhancedInput
-                                committedDisplay={String(rotationValue)}
+                                committedDisplay={sharedDisplay(element => element.layout.rotation, 0)}
+                                placeholder={mixedPlaceholder}
                                 draftResetKey={primaryId}
                                 onFiniteNumber={value => {
                                     const clamped = Math.min(360, Math.max(-360, value));
@@ -520,13 +551,8 @@ export function createLayoutInspectorSchema(
                     id: "layout.opacity-inline",
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const layout = getPrimaryLayout(data);
-                        const percent = Math.round(((layout?.opacity ?? 1) * 10000)) / 100;
-                        const handleChange = (next: string) => {
-                            const number = toNumber(next);
-                            if (number === null) {
-                                return;
-                            }
+                        void data;
+                        const commitPercent = (number: number) => {
                             const clamped = Math.min(100, Math.max(0, number));
                             onSaving(true);
                             try {
@@ -536,19 +562,23 @@ export function createLayoutInspectorSchema(
                             }
                         };
 
+                        // A draft field like the size fields: a decimal can be typed (the `.` of
+                        // `33.5` used to vanish on the redraw), and clearing the field no longer
+                        // writes 0% and makes the element disappear while the author types.
                         return (
-                            <EnhancedInput
-                                value={String(percent)}
-                                onChange={handleChange}
+                            <NumericDraftEnhancedInput
+                                committedDisplay={sharedDisplay(element => Math.round((element.layout.opacity ?? 1) * 10000) / 100, 100)}
+                                placeholder={mixedPlaceholder}
+                                draftResetKey={`${primaryId}-opacity`}
+                                onFiniteNumber={commitPercent}
                                 inputMode="decimal"
                                 unit="%"
-                                min={0}
-                                max={100}
-                                precision={null}
                                 popoverWhenNarrow
                                 popoverThreshold={124}
                                 leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
+                                selectAllOnFocus
+                                aria-label={t("properties.layout.opacity")}
                             />
                         );
                     },

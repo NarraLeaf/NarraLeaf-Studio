@@ -69,6 +69,8 @@ export const properties = {
         unlockAspect: "縦横比の固定を解除",
         resetRotation: "回転をリセット",
         toggleVisibility: "表示を切り替え",
+        mixed: "混在",
+        opacity: "不透明度",
         animation: "アニメーション",
         uiElement: "UI 要素",
         linkedComponent: "リンクされたコンポーネント",

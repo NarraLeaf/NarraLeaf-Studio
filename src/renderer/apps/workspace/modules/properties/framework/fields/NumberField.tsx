@@ -37,7 +37,10 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
         [field, data]
     );
 
-    const isDisabled = field.disabled || isSaving;
+    // Not disabled while saving: disabling the focused input drops the caret, so "type, Enter, type
+    // again" lost the field after the first Enter. `isSaving` still reaches the panel's indicator.
+    void isSaving;
+    const isDisabled = field.disabled;
     const isReadOnly = field.readOnly;
 
     return (

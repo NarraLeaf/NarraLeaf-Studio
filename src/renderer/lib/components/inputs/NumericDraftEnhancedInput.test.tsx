@@ -38,15 +38,65 @@ describe("NumericDraftEnhancedInput", () => {
         cleanup();
     });
 
-    it("hands over every keystroke by default, which is what a live preview is wired to", () => {
-        // The eight call sites that say nothing about timing must keep behaving exactly as they did.
-        const { commit, type } = renderField();
+    it("hands over every keystroke when the caller asks it to, for a picture that follows the digits", () => {
+        const { commit, type } = renderField({ commitOn: "change" });
 
         type("1");
         type("12");
         type("120");
 
         expect(commit.mock.calls.map(call => call[0])).toEqual([1, 12, 120]);
+    });
+
+    it("commits once, when the field is left, by default - 1 and 12 are not edits", () => {
+        const { commit, field, type } = renderField();
+
+        type("1");
+        type("12");
+        type("120");
+        expect(commit).not.toHaveBeenCalled();
+        fireEvent.blur(field());
+        expect(commit.mock.calls.map(call => call[0])).toEqual([120]);
+    });
+
+    it("takes the typing back on Escape", () => {
+        const { commit, field, type } = renderField();
+        type("999");
+        fireEvent.keyDown(field(), { key: "Escape" });
+        expect(field().value).toBe("160");
+        fireEvent.blur(field());
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it("steps by 1, or 10 with Shift, on the arrow keys and commits at once", () => {
+        const { commit, field } = renderField();
+        fireEvent.keyDown(field(), { key: "ArrowUp" });
+        fireEvent.keyDown(field(), { key: "ArrowDown", shiftKey: true });
+        expect(commit.mock.calls.map(call => call[0])).toEqual([161, 150]);
+    });
+
+    it("works out simple arithmetic, and leaves the value alone for what is not a number", () => {
+        const { commit, field, type } = renderField();
+        type("160+40");
+        fireEvent.keyDown(field(), { key: "Enter" });
+        type("10+");
+        fireEvent.blur(field());
+        expect(commit.mock.calls.map(call => call[0])).toEqual([200]);
+    });
+
+    it("commits a draft still open when the selection moves, to what it was typed for", () => {
+        const first = vi.fn();
+        const second = vi.fn();
+        const view = render(
+            <NumericDraftEnhancedInput committedDisplay="160" onFiniteNumber={first} draftResetKey="a" popoverWhenNarrow={false} aria-label="W" />,
+        );
+        fireEvent.change(screen.getByRole("textbox"), { target: { value: "300" } });
+        view.rerender(
+            <NumericDraftEnhancedInput committedDisplay="80" onFiniteNumber={second} draftResetKey="b" popoverWhenNarrow={false} aria-label="W" />,
+        );
+        expect(first).toHaveBeenCalledWith(300);
+        expect(second).not.toHaveBeenCalled();
+        expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("80");
     });
 
     it("waits for the field to be left when the caller asks it to", () => {

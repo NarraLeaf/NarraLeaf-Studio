@@ -71,6 +71,8 @@ export const properties = {
         unlockAspect: "Unlock aspect ratio",
         resetRotation: "Reset rotation",
         toggleVisibility: "Toggle visibility",
+        mixed: "Mixed",
+        opacity: "Opacity",
         animation: "Animation",
         uiElement: "UI Element",
         linkedComponent: "Linked Component",

@@ -1,3 +1,4 @@
+import { evaluateNumericInput, stepNumber } from "./numericExpression";
 import {
     useState,
     useEffect,
@@ -84,7 +85,7 @@ export function DeferredNumberInput({
         if (disabled || readOnly || isSaving) {
             return;
         }
-        const parsed = Number.parseFloat(localValue);
+        const parsed = evaluateNumericInput(localValue) ?? Number.NaN;
         if (!Number.isFinite(parsed)) {
             setLocalValue(numberToFullDisplayString(lastExternalValueRef.current));
             return;
@@ -120,9 +121,18 @@ export function DeferredNumberInput({
         [onFocus, value]
     );
 
+    // Escape leaves the field without writing what was typed. It used to only mark the field as not
+    // focused while the caret stayed in it: the old value showed, the next keystrokes went into the
+    // hidden draft, and the blur that followed wrote that - "100", type "5", click away, 1005.
+    const discardOnBlurRef = useRef(false);
     const handleBlur = useCallback(
         async (event: FocusEvent<HTMLInputElement>) => {
-            await handleCommit();
+            if (discardOnBlurRef.current) {
+                discardOnBlurRef.current = false;
+                setLocalValue(numberToFullDisplayString(lastExternalValueRef.current));
+            } else {
+                await handleCommit();
+            }
             setHasFocus(false);
             onBlur?.(event);
         },
@@ -147,17 +157,35 @@ export function DeferredNumberInput({
                 void handleCommit();
             } else if (event.key === "Escape") {
                 event.preventDefault();
-                setLocalValue(numberToFullDisplayString(value));
-                setHasFocus(false);
+                event.stopPropagation();
+                discardOnBlurRef.current = true;
+                event.currentTarget.blur();
+            } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !disabled && !readOnly) {
+                // A text field, so the steps are this field's own: 1 (or `step`), ×10 with Shift.
+                const current = evaluateNumericInput(localValue);
+                if (current !== null) {
+                    event.preventDefault();
+                    const unit = typeof step === "number" && step > 0 ? step : 1;
+                    let next = stepNumber(current, (event.key === "ArrowUp" ? 1 : -1) * unit * (event.shiftKey ? 10 : 1));
+                    if (typeof min === "number") next = Math.max(min, next);
+                    if (typeof max === "number") next = Math.min(max, next);
+                    setLocalValue(numberToFullDisplayString(next));
+                    void Promise.resolve(onCommit(next)).then(() => {
+                        lastExternalValueRef.current = next;
+                    });
+                }
             }
             onKeyDown?.(event);
         },
-        [handleCommit, onKeyDown, value]
+        [disabled, handleCommit, localValue, max, min, onCommit, onKeyDown, readOnly, step]
     );
 
     return (
         <input
-            type="number"
+            // Text rather than a native number box, which reports "" for half-typed input such as a
+            // lone minus sign and cannot take arithmetic.
+            type="text"
+            inputMode="decimal"
             value={displayValue}
             min={min}
             max={max}
