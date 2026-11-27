@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
+import { canPlaceBlockUnder, deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
 import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
@@ -537,6 +537,36 @@ describe("planRowBackspaceReplacement", () => {
     });
 });
 
+describe("canPlaceBlockUnder", () => {
+    const condition = control({ control: "condition" });
+    const branch = control({ control: "conditionBranch", branch: "if" });
+    const choice = nodeAction({ action: "choice" } as Extract<StoryBlock, { kind: "nodeAction" }>["payload"]);
+    const option = nodeAction({ action: "choiceOption" } as Extract<StoryBlock, { kind: "nodeAction" }>["payload"]);
+    const line = narration("n");
+
+    it("keeps lines out of a condition and a choice, which hold only branches and options", () => {
+        expect(canPlaceBlockUnder(condition, line)).toBe(false);
+        expect(canPlaceBlockUnder(choice, line)).toBe(false);
+        expect(canPlaceBlockUnder(condition, branch)).toBe(true);
+        expect(canPlaceBlockUnder(choice, option)).toBe(true);
+    });
+
+    it("keeps branches and options inside their own container and nowhere else", () => {
+        expect(canPlaceBlockUnder(null, branch)).toBe(false);
+        expect(canPlaceBlockUnder(null, option)).toBe(false);
+        expect(canPlaceBlockUnder(group("g", []), branch)).toBe(false);
+        expect(canPlaceBlockUnder(choice, branch)).toBe(false);
+    });
+
+    it("lets a line into a branch, an option, a group and the top level", () => {
+        expect(canPlaceBlockUnder(branch, line)).toBe(true);
+        expect(canPlaceBlockUnder(option, line)).toBe(true);
+        expect(canPlaceBlockUnder(group("g", []), line)).toBe(true);
+        expect(canPlaceBlockUnder(null, line)).toBe(true);
+        expect(canPlaceBlockUnder(narration("leaf"), line)).toBe(false);
+    });
+});
+
 describe("planBlockGroupMove", () => {
     /** Four rows at the top level: the shape most drags happen in. */
     const flat = () => scene([narration("a"), narration("b"), narration("c"), narration("d")], ["a", "b", "c", "d"]);
@@ -550,6 +580,14 @@ describe("planBlockGroupMove", () => {
         moveBlocksInScene(live, [plan]);
         return live.rootBlockIds;
     }
+
+    it("refuses a drop that would put a line straight under a condition", () => {
+        const cond: StoryBlock = { id: "if", kind: "control", parentId: null, childrenIds: ["br"], payload: { control: "condition" } };
+        const br: StoryBlock = { id: "br", kind: "control", parentId: "if", childrenIds: [], payload: { control: "conditionBranch", branch: "if" } };
+        const live = scene([cond, br, narration("x")], ["if", "x"]);
+        // Dropping onto the branch header makes the line the branch's sibling: a child of the condition.
+        expect(planBlockGroupMove(live, ["x"], "x", "br")).toBeNull();
+    });
 
     it("drops the whole group after the target when the grabbed row came from above it", () => {
         expect(applied(flat(), ["a", "b"], "a", "d")).toEqual(["c", "d", "a", "b"]);

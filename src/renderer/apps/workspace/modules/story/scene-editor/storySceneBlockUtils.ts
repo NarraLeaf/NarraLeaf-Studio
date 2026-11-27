@@ -9,7 +9,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { canAcceptChildren as modelCanAcceptChildren } from "@/lib/workspace/services/story/storyModel";
+import { canAcceptChildren as modelCanAcceptChildren, canPlaceBlockUnder } from "@/lib/workspace/services/story/storyModel";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     describeStoryBlock,
@@ -455,7 +455,8 @@ function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<St
  * drops *before* it.
  *
  * Returns null when the drop cannot mean anything: an empty selection, a target that is one of the
- * moving rows, or a target inside a moving row's own subtree (a container cannot be moved into itself).
+ * moving rows, a target inside a moving row's own subtree (a container cannot be moved into itself),
+ * or a parent that does not take these rows (see `canPlaceBlockUnder`).
  */
 export function planBlockGroupMove(
     scene: StoryScene,
@@ -475,6 +476,13 @@ export function planBlockGroupMove(
     const siblings = target.parentId ? scene.blocks[target.parentId]?.childrenIds : scene.rootBlockIds;
     const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
     if (!siblings || targetIndex === -1) {
+        return null;
+    }
+    // A drop that would put a line straight under a condition or a choice (or a branch / option
+    // anywhere else) is refused: the rows go back where they were rather than into a tree the
+    // compiler rejects.
+    const parent = target.parentId ? scene.blocks[target.parentId] : null;
+    if (roots.some(id => { const block = scene.blocks[id]; return !block || !canPlaceBlockUnder(parent, block); })) {
         return null;
     }
     const blockIds = inDocumentOrder(scene, rootSet);

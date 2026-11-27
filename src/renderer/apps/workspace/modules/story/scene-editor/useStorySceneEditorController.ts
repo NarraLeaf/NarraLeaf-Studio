@@ -64,7 +64,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
+import { canPlaceBlockUnder, collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -72,7 +72,6 @@ import {
     annotateNestingBranches,
     buildDialogueAppearances,
     buildVisibleRows,
-    canAcceptChildren,
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
@@ -1359,8 +1358,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         tabId,
     });
 
+    /**
+     * `mergeKey` folds a burst of writes into one entry (same key, each within the stack's merge
+     * window of the last). Field edits pass one: a text field in the inspector writes on every
+     * keystroke and a viewfinder drag on every pointermove, and without it each of those was its own
+     * undo step - a 100-character name filled the 100-entry stack and pushed every earlier edit out.
+     */
     const recordHistory = useCallback(
-        () => sceneHistory.checkpoint({ key: "workspace.history.entry.storyEdit" }),
+        (mergeKey?: string) => sceneHistory.checkpoint(
+            { key: "workspace.history.entry.storyEdit" },
+            mergeKey ? { mergeKey } : undefined,
+        ),
         [sceneHistory],
     );
     const undoEdit = useCallback(() => {
@@ -1376,7 +1384,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (currentPayload && JSON.stringify(currentPayload) === JSON.stringify(payload)) {
                 return;
             }
-            recordHistory();
+            // One entry per run of edits to this row, so typing a field undoes as one step.
+            recordHistory(`payload:${blockId}`);
             storyService.updateBlock(storyId, sceneId, blockId, payload);
         }
     }, [recordHistory, scene, sceneId, storyId, storyService]);
@@ -2369,6 +2378,37 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "idle" });
         focusRoot();
     }, [editorMode, focusRoot, returnFromCharacterActionSlot]);
+
+    /**
+     * Escape on a slot with no menu open.
+     *
+     * A slot holding prose is a line the author has written: narration's Enter drops them into it,
+     * it looks exactly like the narration row they just left, and Escape on that row commits. So
+     * Escape lands the prose here too - the same thing a blur does - and leaves the new row selected.
+     * Everything else Escape still throws away: an empty slot, a command or `#` line (the half-typed
+     * `/set` the ladder exists to keep out of the script), a committed row reopened as its line,
+     * and a character-scoped slot, which hands back the line it stood on.
+     */
+    const escapeInsertSlot = useCallback(() => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const draft = insertDraftRef.current;
+        const isProse = draft.trim() !== ""
+            && !isActionCommandLine(draft, slashAtAlias)
+            && !draft.startsWith("#")
+            && !editorMode.slot.rewritesRow
+            && !editorMode.slot.characterScope;
+        if (!isProse) {
+            discardInsertSlot();
+            return;
+        }
+        commitNarrationFromInsert(false);
+        // The commit's mode change has not flushed, so the blur `focusRoot` causes would still see
+        // the slot and land the same line a second time; this is the latch that blur reads.
+        slotDiscardedRef.current = true;
+        focusRoot();
+    }, [commitNarrationFromInsert, discardInsertSlot, editorMode, focusRoot, slashAtAlias]);
 
     // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
@@ -3381,13 +3421,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (!block) continue;
             if (direction === "in") {
                 const previous = findPreviousSibling(scene, id);
-                if (previous && canAcceptChildren(previous)) {
+                // Not just "is it a container": a condition takes only branches and a choice only
+                // options, so a line tabbed under either would build and then fail to compile.
+                if (previous && canPlaceBlockUnder(previous, block)) {
                     recordOnce();
                     storyService.moveBlock(storyId, sceneId, id, { parentId: previous.id });
                 }
             } else if (block.parentId) {
                 const parent = scene.blocks[block.parentId];
                 const grandParentId = parent?.parentId ?? null;
+                // A branch or an option outdented out of its condition / choice is the same broken
+                // shape from the other side; it stays put.
+                if (!canPlaceBlockUnder(grandParentId ? scene.blocks[grandParentId] : null, block)) {
+                    continue;
+                }
                 const parentSiblings = grandParentId ? scene.blocks[grandParentId]?.childrenIds : scene.rootBlockIds;
                 const beforeBlockId = parentSiblings?.[parentSiblings.indexOf(block.parentId) + 1] ?? null;
                 recordOnce();
@@ -3775,7 +3822,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             plainPasteRequestedRef.current = true;
             return;
         }
-    }, [isStoryEditorFocusActive]);
+        // The "add a row" line says "click or type": with the keyboard cursor on it, a printable key
+        // opens the trailing slot with that character already in it - so `/` there starts a command
+        // and a letter starts a line, exactly as if the slot had been open. An input method's first
+        // key is left alone; it composes into whatever has focus, and that is not this line.
+        if (
+            addRowFocused
+            && editorMode.kind === "idle"
+            && !event.ctrlKey && !event.metaKey && !event.altKey
+            && event.key.length === 1 && event.key.trim() !== ""
+            && !event.nativeEvent.isComposing && event.keyCode !== 229
+        ) {
+            event.preventDefault();
+            const typed = event.key;
+            startInsertAfter(null, false);
+            insertDraftRef.current = typed;
+            setEditorMode(mode => (mode.kind === "insert" ? { ...mode, initialValue: typed } : mode));
+            // Chromium puts the caret at 0 on a textarea's first focus, so the next key would land in
+            // front of the character just typed; place it after (see `startCharacterActionSlot`).
+            window.requestAnimationFrame(() => {
+                const input = insertInputRef.current;
+                if (input) {
+                    input.focus();
+                    input.setSelectionRange(typed.length, typed.length);
+                }
+            });
+        }
+    }, [addRowFocused, editorMode.kind, isStoryEditorFocusActive, startInsertAfter]);
 
     /**
      * A drag has picked `blockId` up: report which rows are coming with it, and remember them.
@@ -3848,7 +3921,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         recordHistory, undoEdit, redoEdit,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
-        dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
+        dismissInsertChooser, discardInsertSlot, escapeInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
         editRowAsText, activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,

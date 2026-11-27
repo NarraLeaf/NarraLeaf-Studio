@@ -644,6 +644,8 @@ export const storyInspector = {
     condition: {
         brokenExpression: "この式はもう解決できない。読んでいる変数の名前が変わったか、削除された可能性がある。式を直すまで、この枝は偽のまま",
         clear: "条件を消す",
+        discardGraph: "切り替えるとこの条件のブループリントが削除される",
+        discardGraphDetail: "ブループリントはシーンの取り消し履歴に含まれず、削除すると元に戻せない",
     },
 
     declaration: {
