@@ -10,7 +10,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
-import { guardImeKeys } from "@/lib/utils/imeComposition";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -62,6 +62,19 @@ function OutlineRenameField({ element, onFinish }: { element: UIElement; onFinis
         inputRef.current?.focus();
         inputRef.current?.select();
     }, []);
+    const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (isImeKeyEvent(event)) {
+            return;
+        }
+        event.stopPropagation();
+        if (event.key === "Enter") {
+            event.preventDefault();
+            finish(value);
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            finish(null);
+        }
+    };
     const finish = (name: string | null) => {
         if (finished.current) {
             return;
@@ -80,16 +93,7 @@ function OutlineRenameField({ element, onFinish }: { element: UIElement; onFinis
             onBlur={() => finish(value)}
             onPointerDown={event => event.stopPropagation()}
             onClick={event => event.stopPropagation()}
-            onKeyDown={guardImeKeys((event: KeyboardEvent<HTMLInputElement>) => {
-                event.stopPropagation();
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    finish(value);
-                } else if (event.key === "Escape") {
-                    event.preventDefault();
-                    finish(null);
-                }
-            })}
+            onKeyDown={handleRenameKeyDown}
         />
     );
 }
