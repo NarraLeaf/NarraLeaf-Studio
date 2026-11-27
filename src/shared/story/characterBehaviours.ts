@@ -20,11 +20,13 @@ import { isRecord } from "@shared/utils/isRecord";
  * that set them off, and never hold it up: a behaviour is staging that accompanies a line, and a
  * line that waited for a 0.3 s zoom before its text began would read as lag.
  *
- * **When.** On a line whose speaker differs from the last one heard: the previous speaker's
- * `stopSpeaking` first, then the new speaker's `startSpeaking`. A narration line counts as nobody
- * speaking. A line that opts out (`skipCharacterBehaviours`) is treated as though the speaker had
- * not changed at all - nobody's behaviour runs and the last speaker stays who it was. A character
- * that is not on stage runs nothing; behaviours stage a portrait, and there is none to stage.
+ * **When.** Each character is either speaking or not, and every line puts every character on stage
+ * into the state it calls for: the speaker speaking, everyone else not speaking. An event runs when
+ * a character's state changes - `startSpeaking` into speaking, `stopSpeaking` out of it - so a second
+ * line from the same speaker runs nothing, and a character just brought on is dimmed by the first line
+ * someone else speaks, without having to speak once first. A narration line counts as nobody
+ * speaking. A line that opts out (`skipCharacterBehaviours`) changes nobody's state. A character that
+ * is not on stage runs nothing; behaviours stage a portrait, and there is none to stage.
  */
 
 export const CHARACTER_BEHAVIOUR_EVENTS = ["startSpeaking", "stopSpeaking"] as const;
@@ -327,6 +329,29 @@ export function staticPreviousSpeaker(scene: BehaviourSceneShape, lineBlockId: s
     return undefined;
 }
 
+/** The characters an entrance row brings on straight above a line, in the window `handWrittenChannelsBeforeLine` reads. */
+export function charactersEnteredBeforeLine(scene: BehaviourSceneShape, lineBlockId: string): string[] {
+    const entered: string[] = [];
+    const line = scene.blocks[lineBlockId];
+    if (!line) {
+        return entered;
+    }
+    const siblings = siblingsOf(scene, line);
+    for (let index = siblings.indexOf(lineBlockId) - 1; index >= 0; index -= 1) {
+        const block = scene.blocks[siblings[index]];
+        if (!block || block.disabled) {
+            continue;
+        }
+        if (stopsBehaviourWalk(block)) {
+            break;
+        }
+        if (block.kind === "action" && block.payload.action === "character" && block.payload.operation === "enter" && block.payload.characterId) {
+            entered.push(block.payload.characterId);
+        }
+    }
+    return entered;
+}
+
 /** One behaviour row a hand-written row overrides at one line. */
 export type CharacterBehaviourConflict = {
     /** The hand-written row that wins. */
@@ -343,8 +368,9 @@ export type CharacterBehaviourConflict = {
  * line - the input both the compile (which leaves the behaviour row out there) and the editor's mark
  * read, so the two cannot disagree about which rows overlap.
  *
- * Only behaviours the scene settles statically are checked: the speaker's own `startSpeaking`, and
- * the previous speaker's `stopSpeaking` when {@link staticPreviousSpeaker} can name them. A stop that
+ * Only behaviours the scene settles statically are checked: where the floor changes hands, the
+ * speaker's `startSpeaking` and the previous speaker's `stopSpeaking` (when {@link staticPreviousSpeaker}
+ * can name them); and the event of every character brought on right above the line. A change that
  * depends on which branch play took is not reported; the compile still keeps the hand-written row
  * ahead of it wherever it does run.
  */
@@ -362,15 +388,24 @@ export function findCharacterBehaviourConflicts(
             continue;
         }
         const previous = staticPreviousSpeaker(scene, block.id);
-        if (previous !== undefined && previous === speaker) {
-            continue;
-        }
         const firing: { characterId: string; event: CharacterBehaviourEvent }[] = [];
-        if (speaker) {
-            firing.push({ characterId: speaker, event: "startSpeaking" });
+        const fire = (characterId: string, event: CharacterBehaviourEvent) => {
+            if (!firing.some(entry => entry.characterId === characterId)) {
+                firing.push({ characterId, event });
+            }
+        };
+        if (previous === undefined || previous !== speaker) {
+            if (speaker) {
+                fire(speaker, "startSpeaking");
+            }
+            if (previous) {
+                fire(previous, "stopSpeaking");
+            }
         }
-        if (previous) {
-            firing.push({ characterId: previous, event: "stopSpeaking" });
+        // A character brought on right above the line is in neither state, so the line puts it into
+        // one: speaking if it is the speaker, not speaking otherwise.
+        for (const characterId of charactersEnteredBeforeLine(scene, block.id)) {
+            fire(characterId, characterId === speaker ? "startSpeaking" : "stopSpeaking");
         }
         if (firing.length === 0) {
             continue;

@@ -106,6 +106,12 @@ describe("findCharacterBehaviourConflicts", () => {
         expect(findCharacterBehaviourConflicts(scene(rows), behaviours).map(conflict => conflict.rowBlockId)).toEqual(["hand"]);
     });
 
+    it("marks a row overlapping the stop of a character brought on right above the line", () => {
+        const withMiki = new Map(behaviours).set("miki", { stopSpeaking: [move("miki-dim", "miki", { zoom: 0.9 })] });
+        const rows = [block("in-m", "action", { action: "character", operation: "enter", characterId: "miki" }), move("hand", "miki", { zoom: 1 }), line("l1", "a")];
+        expect(findCharacterBehaviourConflicts(scene(rows), withMiki).map(conflict => [conflict.rowBlockId, conflict.characterId])).toEqual([["hand", "miki"]]);
+    });
+
     it("says nothing where the floor does not change hands or the line opts out", () => {
         expect(findCharacterBehaviourConflicts(scene([line("l0", "a"), move("hand", "a", { zoom: 2 }), line("l1", "a")]), behaviours)).toEqual([]);
         expect(findCharacterBehaviourConflicts(scene([move("hand", "a", { zoom: 2 }), line("l1", "a", { skipCharacterBehaviours: true })]), behaviours)).toEqual([]);

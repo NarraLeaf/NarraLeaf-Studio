@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, LockOpen } from "lucide-react";
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { ChevronDown, ChevronRight, Columns2, Component, Eye, EyeOff, Lock, LockOpen, Rows2, Square, type LucideIcon } from "lucide-react";
+import {
+    isLinkedUIComponentElement,
+    isUIFlowLayoutParentElement,
+    type UIDocument,
+    type UIElement,
+} from "@shared/types/ui-editor/document";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import {
     getOutlineVisualChildren,
@@ -16,6 +22,23 @@ export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
 const ROW_INDENT = 16;
 const GUIDE_OFFSET = 8;
+
+/**
+ * The glyph at the front of a row, so a layer's kind reads at a glance rather than from its name -
+ * which is often only "Container 3". The widget's own icon, the one the insert bar shows; a stack or
+ * scroll container shows the direction it lays its children out in; a linked component instance shows
+ * the component glyph, in the accent colour, as the instance it is (its inside belongs to the
+ * component, not to this page).
+ */
+export function resolveOutlineRowIcon(element: UIElement): { icon: LucideIcon; component: boolean } {
+    if (isLinkedUIComponentElement(element)) {
+        return { icon: Component, component: true };
+    }
+    if (element.type === "nl.container" && isUIFlowLayoutParentElement(element)) {
+        return { icon: element.props?.stackDirection === "horizontal" ? Columns2 : Rows2, component: false };
+    }
+    return { icon: widgetModuleRegistry.get(element.type)?.icon ?? Square, component: false };
+}
 
 function getOutlineElementLabel(element: UIElement): string {
     return element.type === OUTLINE_ROOT_WIDGET_TYPE
@@ -240,6 +263,7 @@ export function OutlineRow(props: OutlineRowBase & { element: UIElement; depth: 
                         <span className="w-3.5 h-3.5 inline-block" />
                     )}
                 </button>
+                <OutlineRowIcon element={element} />
                 {renaming ? (
                     <OutlineRenameField element={element} onFinish={name => onFinishRename(element, name)} />
                 ) : (
@@ -248,7 +272,7 @@ export function OutlineRow(props: OutlineRowBase & { element: UIElement; depth: 
                         className={`flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left ${isPrimary ? "font-medium" : ""}`}
                         data-tip={hiddenInGame ? `${typeName ?? label} · ${t("widgetChrome.outline.hiddenInGame")}` : typeName}
                     >
-                        <span className={`min-w-0 truncate ${hiddenInGame ? "italic" : ""}`}>{label}</span>
+                        <span className={`min-w-0 truncate ${hiddenInGame ? "italic" : ""} ${isLinkedUIComponentElement(element) ? "text-primary" : ""}`}>{label}</span>
                     </button>
                 )}
                 {!isRoot && !isComponentFrame ? (
@@ -295,11 +319,17 @@ export function OutlineRow(props: OutlineRowBase & { element: UIElement; depth: 
     );
 }
 
+function OutlineRowIcon({ element }: { element: UIElement }) {
+    const { icon: Icon, component } = resolveOutlineRowIcon(element);
+    return <Icon aria-hidden className={`h-3.5 w-3.5 shrink-0 ${component ? "text-primary" : "text-fg-subtle"}`} />;
+}
+
 export function OutlineDragPreview({ element, count }: { element: UIElement; count: number }) {
     const { t } = useTranslation();
     const label = count > 1 ? t("widgetChrome.outline.draggingCount", { count }) : getOutlineElementLabel(element);
     return (
-        <div className="flex h-[26px] min-w-32 max-w-72 items-center gap-1 rounded-md border border-primary/35 bg-surface-raised/90 px-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30">
+        <div className="flex h-[26px] min-w-32 max-w-72 items-center gap-1.5 rounded-md border border-primary/35 bg-surface-raised/90 px-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30">
+            {count > 1 ? null : <OutlineRowIcon element={element} />}
             <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
         </div>
     );

@@ -3034,16 +3034,23 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 //
 // What a character does on its own when it starts or stops speaking - see
 // `@shared/story/characterBehaviours` for the authoring side. Here they become engine actions placed
-// in front of each line, decided at runtime rather than at compile time, because who spoke last is
-// only known once play has chosen its branches: a line after a menu takes the floor from whichever
-// option's speaker the player heard.
+// in front of each line, decided at runtime rather than at compile time, because what state each
+// character is in is only known once play has chosen its branches: a line after a menu follows
+// whichever option's lines the player heard.
+//
+// Each character is in one of two states, speaking or not, and every line moves every character on
+// stage into the state it calls for: its speaker into speaking, everyone else into not speaking. A
+// character's event runs only when its state actually changes, so a second line from the same speaker
+// runs nothing, and a character who has not said a word yet - just brought on, say - is dimmed by the
+// first line someone else speaks rather than staying lit until it has spoken once.
 //
 // Two pieces of state carry that, both in the scene's own local storage (reset on scene entry, which
 // is also when the stage empties) and both written through a Script that returns its undo cleaner -
 // the rule `storyCompilePass.ts` explains for plugin flags: without one a rewind leaves the value
 // where play left it, and every guard after it takes the wrong branch.
 //
-//  - who has the floor, written by every line that takes part;
+//  - each character's state, written by the lines that change it and cleared by its entrance and
+//    exit, so a character coming back on is put into the right state by the next line;
 //  - whether each character with behaviours is on stage, written after its entrance and its exit,
 //    because a behaviour stages a portrait and a character who is off stage has none.
 
@@ -3055,12 +3062,22 @@ type CharacterBehaviourPlan = {
      * address a character by the name its portrait is registered under.
      */
     characterByStageName: ReadonlyMap<string, string>;
+    /**
+     * The characters with behaviours this scene can put on stage - the only ones a line here needs
+     * a guard for. A character the scene never brings on is never present, so a guard for it would be
+     * dead code on every line.
+     */
+    cast: readonly string[];
 };
 
-const BEHAVIOUR_SPEAKER_KEY = "__nls_behaviour_speaker";
+type CharacterBehaviourState = "speaking" | "silent";
 
 function behaviourPresenceKey(characterId: string): string {
     return `__nls_behaviour_onstage:${characterId}`;
+}
+
+function behaviourStateKey(characterId: string): string {
+    return `__nls_behaviour_state:${characterId}`;
 }
 
 function createCharacterBehaviourPlan(ctx: SceneCompileContext): CharacterBehaviourPlan | undefined {
@@ -3074,10 +3091,20 @@ function createCharacterBehaviourPlan(ctx: SceneCompileContext): CharacterBehavi
         return undefined;
     }
     const characterByStageName = characterBehaviourStageNames(ctx.scene, behaviours.keys());
-    return { behaviours, namespace: DevTools.getNamespaceName(ctx.nlrScene.local), characterByStageName };
+    const cast = new Set<string>();
+    for (const block of Object.values(ctx.scene.blocks)) {
+        const change = characterBehaviourPresenceChange(block, characterByStageName);
+        if (change?.onStage) {
+            cast.add(change.characterId);
+        }
+    }
+    if (cast.size === 0) {
+        return undefined;
+    }
+    return { behaviours, namespace: DevTools.getNamespaceName(ctx.nlrScene.local), characterByStageName, cast: [...cast] };
 }
 
-function writeBehaviourState(namespace: string, key: string, value: string | boolean): NlrStatement {
+function writeBehaviourState(namespace: string, key: string, value: string | boolean | undefined): NlrStatement {
     return Script.execute((scriptCtx: ScriptCtx) => {
         const ns = scriptCtx.storable.getNamespace(namespace);
         const had = ns.has(key);
@@ -3094,7 +3121,7 @@ function readBehaviourState(scriptCtx: ScriptCtx, namespace: string, key: string
 /**
  * The behaviour state a walked path leaves, put back in front of a launch's or a preview's first row.
  * Those compile the rows after the target only, so without this the target line would find nobody
- * on stage and nobody holding the floor, and decide its behaviours from a state play never had.
+ * on stage and nobody in either state, and decide its behaviours from a state play never had.
  */
 function seedCharacterBehaviourState(ctx: SceneCompileContext, snapshot: StoryStageSnapshot): NlrStatement[] {
     const plan = ctx.behaviourPlan;
@@ -3107,7 +3134,11 @@ function seedCharacterBehaviourState(ctx: SceneCompileContext, snapshot: StorySt
             statements.push(writeBehaviourState(plan.namespace, behaviourPresenceKey(characterId), true));
         }
     }
-    statements.push(writeBehaviourState(plan.namespace, BEHAVIOUR_SPEAKER_KEY, snapshot.behaviourFloor ?? ""));
+    for (const [characterId, state] of Object.entries(snapshot.behaviourStates ?? {})) {
+        if (plan.behaviours.has(characterId)) {
+            statements.push(writeBehaviourState(plan.namespace, behaviourStateKey(characterId), state));
+        }
+    }
     return statements;
 }
 
@@ -3127,8 +3158,13 @@ async function withCharacterBehaviours(ctx: SceneCompileContext, blockId: string
     }
     const presence = characterBehaviourPresenceChange(block, plan.characterByStageName);
     if (presence) {
-        const write = writeBehaviourState(plan.namespace, behaviourPresenceKey(presence.characterId), presence.onStage);
-        return [...own, nameRowInternals(ctx, write, blockId)];
+        // Coming on or going off, the character is in neither state: whatever the portrait looked like
+        // before is not what it looks like now, so the next line decides afresh.
+        const writes = [
+            writeBehaviourState(plan.namespace, behaviourPresenceKey(presence.characterId), presence.onStage),
+            writeBehaviourState(plan.namespace, behaviourStateKey(presence.characterId), undefined),
+        ];
+        return [...own, ...nameRowInternals(ctx, writes as unknown as NlrStatement, blockId) as unknown as NlrStatement[]];
     }
     const speaker = speakingRowSpeaker(block);
     if (speaker === undefined || speakingRowSkipsBehaviours(block)) {
@@ -3138,8 +3174,10 @@ async function withCharacterBehaviours(ctx: SceneCompileContext, blockId: string
 }
 
 /**
- * What runs in front of one line: if the floor changes hands here, the previous speaker's stop and
- * this speaker's start - each only for a character on stage - and then the floor is recorded.
+ * What runs in front of one line: every character on stage moved into the state the line calls for -
+ * the speaker into speaking, the rest into not speaking - running its event wherever its state
+ * changes. The others first, so a stop and a start that share a channel (the camera) land in the
+ * order they are read.
  */
 async function compileLineBehaviours(
     ctx: SceneCompileContext,
@@ -3147,41 +3185,23 @@ async function compileLineBehaviours(
     line: StoryBlock,
     speaker: string | null,
 ): Promise<NlrStatement[]> {
-    const floor = speaker ?? "";
     const namespace = plan.namespace;
     const written = handWrittenChannelsBeforeLine(ctx.scene, line.id);
-    const runs: NlrStatement[] = [];
-    for (const [characterId, behaviours] of plan.behaviours) {
-        if (characterId === speaker || !behaviours.stopSpeaking?.length) {
-            continue;
-        }
-        const run = await compileBehaviourRun(ctx, line, characterId, "stopSpeaking", behaviours.stopSpeaking, written);
-        if (run) {
-            runs.push(Condition.If(
-                ((scriptCtx: ScriptCtx) => readBehaviourState(scriptCtx, namespace, BEHAVIOUR_SPEAKER_KEY) === characterId
-                    && readBehaviourState(scriptCtx, namespace, behaviourPresenceKey(characterId)) === true) as never,
-                [run] as never,
-            ) as unknown as NlrStatement);
-        }
-    }
-    const start = speaker ? plan.behaviours.get(speaker)?.startSpeaking : undefined;
-    if (speaker && start?.length) {
-        const run = await compileBehaviourRun(ctx, line, speaker, "startSpeaking", start, written);
-        if (run) {
-            runs.push(Condition.If(
-                ((scriptCtx: ScriptCtx) => readBehaviourState(scriptCtx, namespace, behaviourPresenceKey(speaker)) === true) as never,
-                [run] as never,
-            ) as unknown as NlrStatement);
-        }
-    }
+    const order = [...plan.cast.filter(characterId => characterId !== speaker), ...plan.cast.filter(characterId => characterId === speaker)];
     const statements: NlrStatement[] = [];
-    if (runs.length > 0) {
+    for (const characterId of order) {
+        const desired: CharacterBehaviourState = characterId === speaker ? "speaking" : "silent";
+        const event: CharacterBehaviourEvent = desired === "speaking" ? "startSpeaking" : "stopSpeaking";
+        const rows = plan.behaviours.get(characterId)?.[event];
+        const run = rows?.length ? await compileBehaviourRun(ctx, line, characterId, event, rows, written) : null;
+        // The state is recorded even when this event has nothing to run: a character with only a
+        // start has to be known as not speaking, or its next line would not count as starting.
         statements.push(Condition.If(
-            ((scriptCtx: ScriptCtx) => (readBehaviourState(scriptCtx, namespace, BEHAVIOUR_SPEAKER_KEY) ?? "") !== floor) as never,
-            runs as never,
+            ((scriptCtx: ScriptCtx) => readBehaviourState(scriptCtx, namespace, behaviourPresenceKey(characterId)) === true
+                && readBehaviourState(scriptCtx, namespace, behaviourStateKey(characterId)) !== desired) as never,
+            [...(run ? [run] : []), writeBehaviourState(namespace, behaviourStateKey(characterId), desired)] as never,
         ) as unknown as NlrStatement);
     }
-    statements.push(writeBehaviourState(namespace, BEHAVIOUR_SPEAKER_KEY, floor));
     return nameRowInternals(ctx, statements as unknown as NlrStatement, line.id) as unknown as NlrStatement[];
 }
 
