@@ -48,6 +48,15 @@ export interface WorkspaceAnomaly {
     operationKey: TranslationKey;
     /** The file involved, when there is one. Shown next to the operation, and worth copying. */
     path?: string;
+    /**
+     * What the author calls the thing that failed, when its file is named by an id rather than by
+     * anything they would recognise - a story's name for `stories/<id>/storydoc.json`.
+     *
+     * The panel still shows {@link path}, which is what a developer needs; this is for the places an
+     * author reads first and has no reason to know what an id is, which is the recovery offer. Never
+     * part of {@link raw}, which stays exactly as it arrived.
+     */
+    subject?: string;
     /** The error exactly as it arrived. See the note above: this is the point of the record. */
     raw: string;
     /**
@@ -107,6 +116,7 @@ export function reportWorkspaceAnomaly(input: WorkspaceAnomalyInput): WorkspaceA
         anomaly.source === input.source
         && anomaly.operationKey === input.operationKey
         && anomaly.path === input.path
+        && anomaly.subject === input.subject
         && anomaly.severity === input.severity
         && anomaly.raw === raw);
     if (existing) {
@@ -118,6 +128,7 @@ export function reportWorkspaceAnomaly(input: WorkspaceAnomalyInput): WorkspaceA
         source: input.source,
         operationKey: input.operationKey,
         path: input.path,
+        subject: input.subject,
         raw,
         severity: input.severity,
         at: Date.now(),
@@ -188,6 +199,48 @@ export function observeWorkspaceAnomalies(
     return () => {
         observers.delete(observer);
     };
+}
+
+/**
+ * The name an author would look for the damaged file by, or null when the record names no file.
+ *
+ * {@link WorkspaceAnomaly.subject} when there is one, because the path behind it is made of ids;
+ * otherwise the path, relative to the project folder when it is inside it - `assets/
+ * assets.metadata.image.json` is what the author can find in their project, and the absolute prefix
+ * in front of it is the same for every file and says nothing. Spelled as it was reported, separators
+ * included: a Windows path comes back with its backslashes.
+ */
+export function describeAnomalyFile(anomaly: WorkspaceAnomaly, projectRoot?: string | null): string | null {
+    if (anomaly.subject) {
+        return anomaly.subject;
+    }
+    if (!anomaly.path) {
+        return null;
+    }
+    const root = projectRoot?.replace(/[\\/]+$/, "");
+    if (root && anomaly.path.length > root.length + 1 && anomaly.path.startsWith(root)) {
+        const separator = anomaly.path[root.length];
+        if (separator === "/" || separator === "\\") {
+            return anomaly.path.slice(root.length + 1);
+        }
+    }
+    return anomaly.path;
+}
+
+/**
+ * How many distinct files these records are about.
+ *
+ * Not the number of records. One file that several readers try - the story list, the lint sweep, the
+ * word count - is reported once per reader, and the records do not collapse because each carries
+ * its own stack; counted as records, a single unreadable story became "5 files could not be read".
+ * A record with no file is its own failure and counts once.
+ */
+export function countAnomalyFiles(anomalies: readonly WorkspaceAnomaly[]): number {
+    const files = new Set<string>();
+    for (const anomaly of anomalies) {
+        files.add(anomaly.path !== undefined ? `path:${anomaly.path}` : `record:${anomaly.id}`);
+    }
+    return files.size;
 }
 
 /**

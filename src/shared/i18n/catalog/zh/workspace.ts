@@ -353,6 +353,9 @@ export const workspace = {
             message: "该项目未能正常加载",
             detailOne: "有一个文件无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
             detailMany: "有 {count} 个文件无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            // {operation} 取自下面的 `operations`，读作「当时在做什么」
+            detailOneNamed: "{operation}时出错：“{file}”无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            detailManyNamed: "{operation}时出错：“{file}”等 {count} 个文件无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
             enter: "以恢复模式打开",
         },
         operations: {

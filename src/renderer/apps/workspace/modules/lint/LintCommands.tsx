@@ -23,12 +23,19 @@ import { publishRowProblems, setProblemsPanelOpener } from "./rowProblems";
  *
  * The panel opens immediately and the sweep runs behind it: the findings already on show stay there
  * meanwhile, marked as being checked, and progress is on the `lint` console channel.
+ *
+ * **Nothing at all in a recovery window.** That window brings up only the recovery shell's services
+ * (`RECOVERY_SHELL_SERVICES`), and the lint service is not one of them - a sweep reads every story,
+ * the cast and the interface documents, which is the whole document graph recovery mode exists to
+ * keep from loading. Reaching for it there threw "before initialization" out of a passive effect
+ * and took the window down on the way in, in exactly the project that had just been offered
+ * recovery because it would not load.
  */
 export function LintCommands() {
-    const { context, isInitialized } = useWorkspace();
+    const { context, isInitialized, recovery } = useWorkspace();
 
     useEffect(() => {
-        if (!context || !isInitialized) {
+        if (!context || !isInitialized || recovery) {
             return;
         }
         const lintService = context.services.get<LintService>(Services.Lint);
@@ -44,10 +51,10 @@ export function LintCommands() {
             setProblemsPanelOpener(null);
             publishRowProblems(null);
         };
-    }, [context, isInitialized]);
+    }, [context, isInitialized, recovery]);
 
     useEffect(() => {
-        if (!context) {
+        if (!context || recovery) {
             return;
         }
         const commandService = context.services.get<CommandService>(Services.Command);
@@ -67,7 +74,7 @@ export function LintCommands() {
                 });
             },
         });
-    }, [context]);
+    }, [context, recovery]);
 
     return null;
 }

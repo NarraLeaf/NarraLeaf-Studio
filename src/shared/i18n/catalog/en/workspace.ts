@@ -391,6 +391,9 @@ export const workspace = {
             // plural in a data-loss warning reads as a placeholder nobody finished.
             detailOne: "A file could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
             detailMany: "{count} files could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
+            // {operation} is one of `operations` below, so it reads as what the workspace was doing.
+            detailOneNamed: "{operation} failed: “{file}” could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
+            detailManyNamed: "{operation} failed: {count} files could not be read, starting with “{file}”, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
             enter: "Open in recovery mode",
         },
         // Each key names what the workspace was doing, not what went wrong: the error itself is
