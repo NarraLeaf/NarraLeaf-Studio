@@ -38,6 +38,7 @@ import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/s
 import { Services } from "@/lib/workspace/services/services";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
@@ -335,9 +336,21 @@ export function ConditionEditor(props: {
         return allOperatorOptions.filter(option => listed.includes(option.value as ConditionOperator));
     }, [allOperatorOptions, resolvedValueType, variableValue.operator]);
 
-    const setKind = (nextKind: ConditionKind) => {
+    const setKind = async (nextKind: ConditionKind) => {
         if (nextKind === kind) {
             return;
+        }
+        // Leaving the graph tier deletes the graph, and the graph lives in the blueprint store, out of
+        // reach of this scene's undo. One slip in the dropdown used to throw away an authored graph,
+        // so a graph with anything in it asks first; an untouched one goes quietly.
+        if (blueprintId && blueprintService && storyBlueprintHasContent(blueprintService, blueprintId)) {
+            const ui = context?.services.get<UIService>(Services.UI);
+            const confirmed = ui
+                ? await ui.showConfirm(t("storyInspector.condition.discardGraph"), t("storyInspector.condition.discardGraphDetail"))
+                : false;
+            if (!confirmed) {
+                return;
+            }
         }
         if (nextKind === "blueprint") {
             // Do NOT create the blueprint here — creating mutates the document and re-renders the row,
@@ -416,7 +429,7 @@ export function ConditionEditor(props: {
             <Select
                 options={kindOptions}
                 value={kind}
-                onChange={value => setKind(value as ConditionKind)}
+                onChange={value => void setKind(value as ConditionKind)}
                 size="sm"
                 fullWidth
                 portalMenu
@@ -586,4 +599,29 @@ function ConditionValueField(props: {
             onChange={event => props.onChange(event.target.value)}
         />
     );
+}
+
+/**
+ * Whether a condition's graph holds more than the call head it was created with. The head is the
+ * one node every new story blueprint starts from; anything past it - another node, an edge, a
+ * function - is something the author built.
+ */
+function storyBlueprintHasContent(service: LocalBlueprintService, blueprintId: string): boolean {
+    const realId = service.getStoryActionBlueprintId(blueprintId);
+    const blueprint = realId ? service.getBlueprintDocument().blueprints[realId] : undefined;
+    if (!blueprint) {
+        return false;
+    }
+    if (Object.keys(blueprint.graphs.functions ?? {}).length > 0) {
+        return true;
+    }
+    let nodes = 0;
+    for (const layer of Object.values(blueprint.graphs.events ?? {})) {
+        const graph = layer.graph;
+        nodes += Object.keys(graph?.nodes ?? {}).length;
+        if ((graph?.edges?.length ?? 0) > 0) {
+            return true;
+        }
+    }
+    return nodes > 1;
 }
