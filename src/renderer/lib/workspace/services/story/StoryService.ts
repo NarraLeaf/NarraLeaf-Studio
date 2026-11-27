@@ -566,6 +566,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 source: "story",
                 operationKey: "workspace.recovery.operations.storyDocumentRead",
                 path,
+                // The file is `stories/<id>/storydoc.json`; the author knows it by this.
+                subject: entry.name,
                 error: result.error,
                 severity: "degraded",
             });
@@ -596,6 +598,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 source: "story",
                 operationKey: "workspace.recovery.operations.storyDocumentParse",
                 path,
+                // The file is `stories/<id>/storydoc.json`; the author knows it by this.
+                subject: entry.name,
                 error,
                 severity: "degraded",
             });

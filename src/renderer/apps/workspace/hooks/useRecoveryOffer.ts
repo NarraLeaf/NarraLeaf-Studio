@@ -5,7 +5,12 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import { observeWorkspaceAnomalies, type WorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import {
+    countAnomalyFiles,
+    describeAnomalyFile,
+    observeWorkspaceAnomalies,
+    type WorkspaceAnomaly,
+} from "@/lib/workspace/recovery/anomalyLog";
 import { useWorkspace } from "../context";
 
 /**
@@ -78,9 +83,7 @@ export function useRecoveryOffer() {
                 ui.notifications.showSticky({
                     type: NotificationType.Error,
                     message: translate("workspace.recovery.offer.message"),
-                    detail: degraded.length === 1
-                        ? translate("workspace.recovery.offer.detailOne")
-                        : translate("workspace.recovery.offer.detailMany", { count: degraded.length }),
+                    detail: describeOffer(degraded, projectRootOf(context)),
                     actions: [
                         {
                             label: translate("workspace.recovery.offer.enter"),
@@ -99,6 +102,40 @@ export function useRecoveryOffer() {
             })();
         });
     }, [context, recovery]);
+}
+
+/**
+ * The offer's sentence: which file, while doing what, and how many in all.
+ *
+ * Named, because "a file could not be read" sends the author to the recovery panel only to learn
+ * which one - and the offer is the one place they read before deciding whether to keep working. The
+ * file named is the first one reported (the log is newest first), which is the one whose failure
+ * the rest usually follow from. Unnamed only when no record names a file at all - a plugin host that
+ * would not start - and then it says so in the old words rather than inventing a name.
+ */
+export function describeOffer(degraded: readonly WorkspaceAnomaly[], projectRoot: string | null): string {
+    const count = countAnomalyFiles(degraded);
+    const named = [...degraded].reverse()
+        .map(anomaly => ({ anomaly, file: describeAnomalyFile(anomaly, projectRoot) }))
+        .find(entry => entry.file !== null);
+    if (!named) {
+        return count === 1
+            ? translate("workspace.recovery.offer.detailOne")
+            : translate("workspace.recovery.offer.detailMany", { count });
+    }
+    const params = { file: named.file!, operation: translate(named.anomaly.operationKey), count };
+    return count === 1
+        ? translate("workspace.recovery.offer.detailOneNamed", params)
+        : translate("workspace.recovery.offer.detailManyNamed", params);
+}
+
+/** The project folder, for naming files relative to it; null when it cannot be had. */
+function projectRootOf(context: { project?: { getConfig?: () => { projectPath?: string } } }): string | null {
+    try {
+        return context.project?.getConfig?.()?.projectPath ?? null;
+    } catch {
+        return null;
+    }
 }
 
 /**

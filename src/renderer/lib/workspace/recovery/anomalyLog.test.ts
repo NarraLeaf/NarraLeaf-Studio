@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearWorkspaceAnomalies,
+    countAnomalyFiles,
+    describeAnomalyFile,
     describeRawError,
     getWorkspaceAnomalies,
     getWorkspaceAnomalyReportCount,
@@ -189,3 +191,76 @@ describe("clearWorkspaceAnomalies", () => {
         expect(seen).toEqual([1, 0]);
     });
 });
+
+describe("describeAnomalyFile", () => {
+    const record = (fields: { path?: string; subject?: string }) => reportWorkspaceAnomaly({
+        source: "story",
+        operationKey: "workspace.recovery.operations.storyDocumentParse",
+        error: new Error(`fixture ${JSON.stringify(fields)}`),
+        severity: "degraded",
+        ...fields,
+    });
+
+    it("names a story by the name the author gave it, not by the id its file is filed under", () => {
+        const anomaly = record({
+            path: "/p/game/editor/story/stories/71bb159f-1322-4539-b09f-9593a426a67d/storydoc.json",
+            subject: "Chapter One",
+        });
+        expect(describeAnomalyFile(anomaly, "/p/game")).toBe("Chapter One");
+    });
+
+    it("names any other file relative to the project folder", () => {
+        const anomaly = record({ path: "/p/game/assets/assets.metadata.image.json" });
+        expect(describeAnomalyFile(anomaly, "/p/game")).toBe("assets/assets.metadata.image.json");
+        expect(describeAnomalyFile(anomaly, "/p/game/")).toBe("assets/assets.metadata.image.json");
+    });
+
+    it("keeps a Windows path's own separators", () => {
+        const anomaly = record({ path: "D:\\Proj\\assets\\assets.metadata.image.json" });
+        expect(describeAnomalyFile(anomaly, "D:\\Proj")).toBe("assets\\assets.metadata.image.json");
+    });
+
+    it("leaves a path alone when it is not inside the project, or only looks like it is", () => {
+        expect(describeAnomalyFile(record({ path: "/elsewhere/a.json" }), "/p/game")).toBe("/elsewhere/a.json");
+        // A sibling folder sharing the project's name as a prefix is not inside it.
+        expect(describeAnomalyFile(record({ path: "/p/game-old/a.json" }), "/p/game")).toBe("/p/game-old/a.json");
+        expect(describeAnomalyFile(record({ path: "/p/game/a.json" }), null)).toBe("/p/game/a.json");
+    });
+
+    it("has no name to give a record about no file", () => {
+        expect(describeAnomalyFile(record({}), "/p/game")).toBeNull();
+    });
+});
+
+describe("countAnomalyFiles", () => {
+    it("counts one file once however many readers failed on it", () => {
+        // What a project from before the schema floor actually produced: one story below the schema floor, reported by
+        // the lint sweep, the reference index, the word count and the weather prebake - each with its
+        // own stack, so the log keeps all four rows.
+        const path = "/p/game/editor/story/stories/s/storydoc.json";
+        for (const caller of ["lint", "references", "wordCount", "weather"]) {
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyDocumentParse",
+                path,
+                error: new Error(`too old, via ${caller}`),
+                severity: "degraded",
+            });
+        }
+        expect(getWorkspaceAnomalies()).toHaveLength(4);
+        expect(countAnomalyFiles(getWorkspaceAnomalies())).toBe(1);
+    });
+
+    it("counts each record that names no file as its own failure", () => {
+        reportWorkspaceAnomaly({ ...pluginFailure, error: new Error("one") });
+        reportWorkspaceAnomaly({ ...pluginFailure, error: new Error("two") });
+        reportWorkspaceAnomaly({ ...pluginFailure, path: "/p/game/a.json", error: new Error("three") });
+        expect(countAnomalyFiles(getWorkspaceAnomalies())).toBe(3);
+    });
+});
+
+const pluginFailure = {
+    source: "plugins" as const,
+    operationKey: "workspace.recovery.operations.pluginHostLoad" as const,
+    severity: "degraded" as const,
+};

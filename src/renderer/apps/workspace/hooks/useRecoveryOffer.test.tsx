@@ -23,7 +23,8 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 vi.mock("@/lib/i18n", () => ({
-    translate: (key: string) => key,
+    // The parameters are spelled out so a test can see which file the sentence names.
+    translate: (key: string, params?: Record<string, unknown>) => (params ? `${key} ${JSON.stringify(params)}` : key),
 }));
 
 vi.mock("@/lib/workspace/services/core/UIService", () => ({ UIService: class {} }));
@@ -42,6 +43,7 @@ vi.mock("../context", () => ({
     useWorkspace: () => ({
         recovery: false,
         context: {
+            project: { getConfig: () => ({ projectPath: "/p/game" }) },
             services: {
                 get: (key: string) => (key === "ui"
                     ? { notifications: { showSticky: sticky.show } }
@@ -127,5 +129,60 @@ describe("offering recovery mode", () => {
 
         await new Promise(resolve => setTimeout(resolve, 20));
         expect(sticky.show).not.toHaveBeenCalled();
+    });
+});
+
+describe("naming what could not be read", () => {
+    const STORY_PATH = "/p/game/editor/story/stories/71bb159f-1322-4539-b09f-9593a426a67d/storydoc.json";
+    const tooOld = (via: string) => ({
+        source: "story" as const,
+        operationKey: "workspace.recovery.operations.storyDocumentParse" as const,
+        path: STORY_PATH,
+        subject: "Skeleton",
+        severity: "degraded" as const,
+        error: new Error(`Story document schema v18 is older than this Studio version can read, via ${via}`),
+    });
+
+    it("names the file, and what the workspace was doing when it failed", async () => {
+        const { useRecoveryOffer, reportWorkspaceAnomaly } = await load();
+
+        renderHook(() => useRecoveryOffer());
+        reportWorkspaceAnomaly({ ...DEGRADED, path: "/p/game/assets/assets.metadata.image.json" });
+
+        await waitFor(() => expect(sticky.show).toHaveBeenCalledTimes(1));
+        const detail: string = sticky.show.mock.calls[0]![0].detail;
+        expect(detail).toContain("workspace.recovery.offer.detailOneNamed");
+        expect(detail).toContain(`"file":"assets/assets.metadata.image.json"`);
+        expect(detail).toContain(`"operation":"workspace.recovery.operations.preflight"`);
+    });
+
+    it("names a story by its name, never by the id in its path, and counts it once", async () => {
+        const { describeOffer, reportWorkspaceAnomaly, getWorkspaceAnomalies } = await load();
+        // Four readers failed on the same story before the offer was read; it is still one file.
+        for (const via of ["lint", "references", "wordCount", "weather"]) {
+            reportWorkspaceAnomaly(tooOld(via));
+        }
+        const detail = describeOffer(getWorkspaceAnomalies(), "/p/game");
+        expect(detail).toContain("workspace.recovery.offer.detailOneNamed");
+        expect(detail).toContain(`"file":"Skeleton"`);
+        expect(detail).not.toContain("71bb159f");
+    });
+
+    it("names the first file reported when there are several", async () => {
+        const { describeOffer, reportWorkspaceAnomaly, getWorkspaceAnomalies } = await load();
+        reportWorkspaceAnomaly(tooOld("lint"));
+        reportWorkspaceAnomaly({ ...DEGRADED, path: "/p/game/assets/assets.metadata.image.json" });
+
+        const detail = describeOffer(getWorkspaceAnomalies(), "/p/game");
+        expect(detail).toContain("workspace.recovery.offer.detailManyNamed");
+        expect(detail).toContain(`"file":"Skeleton"`);
+        expect(detail).toContain(`"count":2`);
+    });
+
+    it("keeps the unnamed sentence for a failure that names no file", async () => {
+        const { describeOffer, reportWorkspaceAnomaly, getWorkspaceAnomalies } = await load();
+        reportWorkspaceAnomaly(DEGRADED);
+
+        expect(describeOffer(getWorkspaceAnomalies(), "/p/game")).toBe("workspace.recovery.offer.detailOne");
     });
 });
