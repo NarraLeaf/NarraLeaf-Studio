@@ -1,7 +1,7 @@
 import { createCustomCommandFromSceneRows } from "../../story-commands/extractStoryCommand";
 import { openStoryCommandTab } from "../../story-commands/storyCommandTab";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, Layers, MonitorPlay, Plus, Rows3, Search, Trash2 } from "lucide-react";
 import { AgentEditorLockCapsule } from "../../agent/AgentEditorLockCapsule";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -585,6 +585,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             id: "find",
             key: "mod+f",
             description: t("story.keybindings.find"),
+            // Writing is when you search: the caret is in a row far more often than not, and a find
+            // that first needed an Escape out of the line was a find that looked broken.
+            allowInEditable: true,
             handler: () => openFindRef.current(),
         },
         {
@@ -2302,7 +2305,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Who the selected lines could speak as: the cast, and the bare names already in this story.
     // A name that is not in the document yet is not offered here - inventing one is what the `#`
     // chooser on a single line is for, and a bulk change is not the place to name somebody new.
-    const menuSpeakerChoices = menuTarget
+    // Only lines that HAVE a speaker can change it: offered over a narration or an action row, the
+    // submenu used to open, take a pick and change nothing, which read as a broken menu.
+    const menuHasDialogue = menuSelectionIds.some(id => {
+        const block = scene.blocks[id];
+        return block?.kind === "nodeAction" && block.payload.action === "dialogue";
+    });
+    const menuSpeakerChoices = menuTarget && menuHasDialogue
         ? [
             ...getSpeakerCandidates(editor.characters, [], "").flatMap(candidate => (candidate.kind === "character"
                 ? [{
@@ -2489,6 +2498,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         the three controls that remain do not move when these two go. */}
                     {!scriptOpen ? (
                     <>
+                    {/* Find and replace had a shortcut and nothing else: a writer who did not already
+                        know Mod+F had no way to learn the feature existed. */}
+                    <button
+                        type="button"
+                        onClick={() => (findOpen ? setFindOpen(false) : openFind())}
+                        data-tip={t("story.find.open")}
+                        aria-label={t("story.find.open")}
+                        aria-pressed={findOpen}
+                        className={["rounded-md p-1.5 transition-colors", findOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                    >
+                        <Search className="h-4 w-4" />
+                    </button>
                     {/* One control for the whole of "what is on this page".
                         A separate "narrative only" toggle used to sit to its left, and it was a
                         mistake twice over: it was one point inside this button's own space, and its
@@ -2682,6 +2703,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
                                         onDiscardSlot={editor.discardInsertSlot}
+                                        onEscapeSlot={editor.escapeInsertSlot}
                                         onResolveLine={editor.resolveInsertLine}
                                         onCommitInvalid={editor.commitInvalidFromInsert}
                                         onChooseCommand={editor.chooseCommand}
@@ -2708,6 +2730,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
                                         onDiscardSlot={editor.discardInsertSlot}
+                                        onEscapeSlot={editor.escapeInsertSlot}
                                         onResolveLine={editor.resolveInsertLine}
                                         onCommitInvalid={editor.commitInvalidFromInsert}
                                         onChooseCommand={editor.chooseCommand}
@@ -2752,6 +2775,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                                         onDismissChooser={editor.dismissInsertChooser}
                                         onDiscardSlot={editor.discardInsertSlot}
+                                        onEscapeSlot={editor.escapeInsertSlot}
                                         onResolveLine={editor.resolveInsertLine}
                                         onCommitInvalid={editor.commitInvalidFromInsert}
                                         onChooseCommand={editor.chooseCommand}
@@ -2780,6 +2804,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
                         onDismissChooser={editor.dismissInsertChooser}
                         onDiscardSlot={editor.discardInsertSlot}
+                                        onEscapeSlot={editor.escapeInsertSlot}
                         onResolveLine={editor.resolveInsertLine}
                         onCommitInvalid={editor.commitInvalidFromInsert}
                         onChooseCommand={editor.chooseCommand}

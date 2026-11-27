@@ -667,6 +667,8 @@ export const storyInspector = {
     condition: {
         brokenExpression: "This expression no longer resolves. A variable it reads may have been renamed or deleted. The branch stays false until the expression is fixed.",
         clear: "Clear condition",
+        discardGraph: "Switching deletes the graph of this condition",
+        discardGraphDetail: "The graph is not part of the scene undo history and cannot be restored.",
     },
 
     declaration: {

@@ -8,8 +8,10 @@ top of them.
 
 1. **Escape is one exit ladder, one rung per press. It never commits and never destroys.**
    Candidates first, then the slot; an open property editor is its own rung. Leaving an *edit* saves
-   (it goes through history, so `Mod+Z` undoes it); leaving an *uncommitted slot* creates nothing;
-   closing an *inspector* keeps the row selected.
+   (it goes through history, so `Mod+Z` undoes it); leaving a *slot* keeps prose the author typed (a
+   slot looks exactly like the narration row whose Enter opened it, and Escape on that row saves) and
+   creates nothing from an empty line, a command line or a `#` line; closing an *inspector* keeps the
+   row selected.
 2. **The highlight is Enter's pointer.** Wherever a candidate is highlighted, Tab and Enter both take
    it — deliberately the same key. Where nothing is highlighted, Enter commits the line. This is why
    "must pick one" positions (command name, speaker name) highlight by default and "optional next
@@ -23,9 +25,9 @@ top of them.
 
 | | idle | text edit | insert slot |
 |---|---|---|---|
-| `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② discard slot |
+| `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② prose → narration row; anything else → discard slot |
 | `Enter` | text row → edit; action row → inspector (or its card-less op) | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line |
-| `Tab` | indent | style strip: open it, else step into it | take highlight |
+| `Tab` | indent (never into a condition or a choice, which hold only branches and options) | style strip: open it, else step into it | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
 | `Shift+Tab` | outdent | style strip, entered from its far end | — |
 | `Backspace` | one leaf action row → blank line, caret in it; anything else → delete | at an empty line: dialogue → insert slot, else delete + step back | empty slot → dismiss, step back |

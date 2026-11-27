@@ -511,6 +511,33 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     return false;
 }
 
+/**
+ * Whether `child` may sit directly under `parent` (`null` = the scene's top level).
+ *
+ * `canAcceptChildren` answers "is this a container at all"; this answers "would the compiler accept
+ * this tree". Two containers are typed: a condition holds only its branches and a choice holds only
+ * its options, and those two kinds live nowhere else. A gesture that moves an existing row - Tab, a
+ * drag - has to ask this, because nothing downstream refuses the shape: the scene builds and then
+ * fails to compile.
+ */
+export function canPlaceBlockUnder(parent: StoryBlock | null | undefined, child: StoryBlock): boolean {
+    const isBranch = child.kind === "control" && child.payload.control === "conditionBranch";
+    const isOption = child.kind === "nodeAction" && child.payload.action === "choiceOption";
+    if (!parent) {
+        return !isBranch && !isOption;
+    }
+    if (!canAcceptChildren(parent)) {
+        return false;
+    }
+    if (parent.kind === "control" && parent.payload.control === "condition") {
+        return isBranch;
+    }
+    if (parent.kind === "nodeAction" && parent.payload.action === "choice") {
+        return isOption;
+    }
+    return !isBranch && !isOption;
+}
+
 function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }

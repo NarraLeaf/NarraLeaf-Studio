@@ -2160,6 +2160,11 @@ export function InsertRow(props: {
      * speaker's line hands back to it (the "・" an input method typed there, see `inputMethodLine`).
      */
     onDiscardSlot: (lineBack?: string) => void;
+    /**
+     * Escape with no menu open: the scene editor lands prose and throws anything else away (see
+     * `escapeInsertSlot`). Hosts whose slot is a one-off command line leave it out and discard.
+     */
+    onEscapeSlot?: () => void;
     /** Enter / Shift+Enter with no candidate to take: the line stands on its own or becomes invalid. */
     onResolveLine: () => void;
     onCommitInvalid: () => void;
@@ -2318,6 +2323,19 @@ export function InsertRow(props: {
     const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands, abbreviations);
     const characterMenu = useCharacterPickerState(groupedCharacters.stops);
     const textStyle = useStoryEditorTextStyle();
+    // The slot grows with its line. It was one row tall whatever it held, so a long sentence scrolled
+    // inside a one-line box and then jumped to its real height on commit; on a command line, whose
+    // glyphs are transparent over a mirror that does not scroll, the scrolled text was not even the
+    // text on screen. Measured before paint so the row never shows the clipped frame.
+    const inputRef = props.inputRef;
+    useLayoutEffect(() => {
+        const input = inputRef.current;
+        if (!input) {
+            return;
+        }
+        input.style.height = "auto";
+        input.style.height = `${input.scrollHeight}px`;
+    }, [inputRef, value, textStyle]);
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
@@ -2504,7 +2522,7 @@ export function InsertRow(props: {
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
                     className={[
-                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:text-fg-subtle",
+                        "relative min-h-[20px] w-full resize-none overflow-hidden bg-transparent px-0 py-0 outline-none placeholder:text-fg-subtle",
                         // Transparent glyphs, opaque caret: the colours come from the mirror behind.
                         // Prose keeps its own text — there is nothing to colour, and a line the mirror
                         // would not draw must never be invisible.
@@ -2589,8 +2607,9 @@ export function InsertRow(props: {
                             return;
                         }
                         // Escape is one ladder, one rung per press: candidates first, then the slot.
-                        // It never commits anything — that was the old behaviour that turned a
-                        // half-typed `/set` into a line of prose the author never wrote.
+                        // It never turns a command into prose — that was the old behaviour that made a
+                        // half-typed `/set` a line the author never wrote. Prose the author did write
+                        // is kept, the way Escape keeps it on a narration row.
                         if (event.key === "Escape") {
                             event.preventDefault();
                             // The first rung after an input method's "・" was read as "/": the author
@@ -2610,7 +2629,7 @@ export function InsertRow(props: {
                             // to take first, and a press that changed nothing visible looked dead.
                             const menuShown = argMenuOpen || actionMenuOpen || chooser === "character";
                             chooser === "none" || (props.mode.slot.rewritesRow && !menuShown)
-                                ? props.onDiscardSlot()
+                                ? (props.onEscapeSlot ?? props.onDiscardSlot)()
                                 : props.onDismissChooser();
                             return;
                         }
