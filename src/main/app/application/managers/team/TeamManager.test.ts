@@ -75,6 +75,8 @@ class FakeClient implements TeamClientLike {
     connected = 0;
     disposed = 0;
     reconnected: string[] = [];
+    /** Every token handed over after the client was made. */
+    tokens: string[] = [];
     /** Whether a subscribe is answered or refused, which the manager acts on. */
     accept = true;
 
@@ -114,6 +116,10 @@ class FakeClient implements TeamClientLike {
         this.reconnected.push(reason ?? "");
     }
 
+    useToken(token: string): void {
+        this.tokens.push(token);
+    }
+
     /** Pretend the server pushed something. */
     push(topic: string, payload: unknown): void {
         this.options.onEvent({ topic, seq: 1, payload });
@@ -142,7 +148,11 @@ interface Harness {
 }
 
 function harness(
-    options: { token?: string | null; servers?: VcsServerSession[]; wake?: (() => WakeSources) | null } = {},
+    options: {
+        token?: string | null | (() => string | null);
+        servers?: VcsServerSession[];
+        wake?: (() => WakeSources) | null;
+    } = {},
 ): Harness {
     const windows: FakeWindow[] = [];
     const clients: FakeClient[] = [];
@@ -167,7 +177,11 @@ function harness(
         app as never,
         () => options.servers ?? [SERVER],
         {
-            tokenFor: () => (options.token === undefined ? "a-token" : options.token),
+            tokenFor: () => {
+                const token = options.token;
+                if (typeof token === "function") return token();
+                return token === undefined ? "a-token" : token;
+            },
             newClient: (clientOptions) => {
                 const client = new FakeClient(clientOptions);
                 clients.push(client);
@@ -321,6 +335,21 @@ describe("taking something back", () => {
         team.manager.open(SERVER.remoteOrigin);
         await team.manager.letGo(SERVER.remoteOrigin, "clients.withdraw", { project: "p1" });
         expect(team.clients).toHaveLength(1);
+    });
+});
+
+describe("a sign-in renewed or made again", () => {
+    it("hands the session that is open the new token, and opens none for a server without one", () => {
+        let token = "the-old-token";
+        const team = harness({ token: () => token });
+        team.manager.open(SERVER.remoteOrigin);
+
+        token = "the-new-token";
+        team.manager.tokenChanged(SERVER.remoteOrigin);
+        team.manager.tokenChanged("lore://elsewhere:41337");
+
+        expect(team.clients).toHaveLength(1);
+        expect(team.clients[0]?.tokens).toEqual(["the-new-token"]);
     });
 });
 

@@ -70,6 +70,8 @@ export type TeamProjectState =
     | { kind: "none" }
     /** It points at one, but this machine cannot open a session - no record, or no token. */
     | { kind: "no-account" }
+    /** The server answered and refused the token kept here: it expired, or was revoked. */
+    | { kind: "signed-out" }
     /** A session is being opened. The first state every connected project passes through. */
     | { kind: "connecting" }
     /** Not answering. The detail is the transport's own sentence, for a log rather than a screen. */
@@ -321,6 +323,9 @@ export function useTeamProject(
                 // to be guessed from a transport message: a project pointed at a server
                 // this installation has no record of, or no readable token for, never
                 // gets as far as a socket.
+                // A token the server declined is a third case: there is an account here, and
+                // it is the server saying no to it. Signing in again is the remedy.
+                if (connection.problem?.kind === "signed-out") return { kind: "signed-out" };
                 if (connection.problem !== undefined) return { kind: "no-account" };
                 return {
                     kind: "unreachable",

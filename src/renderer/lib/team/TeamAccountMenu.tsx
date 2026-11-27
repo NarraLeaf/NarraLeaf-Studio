@@ -54,6 +54,11 @@ export function TeamAccountMenu({
     const { servers } = useServers();
     const connection = useTeamConnection(remoteOrigin);
     const ready = connection.state === "ready" && connection.account !== undefined;
+    // Not answering, and refusing the token kept here, are two different sentences: waiting fixes
+    // the first, and only signing in again fixes the second.
+    const offlineKey = connection.problem?.kind === "signed-out"
+        ? "workspace.shell.team.account.signedOut"
+        : "workspace.shell.team.account.offline";
     // Who is signed in there, whether or not the server is answering: the live session's account
     // where there is one, and the one recorded at sign-in otherwise.
     const account = connection.account ?? servers.find((server) => server.remoteOrigin === remoteOrigin)?.account;
@@ -108,7 +113,7 @@ export function TeamAccountMenu({
                 type="button"
                 data-team-account={!ready ? "offline" : ringed ? "team-project" : "connected"}
                 aria-label={displayName}
-                data-tip={ready ? displayName : `${displayName} · ${t("workspace.shell.team.account.offline")}`}
+                data-tip={ready ? displayName : `${displayName} · ${t(offlineKey)}`}
                 aria-expanded={open}
                 onClick={() => setOpen((value) => !value)}
                 className="flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-default hover:bg-fill"
@@ -147,8 +152,11 @@ export function TeamAccountMenu({
                                 <span className="line-clamp-2 break-words text-xs text-fg-muted">{profile.bio}</span>
                             )}
                             {!ready && (
-                                <span data-team-account-offline className="text-2xs text-fg-subtle">
-                                    {t("workspace.shell.team.account.offline")}
+                                <span
+                                    data-team-account-offline={connection.problem?.kind === "signed-out" ? "signed-out" : ""}
+                                    className="text-2xs text-fg-subtle"
+                                >
+                                    {t(offlineKey)}
                                 </span>
                             )}
                         </div>

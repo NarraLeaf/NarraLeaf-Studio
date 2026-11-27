@@ -192,6 +192,19 @@ describe("while the server is not answering", () => {
         expect(card.querySelector("[data-team-account-offline]")).not.toBeNull();
     });
 
+    it("says the sign-in has expired when the server refused the token kept here", async () => {
+        state.servers = [signedIn];
+        state.connection = { remoteOrigin: ORIGIN, state: "offline", capabilities: [], problem: { kind: "signed-out" }, since: 1 };
+        const { container } = await draw();
+        const button = container.querySelector("[data-team-account]");
+        expect(button?.getAttribute("data-team-account")).toBe("offline");
+        expect(button?.getAttribute("data-tip")).toContain("workspace.shell.team.account.signedOut");
+        fireEvent.click(button!);
+        const line = container.querySelector("[data-team-account-offline]");
+        expect(line?.getAttribute("data-team-account-offline")).toBe("signed-out");
+        expect(line?.textContent).toContain("workspace.shell.team.account.signedOut");
+    });
+
     it("lists nobody online, since it cannot know", async () => {
         state.servers = [signedIn];
         state.documents = { view: {}, target: { remoteOrigin: ORIGIN, project: "p1" } };

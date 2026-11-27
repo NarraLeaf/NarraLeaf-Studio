@@ -88,6 +88,7 @@ class FakeClient implements TeamClientLike {
     async unsubscribe(): Promise<void> {}
 
     reconnectNow(): void {}
+    useToken(): void {}
 
     dispose(): void {}
 

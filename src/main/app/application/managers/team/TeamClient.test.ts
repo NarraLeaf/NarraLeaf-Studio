@@ -22,10 +22,13 @@ import type { TeamSocketClosed, TeamSocketOptions } from "./socket";
 class FakeSocket implements TeamSocketLike {
     readonly sent: Record<string, unknown>[] = [];
     closed = false;
+    /** The token this socket presented. */
+    readonly token: string;
     private readonly handlers: TeamSocketOptions["handlers"];
 
     constructor(options: TeamSocketOptions) {
         this.handlers = options.handlers;
+        this.token = options.token;
     }
 
     send(text: string): void {
@@ -390,8 +393,33 @@ describe("when reconnecting would be pointless", () => {
 
         await expect(driven.client.call("projects.list")).resolves.toEqual({
             ok: false,
-            problem: { kind: "offline", detail: "the token has expired" },
+            problem: { kind: "signed-out" },
         });
+    });
+
+    it("says the token was refused, rather than only that it is not connected", () => {
+        const driven = drive();
+        driven.client.connect();
+        expect(driven.client.connection().problem).toBeUndefined();
+        current(driven).drop({ status: 401, detail: "the token has expired" });
+        expect(driven.client.connection().problem).toEqual({ kind: "signed-out" });
+    });
+
+    it("says nothing of the sort for a host that is only not answering", () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).drop({ detail: "connect ECONNREFUSED" });
+        expect(driven.client.connection().state).toBe("offline");
+        expect(driven.client.connection().problem).toBeUndefined();
+    });
+
+    it("says it for a session the server ended because its token ran out", () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet();
+        current(driven).say({ t: "bye", code: "unauthenticated", message: "the token has expired" });
+        current(driven).drop({ detail: "closed" });
+        expect(driven.client.connection().problem).toEqual({ kind: "signed-out" });
     });
 
     it("stops on a protocol number this build does not speak", async () => {
@@ -408,6 +436,75 @@ describe("when reconnecting would be pointless", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+/**
+ * A sign-in renewed or made again while a session exists.
+ *
+ * Measured on a real machine before this: the token lapsed a day after sign-in, the server
+ * refused the socket, and the session went on presenting that same token on every attempt -
+ * so even a sign-in that had since been renewed left the account reading "not connected" until
+ * Studio was restarted.
+ */
+describe("a token replaced under a session", () => {
+    it("opens again at once with the new token after a refusal", () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).drop({ status: 401, detail: "the token has expired" });
+
+        driven.client.useToken("a-new-token");
+        expect(driven.sockets).toHaveLength(2);
+        expect(current(driven).token).toBe("a-new-token");
+        expect(driven.client.connection().problem).toBeUndefined();
+
+        current(driven).greet();
+        expect(driven.client.connection().state).toBe("ready");
+    });
+
+    it("leaves a working session alone, and presents the new token next time it opens", async () => {
+        vi.useFakeTimers();
+        try {
+            const driven = drive();
+            driven.client.connect();
+            current(driven).greet();
+
+            driven.client.useToken("a-new-token");
+            expect(driven.sockets).toHaveLength(1);
+
+            current(driven).drop({ detail: "the server restarted" });
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(driven.sockets).toHaveLength(2);
+            expect(current(driven).token).toBe("a-new-token");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not stop over a refusal of the token it has already replaced", async () => {
+        vi.useFakeTimers();
+        try {
+            const driven = drive();
+            driven.client.connect();
+            // Renewed while the first socket was still opening with the old token.
+            driven.client.useToken("a-new-token");
+            current(driven).drop({ status: 401, detail: "the token has expired" });
+            expect(driven.client.connection().problem).toBeUndefined();
+
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(driven.sockets).toHaveLength(2);
+            expect(current(driven).token).toBe("a-new-token");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("opens nothing for a client nobody has opened", () => {
+        const driven = drive();
+        driven.client.useToken("a-new-token");
+        expect(driven.sockets).toHaveLength(0);
+        driven.client.connect();
+        expect(current(driven).token).toBe("a-new-token");
     });
 });
 

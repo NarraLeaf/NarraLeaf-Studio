@@ -1240,6 +1240,9 @@ export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsPr
             return { kind: "no-token" };
         case "offline":
             return { kind: "unreachable" };
+        // A token the server declined is the account being refused, the way a REST 401 is.
+        case "signed-out":
+            return { kind: "refused" };
         case "refused":
             // The two coded refusals a credential is behind read as one refusal, the way the
             // REST 401/403 did. Anything else the server coded is its own sentence, kept for

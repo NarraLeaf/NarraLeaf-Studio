@@ -73,7 +73,7 @@ import { electronWakeSources, watchWake, type WakeReason, type WakeSources } fro
  */
 export type TeamClientLike = Pick<
     TeamClient,
-    "call" | "connect" | "connection" | "dispose" | "reconnectNow" | "subscribe" | "unsubscribe"
+    "call" | "connect" | "connection" | "dispose" | "reconnectNow" | "subscribe" | "unsubscribe" | "useToken"
 >;
 
 /** The two things a test supplies and nothing in the product does. */
@@ -405,6 +405,20 @@ export class TeamManager {
         if (client === undefined) return;
         if (this.wanted.has(keyOf({ remoteOrigin, topic }))) return;
         await client.unsubscribe(topic);
+    }
+
+    /**
+     * A server's token was replaced, because its sign-in was renewed or made again.
+     *
+     * The session already open with that server is handed the new one; see
+     * {@link TeamClient.useToken} for what it does with it. A server with no session yet needs
+     * nothing, because the session it eventually opens reads the token then.
+     */
+    tokenChanged(remoteOrigin: string): void {
+        const client = this.clients.get(remoteOrigin);
+        if (client === undefined) return;
+        const token = this.tokenFor(remoteOrigin);
+        if (token !== null) client.useToken(token);
     }
 
     /**

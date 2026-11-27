@@ -42,6 +42,12 @@ describe("the word beside a project's server", () => {
         expect(face.key).toBe("workspace.shell.team.unreachable");
     });
 
+    it("says the sign-in has expired, which is not the same thing as not answering", () => {
+        const face = teamServerFace({ kind: "signed-out" }, SYNCED);
+        expect(face.key).toBe("workspace.shell.team.signedOut");
+        expect(face.tone).toBe("text-warning");
+    });
+
     it("leaves the comparison alone for a project with no server to check", () => {
         expect(teamServerFace({ kind: "none" }, null).key)
             .toBe("workspace.shell.versionControl.server.state.notChecked");

@@ -240,6 +240,9 @@ export class App extends BaseApp {
             // Whether a project uses the sign-in held for its server is asked in a window of its
             // own, over the project's workspace, and the manager records the answer.
             (request) => this.askServerSessionUse(request.projectPath, request.session),
+            // A server's token was replaced - signed in again, or renewed - so a Team session
+            // still holding the old one presents the new one rather than its refusal.
+            (remoteOrigin) => this.teamManager.tokenChanged(remoteOrigin),
         );
 
         // A server is now a place Studio holds a session with, and that is a thing of
@@ -280,6 +283,15 @@ export class App extends BaseApp {
         // The tray comes first: the updater rebuilds the tray menu on every state change, and
         // its launch check is scheduled by `initialize()`.
         this.onReady(() => {
+            // Before anything can reach the version-control library: on macOS it points the
+            // library's token store at a directory of Studio's own, and it starts renewing
+            // browser sign-ins. ⚠ Nothing called this when both were written, so neither
+            // happened: every browser sign-in lapsed when its token did, and the keychain kept
+            // asking. See `VcsManager.initialize`.
+            void this.vcsManager.initialize().catch(error => {
+                this.logger.warn(`[Vcs] Version control could not start: ${String(error)}`);
+            });
+
             // Not in a command-line run, which leaves nothing on the machine - an icon in an
             // operator's notification area for the few seconds a job takes, offering a launcher
             // and a Settings panel belonging to a process on its way out, least of all. See

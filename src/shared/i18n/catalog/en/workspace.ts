@@ -825,6 +825,8 @@ export const workspace = {
         // workspace began checking on its own.
         connected: "Connected",
         unreachable: "That server is not answering.",
+        // Answering, and refusing the sign-in kept here: the token expired or was revoked.
+        signedOut: "The sign-in to that server has expired.",
         // The eyebrow over who is here and what is open.
         presence: "Collaboration",
         // How many installations have this project open, this one included.
@@ -914,6 +916,9 @@ export const workspace = {
             online: "Online {count}",
             onlineEmpty: "Nobody is online",
             offline: "Not connected to the Team server",
+            // The server refused the token kept here: it expired, or the server ended this
+            // device's sign-in. Waiting does not bring it back; signing in again does.
+            signedOut: "This sign-in has expired. Sign in again",
         },
         notifications: {
             label: "Notifications",

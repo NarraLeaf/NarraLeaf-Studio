@@ -142,6 +142,23 @@ export class TeamClient {
     private generation = 0;
     /** Set when reconnecting would be pointless: the server refused this token. */
     private stopped = false;
+    /**
+     * Whether the last thing the server said about this token was a refusal.
+     *
+     * Kept apart from {@link stopped}, which a screen asking again clears: the token is the same
+     * token until {@link useToken} replaces it, so the reason is still the reason.
+     */
+    private refused = false;
+    /** The token presented, replaced by {@link useToken} when the sign-in is renewed or redone. */
+    private token: string;
+    /**
+     * The token the current socket was opened with.
+     *
+     * A refusal is about that token and no other: one that arrives after {@link useToken} has
+     * already replaced it is about a token nobody presents any more, and the answer to it is to
+     * open again with the new one rather than to stop.
+     */
+    private presented: string;
     private disposed = false;
 
     /** Whoever is waiting for a session to open, so several calls share one attempt. */
@@ -149,6 +166,8 @@ export class TeamClient {
 
     constructor(options: TeamClientOptions) {
         this.options = options;
+        this.token = options.token;
+        this.presented = options.token;
     }
 
     /* ------------------------------------------------------------ what it is */
@@ -177,8 +196,32 @@ export class TeamClient {
             ...(this.hello === null ? {} : { serverVersion: this.hello.server.version }),
             ...(this.hello === null || this.state !== "ready" ? {} : { session: this.hello.session }),
             ...(this.detail === undefined ? {} : { detail: this.detail }),
+            ...(this.refused && this.state === "offline" ? { problem: { kind: "signed-out" as const } } : {}),
             since: this.since,
         };
+    }
+
+    /**
+     * Present a different token from now on, because the sign-in was renewed or made again.
+     *
+     * A session the server refused is opened again at once with the new one: that refusal was
+     * about the old token, and nothing else is going to ask. A session that is working is left
+     * alone - the server took the old token when it opened, and the next opening presents the new
+     * one. A client nobody has opened yet just keeps it for when somebody does.
+     */
+    useToken(token: string): void {
+        if (this.disposed || token === this.token) return;
+        this.token = token;
+        if (!this.refused) return;
+        this.refused = false;
+        this.stopped = false;
+        if (this.socket !== null) return;
+        if (this.retry !== undefined) {
+            clearTimeout(this.retry);
+            this.retry = undefined;
+        }
+        this.backoff = BACKOFF_FIRST_MS;
+        this.open();
     }
 
     /* ------------------------------------------------------------ connecting */
@@ -253,11 +296,12 @@ export class TeamClient {
         this.generation += 1;
         const generation = this.generation;
         const own = (): boolean => generation === this.generation;
+        this.presented = this.token;
         this.socket = openSocket({
             host: endpoint.host,
             port: endpoint.port,
             path: TEAM_SOCKET_PATH,
-            token: this.options.token,
+            token: this.token,
             userDataDir: this.options.userDataDir,
             heartbeatMs: this.hello?.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
             handlers: {
@@ -298,11 +342,18 @@ export class TeamClient {
         // A refusal is final until somebody does something about it. Retrying a token the
         // server has already declined is a request a minute that will never work, and it
         // hides the one thing the author has to be told.
-        if (closed.status === 401 || this.stopped) {
+        //
+        // Unless the token it declined is no longer the one held: the sign-in was renewed while
+        // that socket was opening, and the new token is tried straight away.
+        const stale = this.presented !== this.token;
+        const declined = closed.status === 401 && !stale;
+        if (declined) this.refused = true;
+        if (declined || this.stopped) {
             this.stopped = true;
             this.moveTo("offline", closed.detail);
             return;
         }
+        if (stale) this.backoff = BACKOFF_FIRST_MS;
         this.moveTo("offline", closed.detail);
         if (this.disposed) return;
 
@@ -403,6 +454,7 @@ export class TeamClient {
     private async ready(): Promise<{ ok: true } | { ok: false; problem: TeamProblemOf }> {
         if (this.state === "ready") return { ok: true };
         if (this.stopped) {
+            if (this.refused) return { ok: false, problem: { kind: "signed-out" } };
             return { ok: false, problem: { kind: "offline", detail: this.detail ?? "refused" } };
         }
         this.connect();
@@ -473,7 +525,10 @@ export class TeamClient {
                 // does not is why. `unauthenticated` is the one worth keeping, because it
                 // is the one reconnecting cannot fix.
                 this.detail = frame.message;
-                if (frame.code === "unauthenticated") this.stopped = true;
+                if (frame.code === "unauthenticated" && this.presented === this.token) {
+                    this.stopped = true;
+                    this.refused = true;
+                }
                 return;
             case "result":
             case "error":
@@ -500,6 +555,7 @@ export class TeamClient {
         }
         this.hello = frame;
         this.backoff = BACKOFF_FIRST_MS;
+        this.refused = false;
         this.moveTo("ready", undefined);
         this.wake(true);
         this.options.log?.(

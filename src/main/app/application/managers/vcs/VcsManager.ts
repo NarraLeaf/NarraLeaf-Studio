@@ -606,12 +606,18 @@ export class VcsManager extends Manager {
      * `askSessionUse` is the sign-in question, handed in for the same reason. Absent, nothing
      * is ever asked and a project uses only what it was already granted - the safe reading for a
      * test, and for anything that runs with no window to ask in.
+     *
+     * `onServerToken` is told whenever a server's token is replaced - a new sign-in, or a renewal -
+     * so that a session already open with the old one can present the new one. Without it, a Team
+     * session the server refused for an expired token went on presenting that token until Studio
+     * restarted, and a renewal that had already succeeded changed nothing on screen.
      */
     constructor(
         app: BaseApp,
         private readonly flushPendingSaves?: PendingSaveFlush,
         private readonly teamSessionCall?: TeamSessionCall,
         private readonly askSessionUse?: ServerSessionAsker,
+        private readonly onServerToken?: (remoteOrigin: string) => void,
     ) {
         super(app);
     }
@@ -2459,6 +2465,8 @@ export class VcsManager extends Manager {
                 "[Vcs] Kept no token for", signedIn.remoteOrigin,
                 "- this machine cannot seal one, so its project list will ask for it again",
             );
+        } else {
+            this.onServerToken?.(signedIn.remoteOrigin);
         }
         this.app.logger.info(
             "[Vcs] Added server", signedIn.remoteOrigin, "at", signedIn.authUrl,
@@ -2685,12 +2693,21 @@ export class VcsManager extends Manager {
                 if (renewed.reason === "refused") {
                     forgetServerRefreshToken(state, session.remoteOrigin);
                     this.app.logger.warn("[Vcs] The sign-in to", session.remoteOrigin, "was ended by the server");
+                } else {
+                    // Kept, and tried again on the next round. Said all the same: a renewal that
+                    // fails without a word is a sign-in that lapses with nothing in the log to
+                    // say it was ever attempted.
+                    this.app.logger.warn(
+                        "[Vcs] Could not renew the sign-in to", session.remoteOrigin,
+                        `(${renewed.reason}); trying again later`,
+                    );
                 }
                 continue;
             }
             rememberServerRefreshToken(state, session.remoteOrigin, renewed.refreshToken);
             rememberServerToken(state, session.remoteOrigin, renewed.token);
             this.app.logger.info("[Vcs] Renewed the sign-in to", session.remoteOrigin);
+            this.onServerToken?.(session.remoteOrigin);
             // The version-control backend holds a copy of its own; hand it the new one.
             await this.presentStoredToken(session).catch(() => false);
         }

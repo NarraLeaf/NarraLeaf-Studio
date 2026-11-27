@@ -1270,6 +1270,14 @@ export type TeamProblem =
      * server again with its token.
      */
     | { kind: "no-token" }
+    /**
+     * The server would not have the token this installation presented: it expired, or the
+     * server ended this device's sign-in.
+     *
+     * Not `offline`: the host answered, and waiting does not help. Not `no-token` either: the
+     * token was read and sent. The way out is to sign in to that server again.
+     */
+    | { kind: "signed-out" }
     /** Not connected at the moment. The detail is why, for a log rather than a screen. */
     | { kind: "offline"; detail: string }
     /** That server does not offer this. Checked rather than attempted. */

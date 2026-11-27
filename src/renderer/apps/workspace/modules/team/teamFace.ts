@@ -36,6 +36,13 @@ export function teamServerFace(state: TeamProjectState, sync: VcsSyncState | nul
             tone: "text-warning",
         };
     }
+    if (state.kind === "signed-out") {
+        return {
+            key: "workspace.shell.team.signedOut",
+            detail: "workspace.shell.team.signedOut",
+            tone: "text-warning",
+        };
+    }
     if (state.kind === "unreachable") {
         return {
             key: "workspace.shell.team.unreachable",

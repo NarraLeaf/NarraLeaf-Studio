@@ -754,6 +754,8 @@ export const workspace = {
         //「未检查」就不再是事实了。
         connected: "已连接",
         unreachable: "该服务器没有响应",
+        // 服务器有响应，但不接受本机的登录（令牌过期或被注销）
+        signedOut: "该服务器上的登录已失效",
         // 谁在场、开着什么的小标题。
         presence: "协作",
         hereAlone: "只有本机",
@@ -842,6 +844,8 @@ export const workspace = {
             online: "在线 {count}",
             onlineEmpty: "暂无在线成员",
             offline: "未连接到 Team 服务器",
+            // 服务器拒绝了本机保存的令牌：过期或被服务器注销。等待不会恢复，只能重新登录。
+            signedOut: "登录已失效，请重新登录",
         },
         notifications: {
             label: "通知",
