@@ -12,6 +12,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { ownInlineFadeMs } from "@shared/story/inlineExpressionFade";
 import { keepStoryKeysInPopover } from "./PausePopover";
+import { popoverTopFor } from "./popoverPlacement";
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
@@ -95,7 +96,7 @@ export function ExpressionPopover(props: {
     };
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 360);
+    const top = popoverTopFor(props.anchor, 360, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 432);
 
     return createPortal(

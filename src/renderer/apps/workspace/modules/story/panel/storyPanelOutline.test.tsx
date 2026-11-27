@@ -71,6 +71,12 @@ const workspace = {
     },
 };
 
+// The outline marks the scene the editor area is showing; no editor area here.
+vi.mock("@/apps/workspace/hooks/useUIService", async importOriginal => ({
+    ...(await importOriginal<typeof import("@/apps/workspace/hooks/useUIService")>()),
+    useActiveEditorTab: () => ({ tab: null, tabId: null }),
+}));
+
 vi.mock("@/apps/workspace/context", () => ({
     useWorkspace: () => workspace,
 }));

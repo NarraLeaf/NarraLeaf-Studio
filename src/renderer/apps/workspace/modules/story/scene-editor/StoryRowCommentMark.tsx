@@ -32,7 +32,7 @@ import {
 import { StoryCommentThreadView } from "../../story-comments/StoryCommentThreadView";
 import { RowAssetRequest } from "../../team/TeamRequests";
 import type { StoryBlock } from "@shared/types/story";
-import { getSegmentSlot, plainSegment, segmentPlainText } from "./storyFindReplace";
+import { getSegmentSlot, rewriteSegmentText, segmentPlainText } from "./storyFindReplace";
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryBlockId, StoryId, StorySceneId } from "@shared/types/story";
@@ -80,7 +80,8 @@ export function suggestionWriter(
                 target.storyId as StoryId,
                 target.sceneId as StorySceneId,
                 target.blockId as StoryBlockId,
-                slot.withSegment(plainSegment(slot.segment, suggestion)).payload,
+                // Keeps the line's ruby, colours and inline values outside the words the suggestion changes.
+                slot.withSegment(rewriteSegmentText(slot.segment, suggestion)).payload,
             );
             return true;
         } catch {

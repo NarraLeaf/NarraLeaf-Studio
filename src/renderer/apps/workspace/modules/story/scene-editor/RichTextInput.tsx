@@ -24,6 +24,7 @@ import {
     sameMarkValue,
     setSelectionUnitRange,
     spliceRuns,
+    STORY_MARK_SPAN_ATTRIBUTE,
     totalUnits,
     unitOffsetFromPoint,
     unitOffsetOfElement,
@@ -900,6 +901,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && !modifierOnly) {
             props.onGoalColumnInvalidated?.();
         }
+        // Story text has no underline. Chromium's native Mod+U would draw one while the line is
+        // open and the commit would drop it, so the key does nothing here rather than lie.
+        if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "u") {
+            event.preventDefault();
+            return;
+        }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
             // Always take the key: Chromium's native stack is destroyed by every rich-text re-render, so
             // letting it through would undo into a state the row no longer agrees with.
@@ -1485,15 +1492,31 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 scheduleReportActive(true);
             }}
             onPaste={event => {
-                if (readOnly || !props.onMultiLinePaste) {
+                if (readOnly) {
                     return;
                 }
-                if (!/\r?\n/.test(event.clipboardData.getData("text/plain").trim())) {
+                const plain = event.clipboardData.getData("text/plain");
+                // Trailing line breaks are not lines: "line\n" is one line, not two. Testing the
+                // TRIMMED text was right for that, but then the browser was left to paste the
+                // original, break and all, and the break vanished again on commit.
+                const body = plain.replace(/[\r\n]+$/, "");
+                if (/\r?\n/.test(body)) {
+                    if (props.onMultiLinePaste?.(event)) {
+                        event.preventDefault();
+                    }
                     return;
                 }
-                if (props.onMultiLinePaste(event)) {
-                    event.preventDefault();
+                // One line. Formatting is kept only when Studio wrote it (a span copied out of
+                // another row); anything else - a web page, a dark-theme editor - goes in as text,
+                // because its inline colours and pixel sizes would become story marks that fight
+                // the game's own styling.
+                const html = event.clipboardData.getData("text/html");
+                const fromStudio = html.includes(STORY_MARK_SPAN_ATTRIBUTE) || /data-(ruby|cps|fontsize|fontstep|emphasis|effect)=/.test(html);
+                if (fromStudio && body === plain) {
+                    return;
                 }
+                event.preventDefault();
+                globalThis.document.execCommand("insertText", false, body);
             }}
             onKeyUp={saveSelection}
             // Clicking into the text states a column as plainly as an arrow does. The row's own

@@ -24,6 +24,7 @@ import { sceneNeighbours } from "@/lib/workspace/services/story/storyStructuralO
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
+import { useActiveEditorTab } from "@/apps/workspace/hooks/useUIService";
 import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { requestRename } from "../../refactor/renameRequests";
@@ -104,6 +105,9 @@ function TitleWithCount(props: { title: string; count: number }) {
 
 export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
+    // Which scene the editor area is showing, so the outline can say so. Switching tabs used to leave
+    // no trace here: the outline never told the author where they were.
+    const { tabId: activeEditorTabId } = useActiveEditorTab();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     // Opening a scene, opening the flow, exporting a script and picking which story is selected write
@@ -679,8 +683,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!name) {
             return;
         }
-        storyService.createScene(selectedStoryId, { chapterId, name });
-    }, [inputDialog, selectedStoryId, storyService, t]);
+        // A scene is made to be written: open it, rather than leave the author to find the row they
+        // just named and click it.
+        const scene = storyService.createScene(selectedStoryId, { chapterId, name });
+        if (scene) {
+            openEditorTab(createStorySceneEditorTab({ storyId: selectedStoryId, sceneId: scene.id }, scene.name));
+        }
+    }, [inputDialog, openEditorTab, selectedStoryId, storyService, t]);
 
     const handleRenameChapter = useCallback(async (chapter: StoryChapter) => {
         if (!storyService || !inputDialog || !selectedStoryId) {
@@ -946,7 +955,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 // file on this machine's disk, and inside a live session the other participants have
                 // nothing to derive that from. Left conservative until a session has a way to carry it.
                 id: "import-scene-script",
-                label: t("story.script.import"),
+                // Says where it writes: on a scene row "Import Script…" read as "into this scene".
+                label: t("story.script.importIntoStory"),
                 ...freeze.menuRow(),
                 onClick: () => {
                     if (selectedStoryId) {
@@ -1355,8 +1365,10 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             return (
                                                                 <div
                                                                     key={scene.id}
+                                                                    aria-current={selectedStoryId && activeEditorTabId === getStorySceneEditorTabId(selectedStoryId, scene.id) ? "page" : undefined}
                                                                     className={cn(
                                                                         "group/scene relative flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill",
+                                                                        selectedStoryId && activeEditorTabId === getStorySceneEditorTabId(selectedStoryId, scene.id) && "bg-fill",
                                                                         // See the chapter header: `draggable` alone is inert.
                                                                         !outlineFreeze.frozen && "nl-drag-source",
                                                                         outlineDrag?.kind === "scene" && outlineDrag.sceneId === scene.id && "opacity-50",

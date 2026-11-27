@@ -14,6 +14,7 @@ import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-li
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { keepStoryKeysInPopover } from "./PausePopover";
+import { popoverTopFor } from "./popoverPlacement";
 
 const MENU_Z = 80;
 
@@ -124,7 +125,7 @@ export function InterpolationPopover(props: {
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 200);
+    const top = popoverTopFor(props.anchor, 200, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 256);
 
     return createPortal(

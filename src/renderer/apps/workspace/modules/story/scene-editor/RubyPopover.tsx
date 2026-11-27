@@ -7,6 +7,7 @@ import { useTranslation } from "@/lib/i18n";
 import { FLOATING_OWN_KEYS_ATTRIBUTE, useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { keepStoryKeysInPopover } from "./PausePopover";
+import { popoverTopFor } from "./popoverPlacement";
 
 /**
  * The reading typed over a run of text - furigana over kanji, pinyin or zhuyin over hanzi. Compiles
@@ -129,7 +130,7 @@ export function RubyPopover(props: {
     };
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 140);
+    const top = popoverTopFor(props.anchor, 140, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(

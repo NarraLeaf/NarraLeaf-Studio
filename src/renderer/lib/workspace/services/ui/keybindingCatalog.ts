@@ -261,6 +261,8 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("story.select-last", "end", "story.keybindings.selectLast", CATEGORY.story, ArrowDownToLine),
     entry("story.select-first-mod", "mod+home", "story.keybindings.selectFirst", CATEGORY.story, ArrowUpToLine),
     entry("story.select-last-mod", "mod+end", "story.keybindings.selectLast", CATEGORY.story, ArrowDownToLine),
+    entry("story.fold-row", "arrowleft", "story.keybindings.foldRow", CATEGORY.story, ChevronLeft),
+    entry("story.unfold-row", "arrowright", "story.keybindings.unfoldRow", CATEGORY.story, ChevronRight),
 
     // --- UI editor ----------------------------------------------------------
     entry("ui-editor.undo", "mod+z", "workspace.shell.keybindings.catalog.uiEditor.undo", CATEGORY.uiEditor, Undo2),

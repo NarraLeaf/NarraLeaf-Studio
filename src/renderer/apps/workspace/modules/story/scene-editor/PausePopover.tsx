@@ -6,6 +6,7 @@ import { useTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { popoverTopFor } from "./popoverPlacement";
 
 const MODE_BTN = "h-7 px-2.5 text-xs transition-colors";
 
@@ -87,7 +88,7 @@ export function PausePopover(props: {
     }, [doc, props]);
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 140);
+    const top = popoverTopFor(props.anchor, 140, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(

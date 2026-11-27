@@ -17,7 +17,7 @@ export const story = {
         storyActions: "故事操作",
         setDefault: "设为默认",
             dlc: {
-                title: "所属",
+                title: "所属 DLC",
                 base: "游戏本体",
             },
         outline: "大纲",
@@ -57,6 +57,7 @@ export const story = {
         named: "故事“{name}”无法读取",
     },
     script: {
+        importIntoStory: "将脚本导入本故事…",
         exportScene: "导出为脚本…",
         exportStory: "将故事导出为脚本…",
         import: "导入脚本…",
@@ -175,6 +176,7 @@ export const story = {
         },
     },
     paste: {
+        pastePlain: "以纯文本粘贴",
         title: "粘贴为行",
         action: "粘贴",
         totalCounts: "对白 {dialogue} · 旁白 {narration} · {created}",
@@ -795,7 +797,7 @@ export const story = {
             /** 面板顶部两颗：一颗预设，一颗退路。 */
             dialogueOnly: "仅对白",
             clear: "清空筛选",
-            sectionScript: "剧本",
+            sectionScript: "文本",
             sectionStaging: "指令",
             // 不叫「角色」：指令区里已经有一档叫角色（作用在角色身上的指令），同一张面板里同名两次读不出区别。
             sectionCast: "出场角色",
@@ -921,6 +923,8 @@ export const story = {
         right: "右",
     },
     rows: {
+        expand: "展开",
+        collapse: "折叠",
         placeholderDialogue: "对白…",
         placeholderDialogueStart: "使用 {name} 开始对白，或使用 {trigger} 插入角色动作",
         placeholderDialogueContinue: "使用 {name} 继续对白，或使用 {trigger} 插入角色动作",
@@ -938,7 +942,7 @@ export const story = {
         delete: "删除此行",
         playFromRow: "从此行播放",
         playBranch: "试玩该分支",
-        insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
+        insertPlaceholder: "输入旁白，{trigger} 插入指令，# 选择角色…",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
         // A slot that writes commands only (a character's behaviours): no narration, no speaker
         insertPlaceholderCommand: "输入 {trigger} 选择指令…",
@@ -1562,6 +1566,10 @@ export const story = {
         insertAbove: "在上方插入",
         insertBelow: "在下方插入",
         duplicate: "创建副本",
+        copy: "复制",
+        cut: "剪切",
+        indent: "缩进",
+        outdent: "取消缩进",
         disable: "禁用",
         saveAsCommand: "保存为自定义指令",
         enable: "启用",
@@ -1634,6 +1642,8 @@ export const story = {
         find: "查找和替换",
         deleteRows: "删除选中的故事行",
         deleteRowsConfirm: "删除选中的故事行（多选时需确认）",
+        foldRow: "折叠选中的容器行",
+        unfoldRow: "展开选中的容器行",
         undo: "撤销故事场景编辑",
         redo: "重做故事场景编辑",
         editRow: "编辑当前行（或打开其属性编辑器）",

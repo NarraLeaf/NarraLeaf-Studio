@@ -472,9 +472,14 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
             <div className="relative flex h-full items-start justify-end pr-2 pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-0.5">
                     {canFold ? (
+                        // The glyph is 14px; the press target is padded out to 22px with a negative
+                        // margin, so the row's columns do not move and the chevron stops being a
+                        // pixel hunt.
                         <button
                             type="button"
-                            className="rounded-md text-fg-subtle hover:bg-fill hover:text-primary"
+                            aria-label={collapsed ? t("story.rows.expand") : t("story.rows.collapse")}
+                            aria-expanded={!collapsed}
+                            className="-m-1 rounded-md p-1 text-fg-subtle hover:bg-fill hover:text-primary"
                             onClick={event => {
                                 event.stopPropagation();
                                 on.onToggleCollapsed();
@@ -499,7 +504,10 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                     aria-label={dragLabel}
                     data-tip={freeze.frozen ? freeze.reason : dragLabel}
                     className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
-                    onFocus={() => setGripFocused(true)}
+                    // Only a keyboard focus holds the grip in view. A press focuses it too, and that
+                    // focus outlived the drag, keeping the row's line number hidden until something
+                    // else took focus.
+                    onFocus={event => setGripFocused(event.currentTarget.matches(":focus-visible"))}
                     onBlur={() => setGripFocused(false)}
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
@@ -706,7 +714,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                                 onFocusWithin={setActionsFocused}
                             />
                         ) : containerInfo ? (
-                            <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
+                            <ContainerHeaderAdd info={containerInfo} active={active} onAdd={() => on.onAddInside(block.id)} />
                         ) : (
                             <>
                                 {dialogueHead ? (
@@ -1802,11 +1810,16 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
  * Hover "+ Add" affordance on the right of a container header (adds a child at the end). A condition
  * header carries {@link ConditionBranchAdds} in its place.
  */
-function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () => void }) {
+function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; active?: boolean; onAdd: () => void }) {
     const { t } = useTranslation();
     const label = props.info.role === "menu" ? t("story.container.addOption") : t("story.container.addAction");
+    // Shown on the active row as well as on hover, like the row's own insert / delete: a keyboard
+    // author who has arrowed onto the header should not have to find the mouse to see it.
     return (
-        <div className="pointer-events-none ml-auto flex shrink-0 items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className={[
+            "ml-auto flex shrink-0 items-center transition-opacity group-hover:pointer-events-auto group-hover:opacity-100",
+            props.active ? "opacity-100" : "pointer-events-none opacity-0",
+        ].join(" ")}>
             <button
                 type="button"
                 tabIndex={-1}
@@ -2657,6 +2670,18 @@ export function InsertRow(props: {
                             chooser === "none" || (props.mode.slot.rewritesRow && !menuShown)
                                 ? (props.onEscapeSlot ?? props.onDiscardSlot)()
                                 : props.onDismissChooser();
+                            return;
+                        }
+                        // An empty slot with nothing listed: Up goes back to the line above, the
+                        // way Backspace already does here. The ArrowDown off the last row is what
+                        // opened it, so without this the way in had no way back. With a menu on
+                        // screen the arrows stay the menu's.
+                        if (
+                            event.key === "ArrowUp" && value === ""
+                            && !argMenuOpen && !actionMenuOpen && chooser === "none"
+                        ) {
+                            event.preventDefault();
+                            props.onBackspaceEmpty();
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {

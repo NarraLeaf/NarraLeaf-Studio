@@ -173,6 +173,42 @@ function markAtUnit(runs: readonly StoryRichRun[], unit: number) {
     return undefined;
 }
 
+/**
+ * Give a segment new plain text while keeping its formatting wherever the text did not change.
+ *
+ * For surfaces that edit a line as plain text - the inspector's text box, a review comment's
+ * suggested wording. Writing the plain `value` alone did nothing visible on a styled line (its
+ * `rich` runs are the source of truth), and rebuilding from plain text dropped every ruby, colour,
+ * pause and inline value on it. Only the span between the common prefix and suffix is replaced, and
+ * it takes the marks of the run it starts in, as a find-and-replace does.
+ */
+export function rewriteSegmentText(segment: StoryTextSegment, nextPlain: string): StoryTextSegment {
+    const current = segmentPlainText(segment);
+    if (current === nextPlain) {
+        return segment;
+    }
+    if (!segment.rich || segment.rich.length === 0) {
+        return { ...segment, value: nextPlain, rich: undefined };
+    }
+    let start = 0;
+    const max = Math.min(current.length, nextPlain.length);
+    while (start < max && current[start] === nextPlain[start]) {
+        start += 1;
+    }
+    let tail = 0;
+    while (
+        tail < max - start
+        && current[current.length - 1 - tail] === nextPlain[nextPlain.length - 1 - tail]
+    ) {
+        tail += 1;
+    }
+    return replaceInSegment(
+        segment,
+        { start, end: current.length - tail },
+        nextPlain.slice(start, nextPlain.length - tail),
+    );
+}
+
 /** Put a plain string into a segment, used when a replacement empties one. */
 export function plainSegment(segment: StoryTextSegment, value: string): StoryTextSegment {
     const rich = richIfMeaningful(plainToRichRuns(value));

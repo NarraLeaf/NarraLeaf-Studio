@@ -68,6 +68,8 @@ Studio's default shortcuts and mouse gestures, grouped as the Keyboard Shortcuts
 - 选中最后一行故事行 · Select the last story row：`End`
 - 选中第一行故事行 · Select the first story row：`⌘Home`（macOS）/ `Ctrl+Home`（Windows）
 - 选中最后一行故事行 · Select the last story row：`⌘End`（macOS）/ `Ctrl+End`（Windows）
+- 折叠选中的容器行 · Collapse the selected container row：`←`
+- 展开选中的容器行 · Expand the selected container row：`→`
 - 加入或移出选择 · Add to or Remove from Selection：Ctrl+单击行 · Ctrl+Click a row（不可改 · fixed）
 - 选择连续多行 · Select a Range of Rows：Shift+单击行 · Shift+Click a row；在多行上拖动 · Drag across rows（不可改 · fixed）
 - 移动行 · Move Rows：拖动行首的把手 · Drag a row's handle（不可改 · fixed）

@@ -286,8 +286,16 @@ function readMarksFromElement(el: HTMLElement): StoryTextMarks | undefined {
     return cleanMarks(marks);
 }
 
+/**
+ * Set on every span this module writes, so a paste can tell formatting Studio made (copied from
+ * another row) from formatting that came with text from a web page or another editor - whose inline
+ * colours and pixel sizes would otherwise become story marks. See the field's paste handler.
+ */
+export const STORY_MARK_SPAN_ATTRIBUTE = "data-nl-mark";
+
 function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
     const span = globalThis.document.createElement("span");
+    span.setAttribute(STORY_MARK_SPAN_ATTRIBUTE, "");
     if (marks.bold) span.style.fontWeight = "700";
     if (marks.italic) span.style.fontStyle = "italic";
     if (marks.color) span.style.color = marks.color;

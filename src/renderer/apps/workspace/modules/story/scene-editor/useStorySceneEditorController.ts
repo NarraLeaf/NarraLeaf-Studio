@@ -64,7 +64,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { canPlaceBlockUnder, collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
+import { canAcceptChildren, canPlaceBlockUnder, collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeakerEdits, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -3150,6 +3150,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
+     * Left / Right on a selected container row: fold it, unfold it. The tree convention, and the only
+     * keyboard path to folding a menu, a repeat or a group - their Enter opens the inspector, and the
+     * chevron was mouse-only. Returns false when the key had nothing to do here.
+     */
+    const foldActiveRow = useCallback((direction: "collapse" | "expand"): boolean => {
+        if (editorMode.kind !== "idle" || !activeBlockId || !scene || selectedBlockIds.size > 1) {
+            return false;
+        }
+        const block = scene.blocks[activeBlockId];
+        if (!block || block.childrenIds.length === 0 || !canAcceptChildren(block)) {
+            return false;
+        }
+        const folded = collapsedBlockIds.has(block.id);
+        if ((direction === "collapse") === folded) {
+            return false;
+        }
+        toggleCollapsed(block.id);
+        return true;
+    }, [activeBlockId, collapsedBlockIds, editorMode.kind, scene, selectedBlockIds.size, toggleCollapsed]);
+
+    /**
      * The prose paste the wizard is standing over, or null.
      *
      * Nothing has been written while this is set - not a row, not a character - so cancelling is
@@ -3177,7 +3198,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [editorMode]);
 
-    const { copySelectionToClipboard, handlePaste, handleRowTextPaste, insertPastedBlocks } = useStorySceneClipboardHandlers({
+    const { copySelectionToClipboard, handlePaste, handleRowTextPaste, insertPastedBlocks, pastePlainFromWizard } = useStorySceneClipboardHandlers({
         storyService,
         uuidService,
         uiService,
@@ -3216,6 +3237,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setPasteWizard(null);
         resumeInsertSlotCommit();
     }, [resumeInsertSlotCommit]);
+
+    /** Close the wizard and paste its text the way `Ctrl+Shift+V` would have: lines, no speakers guessed. */
+    const pastePasteWizardAsPlain = useCallback(() => {
+        const request = pasteWizard;
+        setPasteWizard(null);
+        resumeInsertSlotCommit();
+        if (request && !frozen) {
+            pastePlainFromWizard(request);
+        }
+    }, [frozen, pasteWizard, pastePlainFromWizard, resumeInsertSlotCommit]);
 
     /**
      * Turn the wizard's plan into rows.
@@ -3442,6 +3473,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 if (previous && canPlaceBlockUnder(previous, block)) {
                     recordOnce();
                     storyService.moveBlock(storyId, sceneId, id, { parentId: previous.id });
+                    // Into a folded container the row would vanish into the fold, taking the
+                    // selection with it; the container opens so the line stays where it can be seen.
+                    setCollapsedBlockIds(current => {
+                        if (!current.has(previous.id)) {
+                            return current;
+                        }
+                        const next = new Set(current);
+                        next.delete(previous.id);
+                        return next;
+                    });
                 }
             } else if (block.parentId) {
                 const parent = scene.blocks[block.parentId];
@@ -3837,6 +3878,25 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         roots.forEach(id => storyService.setBlockDisabled(storyId, sceneId, id, nextDisabled));
     }, [recordHistory, scene, sceneId, selectionRootIds, storyId, storyService]);
 
+    /**
+     * Open the slot at the end of the scene with `text` already in it and the caret after it - what a
+     * key typed on the "add a row" line does, and what an empty scene's example lines do when clicked.
+     */
+    const startTrailingSlotWith = useCallback((text: string) => {
+        startInsertAfter(null, false);
+        insertDraftRef.current = text;
+        setEditorMode(mode => (mode.kind === "insert" ? { ...mode, initialValue: text } : mode));
+        // Chromium puts the caret at 0 on a textarea's first focus, so the next key would land in
+        // front of the text; place it after (see `startCharacterActionSlot`).
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (input) {
+                input.focus();
+                input.setSelectionRange(text.length, text.length);
+            }
+        });
+    }, [startInsertAfter]);
+
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
         if (!isStoryEditorFocusActive()) {
             return;
@@ -3864,21 +3924,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             && !event.nativeEvent.isComposing && event.keyCode !== 229
         ) {
             event.preventDefault();
-            const typed = event.key;
-            startInsertAfter(null, false);
-            insertDraftRef.current = typed;
-            setEditorMode(mode => (mode.kind === "insert" ? { ...mode, initialValue: typed } : mode));
-            // Chromium puts the caret at 0 on a textarea's first focus, so the next key would land in
-            // front of the character just typed; place it after (see `startCharacterActionSlot`).
-            window.requestAnimationFrame(() => {
-                const input = insertInputRef.current;
-                if (input) {
-                    input.focus();
-                    input.setSelectionRange(typed.length, typed.length);
-                }
-            });
+            startTrailingSlotWith(event.key);
         }
-    }, [addRowFocused, editorMode.kind, isStoryEditorFocusActive, startInsertAfter]);
+    }, [addRowFocused, editorMode.kind, isStoryEditorFocusActive, startTrailingSlotWith]);
 
     /**
      * A drag has picked `blockId` up: report which rows are coming with it, and remember them.
@@ -3938,17 +3986,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // gesture and arrives here on its own. See `storyRowReveal`.
         revealRow, subscribeRowReveal,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
-        handleRowTextPaste,
+        handleRowTextPaste, pastePasteWizardAsPlain,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
-        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata, insertBlock,
+        extendDragSelection, toggleCollapsed, foldActiveRow, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata, insertBlock,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
         unresolvedSpeakerRowIds, bindSpeakerForRows, setSpeakerForRows,
         cutSelectionToClipboard: handleCut, moveSelectionToScene, splitSceneAtRow,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
-        recordHistory, undoEdit, redoEdit,
+        recordHistory, undoEdit, redoEdit, startTrailingSlotWith,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, escapeInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,

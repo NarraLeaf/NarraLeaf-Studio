@@ -15,6 +15,7 @@ import {
     STORY_FONT_SIZE_STEP_MIN,
     STORY_TEXT_EMPHASIS_VALUES,
 } from "@shared/utils/storyTextMarks";
+import { popoverTopFor } from "./popoverPlacement";
 
 /**
  * One sample character wearing one of the marks, drawn with the very class the row uses so what the
@@ -130,7 +131,7 @@ export function TypePopover(props: {
     };
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - (props.omitSpeed ? 160 : 220));
+    const top = popoverTopFor(props.anchor, props.omitSpeed ? 160 : 220, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(

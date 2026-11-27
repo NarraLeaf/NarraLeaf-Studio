@@ -38,6 +38,9 @@ const stopPointerDown = (event: ReactPointerEvent) => event.stopPropagation();
  */
 const STAGE_CLICK_SLOP_PX = 4;
 
+/** The stage drag's snap toggle, as the author last left it this session. */
+let lastStageSnap = true;
+
 /**
  * The story editor's live-preview pane: an embedded NLR stage rendering the settled state of the
  * currently selected row, with a status/diagnostics strip underneath. The stage is always frozen —
@@ -87,13 +90,21 @@ export function StoryScenePreviewPane(props: {
      * editor behind it to write to (the floating window), and then the stage is only looked at.
      */
     stageEdit?: StoryPreviewStageEditApi;
+    /** Select a row in the scene editor. A diagnostic that names its row jumps there when clicked. */
+    onRevealRow?: (blockId: string) => void;
 }) {
     const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio, skipTyping = false, onToggleSkipTyping, layers, onSetView } = props;
     const view: StoryScenePreviewView = layers && props.view === "layers" ? "layers" : "stage";
     // State rather than a ref: the layer view reads the stage's frames and has to be handed the element.
     const [stageElement, setStageElement] = useState<HTMLDivElement | null>(null);
-    const [snap, setSnap] = useState(true);
+    // Remembered across mounts for the session: docking or floating the pane remounts it, and the
+    // toggle used to come back on each time whatever the author had set.
+    const [snap, setSnapState] = useState(() => lastStageSnap);
+    const setSnap = (update: (current: boolean) => boolean) => setSnapState(current => {
+        lastStageSnap = update(current);
+        return lastStageSnap;
+    });
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -126,7 +137,7 @@ export function StoryScenePreviewPane(props: {
         pressRef.current = null;
     };
     const notes = [
-        ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message })),
+        ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message, blockId: diagnostic.blockId })),
         ...controller.issues,
     ];
 
@@ -285,15 +296,27 @@ export function StoryScenePreviewPane(props: {
                 the bottom console's Story tab, which the preview controller feeds regardless of mode. */}
             {mode === "dock" && notes.length > 0 ? (
                 <div className="max-h-28 shrink-0 overflow-auto border-t border-edge px-3 py-1.5">
-                    {notes.map((note, index) => (
-                        <div
-                            key={index}
-                            className={`truncate text-2xs leading-5 ${note.level === "error" ? "text-danger" : "text-warning"}`}
-                            data-tip={note.message}
-                        >
-                            {note.message}
-                        </div>
-                    ))}
+                    {notes.map((note, index) => {
+                        const blockId = "blockId" in note && typeof note.blockId === "string" ? note.blockId : undefined;
+                        const tone = note.level === "error" ? "text-danger" : "text-warning";
+                        // A diagnostic that knows its row takes the author there, the way a problem
+                        // in the Problems panel does; the strip used to be text to read and nothing more.
+                        return blockId && props.onRevealRow ? (
+                            <button
+                                key={index}
+                                type="button"
+                                className={`block w-full truncate text-left text-2xs leading-5 hover:underline ${tone}`}
+                                data-tip={note.message}
+                                onClick={() => props.onRevealRow?.(blockId)}
+                            >
+                                {note.message}
+                            </button>
+                        ) : (
+                            <div key={index} className={`truncate text-2xs leading-5 ${tone}`} data-tip={note.message}>
+                                {note.message}
+                            </div>
+                        );
+                    })}
                 </div>
             ) : null}
         </div>

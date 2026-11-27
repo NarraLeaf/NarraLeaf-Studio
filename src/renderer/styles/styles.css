@@ -1061,6 +1061,15 @@ input[type="radio"]:focus {
         -webkit-user-select: none;
     }
 
+    /* Find-in-scene hits, painted over the row text through the CSS Custom Highlight API so the rows'
+       DOM is never touched (see `useStoryFindHighlights`). The current hit takes the accent. */
+    ::highlight(nl-story-find) {
+        background-color: rgb(var(--nl-warning) / 0.35);
+    }
+    ::highlight(nl-story-find-active) {
+        background-color: rgb(var(--nl-primary) / 0.45);
+    }
+
     .nl-window-content-layer {
         position: fixed;
         left: 0;

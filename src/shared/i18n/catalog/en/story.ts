@@ -65,6 +65,7 @@ export const story = {
         named: "The story “{name}” could not be read.",
     },
     script: {
+        importIntoStory: "Import Script into This Story…",
         exportScene: "Export as Script…",
         exportStory: "Export Story as Script…",
         import: "Import Script…",
@@ -210,6 +211,7 @@ export const story = {
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
     // remembers the answer per project, so chapter two opens with chapter one's decisions filled in.
     paste: {
+        pastePlain: "Paste as plain text",
         title: "Paste as Rows",
         action: "Paste",
         // `{created}` is a whole count with its noun, from `newCharacterCount`.
@@ -901,7 +903,7 @@ export const story = {
             /** The two at the top of the panel: one preset, one way out. */
             dialogueOnly: "Dialogue only",
             clear: "Clear filter",
-            sectionScript: "Script",
+            sectionScript: "Text",
             sectionStaging: "Directions",
             sectionCast: "Cast",
             facet: {
@@ -1030,6 +1032,8 @@ export const story = {
         right: "Right",
     },
     rows: {
+        expand: "Expand",
+        collapse: "Collapse",
         placeholderDialogue: "Dialogue…",
         // A row waiting for a speaker's words can go two ways — more words, or something done to
         // them — so both halves belong in the prompt. The verb tracks which end of the paragraph the
@@ -1057,7 +1061,7 @@ export const story = {
         delete: "Delete this row",
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
-        insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
+        insertPlaceholder: "Type narration, {trigger} for commands, # for characters…",
         insertPlaceholderCharacter: "Pick an action for {name}…",
         // A slot that writes commands only (a character's behaviours): no narration, no speaker
         insertPlaceholderCommand: "Type {trigger} to choose a command…",
@@ -1738,6 +1742,10 @@ export const story = {
         insertAbove: "Insert above",
         insertBelow: "Insert below",
         duplicate: "Duplicate",
+        copy: "Copy",
+        cut: "Cut",
+        indent: "Indent",
+        outdent: "Outdent",
         disable: "Disable",
         saveAsCommand: "Save as custom command",
         enable: "Enable",
@@ -1835,6 +1843,8 @@ export const story = {
         find: "Find and replace",
         deleteRows: "Delete selected story rows",
         deleteRowsConfirm: "Delete selected story rows with multi-select confirmation",
+        foldRow: "Collapse the selected container row",
+        unfoldRow: "Expand the selected container row",
         undo: "Undo story scene edit",
         redo: "Redo story scene edit",
         editRow: "Edit the active row (or open its inspector)",

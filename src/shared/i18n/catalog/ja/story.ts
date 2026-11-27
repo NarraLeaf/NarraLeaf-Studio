@@ -64,6 +64,7 @@ export const story = {
         named: "ストーリー「{name}」を読み込めない",
     },
     script: {
+        importIntoStory: "このストーリーにスクリプトを読み込む…",
         exportScene: "スクリプトとして書き出す…",
         exportStory: "ストーリーをスクリプトとして書き出す…",
         import: "スクリプトを読み込む…",
@@ -189,6 +190,7 @@ export const story = {
     // 文のかたまりをシーンに貼り付ける。ウィザードが尋ねるのは誰が話しているかの 1 点だけで、
     // 答えはプロジェクトごとに覚えるので、第 2 章は第 1 章の判断が入った状態で開く。
     paste: {
+        pastePlain: "プレーンテキストとして貼り付け",
         title: "行として貼り付け",
         action: "貼り付け",
         totalCounts: "台詞 {dialogue} · 地の文 {narration} · {created}",
@@ -824,7 +826,7 @@ export const story = {
             /** パネルの先頭の 2 つ。1 つはプリセット、もう 1 つは抜け道。 */
             dialogueOnly: "台詞だけ",
             clear: "絞り込みを解除",
-            sectionScript: "台本",
+            sectionScript: "テキスト",
             sectionStaging: "演出",
             sectionCast: "配役",
             facet: {
@@ -951,6 +953,8 @@ export const story = {
         right: "右",
     },
     rows: {
+        expand: "展開",
+        collapse: "折りたたむ",
         placeholderDialogue: "台詞…",
         // 話者の言葉を待っている行の先は 2 通り。言葉を続けるか、その人に何かをさせるか。
         // だから両方を促し文に入れる。動詞は段落のどこにいるかで変わる。始まりの行は「書き始める」、
@@ -1610,6 +1614,10 @@ export const story = {
         insertAbove: "上に挿入",
         insertBelow: "下に挿入",
         duplicate: "複製",
+        copy: "コピー",
+        cut: "切り取り",
+        indent: "インデント",
+        outdent: "インデント解除",
         disable: "無効にする",
         saveAsCommand: "カスタムコマンドとして保存",
         enable: "有効にする",
@@ -1681,6 +1689,8 @@ export const story = {
         find: "検索と置換",
         deleteRows: "選択中のストーリーの行を削除",
         deleteRowsConfirm: "選択中のストーリーの行を、複数選択の確認つきで削除",
+        foldRow: "選択中のコンテナ行を折りたたむ",
+        unfoldRow: "選択中のコンテナ行を展開",
         undo: "ストーリーのシーンの編集を元に戻す",
         redo: "ストーリーのシーンの編集をやり直す",
         editRow: "現在の行を編集する、またはそのインスペクタを開く",

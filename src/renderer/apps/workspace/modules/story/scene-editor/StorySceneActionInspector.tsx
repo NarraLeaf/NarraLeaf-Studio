@@ -147,6 +147,7 @@ import {
     type TFunc,
 } from "./inspectorFieldKit";
 import { WeatherSeedPreview } from "./WeatherSeedPreview";
+import { rewriteSegmentText } from "./storyFindReplace";
 
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -3926,7 +3927,9 @@ function TextSegmentEditor(props: {
                 label={props.label}
                 className="min-h-20"
                 value={text.value}
-                onChange={value => props.onChange({ ...text, value })}
+                // Through the formatted runs, not around them: on a styled line `rich` is what the
+                // game reads, so writing `value` alone changed nothing that showed.
+                onChange={value => props.onChange(rewriteSegmentText(text, value))}
             />
             <TextIdReadout text={text} />
         </div>

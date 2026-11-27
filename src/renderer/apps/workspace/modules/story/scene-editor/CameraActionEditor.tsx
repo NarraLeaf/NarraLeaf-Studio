@@ -74,17 +74,24 @@ export function CameraActionEditor(props: {
             // The pose is dropped rather than kept aside: `reset` states no bag, and a ref parked on a
             // payload nothing reads would come back the next time somebody switched modes and quietly
             // re-apply a shot the author had abandoned.
-            onChange({ action: "camera", operation: "reset", ...(payload.durationMs !== undefined ? { durationMs: payload.durationMs } : {}) });
+            // The duration carries over, wherever it was held: a transform row keeps it on its pose,
+            // so reading only the row-level field dropped it on the switch.
+            const durationMs = payload.durationMs ?? transform.durationMs;
+            onChange({ action: "camera", operation: "reset", ...(durationMs !== undefined ? { durationMs } : {}) });
             return;
         }
+        // And back: a reset row's duration becomes the pose's.
+        const carried = mode === "reset" && payload.durationMs !== undefined && transform.durationMs === undefined
+            ? { durationMs: payload.durationMs }
+            : {};
         onChange({
             action: "camera",
             operation: "transform",
             transform: next === "motion"
-                ? { ...transform, mode: "animation" }
-                : { ...transform, mode: "props", animationId: undefined },
+                ? { ...transform, ...carried, mode: "animation" }
+                : { ...transform, ...carried, mode: "props", animationId: undefined },
         });
-    }, [onChange, payload.durationMs, transform]);
+    }, [mode, onChange, payload.durationMs, transform]);
 
     const setTransform = useCallback((next: StoryTransformRef | undefined) => {
         onChange({ action: "camera", operation: "transform", transform: next ?? { mode: "props" } });
@@ -247,7 +254,7 @@ function CameraViewfinder(props: {
     return (
         <div
             ref={boxRef}
-            className="relative w-full cursor-crosshair overflow-hidden rounded-md border border-edge bg-[#15171b]"
+            className="relative w-full cursor-crosshair overflow-hidden rounded-md border border-edge bg-surface-sunken"
             style={{ aspectRatio: `${props.stageSize.width} / ${props.stageSize.height}` }}
             onPointerDown={event => {
                 event.currentTarget.setPointerCapture(event.pointerId);

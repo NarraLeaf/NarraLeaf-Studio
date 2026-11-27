@@ -9,6 +9,7 @@ import type { InlineTextEffectEntry, PluginInlineTextEffectParamDef } from "@/li
 import type { StoryTextEffect } from "@shared/types/story";
 import type { TypeTarget } from "./RichTextInput";
 import { keepStoryKeysInPopover } from "./PausePopover";
+import { popoverTopFor } from "./popoverPlacement";
 
 const ROW = "flex w-full items-center rounded-md px-2 py-1 text-left text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg";
 const ROW_ACTIVE = "bg-fill text-fg";
@@ -75,7 +76,7 @@ export function EffectPopover(props: {
     };
 
     const view = doc.defaultView ?? window;
-    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 240);
+    const top = popoverTopFor(props.anchor, 240, view.innerHeight);
     const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(

@@ -66,6 +66,8 @@ export function StoryPasteWizardModal(props: {
     onSaveSeparator: (name: string, choice: PasteSeparatorChoice) => void;
     onForgetSeparator: (name: string) => void;
     onCancel: () => void;
+    /** Paste the text as plain lines instead, closing the wizard. */
+    onPastePlain?: () => void;
     /**
      * The rows to create, and - separately - the speaker decisions **the author actually made**.
      *
@@ -240,6 +242,18 @@ export function StoryPasteWizardModal(props: {
                     >
                         {t("common.cancel")}
                     </button>
+                    {/* The way past the wizard used to be Ctrl+Shift+V, which nothing on screen named.
+                        Offered only where the host can take it. */}
+                    {props.onPastePlain ? (
+                        <button
+                            type="button"
+                            className={dialogFooterButtonClass({ variant: "secondary", disabled: props.busy === true })}
+                            onClick={props.onPastePlain}
+                            disabled={props.busy === true}
+                        >
+                            {t("story.paste.pastePlain")}
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         className={dialogFooterButtonClass({

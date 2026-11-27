@@ -101,6 +101,7 @@ import {
     STORY_EDITOR_DENSITIES,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
+import { useStoryFindHighlights } from "./useStoryFindHighlights";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
@@ -139,6 +140,8 @@ const STORY_ROW_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
     duplicate: "story.duplicate",
     "edit-as-text": "story.edit-line",
     delete: "story.delete",
+    indent: "story.indent",
+    outdent: "story.outdent",
 };
 
 /**
@@ -543,8 +546,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
+    // A drag starts once the pointer has moved a few pixels. Without the distance every press on the
+    // grip began one, flashing the selection to its "in the air" dim on a plain click.
     const sensors = useSensors(
-        useSensor(PointerSensor),
+        useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     );
     /** The rows currently in the air. Empty except during a drag; see {@link handleDragStart}. */
     const [draggingGroup, setDraggingGroup] = useState<Set<StoryBlockId>>(EMPTY_DRAG_GROUP);
@@ -712,6 +717,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             key: "alt+arrowup",
             description: t("story.keybindings.moveRowUp"),
             handler: () => editor.moveSelectedRows("up"),
+        },
+        {
+            id: "fold-row",
+            key: "arrowleft",
+            description: t("story.keybindings.foldRow"),
+            handler: () => editor.foldActiveRow("collapse"),
+        },
+        {
+            id: "unfold-row",
+            key: "arrowright",
+            description: t("story.keybindings.unfoldRow"),
+            handler: () => editor.foldActiveRow("expand"),
         },
         {
             id: "select-first",
@@ -2008,6 +2025,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     // A shrinking result set must not leave the cursor pointing past the end.
     const activeFindIndex = findMatches.length === 0 ? 0 : findCursor % findMatches.length;
+    useStoryFindHighlights(editor.rootRef, findOpen && !scriptOpen, findMatches, activeFindIndex);
 
     const goToMatch = useCallback((index: number) => {
         const match = findMatches[index];
@@ -2365,7 +2383,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
         { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
         { id: "sep-insert", separator: true },
+        // Copy and cut run the editor's own clipboard handlers - the same rows, in the same format, as
+        // Mod+C / Mod+X - by handing the browser's command to the editor root, which owns them.
+        // The menu had neither, so a right-click author had no way to copy a line at all.
+        {
+            id: "copy",
+            label: t("story.rowMenu.copy"),
+            onClick: () => {
+                editor.focusRoot();
+                globalThis.document.execCommand("copy");
+            },
+        },
+        {
+            id: "cut",
+            label: t("story.rowMenu.cut"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                editor.focusRoot();
+                globalThis.document.execCommand("cut");
+            },
+        },
         { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
+        { id: "indent", label: t("story.rowMenu.indent"), ...freeze.menuRow(), onClick: () => editor.indentSelection("in") },
+        { id: "outdent", label: t("story.rowMenu.outdent"), ...freeze.menuRow(), onClick: () => editor.indentSelection("out") },
         { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
         // The selected rows, written once as a command of the project's own. The rows stay where they
         // are; the author replaces them with a call when the command reads right.
@@ -2902,9 +2942,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         <ul className="flex flex-col gap-1">
                             {EMPTY_SCENE_EXAMPLES.map(example => (
                                 <li key={example.commandId} className="flex flex-wrap items-baseline gap-x-2">
-                                    <code className="rounded-md border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
+                                    {/* It looked like something to press, so it is: the line goes into a
+                                        new row as typed, with the caret after it for the arguments. */}
+                                    <button
+                                        type="button"
+                                        className="rounded-md border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                                        onClick={() => editor.startTrailingSlotWith(`${emptyExampleLine(example.commandId, editor.slashAtAlias ? "@" : "/")} `)}
+                                        {...freeze.writes()}
+                                    >
                                         {emptyExampleLine(example.commandId, editor.slashAtAlias ? "@" : "/")}
-                                    </code>
+                                    </button>
                                     <span className="text-2xs">{t(example.key)}</span>
                                 </li>
                             ))}
@@ -3012,6 +3059,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                             layers={layersApi}
                             stageEdit={stageEditApi}
+                            onRevealRow={blockId => editor.selectRow(blockId, undefined, "jump")}
                             camera={previewCamera}
                             view={previewPane?.view}
                             onSetView={setPreviewView}
@@ -3042,6 +3090,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onSaveSeparator={editor.savePasteSeparator}
                     onForgetSeparator={editor.forgetPasteSeparator}
                     onCancel={editor.cancelPasteWizard}
+                    onPastePlain={editor.pastePasteWizardAsPlain}
                     onConfirm={editor.confirmPasteWizard}
                 />
             ) : null}

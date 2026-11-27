@@ -104,6 +104,8 @@ export type StoryPasteWizardRequest = {
     text: string;
     inferred: PasteSeparatorChoice;
     target: StoryBlockTarget;
+    /** What a plain paste at the same place would copy its shape from - the wizard's way out. */
+    plain: PlainPasteAnchor;
 };
 
 /**
@@ -868,6 +870,7 @@ export function useStorySceneClipboardHandlers(params: {
                     text: route.text,
                     inferred: inferPasteSeparator(route.text),
                     target: anchor.target,
+                    plain: anchor.plain,
                 });
                 return true;
             case "plain":
@@ -959,7 +962,12 @@ export function useStorySceneClipboardHandlers(params: {
         return routePaste(event.clipboardData, plainRequested);
     }, [routePaste, takePlainRequest]);
 
-    return { copySelectionToClipboard, handlePaste, handleRowTextPaste, insertPastedBlocks };
+    /** The wizard's plain-text exit: the paste `Ctrl+Shift+V` would have made at the same place. */
+    const pastePlainFromWizard = useCallback((request: StoryPasteWizardRequest) => {
+        void pastePlain(request.text, { target: request.target, plain: request.plain });
+    }, [pastePlain]);
+
+    return { copySelectionToClipboard, handlePaste, handleRowTextPaste, insertPastedBlocks, pastePlainFromWizard };
 }
 
 function isMultiLine(text: string): boolean {

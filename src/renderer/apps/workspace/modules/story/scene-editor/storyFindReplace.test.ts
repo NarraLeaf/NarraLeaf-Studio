@@ -7,6 +7,7 @@ import {
     replaceAllInSegment,
     replaceInSegment,
     replaceRangesInSegment,
+    rewriteSegmentText,
     segmentPlainText,
 } from "./storyFindReplace";
 
@@ -194,5 +195,30 @@ describe("replaceRangesInSegment", () => {
         expect(segmentPlainText(next)).toBe("dog0 and dog1");
         expect(next.rich).toContainEqual({ pause: true });
         expect(next.rich).toContainEqual({ text: "dog1", marks: { bold: true } });
+    });
+});
+
+describe("rewriteSegmentText", () => {
+    const styled: StoryTextSegment = {
+        textId: "t1",
+        role: "choiceText",
+        value: "Go to the old shrine",
+        rich: [{ text: "Go to the " }, { text: "old shrine", marks: { ruby: "x", bold: true } }],
+    };
+
+    it("keeps the formatting outside the words that changed", () => {
+        const next = rewriteSegmentText(styled, "Go back to the old shrine");
+        expect(segmentPlainText(next)).toBe("Go back to the old shrine");
+        expect(next.rich).toEqual([{ text: "Go back to the " }, { text: "old shrine", marks: { ruby: "x", bold: true } }]);
+    });
+
+    it("edits inside a styled run with that run's marks", () => {
+        const next = rewriteSegmentText(styled, "Go to the new shrine");
+        expect(next.rich).toEqual([{ text: "Go to the " }, { text: "new shrine", marks: { ruby: "x", bold: true } }]);
+    });
+
+    it("leaves a plain segment plain and an unchanged one untouched", () => {
+        expect(rewriteSegmentText(plain("Hi"), "Hello")).toEqual({ textId: "t1", role: "dialogue", value: "Hello", rich: undefined });
+        expect(rewriteSegmentText(styled, "Go to the old shrine")).toBe(styled);
     });
 });
