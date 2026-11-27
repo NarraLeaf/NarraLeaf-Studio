@@ -358,12 +358,12 @@ export type StoryStageSnapshot = {
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     /**
-     * Who had the floor before the target row, for the cast's behaviours (null for nobody), and which
-     * characters with behaviours the path left on stage. A launch seeds the compiled guards with
-     * these, so the target row's own line decides its behaviours from the same state a playthrough
-     * would hand it. Absent on a snapshot made before behaviours existed, which reads as nobody.
+     * For the cast's behaviours: the state each character on stage was left in before the target row
+     * (speaking or not; a character in neither is absent), and which characters with behaviours the
+     * path left on stage. A launch seeds the compiled guards with these, so the target row's own line
+     * decides its behaviours from the same state a playthrough would hand it.
      */
-    behaviourFloor?: string | null;
+    behaviourStates?: Record<string, "speaking" | "silent">;
     behaviourPresence?: string[];
     diagnostics: StageSnapshotDiagnostic[];
 };
@@ -685,10 +685,11 @@ class SnapshotWalker {
     /** Set only by {@link walkTimeline}: the frames and menus a whole-scene walk records. */
     private timeline: StageTimelineWalk | null = null;
     /**
-     * Who has the floor, for the cast's behaviours: the speaker of the last line that took part, null
-     * for nobody. The walk follows one path, so unlike the compiled guards it knows this exactly.
+     * Each character's state for the cast's behaviours, speaking or not; absent while it is in
+     * neither (not yet through a line since it came on). The walk follows one path, so unlike the
+     * compiled guards it knows this exactly.
      */
-    private behaviourFloor: string | null = null;
+    private readonly behaviourStates = new Map<string, "speaking" | "silent">();
     /** Characters with behaviours that the walked path has on stage. */
     private readonly behaviourPresence = new Set<string>();
     private readonly behaviourStageNames: ReadonlyMap<string, string>;
@@ -768,7 +769,7 @@ class SnapshotWalker {
             camera: this.camera,
             targetCamera: this.targetCamera,
             nvl: this.nvl,
-            behaviourFloor: this.behaviourFloor,
+            behaviourStates: Object.fromEntries(this.behaviourStates),
             behaviourPresence: [...this.behaviourPresence],
             diagnostics: this.diagnostics,
         };
@@ -1308,30 +1309,37 @@ class SnapshotWalker {
         } else if (change) {
             this.behaviourPresence.delete(change.characterId);
         }
+        // In neither state once it comes on or goes off; the next line decides, as the compile does.
+        if (change) {
+            this.behaviourStates.delete(change.characterId);
+        }
     }
 
     /**
-     * The cast's behaviours at one line, applied the way the compiled guards run them: when the floor
-     * changes hands, the previous speaker's stop and then this speaker's start, each only for a
-     * character on stage, with a behaviour row a hand-written row overrides left out.
+     * The cast's behaviours at one line, applied the way the compiled guards run them: every character
+     * on stage moved into the state the line calls for - the speaker into speaking, the rest into not
+     * speaking - running its event wherever its state changes, others before the speaker, with a
+     * behaviour row a hand-written row overrides left out.
      */
     private applyLineBehaviours(block: StoryBlock): void {
         if (this.inert > 0 || this.declaring || this.behaviours.size === 0 || speakingRowSkipsBehaviours(block)) {
             return;
         }
         const speaker = speakingRowSpeaker(block);
-        if (speaker === undefined || speaker === this.behaviourFloor) {
+        if (speaker === undefined) {
             return;
         }
         const written = handWrittenChannelsBeforeLine(this.scene, block.id);
-        const previous = this.behaviourFloor;
-        if (previous && this.behaviourPresence.has(previous)) {
-            this.applyBehaviourRows(block, previous, "stopSpeaking", written);
+        const present = [...this.behaviourPresence];
+        const order = [...present.filter(characterId => characterId !== speaker), ...present.filter(characterId => characterId === speaker)];
+        for (const characterId of order) {
+            const desired = characterId === speaker ? "speaking" : "silent";
+            if (this.behaviourStates.get(characterId) === desired) {
+                continue;
+            }
+            this.applyBehaviourRows(block, characterId, desired === "speaking" ? "startSpeaking" : "stopSpeaking", written);
+            this.behaviourStates.set(characterId, desired);
         }
-        if (speaker && this.behaviourPresence.has(speaker)) {
-            this.applyBehaviourRows(block, speaker, "startSpeaking", written);
-        }
-        this.behaviourFloor = speaker;
     }
 
     private applyBehaviourRows(line: StoryBlock, characterId: string, event: CharacterBehaviourEvent, written: ReadonlyMap<string, string>): void {

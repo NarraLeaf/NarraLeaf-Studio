@@ -253,8 +253,10 @@ Checkpoint: every asset in the name map exists in the project under its agreed n
   character `behaviours` in `character_upsert` (`startSpeaking` / `stopSpeaking`, each a list of
   `.story` command lines such as `/transform Mei zoom=1.05 d=0.3`) instead of writing those rows
   around every change of speaker. They run only while the character is on stage, with the line and
-  without delaying it; same speaker twice in a row runs nothing; narration ends the last speaker's
-  turn. Only stage commands are accepted. A row you write right above a line that sets the same thing
+  without delaying it. Every line puts the speaker into speaking and every other character on stage
+  into not speaking, running an event only when a character's state changes: the same speaker twice
+  in a row runs nothing, a character just brought on is put into not speaking by the first line
+  someone else speaks, and narration puts everyone into not speaking. Only stage commands are accepted. A row you write right above a line that sets the same thing
   for the same character overrides the behaviour at that line, and `lint` reports it
   (`story/behaviour-conflict`). `characters_list` shows each character's `behaviours`; read them
   before staging dialogue so you do not write rows a behaviour already does.

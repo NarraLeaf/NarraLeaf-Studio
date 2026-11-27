@@ -850,8 +850,8 @@ A character has a name, a color and a set of appearances. An appearance is the c
 
 角色行为是角色在开始说话或停止说话时自动执行的命令，在角色属性的「角色行为」中设置，写法与故事编辑器的命令相同
 
-- 说话人换人时，上一位说话人执行「停止说话时」，新说话人执行「开始说话时」；同一角色连续说话只在第一句执行一次
-- 旁白视为无人说话，上一位说话人执行「停止说话时」
+- 每句对白把在场角色分为说话与未说话两种状态：说话人进入说话状态，执行「开始说话时」；其他在场角色进入未说话状态，执行「停止说话时」。已处于该状态的角色不重复执行，因此同一角色连续说话只执行一次，刚登场还未说话的角色在别人说话时也会执行「停止说话时」
+- 旁白视为无人说话，所有在场角色进入未说话状态
 - 只有在舞台上的角色执行行为；角色登场前和退场后不执行
 - 行为中的命令与对白同时开始，不延迟文字显示；作用于同一对象的命令依次执行
 - 只能使用舞台类命令：变换、表情与外观、置于最前、镜头和音效；不能登场、退场、更换音乐或跳转
@@ -864,8 +864,8 @@ A character has a name, a color and a set of appearances. An appearance is the c
 
 Behaviours are commands a character runs automatically when it starts or stops speaking. They are set under Behaviours in the character's properties and written like commands in the story editor.
 
-- When the speaker changes, the previous speaker runs "When stopping speaking" and the new speaker runs "When starting to speak". Consecutive lines by one character run it once, on the first line
-- Narration counts as nobody speaking: the previous speaker runs "When stopping speaking"
+- Every line puts each character on stage into one of two states. The speaker starts speaking and runs "When starting to speak"; every other character on stage stops speaking and runs "When stopping speaking". A character already in that state runs nothing, so consecutive lines by one character run it once, and a character that has just entered and not spoken yet runs "When stopping speaking" as soon as someone else speaks
+- Narration counts as nobody speaking: every character on stage stops speaking
 - Only characters on stage run behaviours. Nothing runs before a character enters or after it exits
 - Behaviour commands start together with the line and do not delay its text. Commands on the same object run in order
 - Only stage commands are allowed: transforms, expressions and appearance, bring to front, the camera and sound effects. A behaviour cannot enter, exit, change the music or jump
