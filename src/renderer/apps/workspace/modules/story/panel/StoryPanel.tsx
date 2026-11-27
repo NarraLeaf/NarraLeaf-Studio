@@ -1268,6 +1268,10 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     <RefreshCw className="h-4 w-4 animate-spin" />
                                     {t("story.panel.loadingStory")}
                                 </div>
+                            ) : document && document.chapters.length === 0 ? (
+                                // With the last chapter deleted the outline used to be blank, which
+                                // read as "still loading" rather than as an outline with nothing in it.
+                                <div className="border-t border-edge-subtle px-3 py-4 text-center text-xs text-fg-subtle">{t("story.panel.emptyChapters")}</div>
                             ) : document ? (
                                 <Accordion
                                     key={document.id}

@@ -335,7 +335,7 @@ export function StoryCommandCandidateMenu(props: {
                     data-candidate-key={node.key}
                     className={cn("flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors", tint)}
                     onMouseMove={moved}
-                    onMouseDown={() => props.onEnterFolder(column, node.key)}
+                    onClick={() => props.onEnterFolder(column, node.key)}
                 >
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                         <Glyph className="h-4 w-4 text-fg-subtle" />
@@ -356,7 +356,7 @@ export function StoryCommandCandidateMenu(props: {
                 data-candidate-key={item.key}
                 className={cn("flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors", tint)}
                 onMouseMove={moved}
-                onMouseDown={() => props.onChoose(item)}
+                onClick={() => props.onChoose(item)}
             >
                 {item.mark ? <StoryCandidateMarkView mark={item.mark} characters={props.characters} /> : null}
                 <span className="truncate text-sm text-fg">{item.label}</span>
@@ -374,6 +374,8 @@ export function StoryCommandCandidateMenu(props: {
             style={props.frame.style}
             onMouseDown={event => {
                 // Keep the caret in the slot: the menu is an extension of the line being typed.
+                // Items take the CLICK, not this press, so sliding off before releasing cancels -
+                // a pick on press could not be taken back.
                 event.preventDefault();
                 event.stopPropagation();
             }}

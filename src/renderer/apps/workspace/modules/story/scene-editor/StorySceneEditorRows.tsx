@@ -1659,6 +1659,9 @@ function useConditionSummaryLookups(scene: StoryScene, document: StoryDocument):
 }
 
 /** Editable condition chip on a branch header — opens the inline condition popover. */
+/** Open a branch row's condition editor from the keyboard; `detail.blockId` names the branch. */
+export const STORY_EDIT_BRANCH_CONDITION_EVENT = "nl-story-edit-branch-condition";
+
 function ConditionChip(props: {
     block: StoryBlock;
     scene: StoryScene;
@@ -1669,6 +1672,20 @@ function ConditionChip(props: {
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
     const chipRef = useRef<HTMLButtonElement | null>(null);
     const block = props.block;
+    // F2 on the branch row asks for this editor (see `STORY_EDIT_BRANCH_CONDITION_EVENT`): the chip
+    // was mouse-only - Tab indents, the branch has no card and its Enter adds a line inside.
+    const blockId = block.id;
+    useEffect(() => {
+        const open = (event: Event) => {
+            if ((event as CustomEvent<{ blockId: string }>).detail?.blockId !== blockId || !chipRef.current) {
+                return;
+            }
+            const rect = chipRef.current.getBoundingClientRect();
+            setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
+        };
+        window.addEventListener(STORY_EDIT_BRANCH_CONDITION_EVENT, open);
+        return () => window.removeEventListener(STORY_EDIT_BRANCH_CONDITION_EVENT, open);
+    }, [blockId]);
     if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
         return null;
     }
@@ -1689,7 +1706,7 @@ function ConditionChip(props: {
                 ref={chipRef}
                 type="button"
                 aria-expanded={anchor !== null}
-                className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                className="min-w-0 max-w-full whitespace-normal break-words rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-left text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={togglePopover}
                 onMouseDown={event => event.stopPropagation()}
             >
@@ -1742,7 +1759,7 @@ function RepeatUntilChip(props: {
                 ref={chipRef}
                 type="button"
                 aria-expanded={anchor !== null}
-                className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                className="min-w-0 max-w-full whitespace-normal break-words rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-left text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={event => {
                     event.stopPropagation();
                     if (anchor) {
@@ -2105,9 +2122,31 @@ export function argMenuOffer(
  * the real glyphs back for the length of the composition — the one case where the mirror cannot see
  * what the field is showing, since a composition is not in `value` yet.
  */
-function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textStyle: CSSProperties }) {
+/** The viewport x of character `index` of the text laid out in `container`, or null past its end. */
+function textOffsetX(container: Element, index: number): number | null {
+    const walker = container.ownerDocument.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        if (index <= offset + node.data.length) {
+            const range = container.ownerDocument.createRange();
+            if (typeof range.getClientRects !== "function") {
+                // No layout to ask (a test DOM): leave the menu at the start of the line.
+                return null;
+            }
+            range.setStart(node, index - offset);
+            range.setEnd(node, index - offset);
+            const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+            return rect.left;
+        }
+        offset += node.data.length;
+    }
+    return null;
+}
+
+function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textStyle: CSSProperties; mirrorRef?: RefObject<HTMLSpanElement | null> }) {
     return (
         <span
+            ref={props.mirrorRef}
             aria-hidden
             className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words"
             style={props.textStyle}
@@ -2130,7 +2169,7 @@ function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textS
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string; holdsReason?: (source: string) => boolean }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string; holdsReason?: (source: string) => boolean; hintRef?: RefObject<HTMLSpanElement | null> }) {
     const { t } = useTranslation();
     // The slot's NAME is vocabulary — the word the author may type as `位置=` — so it follows the
     // command language. The failure sentence around it is prose and stays in the interface language.
@@ -2153,9 +2192,13 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
         return null;
     }
     return (
+        // Wraps exactly as the textarea under it does, so a reason too long for the line carries on
+        // below it instead of being cut off at the right edge - which on a long line was all of it.
+        // The slot grows to fit (see the measuring effect in `InsertRow`).
         <span
+            ref={props.hintRef}
             aria-hidden
-            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre"
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words"
             style={props.textStyle}
         >
             {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
@@ -2166,7 +2209,9 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
                 // commit clears the value and the next edit strips it), so it renders flush at the start.
                 <span className="not-italic text-success/80">{props.confirmation}</span>
             ) : reason ? (
-                <span className="text-danger/80">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
+                // The warning colour the row takes once committed invalid, so one problem does not
+                // change colour on Enter.
+                <span className="text-warning">{`  ${t(reason.key, storyCommandReasonParams(reason, t))}`}</span>
             ) : (
                 <span className="text-fg-subtle">{`<${paramHintText(ghost!.hintKey, ct as (key: never) => string)}>`}</span>
             )}
@@ -2289,7 +2334,6 @@ export function InsertRow(props: {
     // `chooserDismissed` (Escape) must not change it — the line is still a command, the menu is just shut.
     const colorLine = !composing && isActionCommandLine(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
-    const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     /**
      * The speaker this slot belongs to, when it opened on top of their line (see
@@ -2367,14 +2411,17 @@ export function InsertRow(props: {
     // glyphs are transparent over a mirror that does not scroll, the scrolled text was not even the
     // text on screen. Measured before paint so the row never shows the clipped frame.
     const inputRef = props.inputRef;
+    const ghostHintRef = useRef<HTMLSpanElement | null>(null);
     useLayoutEffect(() => {
         const input = inputRef.current;
         if (!input) {
             return;
         }
         input.style.height = "auto";
-        input.style.height = `${input.scrollHeight}px`;
-    }, [inputRef, value, textStyle]);
+        // Tall enough for the hint laid over it, too, when the hint wraps past the typed text.
+        const hint = ghostHintRef.current?.scrollHeight ?? 0;
+        input.style.height = `${Math.max(input.scrollHeight, hint)}px`;
+    });
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
@@ -2382,6 +2429,28 @@ export function InsertRow(props: {
     // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
     // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
     const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
+    const lineMirrorRef = useRef<HTMLSpanElement | null>(null);
+    // Where the token being completed starts on screen, for the argument menu. Read off the colour
+    // mirror, which lays the typed line out with the field's own metrics (wrapping included), so the
+    // menu lands under the word rather than at the start of the line a long command left far behind.
+    // Capped so a menu near the right edge still opens fully on screen.
+    const argTokenStart = cursor.kind === "positional" || cursor.kind === "paramName" || cursor.kind === "paramValue"
+        ? cursor.replace.start
+        : null;
+    const menuOffsetX = () => {
+        const mirror = lineMirrorRef.current;
+        const anchor = menuAnchorRef.current;
+        if (argTokenStart === null || !mirror || !anchor) {
+            return 0;
+        }
+        const x = textOffsetX(mirror, argTokenStart);
+        if (x === null) {
+            return 0;
+        }
+        const anchorRect = anchor.getBoundingClientRect();
+        return Math.min(x - anchorRect.left, Math.max(0, anchorRect.width - 320));
+    };
+    const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312, menuOffsetX, argTokenStart);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
     const resolvedArgs = useMemo(() => {
@@ -2553,8 +2622,8 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
-                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} holdsReason={props.holdsReason} />
+                {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} mirrorRef={lineMirrorRef} /> : null}
+                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} holdsReason={props.holdsReason} hintRef={ghostHintRef} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -2965,7 +3034,18 @@ const UNMEASURED_MENU_FRAME: AnchoredMenuFrame = {
     style: { position: "fixed", top: 0, left: 0, visibility: "hidden", pointerEvents: "none" },
 };
 
-function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): AnchoredMenuFrame {
+function useAnchoredMenuFrame(
+    anchorRef: RefObject<HTMLElement | null>,
+    open: boolean,
+    expectedHeight: number,
+    /**
+     * How far right of the anchor's left edge the menu should start, read each time it is placed -
+     * the argument menu opens under the word it completes rather than at the start of the line.
+     */
+    offsetX?: () => number,
+    /** Changes whenever `offsetX` would answer differently (the token being completed). */
+    offsetKey?: unknown,
+): AnchoredMenuFrame {
     const [frame, setFrame] = useState<AnchoredMenuFrame>(UNMEASURED_MENU_FRAME);
 
     // Layout, not passive: the menu mounts in the same commit that opens it, so the measure has to
@@ -2988,15 +3068,16 @@ function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: bo
             const spaceBelow = window.innerHeight - rect.bottom - gap;
             const spaceAbove = rect.top - gap;
             const placement: PopupPlacement = spaceBelow < expectedHeight && spaceAbove > spaceBelow ? "above" : "below";
+            const left = rect.left + Math.max(0, offsetX?.() ?? 0);
             setFrame({
                 placement,
                 style: {
                     position: "fixed",
-                    left: rect.left,
+                    left,
                     // `maxWidth` rather than a clamped `left`: the panels carry fixed widths, and one
                     // anchor serves menus of several of them, so let a panel near the edge narrow
                     // instead of teaching the anchor every width it might have to hold.
-                    maxWidth: Math.max(160, window.innerWidth - rect.left - 8),
+                    maxWidth: Math.max(160, window.innerWidth - left - 8),
                     ...(placement === "above"
                         ? { bottom: window.innerHeight - rect.top + MENU_GAP_PX }
                         : { top: rect.bottom + MENU_GAP_PX }),
@@ -3014,7 +3095,10 @@ function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: bo
             window.removeEventListener("resize", updateFrame);
             window.removeEventListener("scroll", updateFrame, true);
         };
-    }, [anchorRef, expectedHeight, open]);
+        // `offsetX` is read through, not depended on: it is a fresh closure every render, and the
+        // position it gives only changes when `offsetKey` does.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [anchorRef, expectedHeight, open, offsetKey]);
 
     return frame;
 }
@@ -3222,7 +3306,7 @@ function ActionCommandMenuRow(props: {
                     "flex w-full items-center gap-2 rounded-md py-2 pl-2 pr-9 text-left transition-colors",
                     props.active ? "bg-primary/15 text-fg" : props.pointer.live ? "hover:bg-fill" : "",
                 ].join(" ")}
-                onMouseDown={() => props.onChoose(command.id)}
+                onClick={() => props.onChoose(command.id)}
             >
                 <Icon className="h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
                 <span className="min-w-0 flex-1">
@@ -3692,7 +3776,7 @@ function SpeakerCandidateRow(props: {
                 props.active ? "bg-primary/15 text-fg" : pointer.live ? "hover:bg-fill" : "",
             ].join(" ")}
             onMouseMove={event => pointer.move(candidate.key, event)}
-            onMouseDown={() => props.onChoose(candidate)}
+            onClick={() => props.onChoose(candidate)}
         >
             {/* A real character shows their face, exactly as the argument menu does in this same
                 slot — the two are meant to read as one menu following the caret. A temp speaker is a
@@ -3861,7 +3945,7 @@ function CharacterPicker(props: {
                                         active ? (props.activeMemberKey ? "bg-fill" : "bg-primary/15") : pointer.live && "hover:bg-fill",
                                     )}
                                     onMouseMove={event => pointer.move(key, event)}
-                                    onMouseDown={() => props.onEnterGroup(entry.groupId)}
+                                    onClick={() => props.onEnterGroup(entry.groupId)}
                                 >
                                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                                         <Users className="h-4 w-4 text-fg-subtle" />
@@ -4387,9 +4471,12 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
         // was - the line is raw text the author is in the middle of writing, and reaching a character
         // in it should not cost a double-click. The offset is measured over this whole element, so a
         // click on the reason lands past the source and `startLineEdit` clamps it to the line's end.
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 cursor-text items-center gap-2 nl-selectable-text" data-story-row-text="">
-            <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
-            <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
+        // Wraps rather than truncates: the reason kept its full width and the author's own line gave
+        // way, so on a long command neither could be read in full - and there is no tooltip on an
+        // editing surface to read it from.
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 cursor-text flex-wrap items-center gap-x-2 nl-selectable-text" data-story-row-text="">
+            <span className="min-w-0 break-words font-mono text-sm text-warning">{props.source}</span>
+            <span className="min-w-0 break-words text-2xs text-warning/80">{reasonText}</span>
         </span>
     );
 }

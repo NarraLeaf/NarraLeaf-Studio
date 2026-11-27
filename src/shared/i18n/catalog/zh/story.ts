@@ -26,6 +26,7 @@ export const story = {
         loadingStory: "正在加载故事…",
         chapterTitle: "{name}（{count}）",
         emptyScenes: "暂无场景",
+        emptyChapters: "暂无章节",
         lineCount: {
             one: "{count} 行",
             other: "{count} 行",
@@ -42,14 +43,14 @@ export const story = {
         newSceneTitle: "新建场景",
         newScenePlaceholder: "输入场景名称",
         deleteStoryConfirm: "删除故事“{name}”",
-        deleteStoryDetail: "此操作将从项目中移除该故事文档",
+        deleteStoryDetail: "该故事文档会从项目中移除，之后可以撤销",
         deleteChapterConfirm: "删除章节“{name}”",
         deleteChapterDetail: {
-            one: "章节里的 {count} 个场景会一并删除",
-            other: "章节里的 {count} 个场景会一并删除",
+            one: "章节里的 {count} 个场景会一并删除，之后可以撤销",
+            other: "章节里的 {count} 个场景会一并删除，之后可以撤销",
         },
         deleteSceneConfirm: "删除场景“{name}”",
-        deleteSceneDetail: "该场景及其全部行会被移除，跳转到它的行将失去目标",
+        deleteSceneDetail: "该场景及其全部行会被移除，跳转到它的行将失去目标；之后可以撤销",
     },
     // 请求打开却无法读取的故事：按名称称呼，永不用 id 或文件路径。
     readFailed: {

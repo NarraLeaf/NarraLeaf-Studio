@@ -30,7 +30,7 @@ import type {
 import {
     authoredCharacterStageName,
     DEFAULT_VIDEO_LEAVE_FADE_MS,
-    declarationDefaultForType,
+    convertDeclarationDefault,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
@@ -673,7 +673,9 @@ export function ActionInspector(props: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-fg">{label}</div>
-                    <div className="truncate text-xs text-fg-subtle">{subject}</div>
+                    {/* Up to two lines, then cut: the subject is what the row says, and a dialogue
+                        line truncated to one line hid most of it with no way to read the rest. */}
+                    <div className="line-clamp-2 break-words text-xs text-fg-subtle">{subject}</div>
                 </div>
             </div>
             <StoryDocumentClamp storyId={props.document.id}>{fields}</StoryDocumentClamp>
@@ -917,7 +919,8 @@ function DeclarationPayloadFields(props: {
                 value={payload.valueType}
                 onChange={value => {
                     const valueType = String(value) as StoryVariableValueType;
-                    props.onChange({ ...payload, valueType, defaultValue: declarationDefaultForType(valueType) });
+                    // Keeps the default where it still reads in the new type, instead of zeroing it.
+                    props.onChange({ ...payload, valueType, defaultValue: convertDeclarationDefault(payload.defaultValue, valueType) });
                 }}
             />
             <VariableValueField

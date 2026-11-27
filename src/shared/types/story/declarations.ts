@@ -74,6 +74,41 @@ export function declarationDefaultForType(valueType: StoryVariableValueType): St
     return "";
 }
 
+/**
+ * A declaration's default carried over to a new type where the value reads the same way, and the
+ * type's own default where it does not. Changing the type of a variable that defaulted to "5" used
+ * to throw the 5 away without a word; now "5" becomes 5, 5 becomes "5", "true" becomes true, and
+ * only a value with no reading in the new type is replaced.
+ */
+export function convertDeclarationDefault(value: StoryLiteralValue | undefined, valueType: StoryVariableValueType): StoryLiteralValue {
+    if (valueType === "json") {
+        return value ?? declarationDefaultForType(valueType);
+    }
+    if (valueType === "string") {
+        return typeof value === "string" ? value
+            : typeof value === "number" || typeof value === "boolean" ? String(value)
+                : declarationDefaultForType(valueType);
+    }
+    if (valueType === "number") {
+        if (typeof value === "number") return value;
+        if (typeof value === "boolean") return value ? 1 : 0;
+        if (typeof value === "string" && value.trim() !== "") {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : declarationDefaultForType(valueType);
+        }
+        return declarationDefaultForType(valueType);
+    }
+    // boolean
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    if (typeof value === "string") {
+        const word = value.trim().toLowerCase();
+        if (word === "true" || word === "真") return true;
+        if (word === "false" || word === "假") return false;
+    }
+    return declarationDefaultForType(valueType);
+}
+
 function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
     return {
         id: block.id,

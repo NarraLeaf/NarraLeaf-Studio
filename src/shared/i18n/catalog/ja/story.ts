@@ -31,6 +31,7 @@ export const story = {
         loadingStory: "ストーリーを読み込んでいる…",
         chapterTitle: "{name}（{count}）",
         emptyScenes: "シーンがない",
+        emptyChapters: "チャプターがない",
         lineCount: {
             other: "{count} 行",
         },
@@ -46,14 +47,14 @@ export const story = {
         newSceneTitle: "新規シーン",
         newScenePlaceholder: "シーン名を入力",
         deleteStoryConfirm: "ストーリー「{name}」を削除するか",
-        deleteStoryDetail: "このストーリーのドキュメントをプロジェクトから取り除く",
+        deleteStoryDetail: "このストーリーのドキュメントをプロジェクトから取り除く。あとで元に戻せる",
         deleteChapterConfirm: "チャプター「{name}」を削除するか",
         // 数を出す。行は開くまで中身を言わないうえ、シーンはチャプターと一緒に消えるから。
         deleteChapterDetail: {
-            other: "中の {count} 個のシーンも一緒に削除される",
+            other: "中の {count} 個のシーンも一緒に削除される。あとで元に戻せる",
         },
         deleteSceneConfirm: "シーン「{name}」を削除するか",
-        deleteSceneDetail: "このシーンとその中の行を取り除く。ここへの飛び先は解決できなくなる",
+        deleteSceneDetail: "このシーンとその中の行を取り除く。ここへの飛び先は解決できなくなる。あとで元に戻せる",
     },
     // シーンをテキストファイルとして Studio の外に出し、また戻す。`parseError` と `diag` は
     // 変換側のコードをキーにしているので、新しいコードは、生の識別子として作者に届く前に

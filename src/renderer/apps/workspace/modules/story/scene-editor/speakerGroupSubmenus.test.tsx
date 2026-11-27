@@ -137,7 +137,7 @@ describe("the speaker picker's cast groups as submenus", () => {
 
     it("open the column on a click on the group", () => {
         openPicker();
-        fireEvent.mouseDown(document.body.querySelector("[data-character-id=\"group:g-extras\"]")!);
+        fireEvent.click(document.body.querySelector("[data-character-id=\"group:g-extras\"]")!);
 
         expect(highlighted()).toEqual(["clerk"]);
     });

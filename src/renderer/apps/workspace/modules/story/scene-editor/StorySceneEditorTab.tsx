@@ -37,7 +37,7 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { STORY_SNAPSHOT_PANEL_ID, type StorySnapshotPanelPayload } from "../../story-snapshots";
 import { launchStoryRowInDevMode } from "./storyRowLaunch";
-import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { getSpeakerCandidates, InsertRow, STORY_EDIT_BRANCH_CONDITION_EVENT, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
 import { useRowFilterChange } from "./useRowFilterChange";
@@ -580,10 +580,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.scene]);
     /** F2 and the row menu's 以文本形式编辑: the row opened as text, caret at the end. */
     const editRowAsText = useCallback((blockId: StoryBlockId | null) => {
-        if (blockId) {
-            editor.editRowAsText(blockId, rowLineOf(blockId));
+        if (!blockId) {
+            return;
         }
-    }, [editor.editRowAsText, rowLineOf]);
+        // A branch that carries a condition has no line to edit; what there is to edit is the
+        // condition, so F2 opens that.
+        const block = editor.scene?.blocks[blockId];
+        if (block?.kind === "control" && block.payload.control === "conditionBranch" && block.payload.branch !== "else") {
+            window.dispatchEvent(new CustomEvent(STORY_EDIT_BRANCH_CONDITION_EVENT, { detail: { blockId } }));
+            return;
+        }
+        editor.editRowAsText(blockId, rowLineOf(blockId));
+    }, [editor.editRowAsText, editor.scene, rowLineOf]);
 
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {

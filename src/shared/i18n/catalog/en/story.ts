@@ -28,6 +28,7 @@ export const story = {
         loadingStory: "Loading story…",
         chapterTitle: "{name} ({count})",
         emptyScenes: "No scenes.",
+        emptyChapters: "No chapters",
         lineCount: {
             one: "{count} line",
             other: "{count} lines",
@@ -44,16 +45,16 @@ export const story = {
         newSceneTitle: "New Scene",
         newScenePlaceholder: "Enter scene name",
         deleteStoryConfirm: "Delete story \"{name}\"?",
-        deleteStoryDetail: "This removes the story document from the project.",
+        deleteStoryDetail: "This removes the story document from the project. You can undo it.",
         deleteChapterConfirm: "Delete chapter \"{name}\"?",
         // Counted, because the row does not say what is inside it until it is expanded — and the
         // scenes go with the chapter.
         deleteChapterDetail: {
-            one: "Its {count} scene is deleted with it.",
-            other: "Its {count} scenes are deleted with it.",
+            one: "Its {count} scene is deleted with it. You can undo it.",
+            other: "Its {count} scenes are deleted with it. You can undo it.",
         },
         deleteSceneConfirm: "Delete scene \"{name}\"?",
-        deleteSceneDetail: "This removes the scene and all its rows. Jumps to it will stop resolving.",
+        deleteSceneDetail: "This removes the scene and all its rows. Jumps to it will stop resolving. You can undo it.",
     },
     // Taking a scene out of Studio as a text file and bringing it back. `parseError` and `diag` are
     // keyed by the codec's own codes (see `storyScriptTypes`), so a new code fails the parity test

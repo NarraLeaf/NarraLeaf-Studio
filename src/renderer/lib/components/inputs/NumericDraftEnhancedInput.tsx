@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { EnhancedInput, type EnhancedInputProps } from "./EnhancedInput";
+import { cn } from "@/lib/utils/cn";
 import { arrowKeyStep, beginNumberScrub, evaluateNumericInput, stepNumber } from "./numericExpression";
 
 type Passthrough = Omit<EnhancedInputProps, "value" | "onChange">;
@@ -99,6 +100,10 @@ export function NumericDraftEnhancedInput({
     });
 
     const shown = draft !== null ? draft : committedDisplay;
+    // A draft that is not a number says so while it is being typed. Leaving the field still puts the
+    // committed value back - that is the contract - but it used to happen with no sign beforehand that
+    // what was typed would be thrown away.
+    const draftInvalid = draft !== null && draft.trim() !== "" && evaluateNumericInput(draft) === null;
 
     /** Hand over whatever is being typed, if anything is. */
     const commit = useCallback(() => {
@@ -209,6 +214,8 @@ export function NumericDraftEnhancedInput({
     return (
         <EnhancedInput
             {...rest}
+            aria-invalid={draftInvalid || rest["aria-invalid"] || undefined}
+            className={cn(rest.className, draftInvalid && "border-danger/70 focus-within:border-danger/70 focus-within:ring-danger/30")}
             onLeftIconPointerDown={rest.leftIcon ? handleScrub : undefined}
             type={type === "number" ? "text" : type}
             value={shown}

@@ -112,7 +112,7 @@ describe("the speaker nametag inside a live session on this very story", () => {
         const candidate = pickerPanel()!.querySelector<HTMLButtonElement>("[data-character-id=\"char-kaede\"]")!;
 
         expect(candidate.matches(":disabled")).toBe(false);
-        fireEvent.mouseDown(candidate);
+        fireEvent.click(candidate);
         expect(onChoose).toHaveBeenCalledWith({ characterId: "char-kaede" });
     });
 

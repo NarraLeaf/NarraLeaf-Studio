@@ -8,7 +8,9 @@ import type { PanelStateService } from "@/lib/workspace/services/core/PanelState
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useWorkspace } from "../../../../context";
 import { useRegistry } from "../../../../registry";
-import { getStoryEditorViewState, patchStoryEditorViewState } from "../storyEditorSessionStore";
+import { getStoryEditorSceneRowFilter, getStoryEditorViewState, patchStoryEditorViewState } from "../storyEditorSessionStore";
+import { isStoryRowFilterActive, storyRowPassesFilter, type StoryRowFilter } from "../storyRowFilter";
+import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { StoryScenePreviewFloat } from "./StoryScenePreviewFloat";
 import { useStoryScenePreviewController } from "./useStoryScenePreviewController";
 import {
@@ -105,8 +107,28 @@ export function StoryScenePreviewFloatHost(props: { areaRef: RefObject<HTMLEleme
         }
         hub.publishCursor(sceneId, blockId);
     }, [hub, panelState, sceneId, targetTabId]);
-    // An unmounted tab's filter and folds are not known here; every row counts as shown.
-    const isRowShown = useCallback((blockId: StoryBlockId) => hub?.getTab(targetTabId)?.isRowShown(blockId) ?? true, [hub, targetTabId]);
+    // An unmounted tab cannot be asked, but its row filter is stored with the scene: honour it, so a
+    // press on the stage does not land on a line the filter hides (which then switched the filter's
+    // ticks back on by itself when the tab opened). Folds are still unknown here and count as open.
+    const storedFilter = useMemo<StoryRowFilter | null>(() => {
+        const stored = panelState && sceneId ? getStoryEditorSceneRowFilter(panelState, sceneId) : null;
+        return stored ? { facets: new Set(stored.facets), speakers: new Set(stored.speakers) } : null;
+    }, [panelState, sceneId, targetTabId]);
+    const characterIdByName = useCallback((name: string) => {
+        const service = context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null;
+        return service?.listCharacter().find(character => character.profile.getName() === name)?.profile.getId() ?? null;
+    }, [context, isInitialized]);
+    const isRowShown = useCallback((blockId: StoryBlockId) => {
+        const handle = hub?.getTab(targetTabId);
+        if (handle) {
+            return handle.isRowShown(blockId);
+        }
+        const block = scene?.blocks[blockId];
+        if (!block || !storedFilter || !isStoryRowFilterActive(storedFilter)) {
+            return true;
+        }
+        return storyRowPassesFilter(block, storedFilter, characterIdByName);
+    }, [characterIdByName, hub, scene, storedFilter, targetTabId]);
 
     const controller = useStoryScenePreviewController({
         context,
