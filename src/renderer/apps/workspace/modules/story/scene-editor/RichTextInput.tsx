@@ -194,7 +194,8 @@ export type RichTextInputHandle = {
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
-    insertInterpolation: (interp: StoryInterpolationRef) => void;
+    /** Inserts the chip at the caret and answers where it landed (for a picker to open on), or null. */
+    insertInterpolation: (interp: StoryInterpolationRef) => InterpolationClickInfo | null;
     updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
     removeInterpolationAt: (unit: number) => void;
     /** Insert an event chip; returns the click-info to open its editor right away, or null if it did not land. */
@@ -1231,7 +1232,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [emitChange, recordStructural]);
 
     const insertPause = useCallback((pause: number | true) => { insertRun({ pause }); }, [insertRun]);
-    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => { insertRun({ interpolation: interp }); }, [insertRun]);
+    const insertInterpolation = useCallback((interp: StoryInterpolationRef): InterpolationClickInfo | null => {
+        const unit = insertRun({ interpolation: interp });
+        const el = editorRef.current;
+        if (unit === null || !el) {
+            return null;
+        }
+        // Measured the way the click path measures a chip, so a picker opened on the new chip sits
+        // exactly where one opened by clicking it would (see `insertEvent`).
+        const chip = Array.from(el.querySelectorAll<HTMLElement>("[data-interp]")).find(candidate => unitOffsetOfElement(el, candidate) === unit);
+        if (!chip) {
+            return null;
+        }
+        const rect = chip.getBoundingClientRect();
+        return { unit, value: interp, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
+    }, [insertRun]);
     /**
      * Insert an event chip and return the info needed to open its editor immediately (unit + the fresh
      * chip's screen anchor), so the toolbar's insert-then-edit flow is one motion. Returns null when

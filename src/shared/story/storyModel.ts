@@ -132,6 +132,12 @@ export function createEmptyStoryDocument(input: {
     name: string;
     now: string;
     generateId: StoryIdFactory;
+    /**
+     * What the first chapter and scene are called. The editor passes them in the author's language;
+     * code with no locale (the Team server, tests) gets the English defaults.
+     */
+    firstChapterName?: string;
+    firstSceneName?: string;
 }): StoryDocument {
     assertValidStoryId(input.id);
     const chapterId = input.generateId();
@@ -140,7 +146,7 @@ export function createEmptyStoryDocument(input: {
     assertValidStoryEntityId(sceneId, "Story scene id");
     const chapter: StoryChapter = {
         id: chapterId,
-        name: "Chapter 1",
+        name: input.firstChapterName || "Chapter 1",
         sceneIds: [sceneId],
         meta: {
             createdAt: input.now,
@@ -149,7 +155,7 @@ export function createEmptyStoryDocument(input: {
     };
     const scene: StoryScene = {
         id: sceneId,
-        name: "Scene 1",
+        name: input.firstSceneName || "Scene 1",
         runtimeName: "scene_1",
         description: "",
         rootBlockIds: [],

@@ -301,7 +301,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public createStory(name: string): StoryLibraryEntry {
-        const trimmed = this.cleanName(name, "Untitled Story");
+        const trimmed = this.cleanName(name, translate("story.defaultNames.story"));
         const now = new Date().toISOString();
         const uuid = this.getUuidService();
         const storyId = this.generateUniqueStoryId();
@@ -317,6 +317,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
             name: trimmed,
             now,
             generateId: () => uuid.generate(),
+            firstChapterName: translate("story.defaultNames.firstChapter"),
+            firstSceneName: translate("story.defaultNames.firstScene"),
         });
 
         if (this.opSink?.library?.(storyId, { op: "create-story", entry, document }) === true) {
@@ -1171,7 +1173,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const now = new Date().toISOString();
         const chapter = createStoryChapterModel({
             id: this.getUuidService().generate(),
-            name: this.cleanName(name, "New Chapter"),
+            name: this.cleanName(name, translate("story.defaultNames.chapter")),
             now,
         });
         if (this.handedToSink(storyId, { op: "create-chapter", chapter, beforeChapterId })) {
@@ -1339,7 +1341,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const document = this.getStoryDocument(storyId);
         const scene = createStorySceneModel({
             id: this.getUuidService().generate(),
-            name: this.cleanName(input.name, "New Scene"),
+            name: this.cleanName(input.name, translate("story.defaultNames.scene")),
             runtimeName: this.mintRuntimeName(document, input.name),
             now,
         });
@@ -1352,7 +1354,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             : document.chapters[0];
         const chapter = existing ?? createStoryChapterModel({
             id: this.getUuidService().generate(),
-            name: "Chapter 1",
+            name: translate("story.defaultNames.firstChapter"),
             now,
         });
         const beforeSceneId = existing && input.beforeSceneId && existing.sceneIds.includes(input.beforeSceneId)
@@ -2395,7 +2397,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const now = new Date().toISOString();
         const created = createStorySceneModel({
             id: this.getUuidService().generate(),
-            name: this.cleanName(name, "New Scene"),
+            name: this.cleanName(name, translate("story.defaultNames.scene")),
             runtimeName: this.mintRuntimeName(document, name),
             now,
         });

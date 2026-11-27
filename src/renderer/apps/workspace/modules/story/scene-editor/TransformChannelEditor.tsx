@@ -51,6 +51,7 @@ import {
     statedTransformChannels,
     TRANSFORM_CHANNEL_GROUPS,
     transformChannelById,
+    FILTER_NEUTRAL,
     withFilterFunction,
     withTransformProps,
     type StoryClipShape,
@@ -165,6 +166,9 @@ function ChannelNumber(props: {
     return (
         <NumericDraftEnhancedInput
             committedDisplay={props.value === undefined ? "" : String(props.value)}
+            // An unset channel shows what it falls back to, greyed, so an empty field never has to
+            // be guessed at - the same value emptying the field writes.
+            placeholder={String(props.fallback)}
             onFiniteNumber={props.onChange}
             onEmpty={() => props.onChange(props.fallback)}
             type="text"
@@ -505,7 +509,9 @@ function channelBody(
     if (channel.id.startsWith("filter.")) {
         const fn = channel.id.slice("filter.".length) as StoryFilterFunction;
         return {
-            control: <ChannelNumber label={label} value={filterRecordOf(ref)?.[fn]} onChange={value => patch(withFilterFunction(ref, fn, value))} fallback={0} />,
+            // An emptied field falls back to the function's no-op value, not 0: brightness, contrast
+            // and saturate at 0 are a black or grey picture, not "no filter".
+            control: <ChannelNumber label={label} value={filterRecordOf(ref)?.[fn]} onChange={value => patch(withFilterFunction(ref, fn, value))} fallback={FILTER_NEUTRAL[fn]} />,
         };
     }
     if (channel.id === "look") {

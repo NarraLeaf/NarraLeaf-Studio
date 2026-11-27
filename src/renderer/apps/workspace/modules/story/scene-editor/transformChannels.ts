@@ -45,7 +45,7 @@ export const FILTER_CHANNEL_FUNCTIONS: readonly StoryFilterFunction[] = [
 ];
 
 /** The neutral value of each function - what a fresh channel must seed, so adding one edits nothing. */
-const FILTER_NEUTRAL: Record<StoryFilterFunction, number> = {
+export const FILTER_NEUTRAL: Record<StoryFilterFunction, number> = {
     blur: 0,
     brightness: 1,
     contrast: 1,

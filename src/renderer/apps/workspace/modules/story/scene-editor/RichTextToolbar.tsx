@@ -241,6 +241,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     canInsertEvent?: boolean;
     /** Insert a reveal-time expression event for the row's character. */
     onInsertEvent?: () => void;
+    /** Insert a value chip and open its picker; without it the button only inserts. */
+    onInsertValue?: () => void;
     /** `Escape` inside the strip, or collapsing it: put the caret back in the line being edited. */
     onReturnToText?: () => void;
 }>(function RichTextToolbar(props, ref) {
@@ -788,8 +790,11 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                         }`}
                         style={{ backgroundColor: color }}
                         aria-pressed={isActive}
-                        onClick={() => keepKeyboard(() => applyColor(color))}
-                        data-tip={t("story.richText.textColor", { color })} aria-label={t("story.richText.textColor", { color })}
+                        // The active swatch takes its colour off again: there was no way back to the
+                        // default colour, and white is not the default.
+                        onClick={() => keepKeyboard(() => (isActive ? props.editor.current?.setColor("") : applyColor(color)))}
+                        data-tip={isActive ? t("story.richText.clearTextColor") : t("story.richText.textColor", { color })}
+                        aria-label={isActive ? t("story.richText.clearTextColor") : t("story.richText.textColor", { color })}
                     />
                 );
             })}
@@ -821,7 +826,13 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             <button
                 type="button"
                 className={BTN}
-                onClick={() => keepKeyboard(() => props.editor.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind())))}
+                // With a host to open the picker, the chip is inserted and its picker opened in one
+                // motion, as the expression button does - an empty chip that then had to be found and
+                // clicked was a value button that inserted nothing. That path takes the focus into the
+                // picker, so it is not wrapped in `keepKeyboard`.
+                onClick={() => (props.onInsertValue
+                    ? props.onInsertValue()
+                    : keepKeyboard(() => props.editor.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind()))))}
                 data-tip={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")} aria-label={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")}
             >
                 <Braces className="h-3.5 w-3.5" />

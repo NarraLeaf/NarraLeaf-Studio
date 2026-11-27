@@ -272,7 +272,7 @@ Typing writes a line. Typing a slash at the start of a row selects a command ins
 
 相关快捷键 · Shortcuts：
 
-- 编辑当前行（或打开其检查器） · Edit the active row (or open its inspector)：`Enter`
+- 编辑当前行（或打开其属性编辑器） · Edit the active row (or open its inspector)：`Enter`
 - 以文本形式编辑当前行 · Edit the active row as text：`F2`
 - 提交并新建同类行 · Commit and Continue With the Same Kind of Row：Enter
 - 在当前行下方插入新的故事行 · Insert a new story row below the active row：`⇧Enter`（macOS）/ `Shift+Enter`（Windows）
