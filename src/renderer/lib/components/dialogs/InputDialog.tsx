@@ -151,6 +151,9 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
                 placeholder={placeholder}
                 fullWidth
                 autoFocus
+                // The current text arrives selected, so typing replaces it - a rename starts by
+                // typing the new name, not by clearing the old one first.
+                onFocus={(event: React.FocusEvent<HTMLInputElement>) => event.currentTarget.select()}
                 maxLength={maxLength}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
@@ -316,6 +319,8 @@ export class InputDialog {
      */
     async showRenameDialog(currentName: string, itemType: string = 'item'): Promise<string | null> {
         const noun = nounFor(itemType);
+        // An unchanged name comes back as a cancel, so no caller renames something to its own name.
+        const keepUnchanged = (value: string | null) => (value != null && value.trim() === currentName ? null : value);
         return this.show({
             title: translate("dialogs.rename.title", { type: noun }),
             description: translate("dialogs.rename.prompt", { type: noun }),
@@ -327,12 +332,11 @@ export class InputDialog {
                 if (!value.trim()) {
                     return translate("dialogs.rename.empty", { type: noun });
                 }
-                if (value.trim() === currentName) {
-                    return translate("dialogs.rename.sameName");
-                }
+                // An unchanged name is not an error: Enter on it simply closes the dialog, and the
+                // caller writes nothing when the name it gets back is the one it had.
                 return null;
             }
-        });
+        }).then(keepUnchanged);
     }
 
     /**

@@ -186,6 +186,11 @@ export function DeferredNumberInput({
             // lone minus sign and cannot take arithmetic.
             type="text"
             inputMode="decimal"
+            // Still a number field to assistive technology, as the native box was.
+            role="spinbutton"
+            aria-valuenow={Number.isFinite(value) ? value : undefined}
+            aria-valuemin={min}
+            aria-valuemax={max}
             value={displayValue}
             min={min}
             max={max}

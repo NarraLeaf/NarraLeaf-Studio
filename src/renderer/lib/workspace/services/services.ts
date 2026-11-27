@@ -1035,6 +1035,10 @@ interface UIEditorStateEvents {
     enteredStateChanged: UIEditorEnteredState | null;
     /** Outline panel expand/collapse memory (persisted); payload unused. */
     outlineExpansionChanged: null;
+    /** Editor-only layer flags - hidden on the canvas, locked against canvas picks - changed; payload unused. */
+    editorLayerFlagsChanged: null;
+    /** The outline row the pointer rests on, for the canvas to frame; `null` when none. */
+    outlineHoverChanged: string | null;
     /** Outline panel chrome collapsed state (persisted). */
     outlinePanelCollapsedChanged: boolean;
     /** Smart snap / smart guides toggle (persisted in project settings). */
@@ -1116,6 +1120,18 @@ interface IUIEditorStateService extends IService {
     /** Outline: branch is collapsed when true (editor-only, project settings). */
     isOutlineBranchCollapsed(elementId: string): boolean;
     setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void;
+    /**
+     * Editor-only: the layer is not drawn on the editor canvas. The game is untouched - its own
+     * visibility is `layout.visible`, set in the properties panel.
+     */
+    isElementHiddenInEditor(elementId: string): boolean;
+    setElementHiddenInEditor(elementId: string, hidden: boolean): void;
+    /** Editor-only: the layer and everything inside it cannot be picked or dragged on the canvas. */
+    isElementLocked(elementId: string): boolean;
+    setElementLocked(elementId: string, locked: boolean): void;
+    /** The outline row the pointer rests on, framed on the canvas. */
+    getOutlineHover(): string | null;
+    setOutlineHover(elementId: string | null): void;
     /** Outline panel chrome: collapsed when true (editor-only global settings). */
     getOutlinePanelCollapsed(): boolean;
     setOutlinePanelCollapsed(collapsed: boolean): void;

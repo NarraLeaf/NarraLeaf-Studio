@@ -1,56 +1,21 @@
-import { type MouseEvent } from "react";
-import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
-import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Lock } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useDraggable } from "@dnd-kit/core";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
-import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
+import {
+    getOutlineVisualChildren,
+    type OutlineDropTarget,
+} from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
-import { isComponentEditorRootElement, isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { guardImeKeys } from "@/lib/utils/imeComposition";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
 const ROW_INDENT = 16;
 const GUIDE_OFFSET = 8;
-const OUTLINE_ACTIVE_GAP_HEIGHT = 8;
-const OUTLINE_TERMINAL_GAP_HEIGHT = 10;
-
-/**
- * Shown while the pointer is over the row, or the keyboard is in it - and otherwise not laid out at
- * all, so it holds no space. The widget type and the eye used to be merely transparent, which still
- * kept their width at the end of every row: a layer name had to stop short of an empty slot and was
- * cut off with room to spare. Only keyboard focus counts (`:focus-visible`), because a row keeps
- * focus after it is clicked and would otherwise keep its name cut short for as long as it stays
- * selected.
- */
-const REVEAL_WITH_ROW = "hidden group-hover/outline-row:flex group-has-[:focus-visible]/outline-row:flex";
-
-export type OutlineGapIntent = "child" | "sibling" | "root";
-
-export type OutlineGapDropData = {
-    kind: "outline-gap";
-    parentId: string;
-    visualIndex: number;
-    intent: OutlineGapIntent;
-    terminalChildDrop?: boolean;
-};
-
-export function isOutlineGapDropData(value: unknown): value is OutlineGapDropData {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const data = value as Partial<OutlineGapDropData>;
-    return data.kind === "outline-gap" && typeof data.parentId === "string" && typeof data.visualIndex === "number";
-}
-
-function useActiveOutlineGapData(): OutlineGapDropData | null {
-    const { active, over } = useDndContext();
-    if (!active || !isOutlineGapDropData(over?.data.current)) {
-        return null;
-    }
-    return over.data.current;
-}
 
 function getOutlineElementLabel(element: UIElement): string {
     return element.type === OUTLINE_ROOT_WIDGET_TYPE
@@ -67,64 +32,131 @@ export type OutlineRowBase = {
     isCollapsed: (elementId: string) => boolean;
     toggleCollapsed: (elementId: string) => void;
     onRowContextMenu: (element: UIElement, event: MouseEvent<HTMLElement>) => void;
-    onToggleVisible: (element: UIElement, event: MouseEvent) => void;
+    /** Editor-only: hide the layer on the canvas (the game's own visibility is not touched). */
+    onToggleHiddenInEditor: (element: UIElement, event: MouseEvent) => void;
+    isHiddenInEditor: (elementId: string) => boolean;
+    /** Editor-only: lock the layer against canvas picks. */
+    onToggleLocked: (element: UIElement, event: MouseEvent) => void;
+    isLocked: (elementId: string) => boolean;
     onStartRename: (element: UIElement) => void;
-    /** Reorder, rename and the eye go inert; selecting and expanding a branch do not. */
+    /** The row being renamed in place, if any. */
+    renamingId: string | null;
+    /** A name to keep, or `null` to leave the name as it was. */
+    onFinishRename: (element: UIElement, name: string | null) => void;
+    /** Where a drag is being held, for the line or highlight that shows it. */
+    dropTarget: OutlineDropTarget | null;
+    /** The rows being dragged, drawn faded where they were. */
+    draggingIds: ReadonlySet<string>;
+    onHover: (elementId: string | null) => void;
+    /** Reorder, rename, hide and lock go inert; selecting and expanding a branch do not. */
     readOnly: UIEditorReadOnly;
 };
 
-export function OutlineRow({
-    element,
-    depth,
-    document,
-    surfaceId,
-    selectedIds,
-    primaryId,
-    onSelect,
-    isCollapsed,
-    toggleCollapsed,
-    onRowContextMenu,
-    onToggleVisible,
-    onStartRename,
-    readOnly,
-}: OutlineRowBase & { element: UIElement; depth: number }) {
+/** The name field a row turns into while it is renamed: Enter or leaving it keeps the name, Escape does not. */
+function OutlineRenameField({ element, onFinish }: { element: UIElement; onFinish: (name: string | null) => void }) {
+    const { t } = useTranslation();
+    const [value, setValue] = useState(element.name ?? "");
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const finished = useRef(false);
+    useEffect(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+    }, []);
+    const finish = (name: string | null) => {
+        if (finished.current) {
+            return;
+        }
+        finished.current = true;
+        const trimmed = name?.trim() ?? null;
+        onFinish(trimmed && trimmed !== (element.name ?? "") ? trimmed : null);
+    };
+    return (
+        <input
+            ref={inputRef}
+            value={value}
+            aria-label={t("widgetChrome.outline.renameLayer")}
+            className="min-w-0 flex-1 rounded-sm border border-primary/60 bg-surface-raised px-1 py-0.5 text-xs text-fg outline-none"
+            onChange={event => setValue(event.target.value)}
+            onBlur={() => finish(value)}
+            onPointerDown={event => event.stopPropagation()}
+            onClick={event => event.stopPropagation()}
+            onKeyDown={guardImeKeys((event: KeyboardEvent<HTMLInputElement>) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    finish(value);
+                } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    finish(null);
+                }
+            })}
+        />
+    );
+}
+
+export function OutlineRow(props: OutlineRowBase & { element: UIElement; depth: number }) {
+    const {
+        element,
+        depth,
+        selectedIds,
+        primaryId,
+        onSelect,
+        isCollapsed,
+        toggleCollapsed,
+        onRowContextMenu,
+        onToggleHiddenInEditor,
+        isHiddenInEditor,
+        onToggleLocked,
+        isLocked,
+        onStartRename,
+        renamingId,
+        onFinishRename,
+        dropTarget,
+        draggingIds,
+        onHover,
+        readOnly,
+    } = props;
     const { t } = useTranslation();
     const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
     // A component's frame is not moved anywhere, so its row has nothing to drag by.
     const isComponentFrame = isComponentEditorRootElement(element);
+    const isRoot = element.type === OUTLINE_ROOT_WIDGET_TYPE;
     const renameEnabled = isSurfaceGestureEnabled("outlineRename", readOnly);
-    const visibilityEnabled = isSurfaceGestureEnabled("outlineVisibility", readOnly);
-    // dnd-kit's own `disabled` rather than withholding the listeners: it also stops the sensor, so the
-    // 4px activation constraint cannot half-start a drag that then has nowhere to land.
-    const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
+    // The whole row drags, as in every layers panel. dnd-kit's 4px activation keeps a click a click.
+    const { attributes, listeners, setNodeRef } = useDraggable({
         id: element.id,
-        disabled: !reorderEnabled || isComponentFrame,
+        disabled: !reorderEnabled || isComponentFrame || isRoot,
     });
 
     const hasChildren = element.childrenIds.length > 0;
     const expanded = !isCollapsed(element.id);
-    const visible = element.layout.visible !== false;
-    const isDimmed = !visible;
+    const hiddenInGame = element.layout.visible === false;
+    const hiddenInEditor = isHiddenInEditor(element.id);
+    const locked = isLocked(element.id);
     const label = getOutlineElementLabel(element);
     const isPrimary = primaryId === element.id;
     const rowSelected = selectedIds.has(element.id);
-    const activeDropGap = useActiveOutlineGapData();
-    const isDropParentPreview = activeDropGap?.parentId === element.id;
+    const dropZone = dropTarget?.rowId === element.id ? dropTarget.zone : null;
     const rowPaddingLeft = ROW_LEFT_PADDING + depth * ROW_INDENT;
     const guideLevels = Array.from({ length: depth }, (_, index) => index + 1);
     const rowToneClass = rowSelected
         ? isPrimary
             ? "bg-primary/25 text-fg ring-1 ring-primary/45"
             : "bg-primary/[0.12] text-fg"
-        : isDropParentPreview
-          ? "bg-primary/[0.10] text-fg ring-1 ring-primary/25"
+        : dropZone === "inside"
+          ? "bg-primary/[0.14] text-fg ring-1 ring-primary/60"
           : "text-fg-muted hover:bg-fill-subtle";
-    const rowDropPreviewClass = isDropParentPreview
-        ? "shadow-[inset_2px_0_0_rgb(var(--nl-primary)/0.55)]"
-        : "";
+    const typeName = isRoot ? undefined : element.type.replace(/^nl\./, "");
+    const renaming = renamingId === element.id;
+
+    // The eye and the lock: always shown while they are on (they are the row's state), and over the
+    // end of the row on hover otherwise - drawn on top, so the name never reflows as the pointer
+    // moves down the list.
+    const flagButtonClass =
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-25";
 
     return (
-        <div className="relative select-none" data-outline-row>
+        <div className="relative select-none" data-outline-row data-outline-row-id={element.id}>
             {guideLevels.map(level => {
                 const x = ROW_LEFT_PADDING + level * ROW_INDENT - GUIDE_OFFSET;
                 return (
@@ -148,10 +180,40 @@ export function OutlineRow({
             ) : null}
             <div
                 ref={setNodeRef}
-                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded-md text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
-                style={{ paddingLeft: rowPaddingLeft, opacity: isDragging ? 0 : undefined }}
+                data-outline-row-bar
+                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded-md text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${
+                    hiddenInGame || hiddenInEditor ? "opacity-60" : ""
+                }`}
+                style={{ paddingLeft: rowPaddingLeft, opacity: draggingIds.has(element.id) ? 0.35 : undefined }}
                 onContextMenu={e => onRowContextMenu(element, e)}
+                onMouseEnter={() => onHover(element.id)}
+                onMouseLeave={() => onHover(null)}
+                onClick={e => {
+                    if (!renaming) {
+                        onSelect(element.id, e);
+                    }
+                }}
+                onDoubleClick={e => {
+                    e.stopPropagation();
+                    if (renameEnabled && !isRoot) {
+                        onStartRename(element);
+                    }
+                }}
+                {...attributes}
+                {...listeners}
+                // The row is a drag source to dnd-kit, not a button: it keeps its own tab stops.
+                tabIndex={-1}
+                role="treeitem"
+                aria-selected={rowSelected}
+                aria-expanded={hasChildren ? expanded : undefined}
             >
+                {dropZone === "before" || dropZone === "after" ? (
+                    <span
+                        aria-hidden
+                        className={`pointer-events-none absolute right-1 z-10 h-0.5 rounded-full bg-primary ${dropZone === "before" ? "-top-px" : "-bottom-px"}`}
+                        style={{ left: rowPaddingLeft }}
+                    />
+                ) : null}
                 <button
                     type="button"
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
@@ -159,10 +221,9 @@ export function OutlineRow({
                     aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
                         e.stopPropagation();
-                        if (!hasChildren) {
-                            return;
+                        if (hasChildren) {
+                            toggleCollapsed(element.id);
                         }
-                        toggleCollapsed(element.id);
                     }}
                 >
                     {hasChildren ? (
@@ -175,251 +236,81 @@ export function OutlineRow({
                         <span className="w-3.5 h-3.5 inline-block" />
                     )}
                 </button>
-                {isComponentFrame ? (
-                    <span className="h-5 w-4 shrink-0" aria-hidden />
+                {renaming ? (
+                    <OutlineRenameField element={element} onFinish={name => onFinishRename(element, name)} />
                 ) : (
                     <button
                         type="button"
-                        ref={setActivatorNodeRef}
-                        className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
-                        aria-label={t("widgetChrome.outline.dragToReorder")}
-                        disabled={!reorderEnabled}
-                        data-tip={reorderEnabled ? undefined : readOnly.reason}
-                        {...attributes}
-                        {...listeners}
+                        className={`flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left ${isPrimary ? "font-medium" : ""}`}
+                        data-tip={hiddenInGame ? `${typeName ?? label} · ${t("widgetChrome.outline.hiddenInGame")}` : typeName}
                     >
-                        <GripVertical className="h-3.5 w-3.5" />
+                        <span className={`min-w-0 truncate ${hiddenInGame ? "italic" : ""}`}>{label}</span>
                     </button>
                 )}
-                {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
-                    <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
-                ) : (
-                    <span className="h-3 w-1 shrink-0" />
-                )}
-                <button
-                    type="button"
-                    className={`flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left ${
-                        isPrimary ? "font-medium" : ""
-                    }`}
-                    onClick={e => onSelect(element.id, e)}
-                    onDoubleClick={e => {
-                        e.stopPropagation();
-                        if (renameEnabled && element.type !== OUTLINE_ROOT_WIDGET_TYPE) {
-                            onStartRename(element);
-                        }
-                    }}
-                >
-                    <span className="min-w-0 truncate">{label}</span>
-                    {/* Gives way before the name does (`shrink-[100]`): on a row too short for both, the
-                        type is the one cut down, since the name is what the row is for. */}
-                    {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                        <span className={`min-w-0 max-w-[7rem] shrink-[100] font-mono text-2xs font-normal text-fg-subtle ${REVEAL_WITH_ROW}`}>
-                            <span className="min-w-0 truncate">{element.type.replace(/^nl\./, "")}</span>
-                        </span>
-                    ) : null}
-                </button>
-                <button
-                    type="button"
-                    // `disabled:cursor-not-allowed` and not `disabled:pointer-events-none`: the read-only
-                    // reason lives in `title`, and a button that ignores the pointer never shows one.
-                    // A hidden layer's eye is always there: it is the only sign on the row that the
-                    // layer is hidden, so it is state rather than a control waiting for the pointer.
-                    className={`h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
-                        visible ? REVEAL_WITH_ROW : "flex"
-                    }`}
-                    aria-label={visible ? t("common.hide") : t("common.show")}
-                    disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE || !visibilityEnabled}
-                    data-tip={visibilityEnabled ? undefined : readOnly.reason}
-                    onClick={e => onToggleVisible(element, e)}
-                >
-                    {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                </button>
+                {!isRoot && !isComponentFrame ? (
+                    <div
+                        className={`flex shrink-0 items-center ${
+                            hiddenInEditor || locked
+                                ? ""
+                                : "pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-surface-raised opacity-0 shadow-sm group-hover/outline-row:pointer-events-auto group-hover/outline-row:opacity-100 group-has-[:focus-visible]/outline-row:pointer-events-auto group-has-[:focus-visible]/outline-row:opacity-100"
+                        }`}
+                    >
+                        {!hiddenInEditor || locked ? (
+                            <button
+                                type="button"
+                                className={`${flagButtonClass} ${locked ? "text-fg" : ""}`}
+                                aria-label={locked ? t("widgetChrome.outline.unlock") : t("widgetChrome.outline.lock")}
+                                data-tip={locked ? t("widgetChrome.outline.unlock") : t("widgetChrome.outline.lock")}
+                                aria-pressed={locked}
+                                onPointerDown={e => e.stopPropagation()}
+                                onClick={e => onToggleLocked(element, e)}
+                            >
+                                {locked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+                            </button>
+                        ) : null}
+                        {!locked || hiddenInEditor ? (
+                            <button
+                                type="button"
+                                className={`${flagButtonClass} ${hiddenInEditor ? "text-fg" : ""}`}
+                                aria-label={hiddenInEditor ? t("widgetChrome.outline.showInEditor") : t("widgetChrome.outline.hideInEditor")}
+                                data-tip={hiddenInEditor ? t("widgetChrome.outline.showInEditor") : t("widgetChrome.outline.hideInEditor")}
+                                aria-pressed={hiddenInEditor}
+                                onPointerDown={e => e.stopPropagation()}
+                                onClick={e => onToggleHiddenInEditor(element, e)}
+                            >
+                                {hiddenInEditor ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                        ) : null}
+                    </div>
+                ) : null}
             </div>
             {hasChildren && expanded ? (
-                <OutlineSubtree
-                    parentId={element.id}
-                    depth={depth + 1}
-                    document={document}
-                    surfaceId={surfaceId}
-                    selectedIds={selectedIds}
-                    primaryId={primaryId}
-                    onSelect={onSelect}
-                    isCollapsed={isCollapsed}
-                    toggleCollapsed={toggleCollapsed}
-                    onRowContextMenu={onRowContextMenu}
-                    onToggleVisible={onToggleVisible}
-                    onStartRename={onStartRename}
-                    readOnly={readOnly}
-                />
-            ) : null}
-            {!hasChildren && uiElementTypeAcceptsUserChildren(element.type) ? (
-                <OutlineGapDropZone
-                    parentId={element.id}
-                    depth={depth + 1}
-                    visualIndex={0}
-                    intent="child"
-                    terminalChildDrop
-                />
+                <OutlineSubtree {...props} parentId={element.id} depth={depth + 1} />
             ) : null}
         </div>
     );
 }
 
-export function OutlineDragPreview({ element }: { element: UIElement }) {
-    const visible = element.layout.visible !== false;
-    const label = getOutlineElementLabel(element);
-
+export function OutlineDragPreview({ element, count }: { element: UIElement; count: number }) {
+    const { t } = useTranslation();
+    const label = count > 1 ? t("widgetChrome.outline.draggingCount", { count }) : getOutlineElementLabel(element);
     return (
-        <div
-            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded-md border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
-                visible ? "" : "opacity-70"
-            }`}
-        >
-            <GripVertical className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
-            {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
-                <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
-            ) : (
-                <span className="h-3 w-1 shrink-0" />
-            )}
+        <div className="flex h-[26px] min-w-32 max-w-72 items-center gap-1 rounded-md border border-primary/35 bg-surface-raised/90 px-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30">
             <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
-            {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle">
-                    {element.type.replace(/^nl\./, "")}
-                </span>
-            ) : null}
-        </div>
-    );
-}
-
-export function OutlineGapDropZone({
-    parentId,
-    depth,
-    visualIndex,
-    intent,
-    terminalChildDrop = false,
-}: {
-    parentId: string;
-    depth: number;
-    visualIndex: number;
-    intent: OutlineGapIntent;
-    terminalChildDrop?: boolean;
-}) {
-    const { active } = useDndContext();
-    const gapId = `gap:${parentId}:${visualIndex}`;
-    const { setNodeRef, isOver } = useDroppable({
-        id: gapId,
-        data: {
-            kind: "outline-gap",
-            parentId,
-            visualIndex,
-            intent,
-            terminalChildDrop,
-        } satisfies OutlineGapDropData,
-    });
-    const lineLeft = ROW_LEFT_PADDING + depth * ROW_INDENT;
-    const expandedHeight = terminalChildDrop ? OUTLINE_TERMINAL_GAP_HEIGHT : OUTLINE_ACTIVE_GAP_HEIGHT;
-    const isActiveDropLine = isOver && active != null;
-    return (
-        <div
-            className="relative overflow-visible transition-[height,opacity] duration-150 ease-out"
-            style={{
-                marginLeft: lineLeft,
-                height: active ? expandedHeight : 0,
-                opacity: active ? 1 : 0,
-            }}
-        >
-            <div
-                ref={setNodeRef}
-                className="absolute left-0 right-2 top-0 z-10"
-                data-outline-gap-id={gapId}
-                style={{
-                    height: active ? expandedHeight : 0,
-                    pointerEvents: active ? "auto" : "none",
-                }}
-            >
-                <span
-                    aria-hidden
-                    className={`pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 rounded-full transition-[background-color,box-shadow,opacity,height] duration-100 ${
-                        isActiveDropLine
-                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgb(var(--nl-primary)/0.22)]"
-                            : "bg-primary/40 opacity-30"
-                    }`}
-                    style={{ height: isActiveDropLine ? 2 : 1 }}
-                />
-            </div>
         </div>
     );
 }
 
 export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth: number }) {
-    const activeDropGap = useActiveOutlineGapData();
     const parent = props.document.elements[props.parentId];
     if (!parent) {
         return null;
     }
-    const isDropParentPreview = activeDropGap?.parentId === props.parentId;
-    const visualChildren = getOutlineVisualChildren(parent);
-    const gapIntent: OutlineGapIntent = parent.type === OUTLINE_ROOT_WIDGET_TYPE ? "root" : "child";
-    const lastVisualIndex = visualChildren.length;
-    // A widget that holds only the parts it built - a slider, a switch, a plugin widget declaring
-    // part slots - offers no place to drop among them. Every such drop is refused by the move (see
-    // `planMoveElementsInSurface`), and a drop line that lights up where nothing can land is the
-    // outline promising what the document will not do.
-    //
-    // Nor beside a component's frame: the component editor's made-up root holds the frame and
-    // nothing else, and anything put there would be outside the component.
-    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type) && !isComponentEditorVirtualRootId(parent.id);
     return (
-        <div
-            className={`rounded-sm transition-colors duration-150 ease-out ${
-                isDropParentPreview ? "bg-primary/[0.045]" : ""
-            }`}
-            data-outline-subtree-parent-id={props.parentId}
-        >
-            {offersDrops ? (
-                <OutlineGapDropZone
-                    parentId={props.parentId}
-                    depth={props.depth}
-                    visualIndex={0}
-                    intent={gapIntent}
-                    terminalChildDrop={gapIntent === "child" && lastVisualIndex === 0}
-                />
-            ) : null}
-            {visualChildren.map((childId, index) => {
+        <div data-outline-subtree-parent-id={props.parentId}>
+            {getOutlineVisualChildren(parent).map(childId => {
                 const child = props.document.elements[childId];
-                const childCanOwnChildren = child != null && uiElementTypeAcceptsUserChildren(child.type);
-                const childHasVisibleChildDrop =
-                    childCanOwnChildren && (child.childrenIds.length === 0 || !props.isCollapsed(child.id));
-                return (
-                    <div key={childId}>
-                        {child ? (
-                            <OutlineRow
-                                element={child}
-                                depth={props.depth}
-                                document={props.document}
-                                surfaceId={props.surfaceId}
-                                selectedIds={props.selectedIds}
-                                primaryId={props.primaryId}
-                                onSelect={props.onSelect}
-                                isCollapsed={props.isCollapsed}
-                                toggleCollapsed={props.toggleCollapsed}
-                                onRowContextMenu={props.onRowContextMenu}
-                                onToggleVisible={props.onToggleVisible}
-                                onStartRename={props.onStartRename}
-                                readOnly={props.readOnly}
-                            />
-                        ) : null}
-                        {offersDrops ? (
-                            <OutlineGapDropZone
-                                parentId={props.parentId}
-                                depth={props.depth}
-                                visualIndex={index + 1}
-                                intent={childHasVisibleChildDrop ? "sibling" : gapIntent}
-                                terminalChildDrop={gapIntent === "child" && index + 1 === lastVisualIndex}
-                            />
-                        ) : null}
-                    </div>
-                );
+                return child ? <OutlineRow key={childId} {...props} element={child} depth={props.depth} /> : null;
             })}
         </div>
     );

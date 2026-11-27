@@ -10,9 +10,10 @@ import {
     type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
-import { DndContext, MeasuringStrategy, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { uiElementTypeAcceptsUserChildren, type UIElement } from "@shared/types/ui-editor/document";
+import { isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
@@ -23,12 +24,14 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import {
+    listVisibleOutlineRows,
     moveLogReason,
+    planOutlineDrop,
     resolveBeforeChildIdForOutlineGap,
+    resolveOutlineDropZone,
+    type OutlineDropTarget,
 } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import {
-    isOutlineGapDropData,
-    type OutlineGapDropData,
     OUTLINE_ROOT_WIDGET_TYPE,
     OutlineDragPreview,
     OutlineSubtree,
@@ -88,46 +91,13 @@ const READ_ONLY_OUTLINE_MENU_IDS: ReadonlySet<string> = new Set([
     "collapse-all",
 ]);
 
-function collisionHasOutlineGapData(collision: Collision): boolean {
-    return isOutlineGapDropData(collision.data?.droppableContainer.data.current);
+/** A parent the outline lets a drop land in: one that takes the author's children, and not a component's frame holder. */
+function outlineAcceptsChildren(parent: UIElement): boolean {
+    return uiElementTypeAcceptsUserChildren(parent.type) && !isComponentEditorVirtualRootId(parent.id);
 }
 
-const OUTLINE_DND_MEASURING = {
-    droppable: {
-        strategy: MeasuringStrategy.Always,
-    },
-};
-
-function getOutlineGapCollisionAtPointer(args: Parameters<CollisionDetection>[0]): Collision[] | null {
-    const { pointerCoordinates } = args;
-    const doc = globalThis.document;
-    if (!pointerCoordinates || typeof doc?.elementsFromPoint !== "function") {
-        return null;
-    }
-
-    const elements = doc.elementsFromPoint(pointerCoordinates.x, pointerCoordinates.y);
-    for (const element of elements) {
-        const gapElement = element.closest("[data-outline-gap-id]") as HTMLElement | null;
-        const gapId = gapElement?.dataset.outlineGapId;
-        if (!gapId) {
-            continue;
-        }
-        const droppableContainer = args.droppableContainers.find(container => String(container.id) === gapId);
-        if (!droppableContainer || !isOutlineGapDropData(droppableContainer.data.current)) {
-            continue;
-        }
-        return [
-            {
-                id: droppableContainer.id,
-                data: {
-                    droppableContainer,
-                    value: 0,
-                },
-            },
-        ];
-    }
-    return [];
-}
+/** How long a drag held over a collapsed layer waits before opening it. */
+const OUTLINE_AUTO_EXPAND_MS = 600;
 
 function getActivatorClientPoint(event: Event | null): { x: number; y: number } | null {
     if (!event) {
@@ -216,10 +186,23 @@ export function UILayersPanel({
     }, [stateService]);
 
     useEffect(() => {
-        return stateService.on("outlineExpansionChanged", () => {
+        const offExpansion = stateService.on("outlineExpansionChanged", () => {
             setOutlineRev(v => v + 1);
         });
+        const offFlags = stateService.on("editorLayerFlagsChanged", () => {
+            setOutlineRev(v => v + 1);
+        });
+        return () => {
+            offExpansion();
+            offFlags();
+        };
     }, [stateService]);
+
+    const [renamingId, setRenamingId] = useState<string | null>(null);
+    const [dropTarget, setDropTarget] = useState<OutlineDropTarget | null>(null);
+    const dropTargetRef = useRef<OutlineDropTarget | null>(null);
+    const autoExpandRef = useRef<{ rowId: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
 
     void docVersion;
 
@@ -238,40 +221,75 @@ export function UILayersPanel({
     const selectedIds = useMemo(() => new Set(selectionData?.elementIds ?? []), [selectionData]);
     const primaryId = selectionData?.primaryId ?? selectionData?.elementIds?.[selectionData.elementIds.length - 1];
 
+    /** Every row the outline shows, top to bottom, the root's own row left out. */
+    const visibleRowIds = useCallback(
+        () => (outlineRoot ? listVisibleOutlineRows(document, outlineRoot.id, id => stateService.isOutlineBranchCollapsed(id)).slice(1) : []),
+        [document, outlineRoot, stateService],
+    );
+
+    const selectRows = useCallback(
+        (ids: string[], primary: string) => {
+            if (ids.length === 0) {
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
+                return;
+            }
+            stateService.setUIElementSelection({ editor: "ui", surfaceId, elementIds: ids, primaryId: primary });
+        },
+        [stateService, surfaceId, uiService],
+    );
+
     const handleSelect = useCallback(
         (id: string, event: MouseEvent<HTMLElement>) => {
-            let nextIds: string[] = [];
-
-            // Align with canvas: Shift adds to selection; Ctrl/Meta toggles membership.
-            if (event.shiftKey && selectionData?.surfaceId === surfaceId) {
-                if (selectedIds.has(id)) {
-                    nextIds = Array.from(selectedIds);
-                } else {
-                    nextIds = [...selectedIds, id];
-                }
-            } else if (event.metaKey || event.ctrlKey) {
-                if (selectedIds.has(id)) {
-                    nextIds = Array.from(selectedIds).filter(existing => existing !== id);
-                } else {
-                    nextIds = [...selectedIds, id];
-                }
-                if (nextIds.length === 0) {
-                    selectSurfaceForProperties(stateService, surfaceId, uiService);
+            const sameSurface = selectionData?.surfaceId === surfaceId;
+            // Shift selects the range of rows from the last one picked to this one, as every tree
+            // view does; it used to add this one row, so ten siblings took ten clicks. Cmd/Ctrl adds
+            // or takes away one row.
+            if (event.shiftKey && sameSurface && primaryId) {
+                const rows = visibleRowIds();
+                const from = rows.indexOf(primaryId);
+                const to = rows.indexOf(id);
+                if (from >= 0 && to >= 0) {
+                    const range = rows.slice(Math.min(from, to), Math.max(from, to) + 1);
+                    const extra = event.metaKey || event.ctrlKey ? Array.from(selectedIds).filter(existing => !range.includes(existing)) : [];
+                    // Keep the anchor where it was, so a second Shift-click re-ranges from it.
+                    stateService.setUIElementSelection({ editor: "ui", surfaceId, elementIds: [...extra, ...range], primaryId });
                     return;
                 }
-            } else {
-                nextIds = [id];
             }
-
-            stateService.setUIElementSelection({
-                editor: "ui",
-                surfaceId,
-                elementIds: nextIds,
-                primaryId: id,
-            });
+            if (event.metaKey || event.ctrlKey) {
+                const nextIds = selectedIds.has(id)
+                    ? Array.from(selectedIds).filter(existing => existing !== id)
+                    : [...selectedIds, id];
+                selectRows(nextIds, id);
+                return;
+            }
+            selectRows([id], id);
         },
-        [selectedIds, selectionData?.surfaceId, stateService, surfaceId]
+        [primaryId, selectRows, selectedIds, selectionData?.surfaceId, stateService, surfaceId, visibleRowIds]
     );
+
+    // A selection made on the canvas inside a collapsed branch opens the branch and brings its row
+    // into view; without that, what was just picked could not be found in the outline at all.
+    useEffect(() => {
+        if (!primaryId || selectionData?.surfaceId !== surfaceId) {
+            return;
+        }
+        let cur = document.elements[primaryId]?.parentId ?? null;
+        for (let guard = 0; cur && guard < 256; guard++) {
+            if (stateService.isOutlineBranchCollapsed(cur)) {
+                stateService.setOutlineBranchCollapsed(cur, false);
+            }
+            cur = document.elements[cur]?.parentId ?? null;
+        }
+        const frame = requestAnimationFrame(() => {
+            const row = containerRef.current?.querySelector(`[data-outline-row-id="${primaryId}"] [data-outline-row-bar]`);
+            if (row instanceof HTMLElement) {
+                row.scrollIntoView({ block: "nearest" });
+            }
+        });
+        return () => cancelAnimationFrame(frame);
+        // Deliberately not on every document change: only a new selection moves the outline.
+    }, [primaryId, selectionData?.surfaceId, surfaceId]);
 
     const isCollapsed = useCallback(
         (elementId: string) => {
@@ -289,39 +307,74 @@ export function UILayersPanel({
         [stateService]
     );
 
-    const onToggleVisible = useCallback(
+    // The eye and the lock are the editor's, not the game's: hiding a layer to work on what is under
+    // it no longer changes what players see, and is never shipped by being forgotten. The game's own
+    // visibility is in the properties panel.
+    const onToggleHiddenInEditor = useCallback(
         (element: UIElement, event: MouseEvent) => {
             event.stopPropagation();
-            if (!isSurfaceGestureEnabled("outlineVisibility", readOnly)) {
-                return;
-            }
             if (element.type === OUTLINE_ROOT_WIDGET_TYPE) {
                 return;
             }
-            const isHidden = element.layout.visible === false;
-            documentService.updateElementLayout(element.id, { visible: isHidden ? true : false });
+            stateService.setElementHiddenInEditor(element.id, !stateService.isElementHiddenInEditor(element.id));
         },
-        [documentService, readOnly]
+        [stateService]
+    );
+    const onToggleLocked = useCallback(
+        (element: UIElement, event: MouseEvent) => {
+            event.stopPropagation();
+            if (element.type === OUTLINE_ROOT_WIDGET_TYPE) {
+                return;
+            }
+            stateService.setElementLocked(element.id, !stateService.isElementLocked(element.id));
+        },
+        [stateService]
+    );
+    const isHiddenInEditor = useCallback(
+        (elementId: string) => {
+            void outlineRev;
+            return stateService.isElementHiddenInEditor(elementId);
+        },
+        [outlineRev, stateService]
+    );
+    const isLocked = useCallback(
+        (elementId: string) => {
+            void outlineRev;
+            return stateService.isElementLocked(elementId);
+        },
+        [outlineRev, stateService]
     );
 
+    // Renaming happens in the row itself: the name turns into a field, Enter or leaving it keeps
+    // the name, Escape does not. It used to open a dialog with the text not even selected.
     const onStartRename = useCallback(
         (element: UIElement) => {
-            if (!isSurfaceGestureEnabled("outlineRename", readOnly)) {
+            if (!isSurfaceGestureEnabled("outlineRename", readOnly) || element.type === OUTLINE_ROOT_WIDGET_TYPE) {
                 return;
             }
-            if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE) {
-                return;
-            }
-            void inputDialog
-                .showRenameDialog(element.name ?? element.type ?? t("widgetChrome.outline.layer"), "layer")
-                .then(name => {
-                    if (name) {
-                        documentService.renameElement(element.id, name);
-                    }
-                });
+            setRenamingId(element.id);
         },
-        [documentService, inputDialog, readOnly, t]
+        [readOnly]
     );
+    const onFinishRename = useCallback(
+        (element: UIElement, name: string | null) => {
+            setRenamingId(null);
+            if (name) {
+                documentService.renameElement(element.id, name);
+            }
+            containerRef.current?.focus();
+        },
+        [documentService]
+    );
+    void inputDialog;
+
+    const onHover = useCallback(
+        (elementId: string | null) => {
+            stateService.setOutlineHover(elementId);
+        },
+        [stateService]
+    );
+    useEffect(() => () => stateService.setOutlineHover(null), [stateService]);
 
     const collectBranchIdsWithChildren = useCallback(
         (rootId: string) => {
@@ -373,30 +426,69 @@ export function UILayersPanel({
         })
     );
 
-    const collisionDetection = useCallback<CollisionDetection>((args) => {
-        const gapCollision = getOutlineGapCollisionAtPointer(args);
-        if (gapCollision) {
-            if (gapCollision.length > 0) {
-                return gapCollision;
-            }
-            return pointerWithin(args).filter(collision => !collisionHasOutlineGapData(collision));
+    const draggedIds = useCallback(
+        (activeId: string) => (selectedIds.has(activeId) ? Array.from(selectedIds) : [activeId]),
+        [selectedIds]
+    );
+
+    const clearAutoExpand = useCallback(() => {
+        if (autoExpandRef.current) {
+            clearTimeout(autoExpandRef.current.timer);
+            autoExpandRef.current = null;
         }
-
-        const collisions = pointerWithin(args);
-        const gapCollisions = collisions.filter(collisionHasOutlineGapData);
-
-        if (gapCollisions.length > 0) {
-            return gapCollisions;
-        }
-
-        return collisions;
     }, []);
+
+    /** The row under the pointer and where on it - or nothing, where a drop would be refused. */
+    const updateDropTarget = useCallback(
+        (point: { x: number; y: number } | null, activeId: string) => {
+            let next: OutlineDropTarget | null = null;
+            const doc = globalThis.document;
+            if (point && typeof doc?.elementsFromPoint === "function") {
+                for (const hit of doc.elementsFromPoint(point.x, point.y)) {
+                    const bar = hit.closest("[data-outline-row-bar]") as HTMLElement | null;
+                    const rowId = (bar?.closest("[data-outline-row-id]") as HTMLElement | null)?.dataset.outlineRowId;
+                    const row = rowId ? document.elements[rowId] : null;
+                    if (!bar || !row || !containerRef.current?.contains(bar)) {
+                        continue;
+                    }
+                    const rect = bar.getBoundingClientRect();
+                    const candidate: OutlineDropTarget = {
+                        rowId: row.id,
+                        zone: resolveOutlineDropZone(rect.top, rect.height, point.y, outlineAcceptsChildren(row)),
+                    };
+                    next = planOutlineDrop(document, draggedIds(activeId), candidate, outlineAcceptsChildren) ? candidate : null;
+                    break;
+                }
+            }
+            const prev = dropTargetRef.current;
+            if (prev?.rowId === next?.rowId && prev?.zone === next?.zone) {
+                return;
+            }
+            dropTargetRef.current = next;
+            setDropTarget(next);
+            // Held over a collapsed layer, the drag opens it after a moment, so its children can be
+            // dropped between - a collapsed container used to take nothing until the drag was abandoned.
+            clearAutoExpand();
+            if (next?.zone === "inside" && stateService.isOutlineBranchCollapsed(next.rowId)) {
+                const rowId = next.rowId;
+                autoExpandRef.current = {
+                    rowId,
+                    timer: setTimeout(() => {
+                        autoExpandRef.current = null;
+                        stateService.setOutlineBranchCollapsed(rowId, false);
+                    }, OUTLINE_AUTO_EXPAND_MS),
+                };
+            }
+        },
+        [clearAutoExpand, document, draggedIds, stateService]
+    );
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
         const point = getActivatorClientPoint(event.activatorEvent);
         initialDragPointRef.current = point;
         setActiveDragPoint(point);
         setActiveDragId(String(event.active.id));
+        setRenamingId(null);
     }, []);
 
     const handleDragMove = useCallback((event: DragMoveEvent) => {
@@ -404,56 +496,111 @@ export function UILayersPanel({
         if (!initialPoint) {
             return;
         }
-        setActiveDragPoint({
-            x: initialPoint.x + event.delta.x,
-            y: initialPoint.y + event.delta.y,
-        });
-    }, []);
+        const point = { x: initialPoint.x + event.delta.x, y: initialPoint.y + event.delta.y };
+        setActiveDragPoint(point);
+        updateDropTarget(point, String(event.active.id));
+    }, [updateDropTarget]);
 
-    const handleDragCancel = useCallback(() => {
+    const endDrag = useCallback(() => {
         initialDragPointRef.current = null;
         setActiveDragPoint(null);
         setActiveDragId(null);
-    }, []);
+        dropTargetRef.current = null;
+        setDropTarget(null);
+        clearAutoExpand();
+    }, [clearAutoExpand]);
+
+    const handleDragCancel = endDrag;
 
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
-            initialDragPointRef.current = null;
-            setActiveDragPoint(null);
-            setActiveDragId(null);
-            if (!surface || !isSurfaceGestureEnabled("outlineReorder", readOnly)) {
+            const target = dropTargetRef.current;
+            endDrag();
+            if (!surface || !target || !isSurfaceGestureEnabled("outlineReorder", readOnly)) {
                 return;
             }
-            const { active, over } = event;
-            if (!over) {
+            const movers = draggedIds(String(event.active.id));
+            const plan = planOutlineDrop(document, movers, target, outlineAcceptsChildren);
+            if (!plan) {
                 return;
             }
-            const activeId = String(active.id);
-            const overId = String(over.id);
-            if (activeId === overId) {
+            const beforeChildId = resolveBeforeChildIdForOutlineGap(document, plan.parentId, movers, plan.visualIndex);
+            if (beforeChildId === undefined) {
                 return;
             }
-
-            const moversRaw = selectedIds.has(activeId) ? Array.from(selectedIds) : [activeId];
-
-            const gapData = isOutlineGapDropData(over.data.current) ? over.data.current : null;
-            if (gapData) {
-                const beforeChildId = resolveBeforeChildIdForOutlineGap(
-                    document,
-                    gapData.parentId,
-                    moversRaw,
-                    gapData.visualIndex,
-                );
-                if (beforeChildId === undefined) {
-                    return;
-                }
-                const result = documentService.moveElementsInSurface(surfaceId, moversRaw, gapData.parentId, beforeChildId);
-                moveLogReason(result);
-                return;
+            const result = documentService.moveElementsInSurface(surfaceId, movers, plan.parentId, beforeChildId);
+            moveLogReason(result);
+            if (!result.ok) {
+                // Every refusal used to be a console line: the author saw the drop land nowhere.
+                uiService?.showNotification(t("widgetChrome.outline.cannotMoveHere"), "warning");
             }
-
         },
-        [document, documentService, readOnly, selectedIds, surface, surfaceId]
+        [document, documentService, draggedIds, endDrag, readOnly, surface, surfaceId, t, uiService]
+    );
+
+    // The arrow keys walk the outline rather than nudging the selected element on the canvas: Up and
+    // Down move between rows, Left closes a branch or goes to its parent, Right opens one or goes into
+    // it. F2 and Enter rename. Handled here and stopped, so the canvas's own bindings never see them.
+    const handleKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (renamingId || (event.target instanceof HTMLElement && event.target.closest("input, textarea"))) {
+                return;
+            }
+            const rows = visibleRowIds();
+            const current = primaryId && rows.includes(primaryId) ? primaryId : null;
+            const element = current ? document.elements[current] : null;
+            const select = (id: string | undefined) => {
+                if (id) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    selectRows([id], id);
+                }
+            };
+            switch (event.key) {
+                case "ArrowDown":
+                    select(current ? rows[rows.indexOf(current) + 1] : rows[0]);
+                    break;
+                case "ArrowUp":
+                    select(current ? rows[rows.indexOf(current) - 1] : rows[rows.length - 1]);
+                    break;
+                case "ArrowLeft":
+                    if (element && element.childrenIds.length > 0 && !stateService.isOutlineBranchCollapsed(element.id)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        stateService.setOutlineBranchCollapsed(element.id, true);
+                    } else if (element?.parentId && rows.includes(element.parentId)) {
+                        select(element.parentId);
+                    }
+                    break;
+                case "ArrowRight":
+                    if (element && element.childrenIds.length > 0) {
+                        if (stateService.isOutlineBranchCollapsed(element.id)) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            stateService.setOutlineBranchCollapsed(element.id, false);
+                        } else {
+                            select(rows[rows.indexOf(element.id) + 1]);
+                        }
+                    }
+                    break;
+                case "Enter":
+                case "F2":
+                    if (element) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onStartRename(element);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        },
+        [document, onStartRename, primaryId, renamingId, selectRows, stateService, visibleRowIds]
+    );
+
+    const draggingIds = useMemo(
+        () => new Set(activeDragId ? draggedIds(activeDragId) : []),
+        [activeDragId, draggedIds]
     );
 
     const rowBase = useMemo(
@@ -466,8 +613,16 @@ export function UILayersPanel({
             isCollapsed,
             toggleCollapsed,
             onRowContextMenu: openRowContextMenu,
-            onToggleVisible,
+            onToggleHiddenInEditor,
+            isHiddenInEditor,
+            onToggleLocked,
+            isLocked,
             onStartRename,
+            renamingId,
+            onFinishRename,
+            dropTarget,
+            draggingIds,
+            onHover,
             readOnly,
         }),
         [
@@ -479,8 +634,16 @@ export function UILayersPanel({
             isCollapsed,
             toggleCollapsed,
             openRowContextMenu,
-            onToggleVisible,
+            onToggleHiddenInEditor,
+            isHiddenInEditor,
+            onToggleLocked,
+            isLocked,
             onStartRename,
+            renamingId,
+            onFinishRename,
+            dropTarget,
+            draggingIds,
+            onHover,
             readOnly,
         ]
     );
@@ -501,7 +664,7 @@ export function UILayersPanel({
                           transform: "translate(12px, 12px)",
                       }}
                   >
-                      <OutlineDragPreview element={activeDragElement} />
+                      <OutlineDragPreview element={activeDragElement} count={draggingIds.size} />
                   </div>,
                   globalThis.document.body,
               )
@@ -512,7 +675,20 @@ export function UILayersPanel({
         // there is answered with the outline's menu rather than falling through to the canvas.
         // No heading of its own: the pane it sits in is already titled (UI Outline), and a second
         // "Layers" line under it was one more level saying the same thing.
-        <div className="min-h-full space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
+        <div
+            ref={containerRef}
+            className="min-h-full space-y-2 px-2 py-2 outline-none"
+            role="tree"
+            tabIndex={-1}
+            onContextMenu={openBlankContextMenu}
+            onKeyDown={handleKeyDown}
+            onClick={event => {
+                // A click on the empty space under the rows clears the selection, as on the canvas.
+                if (!(event.target as HTMLElement).closest("[data-outline-row]")) {
+                    selectSurfaceForProperties(stateService, surfaceId, uiService);
+                }
+            }}
+        >
             {isLinkedTree ? (
                 <div className="text-2xs leading-snug text-warning px-0.5">
                     {t("widgetChrome.outline.linkedSurfaceHint")}
@@ -520,8 +696,6 @@ export function UILayersPanel({
             ) : null}
             <DndContext
                 sensors={sensors}
-                collisionDetection={collisionDetection}
-                measuring={OUTLINE_DND_MEASURING}
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
                 onDragCancel={handleDragCancel}

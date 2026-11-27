@@ -71,6 +71,10 @@ const OUTLINE_COLLAPSED_BRANCHES_KEY = "uiEditor.outline.collapsedBranchesByElem
 /** Outline panel chrome: whether the panel itself is collapsed. */
 const OUTLINE_PANEL_COLLAPSED_KEY = "uiEditor.outline.panelCollapsed";
 
+/** Editor-only layer flags, keyed by element id (ids are unique across projects). Never in the UIDocument. */
+const EDITOR_HIDDEN_KEY = "uiEditor.layers.hiddenInEditorByElementId";
+const EDITOR_LOCKED_KEY = "uiEditor.layers.lockedByElementId";
+
 const APPEARANCE_INSPECTOR_UI_CACHE_PERSIST_MS = 250;
 
 const OUTLINE_COLLAPSE_CACHE_PERSIST_MS = 250;
@@ -103,6 +107,9 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     /** Presence means the outline branch is collapsed. */
     private readonly outlineCollapsedBranchIds = new Set<string>();
     private outlinePanelCollapsed = false;
+    private readonly editorHiddenIds = new Set<string>();
+    private readonly editorLockedIds = new Set<string>();
+    private outlineHoverId: string | null = null;
     private outlineCollapsePersistTimer: ReturnType<typeof setTimeout> | null = null;
 
     private smartSnapEnabled = true;
@@ -166,6 +173,17 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
             for (const [elementId, collapsed] of Object.entries(outlineCollapsed)) {
                 if (typeof elementId === "string" && elementId && collapsed === true) {
                     this.outlineCollapsedBranchIds.add(elementId);
+                }
+            }
+        }
+
+        for (const [key, target] of [[EDITOR_HIDDEN_KEY, this.editorHiddenIds], [EDITOR_LOCKED_KEY, this.editorLockedIds]] as const) {
+            const stored = this.settingsService.getSync<Record<string, boolean>>(key);
+            if (stored && typeof stored === "object") {
+                for (const [elementId, on] of Object.entries(stored)) {
+                    if (elementId && on === true) {
+                        target.add(elementId);
+                    }
                 }
             }
         }
@@ -437,6 +455,56 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         this.events.emit("outlineExpansionChanged", null);
         this.scheduleOutlineCollapsePersistence();
+    }
+
+    public isElementHiddenInEditor(elementId: string): boolean {
+        return this.editorHiddenIds.has(elementId);
+    }
+
+    public setElementHiddenInEditor(elementId: string, hidden: boolean): void {
+        this.setLayerFlag(this.editorHiddenIds, EDITOR_HIDDEN_KEY, elementId, hidden);
+    }
+
+    public isElementLocked(elementId: string): boolean {
+        return this.editorLockedIds.has(elementId);
+    }
+
+    public setElementLocked(elementId: string, locked: boolean): void {
+        this.setLayerFlag(this.editorLockedIds, EDITOR_LOCKED_KEY, elementId, locked);
+    }
+
+    private setLayerFlag(target: Set<string>, key: string, elementId: string, on: boolean): void {
+        if (target.has(elementId) === on) {
+            return;
+        }
+        if (on) {
+            target.add(elementId);
+        } else {
+            target.delete(elementId);
+        }
+        this.events.emit("editorLayerFlagsChanged", null);
+        if (!this.settingsService) {
+            return;
+        }
+        const record: Record<string, boolean> = {};
+        for (const id of target) {
+            record[id] = true;
+        }
+        void this.settingsService.set(key, record).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist layer flags", err);
+        });
+    }
+
+    public getOutlineHover(): string | null {
+        return this.outlineHoverId;
+    }
+
+    public setOutlineHover(elementId: string | null): void {
+        if (this.outlineHoverId === elementId) {
+            return;
+        }
+        this.outlineHoverId = elementId;
+        this.events.emit("outlineHoverChanged", elementId);
     }
 
     public getOutlinePanelCollapsed(): boolean {

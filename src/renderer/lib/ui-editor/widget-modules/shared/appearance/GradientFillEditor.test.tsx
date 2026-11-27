@@ -239,9 +239,10 @@ describe("GradientFillEditor", () => {
     it("writes a stop's colour through the shared colour serializer, brand link and all", () => {
         const { onChange } = mount();
         fireEvent.click(trigger());
-        fireEvent.change(screen.getByLabelText("widgetAppearance.gradient.stopOffsetAria(1)"), {
-            target: { value: "40" },
-        });
+        const offset = screen.getByLabelText("widgetAppearance.gradient.stopOffsetAria(1)");
+        fireEvent.change(offset, { target: { value: "40" } });
+        // Number fields commit when left or on Enter, not on every keystroke.
+        fireEvent.blur(offset);
 
         expect(onChange.mock.calls[0][0].stops[0]).toEqual({ offset: 0.4, color: "nlbrand:primary" });
     });

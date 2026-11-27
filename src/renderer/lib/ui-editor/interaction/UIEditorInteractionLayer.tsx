@@ -23,6 +23,7 @@ import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
+import { hasFlagOnChain, useEditorLayerFlags } from "./useEditorLayerFlags";
 import { filterMarqueeHitsToLevel, resolveMarqueeLevelParent, resolvePlainPressTarget } from "./containerDrillSelection";
 import {
     getSingleSelectedElementId,
@@ -272,6 +273,8 @@ export function UIEditorInteractionLayer({
             view.document.removeEventListener("visibilitychange", reset);
         };
     }, [surfaceElement]);
+
+    const layerFlagsRevision = useEditorLayerFlags(surfaceElement, stateService, documentService, documentRevision);
 
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
 
@@ -597,7 +600,12 @@ export function UIEditorInteractionLayer({
     // selected container, or with Cmd/Ctrl the deepest element - so the author sees which layer
     // they are about to pick before picking it. Not drawn on what is already selected, nor while a
     // gesture is under way.
-    const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
+    const [pointerHoverId, setHoverTargetId] = useState<string | null>(null);
+    // A row the pointer rests on in the outline is framed on the canvas too, so the author can see
+    // which layer a row is before picking it.
+    const [outlineHoverId, setOutlineHoverId] = useState<string | null>(() => stateService.getOutlineHover());
+    useEffect(() => stateService.on("outlineHoverChanged", setOutlineHoverId), [stateService]);
+    const hoverTargetId = outlineHoverId && !selectionIds.includes(outlineHoverId) ? outlineHoverId : pointerHoverId;
     const [hoverRect, setHoverRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     useEffect(() => {
         if (!surfaceElement || tool.kind !== "select" || !selectionEnabled || isInlineTextEditing) {
@@ -756,7 +764,14 @@ export function UIEditorInteractionLayer({
         [selectedTargets],
     );
 
-    const transformEnabled = isSurfaceGestureEnabled("transform", readOnly);
+    // A selection inside a locked layer is picked from the outline to be looked at or edited in the
+    // properties panel; the canvas does not move or resize it, as it does not pick it.
+    const selectionLocked = useMemo(() => {
+        void layerFlagsRevision;
+        const doc = documentService.getDocument();
+        return selectionIds.some(id => hasFlagOnChain(doc, id, flagged => stateService.isElementLocked(flagged)));
+    }, [documentRevision, documentService, layerFlagsRevision, selectionIds, stateService]);
+    const transformEnabled = isSurfaceGestureEnabled("transform", readOnly) && !selectionLocked;
 
     const panState = useRef<{
         active: boolean;
