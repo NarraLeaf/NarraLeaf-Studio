@@ -1395,8 +1395,6 @@ export const story = {
     container: {
         addOption: "Add option",
         addAction: "Add action",
-        addOptionInside: "Add option inside",
-        addActionInside: "Add action inside",
         elseIf: "Else if",
         elseBranch: "Else",
     },

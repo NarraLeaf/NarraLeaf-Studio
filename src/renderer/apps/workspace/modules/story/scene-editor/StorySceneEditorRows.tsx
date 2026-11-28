@@ -754,16 +754,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         </div>
                     ) : null}
                 </div>
-                {/* The footer and the container's tail "+" take the same indent the row's content does. */}
-                <div style={{ paddingLeft: rowIndent(row.depth) }}>
-                    {containerInfo ? (
-                        <ContainerFooter
-                            block={block}
-                            info={containerInfo}
-                            onAddInside={() => on.onAddInside(block.id)}
-                        />
-                    ) : null}
-                </div>
                 </>
             </div>
         </div>
@@ -1857,11 +1847,10 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
  * Hover "+" affordance on the right of a container header (adds a child at the end). A condition
  * header carries {@link ConditionBranchAdds} in its place.
  *
- * One glyph, like every other row control. It used to print the words beside it («添加选项»), which
- * made a header's cluster a different width from every other row's for the same three actions — and
- * which was the only place in the column where a hover changed how wide the row's controls were. What
- * the plus adds (an option, an action) is in its tooltip, and the container's own footer states it in
- * words while the body is still empty.
+ * One glyph, like every other row control, and the container's ONLY add: an empty container used to
+ * repeat it as a printed line under the header («在内部添加动作»), which made the header's cheap hover
+ * control and a permanent sentence say the same thing in two different places. What the plus adds (an
+ * option, an action) is in its tooltip.
  */
 function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; active?: boolean; onAdd: () => void }) {
     const { t } = useTranslation();
@@ -1971,35 +1960,6 @@ function ConditionBranchAdds(props: {
     );
 }
 
-/** Footer affordance under a container header: the add prompt of a body with nothing in it yet. */
-function ContainerFooter(props: {
-    block: StoryBlock;
-    info: StoryContainerHeaderInfo;
-    onAddInside: () => void;
-}) {
-    const { t } = useTranslation();
-    const empty = props.block.childrenIds.length === 0;
-    // A condition's body is its branches, and the header adds those.
-    if (props.info.role === "condition" || !empty) {
-        return null;
-    }
-    const label = props.info.role === "menu" ? t("story.container.addOptionInside") : t("story.container.addActionInside");
-    return (
-        <button
-            type="button"
-            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-fg-muted"
-            style={{ marginLeft: rowIndent(1) }}
-            onClick={event => {
-                event.stopPropagation();
-                props.onAddInside();
-            }}
-        >
-            <Plus className="h-3 w-3" />
-            {label}
-        </button>
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Parallel / race containers.
 //
@@ -2009,7 +1969,7 @@ function ContainerFooter(props: {
 // side effects outlived its usefulness and were bugs on their own — it discarded the collapse flag for
 // any container it had ever been switched on for (a permanently dead fold chevron), and it replaced a
 // container's whole subtree with one row per direct child, silently hiding grandchildren. Their
-// children are ordinary rows now, and the container's own footer carries the inside-add.
+// children are ordinary rows now, and the header's own "+" carries the inside-add.
 // ---------------------------------------------------------------------------
 
 /**

@@ -1249,8 +1249,6 @@ export const story = {
     container: {
         addOption: "添加选项",
         addAction: "添加动作",
-        addOptionInside: "在内部添加选项",
-        addActionInside: "在内部添加动作",
         elseIf: "否则如果",
         elseBranch: "否则",
     },

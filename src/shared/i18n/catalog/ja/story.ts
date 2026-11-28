@@ -1289,8 +1289,6 @@ export const story = {
     container: {
         addOption: "選択肢を追加",
         addAction: "アクションを追加",
-        addOptionInside: "中に選択肢を追加",
-        addActionInside: "中にアクションを追加",
         elseIf: "そうでなくもし",
         elseBranch: "それ以外",
     },
