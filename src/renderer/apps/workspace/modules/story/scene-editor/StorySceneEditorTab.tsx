@@ -2777,6 +2777,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             }
                             const row = stabilizeRow(projected);
                             const slotHere = editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && insertSlotPlacement !== null && insertSlotPlacement.hostId === row.block.id;
+                            /**
+                             * What the rails leaving this row should meet. Normally the next row of the
+                             * list (its own `nextRowDepth`), but a slot drawn in this row's wrapper is
+                             * not in that list — so at the end of a block the host's lookahead still
+                             * said "the branch ends here" while the slot below carried the rails on:
+                             * one elbow at the host's line, a gap, another at the slot's. With the
+                             * slot's depth as the lookahead the two become one line, ending where the
+                             * line being typed is (see `StoryBlockRowProps.nextDepthOverride`).
+                             */
+                            const slotFollowDepth = slotHere && insertSlotPlacement !== null ? insertSlotPlacement.depth : undefined;
                             return (
                             <div
                                 key={row.block.id}
@@ -2794,6 +2804,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     <InsertRow
                                         mode={editor.editorMode}
                                         depth={row.depth}
+                                        density={editor.density}
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
@@ -2821,6 +2832,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     <InsertRow
                                         mode={editor.editorMode}
                                         depth={row.depth}
+                                        // The row this slot stands in for is gone while it is open, so the
+                                        // rails end here exactly where the row's own would have: at the
+                                        // lookahead the row already carries.
+                                        nextDepth={row.nextRowDepth ?? 0}
+                                        density={editor.density}
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
@@ -2858,6 +2874,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     dragGroupSize={dragGroupSizeFor(row.block.id)}
                                     coDragging={draggingGroup.size > 1 && draggingGroup.has(row.block.id)}
                                     commentColumn={commentColumn}
+                                    nextDepthOverride={slotFollowDepth}
                                 />
                                 )}
                                 {slotHere && editor.editorMode.kind === "insert" && insertSlotPlacement !== null ? (
@@ -2867,6 +2884,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         // Where the line will land (see `resolveInsertSlotPlacement`):
                                         // inside the host one level deeper, or beside it at its depth.
                                         depth={insertSlotPlacement.depth}
+                                        // The slot is drawn under the host row, so whatever follows
+                                        // that row follows it too — the host's own lookahead is the
+                                        // slot's. At the end of a block that is 0, and the rails end
+                                        // with a turn into this line instead of running on past it.
+                                        nextDepth={row.nextRowDepth ?? 0}
+                                        density={editor.density}
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
@@ -2896,6 +2919,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <InsertRow
                         mode={editor.editorMode}
                         depth={0}
+                        density={editor.density}
                         characters={editor.characters}
                         commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}

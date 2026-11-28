@@ -168,6 +168,19 @@ type StoryBlockRowProps = {
      * one. A number rather than the selection itself, so the row stays memoised on primitives.
      */
     dragGroupSize: number;
+    /**
+     * What visually follows this row, when that is not a row of the list: the open insert slot drawn
+     * in its wrapper. The lookahead {@link annotateNestingBranches} computed is "the next ROW's depth",
+     * and a slot is not a row — so on its host, `nextRowDepth` still says the branch ends here while
+     * the slot below carries the rails on. Passing the slot's depth instead makes the host's rails run
+     * into the slot, which is where they now end and turn; without it the line breaks in two, one
+     * elbow at the host's line and another at the slot's.
+     *
+     * Deeper than the row's own depth, it also says the row is opening a block: a container with no
+     * children yet draws no rail out of its mark, because nothing could be following it — but the
+     * slot is, and its rail has to start somewhere (see `opensBlock`).
+     */
+    nextDepthOverride?: number;
     /** This row is in the air with the row being dragged, and dims with it. */
     coDragging: boolean;
     /** The scene has review comments, so every row keeps the comment column at its edge. */
@@ -547,8 +560,12 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
             <div className="nl-story-row-content relative min-w-0 py-1">
                 <RowNesting
                     depth={row.depth}
-                    nextDepth={row.nextRowDepth ?? 0}
-                    opensBlock={Boolean(containerInfo) && !collapsed && block.childrenIds.length > 0}
+                    nextDepth={props.nextDepthOverride ?? row.nextRowDepth ?? 0}
+                    // A container with children drops its rail out of its own mark. One with no
+                    // children yet normally has nothing to open — but an open slot inside it is the
+                    // first line of that block, and its deepest rail has to leave from somewhere.
+                    opensBlock={Boolean(containerInfo) && !collapsed
+                        && (block.childrenIds.length > 0 || (props.nextDepthOverride ?? -1) > row.depth)}
                     stopAt={rowTextCenter}
                     markBottom={rowMarkBottom}
                     highlight={selected || active}
@@ -1567,6 +1584,8 @@ function ConnectorSegment(props: { left: string | number; top: number; ends: boo
         return (
             <span
                 aria-hidden
+                data-story-rail=""
+                data-story-rail-elbow=""
                 className={`pointer-events-none absolute rounded-bl-md border-b border-l ${props.highlight ? CONNECTOR_EDGE_ACTIVE : CONNECTOR_EDGE}`}
                 style={{ left: props.left, top: props.top, height: props.stopAt - props.top, width: CONNECTOR_ELBOW_PX }}
             />
@@ -1575,6 +1594,7 @@ function ConnectorSegment(props: { left: string | number; top: number; ends: boo
     return (
         <span
             aria-hidden
+            data-story-rail=""
             className={`pointer-events-none absolute w-px ${props.highlight ? CONNECTOR_FILL_ACTIVE : CONNECTOR_FILL}`}
             style={props.ends
                 ? { left: props.left, top: props.top, height: props.stopAt - props.top }
@@ -2253,6 +2273,29 @@ export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
     /** Nesting depth of where the new block will land, so the slot lines up under its future siblings. */
     depth?: number;
+    /**
+     * The depth of the visible row that follows this slot, or 0 when nothing does — the slot's own
+     * copy of `nextRowDepth` (see {@link RowNesting}).
+     *
+     * Without it the slot is a line with nothing under it, so every rail it inherits would have to
+     * say "more rows follow at this level" and run straight off the bottom of the list. What the
+     * author sees while typing at the end of a block is then the opposite of what the block does:
+     * the last row of the block bends right, and the blank line offered for the next one keep-draws
+     * the same rail past it, past the menu's own edge, into nothing.
+     *
+     * Defaults to `depth`: the line this slot will commit sits exactly where a row at this depth
+     * would, which makes every rail pass through — correct for a slot drawn in front of an existing
+     * row (the row itself follows at the same depth) and for one drawn under a row that something
+     * follows.
+     */
+    nextDepth?: number;
+    /**
+     * Reading density, for the height the slot's text sits at — the rails turn into the line at that
+     * centre, so a hard-coded compact value bends above the words at every larger density. Optional
+     * because the slot also stands outside the scene editor (a behaviour's command line, a custom
+     * command's body), where the baseline compact box is what the row is set in anyway.
+     */
+    density?: StoryEditorDensity;
     characters: Character[];
     tempSpeakers: TempSpeakerRef[];
     /** What a name typed on this line may refer to — the same view the resolver reads. */
@@ -2654,12 +2697,18 @@ export function InsertRow(props: {
             <div ref={menuAnchorRef} className="relative min-w-0 py-1">
                 {/* Mirror a row's content column so the slot lines up with its future siblings: guide
                     rails + depth indent, then the badge and name columns, so the line being typed
-                    starts on exactly the body edge the committed row will keep. */}
+                    starts on exactly the body edge the committed row will keep. The rails stop and
+                    turn here when nothing follows the slot (`nextDepth`), which is what makes the
+                    open line at the end of a block read as its last row rather than as a rail
+                    running past it. */}
                 <RowNesting
                     depth={props.depth ?? 0}
-                    nextDepth={props.depth ?? 0}
+                    nextDepth={props.nextDepth ?? props.depth ?? 0}
                     opensBlock={false}
-                    stopAt={ROW_CONTENT_PAD_PX + 14}
+                    // The centre of the line being typed — the same arithmetic a committed row does,
+                    // off the density's single-line box, so the bend lands on the words at every
+                    // density instead of at the compact box's centre on all of them.
+                    stopAt={ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density ?? "compact"].rowBox / 2}
                     markBottom={ROW_CONTENT_PAD_PX}
                     highlight={false}
                 />
