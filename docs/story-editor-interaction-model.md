@@ -65,7 +65,11 @@ is not a trap.
 branches have no card (`hasInspector`): the branch authors its condition inline on its header chip,
 and the container only manages branches. So Enter on a branch adds a line inside its body — the common
 next step when building an if/else — and Enter on the condition container folds it. Creating one never
-opens a card either (`isInspectorFirstCommand` excludes them).
+opens a card either (`isInspectorFirstCommand` excludes them). It puts the caret where the container's
+next line belongs instead: the option a menu was scaffolded with (its label, the same place the header's
+`+` puts it), the first branch's body for an `if`, or the body of a loop/group/NVL block. Not a slot
+*after* the container: that slot was drawn between the header and its first child while its line
+committed past the whole container, so Enter in a menu looked like it had added a row outside it.
 
 ## The Backspace ladder
 

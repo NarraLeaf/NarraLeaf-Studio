@@ -70,7 +70,7 @@ import {
 } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
-import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment, resolveInsertSlotPlacement } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import type { StoryPreviewLayersApi } from "./preview/StoryLayerStackView";
@@ -1057,6 +1057,20 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.density, rowVirtualizer]);
 
     /**
+     * Where the active "after this row" slot is drawn: the row that hosts it, and the depth it sits at.
+     *
+     * `afterBlockId` names the row the line lands after, and for an ordinary row that is also the row
+     * the slot is drawn under. A container header is the exception. The line it commits is a SIBLING
+     * of the container (see `getInsertionTargetAfter`), so drawing the slot between the header and its
+     * first child promised a line inside the container and then wrote one after it - in a menu, Enter
+     * appeared to add a stray row elsewhere while the slot came back under the header. Hosting the
+     * slot on the container's last visible descendant draws it exactly where the line will land; a
+     * collapsed container has no visible descendants, so it hosts its own slot and nothing changes.
+     */
+    const insertSlotPlacement = editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId
+        ? resolveInsertSlotPlacement(editor.editorMode.slot, editor.visibleRows)
+        : null;
+    /**
      * The row whose wrapper currently holds the insert slot, or null when no slot is inside one.
      *
      * A slot is not a row of its own: it renders *inside* its host row's wrapper — the very element
@@ -1069,6 +1083,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const insertSlotHostId: StoryBlockId | null = editor.editorMode.kind === "insert"
         ? editor.editorMode.slot.replaceBlockId
             ?? editor.editorMode.slot.target?.beforeBlockId
+            ?? insertSlotPlacement?.hostId
             ?? editor.editorMode.slot.afterBlockId
         : null;
     const measuredSlotHostRef = useRef<StoryBlockId | null>(null);
@@ -2285,7 +2300,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }
 
     const lastVisibleRowId = editor.visibleRows[editor.visibleRows.length - 1]?.block.id ?? null;
-    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === lastVisibleRowId;
+    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && insertSlotPlacement?.hostId === lastVisibleRowId;
     // While an insert slot is open it *is* the active line (it carries its own highlight and the
     // caret), so no row shows as active/selected — otherwise the row the slot sits after would look
     // focused too. The row's own highlight comes back when the slot closes (commit selects the new
@@ -2844,12 +2859,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     commentColumn={commentColumn}
                                 />
                                 )}
-                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
+                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && insertSlotPlacement !== null && insertSlotPlacement.hostId === row.block.id ? (
                                     <InsertRow
                                         mode={editor.editorMode}
-                                        // Inserting *inside* this row (its `+ Add action`) nests one level
-                                        // deeper; a sibling-after slot keeps the row's own depth.
-                                        depth={editor.editorMode.slot.target?.parentId === row.block.id ? row.depth + 1 : row.depth}
+                                        // Where the line will land (see `resolveInsertSlotPlacement`):
+                                        // inside the host one level deeper, or beside it at its depth.
+                                        depth={insertSlotPlacement.depth}
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}

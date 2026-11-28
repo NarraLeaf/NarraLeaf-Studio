@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { canPlaceBlockUnder, deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, resolveInsertSlotPlacement, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -776,6 +776,44 @@ describe("where rows land that nothing anchors", () => {
         expect(getDefaultAppendTarget(scene([narration("n1")], ["n1"]))).toEqual({ parentId: null, beforeBlockId: null });
         const off = { ...ending, id: "end", disabled: true };
         expect(getDefaultAppendTarget(scene([narration("n1"), off], ["n1", "end"]))).toEqual({ parentId: null, beforeBlockId: null });
+    });
+});
+
+describe("where an insert slot is drawn", () => {
+    /**
+     * Rows as the list projects them: the block and its nesting depth. Anything under a container is
+     * the row directly after it with a greater depth.
+     */
+    const rows = (entries: Array<[string, number]>): Pick<VisibleStoryRow, "block" | "depth">[] =>
+        entries.map(([id, depth]) => ({ block: narration(id), depth }));
+
+    it("draws an ordinary row's slot under that row, at its own depth", () => {
+        expect(resolveInsertSlotPlacement({ afterBlockId: "a" }, rows([["a", 0], ["b", 0]])))
+            .toEqual({ hostId: "a", depth: 0 });
+    });
+
+    it("draws a container header's slot under its last visible row, at the header's depth", () => {
+        // The line lands as a sibling of the menu, so the slot belongs where that line will be seen:
+        // below the option's own rows, not between the header and its first child.
+        expect(resolveInsertSlotPlacement({ afterBlockId: "menu" }, rows([["menu", 0], ["option", 1], ["line", 2], ["after", 0]])))
+            .toEqual({ hostId: "line", depth: 0 });
+    });
+
+    it("keeps a collapsed container's slot on the header itself", () => {
+        expect(resolveInsertSlotPlacement({ afterBlockId: "menu" }, rows([["menu", 0], ["after", 0]])))
+            .toEqual({ hostId: "menu", depth: 0 });
+    });
+
+    it("nests a slot with an explicit inside-target one level under its host", () => {
+        expect(resolveInsertSlotPlacement(
+            { afterBlockId: "option", target: { parentId: "option", beforeBlockId: null } },
+            rows([["option", 1], ["next", 1]]),
+        )).toEqual({ hostId: "option", depth: 2 });
+    });
+
+    it("has nothing to place when the anchor row is not visible", () => {
+        expect(resolveInsertSlotPlacement({ afterBlockId: "folded" }, rows([["a", 0]]))).toBeNull();
+        expect(resolveInsertSlotPlacement({ afterBlockId: null }, rows([["a", 0]]))).toBeNull();
     });
 });
 

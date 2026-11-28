@@ -1827,6 +1827,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
     }, []);
 
+    /**
+     * Open a slot that parents the next row at the END of `parentId`, drawn after `hostAfterId`.
+     *
+     * Split out of {@link startInsertInside} because the commit path also needs it for a container it
+     * has just created: that one is not in this render's `scene` yet, so the caller names the host
+     * itself instead of having it looked up.
+     */
+    const openInsertInside = useCallback((parentId: StoryBlockId, hostAfterId: StoryBlockId) => {
+        ensureExpanded(parentId);
+        // Every path that opens a slot must clear this, or a discard earlier in the session would go on
+        // silently swallowing this slot's blur-commit.
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
+        revealWith(hostAfterId, { kind: "slot" }, "step");
+        setEditorMode({
+            kind: "insert",
+            slot: { afterBlockId: hostAfterId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
+            initialValue: "",
+        });
+        setActiveBlockId(parentId);
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
+    }, [ensureExpanded, revealWith]);
+
     // Open an insert slot that parents the new block at the END of `parentId` (the "add action inside a
     // container" affordance). The slot renders after the container's last visible child (or, when empty,
     // right under the container header), and commits into `parentId` via the slot target.
@@ -1838,21 +1861,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!parent) {
             return;
         }
-        ensureExpanded(parentId);
-        const lastChildId = parent.childrenIds[parent.childrenIds.length - 1] ?? null;
-        // Every path that opens a slot must clear this, or a discard earlier in the session would go on
-        // silently swallowing this slot's blur-commit.
-        slotDiscardedRef.current = false;
-        insertDraftRef.current = "";
-        revealWith(parentId, { kind: "slot" }, "step");
-        setEditorMode({
-            kind: "insert",
-            slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
-            initialValue: "",
-        });
-        setActiveBlockId(parentId);
-        window.requestAnimationFrame(() => insertInputRef.current?.focus());
-    }, [ensureExpanded, revealWith, scene]);
+        openInsertInside(parentId, parent.childrenIds[parent.childrenIds.length - 1] ?? parentId);
+    }, [openInsertInside, scene]);
 
     /**
      * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
@@ -1994,9 +2004,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     // Seed a freshly-created container with its default child so the author gets a usable structure in
     // one step (Condition → an `if` branch; Menu → one option), inside the same undo entry as the parent.
-    const scaffoldContainer = useCallback((block: StoryBlock, condition?: StoryExpression) => {
+    // The child is handed back because it is where the author's next keystroke belongs (see the commit
+    // in `commitCommandFromInsert`), not just something to look at.
+    const scaffoldContainer = useCallback((block: StoryBlock, condition?: StoryExpression): StoryBlock | null => {
         if (!storyService || !storyId || !sceneId || !uuidService) {
-            return;
+            return null;
         }
         if (block.kind === "control" && block.payload.control === "condition") {
             const branch = createBlockForCommand("conditionBranch", () => uuidService.generate());
@@ -2007,10 +2019,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 ? { ...branch, payload: { ...branch.payload, condition: { kind: "expression" as const, expression: condition } } }
                 : branch;
             storyService.insertBlock(storyId, sceneId, seeded, { parentId: block.id, beforeBlockId: null });
-        } else if (block.kind === "nodeAction" && block.payload.action === "choice") {
+            return seeded;
+        }
+        if (block.kind === "nodeAction" && block.payload.action === "choice") {
             const option = createBlockForCommand("choiceOption", () => uuidService.generate());
             storyService.insertBlock(storyId, sceneId, option, { parentId: block.id, beforeBlockId: null });
+            return option;
         }
+        return null;
     }, [sceneId, storyId, storyService, uuidService]);
 
     // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot -
@@ -2653,11 +2669,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const rewritten = editorMode.slot.rewritesRow && replacing && rewritesRowInPlace(replacing, built) ? replacing : null;
         const block = rewritten ? { ...built, id: rewritten.id, parentId: rewritten.parentId } : built;
         const openInspector = opensInspectorAfterCommit(spec, block);
+        let seeded: StoryBlock | null = null;
         if (rewritten) {
             rewriteRowInPlace(block, openInspector);
         } else {
             insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
-            scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+            seeded = scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
         }
         if (openInspector) {
             return true;
@@ -2690,6 +2707,32 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return true;
             }
         }
+        /**
+         * A container's next line belongs INSIDE it.
+         *
+         * `/菜单 你好` scaffolds its first option and `/if gold > 10` its first branch. Sending the
+         * caret to a fresh slot after the container - what the generic path below did - drew that
+         * slot between the header and its first child while the line actually committed after the
+         * whole container: in a menu, pressing Enter looked like it had added a stray row somewhere
+         * else, left the scaffolded option empty, and re-opened the slot under the header.
+         *
+         * A seeded option is a text row, so the caret goes into its label - the same place the
+         * header's "+" puts it. A branch or a group has no text of its own, so the slot opens in its
+         * body, which is where the first line of an if-body or a parallel block is written.
+         */
+        if (seeded && isTextEditableBlock(seeded)) {
+            setEditorMode({ kind: "text", blockId: seeded.id, value: getTextSegment(seeded)?.value ?? "" });
+            return true;
+        }
+        if (!rewritten) {
+            const body = seeded && holdsAuthoredRows(seeded)
+                ? seeded
+                : !seeded && holdsAuthoredRows(block) ? block : null;
+            if (body) {
+                openInsertInside(body.id, body.id);
+                return true;
+            }
+        }
         // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
         // so the receipt travels with that slot: `✓ @local gold 0 type=number`, fading on the next
         // keystroke. No toast — the ghost zone is the quietest place to say "it worked"
@@ -2706,7 +2749,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
             : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, rewriteRowInPlace, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, focusRoot, insertBlock, openInsertInside, rewriteRowInPlace, scaffoldContainer, scene, sceneId, setSceneLayers, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -4034,6 +4077,24 @@ function resolveMappingsForMemory(
         }
     }
     return resolved;
+}
+
+/**
+ * Whether the author's next written line belongs directly in this block's body.
+ *
+ * A branch's body, a repeat/until loop's, a parallel/race/sequence group's and an NVL block's hold
+ * ordinary rows, so a container that just landed wants the caret inside it. A condition's body is
+ * its branches and a menu's its options - structures, not lines - and those two are reached through
+ * the child they were scaffolded with, never by opening a slot in the container itself.
+ */
+function holdsAuthoredRows(block: StoryBlock): boolean {
+    if (block.kind === "action") {
+        return block.payload.action === "nvl";
+    }
+    if (block.kind === "control") {
+        return block.payload.control === "repeat" || block.payload.control === "conditionBranch";
+    }
+    return false;
 }
 
 /**

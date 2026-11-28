@@ -10,7 +10,7 @@ import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { canAcceptChildren as modelCanAcceptChildren, canPlaceBlockUnder } from "@/lib/workspace/services/story/storyModel";
-import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, InsertSlot, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     describeStoryBlock,
     getStoryEmptyTextPlaceholder,
@@ -355,6 +355,39 @@ export function updateTextPayload(block: StoryBlock, value: string, rich?: Story
         return { ...block.payload, prompt: mergeSegment(block.payload.prompt, value, rich) };
     }
     return null;
+}
+
+/**
+ * The row an "after" insert slot is drawn under, and the depth its line will have.
+ *
+ * `afterBlockId` names the row the new line lands after. For an ordinary row that is also the row the
+ * slot is drawn under, at the same depth. A container header is the exception: {@link
+ * getInsertionTargetAfter} makes the line a SIBLING of the container, so the slot belongs after the
+ * container's whole subtree — the last descendant visible in the list. A collapsed container has no
+ * visible descendants and hosts its own slot, which is the ordinary case again.
+ *
+ * A slot carrying an explicit target draws where the target says instead: inside the row itself one
+ * level deeper (the container's "+"), or at whatever depth the target's parent has.
+ */
+export function resolveInsertSlotPlacement(
+    slot: Pick<InsertSlot, "afterBlockId" | "target">,
+    rows: readonly Pick<VisibleStoryRow, "block" | "depth">[],
+): { hostId: StoryBlockId; depth: number } | null {
+    const anchorIndex = slot.afterBlockId ? rows.findIndex(row => row.block.id === slot.afterBlockId) : -1;
+    if (anchorIndex < 0) {
+        return null;
+    }
+    const anchor = rows[anchorIndex];
+    if (slot.target) {
+        const parentId = slot.target.parentId;
+        const parentIndex = parentId ? rows.findIndex(row => row.block.id === parentId) : -1;
+        return { hostId: anchor.block.id, depth: parentIndex >= 0 ? rows[parentIndex].depth + 1 : anchor.depth };
+    }
+    let last = anchorIndex;
+    while (last + 1 < rows.length && rows[last + 1].depth > anchor.depth) {
+        last += 1;
+    }
+    return { hostId: rows[last].block.id, depth: anchor.depth };
 }
 
 export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBlockId | null): StoryBlockTarget {
