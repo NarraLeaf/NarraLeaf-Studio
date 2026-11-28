@@ -71,6 +71,12 @@ next line belongs instead: the option a menu was scaffolded with (its label, the
 *after* the container: that slot was drawn between the header and its first child while its line
 committed past the whole container, so Enter in a menu looked like it had added a row outside it.
 
+**A menu ends with its own add.** An expanded menu draws a quiet「＋ 添加选项」line under its last row —
+the scene's "add a row" line at the menu's scale — and `ArrowDown` off that row lands on it, with
+`Enter` adding the option and putting the caret in its label. Without it, an author who had written
+what happens inside one option had no way back to the next option that did not start at the menu's
+header; `ArrowUp` walks the same steps back, menu line before last row.
+
 ## The Backspace ladder
 
 `Backspace` walks a row *down* one rung per press, the way it walks a character off a line: an action

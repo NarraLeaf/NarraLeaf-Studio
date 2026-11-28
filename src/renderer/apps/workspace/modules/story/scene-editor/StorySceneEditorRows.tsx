@@ -1580,7 +1580,7 @@ function ConnectorSegment(props: { left: string | number; top: number; ends: boo
 const ROW_INDENT_STEP = `(var(--nl-story-mark,26px) + ${ROW_GAP_PX}px)`;
 
 /** The indent for content `levels` deep, as a CSS length. */
-function rowIndent(levels: number): string {
+export function rowIndent(levels: number): string {
     return `calc(${ROW_INDENT_STEP} * ${levels})`;
 }
 

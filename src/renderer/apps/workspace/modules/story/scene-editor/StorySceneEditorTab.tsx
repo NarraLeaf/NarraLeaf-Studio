@@ -37,7 +37,7 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { STORY_SNAPSHOT_PANEL_ID, type StorySnapshotPanelPayload } from "../../story-snapshots";
 import { launchStoryRowInDevMode } from "./storyRowLaunch";
-import { getSpeakerCandidates, InsertRow, STORY_EDIT_BRANCH_CONDITION_EVENT, StoryBlockRow } from "./StorySceneEditorRows";
+import { getSpeakerCandidates, InsertRow, rowIndent, STORY_EDIT_BRANCH_CONDITION_EVENT, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
 import { useRowFilterChange } from "./useRowFilterChange";
@@ -70,7 +70,7 @@ import {
 } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
-import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment, resolveInsertSlotPlacement } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment, planMenuAddLines, resolveInsertSlotPlacement } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import type { StoryPreviewLayersApi } from "./preview/StoryLayerStackView";
@@ -1086,6 +1086,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ?? insertSlotPlacement?.hostId
             ?? editor.editorMode.slot.afterBlockId
         : null;
+    /**
+     * The "add option" line every expanded menu ends with, keyed by the row it is drawn under (see
+     * `planMenuAddLines`). Down off the menu's last row lands it (see `moveActiveRowSelection`).
+     */
+    const menuAddLines = useMemo(() => planMenuAddLines(editor.visibleRows), [editor.visibleRows]);
     const measuredSlotHostRef = useRef<StoryBlockId | null>(null);
     /**
      * Re-measure the host before the browser paints, instead of a frame later.
@@ -2776,6 +2781,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 return null;
                             }
                             const row = stabilizeRow(projected);
+                            const menuAddLine = menuAddLines.get(row.block.id);
                             return (
                             <div
                                 key={row.block.id}
@@ -2883,6 +2889,34 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
                                         slashAtAlias={editor.slashAtAlias}
                                     />
+                                ) : null}
+                                {menuAddLine ? (
+                                    <button
+                                        type="button"
+                                        tabIndex={-1}
+                                        {...freeze.writes()}
+                                        aria-label={t("story.container.addOption")}
+                                        // Down off the menu's last row lands the keyboard cursor here;
+                                        // the ring is how the author sees that Enter adds the option
+                                        // (see moveActiveRowSelection).
+                                        className={[
+                                            "mt-0.5 flex min-h-[26px] w-full items-center gap-2 rounded-md pr-3 text-left text-xs transition-colors",
+                                            editor.addOptionMenuId === menuAddLine.menuId
+                                                ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
+                                                : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
+                                            "disabled:cursor-not-allowed disabled:opacity-40",
+                                        ].join(" ")}
+                                        style={{ paddingLeft: rowIndent(menuAddLine.depth) }}
+                                        onClick={() => editor.addInsideContainer(menuAddLine.menuId)}
+                                    >
+                                        {/* The plus takes the mark column and the words land on the
+                                            body edge, so the line reads down the same column as the
+                                            options it adds to. */}
+                                        <span className="flex w-[var(--nl-story-mark,26px)] shrink-0 items-center justify-center">
+                                            <Plus className="h-3.5 w-3.5" />
+                                        </span>
+                                        {t("story.container.addOption")}
+                                    </button>
                                 ) : null}
                             </div>
                             );

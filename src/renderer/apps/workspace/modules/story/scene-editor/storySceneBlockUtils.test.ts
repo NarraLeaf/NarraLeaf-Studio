@@ -3,7 +3,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { canPlaceBlockUnder, deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, resolveInsertSlotPlacement, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, menuEndingAt, menuLastRowIndex, nextSelectionAfterDelete, planBlockGroupMove, planMenuAddLines, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor, resolveInsertSlotPlacement, rewritesRowInPlace, storyRowActivation, storyRowLineEdit, characterRowAppearances, characterRowLook, getDefaultAppendTarget } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -814,6 +814,49 @@ describe("where an insert slot is drawn", () => {
     it("has nothing to place when the anchor row is not visible", () => {
         expect(resolveInsertSlotPlacement({ afterBlockId: "folded" }, rows([["a", 0]]))).toBeNull();
         expect(resolveInsertSlotPlacement({ afterBlockId: null }, rows([["a", 0]]))).toBeNull();
+    });
+});
+
+describe("a menu's add-option line", () => {
+    function menu(id: string, childrenIds: string[]): StoryBlock {
+        return { id, kind: "nodeAction", parentId: null, childrenIds, payload: { action: "choice", prompt: { textId: `${id}-t`, role: "choicePrompt", value: "" } } } as unknown as StoryBlock;
+    }
+    function option(id: string, parentId: string): StoryBlock {
+        return { id, kind: "nodeAction", parentId, childrenIds: [], payload: { action: "choiceOption", text: { textId: `${id}-t`, role: "choiceText", value: id } } } as unknown as StoryBlock;
+    }
+    /** An expanded menu whose second option has a body line; `after` is the row past the menu. */
+    const page: VisibleStoryRow[] = [
+        { block: menu("menu", ["opt-a", "opt-b"]), depth: 0 },
+        { block: option("opt-a", "menu"), depth: 1 },
+        { block: option("opt-b", "menu"), depth: 1 },
+        { block: narration("body"), depth: 2 },
+        { block: narration("after"), depth: 0 },
+    ] as unknown as VisibleStoryRow[];
+
+    it("is drawn under the menu's last visible row, one level in", () => {
+        expect(planMenuAddLines(page)).toEqual(new Map([["body", { menuId: "menu", depth: 1 }]]));
+    });
+
+    it("is missing for a collapsed menu, which has no body on screen", () => {
+        const collapsed = [
+            { block: menu("menu", ["opt-a"]), depth: 0 },
+            { block: narration("after"), depth: 0 },
+        ] as unknown as VisibleStoryRow[];
+        expect(planMenuAddLines(collapsed).size).toBe(0);
+        expect(menuEndingAt(collapsed, 0)).toBeNull();
+    });
+
+    it("is where Down off the menu's last row lands, and not before it", () => {
+        expect(menuEndingAt(page, 3)).toBe("menu");
+        // An option with rows still below it is not the end of the menu.
+        expect(menuEndingAt(page, 1)).toBeNull();
+        // A row after the menu has no menu ending on it.
+        expect(menuEndingAt(page, 4)).toBeNull();
+    });
+
+    it("names the last row the menu occupies", () => {
+        expect(menuLastRowIndex(page, "menu")).toBe(3);
+        expect(menuLastRowIndex(page, "missing")).toBe(-1);
     });
 });
 
