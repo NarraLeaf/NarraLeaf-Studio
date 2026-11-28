@@ -708,13 +708,25 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         ].join(" ")}
                     >
                         {containerInfo?.role === "condition" ? (
-                            <ConditionBranchAdds
-                                offerElse={!conditionHasElse}
-                                onAddBranch={branch => on.onAddBranch(block.id, branch)}
-                                onFocusWithin={setActionsFocused}
-                            />
+                            <>
+                                <ConditionBranchAdds
+                                    offerElse={!conditionHasElse}
+                                    onAddBranch={branch => on.onAddBranch(block.id, branch)}
+                                    onFocusWithin={setActionsFocused}
+                                />
+                                {/* A header is still a row, and the whole row goes in one step. It used
+                                    to be the one kind of row with no delete under the pointer: the
+                                    keyboard's Delete and the context menu both took it, so the header
+                                    simply outlived the editor's own affordance. */}
+                                <RowDeleteAction onDelete={on.onDeleteRow} />
+                            </>
                         ) : containerInfo ? (
-                            <ContainerHeaderAdd info={containerInfo} active={active} onAdd={() => on.onAddInside(block.id)} />
+                            <>
+                                <ContainerHeaderAdd info={containerInfo} active={active} onAdd={() => on.onAddInside(block.id)} />
+                                {/* Same operation the header's Delete key and context menu run: the
+                                    block and its descendants go together, one undo step. */}
+                                <RowDeleteAction onDelete={on.onDeleteRow} />
+                            </>
                         ) : (
                             <>
                                 {dialogueHead ? (
@@ -1213,16 +1225,10 @@ function TextEditBox(props: {
  */
 function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
-    // The two buttons that sit on every hovered row. Greyed with the freeze reason rather than hidden:
-    // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
-    // Scoped: inserting and deleting a row write the story document and nothing else.
+    // Scoped: inserting a row writes the story document and nothing else.
     const freeze = useFreezeGuard(useStoryDocumentScope());
-    // Rendered from the catalog entries the two keys are bound under, so a key rebound in Settings
-    // shows rebound here too; a hint that prints the default is how it drifts from the key it names.
     const shortcuts = useShortcutLabels();
-    // A frozen button's tooltip is the freeze reason, which no key follows.
     const insertKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.insert-blank-after-selection");
-    const deleteKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.delete");
     return (
         <div
             className={[
@@ -1250,27 +1256,51 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             >
                 <Plus className="h-3.5 w-3.5" />
             </button>
-            <button
-                type="button"
-                tabIndex={-1}
-                {...freeze.writes(false, t("story.rows.delete"))}
-                data-tip-shortcut={deleteKeys}
-                aria-label={t("story.rows.delete")}
-                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
-                onClick={event => {
-                    event.stopPropagation();
-                    // Only the first click of a double-click: the next row slides up under the
-                    // pointer with its own delete button in the same place, and the second click
-                    // took that row too.
-                    if (event.detail > 1) {
-                        return;
-                    }
-                    props.onDelete();
-                }}
-            >
-                <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <RowDeleteAction onDelete={props.onDelete} />
         </div>
+    );
+}
+
+/**
+ * The delete half of {@link RowActions}, on its own because every kind of row has it.
+ *
+ * A container header renders its own add (inside, or a branch) where the insert would be, and that
+ * cluster used to be the whole story there — so a menu, an option, a condition or a branch could be
+ * removed with the Delete key and the context menu, but not with the button that sits on every other
+ * row under the pointer. Deleting a header removes its descendants too; it is one undo step, which is
+ * what the context menu's Delete has always meant there.
+ */
+function RowDeleteAction(props: { onDelete: () => void }) {
+    const { t } = useTranslation();
+    // Greyed with the freeze reason rather than hidden: a row whose end cluster vanished would read
+    // as a broken editor, not as a frozen project.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
+    // Rendered from the catalog entry the key is bound under, so a key rebound in Settings shows
+    // rebound here too; a hint that prints the default is how it drifts from the key it names.
+    const shortcuts = useShortcutLabels();
+    // A frozen button's tooltip is the freeze reason, which no key follows.
+    const deleteKeys = freeze.frozen ? undefined : shortcuts.forBinding("story.delete");
+    return (
+        <button
+            type="button"
+            tabIndex={-1}
+            {...freeze.writes(false, t("story.rows.delete"))}
+            data-tip-shortcut={deleteKeys}
+            aria-label={t("story.rows.delete")}
+            className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
+            onClick={event => {
+                event.stopPropagation();
+                // Only the first click of a double-click: the next row slides up under the
+                // pointer with its own delete button in the same place, and the second click
+                // took that row too.
+                if (event.detail > 1) {
+                    return;
+                }
+                props.onDelete();
+            }}
+        >
+            <Trash2 className="h-3.5 w-3.5" />
+        </button>
     );
 }
 
