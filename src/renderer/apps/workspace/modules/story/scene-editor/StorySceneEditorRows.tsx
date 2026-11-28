@@ -1454,7 +1454,8 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
  *
  * On a menu option or condition branch it is a *branch entry* — playback takes that road and keeps
  * going past the container, which is the one thing the state preview can't show you by selecting a
- * row. Those rows say so in words; ordinary rows keep the cluster quiet with an icon.
+ * row. That difference lives in the tooltip ("试玩该分支"), not in the cluster: every row's play is
+ * the same icon, so the row's controls are the same three shapes wherever they appear.
  */
 function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () => void }) {
     const { t } = useTranslation();
@@ -1474,7 +1475,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
             data-tip={label}
             aria-label={label}
             className={[
-                "flex h-6 shrink-0 cursor-default items-center gap-1 rounded-md px-1.5 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                "grid h-6 w-6 shrink-0 cursor-default place-items-center rounded-md text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
                 props.active ? "opacity-100" : "pointer-events-none opacity-0",
             ].join(" ")}
             onClick={event => {
@@ -1482,8 +1483,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
                 props.onPlay();
             }}
         >
-            <Play className="h-3 w-3" />
-            {branchEntry ? <span>{label}</span> : null}
+            <Play className="h-3.5 w-3.5" />
         </button>
     );
 }
@@ -1854,8 +1854,14 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
 }
 
 /**
- * Hover "+ Add" affordance on the right of a container header (adds a child at the end). A condition
+ * Hover "+" affordance on the right of a container header (adds a child at the end). A condition
  * header carries {@link ConditionBranchAdds} in its place.
+ *
+ * One glyph, like every other row control. It used to print the words beside it («添加选项»), which
+ * made a header's cluster a different width from every other row's for the same three actions — and
+ * which was the only place in the column where a hover changed how wide the row's controls were. What
+ * the plus adds (an option, an action) is in its tooltip, and the container's own footer states it in
+ * words while the body is still empty.
  */
 function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; active?: boolean; onAdd: () => void }) {
     const { t } = useTranslation();
@@ -1871,13 +1877,14 @@ function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; active?: bo
                 type="button"
                 tabIndex={-1}
                 data-tip={label}
-                className="rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                aria-label={label}
+                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
                     props.onAdd();
                 }}
             >
-                + {label}
+                <Plus className="h-3.5 w-3.5" />
             </button>
         </div>
     );
