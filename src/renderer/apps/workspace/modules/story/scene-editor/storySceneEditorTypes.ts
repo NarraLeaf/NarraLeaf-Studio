@@ -113,6 +113,12 @@ export type InsertSlot = {
      * which is what lets Escape hand it back instead of leaving them a row they never finished.
      */
     characterScope?: { characterId: string; name: string };
+    /**
+     * A `#` typed into an empty dialogue row: the author changing who speaks this line. Like a
+     * character-scoped slot it stands in place of that row (`replaceBlockId`), so Escape or
+     * backspacing the `#` away gives the line back rather than leaving a row nobody finished.
+     */
+    speakerSwitch?: true;
 };
 
 /**

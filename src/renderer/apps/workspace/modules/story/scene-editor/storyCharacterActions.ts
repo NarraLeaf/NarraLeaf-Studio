@@ -91,6 +91,25 @@ export function characterScopedSidebarGroups(
 }
 
 /**
+ * Whether the line written after this row, from inside a speaker's run, can still be that speaker
+ * talking - the test for handing the caret back to the paragraph after a scoped slot commits.
+ *
+ * A widened slot (`@@`) can commit any command, and most of them are asides a speaker carries on
+ * through: a background change, a sound, a wait, a camera move. What it cannot carry on through is a
+ * row that holds rows of its own (its next line belongs inside it) or one that moves the story
+ * somewhere else - a jump, a goto, a break, an ending, a quit - after which a line of dialogue is
+ * never reached. A label starts a new place to jump to, so the paragraph ends there too.
+ */
+const PARAGRAPH_ENDING_CONTROLS: ReadonlySet<string> = new Set(["break", "goto", "ending", "quit", "label"]);
+
+export function actionReturnsToParagraph(block: StoryBlock, holdsRows: (block: StoryBlock) => boolean): boolean {
+    if (holdsRows(block) || block.kind === "jump") {
+        return false;
+    }
+    return !(block.kind === "control" && PARAGRAPH_ENDING_CONTROLS.has(block.payload.control));
+}
+
+/**
  * Whether a command's FIRST positional slot is the character it acts on.
  *
  * True for both spellings of that slot - `/face <character>` names one directly, `/show <target>`

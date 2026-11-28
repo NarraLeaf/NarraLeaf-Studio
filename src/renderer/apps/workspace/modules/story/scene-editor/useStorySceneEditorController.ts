@@ -126,7 +126,7 @@ import { expandCommandAbbreviation } from "./storyCommandSpelling";
 import { useStoryCommandAbbreviations } from "./useStoryCommandAbbreviations";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
-import { dialogueActionCharacter } from "./storyCharacterActions";
+import { actionReturnsToParagraph, dialogueActionCharacter } from "./storyCharacterActions";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
 /** Rows the selection jumps by on PageUp / PageDown. */
@@ -484,6 +484,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const inputMethodTriggerDeclinedRef = useRef<StoryBlockId | null>(null);
     /**
+     * The empty row the editor opened on the author's behalf - Enter's continuation, or the line a
+     * scoped action hands the caret back to - for as long as the caret is still in it. Leaving it
+     * without a word in it takes it away again (see `commitTextEdit`): it was the editor's offer, and
+     * an untaken one should not stay in the scene as a blank line of dialogue the build skips.
+     */
+    const freshContinuationRef = useRef<StoryBlockId | null>(null);
+    /**
      * The pending "move the open row's words into the document" timers, and the settle they run.
      *
      * The draft above made a keystroke cost nothing, and left the words with nowhere to go until
@@ -604,6 +611,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // this same row; it ends with the row.
         if (editorMode.kind !== "text" || editorMode.blockId !== inputMethodTriggerDeclinedRef.current) {
             inputMethodTriggerDeclinedRef.current = null;
+        }
+        // A slot opened in place of it (its `@` or `#`) hands it straight back on Escape, still offered.
+        const stillOffered = editorMode.kind === "text"
+            ? editorMode.blockId === freshContinuationRef.current
+            : editorMode.kind === "insert" && editorMode.slot.replaceBlockId === freshContinuationRef.current;
+        if (!stillOffered) {
+            freshContinuationRef.current = null;
         }
         // A settle armed for the row that just closed would run against a draft that is no longer
         // its own, and the undo receipt belongs to one edit session rather than to the editor.
@@ -1537,11 +1551,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [armTextSettle, editorMode, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, storyId, storyService]);
     settleTextDraftRef.current = settleTextDraft;
 
-    const commitTextEdit = useCallback(() => {
+    const commitTextEdit = useCallback((): boolean => {
         cancelTextSettle();
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
             setEditorMode({ kind: "idle" });
-            return;
+            return false;
         }
         const block = scene.blocks[editorMode.blockId];
         // Prefer the live editor DOM so a popover edit (e.g. binding an inline blueprint) that hasn't
@@ -1550,12 +1564,26 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const draft = readTextDraft(editorMode.blockId);
         const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
         const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
+        // An offered row left untouched goes, with no undo step of its own: the Enter that opened it
+        // is already one, and undoing that should not first have to undo its absence.
+        if (block && freshContinuationRef.current === block.id && value === "" && (rich ?? []).every(run => "text" in run && run.text === "")) {
+            freshContinuationRef.current = null;
+            const previous = findPreviousSibling(scene, block.id);
+            storyService.deleteBlock(storyId, sceneId, block.id);
+            if (previous) {
+                setActiveBlockId(previous.id);
+                setSelectedBlockIds(new Set([previous.id]));
+                selectionAnchorRef.current = previous.id;
+            }
+            setEditorMode({ kind: "idle" });
+            return true;
+        }
         const payload = block ? updateTextPayload(block, value, rich) : null;
         if (payload) {
             const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
             if (!changed) {
                 setEditorMode({ kind: "idle" });
-                return;
+                return false;
             }
             // Once per session, not once per commit: a settle may already have left the checkpoint
             // this edit undoes to, and a second one here would cost the author a wasted Ctrl+Z.
@@ -1563,6 +1591,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
         }
         setEditorMode({ kind: "idle" });
+        return false;
     }, [cancelTextSettle, editorMode, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, storyId, storyService]);
 
     const createBlock = useCallback((kind: ActionCommandId, initialText = "", speaker?: StoryDialogueSpeaker): StoryBlock | null => {
@@ -1749,6 +1778,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (base !== "") {
             return false;
         }
+        // `#` (or the full-width `＃` a Chinese input method types for it) on an empty dialogue row is
+        // the author changing who says this line - the same picker the blank slot's `#` opens, standing
+        // in place of the row so backing out gives the line back. Any dialogue row, a bare-name speaker
+        // or none included: who speaks is exactly what is being decided.
+        if (value === "#" || value === "＃") {
+            const block = scene.blocks[blockId];
+            if (block?.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                return false;
+            }
+            const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+            const index = siblings.indexOf(blockId);
+            slotDiscardedRef.current = false;
+            insertDraftRef.current = "#";
+            setEditorMode({
+                kind: "insert",
+                slot: {
+                    afterBlockId: index > 0 ? siblings[index - 1] : null,
+                    focusToken: Date.now(),
+                    target: { parentId: block.parentId, beforeBlockId: blockId },
+                    replaceBlockId: blockId,
+                    speakerSwitch: true,
+                },
+                initialValue: "#",
+            });
+            setActiveBlockId(blockId);
+            window.requestAnimationFrame(() => {
+                const input = insertInputRef.current;
+                input?.focus();
+                input?.setSelectionRange(1, 1);
+            });
+            return true;
+        }
         // The trigger as the author typed it, or what an input method typed for it (`・`, or `・表示`
         // in one conversion) read as one - unless they already backed out of that once on this row.
         let line = value;
@@ -1819,7 +1880,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * other kind of slot, whose callers keep their own behaviour.
      */
     const returnFromCharacterActionSlot = useCallback((): boolean => {
-        if (editorMode.kind !== "insert" || !editorMode.slot.characterScope) {
+        if (editorMode.kind !== "insert" || (!editorMode.slot.characterScope && !editorMode.slot.speakerSwitch)) {
             return false;
         }
         const blockId = editorMode.slot.replaceBlockId;
@@ -2154,6 +2215,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         insertBlock(block, currentBlock.id, false, { recordHistory: false });
+        freshContinuationRef.current = block.id;
         setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
     }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, startInsertAfter, storyId, storyService]);
 
@@ -2173,10 +2235,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             goalColumnRef.current = caretX;
         }
         const goalX = vertical ? goalColumnRef.current : null;
-        const currentId = editorMode.blockId;
-        const currentIndex = rowIndexById.get(currentId);
-        commitTextEdit();
-        if (currentIndex === undefined) {
+        const currentIndex = rowIndexById.get(editorMode.blockId);
+        // An untouched offered row is taken away by the commit; the row above stands in for it.
+        const removed = commitTextEdit();
+        const currentId = removed && currentIndex !== undefined
+            ? visibleRows[currentIndex - 1]?.block.id ?? null
+            : editorMode.blockId;
+        if (currentIndex === undefined || currentId === null) {
             return;
         }
         const goingBack = direction === "up" || direction === "left";
@@ -2458,7 +2523,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             && !isActionCommandLine(draft, slashAtAlias)
             && !draft.startsWith("#")
             && !editorMode.slot.rewritesRow
-            && !editorMode.slot.characterScope;
+            && !editorMode.slot.characterScope
+            && !editorMode.slot.speakerSwitch;
         if (!isProse) {
             discardInsertSlot();
             return;
@@ -2617,6 +2683,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return true;
     }, [createPluginActionBlock, editorMode, insertBlock, storyService]);
 
+    /**
+     * A speaker picked with `#` on an offered row replaces it with a row that is just as untaken:
+     * leaving that one empty should take it away too.
+     */
+    const inheritOffer = useCallback((replacedId: StoryBlockId | undefined, nextId: StoryBlockId) => {
+        if (replacedId && replacedId === freshContinuationRef.current) {
+            freshContinuationRef.current = nextId;
+        }
+    }, []);
+
     const chooseCharacterForInsert = useCallback((characterId: string) => {
         if (editorMode.kind !== "insert") {
             return;
@@ -2628,9 +2704,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const block = createBlock("dialogue", "", { characterId });
         if (block) {
             insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
+            inheritOffer(replaceBlockId, block.id);
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [createBlock, editorMode, insertBlock]);
+    }, [createBlock, editorMode, inheritOffer, insertBlock]);
 
     const commitCommandFromInsert = useCallback((value: string): boolean => {
         if (editorMode.kind !== "insert") {
@@ -2726,11 +2803,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
          * A command that builds a line of speech itself (`/say`) is excluded: it has already put the
          * author in a row of dialogue, and a second empty one under it continues nothing.
          */
-        if (scope && followTarget && !isTextEditableBlock(block)) {
+        if (scope && followTarget && !isTextEditableBlock(block) && actionReturnsToParagraph(block, canAcceptChildren)) {
             const next = createBlock("dialogue", "", { characterId: scope.characterId });
             if (next) {
                 // One undo step for the whole gesture: the command's own commit already recorded it.
                 insertBlock(next, null, false, { target: followTarget, recordHistory: false });
+                freshContinuationRef.current = next.id;
                 setEditorMode({ kind: "text", blockId: next.id, value: "", caret: "end" });
                 return true;
             }
@@ -2906,8 +2984,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
+        inheritOffer(replaceBlockId, block.id);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
-    }, [createBlock, editorMode, insertBlock]);
+    }, [createBlock, editorMode, inheritOffer, insertBlock]);
 
     /**
      * A pick from the sidebar. The sidebar lists SPECS, so this is the same build the typed

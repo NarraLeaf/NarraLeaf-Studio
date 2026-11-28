@@ -109,7 +109,7 @@ import {
 import { ConditionPopover } from "./ConditionPopover";
 import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, foldInputMethodTrigger, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { actionTrigger, ACTION_TRIGGER, ALT_ACTION_TRIGGER, foldInputMethodTrigger, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
@@ -358,7 +358,18 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
      */
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     /** What the project checks found on this row; the same array until that changes. */
-    const rowProblems = useRowProblems(block.id);
+    const reportedProblems = useRowProblems(block.id);
+    /**
+     * Minus "this line has no text" while the line is open: a row Enter has just opened is empty by
+     * definition, and flagging it before the author has typed a word only reports that they are
+     * typing. It comes back the moment the row closes still empty.
+     */
+    const rowProblems = useMemo(
+        () => editing && reportedProblems.some(entry => entry.ruleId === "text/empty")
+            ? reportedProblems.filter(entry => entry.ruleId !== "text/empty")
+            : reportedProblems,
+        [editing, reportedProblems],
+    );
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
     /**
@@ -2301,8 +2312,15 @@ export function InsertRow(props: {
      */
     const [inputMethodLine, setInputMethodLine] = useState<{ typed: string; folded: string } | null>(() =>
         (props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null));
+    /**
+     * The author doubled the trigger (`@@`) on a speaker's line: the whole vocabulary instead of that
+     * speaker's verbs. The line itself goes back to one `@` (a second trigger is not part of any
+     * command), and emptying the line narrows it again, so `@` typed afresh is the speaker's menu.
+     */
+    const [scopeWidened, setScopeWidened] = useState(false);
     if (seededSlot !== props.mode.slot) {
         setSeededSlot(props.mode.slot);
+        setScopeWidened(false);
         setValue(props.mode.initialValue);
         setInputMethodLine(props.mode.inputMethodLine ? { typed: props.mode.inputMethodLine, folded: props.mode.initialValue } : null);
     }
@@ -2337,7 +2355,8 @@ export function InsertRow(props: {
      * `startCharacterActionSlot`). Read as a plain name rather than as the scope object, so a fresh
      * slot object on every keystroke cannot invalidate the lists memoized against it.
      */
-    const scopeName = props.mode.slot.characterScope?.name ?? null;
+    const slotScopeName = props.mode.slot.characterScope?.name ?? null;
+    const menuScoped = slotScopeName !== null && !scopeWidened;
     // Whether a runtime draws the speaker: only then are her motions, skins and parameters hers to set.
     const scopeCharacterId = props.mode.slot.characterScope?.characterId ?? null;
     const scopeDrawnByRuntime = scopeCharacterId !== null && props.commandContext.puppetCharacterIds.includes(scopeCharacterId);
@@ -2348,7 +2367,7 @@ export function InsertRow(props: {
     const { live: abbreviations } = useStoryCommandAbbreviations();
     // The project's own commands join the lists the moment the command file changes.
     const customCommandsVersion = useCustomStoryCommandsVersion();
-    const actionOptions = useMemo<PaletteActionCommand[]>(
+    const actionOptionsScoped = useMemo<{ list: PaletteActionCommand[]; scoped: boolean }>(
         () => {
             const all = [
                 // The typing/filter tier lists one entry per spec — the ranked flat list is the right
@@ -2360,14 +2379,21 @@ export function InsertRow(props: {
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ].filter(command => !commandIds || commandIds.has(command.id));
-            return searchActionCommands(
-                scopeName === null ? all : characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }),
-                chooserQuery,
-                abbreviations,
-            );
+            if (menuScoped) {
+                const scoped = searchActionCommands(characterScopedActions(all, { drawnByRuntime: scopeDrawnByRuntime }), chooserQuery, abbreviations);
+                // A verb the speaker's list does not have (`@bg`) is still a verb the author asked for:
+                // the line commits it either way, so an empty menu only made it look unsupported.
+                if (scoped.length > 0 || chooserQuery.trim() === "") {
+                    return { list: scoped, scoped: true };
+                }
+            }
+            return { list: searchActionCommands(all, chooserQuery, abbreviations), scoped: false };
         },
-        [abbreviations, chooserQuery, commandIds, ct, customCommandsVersion, pluginCommands, props.commandContext, scopeDrawnByRuntime, scopeName],
+        [abbreviations, chooserQuery, commandIds, ct, customCommandsVersion, menuScoped, pluginCommands, props.commandContext, scopeDrawnByRuntime],
     );
+    const actionOptions = actionOptionsScoped.list;
+    /** The speaker the menu is narrowed to and fills in - none once widened or past their verbs. */
+    const scopeName = actionOptionsScoped.scoped ? slotScopeName : null;
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
     // 全部 collapses to one row per command (a verb repeated under six subjects with the same sentence
@@ -2660,13 +2686,24 @@ export function InsertRow(props: {
                         ? ""
                         : props.commandScope
                             ? t("story.rows.insertPlaceholderCommand", { trigger: props.slashAtAlias ? "@" : "/" })
-                            : scopeName !== null
-                            ? t("story.rows.insertPlaceholderCharacter", { name: scopeName })
+                            : slotScopeName !== null
+                            ? t("story.rows.insertPlaceholderCharacter", { name: slotScopeName })
                             : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         const typed = event.target.value;
                         const typedCaret = event.target.selectionStart ?? typed.length;
                         setInputMethodLine(null);
+                        // `@@` on a speaker's line asks for every command, not just theirs. Only the
+                        // "@" alias doubles: with "/" as the trigger, `//` is already the note command.
+                        if (slotScopeName !== null && !scopeWidened && props.slashAtAlias && value === ALT_ACTION_TRIGGER
+                            && (typed === ALT_ACTION_TRIGGER + ALT_ACTION_TRIGGER || typed === ALT_ACTION_TRIGGER + "＠")) {
+                            setScopeWidened(true);
+                            replaceLine(ALT_ACTION_TRIGGER);
+                            return;
+                        }
+                        if (typed === "") {
+                            setScopeWidened(false);
+                        }
                         // The same reading for an input method that puts the character down without
                         // composing it. One that composes reaches `onCompositionEnd` instead.
                         if (value === "" && !(event.nativeEvent as InputEvent).isComposing && foldTypedTrigger(typed)) {
@@ -2722,7 +2759,7 @@ export function InsertRow(props: {
                             // A slot standing on a speaker's line hands it back to that line.
                             if (inputMethodLine && value === inputMethodLine.folded) {
                                 setInputMethodLine(null);
-                                if (scopeName !== null) {
+                                if (slotScopeName !== null) {
                                     props.onDiscardSlot(inputMethodLine.typed);
                                 } else {
                                     replaceLine(inputMethodLine.typed);

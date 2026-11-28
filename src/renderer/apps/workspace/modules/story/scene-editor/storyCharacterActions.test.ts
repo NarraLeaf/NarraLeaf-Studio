@@ -5,6 +5,7 @@ import type { PaletteActionCommand } from "./storyActionCommands";
 import { getDefById, listCommandSpecs } from "./commands/registry";
 import { specPaletteCommands } from "./commands/specPalette";
 import {
+    actionReturnsToParagraph,
     characterScopeLead,
     characterScopedActions,
     characterScopedSidebarGroups,
@@ -175,5 +176,27 @@ describe("storyCharacterActions — what a speaker's paragraph absorbs", () => {
         expect(paragraphActionCharacterId(action({ action: "character", operation: "move" }), cast)).toBeNull();
         expect(paragraphActionCharacterId(action({ action: "setBackground", color: "#000" }), cast)).toBeNull();
         expect(paragraphActionCharacterId(dialogue({ characterId: "alice" }), cast)).toBeNull();
+    });
+});
+
+describe("storyCharacterActions — handing the caret back to the paragraph", () => {
+    const row = (kind: string, payload: Record<string, unknown>, children: string[] = []) =>
+        ({ id: "r", parentId: null, childrenIds: children, kind, payload }) as unknown as StoryBlock;
+    const holdsRows = (block: StoryBlock) => block.kind === "control" && ["condition", "repeat"].includes((block.payload as { control: string }).control);
+
+    it("returns after an aside the speaker carries on through", () => {
+        expect(actionReturnsToParagraph(row("action", { action: "wait" }), holdsRows)).toBe(true);
+        expect(actionReturnsToParagraph(row("control", { control: "cut" }), holdsRows)).toBe(true);
+    });
+
+    it("does not return into a container, whose next line belongs inside it", () => {
+        expect(actionReturnsToParagraph(row("control", { control: "repeat" }), holdsRows)).toBe(false);
+    });
+
+    it("does not return after a row that moves the story somewhere else", () => {
+        expect(actionReturnsToParagraph(row("jump", { targetSceneId: "s" }), holdsRows)).toBe(false);
+        for (const control of ["break", "goto", "ending", "quit", "label"]) {
+            expect(actionReturnsToParagraph(row("control", { control }), holdsRows)).toBe(false);
+        }
     });
 });

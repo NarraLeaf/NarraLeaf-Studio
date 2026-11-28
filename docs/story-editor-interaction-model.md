@@ -61,6 +61,25 @@ line can stay narration, turn into an action (`/`), or a line of dialogue (`#`).
 successor (a back-and-forth wants the same speaker) and still demotes to the slot on Backspace, so it
 is not a trap.
 
+**An empty dialogue row answers the three triggers itself.** Typed as the first character of an empty
+dialogue row, each opens a slot *in place of* that row, so `Escape` (or backspacing the trigger away)
+gives the line back rather than leaving a row nobody finished:
+
+- `@` (or `/`) opens the speaker's own actions, their name filled in. A verb their list does not have
+  (`@bg`) is shown from the whole vocabulary instead of an empty menu, since the line commits it
+  either way. `@@` asks for the whole vocabulary outright and leaves one `@` on the line; emptying the
+  line narrows it again. Only the `@` alias doubles: with `/` as the trigger, `//` is the note.
+- After a scoped slot commits, the caret goes back to a fresh line for the same speaker - unless the
+  row holds rows of its own or moves the story elsewhere (jump, goto, break, ending, quit, label),
+  after which a line of dialogue is never reached.
+- `#` (or `＃`) opens the speaker picker: the row becomes the picked speaker's, opening a new paragraph.
+
+**An offered row that is never used goes away.** The empty row Enter opens (and the one a scoped
+action hands the caret back to) is the editor's offer. Leaving it without a word - `Escape`, an
+arrow, a click elsewhere - removes it with no undo step of its own, so the scene does not collect
+blank dialogue the build skips. While a row is open, its "no text" finding is not shown either: an
+empty row the author is about to type into is not yet a problem.
+
 **Card-less action rows run their own operation, not a placeholder inspector.** Conditions and their
 branches have no card (`hasInspector`): the branch authors its condition inline on its header chip,
 and the container only manages branches. So Enter on a branch adds a line inside its body — the common
